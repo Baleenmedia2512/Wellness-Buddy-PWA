@@ -223,10 +223,13 @@ function WellnessValleyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
-  // Set true only after requestAllPermissions() resolves. Guards the camera
-  // auto-open effect so the camera never fires during the permissions-dialog
-  // chain (camera → push → geolocation). On web this resolves immediately.
-  const [permissionsReady, setPermissionsReady] = useState(false);
+  // For returning users who already granted permissions, start as true so the
+  // camera opens immediately (Snapchat-like). Fresh installs start as false
+  // and wait for the permission dialogs to complete before opening camera.
+  const [permissionsReady, setPermissionsReady] = useState(() => {
+    if (!Capacitor.isNativePlatform()) return true;
+    return localStorage.getItem('wv.permissionsGranted') === '1';
+  });
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
@@ -663,7 +666,7 @@ function WellnessValleyApp() {
         setTimeout(tryOpen, 300);
       }
     };
-    const t = setTimeout(tryOpen, 300);
+    const t = setTimeout(tryOpen, 0); // try immediately; retry loop handles race with ImageUpload mount
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -1755,7 +1758,10 @@ function WellnessValleyApp() {
     if (!user) return;
     let mounted = true;
     requestAllPermissions()
-      .then(() => { if (mounted) setPermissionsReady(true); })
+      .then(() => {
+        localStorage.setItem('wv.permissionsGranted', '1'); // cache for instant-ready on next launch
+        if (mounted) setPermissionsReady(true);
+      })
       .catch(() => { if (mounted) setPermissionsReady(true); }); // fail-open: dialogs already swallow errors
     handleSaveUserCache(user);
     return () => { mounted = false; };
@@ -1854,7 +1860,7 @@ function WellnessValleyApp() {
             handleSaveUserCache(parsedUser);
             // ✅ Check profile completion after OTP user is restored on refresh
             if (userEmail) {
-              await checkProfileCompletion(userEmail, parsedUser);
+              await checkProfileCompletion(userEmail, parsedUser, { silent: true });
             }
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
@@ -1927,7 +1933,7 @@ function WellnessValleyApp() {
           const userEmail = user.email || user.Email;
           if (userEmail) {
             debugLog("🔄 [Foreground] App resumed — running immediate profile check");
-            checkProfileCompletion(userEmail, user);
+            checkProfileCompletion(userEmail, user, { silent: true });
           }
         }
       }),
@@ -3545,6 +3551,15 @@ function WellnessValleyApp() {
         // nutrition dashboard (ImageType='food' filter) but the share link
         // still resolves and routes to the correct dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'smartwatch');
+        // Auto-share to WhatsApp immediately — same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            if (!ok) { foodAutoSharedRef.current = false; return; }
+            resetCaptureUiOnly();
+          });
+        });
         setLoading(false);
         return;
       }
@@ -3591,6 +3606,15 @@ function WellnessValleyApp() {
         // nutrition dashboard (ImageType='food' filter) but the share link
         // still resolves and routes to the education dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'education');
+        // Auto-share to WhatsApp immediately — same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            if (!ok) { foodAutoSharedRef.current = false; return; }
+            resetCaptureUiOnly();
+          });
+        });
         setLoading(false);
         return;
       }
@@ -3787,6 +3811,15 @@ function WellnessValleyApp() {
         // nutrition dashboard (ImageType='food' filter) but the share link
         // still resolves and routes to the weight dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'weight');
+        // Auto-share to WhatsApp immediately — same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            if (!ok) { foodAutoSharedRef.current = false; return; }
+            resetCaptureUiOnly();
+          });
+        });
         setLoading(false);
         return;
       }
