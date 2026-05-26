@@ -303,7 +303,6 @@ describe('resolvePublicCapture', () => {
     expect(r.httpStatus).toBe(200);
     expect(r.body.data.isSelf).toBe(true);
     expect(repo.getCoachChain).not.toHaveBeenCalled();
-    expect(repo.isCoCoachPaired).not.toHaveBeenCalled();
   });
 
   it('returns 200 when viewer is in the upline coach chain', async () => {
@@ -313,26 +312,22 @@ describe('resolvePublicCapture', () => {
     const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COACH });
     expect(r.httpStatus).toBe(200);
     expect(r.body.data.isSelf).toBe(false);
+  });
+
+  it('returns 403 when viewer is a co-coach partner (not in upline chain)', async () => {
+    // Co-coaches are peers of the owner's coach and must NOT gain access via
+    // the share link. Only the upline chain is trusted for nutrition sharing.
+    repo.findOwnerByToken.mockResolvedValue(ownerRow);
+    repo.getCoachChain.mockResolvedValue([OWNER, COACH]); // COCOACH absent
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COCOACH });
+    expect(r.httpStatus).toBe(403);
+    expect(r.body.error.code).toBe('FORBIDDEN');
     expect(repo.isCoCoachPaired).not.toHaveBeenCalled();
   });
 
-  it('returns 200 when viewer is a co-coach partner of the owner', async () => {
-    // Adithya (OWNER) and Praveen (COCOACH) are paired in coach_teams_table.
-    // Praveen is NOT in the upline chain — co-coach check must grant access.
-    repo.findOwnerByToken.mockResolvedValue(ownerRow);
-    repo.getCoachChain.mockResolvedValue([OWNER, COACH]); // Praveen absent
-    repo.isCoCoachPaired.mockResolvedValue(true);
-    repo.findUserName.mockResolvedValue('Adithya');
-    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COCOACH });
-    expect(r.httpStatus).toBe(200);
-    expect(r.body.ok).toBe(true);
-    expect(repo.isCoCoachPaired).toHaveBeenCalledWith(OWNER, COCOACH);
-  });
-
-  it('returns 403 when viewer is neither in chain nor a co-coach partner', async () => {
+  it('returns 403 when viewer is not in the upline coach chain', async () => {
     repo.findOwnerByToken.mockResolvedValue(ownerRow);
     repo.getCoachChain.mockResolvedValue([OWNER, COACH]);
-    repo.isCoCoachPaired.mockResolvedValue(false);
     const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: STRANGER });
     expect(r.httpStatus).toBe(403);
     expect(r.body.error.code).toBe('FORBIDDEN');
