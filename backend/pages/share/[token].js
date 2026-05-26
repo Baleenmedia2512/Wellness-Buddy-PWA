@@ -127,8 +127,8 @@ export default function ShareLanding({ token, baseUrl }) {
         {/* Open Graph tags — WhatsApp, Telegram, and other link-preview crawlers
             read these to render a branded card instead of a raw URL. */}
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="View my meal 🍽️" />
-        <meta property="og:description" content="A meal was shared with you on Wellness Valley. Tap to open in the app." />
+        <meta property="og:title" content="Click here for Nutrition Info" />
+        <meta property="og:description" content="" />
         {baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />}
         {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
         <meta property="og:image:width" content="512" />
