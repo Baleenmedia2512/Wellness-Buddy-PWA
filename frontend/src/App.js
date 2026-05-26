@@ -374,11 +374,11 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  // Auto-open the native share sheet as soon as the upload is finished and
-  // the share image is ready. Uses Capacitor Share API (image + caption +
-  // public link in one payload). After the share sheet closes (sent OR
-  // dismissed) we return to Home. The AI nutrition analysis keeps running
-  // in the background and updates the same public link.
+  // Auto-open the native share sheet as soon as food is identified — fires
+  // the moment foodShareUrl is set (at fast-classify time), BEFORE the full
+  // nutrition analysis finishes. The raw food photo is used directly so
+  // there is zero html2canvas wait: the user can share the link+image to
+  // WhatsApp while Gemini is still analysing nutrition in the background.
   useEffect(() => {
     if (imageType !== "food") return;
     if (!foodShareUrl) return;
@@ -387,60 +387,59 @@ function WellnessValleyApp() {
 
     let cancelled = false;
     (async () => {
-      // Wait up to 6s for the pre-captured share image to be ready.
-      const start = Date.now();
-      const flowStart = captureFlowStartRef.current || start;
-      debugLog(
-        `⏱️ [PERF] 📤 Auto-share triggered (+${start - flowStart}ms from capture start)`,
-      );
-      while (!foodShareImageDataUrlRef.current && Date.now() - start < 6000) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      if (cancelled) return;
-
-      const waited = Date.now() - start;
-      const dataUrl = foodShareImageDataUrlRef.current;
-      if (!dataUrl) {
-        // Pre-capture didn't produce an image — leave the manual share
-        // button visible so the user can still share when they choose.
-        debugLog(
-          `⏱️ [PERF] 📤 Auto-share ABORTED — no precapture image after ${waited}ms wait`,
-        );
+      // Use the already-available raw food photo — no html2canvas required.
+      // processedImageRef is a ref so it is always current; imagePreview is
+      // the same data URL set earlier in the same capture flow.
+      const rawDataUrl = processedImageRef.current || imagePreview;
+      if (!rawDataUrl) {
+        // Image not available yet — reset so a subsequent render can retry.
         foodAutoSharedRef.current = false;
         return;
       }
+      if (cancelled) return;
+
+      const captionText = `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
+      const shareStart = Date.now();
       debugLog(
-        `⏱️ [PERF] 📤 Auto-share wait for image: ${waited}ms`,
+        `⏱️ [PERF] 📤 Auto-share triggered — sharing raw photo immediately (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      const captionText =
-        `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
-      const shareStart = Date.now();
-      const result = await shareViaCapacitorAPI(dataUrl, {
+      // shareCachedDataUrl handles all platforms:
+      //   Android → WhatsAppShare plugin (direct, no filesystem write, < 200 ms)
+      //   iOS     → blob → shareNative (system share sheet)
+      //   Web     → navigator.share with File
+      const ok = await shareCachedDataUrl(rawDataUrl, {
         title: "My Meal",
         text: captionText,
         fileName: `wellness-valley-meal-${Date.now()}.jpg`,
       });
-      debugLog(
-        `⏱️ [PERF] 📤 Native Share.share returned in ${Date.now() - shareStart}ms (ok=${result.ok}) (+${Date.now() - flowStart}ms from capture start)`,
-      );
-
       if (cancelled) return;
 
-      if (result.ok) {
-        // Sent OR dismissed by user → return to Home.
-        resetCaptureToHome();
-      } else {
-        // Hard failure (e.g. Share API not available) — let the user fall
-        // back to the manual "Share Image + Link" button.
-        foodAutoSharedRef.current = false;
+      debugLog(
+        `⏱️ [PERF] 📤 shareCachedDataUrl resolved in ${Date.now() - shareStart}ms (ok=${ok})`,
+      );
+
+      if (!ok) {
+        // shareCachedDataUrl soft-failed — fall back to Capacitor Share API
+        // (writes file to cache then opens share sheet).
+        const result = await shareViaCapacitorAPI(rawDataUrl, {
+          title: "My Meal",
+          text: captionText,
+          fileName: `wellness-valley-meal-${Date.now()}.jpg`,
+        });
+        if (!cancelled && !result.ok) {
+          // Hard failure: reset guard so a retry is possible.
+          foodAutoSharedRef.current = false;
+        }
       }
+      // Stay on result page so the user can view their nutrition analysis
+      // when they return from WhatsApp.
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType, resetCaptureToHome]);
+  }, [foodShareUrl, imageType]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -578,6 +577,11 @@ function WellnessValleyApp() {
     let cancelled = false;
     nativeLifecycle.addAppStateListener(({ isActive }) => {
       if (isActive && _homeScreenActiveRef.current && !cancelled) {
+        // If the camera was just closed (user cancelled), don't immediately
+        // re-open it — that would create an infinite open→cancel→open loop.
+        // Allow 3 seconds after any camera close before auto-opening again.
+        const lastClose = fileInputRef.current?.lastCameraCloseAt?.() ?? 0;
+        if (Date.now() - lastClose < 3000) return;
         setTimeout(() => {
           if (!cancelled) fileInputRef.current?.openCamera?.();
         }, 600);
@@ -3278,6 +3282,7 @@ function WellnessValleyApp() {
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
+      foodAutoSharedRef.current = false; // reset so auto-share fires for every new food image
       const captureApiStart = Date.now();
       debugLog(
         `⏱️ [PERF] 🔗 POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
@@ -5080,77 +5085,10 @@ function WellnessValleyApp() {
             );
           })()}
 
-          {imageType === "food" && foodShareUrl && (
-            <div className="px-4 pb-3">
-              <TouchFeedbackButton
-                disabled={isManualSharing}
-                onClick={async () => {
-                  // Ref check prevents re-entry on rapid taps; state disables
-                  // the button visually so the user gets immediate feedback.
-                  if (isManualSharingRef.current) return;
-                  isManualSharingRef.current = true;
-                  setIsManualSharing(true);
-                  try {
-                  const captionText =
-                    `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
-                  const dataUrl = foodShareImageDataUrlRef.current;
-                  // Fast path: cached pre-painted card image.
-                  if (dataUrl) {
-                    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-                      // Android: pass base64 directly to the native plugin —
-                      // no Filesystem.writeFile step, share sheet opens in
-                      // < 200 ms. The share intent resolves on launch, not on
-                      // completion, so we stay on the result page and let the
-                      // user navigate away themselves when they are done.
-                      await shareCachedDataUrl(dataUrl, {
-                        title: "My Meal",
-                        text: captionText,
-                        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-                      });
-                      return;
-                    }
-                    // iOS / web: write file then open system share sheet.
-                    const result = await shareViaCapacitorAPI(dataUrl, {
-                      title: "My Meal",
-                      text: captionText,
-                      fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-                    });
-                    // Only reset to home when the user actually shared.
-                    // A dismissed (cancelled) sheet means they want to stay.
-                    if (result.ok && !result.dismissed) {
-                      resetCaptureToHome();
-                    }
-                    return;
-                  }
-                  // Fallback: live html2canvas capture.
-                  try {
-                    if (foodShareCardRef.current) {
-                      await captureAndShare(foodShareCardRef.current, {
-                        title: "My Meal",
-                        text: captionText,
-                        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-                      });
-                      return; // stay on result page; user navigates away when ready
-                    }
-                    // Last resort: share raw photo + link text.
-                    await shareImageWithLink(
-                      processedImageRef.current || imagePreview,
-                      foodShareUrl,
-                      { title: "My Meal", text: "Check out my meal on Wellness Valley!" },
-                    ).catch(() => {}); // user may cancel
-                  } catch (_) { /* user cancelled */ }
-                  } finally {
-                    isManualSharingRef.current = false;
-                    setIsManualSharing(false);
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Share2 className="w-4 h-4 flex-shrink-0" />
-                Share Image + Link
-              </TouchFeedbackButton>
-            </div>
-          )}
+          {/* Share Image + Link button removed: auto-share fires directly
+              to WhatsApp as soon as food is identified (see auto-share
+              useEffect above). The analysis stays visible after the user
+              returns from WhatsApp so they can review their nutrition data. */}
 
           {/* Hidden off-screen template captured to image for the instant-share
               button. Matches the post-analysis NutritionCard share template

@@ -75,6 +75,10 @@ const ImageUpload = forwardRef(
     // True while the native camera / gallery picker dialog is open.
     // Disables both buttons to prevent a second dialog opening mid-session.
     const [cameraActive, setCameraActive] = useState(false);
+    // Tracks when the camera/gallery dialog last closed (any outcome).
+    // Read by App.js to suppress the resume-triggered auto-open if it fires
+    // immediately after the user dismissed the camera (cancel loop guard).
+    const lastCameraCloseRef = useRef(0);
 
     // Helper to convert base64 to File
     const base64ToFile = async (base64String, filename = "image.jpg") => {
@@ -233,6 +237,7 @@ const ImageUpload = forwardRef(
             cameraInputRef.current?.click();
           }
         } finally {
+          lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
         }
       } else {
@@ -515,6 +520,7 @@ const ImageUpload = forwardRef(
             galleryInputRef.current?.click();
           }
         } finally {
+          lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
         }
       } else {
@@ -531,6 +537,10 @@ const ImageUpload = forwardRef(
       },
       // Called by App.js to auto-open the camera (same as tapping Take Photo)
       openCamera: () => triggerCamera(),
+      // Returns the timestamp (ms) when the camera/gallery dialog last closed.
+      // App.js uses this to suppress resume-triggered camera open immediately
+      // after a user-cancel (prevents the camera re-open loop on Android/iOS).
+      lastCameraCloseAt: () => lastCameraCloseRef.current,
     }));
 
     // Taglines for loading overlay based on state and image type
