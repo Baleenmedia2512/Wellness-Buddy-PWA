@@ -321,6 +321,13 @@ function WellnessValleyApp() {
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
   const [foodShareUrl, setFoodShareUrl] = useState(null);
+  // ?? Snapchat-style overlay: holds the just-captured photo full-screen
+  // until WhatsApp share has been launched (or a 3s safety timeout elapses).
+  // This eliminates the home-screen + image-preview flash the user was
+  // seeing between the camera OK button and the share sheet. We show the
+  // actual photo (not a spinner) so the transition feels seamless.
+  const [sharingPendingImage, setSharingPendingImage] = useState(null);
+  const sharingPendingTimerRef = useRef(null);
   // Awaited in performNutritionSave before reading foodCaptureIdRef.current so
   // that a fast Gemini response never races ahead of a slow /captures POST,
   // which would leave captureId null and cause a duplicate DB row (INSERT
@@ -3247,6 +3254,31 @@ function WellnessValleyApp() {
     }
     imageProcessingInProgress.current = true;
 
+    // ?? [BUG 1 FIX] Snapchat-style overlay must mount BEFORE any setState
+    // below, otherwise React commits a home-screen render during the
+    // FileReader await (~100–300ms flash). URL.createObjectURL is fully
+    // synchronous → the overlay paints on the SAME frame this function is
+    // called, so the home screen is never visible. The object URL is
+    // revoked when the overlay is cleared (in the share .then / safety
+    // timeout below) to avoid the memory leak.
+    try {
+      if (file && typeof URL?.createObjectURL === 'function') {
+        const objectUrl = URL.createObjectURL(file);
+        setSharingPendingImage(objectUrl);
+      }
+    } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+
+    // ?? Safety timer so the user is never stuck behind the photo overlay.
+    if (sharingPendingTimerRef.current) clearTimeout(sharingPendingTimerRef.current);
+    sharingPendingTimerRef.current = setTimeout(() => {
+      setSharingPendingImage((prev) => {
+        if (prev && prev.startsWith('blob:')) {
+          try { URL.revokeObjectURL(prev); } catch (_) {}
+        }
+        return null;
+      });
+    }, 3500);
+
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
       debugLog("?? EXIF Timestamp received:", exifTimestamp);
@@ -3445,35 +3477,44 @@ function WellnessValleyApp() {
       // and guarantee captureId is set before the save request goes out.
       pendingSharePromiseRef.current = pendingSharePromise;
 
-      // --- First-image-of-day gate -----------------------------------------
-      // On the FIRST upload of the day we run the full AI analysis so weight
-      // readings, education sessions, and nutrition data are correctly
-      // detected and saved to the database. Every subsequent image goes
-      // through the fast path below: it gets a share URL and fires the
-      // WhatsApp share immediately with no analysis � the user is back at
-      // the camera in under a second.
-      const _todayStr = new Date().toDateString();
-      const _firstImgKey = `wv.firstImg.${_todayStr}`;
-      const _isFirstImageToday = !localStorage.getItem(_firstImgKey);
-      // Mark immediately (before the async work below) so that a rapid
-      // second capture doesn't also think it is the first.
-      if (_isFirstImageToday) localStorage.setItem(_firstImgKey, '1');
-
-      if (!_isFirstImageToday) {
-        // -- Subsequent-image fast path -----------------------------------
-        // No AI analysis. Create capture row + share URL + open WhatsApp.
-        // resetCaptureUiOnly is called by the auto-share effect on success.
-        setLoading(false);
-        const share = await pendingSharePromise;
-        if (share) {
-          foodCaptureIdRef.current = share.id;
-          setFoodShareUrl(share.url);
-          // Set imageType='food' to trigger the auto-share useEffect.
-          setImageType('food');
+      // ?? [PERF FIX] EARLY SHARE FIRE � fire WhatsApp share the instant the
+      // capture URL is ready, WITHOUT waiting for image-type classification.
+      // The classification gate (food/weight/education) used to delay this by
+      // 400�900ms, during which the home screen was visible to the user.
+      // Firing here means: camera closes ? WhatsApp opens immediately (no
+      // home screen flash). The foodAutoSharedRef guard prevents the existing
+      // classification-gated auto-share effect (line ~446) from double-firing.
+      pendingSharePromise.then((share) => {
+        const clearOverlay = () => {
+          setSharingPendingImage((prev) => {
+            if (prev && prev.startsWith('blob:')) {
+              try { URL.revokeObjectURL(prev); } catch (_) {}
+            }
+            return null;
+          });
+          if (sharingPendingTimerRef.current) {
+            clearTimeout(sharingPendingTimerRef.current);
+            sharingPendingTimerRef.current = null;
+          }
+        };
+        if (!share?.url || foodAutoSharedRef.current) {
+          if (!share?.url) clearOverlay();
+          return;
         }
-        imageProcessingInProgress.current = false;
-        return;
-      }
+        foodAutoSharedRef.current = true;
+        shareTextViaWhatsApp(share.url).then((ok) => {
+          _hasCompletedFirstShareRef.current = true;
+          if (!ok) foodAutoSharedRef.current = false;
+          clearOverlay();
+        });
+      });
+
+      // --- [BUG 2 FIX] Always run AI analysis in the background ----------
+      // The previous first-image-of-day gate skipped Gemini for subsequent
+      // captures, which made every food after the first show as "Unknown
+      // Food" / 0 kcal. The early-share .then() above already opened the
+      // share sheet, so analysis no longer needs to block the UX — it runs
+      // silently and populates the dashboard for when the user returns.
       // ---------------------------------------------------------------------
 
       // ? [Share] FAST CLASSIFICATION � kick off a lightweight Gemini call
@@ -4925,19 +4966,23 @@ function WellnessValleyApp() {
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
 
-  // Loading state
+  // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
+  // returning users alike fall straight through to Login / Home. The native
+  // Capacitor splash already covers app cold-start; once React mounts we go
+  // directly to the correct route. Background auth/profile checks continue
+  // silently — they just don't show a UI spinner.
   if (authLoading) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
-  // ? OTP user restore in progress � keep spinner until user is fully restored
+  // ? OTP user restore in progress — stay invisible until restored.
   if (isOtpVerified && !user) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
-  // ? Profile check in progress � keep spinner until check is done
+  // ? Profile check in progress — stay invisible until check is done.
   if (profileChecking) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
   // ? iOS Sign-out gate: user explicitly signed out � always show Login
@@ -5008,7 +5053,7 @@ function WellnessValleyApp() {
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
-      <Suspense fallback={<LoadingSpinner context="normal" />}>
+      <Suspense fallback={null}>
         <Dashboard
           user={user}
           onBack={showMainPage}
@@ -5057,7 +5102,7 @@ function WellnessValleyApp() {
   if (deferredShowDisciplineReport) {
     return (
       <Suspense
-        fallback={<LoadingSpinner message="Loading discipline report..." />}
+        fallback={null}
       >
         <DisciplineReport
           user={user}
@@ -5076,7 +5121,7 @@ function WellnessValleyApp() {
   if (deferredShowActivityTimeReport) {
     return (
       <Suspense
-        fallback={<LoadingSpinner message="Loading activity time report..." />}
+        fallback={null}
       >
         <ActivityTimeReport
           user={user}
@@ -5094,7 +5139,7 @@ function WellnessValleyApp() {
   // Wellness Counselling - Full page view
   if (deferredShowWellnessCounselling) {
     return (
-      <Suspense fallback={<LoadingSpinner message="Loading wellness counselling..." />}>
+      <Suspense fallback={null}>
         <WellnessCounselling
           user={user}
           onBack={() => setShowWellnessCounselling(false)}
@@ -5107,6 +5152,35 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+      {/* ?? Snapchat-style full-screen photo: covers the home screen during
+          the brief window between native-camera close and WhatsApp share
+          sheet open. Shows the actual captured photo (not a spinner) so the
+          hand-off from camera → share feels seamless. */}
+      {sharingPendingImage && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: '#000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <img
+            src={sharingPendingImage}
+            alt=""
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+      )}
       <Header
         user={user}
         userRole={userRole}
@@ -6274,7 +6348,7 @@ function WellnessValleyApp() {
       {/* Admin Dashboard */}
       {showAdminDashboard && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading admin dashboard..." />}
+          fallback={null}
         >
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
@@ -6286,7 +6360,7 @@ function WellnessValleyApp() {
       {/* Attendance Report */}
       {showAttendanceReport && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading attendance report..." />}
+          fallback={null}
         >
           <AttendanceReport
             user={user}
@@ -6312,7 +6386,7 @@ function WellnessValleyApp() {
       {/* Register Nutrition Center */}
       {showRegisterCenter && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading registration form..." />}
+          fallback={null}
         >
           <NutritionCenterRegistration
             user={user}
@@ -6323,7 +6397,7 @@ function WellnessValleyApp() {
 
       {/* Setup Wizard - Team ID + Coach Selection */}
       {showSetupWizard && (
-        <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
+        <Suspense fallback={null}>
           <SetupWizard
             userEmail={
               user?.email || user?.Email || Session.getUserEmail()
@@ -6340,7 +6414,7 @@ function WellnessValleyApp() {
 
       {/* OTP Validation Page */}
       {showValidateOTP && (
-        <Suspense fallback={<LoadingSpinner message="Loading validation..." />}>
+        <Suspense fallback={null}>
           <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
