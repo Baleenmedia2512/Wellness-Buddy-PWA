@@ -94,7 +94,7 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
@@ -387,52 +387,30 @@ function WellnessValleyApp() {
 
     let cancelled = false;
     (async () => {
-      // Use the already-available raw food photo — no html2canvas required.
-      // processedImageRef is a ref so it is always current; imagePreview is
-      // the same data URL set earlier in the same capture flow.
-      const rawDataUrl = processedImageRef.current || imagePreview;
-      if (!rawDataUrl) {
-        // Image not available yet — reset so a subsequent render can retry.
-        foodAutoSharedRef.current = false;
-        return;
-      }
       if (cancelled) return;
 
-      const captionText = `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
       const shareStart = Date.now();
       debugLog(
-        `⏱️ [PERF] 📤 Auto-share triggered — sharing raw photo immediately (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
+        `⏱️ [PERF] 📤 Auto-share triggered — sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      // shareCachedDataUrl handles all platforms:
-      //   Android → WhatsAppShare plugin (direct, no filesystem write, < 200 ms)
-      //   iOS     → blob → shareNative (system share sheet)
-      //   Web     → navigator.share with File
-      const ok = await shareCachedDataUrl(rawDataUrl, {
-        title: "My Meal",
-        text: captionText,
-        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-      });
+      // Share the URL as a WhatsApp text message so the recipient sees a
+      // rich link-preview card (title + thumbnail from the page's OG tags)
+      // instead of a raw URL — identical to how Swiggy / Redbus share links.
+      // whatsapp://send?text=<url> opens WhatsApp pre-filled with the link;
+      // WhatsApp's OG crawler fetches the page and renders the branded card.
+      const ok = await shareTextViaWhatsApp(foodShareUrl);
       if (cancelled) return;
 
       debugLog(
-        `⏱️ [PERF] 📤 shareCachedDataUrl resolved in ${Date.now() - shareStart}ms (ok=${ok})`,
+        `⏱️ [PERF] 📤 shareTextViaWhatsApp resolved in ${Date.now() - shareStart}ms (ok=${ok})`,
       );
 
       if (!ok) {
-        // shareCachedDataUrl soft-failed — fall back to Capacitor Share API
-        // (writes file to cache then opens share sheet).
-        const result = await shareViaCapacitorAPI(rawDataUrl, {
-          title: "My Meal",
-          text: captionText,
-          fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-        });
-        if (!cancelled && !result.ok) {
-          // Hard failure: reset guard so a retry is possible.
-          foodAutoSharedRef.current = false;
-        }
+        // Hard failure — reset the guard so a manual retry is possible.
+        foodAutoSharedRef.current = false;
       }
-      // Stay on result page so the user can view their nutrition analysis
+      // Stay on the result page so the user can read the nutrition analysis
       // when they return from WhatsApp.
     })();
 

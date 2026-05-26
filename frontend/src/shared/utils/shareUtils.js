@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 
 /**
@@ -82,6 +83,49 @@ export const precaptureShareImage = (element, options = {}) => {
  * @param {string} dataUrl  - JPEG/PNG data URL of the image to share
  * @param {object} options  - { title, text, fileName }
  */
+
+/**
+ * Share a plain-text message directly to WhatsApp so it renders as a
+ * rich link-preview card (using the page's Open Graph meta tags).
+ *
+ * On native (Android / iOS): opens WhatsApp via the `whatsapp://` URI scheme
+ * which triggers WhatsApp's OG crawler — the recipient sees a branded card
+ * with title, description, and thumbnail instead of a raw URL.
+ *
+ * Falls back to the system share sheet if WhatsApp is not installed.
+ * On web: opens https://wa.me/?text=<encoded> in a new tab.
+ *
+ * Returns true when the intent was dispatched (including user-cancel which
+ * WhatsApp surfaces as a normal close).
+ *
+ * @param {string} text  - The message to pre-fill in WhatsApp (typically just the share URL).
+ */
+export const shareTextViaWhatsApp = async (text) => {
+  const encoded = encodeURIComponent(text);
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { completed } = await App.openUrl({ url: `whatsapp://send?text=${encoded}` });
+      if (completed) return true;
+      // WhatsApp not installed — fall back to system share sheet.
+    } catch {
+      // App.openUrl threw (e.g. no handler) — fall through to Share.share.
+    }
+    // System-share fallback: user can still pick WhatsApp or another app.
+    try {
+      await Share.share({ text, dialogTitle: 'Share my meal' });
+      return true;
+    } catch (shareErr) {
+      const isCancelled = (shareErr?.message || '').toLowerCase().includes('cancel');
+      return isCancelled; // cancelled by user counts as handled
+    }
+  }
+
+  // Web fallback
+  window.open(`https://wa.me/?text=${encoded}`, '_blank');
+  return true;
+};
+
 export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
   const {
     title = "Wellness Valley",
