@@ -101,6 +101,9 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
+import { UnknownCaptureModal } from "./features/captures";
+import { tabForImageType } from "./shared/lib/tab-by-image-type";
+import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
@@ -236,6 +239,12 @@ function WellnessValleyApp() {
   const [showManualFoodModal, setShowManualFoodModal] = useState(false);
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  // PR 3 — disambiguation modal for low-confidence / unknown captures.
+  // pendingSharePromise is retained so the user's pick re-tags the capture row.
+  const [unknownCaptureModal, setUnknownCaptureModal] = useState({
+    open: false,
+    pendingSharePromise: null,
+  });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
@@ -761,11 +770,11 @@ function WellnessValleyApp() {
         setDashboardInitialMealId(data.mealId || null);
         // Route to the tab that matches the shared image type.
         // imageType is returned by the resolve endpoint when the capture row
-        // has been classified (may be null for legacy rows ? fallback 'food').
-        const resolvedTab =
-          data.imageType === 'weight' ? 'weight'
-          : data.imageType === 'education' ? 'education'
-          : 'nutrition';
+        // has been classified (may be null for legacy rows — helper falls
+        // back to the default 'nutrition' tab). Map lives in
+        // shared/lib/tab-by-image-type so smartwatch / unknown also route
+        // correctly. See PR 3 README in features/captures.
+        const resolvedTab = tabForImageType(data.imageType);
         setDashboardInitialTab(resolvedTab);
         startTransition(() => setShowDashboard(true));
       } catch (err) {
@@ -3879,8 +3888,29 @@ function WellnessValleyApp() {
         return;
       }
 
+      // PR 3 — Before defaulting to food, check whether the detector is
+      // actually confident. `imageTypeDetector.detectImageType()` falls back
+      // to `{ type: 'food' }` for unrecognised photos (phone, cat, blank
+      // wall) and on Gemini errors (details.defaulted === true). Treating
+      // those as food pollutes the nutrition feed with 0-kcal rows and
+      // generates broken share links — the root bug PR 3 fixes.
+      if (isLowConfidenceFood(detectedType)) {
+        debugLog("❓ [Image Detection] Low-confidence food — opening unknown picker", {
+          confidence: detectedType?.confidence,
+          defaulted: detectedType?.details?.defaulted,
+          foodsLength: detectedType?.details?.foods?.length || 0,
+          totalCalories: detectedType?.details?.total?.calories || 0,
+        });
+        // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
+        // queries skip it. The user's pick will re-tag it via the modal handler.
+        updatePendingCaptureType(pendingSharePromise, 'unknown');
+        setUnknownCaptureModal({ open: true, pendingSharePromise });
+        setLoading(false);
+        return;
+      }
+
       // It's a food image - use nutrition data from unified detection
-      console.log("??? [Food Detection] Setting imageType to food");
+      console.log("🍽️ [Food Detection] Setting imageType to food");
       setImageType("food");
       // The pending-capture POST was kicked off in parallel with the Gemini
       // detection call (see `pendingSharePromise` above). Surface its URL as
@@ -6080,7 +6110,30 @@ function WellnessValleyApp() {
         />
       )}
 
-      {/* Smart Food Search Modal (replaces ManualFoodEntryModal � shows history + global search) */}
+      {/* PR 3 — Unknown / low-confidence capture disambiguation modal */}
+      <UnknownCaptureModal
+        isOpen={unknownCaptureModal.open}
+        onClose={() => setUnknownCaptureModal({ open: false, pendingSharePromise: null })}
+        onPick={(chosenType) => {
+          // Re-tag the capture row to the user's choice so the share link
+          // resolves correctly and listAnalyses includes it in the right tab.
+          updatePendingCaptureType(unknownCaptureModal.pendingSharePromise, chosenType);
+          setUnknownCaptureModal({ open: false, pendingSharePromise: null });
+          setImageType(chosenType);
+          if (chosenType === 'food') {
+            setManualMealType(getMealTypeFromTime(imageTimestamp ? new Date(imageTimestamp) : new Date()));
+            setShowManualFoodModal(true);
+          } else if (chosenType === 'weight') {
+            fetchLastWeight();
+            setCurrentWeightImage(null);
+            setShowManualWeightModal(true);
+          } else if (chosenType === 'education') {
+            setShowManualEducationModal(true);
+          }
+        }}
+      />
+
+      {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}
       <SmartFoodSearchModal
         isOpen={showManualFoodModal}
         onClose={() => { setShowManualFoodModal(false); setManualMealType(""); }}

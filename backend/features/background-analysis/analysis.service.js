@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import * as repo from './analysis.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+// PR 2 dual-write: every pending-capture create + image-type update is
+// mirrored into `captures_table` via the new captures slice. The legacy
+// `food_nutrition_data_table` remains canonical until PR 4. Shadow-write
+// failures are swallowed (logged via the shared logger) so they cannot
+// break user-facing requests during the rollout.
+import * as captures from '../captures/captures.service.js';
+import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -223,14 +230,31 @@ export async function undoDelete({ id, userId }) {
 }
 // ─── updateCaptureType ───────────────────────────────────────────────────────
 // Called by the frontend after AI determines the image is weight/education/
-// smartwatch. Updates ImageType on the pending capture row so:
-//   1. The share link still resolves (row is NOT deleted).
-//   2. resolvePublicCapture returns the correct imageType for tab routing.
-//   3. listAnalyses filters on ImageType='food' so non-food rows never appear
-//      in the nutrition dashboard.
+// smartwatch. PR 5 — captures_table is now canonical for the image-type
+// discriminator (the legacy ImageType column on food_nutrition_data_table was
+// dropped). The whole update happens in the captures slice; we look up the
+// linked CaptureID from the food row and delegate to captures.updateTypeById,
+// which enforces the state machine in features/captures/domain/image-types.js.
 export async function updateCaptureType({ id, userId, imageType }) {
-  await repo.updateCaptureImageType(id, userId, imageType);
-  return { httpStatus: 200, body: { ok: true } };
+  const captureId = await repo.findCaptureIdForOwner(id, userId);
+  if (!captureId) {
+    // Either the food row doesn't exist, isn't owned by this user, or is a
+    // pre-PR-2 legacy row with no captures_table twin. The first two are real
+    // 404s; the third is the historical-row breakage already documented in
+    // migrations/drop_legacy_share_columns_from_food.sql. We can't tell them
+    // apart cheaply, so we return a 404-shaped response — the frontend
+    // already treats this branch as "share link expired/unavailable".
+    logger.warn('updateCaptureType: no captureId for legacy id', { id, userId });
+    return { httpStatus: 404, body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } } };
+  }
+
+  const result = await captures.updateTypeById({
+    captureId,
+    userId,
+    toType: imageType,
+  });
+
+  return { httpStatus: 200, body: { ok: true, data: result } };
 }
 
 // ─── createPendingCapture ─────────────────────────────────────────────────────
@@ -243,12 +267,37 @@ export async function updateCaptureType({ id, userId, imageType }) {
 export async function createPendingCapture({ userId, imageBase64 }) {
   const token = randomUUID();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // PR 5 — captures_table is canonical. Insert it FIRST so we can
+  // pin the resulting CaptureID onto the food row in the same request.
+  // If this throws, no food row is created (the legacy table is no longer
+  // a fallback after PR 5 — see migrations/drop_legacy_share_columns_from_food.sql).
+  const capture = await captures.recordPending({
+    userId: userId.toString(),
+    publicShareToken: token,
+    shareExpiresAt,
+    imageBase64: imageBase64 || null,
+    imagePath: 'instant-share',
+    deviceInfo: 'Wellness Valley Web App',
+    processedBy: 'manual_app',
+  });
+
+  // The food row is still inserted speculatively so save() has a stable id
+  // to UPDATE when AI analysis completes (preserves the existing instant-
+  // share flow). It carries CaptureID = the row we just created so the
+  // share-resolve path can join the two without legacy columns.
+  //
+  // If the user re-tags the capture as weight / education / smartwatch via
+  // the unknown picker (PR 3), this food row becomes an orphan with
+  // AnalysisData=NULL forever. listAnalyses (PR 5) excludes such orphans
+  // via `AnalysisData IS NOT NULL`, so they are invisible to the user.
+  // A periodic cleanup job can prune them — tracked as a follow-up.
   const row = await repo.insertPendingCapture({
     userId: userId.toString(),
     imageBase64: imageBase64 || null,
-    publicShareToken: token,
-    shareExpiresAt,
+    captureId: capture.id,
   });
+
   return {
     httpStatus: 201,
     body: {
