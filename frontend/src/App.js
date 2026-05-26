@@ -1,4 +1,4 @@
-// src/App.js
+﻿// src/App.js
 // ============================================================================
 // WellnessValleyApp — App.js architecture policy (post-hygiene-phase, May 2026)
 // ----------------------------------------------------------------------------
@@ -186,15 +186,39 @@ function WellnessValleyApp() {
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
-  const [user, setUser] = useState(null);
+
+  // ── Instant OTP session restore ──────────────────────────────────────────
+  // For returning OTP users, pre-load the cached user synchronously so that
+  // NEITHER the authLoading spinner NOR the isOtpVerified gate fires on
+  // cold start. The home screen (and camera) open immediately — same pattern
+  // as WhatsApp / Snapchat. Background validation runs via a separate effect.
+  const [user, setUser] = useState(() => {
+    if (Session.isUserSignedOut()) return null;
+    if (!Session.isOtpVerified()) return null;
+    const u = Session.getOtpUser();
+    if (!u) return null;
+    // Attach cached DB userId so user.id is available from the first render.
+    if (!u.id) { const dbId = Session.getDbUserId(); if (dbId) u.id = dbId; }
+    return u;
+  });
   // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
   // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
   const [forceLoggedOut, setForceLoggedOut] = useState(
     Session.isUserSignedOut()
   );
-  const [authLoading, setAuthLoading] = useState(true);
+  // Skip the loading screen for returning OTP users (session pre-loaded from cache).
+  const [authLoading, setAuthLoading] = useState(() => {
+    if (Session.isUserSignedOut()) return true;
+    if (Session.isOtpVerified() && Session.getOtpUser()) return false;
+    return true;
+  });
   const [isOtpVerified, setIsOtpVerified] = useState(
     Session.isOtpVerified(),
+  );
+  // true when the user object was pre-loaded from localStorage — triggers the
+  // background validation effect (checkUserStatus + checkProfileCompletion).
+  const otpCacheRestoredRef = useRef(
+    !Session.isUserSignedOut() && Session.isOtpVerified() && !!Session.getOtpUser()
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
@@ -374,6 +398,41 @@ function WellnessValleyApp() {
     }
   }, []);
 
+  // Reset UI to camera view without interrupting in-flight background analysis.
+  // The analysis refs (processedImageRef, foodCaptureIdRef, pendingSharePromiseRef)
+  // are deliberately left intact so performNutritionSave can update the DB row
+  // after the user is already back at the camera.
+  const resetCaptureUiOnly = useCallback(() => {
+    setImagePreview(null);
+    setSelectedImage(null);
+    setImageType(null);
+    setNutritionData(null);
+    setFoodShareUrl(null);
+    setLoading(false);
+    foodShareImageDataUrlRef.current = null;
+    foodAutoSharedRef.current = false;
+    isManualSharingRef.current = false;
+    setIsManualSharing(false);
+    if (fileInputRef.current?.resetInputs) fileInputRef.current.resetInputs();
+    // Note: processedImageRef, foodCaptureIdRef, pendingSharePromiseRef stay
+    // set so the background AI analysis can finish and persist to the DB.
+  }, []);
+
+  // Tag a pending capture row with the correct image type so it is excluded
+  // from the nutrition dashboard (which filters on ImageType='food') but the
+  // share link continues to work and routes to the correct dashboard tab.
+  // This replaces the previous soft-delete approach for non-food images.
+  const updatePendingCaptureType = useCallback((sharePromise, imageType) => {
+    sharePromise.then((share) => {
+      if (!share?.id || !user?.id) return;
+      fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: share.id, userId: user.id, imageType }),
+      }).catch((err) => debugLog(`[Share] updateCaptureType(${imageType}) failed:`, err?.message));
+    });
+  }, [user, apiBaseUrl]);
+
   // Auto-open the native share sheet as soon as food is identified — fires
   // the moment foodShareUrl is set (at fast-classify time), BEFORE the full
   // nutrition analysis finishes. The raw food photo is used directly so
@@ -409,15 +468,18 @@ function WellnessValleyApp() {
       if (!ok) {
         // Hard failure — reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
+      } else {
+        // Share delivered — return the user to the camera immediately.
+        // The in-flight Gemini analysis continues in the background and
+        // updates the DB row via performNutritionSave once complete.
+        resetCaptureUiOnly();
       }
-      // Stay on the result page so the user can read the nutrition analysis
-      // when they return from WhatsApp.
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType]);
+  }, [foodShareUrl, imageType, resetCaptureUiOnly]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -601,7 +663,7 @@ function WellnessValleyApp() {
         setTimeout(tryOpen, 300);
       }
     };
-    const t = setTimeout(tryOpen, 1200);
+    const t = setTimeout(tryOpen, 300);
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -676,7 +738,14 @@ function WellnessValleyApp() {
         }
         setDashboardInitialDate(data.mealDate || null);
         setDashboardInitialMealId(data.mealId || null);
-        setDashboardInitialTab("nutrition");
+        // Route to the tab that matches the shared image type.
+        // imageType is returned by the resolve endpoint when the capture row
+        // has been classified (may be null for legacy rows → fallback 'food').
+        const resolvedTab =
+          data.imageType === 'weight' ? 'weight'
+          : data.imageType === 'education' ? 'education'
+          : 'nutrition';
+        setDashboardInitialTab(resolvedTab);
         startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");
@@ -1291,9 +1360,12 @@ function WellnessValleyApp() {
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail, userObj, { afterSave = false } = {}) => {
+    // silent:true suppresses the profileChecking gate (Gate 3) so the app
+    // never shows the loading spinner when the check runs in the background
+    // (e.g. OTP cache-restore validation on startup).
+    async (userEmail, userObj, { afterSave = false, silent = false } = {}) => {
       if (!userEmail) return;
-      setProfileChecking(true);
+      if (!silent) setProfileChecking(true);
 
       const result = await fetchProfileCompletion({
         apiBaseUrl,
@@ -1311,7 +1383,7 @@ function WellnessValleyApp() {
 
       if (result.status === "complete") {
         profileCompletedRef.current = true;
-        setProfileChecking(false);
+        if (!silent) setProfileChecking(false);
         setShowCompleteProfile(false);
         // Profile fields complete — check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
@@ -1324,13 +1396,13 @@ function WellnessValleyApp() {
           result.missingFields,
         );
         setProfilePicSnoozeData(result.snooze || null);
-        setProfileChecking(false);
+        if (!silent) setProfileChecking(false);
         setShowCompleteProfile(true);
         return;
       }
 
       // result.status === 'error' — fail-soft, no gate flash
-      setProfileChecking(false);
+      if (!silent) setProfileChecking(false);
       console.warn("⚠️ [Profile] Failed to check profile completion:", result.error);
     },
     [apiBaseUrl],
@@ -1493,14 +1565,22 @@ function WellnessValleyApp() {
       if (user) {
         // Get database UserId if not already attached
         if (!user.id) {
-          const dbUserId = await getUserId(user);
-          if (dbUserId) {
-            user.id = dbUserId;
-            Session.setDbUserId(dbUserId);
-            debugLog(
-              "✅ [Auth State] Attached database UserId to user object:",
-              user.id,
-            );
+          // Warm-start fast path: reuse the cached DB userId to avoid a
+          // network round-trip on every app open for returning users.
+          const cachedId = Session.getDbUserId();
+          if (cachedId) {
+            user.id = cachedId;
+            debugLog("✅ [Auth State] Restored database UserId from cache:", user.id);
+          } else {
+            const dbUserId = await getUserId(user);
+            if (dbUserId) {
+              user.id = dbUserId;
+              Session.setDbUserId(dbUserId);
+              debugLog(
+                "✅ [Auth State] Attached database UserId to user object:",
+                user.id,
+              );
+            }
           }
         }
 
@@ -1514,19 +1594,24 @@ function WellnessValleyApp() {
           );
         }
 
-        // Load user context for AI personalization
+        // Fire context load without awaiting -- runs in parallel with the status
+        // check below. getUserContext only needs user.id; checkUserStatus only
+        // needs user.email. Both are resolved above so there is no ordering
+        // dependency between these two calls.
         if (user.id) {
-          debugLog("🔄 [Auth State] Loading user context...");
+          debugLog("🔄 [Auth State] Loading user context (parallel with status check)...");
           setUserContextLoading(true);
-          try {
-            const context = await getUserContext(user.id);
-            setUserContext(context);
-            debugLog("✅ [Auth State] User context stored in state");
-          } catch (error) {
-            console.error("âŒ [Auth State] Failed to load context:", error);
-          } finally {
-            setUserContextLoading(false);
-          }
+          getUserContext(user.id)
+            .then((ctx) => {
+              setUserContext(ctx);
+              debugLog("✅ [Auth State] User context stored in state");
+            })
+            .catch((err) => {
+              console.error("❌ [Auth State] Failed to load context:", err);
+            })
+            .finally(() => {
+              setUserContextLoading(false);
+            });
         }
 
         // Skip status check if this is a fresh Google sign-in that's being saved
@@ -1765,6 +1850,7 @@ function WellnessValleyApp() {
             }
 
             setUser(parsedUser);
+            setAuthLoading(false); // safety net: clear loading gate for fresh OTP logins
             handleSaveUserCache(parsedUser);
             // ✅ Check profile completion after OTP user is restored on refresh
             if (userEmail) {
@@ -1781,6 +1867,38 @@ function WellnessValleyApp() {
 
     restoreOtpUser();
   }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+
+  // Background validation for cache-restored OTP sessions.
+  // When user was pre-loaded synchronously (no loading screen), the standard
+  // OTP restore waterfall is skipped. This effect runs the essential checks
+  // in the background without blocking the home screen or camera.
+  useEffect(() => {
+    if (!otpCacheRestoredRef.current || !user) return;
+    otpCacheRestoredRef.current = false; // run exactly once
+    (async () => {
+      try {
+        // Attach DB userId if not yet present
+        if (!user.id) {
+          const cachedId = Session.getDbUserId();
+          if (cachedId) {
+            user.id = cachedId;
+          } else {
+            const dbId = await getUserId(user);
+            if (dbId) { user.id = dbId; Session.setDbUserId(dbId); }
+          }
+        }
+        // Status check — shows inactive modal if account was deactivated.
+        await checkUserStatus(user);
+        // Profile completion — silent:true so Gate 3 (profileChecking spinner)
+        // never fires on app open. CompleteProfilePage still shows if needed.
+        const email = user.email || user.Email;
+        if (email) await checkProfileCompletion(email, user, { silent: true });
+      } catch (err) {
+        console.warn("⚠️ [OTP Cache Restore] Background validation error:", err);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — run once on mount only
 
   // ✅ Immediate profile check when app comes back to foreground.
   // NOTE: this is a SEPARATE appStateChange listener from the gallery
@@ -3310,6 +3428,37 @@ function WellnessValleyApp() {
       // and guarantee captureId is set before the save request goes out.
       pendingSharePromiseRef.current = pendingSharePromise;
 
+      // ─── First-image-of-day gate ─────────────────────────────────────────
+      // On the FIRST upload of the day we run the full AI analysis so weight
+      // readings, education sessions, and nutrition data are correctly
+      // detected and saved to the database. Every subsequent image goes
+      // through the fast path below: it gets a share URL and fires the
+      // WhatsApp share immediately with no analysis — the user is back at
+      // the camera in under a second.
+      const _todayStr = new Date().toDateString();
+      const _firstImgKey = `wv.firstImg.${_todayStr}`;
+      const _isFirstImageToday = !localStorage.getItem(_firstImgKey);
+      // Mark immediately (before the async work below) so that a rapid
+      // second capture doesn't also think it is the first.
+      if (_isFirstImageToday) localStorage.setItem(_firstImgKey, '1');
+
+      if (!_isFirstImageToday) {
+        // ── Subsequent-image fast path ───────────────────────────────────
+        // No AI analysis. Create capture row + share URL + open WhatsApp.
+        // resetCaptureUiOnly is called by the auto-share effect on success.
+        setLoading(false);
+        const share = await pendingSharePromise;
+        if (share) {
+          foodCaptureIdRef.current = share.id;
+          setFoodShareUrl(share.url);
+          // Set imageType='food' to trigger the auto-share useEffect.
+          setImageType('food');
+        }
+        imageProcessingInProgress.current = false;
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       // ⚡ [Share] FAST CLASSIFICATION — kick off a lightweight Gemini call
       // that ONLY returns the image type label (no nutrition extraction).
       // Typical latency ~400–900ms, vs. ~2–4s for the full unified detect
@@ -3392,17 +3541,10 @@ function WellnessValleyApp() {
           loggedAt: new Date().toISOString(),
           userId: resolvedUserId, // â† real DB id, not Firebase uid
         });
-        // Soft-delete the pre-created pending capture row — this image is not
-        // food so the row must not appear in the nutrition dashboard.
-        pendingSharePromise.then((share) => {
-          if (share?.id && user?.id) {
-            fetch(`${apiBaseUrl}/api/background-analysis`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: share.id, userId: user.id }),
-            }).catch((err) => debugLog('[Share] cleanup of smartwatch pending capture failed:', err?.message));
-          }
-        });
+        // Tag the pending capture as 'smartwatch' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the correct dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'smartwatch');
         setLoading(false);
         return;
       }
@@ -3445,17 +3587,10 @@ function WellnessValleyApp() {
           setError("Failed to analyze meeting screenshot: " + err.message);
         }
 
-        // Soft-delete the pre-created pending capture row — this image is not
-        // food so the row must not appear in the nutrition dashboard.
-        pendingSharePromise.then((share) => {
-          if (share?.id && user?.id) {
-            fetch(`${apiBaseUrl}/api/background-analysis`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: share.id, userId: user.id }),
-            }).catch((err) => debugLog('[Share] cleanup of education pending capture failed:', err?.message));
-          }
-        });
+        // Tag the pending capture as 'education' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the education dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'education');
         setLoading(false);
         return;
       }
@@ -3648,17 +3783,10 @@ function WellnessValleyApp() {
           return;
         }
 
-        // Soft-delete the pre-created pending capture row — this image is not
-        // food so the row must not appear in the nutrition dashboard.
-        pendingSharePromise.then((share) => {
-          if (share?.id && user?.id) {
-            fetch(`${apiBaseUrl}/api/background-analysis`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: share.id, userId: user.id }),
-            }).catch((err) => debugLog('[Share] cleanup of weight pending capture failed:', err?.message));
-          }
-        });
+        // Tag the pending capture as 'weight' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the weight dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'weight');
         setLoading(false);
         return;
       }

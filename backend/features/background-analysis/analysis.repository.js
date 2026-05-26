@@ -18,11 +18,15 @@ export async function listAnalyses({ userId, limit, offset }) {
     .select('*', { count: 'exact' })
     .eq('"UserID"', userId)
     .eq('"IsDeleted"', 0)
-    // Exclude pending-capture rows that were pre-created for the instant-share
-    // optimisation but never enriched with analysis data (e.g. because the
-    // captured image turned out to be a weight scale or education screenshot,
-    // not food).  Those rows have AnalysisData = NULL and would otherwise
-    // render as "Unknown Food" in the nutrition dashboard.
+    // Only show confirmed food captures.
+    // • 'pending'  — AI analysis not yet complete; never show in dashboard.
+    // • 'weight' / 'education' / 'smartwatch' — saved in their own tables;
+    //   kept here only so the share link still resolves via PublicShareToken.
+    // New rows start as 'pending' and are promoted to 'food' by save() once
+    // nutrition analysis completes. The migration DEFAULT 'food' preserves all
+    // pre-existing rows (genuine food captures created before this column).
+    .eq('"ImageType"', 'food')
+    // Belt-and-suspenders: also exclude rows with no analysis data.
     .not('"AnalysisData"', 'is', null)
     .order('"CreatedAt"', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -95,6 +99,16 @@ export async function insertPendingCapture({ userId, imageBase64, publicShareTok
       ImageBase64: imageBase64 || null,
       PublicShareToken: publicShareToken,
       ShareExpiresAt: shareExpiresAt,
+      // All new captures start as 'pending'. The type is resolved after AI
+      // analysis and set explicitly:
+      //   • 'food'        — by save() when nutrition analysis completes
+      //   • 'weight' | 'education' | 'smartwatch'
+      //              — by updateCaptureType() (PATCH /captures)
+      // This prevents a race-condition window where a weight/education capture
+      // would match the listAnalyses ImageType='food' filter before the PATCH
+      // fires. The migration DEFAULT 'food' only applies to rows that existed
+      // before this column was added — those are genuine food captures.
+      ImageType: 'pending',
       ProcessedBy: 'manual_app',
       DeviceInfo: 'Wellness Valley Web App',
       CreatedAt: currentTime,
@@ -111,6 +125,19 @@ export async function insertPendingCapture({ userId, imageBase64, publicShareTok
  * userId is used as an ownership guard — the UPDATE will silently no-op if
  * the row belongs to a different user.
  */
+export async function updateCaptureImageType(id, userId, imageType) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .update({ ImageType: imageType, UpdatedAt: getISTTimestamp() })
+    .eq('ID', id)
+    .eq('UserID', userId.toString())
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function updateWithAnalysisResult(id, userId, analysisFields) {
   const supabase = getSupabaseClient();
   const currentTime = getISTTimestamp();
@@ -150,7 +177,7 @@ export async function findOwnerByToken(token) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, UserID, CreatedAt, ShareExpiresAt')
+    .select('ID, UserID, CreatedAt, ShareExpiresAt, ImageType')
     .eq('PublicShareToken', token)
     .limit(1)
     .maybeSingle();

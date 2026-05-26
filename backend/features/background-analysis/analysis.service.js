@@ -91,6 +91,11 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
+    // Stamp the row as 'food' now that nutrition analysis has confirmed it.
+    // New pending captures start as ImageType='pending' to avoid a race
+    // condition where the row would match the listAnalyses ImageType='food'
+    // filter before the type is resolved.
+    ImageType: 'food',
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
@@ -216,6 +221,18 @@ export async function undoDelete({ id, userId }) {
     body: { success: true, message: 'Analysis restored successfully', restoredId: id },
   };
 }
+// ─── updateCaptureType ───────────────────────────────────────────────────────
+// Called by the frontend after AI determines the image is weight/education/
+// smartwatch. Updates ImageType on the pending capture row so:
+//   1. The share link still resolves (row is NOT deleted).
+//   2. resolvePublicCapture returns the correct imageType for tab routing.
+//   3. listAnalyses filters on ImageType='food' so non-food rows never appear
+//      in the nutrition dashboard.
+export async function updateCaptureType({ id, userId, imageType }) {
+  await repo.updateCaptureImageType(id, userId, imageType);
+  return { httpStatus: 200, body: { ok: true } };
+}
+
 // ─── createPendingCapture ─────────────────────────────────────────────────────
 
 /**
@@ -298,6 +315,9 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
         ownerUserName,
         mealDate,
         isSelf,
+        // imageType drives in-app deep-link tab routing.
+        // Falls back to 'food' for legacy rows that pre-date this column.
+        imageType: row.ImageType || 'food',
       },
     },
   };

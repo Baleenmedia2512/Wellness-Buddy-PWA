@@ -5,14 +5,15 @@
  * The repository layer is mocked at the module boundary so these tests
  * are pure unit tests with no DB dependency.
  */
-import { validateCreateCapture, validatePublicCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture } from '../analysis.service.js';
+import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
+import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, updateCaptureType } from '../analysis.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
 jest.mock('../analysis.repository.js', () => ({
   insertPendingCapture: jest.fn(),
   updateWithAnalysisResult: jest.fn(),
+  updateCaptureImageType: jest.fn(),
   findPublicByToken: jest.fn(),
   findOwnerByToken: jest.fn(),
   insertAnalysis: jest.fn(),
@@ -50,6 +51,13 @@ describe('validateCreateCapture', () => {
   it('accepts valid body', () => {
     const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc' };
     expect(validateCreateCapture(body)).toEqual(body);
+  });
+
+  it('ignores any imageType in the request body (type is set server-side)', () => {
+    // imageType is intentionally stripped — new rows start as 'pending'
+    // regardless of what the client sends.
+    const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc', imageType: 'food' };
+    expect(validateCreateCapture(body)).toEqual({ userId: '42', imageBase64: 'data:image/jpeg;base64,abc' });
   });
 
   it('rejects null body', () => {
@@ -105,7 +113,7 @@ describe('createPendingCapture', () => {
     expect(result.body.data.id).toBe(7);
   });
 
-  it('calls insertPendingCapture with correct shape', async () => {
+  it('calls insertPendingCapture with ImageType=pending (race-condition guard)', async () => {
     await createPendingCapture({ userId: '99', imageBase64: 'data:abc' });
     expect(repo.insertPendingCapture).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -114,6 +122,10 @@ describe('createPendingCapture', () => {
         publicShareToken: expect.any(String),
         shareExpiresAt: expect.any(String),
       }),
+    );
+    // imageType is NOT in the call — the repo hardcodes 'pending' internally.
+    expect(repo.insertPendingCapture).not.toHaveBeenCalledWith(
+      expect.objectContaining({ imageType: expect.anything() }),
     );
   });
 
@@ -333,5 +345,69 @@ describe('resolvePublicCapture', () => {
     const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: STRANGER });
     expect(r.httpStatus).toBe(403);
     expect(r.body.error.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── validateUpdateCapture ───────────────────────────────────────────────────
+
+describe('validateUpdateCapture', () => {
+  it('accepts all valid imageTypes', () => {
+    ['food', 'weight', 'education', 'smartwatch'].forEach((type) => {
+      const result = validateUpdateCapture({ id: '5', userId: '42', imageType: type });
+      expect(result).toEqual({ id: '5', userId: '42', imageType: type });
+    });
+  });
+
+  it('rejects null body', () => {
+    expectValidationError(() => validateUpdateCapture(null), 400, 'body is missing');
+  });
+
+  it('rejects missing id', () => {
+    expectValidationError(() => validateUpdateCapture({ userId: '1', imageType: 'weight' }), 400, 'id is required');
+  });
+
+  it('rejects missing userId', () => {
+    expectValidationError(() => validateUpdateCapture({ id: '5', imageType: 'weight' }), 400, 'userId is required');
+  });
+
+  it('rejects missing imageType', () => {
+    expectValidationError(() => validateUpdateCapture({ id: '5', userId: '1' }), 400, 'imageType must be one of');
+  });
+
+  it('rejects unknown imageType', () => {
+    expectValidationError(
+      () => validateUpdateCapture({ id: '5', userId: '1', imageType: 'selfie' }),
+      400, 'imageType must be one of',
+    );
+  });
+});
+
+// ─── updateCaptureType ───────────────────────────────────────────────────────
+
+describe('updateCaptureType', () => {
+  beforeEach(() => {
+    repo.updateCaptureImageType.mockResolvedValue({ ID: 5, ImageType: 'weight' });
+  });
+
+  it('returns 200 and calls updateCaptureImageType with correct args', async () => {
+    const r = await updateCaptureType({ id: '5', userId: '42', imageType: 'weight' });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(repo.updateCaptureImageType).toHaveBeenCalledWith('5', '42', 'weight');
+  });
+
+  it('works for education type', async () => {
+    await updateCaptureType({ id: '7', userId: '10', imageType: 'education' });
+    expect(repo.updateCaptureImageType).toHaveBeenCalledWith('7', '10', 'education');
+  });
+
+  it('works for smartwatch type', async () => {
+    await updateCaptureType({ id: '9', userId: '10', imageType: 'smartwatch' });
+    expect(repo.updateCaptureImageType).toHaveBeenCalledWith('9', '10', 'smartwatch');
+  });
+
+  it('propagates repo errors', async () => {
+    repo.updateCaptureImageType.mockRejectedValue(new Error('DB error'));
+    await expect(updateCaptureType({ id: '5', userId: '1', imageType: 'weight' })).rejects.toThrow('DB error');
   });
 });

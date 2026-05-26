@@ -9,6 +9,25 @@ import { Award, Star } from "lucide-react";
 import LEADERBOARD_CONFIG from "../../../config/leaderboardConfig";
 import { debugLog } from '../../../shared/utils/logger.js';
 
+// ---------------------------------------------------------------------------
+// SWR cache — discipline leaderboard is global; stale data shows instantly
+// on back-navigation so the bar never flashes blank.
+// ---------------------------------------------------------------------------
+const DISC_LB_CACHE_TTL = 5 * 60 * 1000;
+const readDiscLBCache = () => {
+  try {
+    const raw = localStorage.getItem('wv.lb.discipline');
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return Date.now() - c.ts < DISC_LB_CACHE_TTL ? c.data : null;
+  } catch { return null; }
+};
+const writeDiscLBCache = (data) => {
+  try {
+    localStorage.setItem('wv.lb.discipline', JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* quota — ignore */ }
+};
+
 /**
  * DisciplineLeaderboard Component
  * Displays global discipline leaderboard showing top performers
@@ -25,8 +44,8 @@ import { debugLog } from '../../../shared/utils/logger.js';
  * @param {number} topN - Number of top users to show (default: 10)
  */
 const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState([]);
-  const [isVisible, setIsVisible] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState(() => readDiscLBCache() ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readDiscLBCache()?.length ?? 0) > 0);
   const [isPaused, setIsPaused] = useState(false);
 
   // Fetch leaderboard data
@@ -63,6 +82,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         // );
         setLeaderboardData(result.data);
         setIsVisible(true);
+        writeDiscLBCache(result.data);
       } else {
         debugLog(
           "ΓÜá∩╕Å [DISCIPLINE-LEADERBOARD] No data available:",

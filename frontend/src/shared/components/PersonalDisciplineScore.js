@@ -9,15 +9,38 @@ import { BookOpen, Coffee, Utensils, Moon, Droplets, Flame } from "lucide-react"
 import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 import { debugLog } from '../utils/logger.js';
 
+// ---------------------------------------------------------------------------
+// SWR (stale-while-revalidate) cache — keyed per user so different users
+// never see each other's data. TTL is 5 minutes; stale data shows instantly
+// on mount so the bar never flashes blank on back-navigation.
+// ---------------------------------------------------------------------------
+const PDS_CACHE_TTL = 5 * 60 * 1000;
+const readPDSCache = (uid) => {
+  if (!uid) return null;
+  try {
+    const raw = localStorage.getItem(`wv.pds.${uid}`);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return Date.now() - c.ts < PDS_CACHE_TTL ? c : null;
+  } catch { return null; }
+};
+const writePDSCache = (uid, categories, overallScore) => {
+  if (!uid) return;
+  try {
+    localStorage.setItem(`wv.pds.${uid}`, JSON.stringify({ categories, overallScore, ts: Date.now() }));
+  } catch { /* storage quota — ignore */ }
+};
+
 /**
  * PersonalDisciplineScore - Displays user's personal discipline breakdown by category
  * Shows WEI (Weight), EDU (Education), BRE (Breakfast), LUN (Lunch), DIN (Dinner), WAT (Water), CAL (Calories)
  * Uses coach/discipline-report API and reads from coachPerformance.activities field
  */
 const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
-  const [categories, setCategories] = useState(null);
-  const [overallScore, setOverallScore] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState(() => readPDSCache(userId)?.categories ?? null);
+  const [overallScore, setOverallScore] = useState(() => readPDSCache(userId)?.overallScore ?? 0);
+  // If we have a cache hit, skip the loading state so the bar shows immediately.
+  const [loading, setLoading] = useState(() => readPDSCache(userId) === null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -94,6 +117,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         //   categoryData,
         // );
         setCategories(categoryData);
+        writePDSCache(userId, categoryData, overall);
       } catch (error) {
         console.error(
           "📊 [PersonalDisciplineScore] Error fetching personal score:",
