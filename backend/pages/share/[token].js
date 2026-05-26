@@ -122,13 +122,13 @@ export default function ShareLanding({ token, baseUrl }) {
   return (
     <>
       <Head>
-        <title>View my meal on Wellness Valley</title>
+        <title>View on Wellness Valley</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <meta name="robots" content="noindex" />
         {/* Open Graph tags — WhatsApp, Telegram, and other link-preview crawlers
             read these to render a branded card instead of a raw URL. */}
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="Click here for Nutrition Info" />
+        <meta property="og:title" content="Click here for Analysis Info" />
         <meta property="og:description" content="" />
         {baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />}
         {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
@@ -153,8 +153,8 @@ export default function ShareLanding({ token, baseUrl }) {
               <>
                 <h1 style={title}>Open in the app</h1>
                 <p style={sub}>
-                  Shared meals open inside the Wellness Valley app. Install
-                  the app to view the meal in your dashboard.
+                  Shared data opens inside the Wellness Valley app. Install
+                  the app to view this analysis in your dashboard.
                 </p>
                 <a href={PLAY_STORE_URL} style={primaryBtn}>Get the app on Google Play</a>
                 <a href={APP_STORE_URL} style={secondaryBtn}>Available on the App Store</a>
@@ -166,7 +166,7 @@ export default function ShareLanding({ token, baseUrl }) {
                 </a>
               </>
             )}
-            <div style={footer}>Meals are private. Only people you invite can view them.</div>
+            <div style={footer}>Your data is private. Only people you share with can view this.</div>
           </div>
         </div>
       </div>
