@@ -17,7 +17,7 @@ import { renderStats as renderStatsBase } from './AttendanceRowStats';
 import AttendanceEmptyState, { filterOptions } from './AttendanceFilters';
 
 const AttendanceTable = ({ vm, onBack }) => {
-  const subtitle = `${vm.teamCounts.coaches + vm.teamCounts.members} Members ï¿½ Last updated ${
+  const subtitle = `${vm.teamCounts.coaches + vm.teamCounts.members} Members \u00B7 Last updated ${
     new Date().toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
     })}`;
@@ -26,7 +26,7 @@ const AttendanceTable = ({ vm, onBack }) => {
 
   return (
     <HierarchicalReportLayout
-      title="Attendance Report"
+      title="Education Attendance"
       subtitle={subtitle}
       onBack={onBack}
       onRefresh={vm.handleManualRefresh}
