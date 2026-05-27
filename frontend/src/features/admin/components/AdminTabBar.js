@@ -2,15 +2,13 @@
  * AdminTabBar.js — horizontal tab nav for the admin dashboard.
  */
 import React from 'react';
-import { DollarSign, Users, Activity, Edit3, BarChart3 } from 'lucide-react';
+import { DollarSign, Users, Edit3 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
 export const ADMIN_TABS = [
   { id: 'tokens',      label: 'Tokens',      Icon: DollarSign },
   { id: 'users',       label: 'Users',       Icon: Users },
-  { id: 'reports',     label: 'Reports',     Icon: Activity },
   { id: 'corrections', label: 'Corrections', Icon: Edit3 },
-  { id: 'analytics',   label: 'Analytics',   Icon: BarChart3 },
 ];
 
 export default function AdminTabBar({ activeTab, onChange }) {

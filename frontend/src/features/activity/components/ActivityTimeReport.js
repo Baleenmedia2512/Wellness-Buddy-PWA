@@ -1036,6 +1036,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             renderExpandedDetails={renderExpandedDetails}
             isCurrentUser={filteredHierarchy.userId === user?.id}
             showTeamCount={true}
+            showMemberList={false}
             getStatusStyle={getStatusStyle}
             searchQuery={searchQuery}
             filter={filter}

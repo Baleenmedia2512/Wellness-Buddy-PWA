@@ -17,7 +17,8 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * @param {boolean} props.isCurrentUser - Is this node the logged-in user
  * @param {boolean} props.showTeamCount - Show team member count
  * @param {boolean} props.showFullTeam - Show full hierarchy (true) or only direct reports (false)
- * @param {boolean} props.showIndividualReports - Show individual report cards section (default: true)
+ * @param {boolean} props.showIndividualReports - Show "Individual Reports" button inside the tile (default: true)
+ * @param {boolean} props.showMemberList - Show bottom flat member list section (default: true)
  * @param {Function} props.getStatusStyle - Function to get status-based styling
  * @param {string} props.searchQuery - Search query for filtering
  * @param {string} props.filter - Current filter value
@@ -37,6 +38,7 @@ const HierarchicalNode = ({
   showTeamCount = true,
   showFullTeam = true,
   showIndividualReports = true,
+  showMemberList = true,
   defaultShowDetails = false,
   getStatusStyle,
   searchQuery,
@@ -431,6 +433,7 @@ const HierarchicalNode = ({
                     showTeamCount={showTeamCount}
                     showFullTeam={showFullTeam}
                     showIndividualReports={showIndividualReports}
+                    showMemberList={showMemberList}
                     getStatusStyle={getStatusStyle}
                     searchQuery={searchQuery}
                     filter={filter}
@@ -686,6 +689,7 @@ const HierarchicalNode = ({
                   showTeamCount={showTeamCount}
                   showFullTeam={showFullTeam}
                   showIndividualReports={showIndividualReports}
+                  showMemberList={showMemberList}
                   getStatusStyle={getStatusStyle}
                   searchQuery={searchQuery}
                   filter={filter}
@@ -701,7 +705,7 @@ const HierarchicalNode = ({
         )}
 
         {/* Individual Reports Section (optional) */}
-        {showIndividualReports && hasChildren && (
+        {showMemberList && hasChildren && (
           <div className="border-t border-gray-100 mt-2">
             <TouchFeedbackButton
               onClick={() => setShowIndividualReportsExpanded(!showIndividualReportsExpanded)}

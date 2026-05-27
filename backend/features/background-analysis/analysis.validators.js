@@ -39,7 +39,30 @@ export function validateCreateCapture(body) {
   const { userId, imageBase64 } = body;
   if (!userId) throw new ValidationError(400, 'userId is required');
   if (!imageBase64) throw new ValidationError(400, 'imageBase64 is required');
+  // imageType is intentionally NOT accepted here. All pending captures start
+  // as ImageType='pending' (set in the repository). The type is resolved via
+  // PATCH /captures after AI analysis determines the correct category.
   return { userId, imageBase64 };
+}
+
+export function validateUpdateCapture(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const { id, userId, imageType } = body;
+  if (!id) throw new ValidationError(400, 'id is required');
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  // 'unknown' added in PR 2 (captures slice): when AI confidence is below the
+  // food/weight/education/smartwatch thresholds, the frontend classifies the
+  // capture as 'unknown' rather than letting it fall through to the food
+  // dashboard. Unknown captures are auto-purged after 24h by the cron at
+  // pages/api/cron/purge-unknown-captures.js. The terminal-state list is
+  // duplicated as the CHECK constraint in migrations/create_captures_table.sql
+  // and the enum in features/captures/domain/image-types.js — keep all three
+  // in sync.
+  const VALID_TYPES = ['food', 'weight', 'education', 'smartwatch', 'unknown'];
+  if (!imageType || !VALID_TYPES.includes(imageType)) {
+    throw new ValidationError(400, `imageType must be one of: ${VALID_TYPES.join(', ')}`);
+  }
+  return { id: id.toString(), userId: userId.toString(), imageType };
 }
 
 export function validatePublicCapture(query) {

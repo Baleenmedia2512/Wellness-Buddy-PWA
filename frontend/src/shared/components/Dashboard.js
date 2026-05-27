@@ -1,5 +1,5 @@
 ﻿// src/components/Dashboard.js
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
@@ -63,8 +63,9 @@ const EducationDashboard = lazy(() => import('../../features/education/component
  * @param {string} initialTab - Optional tab to open initially ('nutrition' or 'weight')
  * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
+ * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education' || initialTab === 'steps' || initialTab === 'screen')) {
@@ -91,7 +92,31 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Calendar visibility and month navigation
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-  
+
+  // Respond to deep-link prop changes while the component is already mounted.
+  // The useState initializers above only run on first mount, so if a new
+  // share link arrives while Dashboard is open we must imperatively update
+  // the three seeded values here.
+  useEffect(() => {
+    if (!initialTab) return;
+    const valid = ['nutrition', 'weight', 'education', 'steps', 'screen'];
+    if (!valid.includes(initialTab)) return;
+    setActiveTab(initialTab);
+    localStorage.setItem('dashboard_activeTab', initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    // null means "view self" (isSelf deep-link); undefined means not provided.
+    if (initialSelectedMember === undefined) return;
+    setSelectedMember(initialSelectedMember);
+  }, [initialSelectedMember]);
+
+  useEffect(() => {
+    if (!initialDate) return;
+    const d = new Date(initialDate);
+    if (!Number.isNaN(d.getTime())) setSelectedDate(d);
+  }, [initialDate]);
+
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
 
@@ -436,6 +461,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               setSelectedDate={setSelectedDate}
               bmrUpdateKey={bmrUpdateKey}
               watchBurnedCalories={watchBurnedCalories}
+              initialMealId={initialMealId}
             />
           )}
 

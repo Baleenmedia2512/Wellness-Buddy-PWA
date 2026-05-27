@@ -13,14 +13,20 @@
 import Head from 'next/head';
 
 const APP_PACKAGE = 'com.wellnessvalley.app';
+const APP_STORE_ID = '6764327692';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
-const APP_STORE_URL = 'https://apps.apple.com/'; // TODO: replace with real App Store URL once published
+const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
-export async function getServerSideProps({ params }) {
+export async function getServerSideProps({ params, req }) {
   const token = (params?.token || '').toString();
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const valid = UUID_RE.test(token);
-  return { props: { token: valid ? token : null } };
+  // Construct the absolute base URL so OG image tags use a full URL.
+  // x-forwarded-proto / x-forwarded-host are set by Vercel and most proxies.
+  const proto = req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const baseUrl = `${proto}://${host}`;
+  return { props: { token: valid ? token : null, baseUrl } };
 }
 
 const pageBg = {
@@ -95,7 +101,7 @@ const secondaryBtn = {
 };
 const footer = { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 16 };
 
-export default function ShareLanding({ token }) {
+export default function ShareLanding({ token, baseUrl }) {
   // Client-side: try to hand off to the app via Android intent:// for users
   // whose Android App Links haven't auto-verified yet (debug builds, first
   // launch). Verified production builds intercept the https URL directly
@@ -116,9 +122,19 @@ export default function ShareLanding({ token }) {
   return (
     <>
       <Head>
-        <title>Open in Wellness Valley</title>
+        <title>View on Wellness Valley</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <meta name="robots" content="noindex" />
+        {/* Open Graph tags — WhatsApp, Telegram, and other link-preview crawlers
+            read these to render a branded card instead of a raw URL. */}
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="Click here for Analysis Info" />
+        <meta property="og:description" content="" />
+        {baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />}
+        {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
+        <meta property="og:image:width" content="512" />
+        <meta property="og:image:height" content="512" />
+        <meta property="og:site_name" content="Wellness Valley" />
       </Head>
       <div style={pageBg}>
         <div style={card}>
@@ -137,8 +153,8 @@ export default function ShareLanding({ token }) {
               <>
                 <h1 style={title}>Open in the app</h1>
                 <p style={sub}>
-                  Shared meals open inside the Wellness Valley app. Install
-                  the app to view the meal in your dashboard.
+                  Shared data opens inside the Wellness Valley app. Install
+                  the app to view this analysis in your dashboard.
                 </p>
                 <a href={PLAY_STORE_URL} style={primaryBtn}>Get the app on Google Play</a>
                 <a href={APP_STORE_URL} style={secondaryBtn}>Available on the App Store</a>
@@ -150,7 +166,7 @@ export default function ShareLanding({ token }) {
                 </a>
               </>
             )}
-            <div style={footer}>Meals are private. Only people you invite can view them.</div>
+            <div style={footer}>Your data is private. Only people you share with can view this.</div>
           </div>
         </div>
       </div>

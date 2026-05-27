@@ -25,3 +25,5 @@ export const recalcSideINR = ({ tokens, usdPerMillion, originalUsdPerMillion, or
 
 export const formatInrInput = (val) => (val === 0 ? '0' : Number(val).toFixed(4));
 export const formatUsdInput = (val) => Number(val).toFixed(2);
+
+

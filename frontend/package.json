@@ -1,6 +1,6 @@
 {
   "name": "wellness-valley-pwa-frontend",
-  "version": "3.1",
+  "version": "3.2",
   "private": true,
   "homepage": ".",
   "dependencies": {
@@ -44,6 +44,10 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@playwright/test": "^1.60.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "ajv": "^8.8.2",
     "autoprefixer": "^10.4.14",
     "gh-pages": "^6.3.0",
     "postcss": "^8.4.24",
@@ -79,5 +83,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "ajv-keywords": {
+      "ajv": "^8.8.2"
+    }
   }
 }

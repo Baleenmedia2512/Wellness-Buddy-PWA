@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import * as repo from './analysis.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+// PR 2 dual-write: every pending-capture create + image-type update is
+// mirrored into `captures_table` via the new captures slice. The legacy
+// `food_nutrition_data_table` remains canonical until PR 4. Shadow-write
+// failures are swallowed (logged via the shared logger) so they cannot
+// break user-facing requests during the rollout.
+import * as captures from '../captures/captures.service.js';
+import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -91,6 +98,11 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
+    // Stamp the row as 'food' now that nutrition analysis has confirmed it.
+    // New pending captures start as ImageType='pending' to avoid a race
+    // condition where the row would match the listAnalyses ImageType='food'
+    // filter before the type is resolved.
+    ImageType: 'food',
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
@@ -216,6 +228,35 @@ export async function undoDelete({ id, userId }) {
     body: { success: true, message: 'Analysis restored successfully', restoredId: id },
   };
 }
+// ─── updateCaptureType ───────────────────────────────────────────────────────
+// Called by the frontend after AI determines the image is weight/education/
+// smartwatch. PR 5 — captures_table is now canonical for the image-type
+// discriminator (the legacy ImageType column on food_nutrition_data_table was
+// dropped). The whole update happens in the captures slice; we look up the
+// linked CaptureID from the food row and delegate to captures.updateTypeById,
+// which enforces the state machine in features/captures/domain/image-types.js.
+export async function updateCaptureType({ id, userId, imageType }) {
+  const captureId = await repo.findCaptureIdForOwner(id, userId);
+  if (!captureId) {
+    // Either the food row doesn't exist, isn't owned by this user, or is a
+    // pre-PR-2 legacy row with no captures_table twin. The first two are real
+    // 404s; the third is the historical-row breakage already documented in
+    // migrations/drop_legacy_share_columns_from_food.sql. We can't tell them
+    // apart cheaply, so we return a 404-shaped response — the frontend
+    // already treats this branch as "share link expired/unavailable".
+    logger.warn('updateCaptureType: no captureId for legacy id', { id, userId });
+    return { httpStatus: 404, body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } } };
+  }
+
+  const result = await captures.updateTypeById({
+    captureId,
+    userId,
+    toType: imageType,
+  });
+
+  return { httpStatus: 200, body: { ok: true, data: result } };
+}
+
 // ─── createPendingCapture ─────────────────────────────────────────────────────
 
 /**
@@ -226,12 +267,37 @@ export async function undoDelete({ id, userId }) {
 export async function createPendingCapture({ userId, imageBase64 }) {
   const token = randomUUID();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // PR 5 — captures_table is canonical. Insert it FIRST so we can
+  // pin the resulting CaptureID onto the food row in the same request.
+  // If this throws, no food row is created (the legacy table is no longer
+  // a fallback after PR 5 — see migrations/drop_legacy_share_columns_from_food.sql).
+  const capture = await captures.recordPending({
+    userId: userId.toString(),
+    publicShareToken: token,
+    shareExpiresAt,
+    imageBase64: imageBase64 || null,
+    imagePath: 'instant-share',
+    deviceInfo: 'Wellness Valley Web App',
+    processedBy: 'manual_app',
+  });
+
+  // The food row is still inserted speculatively so save() has a stable id
+  // to UPDATE when AI analysis completes (preserves the existing instant-
+  // share flow). It carries CaptureID = the row we just created so the
+  // share-resolve path can join the two without legacy columns.
+  //
+  // If the user re-tags the capture as weight / education / smartwatch via
+  // the unknown picker (PR 3), this food row becomes an orphan with
+  // AnalysisData=NULL forever. listAnalyses (PR 5) excludes such orphans
+  // via `AnalysisData IS NOT NULL`, so they are invisible to the user.
+  // A periodic cleanup job can prune them — tracked as a follow-up.
   const row = await repo.insertPendingCapture({
     userId: userId.toString(),
     imageBase64: imageBase64 || null,
-    publicShareToken: token,
-    shareExpiresAt,
+    captureId: capture.id,
   });
+
   return {
     httpStatus: 201,
     body: {
@@ -248,12 +314,12 @@ export async function createPendingCapture({ userId, imageBase64 }) {
 
 /**
  * Look up the OWNER + meal date for a shared token. Used by the in-app
- * deep-link handler: the app opens Dashboard for that user/date instead of
- * rendering the public share page. Enforces permission — viewer must be
- * the owner OR appear in the owner's upline coach chain.
+ * deep-link handler: the app opens Dashboard for that user/date and
+ * automatically expands the specific meal card. Enforces permission — viewer
+ * must be the owner OR appear in the owner's upline coach chain.
  *
  * Returns:
- *   { ok: true,  data: { ownerUserId, ownerUserName, mealDate, isSelf } }
+ *   { ok: true,  data: { mealId, ownerUserId, ownerUserName, mealDate, isSelf } }
  *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
  */
 export async function resolvePublicCapture({ token, viewerUserId }) {
@@ -264,6 +330,7 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
     return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
   }
+  const mealId = row.ID ? row.ID.toString() : null;
   const ownerUserId = row.UserID ? row.UserID.toString() : null;
   if (!ownerUserId) {
     return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
@@ -272,8 +339,9 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   const viewer = viewerUserId.toString();
   const isSelf = viewer === ownerUserId;
   if (!isSelf) {
-    // Permission: viewer must be in the owner's coach chain (i.e. owner is
-    // a descendant of the viewer in the team hierarchy).
+    // Permission: viewer must appear in the owner's upline coach chain.
+    // Co-coach partners are NOT granted access — they are peers of the owner's
+    // coach and have no supervisory relationship with the owner.
     const chain = await repo.getCoachChain(ownerUserId);
     if (!chain.includes(viewer)) {
       return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
@@ -281,17 +349,24 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  const mealDate = row.CreatedAt ? new Date(row.CreatedAt).toISOString() : null;
+  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
+  // correct local date. Using toISOString() would shift a late-evening IST
+  // timestamp to the next UTC day, showing the wrong nutrition entries.
+  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
 
   return {
     httpStatus: 200,
     body: {
       ok: true,
       data: {
+        mealId,
         ownerUserId,
         ownerUserName,
         mealDate,
         isSelf,
+        // imageType drives in-app deep-link tab routing.
+        // Falls back to 'food' for legacy rows that pre-date this column.
+        imageType: row.ImageType || 'food',
       },
     },
   };

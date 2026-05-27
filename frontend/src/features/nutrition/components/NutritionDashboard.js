@@ -79,6 +79,7 @@ const NutritionDashboard = ({
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
   watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
+  initialMealId = null, // meal ID to auto-open (from deep link)
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -296,6 +297,35 @@ const NutritionDashboard = ({
     }
     setShowCalendar(false);
   }, [selectedDate]);
+
+  // Tracks the last deep-link meal ID that was successfully handled so that
+  // subsequent analyses refreshes (pagination, mutations) don't re-open the
+  // card for the same link. Resets to null on unmount (component-scoped ref).
+  const handledDeepLinkMealIdRef = useRef(null);
+
+  // Auto-open meal from deep link (when shared via WhatsApp/external link).
+  // Fires whenever initialMealId, analyses, or loading changes so the card
+  // opens reliably in all three scenarios:
+  //   1. Fresh Dashboard mount (analyses load after initialMealId is set)
+  //   2. Dashboard already open, new link arrives (initialMealId changes)
+  //   3. Cold-start with Dashboard restored from localStorage
+  useEffect(() => {
+    if (!initialMealId) return;
+    // Skip if we already opened this exact meal ID (prevents re-open on
+    // analyses list refresh / pagination without a new deep-link).
+    if (handledDeepLinkMealIdRef.current === initialMealId) return;
+    if (loading) return;
+    if (!analyses || analyses.length === 0) return;
+
+    handledDeepLinkMealIdRef.current = initialMealId;
+    const meal = analyses.find(m => m.ID && m.ID.toString() === initialMealId.toString());
+    if (meal) {
+      debugLog('🔗 [NutritionDashboard] Auto-opening meal from deep link:', initialMealId);
+      setSelectedMeal(meal);
+    } else {
+      debugLog('⚠️ [NutritionDashboard] Meal not found for deep link ID:', initialMealId);
+    }
+  }, [initialMealId, analyses, loading]);
 
   // fetchDayAnalyses + auto-refresh effect moved to useDayAnalyses hook.
 

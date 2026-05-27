@@ -13,7 +13,7 @@ import LoginIntroPanel from './login/LoginIntroPanel';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
 
-const Login = ({ onOtpVerified, forceOtpVerification }) => {
+const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }) => {
   const auth = useAuthFlow({ onOtpVerified });
   const otpCtl = useOtpInput(6);
   const resend = useResendCountdown(60, auth.otpSent);
@@ -63,7 +63,12 @@ const Login = ({ onOtpVerified, forceOtpVerification }) => {
             </p>
           </div>
           {!showEmailForm ? (
-            <LoginIntroPanel onChooseEmail={() => setShowEmailForm(true)} />
+            <LoginIntroPanel
+              onChooseEmail={() => setShowEmailForm(true)}
+              onSignIn={onSignIn}
+              loading={loading}
+              error={error}
+            />
           ) : !auth.otpSent ? (
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
               onSubmit={handleSendOtp} loading={auth.loading} />

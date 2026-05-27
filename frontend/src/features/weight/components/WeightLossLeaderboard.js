@@ -8,6 +8,25 @@
 import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 
+// ---------------------------------------------------------------------------
+// SWR cache — global leaderboard is identical for all users, no userId key.
+// Stale data shows instantly on back-navigation; fresh data arrives quietly.
+// ---------------------------------------------------------------------------
+const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
+const readWeightLBCache = () => {
+  try {
+    const raw = localStorage.getItem('wv.lb.weight');
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
+  } catch { return null; }
+};
+const writeWeightLBCache = (data) => {
+  try {
+    localStorage.setItem('wv.lb.weight', JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* quota — ignore */ }
+};
+
 /**
  * WeightLossLeaderboard Component
  * Displays global weight loss leaderboard strip showing top performers
@@ -23,8 +42,8 @@ import { debugLog } from '../../../shared/utils/logger.js';
  * @param {number} topN - Number of top users to show (default: 10)
  */
 const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState([]);
-  const [isVisible, setIsVisible] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache() ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
   const [isPaused, setIsPaused] = useState(false);
 
   // Fetch leaderboard data
@@ -58,6 +77,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         // );
         setLeaderboardData(result.data);
         setIsVisible(true);
+        writeWeightLBCache(result.data);
       } else {
         debugLog(
           "ΓÜá∩╕Å [LEADERBOARD] No data available:",

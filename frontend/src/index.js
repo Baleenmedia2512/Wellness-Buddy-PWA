@@ -57,8 +57,15 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event.data.type === 'SW_UPDATED') {
             debugLog('🔄 [PWA] New version detected:', event.data.version);
+
+            // On native Capacitor (Android/iOS), assets are bundled in the APK — no reload needed.
+            // Auto-reloading would interrupt active user flows (e.g. profile photo upload).
+            if (Capacitor.isNativePlatform()) {
+              debugLog('ℹ️ [PWA] Native platform — skipping auto-reload');
+              return;
+            }
+
             debugLog('✅ [PWA] Auto-reloading to apply updates...');
-            
             // Silently reload to apply new version (no popup)
             setTimeout(() => {
               window.location.reload();

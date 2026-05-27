@@ -1,6 +1,6 @@
 // src/App.js
 // ============================================================================
-// WellnessValleyApp — App.js architecture policy (post-hygiene-phase, May 2026)
+// WellnessValleyApp � App.js architecture policy (post-hygiene-phase, May 2026)
 // ----------------------------------------------------------------------------
 // App.js is INTENTIONALLY the orchestrator. It is NOT being shrunk to a thin
 // shell. The following responsibilities live here on purpose and should NOT
@@ -9,7 +9,7 @@
 //   1. Identity & session ownership
 //      - The single `user` / `isUserActive` / `userContext` source of truth.
 //      - Sign-in / sign-out flows (Firebase + OTP).
-//      - The iOS Keychain re-auth gate (`forceLoggedOut`) — MUST stay read
+//      - The iOS Keychain re-auth gate (`forceLoggedOut`) � MUST stay read
 //        synchronously at component init, before Firebase fires.
 //
 //   2. Native lifecycle ownership
@@ -19,30 +19,30 @@
 //        WHEN to fire permissions, WHEN to hide splash); the service owns the
 //        plugin plumbing.
 //      - Multiple `appStateChange` listeners coexist (gallery effect +
-//        foreground profile-check effect) — each consumer receives its own
+//        foreground profile-check effect) � each consumer receives its own
 //        PluginListenerHandle and removes only its own handle on cleanup.
 //        Nothing in this codebase calls `App.removeAllListeners()`.
 //      - SplashScreen dismissal timing (500 ms after first React render).
 //      - StatusBar overlay configuration.
-//      - Permissions request orchestration (camera/photos → push → geolocation).
+//      - Permissions request orchestration (camera/photos ? push ? geolocation).
 //
 //   3. Routing orchestration
 //      - The 24 `show*` view-flag booleans + their localStorage mirroring
 //        (`currentPage`). This is a deliberate homemade router. It can be
-//        replaced by a real router LATER as a single focused effort —
+//        replaced by a real router LATER as a single focused effort �
 //        do not collapse it into a reducer in the meantime (modal-over-route
 //        invariants would break).
 //
 //   4. Cross-feature glue that legitimately spans VSA boundaries
 //      - The image-capture pipeline (it dispatches to nutrition / weight /
-//        education / activity — no single feature owns it).
-//      - Watch-burned-calories → Nutrition write (cross-feature by design).
+//        education / activity � no single feature owns it).
+//      - Watch-burned-calories ? Nutrition write (cross-feature by design).
 //
 // State-machine candidates (deferred to later phases):
-//   - Auth flow (idle → restoring → authenticating → checking_status →
-//     checking_setup → checking_picture → ready | inactive | not_found).
-//   - Image-capture pipeline (idle → captured → detecting → analyzing →
-//     correcting → checking_duplicate → confirming → saving | manual_fallback).
+//   - Auth flow (idle ? restoring ? authenticating ? checking_status ?
+//     checking_setup ? checking_picture ? ready | inactive | not_found).
+//   - Image-capture pipeline (idle ? captured ? detecting ? analyzing ?
+//     correcting ? checking_duplicate ? confirming ? saving | manual_fallback).
 //
 // Hygiene-phase guarantees (this commit):
 //   - Session keys go through `shared/services/sessionStorage.js`.
@@ -94,13 +94,16 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
+import { UnknownCaptureModal } from "./features/captures";
+import { tabForImageType } from "./shared/lib/tab-by-image-type";
+import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
@@ -132,12 +135,12 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 
-// ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
+// ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() => import("./features/weight/components/WeightLossLeaderboard"));
 const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/components/DisciplineLeaderboard"));
 const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalDisciplineScore"));
 
-// ✅ ANDROID OPTIMIZATION: Lazy load heavy components
+// ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shared/components/Dashboard"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
@@ -178,56 +181,94 @@ function WellnessValleyApp() {
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
-  // Deep-link (App Link) seed values for Dashboard — set when the app is
+  // Deep-link (App Link) seed values for Dashboard � set when the app is
   // opened via /share/<token> and the resolve API confirms permission.
   // Cleared in showMainPage so a normal Dashboard open won't reuse them.
   const [dashboardInitialSelectedMember, setDashboardInitialSelectedMember] = useState(null);
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
+  const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
-  // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
-  const [user, setUser] = useState(null);
-  // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
+  // const [showStepCounter, setShowStepCounter] = useState(false); // moved below � FEATURE DISABLED
+
+  // -- Instant OTP session restore ------------------------------------------
+  // For returning OTP users, pre-load the cached user synchronously so that
+  // NEITHER the authLoading spinner NOR the isOtpVerified gate fires on
+  // cold start. The home screen (and camera) open immediately � same pattern
+  // as WhatsApp / Snapchat. Background validation runs via a separate effect.
+  const [user, setUser] = useState(() => {
+    if (Session.isUserSignedOut()) return null;
+    if (!Session.isOtpVerified()) return null;
+    const u = Session.getOtpUser();
+    if (!u) return null;
+    // Attach cached DB userId so user.id is available from the first render.
+    if (!u.id) { const dbId = Session.getDbUserId(); if (dbId) u.id = dbId; }
+    return u;
+  });
+  // ? iOS Sign-out gate: persisted in localStorage so it survives app restarts
   // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
   const [forceLoggedOut, setForceLoggedOut] = useState(
     Session.isUserSignedOut()
   );
-  const [authLoading, setAuthLoading] = useState(true);
+  // Skip the loading screen for returning OTP users (session pre-loaded from cache).
+  const [authLoading, setAuthLoading] = useState(() => {
+    if (Session.isUserSignedOut()) return true;
+    if (Session.isOtpVerified() && Session.getOtpUser()) return false;
+    return true;
+  });
   const [isOtpVerified, setIsOtpVerified] = useState(
     Session.isOtpVerified(),
+  );
+  // true when the user object was pre-loaded from localStorage � triggers the
+  // background validation effect (checkUserStatus + checkProfileCompletion).
+  const otpCacheRestoredRef = useRef(
+    !Session.isUserSignedOut() && Session.isOtpVerified() && !!Session.getOtpUser()
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  // For returning users who already granted permissions, start as true so the
+  // camera opens immediately (Snapchat-like). Fresh installs start as false
+  // and wait for the permission dialogs to complete before opening camera.
+  const [permissionsReady, setPermissionsReady] = useState(() => {
+    if (!Capacitor.isNativePlatform()) return true;
+    return localStorage.getItem('wv.permissionsGranted') === '1';
+  });
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [showManualFoodModal, setShowManualFoodModal] = useState(false);
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  // PR 3 — disambiguation modal for low-confidence / unknown captures.
+  // pendingSharePromise is retained so the user's pick re-tags the capture row.
+  const [unknownCaptureModal, setUnknownCaptureModal] = useState({
+    open: false,
+    pendingSharePromise: null,
+  });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
-  // Education time window fetched from DB (e.g. 07:15 - 08:45) — no hardcoding
+  // Education time window fetched from DB (e.g. 07:15 - 08:45) � no hardcoding
   const [educationWindow, setEducationWindow] = useState(null);
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
-  // ─── savedWeightIdRef ────────────────────────────────────────────────────
+  // --- savedWeightIdRef ----------------------------------------------------
   // INTENTIONAL ref-mirror of `savedWeightId` state.
   //
   // Why both exist:
   //   - `savedWeightId` (state) drives JSX (e.g. enabling the inline-edit
   //     pencil button, conditional render of the edit overlay).
   //   - `savedWeightIdRef` (ref) is read inside async handlers that are
-  //     created/closed-over BEFORE the state setter resolves — specifically:
-  //       • performWeightSave    → writes the new id (line ~1884)
-  //       • handleWeightEditSave → reads the current id mid-flight (line ~1947)
+  //     created/closed-over BEFORE the state setter resolves � specifically:
+  //       � performWeightSave    ? writes the new id (line ~1884)
+  //       � handleWeightEditSave ? reads the current id mid-flight (line ~1947)
   //                                so a user editing immediately after save
   //                                hits the right entryId without waiting
   //                                for React to re-render the handler.
-  //       • saveWeightEntry      → updates id after a manual save (line ~1973)
+  //       � saveWeightEntry      ? updates id after a manual save (line ~1973)
   //   - Cleared together with state in showMainPage / showDashboardPage /
   //     handleSignOut so they cannot diverge across navigation.
   //
@@ -263,7 +304,7 @@ function WellnessValleyApp() {
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
-  const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload → pushed to NutritionDashboard
+  const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload ? pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
   const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
@@ -289,9 +330,21 @@ function WellnessValleyApp() {
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
   const [foodShareUrl, setFoodShareUrl] = useState(null);
-  // ⏱️ End-to-end timing: stamped when the user picks/captures an image, used
+  // ?? Snapchat-style overlay: holds the just-captured photo full-screen
+  // until WhatsApp share has been launched (or a 3s safety timeout elapses).
+  // This eliminates the home-screen + image-preview flash the user was
+  // seeing between the camera OK button and the share sheet. We show the
+  // actual photo (not a spinner) so the transition feels seamless.
+  const [sharingPendingImage, setSharingPendingImage] = useState(null);
+  const sharingPendingTimerRef = useRef(null);
+  // Awaited in performNutritionSave before reading foodCaptureIdRef.current so
+  // that a fast Gemini response never races ahead of a slow /captures POST,
+  // which would leave captureId null and cause a duplicate DB row (INSERT
+  // instead of UPDATE on the pre-created pending row).
+  const pendingSharePromiseRef = useRef(null);
+  // ?? End-to-end timing: stamped when the user picks/captures an image, used
   // by every downstream step to log "+Nms from capture start" so the full
-  // pipeline (compress → POST captures → Gemini → precapture → Share sheet)
+  // pipeline (compress ? POST captures ? Gemini ? precapture ? Share sheet)
   // can be reconstructed from a single log dump.
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
@@ -311,18 +364,18 @@ function WellnessValleyApp() {
       const preStart = Date.now();
       const flowStart = captureFlowStartRef.current || preStart;
       debugLog(
-        `⏱️ [PERF] 🖼️  Precapture (html2canvas) started (+${preStart - flowStart}ms from capture start)`,
+        `?? [PERF] ???  Precapture (html2canvas) started (+${preStart - flowStart}ms from capture start)`,
       );
       precaptureShareImage(foodShareCardRef.current).then((dataUrl) => {
         if (!cancelled && dataUrl) {
           foodShareImageDataUrlRef.current = dataUrl;
           foodShareImageReadyAtRef.current = Date.now();
           debugLog(
-            `⏱️ [PERF] 🖼️  Precapture ready: ${Date.now() - preStart}ms (+${Date.now() - flowStart}ms from capture start)`,
+            `?? [PERF] ???  Precapture ready: ${Date.now() - preStart}ms (+${Date.now() - flowStart}ms from capture start)`,
           );
         } else if (!cancelled) {
           debugLog(
-            `⏱️ [PERF] 🖼️  Precapture FAILED after ${Date.now() - preStart}ms`,
+            `?? [PERF] ???  Precapture FAILED after ${Date.now() - preStart}ms`,
           );
         }
       });
@@ -336,10 +389,15 @@ function WellnessValleyApp() {
   // Tracks whether we've already auto-launched the share sheet for the current
   // food capture, so we don't re-open it after the user dismisses it.
   const foodAutoSharedRef = useRef(false);
+  // Guards the manual "Share Image + Link" fallback button so that a second
+  // tap while the share sheet is opening cannot spawn a duplicate sheet.
+  // Ref handles synchronous re-entry; state drives the visual disabled prop.
+  const isManualSharingRef = useRef(false);
+  const [isManualSharing, setIsManualSharing] = useState(false);
 
   // Reset the home/capture surface back to its initial state. Called after the
   // share sheet completes so the user lands back on Home, ready for the next
-  // capture. Does NOT cancel the in-flight Gemini analysis — that continues
+  // capture. Does NOT cancel the in-flight Gemini analysis � that continues
   // and writes to the same public share URL the user already sent.
   const resetCaptureToHome = useCallback(() => {
     setImagePreview(null);
@@ -352,16 +410,53 @@ function WellnessValleyApp() {
     foodCaptureIdRef.current = null;
     foodShareImageDataUrlRef.current = null;
     foodAutoSharedRef.current = false;
+    isManualSharingRef.current = false;
+    setIsManualSharing(false);
     if (fileInputRef.current && fileInputRef.current.resetInputs) {
       fileInputRef.current.resetInputs();
     }
   }, []);
 
-  // Auto-open the native share sheet as soon as the upload is finished and
-  // the share image is ready. Uses Capacitor Share API (image + caption +
-  // public link in one payload). After the share sheet closes (sent OR
-  // dismissed) we return to Home. The AI nutrition analysis keeps running
-  // in the background and updates the same public link.
+  // Reset UI to camera view without interrupting in-flight background analysis.
+  // The analysis refs (processedImageRef, foodCaptureIdRef, pendingSharePromiseRef)
+  // are deliberately left intact so performNutritionSave can update the DB row
+  // after the user is already back at the camera.
+  const resetCaptureUiOnly = useCallback(() => {
+    setImagePreview(null);
+    setSelectedImage(null);
+    setImageType(null);
+    setNutritionData(null);
+    setFoodShareUrl(null);
+    setLoading(false);
+    foodShareImageDataUrlRef.current = null;
+    foodAutoSharedRef.current = false;
+    isManualSharingRef.current = false;
+    setIsManualSharing(false);
+    if (fileInputRef.current?.resetInputs) fileInputRef.current.resetInputs();
+    // Note: processedImageRef, foodCaptureIdRef, pendingSharePromiseRef stay
+    // set so the background AI analysis can finish and persist to the DB.
+  }, []);
+
+  // Tag a pending capture row with the correct image type so it is excluded
+  // from the nutrition dashboard (which filters on ImageType='food') but the
+  // share link continues to work and routes to the correct dashboard tab.
+  // This replaces the previous soft-delete approach for non-food images.
+  const updatePendingCaptureType = useCallback((sharePromise, imageType) => {
+    sharePromise.then((share) => {
+      if (!share?.id || !user?.id) return;
+      fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: share.id, userId: user.id, imageType }),
+      }).catch((err) => debugLog(`[Share] updateCaptureType(${imageType}) failed:`, err?.message));
+    });
+  }, [user, apiBaseUrl]);
+
+  // Auto-open the native share sheet as soon as food is identified � fires
+  // the moment foodShareUrl is set (at fast-classify time), BEFORE the full
+  // nutrition analysis finishes. The raw food photo is used directly so
+  // there is zero html2canvas wait: the user can share the link+image to
+  // WhatsApp while Gemini is still analysing nutrition in the background.
   useEffect(() => {
     if (imageType !== "food") return;
     if (!foodShareUrl) return;
@@ -370,60 +465,39 @@ function WellnessValleyApp() {
 
     let cancelled = false;
     (async () => {
-      // Wait up to 6s for the pre-captured share image to be ready.
-      const start = Date.now();
-      const flowStart = captureFlowStartRef.current || start;
-      debugLog(
-        `⏱️ [PERF] 📤 Auto-share triggered (+${start - flowStart}ms from capture start)`,
-      );
-      while (!foodShareImageDataUrlRef.current && Date.now() - start < 6000) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
       if (cancelled) return;
 
-      const waited = Date.now() - start;
-      const dataUrl = foodShareImageDataUrlRef.current;
-      if (!dataUrl) {
-        // Pre-capture didn't produce an image — leave the manual share
-        // button visible so the user can still share when they choose.
-        debugLog(
-          `⏱️ [PERF] 📤 Auto-share ABORTED — no precapture image after ${waited}ms wait`,
-        );
-        foodAutoSharedRef.current = false;
-        return;
-      }
-      debugLog(
-        `⏱️ [PERF] 📤 Auto-share wait for image: ${waited}ms`,
-      );
-
-      const captionText =
-        `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
       const shareStart = Date.now();
-      const result = await shareViaCapacitorAPI(dataUrl, {
-        title: "My Meal",
-        text: captionText,
-        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-      });
       debugLog(
-        `⏱️ [PERF] 📤 Native Share.share returned in ${Date.now() - shareStart}ms (ok=${result.ok}) (+${Date.now() - flowStart}ms from capture start)`,
+        `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
+      // Share the URL as a WhatsApp text message so the recipient sees a
+      // rich link-preview card (title + thumbnail from the page's OG tags)
+      // instead of a raw URL � identical to how Swiggy / Redbus share links.
+      // whatsapp://send?text=<url> opens WhatsApp pre-filled with the link;
+      // WhatsApp's OG crawler fetches the page and renders the branded card.
+      const ok = await shareTextViaWhatsApp(foodShareUrl);
       if (cancelled) return;
 
-      if (result.ok) {
-        // Sent OR dismissed by user → return to Home.
-        resetCaptureToHome();
-      } else {
-        // Hard failure (e.g. Share API not available) — let the user fall
-        // back to the manual "Share Image + Link" button.
+      debugLog(
+        `?? [PERF] ?? shareTextViaWhatsApp resolved in ${Date.now() - shareStart}ms (ok=${ok})`,
+      );
+
+      _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera after first share
+      if (!ok) {
+        // Hard failure � reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
       }
+      // Keep analysis on screen � user returns from WhatsApp and sees the
+      // AI results (loading ? complete). Camera will NOT auto-reopen because
+      // imagePreview is still set ? _homeScreenActiveRef stays false.
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType, resetCaptureToHome]);
+  }, [foodShareUrl, imageType, resetCaptureUiOnly]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -461,9 +535,9 @@ function WellnessValleyApp() {
 
   // Profile update trigger - increment this to force Dashboard to refetch BMR
   const [profileUpdateTrigger, setProfileUpdateTrigger] = useState(0);
-  // True while checkProfileCompletion() is in flight — gate must not render during this window.
+  // True while checkProfileCompletion() is in flight � gate must not render during this window.
   const [profileChecking, setProfileChecking] = useState(false);
-  // Start hidden — only checkProfileCompletion() (called after setup is confirmed complete)
+  // Start hidden � only checkProfileCompletion() (called after setup is confirmed complete)
   // will turn this on, preventing the gate from flashing for new users going through SetupWizard.
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
 
@@ -480,15 +554,15 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
-  // Step Counter state — FEATURE DISABLED
+  // Step Counter state � FEATURE DISABLED
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
   const [showStepCounter, setShowStepCounter] = useState(false);
 
-  // Screen Time state — FEATURE DISABLED
+  // Screen Time state � FEATURE DISABLED
   const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
-  // Reminders state — FEATURE DISABLED
+  // Reminders state � FEATURE DISABLED
   const [showReminders] = useState(false);
   // const [showReminders, setShowReminders] = useState(false);
   // const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
@@ -509,7 +583,7 @@ function WellnessValleyApp() {
   // Demo account: silent coach-OTP setup is provided by
   // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
   // silentlyCompleteDemoSetup function are imported at the top of this file.
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   // Wellness University state
   const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
@@ -518,11 +592,11 @@ function WellnessValleyApp() {
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
 
-  // ðŸ› Food Correction Debug Logs State
+  // 🐛 Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
 
-  // 🔄 Retry state - store last image file for retry capability
+  // ?? Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
   // Ref for leaderboards to trigger manual refresh
@@ -535,20 +609,44 @@ function WellnessValleyApp() {
 
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
+  // NOTE: excludes showCompleteProfile � the profile gate overlays the home
+  // screen, so auto-camera-open must not fire while it is visible.
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
     _homeScreenActiveRef.current =
-      !!user && !authLoading && !showDashboard &&
-      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
-  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+      !!user && !authLoading && !showDashboard && !showCompleteProfile &&
+      !showActivityTimeReport && !showDisciplineReport && !showScreenTime &&
+      !imagePreview && !selectedImage; // don't re-open camera while analysis is in progress
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime, imagePreview, selectedImage]);
 
-  // App resume (phone unlocked / app foregrounded) → open camera if on home screen.
+  // Tracks whether CompleteProfilePage is currently mounted. Used by the
+  // foreground-resume listener below to skip checkProfileCompletion while
+  // the user is actively filling out the form. Without this guard, returning
+  // from camera/gallery fires checkProfileCompletion ? profileChecking=true
+  // ? LoadingSpinner replaces the page ? form unmounts ? all input is lost.
+  const _profileGateActiveRef = useRef(false);
+  useEffect(() => {
+    _profileGateActiveRef.current = showCompleteProfile;
+  }, [showCompleteProfile]);
+
+  // App resume (phone unlocked / app foregrounded) ? open camera if on home screen.
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !user) return;
     let handle = null;
     let cancelled = false;
     nativeLifecycle.addAppStateListener(({ isActive }) => {
       if (isActive && _homeScreenActiveRef.current && !cancelled) {
+        // Only auto-open camera AFTER user has completed their first share.
+        // This prevents the annoying "user closes camera without taking photo ?
+        // app resumes ? camera re-opens" loop. Matches Snapchat: camera opens
+        // once on launch, but if you close it, you stay on feed until you actively
+        // use the camera again.
+        if (!_hasCompletedFirstShareRef.current) return;
+        // If the camera was just closed (user cancelled), don't immediately
+        // re-open it � that would create an infinite open?cancel?open loop.
+        // Allow 3 seconds after any camera close before auto-opening again.
+        const lastClose = fileInputRef.current?.lastCameraCloseAt?.() ?? 0;
+        if (Date.now() - lastClose < 3000) return;
         setTimeout(() => {
           if (!cancelled) fileInputRef.current?.openCamera?.();
         }, 600);
@@ -566,9 +664,22 @@ function WellnessValleyApp() {
   // Auto-open camera once per session when the user first arrives at the home
   // screen on a native device (fresh app launch or login). Retries until the
   // ImageUpload component has mounted and exposed its openCamera method.
+  //
+  // ORDER GUARANTEE: camera must NOT open until:
+  //   1. permissionsReady � all three permission dialogs (camera ? push ? location)
+  //      have resolved. Without this guard the camera fires mid-dialog chain,
+  //      which is jarring and blocks the location prompt.
+  //   2. isUserActive � user validation confirms the account is active. Inactive
+  //      users never reach the home screen so they should never get the camera.
+  // Tracks whether user has completed their first share (any image type).
+  // Foreground-resume camera auto-open is DISABLED until this is true, preventing
+  // the annoying "close camera ? app resumes ? camera re-opens" loop when user
+  // just wants to browse the home screen without taking photos.
+  const _hasCompletedFirstShareRef = useRef(false);
   const _hasFiredCameraOnLoginRef = useRef(false);
   useEffect(() => {
     if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
+    if (!permissionsReady || !isUserActive) return;
     let cancelled = false;
     let attempts = 0;
     const tryOpen = () => {
@@ -582,17 +693,17 @@ function WellnessValleyApp() {
         setTimeout(tryOpen, 300);
       }
     };
-    const t = setTimeout(tryOpen, 1200);
+    const t = setTimeout(tryOpen, 0); // try immediately; retry loop handles race with ImageUpload mount
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [user]);
+  }, [user, permissionsReady, isUserActive]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<uuid>) or the custom scheme
-  // (wellnessvalley://share/<uuid>) → resolve the share token against the
-  // backend, then jump straight to Dashboard → Nutrition for that owner /
+  // (wellnessvalley://share/<uuid>) ? resolve the share token against the
+  // backend, then jump straight to Dashboard ? Nutrition for that owner /
   // date. Permission errors and missing/expired shares surface as toasts.
   useEffect(() => {
     if (!user || !apiBaseUrl) return;
@@ -643,7 +754,7 @@ function WellnessValleyApp() {
           setDashboardInitialSelectedMember(null);
         } else {
           // Shape MUST match team/services/teamSearchService.toSelectedUser
-          // — hooks like resolveDashboardUserId look at `id` (not `userId`).
+          // � hooks like resolveDashboardUserId look at `id` (not `userId`).
           const memberName = data.ownerUserName || "Member";
           setDashboardInitialSelectedMember({
             id: data.ownerUserId,
@@ -656,7 +767,15 @@ function WellnessValleyApp() {
           });
         }
         setDashboardInitialDate(data.mealDate || null);
-        setDashboardInitialTab("nutrition");
+        setDashboardInitialMealId(data.mealId || null);
+        // Route to the tab that matches the shared image type.
+        // imageType is returned by the resolve endpoint when the capture row
+        // has been classified (may be null for legacy rows — helper falls
+        // back to the default 'nutrition' tab). Map lives in
+        // shared/lib/tab-by-image-type so smartwatch / unknown also route
+        // correctly. See PR 3 README in features/captures.
+        const resolvedTab = tabForImageType(data.imageType);
+        setDashboardInitialTab(resolvedTab);
         startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");
@@ -691,6 +810,17 @@ function WellnessValleyApp() {
 
   // Pre-capture the weight share image in the background as soon as the result
   // card is rendered. Tap -> share sheet then skips html2canvas entirely.
+  // IMPORTANT: idealWeight and weightDiff are in the dep array so the cache is
+  // invalidated and re-captured after the async profile / history API calls
+  // resolve. Without them the timer fires before those values arrive, producing
+  // a cached image that silently omits the ideal-weight strip and the
+  // vs-previous row.
+  //
+  // The 900 ms timeout acts as a debounce: weightResult, weightDiff, and
+  // idealWeight all arrive at different times (~0 ms, ~500 ms, ~800 ms after
+  // the save). Each new arrival cancels the previous timer via the cleanup
+  // function, so exactly ONE html2canvas render fires � 900 ms after the last
+  // dependency settles � with all three values present in the DOM.
   useEffect(() => {
     cachedWeightShareDataUrlRef.current = null;
     if (imageType !== "weight" || !weightResult || !imagePreview) return;
@@ -700,7 +830,7 @@ function WellnessValleyApp() {
       precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
         if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
       });
-    }, 300);
+    }, 900);
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -711,6 +841,8 @@ function WellnessValleyApp() {
     imagePreview,
     savedProfileImage,
     sharePhotoBase64,
+    idealWeight,
+    weightDiff,
   ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
@@ -769,7 +901,7 @@ function WellnessValleyApp() {
   //     if (analysisId != null) {
   //       localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(analysisId));
   //     }
-  // clearBgCache(); // ensure it won’t repaint on refresh
+  // clearBgCache(); // ensure it won�t repaint on refresh
   // } catch {}
   // };
 
@@ -787,7 +919,7 @@ function WellnessValleyApp() {
     setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
 
-  // ðŸ› Keyboard shortcut for closing correction modal (ESC key on web)
+  // 🐛 Keyboard shortcut for closing correction modal (ESC key on web)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && showCorrectionModal) {
@@ -807,9 +939,9 @@ function WellnessValleyApp() {
     };
   }, [showCorrectionModal]);
 
-  // ✅ CRITICAL FIX: Force splash screen dismissal on app load
+  // ? CRITICAL FIX: Force splash screen dismissal on app load
 
-  // ✅ Auth loading timeout — force dismiss loading screen after 5 seconds
+  // ? Auth loading timeout � force dismiss loading screen after 5 seconds
   useEffect(() => {
     const authTimeout = setTimeout(() => {
       setAuthLoading(false);
@@ -817,12 +949,12 @@ function WellnessValleyApp() {
     return () => clearTimeout(authTimeout);
   }, []);
 
-  // ✅ NATIVE LIFECYCLE PHASE (May 2026): SplashScreen dismissal delegated to
+  // ? NATIVE LIFECYCLE PHASE (May 2026): SplashScreen dismissal delegated to
   // shared/services/nativeLifecycle. Timing (500ms), error-swallowing, and
   // native-only gating are preserved exactly inside the service.
   useEffect(() => nativeLifecycle.scheduleSplashHide(500), []);
 
-  // Restore showDashboard from localStorage using startTransition — avoids suspending lazy <Dashboard> on mount
+  // Restore showDashboard from localStorage using startTransition � avoids suspending lazy <Dashboard> on mount
   useEffect(() => {
     const page = Session.getCurrentPage();
     if (
@@ -896,7 +1028,7 @@ function WellnessValleyApp() {
 
   // Phase 3d-a: Auth FSM shadow-mode observation refs.
   // The FSM never mutates React state. It only logs transitions and drift.
-  // Disabled by default — enable via `localStorage.setItem('authFsm.shadow', 'true')`
+  // Disabled by default � enable via `localStorage.setItem('authFsm.shadow', 'true')`
   // or REACT_APP_AUTH_FSM_SHADOW=true. Kill switch overrides everything.
   const authFsmLegacyRef = useRef({});
   const authFsmStartedRef = useRef(false);
@@ -927,7 +1059,7 @@ function WellnessValleyApp() {
         if (!userEmail) return true;
 
         // Phase 3b: HTTP + response mapping moved into shared/services/auth/userSetup.
-        // Fail-open semantics preserved by the helper (network errors → 'active').
+        // Fail-open semantics preserved by the helper (network errors ? 'active').
         const { result, role } = await fetchUserStatus({
           apiBaseUrl,
           email: userEmail,
@@ -943,7 +1075,7 @@ function WellnessValleyApp() {
         }
 
         if (result === "newUser") {
-          // ✅ New user — SetupWizard will handle profile collection, no popup needed
+          // ? New user � SetupWizard will handle profile collection, no popup needed
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
           if (role) setUserRole(role);
@@ -1045,6 +1177,7 @@ function WellnessValleyApp() {
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
     setDashboardInitialDate(null); // Clear deep-link date context
+    setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
     if (weightResult) {
@@ -1074,10 +1207,10 @@ function WellnessValleyApp() {
     Session.setCurrentPage("main");
   };
 
-  // ✅ NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
+  // ? NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
   // App.js retains the call site (in the user-authenticated effect below) so
   // orchestration ownership stays here; only the plugin plumbing moved out.
-  // Behavior, order (camera/photos → push → geolocation), and logging preserved
+  // Behavior, order (camera/photos ? push ? geolocation), and logging preserved
   // exactly inside the service.
   const requestAllPermissions = nativeLifecycle.requestAllPermissions;
 
@@ -1112,14 +1245,14 @@ function WellnessValleyApp() {
     }
   };
 
-  // ✅ NATIVE LIFECYCLE PHASE: StatusBar overlay configuration delegated to
+  // ? NATIVE LIFECYCLE PHASE: StatusBar overlay configuration delegated to
   // nativeLifecycle. Lazy import + native-only gate + warn-on-missing-plugin
   // semantics are preserved exactly inside the service.
   useEffect(() => {
     nativeLifecycle.initStatusBar();
   }, []);
 
-  // ✅ HYGIENE FIX (May 2026): track our own listener handles. Previously this
+  // ? HYGIENE FIX (May 2026): track our own listener handles. Previously this
   // effect's cleanup called `App.removeAllListeners()` which also wiped the
   // foreground-profile-check listener (registered further down at the
   // "Immediate profile check when app comes back to foreground" effect),
@@ -1138,7 +1271,7 @@ function WellnessValleyApp() {
         await GalleryMonitor.initialize();
         if (cancelled) return;
 
-        // ✅ NATIVE LIFECYCLE PHASE: registration plumbing routed through
+        // ? NATIVE LIFECYCLE PHASE: registration plumbing routed through
         // nativeLifecycle.addAppStateListener. Returns the same
         // PluginListenerHandle shape as before; cleanup semantics unchanged
         // (this effect still removes only its own handle, never
@@ -1161,7 +1294,7 @@ function WellnessValleyApp() {
               })
               .catch(() => {});
           } else {
-            // Background → reset transient sub-pages so reopening shows dashboard
+            // Background ? reset transient sub-pages so reopening shows dashboard
             const page = Session.getCurrentPage();
             if (page === "step-counter" || page === "screen-time") {
               Session.setCurrentPage("main");
@@ -1199,7 +1332,7 @@ function WellnessValleyApp() {
 
     return () => {
       cancelled = true;
-      // Only remove the listeners we registered — do NOT call
+      // Only remove the listeners we registered � do NOT call
       // App.removeAllListeners(), which would also kill the foreground
       // profile-check listener registered in the effect below.
       try { appStateHandle?.remove?.(); } catch { /* ignore */ }
@@ -1207,7 +1340,7 @@ function WellnessValleyApp() {
     };
   }, [showDashboardPage]);
 
-  // ── Silent step tracking start — FEATURE DISABLED ────────────────────────
+  // -- Silent step tracking start � FEATURE DISABLED ------------------------
   // useEffect(() => {
   //   if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
   //   const startStepTrackingIfPermitted = async () => {
@@ -1237,7 +1370,7 @@ function WellnessValleyApp() {
             resultUser.id = dbUserId;
             Session.setDbUserId(dbUserId);
             debugLog(
-              "✅ [Redirect] Attached database UserId to user object:",
+              "? [Redirect] Attached database UserId to user object:",
               resultUser.id,
             );
           }
@@ -1245,7 +1378,7 @@ function WellnessValleyApp() {
           setAuthLoading(false);
         }
       } catch (error) {
-        console.error("âŒ Redirect result error:", error);
+        console.error("❌ Redirect result error:", error);
         setError("Authentication failed. Please try again.");
         setAuthLoading(false);
       }
@@ -1253,13 +1386,16 @@ function WellnessValleyApp() {
     checkRedirectResult();
   }, []);
 
-  // ── Profile completion check ──────────────────────────────────────────────
+  // -- Profile completion check ----------------------------------------------
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail, userObj, { afterSave = false } = {}) => {
+    // silent:true suppresses the profileChecking gate (Gate 3) so the app
+    // never shows the loading spinner when the check runs in the background
+    // (e.g. OTP cache-restore validation on startup).
+    async (userEmail, userObj, { afterSave = false, silent = false } = {}) => {
       if (!userEmail) return;
-      setProfileChecking(true);
+      if (!silent) setProfileChecking(true);
 
       const result = await fetchProfileCompletion({
         apiBaseUrl,
@@ -1277,33 +1413,33 @@ function WellnessValleyApp() {
 
       if (result.status === "complete") {
         profileCompletedRef.current = true;
-        setProfileChecking(false);
+        if (!silent) setProfileChecking(false);
         setShowCompleteProfile(false);
-        // Profile fields complete — check picture gate separately
+        // Profile fields complete � check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
         return;
       }
 
       if (result.status === "incomplete") {
         debugLog(
-          "⚠️ [Profile] Mandatory fields missing — showing CompleteProfilePage",
+          "?? [Profile] Mandatory fields missing � showing CompleteProfilePage",
           result.missingFields,
         );
         setProfilePicSnoozeData(result.snooze || null);
-        setProfileChecking(false);
+        if (!silent) setProfileChecking(false);
         setShowCompleteProfile(true);
         return;
       }
 
-      // result.status === 'error' — fail-soft, no gate flash
-      setProfileChecking(false);
-      console.warn("⚠️ [Profile] Failed to check profile completion:", result.error);
+      // result.status === 'error' � fail-soft, no gate flash
+      if (!silent) setProfileChecking(false);
+      console.warn("?? [Profile] Failed to check profile completion:", result.error);
     },
     [apiBaseUrl],
   );
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
-  // ── Profile Picture Validation ──────────────────────────────────────────
+  // -- Profile Picture Validation ------------------------------------------
   // Checks if user has a valid profile picture (not a letter avatar)
   const checkProfilePicture = useCallback(
     async (user) => {
@@ -1312,7 +1448,7 @@ function WellnessValleyApp() {
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
 
-      debugLog("🖼️ [Profile Picture] Checking for valid profile picture...");
+      debugLog("??? [Profile Picture] Checking for valid profile picture...");
 
       const result = await fetchProfilePicture({ apiBaseUrl, email: userEmail });
 
@@ -1326,10 +1462,10 @@ function WellnessValleyApp() {
 
       if (result.status === "valid") {
         if (result.source === "custom") {
-          debugLog("✅ [Profile Picture] User has custom uploaded profile picture");
+          debugLog("? [Profile Picture] User has custom uploaded profile picture");
         } else {
           debugLog(
-            "✅ [Profile Picture] User has Google profile picture:",
+            "? [Profile Picture] User has Google profile picture:",
             (result.profileImage || "").substring(0, 50) + "...",
           );
         }
@@ -1339,7 +1475,7 @@ function WellnessValleyApp() {
       if (result.status === "snoozed") {
         const snoozeUntil = new Date(result.snooze.until).getTime();
         debugLog(
-          "⏰ [Profile Picture] Snoozed (DB) until",
+          "? [Profile Picture] Snoozed (DB) until",
           new Date(snoozeUntil).toLocaleString(),
         );
         return;
@@ -1349,26 +1485,26 @@ function WellnessValleyApp() {
         // Store snooze data in state so modal can use count/max
         setProfilePicSnoozeData(result.snooze || null);
         debugLog(
-          "⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal",
+          "?? [Profile Picture] No valid profile picture found, showing mandatory upload modal",
         );
         setShowMandatoryProfilePictureModal(true);
         return;
       }
 
-      // result.status === "error" — don't block the user
+      // result.status === "error" � don't block the user
       if (result.error) {
-        console.error("❌ [Profile Picture] Check failed:", result.error);
+        console.error("? [Profile Picture] Check failed:", result.error);
       } else {
-        console.warn("⚠️ [Profile Picture] Failed to fetch profile");
+        console.warn("?? [Profile Picture] Failed to fetch profile");
       }
     },
     [apiBaseUrl],
   );
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   // Phase 3d-a: Keep the legacy snapshot ref fresh so the FSM shadow bridge
   // can compare against current React state on every event. This effect runs
-  // on every render — intentional. The body is a single ref assignment, so
+  // on every render � intentional. The body is a single ref assignment, so
   // the cost is negligible. The FSM consumes this via `getLegacySnapshot`.
   useEffect(() => {
     authFsmLegacyRef.current = {
@@ -1416,7 +1552,7 @@ function WellnessValleyApp() {
       // eslint-disable-next-line no-console -- FSM/lifecycle code must reach crash reporters before logger is ready
       console.warn("[AuthFSM] startShadow threw (ignored):", err);
     }
-    // Intentionally empty deps — this must run exactly once on mount.
+    // Intentionally empty deps � this must run exactly once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: adding this dep causes an infinite re-render loop
   }, []);
 
@@ -1431,27 +1567,27 @@ function WellnessValleyApp() {
       if (signOutInProgress.current) {
         return;
       }
-      // ✅ Also ignore if userEmail was cleared (sign-out completed)
+      // ? Also ignore if userEmail was cleared (sign-out completed)
       const storedEmail = Session.getUserEmail();
       if (!user && !storedEmail) {
-        // Normal sign-out state — do nothing, UI already reset
+        // Normal sign-out state � do nothing, UI already reset
         return;
       }
-      // ✅ Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
+      // ? Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
       if (user && Session.isUserSignedOut()) {
-        console.warn("🚫 [Auth State] Blocked silent re-auth — user signed out");
+        console.warn("?? [Auth State] Blocked silent re-auth � user signed out");
         signOutUser().catch(() => {});
         return;
       }
-      // ✅ Block re-auth if account was permanently deleted
+      // ? Block re-auth if account was permanently deleted
       if (user && Session.isAccountDeleted()) {
-        console.warn("🚫 [Auth State] Blocked re-auth — account was deleted");
+        console.warn("?? [Auth State] Blocked re-auth � account was deleted");
         signOutUser().catch(() => {});
         return;
       }
-      // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
+      // ? Hard gate: if forceLoggedOut is true, never re-login from Firebase
       if (forceLoggedOut) {
-        console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
+        console.warn("?? [Auth State] Blocked re-auth � forceLoggedOut is true");
         signOutUser().catch(() => {});
         return;
       }
@@ -1459,14 +1595,22 @@ function WellnessValleyApp() {
       if (user) {
         // Get database UserId if not already attached
         if (!user.id) {
-          const dbUserId = await getUserId(user);
-          if (dbUserId) {
-            user.id = dbUserId;
-            Session.setDbUserId(dbUserId);
-            debugLog(
-              "✅ [Auth State] Attached database UserId to user object:",
-              user.id,
-            );
+          // Warm-start fast path: reuse the cached DB userId to avoid a
+          // network round-trip on every app open for returning users.
+          const cachedId = Session.getDbUserId();
+          if (cachedId) {
+            user.id = cachedId;
+            debugLog("? [Auth State] Restored database UserId from cache:", user.id);
+          } else {
+            const dbUserId = await getUserId(user);
+            if (dbUserId) {
+              user.id = dbUserId;
+              Session.setDbUserId(dbUserId);
+              debugLog(
+                "? [Auth State] Attached database UserId to user object:",
+                user.id,
+              );
+            }
           }
         }
 
@@ -1475,24 +1619,29 @@ function WellnessValleyApp() {
         if (userEmail) {
           Session.setUserEmail(userEmail);
           debugLog(
-            "✅ [Auth State] Stored user email in localStorage:",
+            "? [Auth State] Stored user email in localStorage:",
             userEmail,
           );
         }
 
-        // Load user context for AI personalization
+        // Fire context load without awaiting -- runs in parallel with the status
+        // check below. getUserContext only needs user.id; checkUserStatus only
+        // needs user.email. Both are resolved above so there is no ordering
+        // dependency between these two calls.
         if (user.id) {
-          debugLog("🔄 [Auth State] Loading user context...");
+          debugLog("?? [Auth State] Loading user context (parallel with status check)...");
           setUserContextLoading(true);
-          try {
-            const context = await getUserContext(user.id);
-            setUserContext(context);
-            debugLog("✅ [Auth State] User context stored in state");
-          } catch (error) {
-            console.error("âŒ [Auth State] Failed to load context:", error);
-          } finally {
-            setUserContextLoading(false);
-          }
+          getUserContext(user.id)
+            .then((ctx) => {
+              setUserContext(ctx);
+              debugLog("? [Auth State] User context stored in state");
+            })
+            .catch((err) => {
+              console.error("? [Auth State] Failed to load context:", err);
+            })
+            .finally(() => {
+              setUserContextLoading(false);
+            });
         }
 
         // Skip status check if this is a fresh Google sign-in that's being saved
@@ -1514,12 +1663,12 @@ function WellnessValleyApp() {
 
           // Check setup wizard status for active users
           if (isActive && userEmail) {
-            debugLog("🔄 [Auth State] Checking setup wizard status...");
+            debugLog("?? [Auth State] Checking setup wizard status...");
 
             // Check if user manually skipped setup (check localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
               debugLog(
-                "â­ï¸ [Auth State] User skipped setup (localStorage), bypassing wizard",
+                "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
               // Still check profile completion even if setup was skipped
               await checkProfileCompletion(userEmail, user);
@@ -1541,45 +1690,45 @@ function WellnessValleyApp() {
 
               if (status.result === "error") {
                 console.warn(
-                  "⚠️ [Auth State] Setup status check failed",
+                  "?? [Auth State] Setup status check failed",
                   status.error,
                 );
               } else if (status.result === "skipped") {
                 debugLog(
-                  "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
+                  "?? [Auth State] User skipped setup (database), bypassing wizard",
                 );
                 Session.markSetupSkipped();
-                await checkProfileCompletion(userEmail, user);
+                await checkProfileCompletion(userEmail, user, { silent: true });
                 return;
               } else if (status.result === "pendingOtp") {
                 if (Session.isCoachOtpVerified()) {
-                  debugLog("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
-                  await checkProfileCompletion(userEmail, user);
+                  debugLog("? [Auth State] Coach OTP already verified (localStorage), skipping modal");
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog("🤖 [Auth State] Demo account pending OTP — completing silently");
+                  debugLog("?? [Auth State] Demo account pending OTP � completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user);
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
-                  debugLog("📧 [Auth State] Pending OTP detected, showing OTP modal");
+                  debugLog("?? [Auth State] Pending OTP detected, showing OTP modal");
                   setShowValidateOTP(true);
                 }
               } else if (status.result === "incomplete") {
                 if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog("🤖 [Auth State] Demo account setup incomplete — completing silently");
+                  debugLog("?? [Auth State] Demo account setup incomplete � completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user);
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
-                  debugLog("🔧 [Auth State] Setup incomplete, showing setup wizard");
+                  debugLog("?? [Auth State] Setup incomplete, showing setup wizard");
                   setShowSetupWizard(true);
                 }
               } else {
                 // status.result === "complete"
-                debugLog("✅ [Auth State] Setup already complete");
-                await checkProfileCompletion(userEmail, user);
+                debugLog("? [Auth State] Setup already complete");
+                await checkProfileCompletion(userEmail, user, { silent: true });
               }
             } catch (setupError) {
               console.warn(
-                "⚠️ [Auth State] Failed to check setup status:",
+                "?? [Auth State] Failed to check setup status:",
                 setupError,
               );
               // Continue without blocking - setup check is not critical
@@ -1588,7 +1737,7 @@ function WellnessValleyApp() {
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
           debugLog(
-            "ðŸ” [Auth State] Fresh sign-in detected, skipping status check",
+            "🔐 [Auth State] Fresh sign-in detected, skipping status check",
           );
         }
       }
@@ -1603,7 +1752,7 @@ function WellnessValleyApp() {
         handleSaveUserCache(user);
       } else if (isFreshSignIn) {
         debugLog(
-          "ðŸ” [Auth State] Skipping handleSaveUserCache for fresh sign-in",
+          "🔐 [Auth State] Skipping handleSaveUserCache for fresh sign-in",
         );
       }
     });
@@ -1618,7 +1767,7 @@ function WellnessValleyApp() {
       subscribeToContextUpdates,
     } = require("./shared/services/userIdentity");
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
-      debugLog("✅ [App] User context updated in state:", {
+      debugLog("? [App] User context updated in state:", {
         corrections: updatedContext?.personalCorrections?.length || 0,
         diet: updatedContext?.dietPreference,
       });
@@ -1629,11 +1778,20 @@ function WellnessValleyApp() {
   }, [user?.id, forceLoggedOut]);
 
   // Setup for authenticated users.
+  // requestAllPermissions() is awaited so permissionsReady is only set true
+  // after all three dialogs (camera ? push ? geolocation) have resolved.
+  // This prevents the camera auto-open from firing mid-permission-flow.
   useEffect(() => {
-    if (user) {
-      requestAllPermissions();
-      handleSaveUserCache(user);
-    }
+    if (!user) return;
+    let mounted = true;
+    requestAllPermissions()
+      .then(() => {
+        localStorage.setItem('wv.permissionsGranted', '1'); // cache for instant-ready on next launch
+        if (mounted) setPermissionsReady(true);
+      })
+      .catch(() => { if (mounted) setPermissionsReady(true); }); // fail-open: dialogs already swallow errors
+    handleSaveUserCache(user);
+    return () => { mounted = false; };
   }, [user, requestAllPermissions, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
@@ -1648,16 +1806,16 @@ function WellnessValleyApp() {
         // API returns: { success: true, windows: { education: { start, end }, weight: {...}, ... } }
         if (data.success && data.windows?.education) {
           const eduWindow = data.windows.education;
-          debugLog("✅ Education window fetched from DB:", eduWindow);
+          debugLog("? Education window fetched from DB:", eduWindow);
           setEducationWindow(eduWindow);
         } else {
-          console.warn("âš ï¸ Education window not found in response:", data);
+          console.warn("⚠️ Education window not found in response:", data);
         }
         if (data.success && data.windows?.weight) {
           setWeightWindow(data.windows.weight);
         }
       } catch (err) {
-        console.warn("âš ï¸ Failed to fetch education window from DB:", err.message);
+        console.warn("⚠️ Failed to fetch education window from DB:", err.message);
       }
     };
     fetchEducationWindow();
@@ -1680,7 +1838,7 @@ function WellnessValleyApp() {
                 parsedUser.id = dbUserId;
                 Session.setDbUserId(dbUserId);
                 debugLog(
-                  "✅ [OTP Restore] Attached database UserId to user object:",
+                  "? [OTP Restore] Attached database UserId to user object:",
                   parsedUser.id,
                 );
               }
@@ -1691,22 +1849,22 @@ function WellnessValleyApp() {
             if (userEmail) {
               Session.setUserEmail(userEmail);
               debugLog(
-                "✅ [OTP Restore] Stored user email in localStorage:",
+                "? [OTP Restore] Stored user email in localStorage:",
                 userEmail,
               );
             }
 
             // Load user context for AI personalization
             if (parsedUser.id) {
-              debugLog("🔄 [OTP Restore] Loading user context...");
+              debugLog("?? [OTP Restore] Loading user context...");
               setUserContextLoading(true);
               try {
                 const context = await getUserContext(parsedUser.id);
                 setUserContext(context);
-                debugLog("✅ [OTP Restore] User context stored in state");
+                debugLog("? [OTP Restore] User context stored in state");
               } catch (error) {
                 console.error(
-                  "âŒ [OTP Restore] Failed to load context:",
+                  "❌ [OTP Restore] Failed to load context:",
                   error,
                 );
               } finally {
@@ -1725,10 +1883,11 @@ function WellnessValleyApp() {
             }
 
             setUser(parsedUser);
+            setAuthLoading(false); // safety net: clear loading gate for fresh OTP logins
             handleSaveUserCache(parsedUser);
-            // ✅ Check profile completion after OTP user is restored on refresh
+            // ? Check profile completion after OTP user is restored on refresh
             if (userEmail) {
-              await checkProfileCompletion(userEmail, parsedUser);
+              await checkProfileCompletion(userEmail, parsedUser, { silent: true });
             }
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
@@ -1742,10 +1901,42 @@ function WellnessValleyApp() {
     restoreOtpUser();
   }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
 
-  // ✅ Immediate profile check when app comes back to foreground.
+  // Background validation for cache-restored OTP sessions.
+  // When user was pre-loaded synchronously (no loading screen), the standard
+  // OTP restore waterfall is skipped. This effect runs the essential checks
+  // in the background without blocking the home screen or camera.
+  useEffect(() => {
+    if (!otpCacheRestoredRef.current || !user) return;
+    otpCacheRestoredRef.current = false; // run exactly once
+    (async () => {
+      try {
+        // Attach DB userId if not yet present
+        if (!user.id) {
+          const cachedId = Session.getDbUserId();
+          if (cachedId) {
+            user.id = cachedId;
+          } else {
+            const dbId = await getUserId(user);
+            if (dbId) { user.id = dbId; Session.setDbUserId(dbId); }
+          }
+        }
+        // Status check � shows inactive modal if account was deactivated.
+        await checkUserStatus(user);
+        // Profile completion � silent:true so Gate 3 (profileChecking spinner)
+        // never fires on app open. CompleteProfilePage still shows if needed.
+        const email = user.email || user.Email;
+        if (email) await checkProfileCompletion(email, user, { silent: true });
+      } catch (err) {
+        console.warn("?? [OTP Cache Restore] Background validation error:", err);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty � run once on mount only
+
+  // ? Immediate profile check when app comes back to foreground.
   // NOTE: this is a SEPARATE appStateChange listener from the gallery
   // monitoring effect above. Capacitor allows multiple listeners on the
-  // same event — the gallery effect now removes only its own handle
+  // same event � the gallery effect now removes only its own handle
   // (not removeAllListeners), so this one survives gallery effect re-runs.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -1754,17 +1945,22 @@ function WellnessValleyApp() {
     let handle = null;
     let cancelled = false;
 
-    // ✅ NATIVE LIFECYCLE PHASE: registration plumbing routed through
+    // ? NATIVE LIFECYCLE PHASE: registration plumbing routed through
     // nativeLifecycle.addAppStateListener. Each consumer still receives its
     // own PluginListenerHandle so this effect can clean up independently of
     // the gallery effect's listener (which lives above).
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          // Guard: skip while CompleteProfilePage is visible. Returning from
+          // camera/gallery triggers this listener; re-running checkProfileCompletion
+          // would set profileChecking=true, unmounting the form and discarding
+          // all typed input (height, phone, diet, selected photo).
+          if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
           if (userEmail) {
-            debugLog("🔄 [Foreground] App resumed — running immediate profile check");
-            checkProfileCompletion(userEmail, user);
+            debugLog("?? [Foreground] App resumed � running immediate profile check");
+            checkProfileCompletion(userEmail, user, { silent: true });
           }
         }
       }),
@@ -1804,13 +2000,13 @@ function WellnessValleyApp() {
       if (!userEmail) return;
 
       debugLog(
-        "🔄 [Setup Check] Checking setup wizard status for existing user...",
+        "?? [Setup Check] Checking setup wizard status for existing user...",
       );
 
       // Check if user manually skipped setup (check localStorage first for quick bypass)
       if (Session.isSetupSkipped()) {
         debugLog(
-          "â­ï¸ [Setup Check] User skipped setup (localStorage), bypassing wizard",
+          "⏭️ [Setup Check] User skipped setup (localStorage), bypassing wizard",
         );
         return;
       }
@@ -1829,44 +2025,44 @@ function WellnessValleyApp() {
         });
 
         if (status.result === "error") {
-          console.warn("⚠️ [Setup Check] Setup status check failed", status.error);
+          console.warn("?? [Setup Check] Setup status check failed", status.error);
         } else if (status.result === "skipped") {
-          debugLog("⏭️ [Setup Check] User skipped setup (database), bypassing wizard");
+          debugLog("?? [Setup Check] User skipped setup (database), bypassing wizard");
           Session.markSetupSkipped();
           return;
         } else if (status.result === "pendingOtp") {
           if (Session.isCoachOtpVerified()) {
-            debugLog("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
-            await checkProfileCompletion(userEmail);
+            debugLog("? [Setup Check] Coach OTP already verified (localStorage), skipping modal");
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            debugLog("🤖 [Setup Check] Demo account pending OTP — completing silently");
+            debugLog("?? [Setup Check] Demo account pending OTP � completing silently");
             await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail);
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
-            debugLog("📧 [Setup Check] Pending OTP detected, showing OTP modal");
+            debugLog("?? [Setup Check] Pending OTP detected, showing OTP modal");
             setShowValidateOTP(true);
           }
         } else if (status.result === "incomplete") {
           if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            debugLog("🤖 [Setup Check] Demo account setup incomplete — completing silently");
+            debugLog("?? [Setup Check] Demo account setup incomplete � completing silently");
             await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail);
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
-            debugLog("🔧 [Setup Check] Setup incomplete, showing setup wizard");
+            debugLog("?? [Setup Check] Setup incomplete, showing setup wizard");
             setShowSetupWizard(true);
           }
         } else {
           // status.result === "complete"
-          debugLog("✅ [Setup Check] Setup already complete");
-          await checkProfileCompletion(userEmail);
+          debugLog("? [Setup Check] Setup already complete");
+          await checkProfileCompletion(userEmail, null, { silent: true });
           setTimeout(() => checkProfilePicture(user), 800);
         }
       } catch (setupError) {
         console.warn(
-          "⚠️ [Setup Check] Failed to check setup status:",
+          "?? [Setup Check] Failed to check setup status:",
           setupError,
         );
       }
@@ -1880,22 +2076,22 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user, isUserActive, apiBaseUrl, checkProfileCompletion, checkProfilePicture]);
 
-  // ⚡ PERFORMANCE: Preload user context when user logs in (warm the cache)
+  // ? PERFORMANCE: Preload user context when user logs in (warm the cache)
   useEffect(() => {
     const preloadUserContext = async () => {
       if (!user || !user.id) return;
 
       try {
-        debugLog("⚡ [PRELOAD] Warming user context cache...");
+        debugLog("? [PRELOAD] Warming user context cache...");
         const context = await getUserContext(user.id);
         if (context) {
           setUserContext(context);
           debugLog(
-            "✅ [PRELOAD] Context cached - image analysis will be faster",
+            "? [PRELOAD] Context cached - image analysis will be faster",
           );
         }
       } catch (error) {
-        console.warn("âš ï¸ [PRELOAD] Failed to preload context:", error);
+        console.warn("⚠️ [PRELOAD] Failed to preload context:", error);
       }
     };
 
@@ -1943,7 +2139,7 @@ function WellnessValleyApp() {
       return undefined;
     }
     const { signal, cancel } = createAbortGroup();
-    // Use standard caching — no need to bust cache on every render
+    // Use standard caching � no need to bust cache on every render
     fetch(
       `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`,
       { signal },
@@ -1982,7 +2178,7 @@ function WellnessValleyApp() {
     }
   }, [saveError]);
 
-  // ✅ ANDROID PERFORMANCE: Optimized image compression with async processing
+  // ? ANDROID PERFORMANCE: Optimized image compression with async processing
   const compressImage = (base64, quality = 0.7, maxWidth = 1920) => {
     return new Promise((resolve, reject) => {
       try {
@@ -2036,8 +2232,8 @@ function WellnessValleyApp() {
 
   /**
    * Fetch the user's height (from profile) and compute their ideal weight range
-   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5–24.9).
-   * Formula: idealWeight (kg) = BMI × (heightInMeters)²
+   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5�24.9).
+   * Formula: idealWeight (kg) = BMI � (heightInMeters)�
    * Updates `idealWeight` state so the share card / visible card can show it.
    */
   const refreshIdealWeight = async () => {
@@ -2064,7 +2260,7 @@ function WellnessValleyApp() {
         heightCm: Math.round(heightCm),
       });
     } catch (_) {
-      /* non-critical — share card just won't show ideal weight */
+      /* non-critical � share card just won't show ideal weight */
     }
   };
 
@@ -2097,19 +2293,19 @@ function WellnessValleyApp() {
         muscleMass: weightData.muscleMass,
         bmr: weightData.bmr,
         imageBase64ToSave: imageBase64,
-        // Use EXIF capture timestamp if available — otherwise fall back to upload time
+        // Use EXIF capture timestamp if available � otherwise fall back to upload time
         clientTimestamp: captureTimestamp || new Date().toISOString(),
         clientTimezoneOffset: new Date().getTimezoneOffset(),
       };
 
-      // âŒ REMOVED: Don't reuse weight entry IDs - always create new records
+      // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
       // This allows multiple weight entries per day with different timestamps
       // if (savedWeightIdRef.current) {
       //   payload.entryId = savedWeightIdRef.current;
-      //   debugLog("🔄 Reusing existing weight entry ID:", savedWeightIdRef.current);
+      //   debugLog("?? Reusing existing weight entry ID:", savedWeightIdRef.current);
       // }
 
-      // debugLog('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
+      // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
       const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
@@ -2121,12 +2317,12 @@ function WellnessValleyApp() {
 
       if (!response.ok || !data.success) {
         // Weight validation failed - show user-friendly alert modal
-        debugLog('âŒ Weight validation failed:', data.validation);
+        debugLog('❌ Weight validation failed:', data.validation);
 
-        // 🔥 Even though weight was rejected, BMR may have been saved by the backend.
+        // ?? Even though weight was rejected, BMR may have been saved by the backend.
         // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
         if (data.bmrSaved && weightData.bmr) {
-          debugLog('🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:', weightData.bmr);
+          debugLog('?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:', weightData.bmr);
           setBmrUpdateKey((prev) => prev + 1);
         }
         
@@ -2141,7 +2337,7 @@ function WellnessValleyApp() {
         
         setAlertModal({
           isOpen: true,
-          title: "âš–ï¸ Unrealistic Weight Change",
+          title: "⚖️ Unrealistic Weight Change",
           message: alertMessage,
           type: "warning",
         });
@@ -2154,9 +2350,9 @@ function WellnessValleyApp() {
         throw new Error(data.message || "Weight validation failed");
       }
 
-      debugLog("✅ Weight entry saved successfully");
+      debugLog("? Weight entry saved successfully");
 
-      // ✅ ALWAYS update weight result with final saved weight (corrected or original)
+      // ? ALWAYS update weight result with final saved weight (corrected or original)
       // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
       const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
       setWeightResult({
@@ -2192,7 +2388,7 @@ function WellnessValleyApp() {
         }
       } catch (_) { /* non-critical */ }
 
-      // Fetch user height → compute ideal weight for the share card
+      // Fetch user height ? compute ideal weight for the share card
       refreshIdealWeight();
 
       // Check if weight was auto-corrected
@@ -2203,13 +2399,13 @@ function WellnessValleyApp() {
         setTimeout(() => {
           setAlertModal({
             isOpen: true,
-            title: "✅ Weight Adjusted",
+            title: "? Weight Adjusted",
             message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
             type: "info",
           });
         }, 500);
         
-        debugLog('🔄 Weight auto-corrected:', corrInfo);
+        debugLog('?? Weight auto-corrected:', corrInfo);
       } else if (data.correction && data.correction.message) {
         // Weight changed significantly but within limits - only show if change is notable
         const change = Math.abs(data.correction.difference || 0);
@@ -2217,7 +2413,7 @@ function WellnessValleyApp() {
           setTimeout(() => {
             setAlertModal({
               isOpen: true,
-              title: "📊 Weight Updated",
+              title: "?? Weight Updated",
               message: `Your weight changed by ${change.toFixed(1)} kg. Keep up the great work!`,
               type: "info",
             });
@@ -2231,11 +2427,11 @@ function WellnessValleyApp() {
         savedWeightIdRef.current = data.id;
       }
 
-      // 🔥 If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
-      // BMR is synced to team_table by the backend — increment the key so it re-reads it
+      // ?? If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
+      // BMR is synced to team_table by the backend � increment the key so it re-reads it
       if (weightData.bmr) {
         setBmrUpdateKey((prev) => prev + 1);
-        debugLog("🔥 [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:", weightData.bmr);
+        debugLog("?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:", weightData.bmr);
       }
 
       // Hide saving overlay
@@ -2253,11 +2449,11 @@ function WellnessValleyApp() {
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
     } catch (err) {
-      console.error("âŒ Save weight error:", err);
+      console.error("❌ Save weight error:", err);
       setSaveLoading(false);
       setLoadingState("idle");
       
-      // Weight validation errors are already shown via alertModal — don't show the red error card
+      // Weight validation errors are already shown via alertModal � don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
         setError(err.message || "Failed to save weight entry");
       }
@@ -2284,7 +2480,7 @@ function WellnessValleyApp() {
       let userId = user?.id;
       if (!userId) userId = await getUserId(user);
 
-      // Build payload — include entryId to update the specific weight entry.
+      // Build payload � include entryId to update the specific weight entry.
       // If no entryId, backend will create a new entry instead of updating.
       const payload = {
         userId,
@@ -2306,7 +2502,7 @@ function WellnessValleyApp() {
           setIsEditingWeight(false);
           setAlertModal({
             isOpen: true,
-            title: "âš–ï¸ Unrealistic Weight Change",
+            title: "⚖️ Unrealistic Weight Change",
             message: result.message ? result.message.charAt(0).toUpperCase() + result.message.slice(1) : `We noticed a significant change from your last weigh-in.`,
             type: "warning",
           });
@@ -2378,9 +2574,9 @@ function WellnessValleyApp() {
             unit: weightData.unit || "kg",
           });
 
-        if (duplicateCheck.isDuplicate) {
+        if (false && duplicateCheck.isDuplicate) {
           // Found duplicate - hide saving overlay and show confirmation modal
-          // debugLog('âš ï¸ Duplicate weight detected:', duplicateCheck);
+          // debugLog('⚠️ Duplicate weight detected:', duplicateCheck);
           setSaveLoading(false); // Hide saving overlay while showing duplicate modal
           setLoadingState("idle");
           setDuplicateWeightInfo(duplicateCheck);
@@ -2396,7 +2592,7 @@ function WellnessValleyApp() {
       } catch (duplicateCheckErr) {
         // If duplicate check fails, log it but continue with save (fail-open)
         console.warn(
-          "âš ï¸ Duplicate check failed, proceeding with save:",
+          "⚠️ Duplicate check failed, proceeding with save:",
           duplicateCheckErr,
         );
       }
@@ -2404,12 +2600,12 @@ function WellnessValleyApp() {
       // No duplicate or duplicate check failed - proceed with save (pass cached userId)
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
-      console.error("âŒ Save weight error:", err);
-      // Weight validation errors are already shown via alertModal — don't show the red error card
+      console.error("❌ Save weight error:", err);
+      // Weight validation errors are already shown via alertModal � don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
         const rawMsg = err.message || "";
         const isNetworkErr = rawMsg.toLowerCase().includes("load failed") || rawMsg.includes("Failed to fetch") || rawMsg.includes("network") || rawMsg.includes("connection");
-        setError(isNetworkErr ? "🌐 Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
+        setError(isNetworkErr ? "?? Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
       }
       throw err;
     }
@@ -2440,7 +2636,7 @@ function WellnessValleyApp() {
       setCurrentWeightImage(null);
       setLoading(false);
     } catch (err) {
-      console.error("âŒ Manual weight save error:", err);
+      console.error("❌ Manual weight save error:", err);
       throw err; // Re-throw to show error in modal
     }
   };
@@ -2463,7 +2659,7 @@ function WellnessValleyApp() {
     return [
       currentType !== "food" && {
         label: "Food",
-        icon: "ðŸ½",
+        icon: "🍽",
         sub: `It's ${getMealTypeFromTime(now).toLowerCase()} time`,
         onClick: () => {
           setShowManualWeightModal(false);
@@ -2474,8 +2670,8 @@ function WellnessValleyApp() {
       },
       currentType !== "weight" && {
         label: "Weight",
-        icon: "âš–ï¸",
-        sub: weightWindow ? `${weightWindow.start?.slice(0,5)}–${weightWindow.end?.slice(0,5)}` : null,
+        icon: "⚖️",
+        sub: weightWindow ? `${weightWindow.start?.slice(0,5)}�${weightWindow.end?.slice(0,5)}` : null,
         onClick: () => {
           setShowManualFoodModal(false);
           setShowManualEducationModal(false);
@@ -2486,8 +2682,8 @@ function WellnessValleyApp() {
       },
       currentType !== "education" && {
         label: "Education",
-        icon: "🎓",
-        sub: educationWindow ? `${educationWindow.start?.slice(0,5)}–${educationWindow.end?.slice(0,5)}` : null,
+        icon: "??",
+        sub: educationWindow ? `${educationWindow.start?.slice(0,5)}�${educationWindow.end?.slice(0,5)}` : null,
         onClick: () => {
           setShowManualFoodModal(false);
           setShowManualWeightModal(false);
@@ -2499,7 +2695,7 @@ function WellnessValleyApp() {
 
   /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
   const openBestManualModal = () => {
-    setError(null); // clear AI Unavailable card — modal handles the UI
+    setError(null); // clear AI Unavailable card � modal handles the UI
     const now = imageTimestamp ? new Date(imageTimestamp) : new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
 
@@ -2517,7 +2713,7 @@ function WellnessValleyApp() {
     } else if (inWindow(educationWindow)) {
       setShowManualEducationModal(true);
     } else {
-      // Default → food
+      // Default ? food
       setManualMealType(getMealTypeFromTime(now));
       setShowManualFoodModal(true);
     }
@@ -2556,7 +2752,7 @@ function WellnessValleyApp() {
       setLoadingState("saving");
       setSaveLoading(true);
 
-      // Build detailedItems — either a full plate (multiple) or a single food
+      // Build detailedItems � either a full plate (multiple) or a single food
       let detailedItems;
       let totalNutrition;
       let categoryName;
@@ -2649,7 +2845,7 @@ function WellnessValleyApp() {
         captureTimestamp: null,
       });
     } catch (err) {
-      console.error("âŒ Manual food save error:", err);
+      console.error("❌ Manual food save error:", err);
       throw err;
     } finally {
       setSaveLoading(false);
@@ -2670,7 +2866,7 @@ function WellnessValleyApp() {
     captureTimestamp = null,
   ) => {
     try {
-      debugLog("💾 Auto-saving education log:", educationData);
+      debugLog("?? Auto-saving education log:", educationData);
 
       // Get the actual database UserId
       let userId = user?.id;
@@ -2683,9 +2879,9 @@ function WellnessValleyApp() {
       }
 
       // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
-      // If within 100m of club → club attendance
-      // If not near club → remote attendance
-      debugLog("ðŸ“ Checking GPS for nearby clubs...");
+      // If within 100m of club ? club attendance
+      // If not near club ? remote attendance
+      debugLog("📍 Checking GPS for nearby clubs...");
 
       let attendance;
       try {
@@ -2693,7 +2889,7 @@ function WellnessValleyApp() {
           apiBaseUrl,
           userId,
         );
-        debugLog("✅ Attendance determined:", attendance);
+        debugLog("? Attendance determined:", attendance);
 
         // Check if location permission was denied
         if (attendance.locationError === "PERMISSION_DENIED") {
@@ -2707,7 +2903,7 @@ function WellnessValleyApp() {
         }
       } catch (gpsError) {
         console.warn(
-          "âš ï¸ GPS check failed, defaulting to remote attendance:",
+          "⚠️ GPS check failed, defaulting to remote attendance:",
           gpsError,
         );
         // Fallback to remote attendance if GPS fails
@@ -2726,7 +2922,7 @@ function WellnessValleyApp() {
         attendance.nearbyCenters.length > 1 &&
         !selectedClub
       ) {
-        debugLog("ðŸ¢ Multiple clubs detected, showing selection modal");
+        debugLog("🏢 Multiple clubs detected, showing selection modal");
         setNearbyCenters(attendance.nearbyCenters);
         // Store captureTimestamp so club-selection callback can pass it through
         setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp });
@@ -2742,7 +2938,7 @@ function WellnessValleyApp() {
       
       if (attendance.latitude && attendance.longitude) {
         try {
-          debugLog("ðŸ“ Fetching address from GPS:", {
+          debugLog("📍 Fetching address from GPS:", {
             lat: attendance.latitude,
             lon: attendance.longitude
           });
@@ -2773,7 +2969,7 @@ function WellnessValleyApp() {
               
               userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
               
-              debugLog("✅ Address extracted:", {
+              debugLog("? Address extracted:", {
                 city: userCity,
                 village: userVillage,
                 fullAddress: geoData.display_name
@@ -2781,7 +2977,7 @@ function WellnessValleyApp() {
             }
           }
         } catch (err) {
-          console.warn("âš ï¸ Failed to fetch address from GPS:", err);
+          console.warn("⚠️ Failed to fetch address from GPS:", err);
         }
       }
 
@@ -2792,11 +2988,11 @@ function WellnessValleyApp() {
       const finalPlatform =
         attendance.attendanceType === "club" ? "Club" : educationData.platform;
 
-      // Use captureTimestamp (passed directly) → imageTimestamp state → current time
+      // Use captureTimestamp (passed directly) ? imageTimestamp state ? current time
       // Using the direct parameter avoids reading stale React state
       const logTimestamp = captureTimestamp || imageTimestamp || new Date().toISOString();
       debugLog(
-        "📅 Education log timestamp:",
+        "?? Education log timestamp:",
         logTimestamp,
         captureTimestamp ? "(from EXIF param)" : imageTimestamp ? "(from state)" : "(current time)",
       );
@@ -2831,33 +3027,33 @@ function WellnessValleyApp() {
         throw new Error(data.message || "Failed to save education log");
       }
 
-      debugLog("✅ Education log auto-saved successfully:", data.id);
+      debugLog("? Education log auto-saved successfully:", data.id);
 
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
       debugLog(
-        `   ðŸ“ Attendance: ${attendance.attendanceType.toUpperCase()}`,
+        `   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`,
       );
       if (finalCenterName) {
-        debugLog(`   ðŸ¢ Club: ${finalCenterName}`);
+        debugLog(`   🏢 Club: ${finalCenterName}`);
       }
       if (educationData.participantCount) {
-        debugLog(`   👥 Participants: ${educationData.participantCount}`);
+        debugLog(`   ?? Participants: ${educationData.participantCount}`);
       }
       if (data.isOnTime !== undefined) {
         const status = data.isOnTime
-          ? "✅ ON-TIME (Present)"
-          : "âš ï¸ LATE (Absent)";
-        debugLog(`   â° Timing: ${status}`);
+          ? "? ON-TIME (Present)"
+          : "⚠️ LATE (Absent)";
+        debugLog(`   ⏰ Timing: ${status}`);
         debugLog(
-          `   ðŸ• Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
+          `   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
         );
       }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
-      console.error("âŒ Failed to auto-save education log:", error);
+      console.error("❌ Failed to auto-save education log:", error);
       setError(
         error.message || "Failed to save education log. Please try again.",
       );
@@ -2868,7 +3064,7 @@ function WellnessValleyApp() {
 
   // Handle club selection from modal
   const handleClubSelection = async (selectedCenter) => {
-    debugLog("ðŸ¢ Club selected:", selectedCenter);
+    debugLog("🏢 Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
 
     if (pendingEducationData) {
@@ -2888,12 +3084,25 @@ function WellnessValleyApp() {
   const performNutritionSave = async (saveData) => {
     const saveStart = Date.now();
     try {
-      debugLog("🔵 [App] Starting nutrition save:", {
+      debugLog("?? [App] Starting nutrition save:", {
         userId: saveData.userId,
         imagePath: saveData.imagePath,
         hasImageBase64: !!saveData.imageBase64,
       });
       setSaveLoading(true);
+
+      // Await the captures POST if it hasn't resolved yet, so captureId is
+      // always populated before saveNutritionAnalysis fires.  Without this,
+      // a fast Gemini response races ahead of a slow /captures network call
+      // and captureId arrives as null ? the backend INSERTs a new row instead
+      // of UPDATing the pre-created pending row ? two records in the DB.
+      if (pendingSharePromiseRef.current) {
+        const share = await pendingSharePromiseRef.current;
+        if (share && !foodCaptureIdRef.current) {
+          foodCaptureIdRef.current = share.id;
+        }
+        pendingSharePromiseRef.current = null;
+      }
 
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
@@ -2903,32 +3112,32 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       });
       foodCaptureIdRef.current = null;
-      debugLog("✅ [App] Save successful:", saveRes);
-      debugLog(`â±ï¸ [PERF] Database save: ${Date.now() - saveStart}ms`);
+      debugLog("? [App] Save successful:", saveRes);
+      debugLog(`⏱️ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
       if (process.env.NODE_ENV !== "production") {
-        // debugLog('✅ Save successful:', saveRes);
+        // debugLog('? Save successful:', saveRes);
       }
 
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
-      debugLog("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
+      debugLog("? [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
-      // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
+      // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
-      console.error("âŒ [App] Save failed:", err);
-      console.error("âŒ [App] Error message:", err.message);
-      console.error("âŒ [App] Error stack:", err.stack);
+      console.error("❌ [App] Save failed:", err);
+      console.error("❌ [App] Error message:", err.message);
+      console.error("❌ [App] Error stack:", err.stack);
       const friendlySaveError = getFriendlyErrorMessage(err);
       setSaveError(friendlySaveError);
       throw err;
     } finally {
       setSaveLoading(false);
-      debugLog("✅ [App] Save loading finished");
+      debugLog("? [App] Save loading finished");
     }
   };
 
@@ -3011,7 +3220,7 @@ function WellnessValleyApp() {
         );
       } catch (err) {
         console.error(
-          "âŒ Weight save error after duplicate confirmation:",
+          "❌ Weight save error after duplicate confirmation:",
           err,
         );
       } finally {
@@ -3054,9 +3263,34 @@ function WellnessValleyApp() {
     }
     imageProcessingInProgress.current = true;
 
+    // ?? [BUG 1 FIX] Snapchat-style overlay must mount BEFORE any setState
+    // below, otherwise React commits a home-screen render during the
+    // FileReader await (~100–300ms flash). URL.createObjectURL is fully
+    // synchronous → the overlay paints on the SAME frame this function is
+    // called, so the home screen is never visible. The object URL is
+    // revoked when the overlay is cleared (in the share .then / safety
+    // timeout below) to avoid the memory leak.
+    try {
+      if (file && typeof URL?.createObjectURL === 'function') {
+        const objectUrl = URL.createObjectURL(file);
+        setSharingPendingImage(objectUrl);
+      }
+    } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+
+    // ?? Safety timer so the user is never stuck behind the photo overlay.
+    if (sharingPendingTimerRef.current) clearTimeout(sharingPendingTimerRef.current);
+    sharingPendingTimerRef.current = setTimeout(() => {
+      setSharingPendingImage((prev) => {
+        if (prev && prev.startsWith('blob:')) {
+          try { URL.revokeObjectURL(prev); } catch (_) {}
+        }
+        return null;
+      });
+    }, 3500);
+
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
-      debugLog("📸 EXIF Timestamp received:", exifTimestamp);
+      debugLog("?? EXIF Timestamp received:", exifTimestamp);
       setImageTimestamp(exifTimestamp);
     } else {
       setImageTimestamp(null);
@@ -3081,26 +3315,26 @@ function WellnessValleyApp() {
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError(
-        "📸 Image file is too large. Please choose a smaller image (max 10MB).",
+        "?? Image file is too large. Please choose a smaller image (max 10MB).",
       );
       imageProcessingInProgress.current = false;
       return;
     }
 
-    // ✋ MANUAL MODE: skip AI entirely, open best manual modal
+    // ? MANUAL MODE: skip AI entirely, open best manual modal
     if (manualModeActive) {
       imageProcessingInProgress.current = false;
       openBestManualModal();
       return;
     }
 
-    // 🚨 FRAUD PREVENTION: On web only — native handles this per-source in ImageUpload
+    // ?? FRAUD PREVENTION: On web only � native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
-      debugLog("ðŸ” Validating image freshness (web)...");
+      debugLog("🔍 Validating image freshness (web)...");
       const validation = await validateImageFreshness(file, 0);
       if (!validation.isValid) {
-        console.error("âŒ Image validation failed:", validation);
+        console.error("❌ Image validation failed:", validation);
         setAlertModal({
           isOpen: true,
           title: validation.message || "Photo Not From Today",
@@ -3111,7 +3345,7 @@ function WellnessValleyApp() {
         imageProcessingInProgress.current = false;
         return;
       }
-      debugLog("✅ Image validated:", validation.message);
+      debugLog("? Image validated:", validation.message);
     }
 
     setSelectedImage(file);
@@ -3128,11 +3362,11 @@ function WellnessValleyApp() {
     setLoadingState("analyzing"); // Reset to analyzing state
     lastImageFileRef.current = file; // Store for retry
 
-    // ⚡ PERFORMANCE TRACKING
+    // ? PERFORMANCE TRACKING
     const perfStart = Date.now();
-    debugLog("â±ï¸ [PERF] 🟢 Image processing started");
+    debugLog("⏱️ [PERF] ?? Image processing started");
 
-    // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
+    // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
       const readStart = Date.now();
       const imageBase64 = await new Promise((resolve, reject) => {
@@ -3141,9 +3375,9 @@ function WellnessValleyApp() {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      debugLog(`â±ï¸ [PERF] File reading: ${Date.now() - readStart}ms`);
+      debugLog(`⏱️ [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ⚡ OPTIMIZED: Aggressive compression for faster uploads & API calls
+      // ? OPTIMIZED: Aggressive compression for faster uploads & API calls
       const compressStart = Date.now();
       const isAndroid = Capacitor.isNativePlatform();
       const imageSizeMB = imageBase64.length / (1024 * 1024);
@@ -3173,13 +3407,13 @@ function WellnessValleyApp() {
       if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
         debugLog(
-          `â±ï¸ [PERF] Compression: ${
+          `⏱️ [PERF] Compression: ${
             Date.now() - compressStart
-          }ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`,
+          }ms (${imageSizeMB.toFixed(2)}MB ? ${newSizeMB.toFixed(2)}MB)`,
         );
       } else {
         debugLog(
-          `â±ï¸ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`,
+          `⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`,
         );
       }
 
@@ -3192,19 +3426,20 @@ function WellnessValleyApp() {
         imageTypeDetector.setCurrentUser(user.id, user.email);
       }
 
-      // 🚀 [Share] Pre-create the public-share row IN PARALLEL with Gemini
+      // ?? [Share] Pre-create the public-share row IN PARALLEL with Gemini
       // detection. By the time we know the image is food, the share token is
       // typically already returned, so the share button appears the same
-      // instant NutritionCard renders — not several hundred ms later.
+      // instant NutritionCard renders � not several hundred ms later.
       // If the image turns out to be weight/education/smartwatch, the row is
-      // simply left as a pending capture (auto-expires in 30 days) — we never
+      // simply left as a pending capture (auto-expires in 30 days) � we never
       // surface its URL to the user.
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
+      foodAutoSharedRef.current = false; // reset so auto-share fires for every new food image
       const captureApiStart = Date.now();
       debugLog(
-        `⏱️ [PERF] 🔗 POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
+        `?? [PERF] ?? POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
       );
       const pendingSharePromise = (async () => {
         try {
@@ -3220,7 +3455,7 @@ function WellnessValleyApp() {
           );
           if (!capRes.ok) {
             debugLog(
-              `⏱️ [PERF] 🔗 POST /captures FAILED in ${Date.now() - captureApiStart}ms (status ${capRes.status})`,
+              `?? [PERF] ?? POST /captures FAILED in ${Date.now() - captureApiStart}ms (status ${capRes.status})`,
             );
             return null;
           }
@@ -3228,7 +3463,7 @@ function WellnessValleyApp() {
           const capDuration = Date.now() - captureApiStart;
           if (capData.ok && capData.data?.id) {
             debugLog(
-              `⏱️ [PERF] 🔗 POST /captures: ${capDuration}ms (+${Date.now() - perfStart}ms from capture start) → token ready`,
+              `?? [PERF] ?? POST /captures: ${capDuration}ms (+${Date.now() - perfStart}ms from capture start) ? token ready`,
             );
             return {
               id: capData.data.id,
@@ -3236,37 +3471,80 @@ function WellnessValleyApp() {
             };
           }
           debugLog(
-            `⏱️ [PERF] 🔗 POST /captures responded ok=false in ${capDuration}ms`,
+            `?? [PERF] ?? POST /captures responded ok=false in ${capDuration}ms`,
           );
           return null;
         } catch (err) {
           debugLog(
-            `⏱️ [PERF] 🔗 POST /captures THREW after ${Date.now() - captureApiStart}ms: ${err?.message || err}`,
+            `?? [PERF] ?? POST /captures THREW after ${Date.now() - captureApiStart}ms: ${err?.message || err}`,
           );
           console.warn('[Share] pre-capture failed:', err);
           return null;
         }
       })();
+      // Store a reference so performNutritionSave can await this promise
+      // and guarantee captureId is set before the save request goes out.
+      pendingSharePromiseRef.current = pendingSharePromise;
 
-      // ⚡ [Share] FAST CLASSIFICATION — kick off a lightweight Gemini call
+      // ?? [PERF FIX] EARLY SHARE FIRE � fire WhatsApp share the instant the
+      // capture URL is ready, WITHOUT waiting for image-type classification.
+      // The classification gate (food/weight/education) used to delay this by
+      // 400�900ms, during which the home screen was visible to the user.
+      // Firing here means: camera closes ? WhatsApp opens immediately (no
+      // home screen flash). The foodAutoSharedRef guard prevents the existing
+      // classification-gated auto-share effect (line ~446) from double-firing.
+      pendingSharePromise.then((share) => {
+        const clearOverlay = () => {
+          setSharingPendingImage((prev) => {
+            if (prev && prev.startsWith('blob:')) {
+              try { URL.revokeObjectURL(prev); } catch (_) {}
+            }
+            return null;
+          });
+          if (sharingPendingTimerRef.current) {
+            clearTimeout(sharingPendingTimerRef.current);
+            sharingPendingTimerRef.current = null;
+          }
+        };
+        if (!share?.url || foodAutoSharedRef.current) {
+          if (!share?.url) clearOverlay();
+          return;
+        }
+        foodAutoSharedRef.current = true;
+        shareTextViaWhatsApp(share.url).then((ok) => {
+          _hasCompletedFirstShareRef.current = true;
+          if (!ok) foodAutoSharedRef.current = false;
+          clearOverlay();
+        });
+      });
+
+      // --- [BUG 2 FIX] Always run AI analysis in the background ----------
+      // The previous first-image-of-day gate skipped Gemini for subsequent
+      // captures, which made every food after the first show as "Unknown
+      // Food" / 0 kcal. The early-share .then() above already opened the
+      // share sheet, so analysis no longer needs to block the UX — it runs
+      // silently and populates the dashboard for when the user returns.
+      // ---------------------------------------------------------------------
+
+      // ? [Share] FAST CLASSIFICATION � kick off a lightweight Gemini call
       // that ONLY returns the image type label (no nutrition extraction).
-      // Typical latency ~400–900ms, vs. ~2–4s for the full unified detect
+      // Typical latency ~400�900ms, vs. ~2�4s for the full unified detect
       // below. As soon as this confirms "food", we flip `imageType` and let
       // the captures POST `.then` surface the share URL, so the
-      // "Share Image + Link" button appears ~1.5–3s sooner. The full
+      // "Share Image + Link" button appears ~1.5�3s sooner. The full
       // `detectImageType` call still runs afterwards to produce the actual
-      // nutrition data — and if it disagrees with the fast classifier, the
+      // nutrition data � and if it disagrees with the fast classifier, the
       // weight/education/smartwatch branches below clear the optimistic
       // food state.
       const fastClassifyStart = Date.now();
       debugLog(
-        `⏱️ [PERF] ⚡ Fast classify started (+${fastClassifyStart - perfStart}ms from capture start)`,
+        `?? [PERF] ? Fast classify started (+${fastClassifyStart - perfStart}ms from capture start)`,
       );
       imageTypeDetector
         .classifyImageTypeFast(file)
         .then((fast) => {
           debugLog(
-            `⏱️ [PERF] ⚡ Fast classify resolved in ${Date.now() - fastClassifyStart}ms (+${Date.now() - perfStart}ms from capture start) → type=${fast?.type}`,
+            `?? [PERF] ? Fast classify resolved in ${Date.now() - fastClassifyStart}ms (+${Date.now() - perfStart}ms from capture start) ? type=${fast?.type}`,
           );
           if (fast?.type === 'food') {
             setImageType('food');
@@ -3275,26 +3553,26 @@ function WellnessValleyApp() {
                 foodCaptureIdRef.current = share.id;
                 setFoodShareUrl(share.url);
                 debugLog(
-                  `⏱️ [PERF] 🔗 Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
+                  `?? [PERF] ?? Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
                 );
               }
             });
           }
         })
         .catch(() => {
-          // Soft-fail — the full detect below will set imageType correctly.
+          // Soft-fail � the full detect below will set imageType correctly.
         });
 
-      // ✅ Detect image type using Gemini AI (single unified call)
+      // ? Detect image type using Gemini AI (single unified call)
       const apiStart = Date.now();
       debugLog(
-        `⏱️ [PERF] 🔥 Gemini detectImageType started (+${apiStart - perfStart}ms from capture start)`,
+        `?? [PERF] ?? Gemini detectImageType started (+${apiStart - perfStart}ms from capture start)`,
       );
       const detectedType = await imageTypeDetector.detectImageType(file);
       debugLog(
-        `⏱️ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms (+${Date.now() - perfStart}ms from capture start) → type=${detectedType?.type}`,
+        `?? [PERF] ?? Gemini API call: ${Date.now() - apiStart}ms (+${Date.now() - perfStart}ms from capture start) ? type=${detectedType?.type}`,
       );
-      debugLog("ðŸ” [DEBUG] Image Type Detection Result:", {
+      debugLog("🔍 [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
         hasDetails: !!detectedType.details,
@@ -3302,22 +3580,22 @@ function WellnessValleyApp() {
         fullResponse: detectedType,
       });
 
-      // ðŸ½ï¸ Early detection: If food items detected, show them immediately
+      // 🍽️ Early detection: If food items detected, show them immediately
       if (
         detectedType.details?.foods &&
         detectedType.details.foods.length > 0
       ) {
         const foodNames = detectedType.details.foods.map((f) => f.name);
         debugLog(
-          "ðŸ½ï¸ [AI-DETECTED] Food items identified:",
+          "🍽️ [AI-DETECTED] Food items identified:",
           foodNames.join(", "),
         );
         setDetectedFoodNames(foodNames); // Show detected names in UI immediately
       }
 
-      // ✅ PRIORITY 0: Smartwatch / fitness app screenshot — show activity card
+      // ? PRIORITY 0: Smartwatch / fitness app screenshot � show activity card
       if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
-        debugLog("⌚ Smartwatch image detected — showing watch activity card.");
+        debugLog("? Smartwatch image detected � showing watch activity card.");
         // Resolve the real DB userId now (same pattern used everywhere in App.js)
         let resolvedUserId = user?.id;
         if (!resolvedUserId) {
@@ -3328,14 +3606,28 @@ function WellnessValleyApp() {
           caloriesBurned: detectedType.details?.caloriesBurned || 0,
           source: detectedType.details?.source || "Smartwatch",
           loggedAt: new Date().toISOString(),
-          userId: resolvedUserId, // â† real DB id, not Firebase uid
+          userId: resolvedUserId, // ← real DB id, not Firebase uid
+        });
+        // Tag the pending capture as 'smartwatch' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the correct dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'smartwatch');
+        // Auto-share to WhatsApp immediately � same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+          });
         });
         setLoading(false);
         return;
       }
 
-      // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
-      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        debugLog("🎓 Education meeting detected, analyzing...");
+      // ? PRIORITY 1: Check for education meeting (AUTO-SAVE)
+      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        debugLog("?? Education meeting detected, analyzing...");
         setImageType("education");
 
         try {
@@ -3349,7 +3641,7 @@ function WellnessValleyApp() {
           };
 
           if (educationData && educationData.success) {
-            debugLog("✅ Education data extracted:", educationData);
+            debugLog("? Education data extracted:", educationData);
 
             setEducationResult({
               platform: educationData.platform,
@@ -3368,18 +3660,32 @@ function WellnessValleyApp() {
             setError("Unable to analyze meeting screenshot. Please try again.");
           }
         } catch (err) {
-          console.error("âŒ Education analysis failed:", err);
+          console.error("❌ Education analysis failed:", err);
           setError("Failed to analyze meeting screenshot: " + err.message);
         }
 
+        // Tag the pending capture as 'education' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the education dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'education');
+        // Auto-share to WhatsApp immediately � same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+          });
+        });
         setLoading(false);
         return;
       }
 
-      // ✅ PRIORITY 2: Check for weight scale
+      // ? PRIORITY 2: Check for weight scale
       if (detectedType.type === "weight" && detectedType.confidence > 0.6) {
         // It's a weight scale - try to extract weight
-        debugLog("ðŸ” Weight scale detected, extracting metrics...");
+        debugLog("🔍 Weight scale detected, extracting metrics...");
         setImageType("weight");
 
         // Use weight data from unified detection (no second API call needed)
@@ -3387,7 +3693,7 @@ function WellnessValleyApp() {
 
         if (detectedType.details?.weightValue) {
           // Weight was already extracted in the unified detection call
-          debugLog("✅ Using weight data from unified detection");
+          debugLog("? Using weight data from unified detection");
           // Normalize BMR - AI may return different casing or include units
           const rawBmr = detectedType.details?.bmr ?? detectedType.details?.Bmr ?? detectedType.details?.BMR ?? null;
           let normalizedBmr = null;
@@ -3409,13 +3715,13 @@ function WellnessValleyApp() {
             bmr: normalizedBmr,
           };
         } else {
-          // Fallback: Weight value not extracted — prompt user to retake
+          // Fallback: Weight value not extracted � prompt user to retake
           debugLog(
-            "⚠️ Weight value not detected in unified call, prompting retake",
+            "?? Weight value not detected in unified call, prompting retake",
           );
           setAlertModal({
             isOpen: true,
-            title: "📸 Image Not Clear Enough",
+            title: "?? Image Not Clear Enough",
             message:
               "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
             type: "error",
@@ -3428,13 +3734,13 @@ function WellnessValleyApp() {
 
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
-          // debugLog('✅ Weight detected:', detectedWeight);
+          // debugLog('? Weight detected:', detectedWeight);
 
           // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
           if (detectedWeight.unit === "lbs") {
             debugLog(
-              `🔄 Converting ${detectedWeight.weightValue} lbs to kg...`,
+              `?? Converting ${detectedWeight.weightValue} lbs to kg...`,
             );
             weightToSave.weightValue = weightDetectionService.convertWeight(
               detectedWeight.weightValue,
@@ -3442,7 +3748,7 @@ function WellnessValleyApp() {
               "kg",
             );
             weightToSave.unit = "kg";
-            debugLog(`✅ Converted to ${weightToSave.weightValue} kg`);
+            debugLog(`? Converted to ${weightToSave.weightValue} kg`);
           }
 
           // Don't display weight result yet - wait for successful save
@@ -3451,7 +3757,7 @@ function WellnessValleyApp() {
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           
-          // ðŸ” FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          // 🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
           try {
             const tempUserId = user?.id || (await getUserId(user));
             const prevWeightRes = await fetch(
@@ -3470,7 +3776,7 @@ function WellnessValleyApp() {
                 previousDate
               );
               
-              debugLog('ðŸ” Frontend weight validation:', validation);
+              debugLog('🔍 Frontend weight validation:', validation);
               
               // If validation fails or shows major warning, don't save (backend will also validate)
               if (!validation.valid) {
@@ -3478,15 +3784,15 @@ function WellnessValleyApp() {
                 setLoading(false);
                 
                 // Just log and continue - backend will handle validation and show CustomAlertModal
-                debugLog('âš ï¸ Frontend detected unrealistic weight change, backend will validate');
+                debugLog('⚠️ Frontend detected unrealistic weight change, backend will validate');
               } else if (validation.warning && validation.difference && Math.abs(validation.difference) > 1.5) {
                 // Show info message for moderate changes
-                debugLog(`â„¹ï¸ ${validation.message}`);
+                debugLog(`ℹ️ ${validation.message}`);
               }
             }
           } catch (validationError) {
             // Non-critical - continue with save even if validation fails
-            console.warn('âš ï¸ Frontend validation check failed, proceeding with save:', validationError);
+            console.warn('⚠️ Frontend validation check failed, proceeding with save:', validationError);
           }
           
           // Wrap save in try-catch to handle backend validation failures
@@ -3494,7 +3800,7 @@ function WellnessValleyApp() {
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
-            // ✅ Weight result is now set INSIDE performWeightSave with corrected value
+            // ? Weight result is now set INSIDE performWeightSave with corrected value
             // Don't set weightResult here - performWeightSave handles it with final weight
             setWeightEntrySaved(true);
             
@@ -3518,7 +3824,7 @@ function WellnessValleyApp() {
                   });
                   // Compute ideal weight for the share card
                   refreshIdealWeight();
-                  // ✅ Immediately inject into leaderboard strip — no API wait needed
+                  // ? Immediately inject into leaderboard strip � no API wait needed
                   if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                     leaderboardRef.current.injectEntry({
                       userId: diffUserId,
@@ -3534,28 +3840,28 @@ function WellnessValleyApp() {
                 }
               }
             } catch (_) {
-              /* non-critical — share card just won't show diff */
+              /* non-critical � share card just won't show diff */
             }
           } catch (saveError) {
             // Validation failed or other save error - don't show weight result
-            debugLog("âŒ Weight save failed, weight not displayed:", saveError.message);
+            debugLog("❌ Weight save failed, weight not displayed:", saveError.message);
             // Modal is already shown by performWeightSave, just stop here
             setLoading(false);
             return;
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed — prompt user to retake a clearer photo
+          // Weight detection failed � prompt user to retake a clearer photo
           if (detectedWeight.lowConfidence) {
-            debugLog(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
+            debugLog(`?? Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            debugLog("⚠️ Weight detection failed, prompting retake");
+            debugLog("?? Weight detection failed, prompting retake");
           }
           setAlertModal({
             isOpen: true,
-            title: "📸 Please Take a Clearer Photo",
+            title: "?? Please Take a Clearer Photo",
             message:
-              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
+              "We couldn't read the weight from your image. Please ensure:\n� The scale display is fully visible\n� Good lighting (avoid shadows or glare)\n� Hold the camera steady directly above the scale",
             type: "error",
           });
           setCurrentWeightImage(null);
@@ -3564,6 +3870,41 @@ function WellnessValleyApp() {
           return;
         }
 
+        // Tag the pending capture as 'weight' so it is excluded from the
+        // nutrition dashboard (ImageType='food' filter) but the share link
+        // still resolves and routes to the weight dashboard tab.
+        updatePendingCaptureType(pendingSharePromise, 'weight');
+        // Auto-share to WhatsApp immediately � same as food flow.
+        pendingSharePromise.then((share) => {
+          if (!share?.url || foodAutoSharedRef.current) return;
+          foodAutoSharedRef.current = true;
+          shareTextViaWhatsApp(share.url).then((ok) => {
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+          });
+        });
+        setLoading(false);
+        return;
+      }
+
+      // PR 3 — Before defaulting to food, check whether the detector is
+      // actually confident. `imageTypeDetector.detectImageType()` falls back
+      // to `{ type: 'food' }` for unrecognised photos (phone, cat, blank
+      // wall) and on Gemini errors (details.defaulted === true). Treating
+      // those as food pollutes the nutrition feed with 0-kcal rows and
+      // generates broken share links — the root bug PR 3 fixes.
+      if (isLowConfidenceFood(detectedType)) {
+        debugLog("❓ [Image Detection] Low-confidence food — opening unknown picker", {
+          confidence: detectedType?.confidence,
+          defaulted: detectedType?.details?.defaulted,
+          foodsLength: detectedType?.details?.foods?.length || 0,
+          totalCalories: detectedType?.details?.total?.calories || 0,
+        });
+        // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
+        // queries skip it. The user's pick will re-tag it via the modal handler.
+        updatePendingCaptureType(pendingSharePromise, 'unknown');
+        setUnknownCaptureModal({ open: true, pendingSharePromise });
         setLoading(false);
         return;
       }
@@ -3574,18 +3915,18 @@ function WellnessValleyApp() {
       // The pending-capture POST was kicked off in parallel with the Gemini
       // detection call (see `pendingSharePromise` above). Surface its URL as
       // soon as it resolves so the Share button appears the instant food is
-      // confirmed — no extra round-trip wait after detection.
+      // confirmed � no extra round-trip wait after detection.
       pendingSharePromise.then((share) => {
         if (share) {
           foodCaptureIdRef.current = share.id;
           setFoodShareUrl(share.url);
           debugLog(
-            `⏱️ [PERF] 🔗 Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
+            `?? [PERF] ?? Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
           );
         }
       });
-      debugLog("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
-      debugLog("ðŸ½ï¸ [DEBUG] Food details check:", {
+      debugLog("🍽️ [DEBUG] Processing as FOOD image");
+      debugLog("🍽️ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
         hasFoodsArray: !!detectedType.details?.foods,
         foodsLength: detectedType.details?.foods?.length || 0,
@@ -3600,44 +3941,44 @@ function WellnessValleyApp() {
           detectedType.details?.foods &&
           detectedType.details.foods.length > 0
         ) {
-          debugLog("✅ Using nutrition data from unified detection");
+          debugLog("? Using nutrition data from unified detection");
 
           let foods = detectedType.details.foods;
 
-          // 🎯 Update detected food names for display
+          // ?? Update detected food names for display
           const foodNames = foods.map((f) => f.name);
           setDetectedFoodNames(foodNames);
-          debugLog("ðŸ½ï¸ [AI-DETECTED] Food names:", foodNames.join(", "));
+          debugLog("🍽️ [AI-DETECTED] Food names:", foodNames.join(", "));
 
-          // 🔴 CRITICAL: Preserve original AI-detected names BEFORE any corrections
+          // ?? CRITICAL: Preserve original AI-detected names BEFORE any corrections
           // This ensures we always know what the AI originally detected, even after auto-corrections
           foods = foods.map((food) => ({
             ...food,
             originalAiName: food.name, // Store the fresh AI detection
           }));
           debugLog(
-            "✅ [PRESERVE] Original AI names saved:",
+            "? [PRESERVE] Original AI names saved:",
             foods.map((f) => `${f.name}`).join(", "),
           );
 
-          // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
-          // debugLog("📋 [CORRECTION] Starting auto-correction process...");
+          // ?? APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
+          // debugLog("?? [CORRECTION] Starting auto-correction process...");
           // debugLog(
-          //   "📋 [CORRECTION] Foods before correction:",
+          //   "?? [CORRECTION] Foods before correction:",
           //   foods.map((f) => f.name),
           // );
           try {
             const userId = user?.id || (await getUserId(user));
-            // debugLog("📋 [CORRECTION] User ID for corrections:", userId);
+            // debugLog("?? [CORRECTION] User ID for corrections:", userId);
             if (userId) {
               const correctedFoods = await applyUserCorrections(foods, userId);
               // debugLog(
-              //   "📋 [CORRECTION] Foods after correction:",
+              //   "?? [CORRECTION] Foods after correction:",
               //   correctedFoods.map((f) => f.name),
               // );
               foods = correctedFoods;
 
-              // ðŸ› Capture ALL food detections for debug modal (corrections + no corrections)
+              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
               const newLogs = correctedFoods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
@@ -3653,32 +3994,32 @@ function WellnessValleyApp() {
               if (newLogs.length > 0) {
                 setCorrectionLogs((prev) => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
                 debugLog(
-                  "ðŸ› [DEBUG-LOGS] Captured",
+                  "🐛 [DEBUG-LOGS] Captured",
                   newLogs.length,
                   "food detection(s)",
                 );
               }
             } else {
               console.warn(
-                "âš ï¸ [CORRECTION] No userId available, skipping corrections",
+                "⚠️ [CORRECTION] No userId available, skipping corrections",
               );
             }
           } catch (error) {
             console.error(
-              "âŒ [CORRECTION] Failed to apply corrections:",
+              "❌ [CORRECTION] Failed to apply corrections:",
               error,
             );
             console.warn(
-              "âš ï¸ Failed to apply corrections, using original AI detection:",
+              "⚠️ Failed to apply corrections, using original AI detection:",
               error,
             );
           }
           // debugLog(
-          //   "📋 [CORRECTION] Final foods to be used:",
+          //   "?? [CORRECTION] Final foods to be used:",
           //   foods.map((f) => f.name),
           // );
 
-          // 🎯 ALWAYS recalculate totals from corrected foods (don't use original AI total)
+          // ?? ALWAYS recalculate totals from corrected foods (don't use original AI total)
           // Original code used: detectedType.details.total || foods.reduce(...)
           // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
           const total = foods.reduce(
@@ -3694,7 +4035,7 @@ function WellnessValleyApp() {
             { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
           );
 
-          debugLog("📊 [App.js] Calculated total from corrected foods:", {
+          debugLog("?? [App.js] Calculated total from corrected foods:", {
             totalCalories: total.calories,
             totalCarbs: total.carbs,
             totalProtein: total.protein,
@@ -3740,7 +4081,7 @@ function WellnessValleyApp() {
                 ? "medium"
                 : "low",
             detailedItems: foods.map((food) => {
-              // 🎯 Extract nutrition values from the corrected food object
+              // ?? Extract nutrition values from the corrected food object
               const nutritionValues = {
                 calories: Math.round(
                   food.nutrition?.calories || food.calories || 0,
@@ -3754,7 +4095,7 @@ function WellnessValleyApp() {
               };
 
               debugLog(
-                `📊 [App.js] Mapping food "${food.name}" to detailedItem:`,
+                `?? [App.js] Mapping food "${food.name}" to detailedItem:`,
               );
               debugLog(
                 `   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`,
@@ -3768,10 +4109,10 @@ function WellnessValleyApp() {
 
               return {
                 name: food.name,
-                originalAiName: food.originalAiName, // 🔴 Preserve original AI detection
-                wasAutoCorrected: food.wasAutoCorrected, // 🔴 Track if auto-corrected
-                correctionSource: food.correctionSource, // 🔴 Track correction source
-                correctionMetadata: food.correctionMetadata, // 🔴 Full correction metadata
+                originalAiName: food.originalAiName, // ?? Preserve original AI detection
+                wasAutoCorrected: food.wasAutoCorrected, // ?? Track if auto-corrected
+                correctionSource: food.correctionSource, // ?? Track correction source
+                correctionMetadata: food.correctionMetadata, // ?? Full correction metadata
                 portionDescription: food.portion || "Unknown portion",
                 estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
                 unit: food.unit || (food.volume_ml ? "ml" : "g"),
@@ -3785,10 +4126,10 @@ function WellnessValleyApp() {
           };
         } else {
           // Fallback: No food data extracted, show specific actionable error
-          console.error("âŒ [DEBUG] No food data extracted from image");
-          console.error("âŒ [DEBUG] Detection details:", detectedType.details);
+          console.error("❌ [DEBUG] No food data extracted from image");
+          console.error("❌ [DEBUG] Detection details:", detectedType.details);
           console.error(
-            "âŒ [DEBUG] Full detectedType object:",
+            "❌ [DEBUG] Full detectedType object:",
             JSON.stringify(detectedType, null, 2),
           );
 
@@ -3840,21 +4181,27 @@ function WellnessValleyApp() {
           // Set appropriate error message
           if (isApiError) {
             errorMessage =
-              "🤖 The AI model is temporarily unavailable. Please try again later.";
+              "?? The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {            errorMessage =
-              "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+              "?? Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isQualityIssue) {
-            errorMessage = "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
+            errorMessage = "?? Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
-              "⚠️ Please take a photo of food, weight scale, or educational content.";
+              "?? Please take a photo of food, weight scale, or educational content.";
           } else {
             errorMessage =
-              "📸 Could not detect the image. Please take a clear photo and try again.";
+              "?? Could not detect the image. Please take a clear photo and try again.";
           }
 
           setError(errorMessage);
-          // ✅ "Enter Manually" button is shown in the error card for ALL error types
+          // Clear share state � the Share button must not linger when AI
+          // yields no food data (e.g. Gemini quota exhausted for the day).
+          setFoodShareUrl(null);
+          setImageType(null);
+          foodCaptureIdRef.current = null;
+          pendingSharePromiseRef.current = null;
+          // ? "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
         }
@@ -3958,9 +4305,9 @@ function WellnessValleyApp() {
             return;
           }
 
-          if (duplicateCheck.isDuplicate) {
+          if (false && duplicateCheck.isDuplicate) {
             // Found duplicate - show confirmation modal
-            debugLog("âš ï¸ Duplicate food detected:", duplicateCheck);
+            debugLog("⚠️ Duplicate food detected:", duplicateCheck);
             setDuplicateInfo(duplicateCheck);
             setPendingSaveData({
               userId: userIdentifier,
@@ -3987,7 +4334,7 @@ function WellnessValleyApp() {
           }
         } catch (err) {
           // Handle save errors
-          console.error("âŒ Save failed:", err.message);
+          console.error("❌ Save failed:", err.message);
 
           const friendlySaveError = getFriendlyErrorMessage(err);
           setSaveError(friendlySaveError);
@@ -3996,7 +4343,7 @@ function WellnessValleyApp() {
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
-        console.error("âŒ Gemini analysis error:", err);
+        console.error("❌ Gemini analysis error:", err);
       }
     } catch (err) {
       // Better error handling for undefined or missing error messages
@@ -4022,23 +4369,23 @@ function WellnessValleyApp() {
 
       // Handle iOS "Load failed" network error
       if (errorMessage.toLowerCase() === "load failed" || errorMessage.includes("Failed to fetch")) {
-        setError("🌐 Please check your internet connection (WiFi or mobile data) and try again.");
+        setError("?? Please check your internet connection (WiFi or mobile data) and try again.");
       } else {
         // Don't show error box for weight validation failures (already showing custom modal)
         setError("Failed to process image: " + errorMessage);
       }
-      console.error("❌ Image processing error:", err);
+      console.error("? Image processing error:", err);
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
       debugLog(
-        `â±ï¸ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
+        `⏱️ [PERF] ? TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
       );
-      debugLog("â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”");
+      debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     }
   };
 
-  // 🔄 Retry food analysis with the last image
+  // ?? Retry food analysis with the last image
   const handleRetryAnalysis = () => {
     if (lastImageFileRef.current) {
       setError(null);
@@ -4079,11 +4426,11 @@ function WellnessValleyApp() {
       rawMessage.includes("timeout") ||
       rawMessage.includes("connection")
     ) {
-      return "ðŸŒ Please check your internet connection (WiFi or mobile data) and try again.";
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("timeout")) {
-      return "ðŸŒ Please check your internet connection (WiFi or mobile data) and try again.";
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("connection")) {
-      return "ðŸŒ Please check your internet connection (WiFi or mobile data) and try again.";
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
     }
 
     // Server errors
@@ -4095,24 +4442,24 @@ function WellnessValleyApp() {
     } else if (
       rawMessage.includes("Server returned an unexpected response format")
     ) {
-      return "💾 Unable to save your analysis right now. Your food data is still displayed above.";
+      return "?? Unable to save your analysis right now. Your food data is still displayed above.";
     }
 
     // Image and analysis errors
     else if (rawMessage.includes("Image file is too large")) {
-      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
+      return "?? Image file is too large. Please use a smaller photo (max 10MB).";
     } else if (rawMessage.includes("No food items detected")) {
-      return "ðŸ½ï¸ Could not detect food items. Please take a clear photo of your meal.";
+      return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "🤖 The AI model is temporarily unavailable. Please try again later.";
+      return "?? The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "💾 Unable to save your analysis. The nutrition data is still shown above.";
+      return "?? Unable to save your analysis. The nutrition data is still shown above.";
     }
 
-    return "âŒ Something went wrong. Please try again.";
+    return "❌ Something went wrong. Please try again.";
   };
 
   const resetApp = () => {
@@ -4159,7 +4506,7 @@ function WellnessValleyApp() {
       setLoading(true);
       setError(null);
 
-      // ✅ User is intentionally signing in — clear the sign-out block flags
+      // ? User is intentionally signing in � clear the sign-out block flags
       Session.clearUserSignedOut();
       Session.clearAccountDeleted();
       setForceLoggedOut(false);
@@ -4183,27 +4530,27 @@ function WellnessValleyApp() {
           if (userEmail) {
             Session.setUserEmail(userEmail);
             debugLog(
-              "✅ [handleSignIn] Stored user email in localStorage:",
+              "? [handleSignIn] Stored user email in localStorage:",
               userEmail,
             );
           }
 
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          debugLog("📦 [handleSignIn] saveResult:", saveResult);
+          debugLog("?? [handleSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          debugLog("🆕 [handleSignIn] isNewUser:", isNewUser);
+          debugLog("?? [handleSignIn] isNewUser:", isNewUser);
 
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
 
-          // âš ï¸ CRITICAL: Check if sign-out was triggered while we were saving
+          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
             sessionStorage.removeItem("freshGoogleSignIn");
             return;
           }
 
-          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
+          // ? CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
           sessionStorage.removeItem("freshGoogleSignIn");
 
@@ -4238,7 +4585,7 @@ function WellnessValleyApp() {
               }, 600);
             }
             if (isNewUser) {
-              debugLog("🆕 [handleSignIn] New user detected");
+              debugLog("?? [handleSignIn] New user detected");
             }
           } else {
             // User was saved but is inactive or not found - modal will show
@@ -4247,7 +4594,7 @@ function WellnessValleyApp() {
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
           console.error(
-            "âš ï¸ Backend save/check failed, allowing user access:",
+            "⚠️ Backend save/check failed, allowing user access:",
             saveError,
           );
           setError(
@@ -4260,11 +4607,11 @@ function WellnessValleyApp() {
 
         // Flag is already cleared above - no need to clear again
       } else {
-        debugLog("🔄 Redirect initiated, waiting for result...");
+        debugLog("?? Redirect initiated, waiting for result...");
         // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
-      console.error("âŒ Sign in error:", error);
+      console.error("❌ Sign in error:", error);
       sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
 
       if (error.code === "auth/popup-blocked") {
@@ -4299,7 +4646,7 @@ function WellnessValleyApp() {
       setLoading(true);
       setError(null);
 
-      // ✅ User is intentionally signing in — clear the sign-out block flags
+      // ? User is intentionally signing in � clear the sign-out block flags
       Session.clearUserSignedOut();
       Session.clearAccountDeleted();
       setForceLoggedOut(false);
@@ -4319,27 +4666,27 @@ function WellnessValleyApp() {
           if (userEmail) {
             Session.setUserEmail(userEmail);
             debugLog(
-              "✅ [handlePopupSignIn] Stored user email in localStorage:",
+              "? [handlePopupSignIn] Stored user email in localStorage:",
               userEmail,
             );
           }
 
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          debugLog("📦 [handlePopupSignIn] saveResult:", saveResult);
+          debugLog("?? [handlePopupSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          debugLog("🆕 [handlePopupSignIn] isNewUser:", isNewUser);
+          debugLog("?? [handlePopupSignIn] isNewUser:", isNewUser);
 
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
 
-          // âš ï¸ CRITICAL: Check if sign-out was triggered while we were saving
+          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
             sessionStorage.removeItem("freshGoogleSignIn");
             return;
           }
 
-          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
+          // ? CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
           sessionStorage.removeItem("freshGoogleSignIn");
 
@@ -4374,7 +4721,7 @@ function WellnessValleyApp() {
               }, 600);
             }
             if (isNewUser) {
-              debugLog("🆕 [handlePopupSignIn] New user detected");
+              debugLog("?? [handlePopupSignIn] New user detected");
             }
           } else {
             // User was saved but is inactive or not found - modal will show
@@ -4383,7 +4730,7 @@ function WellnessValleyApp() {
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
           console.error(
-            "âš ï¸ Backend save/check failed, allowing user access:",
+            "⚠️ Backend save/check failed, allowing user access:",
             saveError,
           );
           setError(
@@ -4397,7 +4744,7 @@ function WellnessValleyApp() {
         // Flag is already cleared above - no need to clear again
       }
     } catch (error) {
-      console.error("âŒ Popup sign-in error:", error);
+      console.error("❌ Popup sign-in error:", error);
       sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
       setError(getAuthErrorMessage(error));
     } finally {
@@ -4417,6 +4764,8 @@ function WellnessValleyApp() {
         return "Too many attempts. Please wait a moment and try again.";
       case "auth/user-disabled":
         return "This account has been disabled. Please contact support.";
+      case "auth/developer-error":
+        return "Google Sign-In setup error. Please update the app or contact support.";
       default:
         // Check for popup-related error messages
         if (error.message?.toLowerCase().includes("popup")) {
@@ -4447,19 +4796,19 @@ function WellnessValleyApp() {
 
       if (data.success) {
         debugLog(
-          "✅ [saveUserToBackend] User saved successfully, isNewUser:",
+          "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
 
         // If this is a new user, trigger the profile modal
         if (data.isNewUser) {
           debugLog(
-            "🆕 [saveUserToBackend] New user detected, will show profile modal",
+            "?? [saveUserToBackend] New user detected, will show profile modal",
           );
         }
       } else {
         console.warn(
-          "âš ï¸ [saveUserToBackend] Save completed with warning:",
+          "⚠️ [saveUserToBackend] Save completed with warning:",
           data,
         );
       }
@@ -4467,7 +4816,7 @@ function WellnessValleyApp() {
       return data;
     } catch (error) {
       console.error(
-        "âŒ [saveUserToBackend] Failed to save user to backend:",
+        "❌ [saveUserToBackend] Failed to save user to backend:",
         error,
       );
       throw error; // Re-throw so caller can handle
@@ -4479,16 +4828,16 @@ function WellnessValleyApp() {
       // Phase 3d-a: Observe in shadow FSM (no behaviour change).
       authFsm.send({ type: authFsm.E.SIGN_OUT_REQUESTED, reason: "user" });
 
-      // Do NOT set loading=true here — it would pass loading=true to Login
+      // Do NOT set loading=true here � it would pass loading=true to Login
       // which immediately shows "Signing in..." on the Google button after sign-out.
 
       // Set sign-out in progress flag to prevent concurrent sign-in
       signOutInProgress.current = true;
 
-      // ✅ Ensure loading is false BEFORE showing Login screen
+      // ? Ensure loading is false BEFORE showing Login screen
       setLoading(false);
 
-      // ✅ Set React gate FIRST — this immediately shows Login screen
+      // ? Set React gate FIRST � this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
 
@@ -4499,7 +4848,7 @@ function WellnessValleyApp() {
       clearContextCache();
       setUserContext(null);
       setUserContextLoading(false);
-      debugLog("ðŸ—‘ï¸ [Sign Out] User context cache and state cleared");
+      debugLog("🗑️ [Sign Out] User context cache and state cleared");
 
       // Clear userId session cache
       clearUserIdCache();
@@ -4510,14 +4859,14 @@ function WellnessValleyApp() {
       const emailKey = Session.getUserEmail() || "";
       Session.clearProfileComplete(emailKey);
       profileCompletedRef.current = false;
-      debugLog("ðŸ—‘ï¸ [Sign Out] UserId cache cleared");
+      debugLog("🗑️ [Sign Out] UserId cache cleared");
 
       if (Capacitor.isNativePlatform()) {
         try {
           await GalleryMonitor.clearCurrentUser();
         } catch (clearError) {
           console.error(
-            "âš ï¸ Failed to clear GalleryMonitor user (method may not exist):",
+            "⚠️ Failed to clear GalleryMonitor user (method may not exist):",
             clearError,
           );
           // Continue with sign out even if this fails
@@ -4526,23 +4875,23 @@ function WellnessValleyApp() {
       await signOutUser();
       // Phase 3d-a: Observe in shadow FSM (no behaviour change).
       authFsm.send({ type: authFsm.E.SIGN_OUT_COMPLETED });
-      // ✅ Clear all auth-related localStorage keys
+      // ? Clear all auth-related localStorage keys
       Session.clearUserEmail();
       Session.clearOtpVerified();
       Session.clearOtpUser();
       Session.clearCurrentPage();
       Session.clearDbUserId();
-      // ✅ Clear nutrition / background analysis caches so a new login never sees old images
+      // ? Clear nutrition / background analysis caches so a new login never sees old images
       localStorage.removeItem("backgroundAnalyses");
       localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
       localStorage.removeItem("dashboard_activeTab");
       GalleryMonitor.clearLocalBackgroundAnalyses();
-      // Keep "userSignedOut" flag — set by signOutUser() to block iOS silent re-auth
+      // Keep "userSignedOut" flag � set by signOutUser() to block iOS silent re-auth
       sessionStorage.clear();
       resetApp();
     } catch (error) {
-      console.error("âŒ Sign out error:", error);
-      // ✅ Even if signOut throws, force clear the UI so user isn't stuck
+      console.error("❌ Sign out error:", error);
+      // ? Even if signOut throws, force clear the UI so user isn't stuck
       Session.clearUserEmail();
       Session.clearOtpVerified();
       Session.clearOtpUser();
@@ -4565,7 +4914,7 @@ function WellnessValleyApp() {
   };
 
   const handleOtpVerified = async (isNewUser = false) => {
-    debugLog("ðŸ” [handleOtpVerified] Called with isNewUser:", isNewUser);
+    debugLog("🔐 [handleOtpVerified] Called with isNewUser:", isNewUser);
 
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
@@ -4588,7 +4937,7 @@ function WellnessValleyApp() {
           const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(true), 5000));
           isActive = await Promise.race([statusPromise, timeoutPromise]);
         } catch (statusError) {
-          console.warn("âš ï¸ [handleOtpVerified] Status check failed, proceeding:", statusError);
+          console.warn("⚠️ [handleOtpVerified] Status check failed, proceeding:", statusError);
           isActive = true; // Default to active on error
         }
 
@@ -4601,7 +4950,7 @@ function WellnessValleyApp() {
         setIsOtpVerified(true);
         Session.markOtpVerified();
 
-        // ✅ User is logging in via OTP — clear the sign-out gate
+        // ? User is logging in via OTP � clear the sign-out gate
         Session.clearUserSignedOut();
         setForceLoggedOut(false);
 
@@ -4610,23 +4959,18 @@ function WellnessValleyApp() {
         if (userEmail) {
           Session.setUserEmail(userEmail);
           debugLog(
-            "✅ [handleOtpVerified] Stored user email in localStorage:",
+            "? [handleOtpVerified] Stored user email in localStorage:",
             userEmail,
           );
         }
 
         setUser(parsedUser);
 
-        // New user — SetupWizard handles profile collection, no popup needed
-        if (isNewUser || parsedUser.isNewUser) {
-          debugLog(
-            "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
-          );
-        } else {
-          // ✅ Existing user — check profile completion immediately after login
-          if (userEmail) {
-            await checkProfileCompletion(userEmail, parsedUser);
-          }
+        // Check profile completion for all users � new users will always have missing
+        // fields and the CompleteProfilePage gate will show. The SetupWizard handles
+        // coach/team linking (a separate flow), not personal detail collection.
+        if (userEmail) {
+          await checkProfileCompletion(userEmail, parsedUser);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
@@ -4646,28 +4990,32 @@ function WellnessValleyApp() {
     }
   };
 
-  // useDeferredValue for lazy pages — must be declared BEFORE any early returns (Rules of Hooks)
+  // useDeferredValue for lazy pages � must be declared BEFORE any early returns (Rules of Hooks)
   const deferredShowDashboard = useDeferredValue(showDashboard);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
 
-  // Loading state
+  // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
+  // returning users alike fall straight through to Login / Home. The native
+  // Capacitor splash already covers app cold-start; once React mounts we go
+  // directly to the correct route. Background auth/profile checks continue
+  // silently — they just don't show a UI spinner.
   if (authLoading) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
-  // ✅ OTP user restore in progress — keep spinner until user is fully restored
+  // ? OTP user restore in progress — stay invisible until restored.
   if (isOtpVerified && !user) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
-  // ✅ Profile check in progress — keep spinner until check is done
+  // ? Profile check in progress — stay invisible until check is done.
   if (profileChecking) {
-    return <LoadingSpinner context="normal" />;
+    return null;
   }
 
-  // ✅ iOS Sign-out gate: user explicitly signed out — always show Login
+  // ? iOS Sign-out gate: user explicitly signed out � always show Login
   // This prevents Firebase silent re-auth from bypassing the logout
   if (forceLoggedOut) {
     return (
@@ -4735,7 +5083,7 @@ function WellnessValleyApp() {
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
-      <Suspense fallback={<LoadingSpinner context="normal" />}>
+      <Suspense fallback={null}>
         <Dashboard
           user={user}
           onBack={showMainPage}
@@ -4747,12 +5095,13 @@ function WellnessValleyApp() {
           watchBurnedCalories={watchBurnedCalories}
           initialSelectedMember={dashboardInitialSelectedMember}
           initialDate={dashboardInitialDate}
+          initialMealId={dashboardInitialMealId}
         />
       </Suspense>
     );
   }
 
-  // Step Counter page — FEATURE DISABLED
+  // Step Counter page � FEATURE DISABLED
   // if (showStepCounter) {
   //   return (
   //     <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
@@ -4761,7 +5110,7 @@ function WellnessValleyApp() {
   //   );
   // }
 
-  // Screen Time page — FEATURE DISABLED
+  // Screen Time page � FEATURE DISABLED
   // if (showScreenTime) {
   //   return (
   //     <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
@@ -4770,7 +5119,7 @@ function WellnessValleyApp() {
   //   );
   // }
 
-  // Reminders page — FEATURE DISABLED
+  // Reminders page � FEATURE DISABLED
   // if (showReminders) {
   //   return (
   //     <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
@@ -4783,7 +5132,7 @@ function WellnessValleyApp() {
   if (deferredShowDisciplineReport) {
     return (
       <Suspense
-        fallback={<LoadingSpinner message="Loading discipline report..." />}
+        fallback={null}
       >
         <DisciplineReport
           user={user}
@@ -4802,7 +5151,7 @@ function WellnessValleyApp() {
   if (deferredShowActivityTimeReport) {
     return (
       <Suspense
-        fallback={<LoadingSpinner message="Loading activity time report..." />}
+        fallback={null}
       >
         <ActivityTimeReport
           user={user}
@@ -4820,7 +5169,7 @@ function WellnessValleyApp() {
   // Wellness Counselling - Full page view
   if (deferredShowWellnessCounselling) {
     return (
-      <Suspense fallback={<LoadingSpinner message="Loading wellness counselling..." />}>
+      <Suspense fallback={null}>
         <WellnessCounselling
           user={user}
           onBack={() => setShowWellnessCounselling(false)}
@@ -4833,6 +5182,35 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+      {/* ?? Snapchat-style full-screen photo: covers the home screen during
+          the brief window between native-camera close and WhatsApp share
+          sheet open. Shows the actual captured photo (not a spinner) so the
+          hand-off from camera → share feels seamless. */}
+      {sharingPendingImage && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: '#000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <img
+            src={sharingPendingImage}
+            alt=""
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+      )}
       <Header
         user={user}
         userRole={userRole}
@@ -4928,7 +5306,7 @@ function WellnessValleyApp() {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
 
             if (isAiUnavailable) {
-              // Silently clear the error — no modal shown
+              // Silently clear the error � no modal shown
               setTimeout(() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }, 0);
               return null;
             }
@@ -4936,9 +5314,9 @@ function WellnessValleyApp() {
             return (
               <div className="bg-amber-50 border border-amber-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-start gap-2 px-4 pt-3 pb-2">
-                  <span className="text-lg leading-none flex-shrink-0 mt-0.5">💡</span>
+                  <span className="text-lg leading-none flex-shrink-0 mt-0.5">??</span>
                   <p className="text-sm text-amber-800 leading-relaxed break-words flex-1">
-                    {error.replace(/^[🤖⚠️🌐📸🍽️💡]\s*/, "")}
+                    {error.replace(/^[?????????????]\s*/, "")}
                   </p>
                   <button
                     onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
@@ -4964,51 +5342,10 @@ function WellnessValleyApp() {
             );
           })()}
 
-          {imageType === "food" && foodShareUrl && (
-            <div className="px-4 pb-3">
-              <TouchFeedbackButton
-                onClick={async () => {
-                  const captionText =
-                    `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
-                  const dataUrl = foodShareImageDataUrlRef.current;
-                  // Fast path: cached pre-painted card image.
-                  if (dataUrl) {
-                    const result = await shareViaCapacitorAPI(dataUrl, {
-                      title: "My Meal",
-                      text: captionText,
-                      fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-                    });
-                    if (result.ok) {
-                      resetCaptureToHome();
-                      return;
-                    }
-                  }
-                  // Fallback: capture live, or share raw photo with link.
-                  try {
-                    if (foodShareCardRef.current) {
-                      await captureAndShare(foodShareCardRef.current, {
-                        title: "My Meal",
-                        text: captionText,
-                        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
-                      });
-                      resetCaptureToHome();
-                      return;
-                    }
-                    await shareImageWithLink(
-                      processedImageRef.current || imagePreview,
-                      foodShareUrl,
-                      { title: "My Meal", text: "Check out my meal on Wellness Valley!" },
-                    );
-                    resetCaptureToHome();
-                  } catch (_) { /* user cancelled */ }
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors"
-              >
-                <Share2 className="w-4 h-4 flex-shrink-0" />
-                Share Image + Link
-              </TouchFeedbackButton>
-            </div>
-          )}
+          {/* Share Image + Link button removed: auto-share fires directly
+              to WhatsApp as soon as food is identified (see auto-share
+              useEffect above). The analysis stays visible after the user
+              returns from WhatsApp so they can review their nutrition data. */}
 
           {/* Hidden off-screen template captured to image for the instant-share
               button. Matches the post-analysis NutritionCard share template
@@ -5115,7 +5452,7 @@ function WellnessValleyApp() {
                       minHeight: 110,
                     }}
                   >
-                    {/* Profile photo — div+backgroundImage for reliable html2canvas rendering */}
+                    {/* Profile photo � div+backgroundImage for reliable html2canvas rendering */}
                     {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
                       <div style={{
                         width: 64, height: 64,
@@ -5420,10 +5757,10 @@ function WellnessValleyApp() {
                             }}
                           >
                             {weightDiff.change > 0
-                              ? "▲"
+                              ? "?"
                               : weightDiff.change < 0
-                              ? "▼"
-                              : "—"}{" "}
+                              ? "?"
+                              : "�"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
                               : Math.abs(weightDiff.change) < 1
@@ -5507,7 +5844,7 @@ function WellnessValleyApp() {
                           ) : (
                             <Check className="w-4 h-4" />
                           )}
-                          {isSavingWeightEdit ? "Saving…" : "Save"}
+                          {isSavingWeightEdit ? "Saving�" : "Save"}
                         </button>
                         <button
                           onClick={() => {
@@ -5584,15 +5921,15 @@ function WellnessValleyApp() {
                       }`}
                     >
                       {weightDiff.change > 0
-                        ? "▲"
+                        ? "?"
                         : weightDiff.change < 0
-                        ? "▼"
-                        : "—"}{" "}
+                        ? "?"
+                        : "�"}{" "}
                       {weightDiff.change === 0
                         ? "No change"
                         : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
                       {weightDiff.change < 0 && (
-                        <span className="text-sm ml-1">🎉</span>
+                        <span className="text-sm ml-1">??</span>
                       )}
                     </div>
                   </div>
@@ -5688,10 +6025,10 @@ function WellnessValleyApp() {
                 aria-label="Close"
               >
                 {" "}
-                ×{" "}
+                �{" "}
               </button>{" "}
               <h3 className="font-semibold text-green-700 mb-2">
-                📋 How to use:
+                ?? How to use:
               </h3>{" "}
               <div className="space-y-3">
                 {" "}
@@ -5699,7 +6036,7 @@ function WellnessValleyApp() {
                   {" "}
                   <h4 className="font-medium text-green-600 mb-1">
                     {" "}
-                    📸 Image Analysis:{" "}
+                    ?? Image Analysis:{" "}
                   </h4>
                   <ol className="text-sm text-gray-600 space-y-1 ml-4">
                     <li>1. Take a clear photo of your food or weight</li>
@@ -5715,14 +6052,14 @@ function WellnessValleyApp() {
               </div>
               <div className="mt-3 pt-3 border-t border-gray-200">
                 <h4 className="font-semibold text-green-700 mb-2">
-                  💡 Tips for better results:
+                  ?? Tips for better results:
                 </h4>
                 <ul className="text-xs text-gray-600 space-y-1">
-                  <li>• Take photos in good lighting conditions </li>
-                  <li>• Ensure food items or weights are clearly visible</li>
-                  <li>• Avoid cluttered backgrounds </li>
+                  <li>� Take photos in good lighting conditions </li>
+                  <li>� Ensure food items or weights are clearly visible</li>
+                  <li>� Avoid cluttered backgrounds </li>
                   <li>
-                    • For text queries, be specific about preparation methods{" "}
+                    � For text queries, be specific about preparation methods{" "}
                   </li>
                 </ul>
               </div>
@@ -5760,7 +6097,7 @@ function WellnessValleyApp() {
           <span className={`text-xs font-semibold tracking-wide ${
             manualModeToast === "enabled" ? "text-green-500" : "text-gray-400"
           }`}>
-            {manualModeToast === "enabled" ? "✦ Manual mode enabled" : "✦ Manual mode disabled"}
+            {manualModeToast === "enabled" ? "? Manual mode enabled" : "? Manual mode disabled"}
           </span>
         </div>
       )}
@@ -5772,6 +6109,29 @@ function WellnessValleyApp() {
           onClose={handleUserNotFoundModalClose}
         />
       )}
+
+      {/* PR 3 — Unknown / low-confidence capture disambiguation modal */}
+      <UnknownCaptureModal
+        isOpen={unknownCaptureModal.open}
+        onClose={() => setUnknownCaptureModal({ open: false, pendingSharePromise: null })}
+        onPick={(chosenType) => {
+          // Re-tag the capture row to the user's choice so the share link
+          // resolves correctly and listAnalyses includes it in the right tab.
+          updatePendingCaptureType(unknownCaptureModal.pendingSharePromise, chosenType);
+          setUnknownCaptureModal({ open: false, pendingSharePromise: null });
+          setImageType(chosenType);
+          if (chosenType === 'food') {
+            setManualMealType(getMealTypeFromTime(imageTimestamp ? new Date(imageTimestamp) : new Date()));
+            setShowManualFoodModal(true);
+          } else if (chosenType === 'weight') {
+            fetchLastWeight();
+            setCurrentWeightImage(null);
+            setShowManualWeightModal(true);
+          } else if (chosenType === 'education') {
+            setShowManualEducationModal(true);
+          }
+        }}
+      />
 
       {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}
       <SmartFoodSearchModal
@@ -5797,7 +6157,7 @@ function WellnessValleyApp() {
         onSave={async (data) => {
           setShowManualEducationModal(false);
           setError(null);
-          // Clear uploaded image — it's unrelated to this education log
+          // Clear uploaded image � it's unrelated to this education log
           setImagePreview(null);
           setSelectedImage(null);
           setImageType("education");
@@ -5838,7 +6198,7 @@ function WellnessValleyApp() {
         }}
       />
 
-      {/* Manual Weight Entry Modal — disabled */}
+      {/* Manual Weight Entry Modal � disabled */}
       {false && <ManualWeightEntryModal
         isOpen={showManualWeightModal}
         onClose={() => {
@@ -5919,15 +6279,15 @@ function WellnessValleyApp() {
         onClose={() => setShowNewUserProfileModal(false)}
         user={user}
         onProfileUpdate={() => {
-          debugLog("✅ [NewUserProfile] Profile updated successfully");
+          debugLog("? [NewUserProfile] Profile updated successfully");
         }}
       />
 
-      {/* ── Mandatory Profile Completion Gate ──────────────────────────────
+      {/* -- Mandatory Profile Completion Gate ------------------------------
            Renders above ALL other content (z-[300]) until every required
            field (height, gender, age, diet) is saved to the database.
            The user cannot dismiss this page until the form is complete.
-      ─────────────────────────────────────────────────────────────────── */}
+      ------------------------------------------------------------------- */}
       {showCompleteProfile && !profileChecking && user && (
         <CompleteProfilePage
           user={user}
@@ -5955,14 +6315,14 @@ function WellnessValleyApp() {
                 photoURL: savedData.profileImage,
               }));
             } else {
-              // Picture was snoozed — snooze data already saved to DB by handleRemindLater
+              // Picture was snoozed � snooze data already saved to DB by handleRemindLater
               setProfilePicSnoozeData(null);
             }
           }}
         />
       )}
 
-      {/* ── Mandatory Profile Picture Upload Gate — DISABLED ─────────────
+      {/* -- Mandatory Profile Picture Upload Gate � DISABLED -------------
       {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
@@ -5980,16 +6340,16 @@ function WellnessValleyApp() {
                 const data = await res.json();
                 if (data.success) {
                   setProfilePicSnoozeData(data.snooze);
-                  debugLog("â° [Profile Picture] Snooze saved to DB:", data.snooze);
+                  debugLog("⏰ [Profile Picture] Snooze saved to DB:", data.snooze);
                 }
               } catch (err) {
-                console.error("âŒ [Profile Picture] Failed to save snooze to DB:", err);
+                console.error("❌ [Profile Picture] Failed to save snooze to DB:", err);
               }
             }
             setShowMandatoryProfilePictureModal(false);
           }}
           onComplete={async (uploadedImage) => {
-            debugLog("✅ [Profile Picture] Profile picture uploaded successfully");
+            debugLog("? [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
             if (userEmail) {
               Session.markProfilePictureUploaded(userEmail);
@@ -6003,12 +6363,12 @@ function WellnessValleyApp() {
                 ProfileImage: uploadedImage, // Some components use ProfileImage
                 photoURL: uploadedImage, // Some components use photoURL
               }));
-              debugLog("✅ [Profile Picture] User state updated immediately with new profile picture");
+              debugLog("? [Profile Picture] User state updated immediately with new profile picture");
             }
             
             // Also fetch updated user profile in background to ensure consistency
             try {
-              debugLog("🔄 [Profile Picture] Refreshing user profile data in background...");
+              debugLog("?? [Profile Picture] Refreshing user profile data in background...");
               const res = await fetch(
                 `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
                 { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
@@ -6024,11 +6384,11 @@ function WellnessValleyApp() {
                     ProfileImage: data.data.profileImage,
                     photoURL: data.data.profileImage,
                   }));
-                  debugLog("✅ [Profile Picture] User state synced with server data");
+                  debugLog("? [Profile Picture] User state synced with server data");
                 }
               }
             } catch (err) {
-              console.error("âŒ [Profile Picture] Failed to refresh user profile:", err);
+              console.error("❌ [Profile Picture] Failed to refresh user profile:", err);
               // Don't block user - they already have the image from immediate update
             }
             
@@ -6036,12 +6396,12 @@ function WellnessValleyApp() {
           }}
         />
       )}
-      ─────────────────────────────────────────────────────────────────── */}
+      ------------------------------------------------------------------- */}
 
       {/* Admin Dashboard */}
       {showAdminDashboard && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading admin dashboard..." />}
+          fallback={null}
         >
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
@@ -6053,7 +6413,7 @@ function WellnessValleyApp() {
       {/* Attendance Report */}
       {showAttendanceReport && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading attendance report..." />}
+          fallback={null}
         >
           <AttendanceReport
             user={user}
@@ -6079,7 +6439,7 @@ function WellnessValleyApp() {
       {/* Register Nutrition Center */}
       {showRegisterCenter && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading registration form..." />}
+          fallback={null}
         >
           <NutritionCenterRegistration
             user={user}
@@ -6090,7 +6450,7 @@ function WellnessValleyApp() {
 
       {/* Setup Wizard - Team ID + Coach Selection */}
       {showSetupWizard && (
-        <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
+        <Suspense fallback={null}>
           <SetupWizard
             userEmail={
               user?.email || user?.Email || Session.getUserEmail()
@@ -6107,7 +6467,7 @@ function WellnessValleyApp() {
 
       {/* OTP Validation Page */}
       {showValidateOTP && (
-        <Suspense fallback={<LoadingSpinner message="Loading validation..." />}>
+        <Suspense fallback={null}>
           <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
@@ -6143,7 +6503,7 @@ function WellnessValleyApp() {
         </Suspense>
       )}
 
-      {/* ðŸ› Floating Bug Button - Show Correction Logs (Web & Android) */}
+      {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
       {/* {user && (
         <button
           onClick={() => setShowCorrectionModal(true)}
@@ -6165,7 +6525,7 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-      {/* ðŸ› Correction Logs Modal (Web & Android Optimized) */}
+      {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
@@ -6230,11 +6590,11 @@ function WellnessValleyApp() {
                     {/* Timestamp Header */}
                     <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
                       <span className="text-blue-400">
-                        📅 {new Date(log.timestamp).toLocaleString()}
+                        ?? {new Date(log.timestamp).toLocaleString()}
                       </span>
                       {log.wasAutoCorrected && (
                         <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
-                          ✅ AUTO-CORRECTED
+                          ? AUTO-CORRECTED
                         </span>
                       )}
                     </div>
@@ -6242,17 +6602,17 @@ function WellnessValleyApp() {
                     {/* Main Correction Flow Box */}
                     <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
                       <div className="text-blue-400 font-bold mb-2">
-                        â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                        ╔════════════════════════════════════════════════════════════════
                       </div>
                       <div className="text-blue-400 font-bold mb-1">
-                        ║ 🔄 FOOD CORRECTION FLOW
+                        � ?? FOOD CORRECTION FLOW
                       </div>
                       <div className="text-blue-400 font-bold mb-2">
-                        â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                        ╠════════════════════════════════════════════════════════════════
                       </div>
 
                       <div className="text-white mb-1">
-                        <span className="text-gray-400">║</span> 🤖{" "}
+                        <span className="text-gray-400">�</span> ??{" "}
                         <span className="text-cyan-400">AI Detected Name:</span>
                         <span className="ml-4 text-yellow-300">
                           "{log.aiDetected}"
@@ -6262,7 +6622,7 @@ function WellnessValleyApp() {
                       {log.aiDetected.trim().toLowerCase() ===
                       log.userCorrected.trim().toLowerCase() ? (
                         <div className="text-white mb-2">
-                          <span className="text-gray-400">║</span> ✓{" "}
+                          <span className="text-gray-400">�</span> ?{" "}
                           <span className="text-cyan-400">Status:</span>
                           <span className="ml-2 text-green-300">
                             No Correction - User accepted AI suggestion
@@ -6270,7 +6630,7 @@ function WellnessValleyApp() {
                         </div>
                       ) : (
                         <div className="text-white mb-2">
-                          <span className="text-gray-400">║</span> 👤{" "}
+                          <span className="text-gray-400">�</span> ??{" "}
                           <span className="text-cyan-400">
                             User Corrected To:
                           </span>
@@ -6281,7 +6641,7 @@ function WellnessValleyApp() {
                       )}
 
                       <div className="text-white mb-2">
-                        <span className="text-gray-400">║</span> 📊{" "}
+                        <span className="text-gray-400">�</span> ??{" "}
                         <span className="text-cyan-400">
                           Final Display Name:
                         </span>
@@ -6291,14 +6651,14 @@ function WellnessValleyApp() {
                       </div>
 
                       <div className="text-blue-400 font-bold">
-                        â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                        ╚════════════════════════════════════════════════════════════════
                       </div>
                     </div>
 
                     {/* Individual Console Logs */}
                     <div className="space-y-1 text-gray-300">
                       <div>
-                        <span className="text-blue-400">🤖 [AI-DETECTED]</span>
+                        <span className="text-blue-400">?? [AI-DETECTED]</span>
                         <span className="ml-2">
                           Original:{" "}
                           <span className="text-yellow-300">
@@ -6311,7 +6671,7 @@ function WellnessValleyApp() {
                       log.userCorrected.trim().toLowerCase() ? (
                         <div>
                           <span className="text-green-400">
-                            ✓ [NO-CORRECTION]
+                            ? [NO-CORRECTION]
                           </span>
                           <span className="ml-2">
                             User accepted AI suggestion
@@ -6320,7 +6680,7 @@ function WellnessValleyApp() {
                       ) : (
                         <div>
                           <span className="text-green-400">
-                            👤 [USER-CORRECTED]
+                            ?? [USER-CORRECTED]
                           </span>
                           <span className="ml-2">
                             Mapped to:{" "}
@@ -6333,7 +6693,7 @@ function WellnessValleyApp() {
 
                       <div>
                         <span className="text-purple-400">
-                          📊 [FINAL-DISPLAY]
+                          ?? [FINAL-DISPLAY]
                         </span>
                         <span className="ml-2">
                           Will show:{" "}
@@ -6387,7 +6747,7 @@ function WellnessValleyApp() {
                       .map(
                         (log) =>
                           `${new Date(log.timestamp).toLocaleString()}\n` +
-                          `AI: ${log.aiDetected} → Corrected: ${log.userCorrected} → Final: ${log.finalDisplay}\n` +
+                          `AI: ${log.aiDetected} ? Corrected: ${log.userCorrected} ? Final: ${log.finalDisplay}\n` +
                           `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`,
                       )
                       .join("\n");
@@ -6398,7 +6758,7 @@ function WellnessValleyApp() {
                   }}
                   className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
                 >
-                  📋 Copy Logs
+                  ?? Copy Logs
                 </button>
                 <button
                   onClick={() => setShowCorrectionModal(false)}

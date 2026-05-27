@@ -8,7 +8,7 @@ const LoginBlobs = () => (
       <div className="absolute -bottom-20 -right-20 w-56 h-56 xs:w-72 xs:h-72 bg-teal-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
       <div className="absolute top-1/2 right-0 w-44 h-44 xs:w-60 xs:h-60 bg-emerald-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
     </div>
-    <style jsx>{`
+    <style>{`
       @keyframes blob {
         0%   { transform: translate(0px, 0px) scale(1); }
         33%  { transform: translate(30px, -50px) scale(1.1); }

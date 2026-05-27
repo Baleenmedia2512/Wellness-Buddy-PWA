@@ -164,7 +164,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             }
         }
 
-        Toast.makeText(this, "Wellness Valley Service Running", Toast.LENGTH_SHORT).show();
+        // [BUG 3 FIX] Removed debug Toast — production users should never
+        // see a 'Service Running' popup on every app launch.
+        // Toast.makeText(this, "Wellness Valley Service Running", Toast.LENGTH_SHORT).show();
 
         try {
             initServiceComponents();
