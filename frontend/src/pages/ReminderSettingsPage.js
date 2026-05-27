@@ -106,15 +106,39 @@ const ACTIVITY_CONFIG = {
 const Toggle = ({ enabled, onChange, disabled = false }) => (
   <button
     onClick={() => !disabled && onChange(!enabled)}
-    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 focus:outline-none
-      ${enabled ? 'bg-green-500' : 'bg-gray-300'}
-      ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-    aria-checked={enabled}
     role="switch"
+    aria-checked={enabled}
+    style={{
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      width: '36px',
+      height: '20px',
+      borderRadius: '10px',
+      backgroundColor: enabled ? '#22c55e' : '#d1d5db',
+      opacity: disabled ? 0.4 : 1,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      border: 'none',
+      outline: 'none',
+      padding: 0,
+      flexShrink: 0,
+      transition: 'background-color 0.2s',
+      WebkitAppearance: 'none',
+      boxShadow: 'none',
+      minHeight: '20px',
+    }}
   >
     <span
-      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200
-        ${enabled ? 'translate-x-6' : 'translate-x-1'}`}
+      style={{
+        position: 'absolute',
+        width: '14px',
+        height: '14px',
+        borderRadius: '50%',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        transition: 'transform 0.2s',
+        transform: enabled ? 'translateX(19px)' : 'translateX(3px)',
+      }}
     />
   </button>
 );
@@ -652,8 +676,8 @@ const ReminderSettingsPage = ({ onBack }) => {
                         <p className={`text-[11px] font-medium mt-2 ml-1
                           ${isCustom ? 'text-amber-600' : 'text-green-600'}`}>
                           {isCustom
-                            ? `âœï¸ Custom — default is ${defaultTime}`
-                            : `â° ${REMINDER_OFFSET} min before ${cfg.label.toLowerCase()} window`}
+                            ? `✏️ Custom — default is ${defaultTime}`
+                            : `⏰ ${REMINDER_OFFSET} min before ${cfg.label.toLowerCase()} window`}
                         </p>
                       );
                     })()}

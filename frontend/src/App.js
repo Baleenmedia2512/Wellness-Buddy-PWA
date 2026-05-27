@@ -166,7 +166,7 @@ const WellnessCounselling = lazy(() =>
 );
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
-// const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage")); // FEATURE DISABLED
+const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
@@ -562,10 +562,9 @@ function WellnessValleyApp() {
   const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
-  // Reminders state � FEATURE DISABLED
-  const [showReminders] = useState(false);
-  // const [showReminders, setShowReminders] = useState(false);
-  // const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
+  // Reminders state
+  const [showReminders, setShowReminders] = useState(false);
+  const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
@@ -5119,14 +5118,14 @@ function WellnessValleyApp() {
   //   );
   // }
 
-  // Reminders page � FEATURE DISABLED
-  // if (showReminders) {
-  //   return (
-  //     <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-  //       <ReminderSettingsPage onBack={() => setShowReminders(false)} />
-  //     </Suspense>
-  //   );
-  // }
+  // Reminders page
+  if (showReminders) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+        <ReminderSettingsPage onBack={() => setShowReminders(false)} />
+      </Suspense>
+    );
+  }
 
   // Discipline Report for all users
   if (deferredShowDisciplineReport) {
@@ -5217,7 +5216,7 @@ function WellnessValleyApp() {
         onShowBackgroundHistory={showDashboardPage}
         // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
         // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
-        // onShowReminders={showRemindersPage}        // FEATURE DISABLED
+        onShowReminders={showRemindersPage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => startTransition(() => setShowAdminDashboard(true))
