@@ -102,11 +102,10 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
-    // Stamp the row as 'food' now that nutrition analysis has confirmed it.
-    // New pending captures start as ImageType='pending' to avoid a race
-    // condition where the row would match the listAnalyses ImageType='food'
-    // filter before the type is resolved.
-    ImageType: 'food',
+    // ImageType was dropped from food_nutrition_data_table by
+    // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
+    // now lives on captures_table and is promoted via captures.updateTypeById
+    // below. Including it here would cause Supabase to reject the INSERT/UPDATE.
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),

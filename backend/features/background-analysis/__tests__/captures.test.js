@@ -6,7 +6,7 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, updateCaptureType } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, save, updateCaptureType } from '../analysis.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
@@ -464,5 +464,75 @@ describe('updateCaptureType', () => {
     await expect(
       updateCaptureType({ id: 5, userId: '42', imageType: 'weight' }),
     ).rejects.toThrow('captures slice down');
+  });
+});
+
+// ─── save ─────────────────────────────────────────────────────────────────────
+
+describe('save', () => {
+  const baseInput = {
+    userId: '42',
+    imagePath: 'test.jpg',
+    analysisResult: {
+      nutrition: { calories: 350, protein: 12, carbs: 45, fat: 10, fiber: 3 },
+      category: { name: 'Rice' },
+      confidence: 'high',
+    },
+    deviceInfo: 'test-device',
+    ImageBase64: null,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.insertAnalysis.mockResolvedValue({ ID: 99 });
+    repo.findFoodByCaptureId.mockResolvedValue(null);
+    captures.updateTypeById.mockResolvedValue({ changed: true, imageType: 'food' });
+    repo.touchLastActive.mockResolvedValue();
+  });
+
+  it('does NOT include ImageType in the food_nutrition_data_table insert (PR-6 regression guard)', async () => {
+    // ImageType was dropped from food_nutrition_data_table by
+    // drop_legacy_share_columns_from_food.sql. Including it would cause
+    // Supabase to reject the INSERT with a column-not-found error.
+    await save(baseInput);
+    expect(repo.insertAnalysis).toHaveBeenCalledTimes(1);
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('ImageType');
+  });
+
+  it('inserts with CaptureID FK when captureId is supplied', async () => {
+    await save({ ...baseInput, captureId: 1001 });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.CaptureID).toBe(1001);
+  });
+
+  it('promotes the capture to food after a successful insert', async () => {
+    await save({ ...baseInput, captureId: 1001 });
+    expect(captures.updateTypeById).toHaveBeenCalledWith({
+      captureId: 1001,
+      userId: '42',
+      toType: 'food',
+    });
+  });
+
+  it('does NOT call captures.updateTypeById when no captureId', async () => {
+    await save(baseInput);
+    expect(captures.updateTypeById).not.toHaveBeenCalled();
+  });
+
+  it('updates an existing food row when findFoodByCaptureId returns a match', async () => {
+    repo.findFoodByCaptureId.mockResolvedValue({ ID: 77 });
+    repo.updateWithAnalysisResult.mockResolvedValue({ ID: 77 });
+    const r = await save({ ...baseInput, captureId: 1001 });
+    expect(repo.insertAnalysis).not.toHaveBeenCalled();
+    expect(repo.updateWithAnalysisResult).toHaveBeenCalledWith(77, '42', expect.not.objectContaining({ ImageType: expect.anything() }));
+    expect(r.httpStatus).toBe(200);
+  });
+
+  it('returns 500 on a DB error without crashing the process', async () => {
+    repo.insertAnalysis.mockRejectedValueOnce(new Error('connection refused'));
+    const r = await save(baseInput);
+    expect(r.httpStatus).toBe(500);
+    expect(r.body.success).toBe(false);
   });
 });

@@ -3289,7 +3289,10 @@ function WellnessValleyApp() {
       }
     } catch (_) { /* non-fatal — overlay is a UX nicety */ }
 
-    // ?? Safety timer so the user is never stuck behind the photo overlay.
+    // Safety timer: unblocks the user if the capture POST never resolves
+    // (e.g. offline, server error). 8 s gives enough headroom for a slow
+    // mobile network so the timer does NOT fire while a share sheet is
+    // normally open (was 3.5 s, which fired mid-sheet on slow connections).
     if (sharingPendingTimerRef.current) clearTimeout(sharingPendingTimerRef.current);
     sharingPendingTimerRef.current = setTimeout(() => {
       setSharingPendingImage((prev) => {
@@ -3298,7 +3301,7 @@ function WellnessValleyApp() {
         }
         return null;
       });
-    }, 3500);
+    }, 8000);
 
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
@@ -3523,6 +3526,16 @@ function WellnessValleyApp() {
           return;
         }
         foodAutoSharedRef.current = true;
+        // Cancel the safety timer NOW, before Share.share() blocks waiting
+        // for the user to pick an app. Without this, the 3.5 s timer fires
+        // while the share sheet is still open and swaps the painted photo for
+        // the home/dashboard screen underneath — exactly the visual the user
+        // reported. clearOverlay() (called after share resolves) already
+        // cancels the timer, but that is too late for a long-open sheet.
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
         shareTextViaWhatsApp(share.url).then((ok) => {
           _hasCompletedFirstShareRef.current = true;
           if (!ok) foodAutoSharedRef.current = false;
