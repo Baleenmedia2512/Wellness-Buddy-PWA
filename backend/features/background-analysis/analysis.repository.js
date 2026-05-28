@@ -208,25 +208,51 @@ export async function findOwnerByToken(token) {
   if (capErr) throw capErr;
   if (!cap) return null;
 
-  const { data: food, error: foodErr } = await supabase
-    .from('food_nutrition_data_table')
-    .select('"ID"')
-    .eq('"CaptureID"', cap.ID)
-    .order('"ID"', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (foodErr) throw foodErr;
+  const imageType = cap.ImageType || 'food';
+
+  // For each image type, look up the domain row by CaptureID so the frontend
+  // can match the exact card (not just the date) when a share link is opened.
+  let domainId = null;
+
+  if (imageType === 'food') {
+    const { data: food, error: foodErr } = await supabase
+      .from('food_nutrition_data_table')
+      .select('"ID"')
+      .eq('"CaptureID"', cap.ID)
+      .order('"ID"', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (foodErr) throw foodErr;
+    domainId = food?.ID ?? null;
+  } else if (imageType === 'weight') {
+    const { data: wt, error: wtErr } = await supabase
+      .from('weight_records_table')
+      .select('"ID"')
+      .eq('"CaptureID"', cap.ID)
+      .limit(1)
+      .maybeSingle();
+    if (wtErr) throw wtErr;
+    domainId = wt?.ID ?? null;
+  } else if (imageType === 'education') {
+    const { data: edu, error: eduErr } = await supabase
+      .from('education_logs_table')
+      .select('"Id"')
+      .eq('"CaptureID"', cap.ID)
+      .limit(1)
+      .maybeSingle();
+    if (eduErr) throw eduErr;
+    domainId = edu?.Id ?? null;
+  }
 
   return {
-    // For food captures, expose the food row ID as the meal handle so the
-    // existing Dashboard deep-link logic ('expand this meal card') keeps
-    // working. For non-food captures, ID falls back to the capture ID and
-    // the frontend treats it as an opaque value.
-    ID:             food?.ID ?? cap.ID,
+    // domainId is the row ID inside the feature table (food/weight/education).
+    // Falls back to cap.ID when the lookup finds nothing (e.g. save failed
+    // or the CaptureID column was not yet populated for legacy rows).
+    ID:             domainId ?? cap.ID,
     UserID:         cap.UserID,
     CreatedAt:      cap.CreatedAt,
     ShareExpiresAt: cap.ShareExpiresAt,
-    ImageType:      cap.ImageType,
+    ImageType:      imageType,
     CaptureID:      cap.ID,
   };
 }

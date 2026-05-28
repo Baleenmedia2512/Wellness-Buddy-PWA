@@ -6,7 +6,7 @@
  * Selected log opens `EducationCardModal` with delete + undo wired
  * back into the hook.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import EducationCardModal from './EducationCardModal';
 import EducationDashboardHeader from './EducationDashboardHeader';
 import EducationLogList from './EducationLogList';
@@ -14,10 +14,24 @@ import EducationCameraPanel, { EducationEmptyState } from './EducationCameraPane
 import EducationDashboardSkeleton from './EducationDashboardSkeleton';
 import { useEducationDashboard } from '../hooks/useEducationDashboard';
 
-const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0 }) => {
+const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null }) => {
   const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Auto-open the entry whose Id matches the deep-link mealId once logs load.
+  const autoOpenEducDoneRef = useRef(false);
+  useEffect(() => {
+    if (!initialEntryId || autoOpenEducDoneRef.current) return;
+    if (vm.loading || !vm.educationLogs.length) return;
+    const log = vm.educationLogs.find(
+      (e) => String(e.Id) === String(initialEntryId),
+    );
+    if (log) {
+      autoOpenEducDoneRef.current = true;
+      setSelectedLog(log);
+    }
+  }, [initialEntryId, vm.loading, vm.educationLogs]);
 
   if (vm.loading) return <EducationDashboardSkeleton />;
   if (!vm.educationLogs || vm.educationLogs.length === 0) return <EducationEmptyState />;

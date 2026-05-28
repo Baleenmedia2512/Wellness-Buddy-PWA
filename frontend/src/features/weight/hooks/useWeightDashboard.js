@@ -14,7 +14,7 @@ import {
   buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries,
 } from '../services/weightDashboardFormatter';
 
-export function useWeightDashboard({ user, apiBaseUrl }) {
+export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null }) {
   const data = useWeightHistoryData({ user, apiBaseUrl });
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
@@ -23,6 +23,21 @@ export function useWeightDashboard({ user, apiBaseUrl }) {
   const [weightTrendChartWidth, setWeightTrendChartWidth] = useState(0);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
+
+  // Auto-open the entry whose ID matches the deep-link mealId once history loads.
+  const autoOpenWeightDoneRef = useRef(false);
+  useEffect(() => {
+    if (!initialEntryId || autoOpenWeightDoneRef.current) return;
+    if (data.loading || !data.weightHistory.length) return;
+    const entry = data.weightHistory.find(
+      (e) => String(e.ID) === String(initialEntryId),
+    );
+    if (entry) {
+      autoOpenWeightDoneRef.current = true;
+      setSelectedEntry(entry);
+      setShowModal(true);
+    }
+  }, [initialEntryId, data.loading, data.weightHistory]);
 
   const weightSummaryRef = useRef(null);
   const weightTrendRef = useRef(null);

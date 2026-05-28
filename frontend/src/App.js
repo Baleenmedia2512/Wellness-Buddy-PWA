@@ -689,15 +689,22 @@ function WellnessValleyApp() {
     if (state === 'opened') {
       _cameraInFlightRef.current = true;
       _justClosedCameraRef.current = false;
-      // The native camera UI now owns the screen — safe to drop the launch
-      // overlay. Doing it HERE (instead of via a timer) guarantees zero
-      // home-screen flash regardless of device speed.
-      setShowLaunchOverlay(false);
+      // DO NOT dismiss the launch overlay here.
+      //
+      // 'opened' fires synchronously, BEFORE Camera.getPhoto has had a chance
+      // to display the native camera dialog. Calling setShowLaunchOverlay(false)
+      // here causes a React re-render that briefly shows the home screen in the
+      // gap between the overlay disappearing and the native camera appearing
+      // → visible as a 1-3 frame "home screen flash" on every cold start.
+      //
+      // The native camera dialog is rendered above the WebView layer anyway,
+      // so the overlay is invisible while the camera is open — keeping it
+      // mounted costs nothing. It is dismissed on 'closed' (below) so the
+      // home screen only ever appears AFTER the camera has already gone.
     } else if (state === 'closed') {
       _cameraInFlightRef.current = false;
       _justClosedCameraRef.current = true;
-      // If the launch overlay somehow is still up at this point (e.g. user
-      // cancelled the very first camera before it could paint), drop it.
+      // Camera is gone — now it is safe to reveal the home screen.
       setShowLaunchOverlay(false);
     }
   }, []);
