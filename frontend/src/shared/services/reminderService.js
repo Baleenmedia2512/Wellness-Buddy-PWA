@@ -41,8 +41,12 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
 });
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const STORAGE_KEY       = 'wellnessReminders';
-const REMINDER_OFFSET   = 15; // minutes before activity start
+const STORAGE_KEY         = 'wellnessReminders';
+const REMINDER_OFFSET     = 15;  // minutes before activity start
+const WATER_INTERVAL_MIN  = 90;  // water reminder every 90 minutes
+const WATER_MAX_REMINDERS = 12;  // hard cap — request codes 3001–3012
+const WATER_DEFAULT_WAKE  = { hour: 6,  minute: 0  }; // 6:00 AM
+const WATER_DEFAULT_SLEEP = { hour: 22, minute: 0  }; // 10:00 PM
 
 const ACTIVITY_TYPES = ['weight', 'education', 'breakfast', 'lunch', 'dinner'];
 
@@ -52,6 +56,8 @@ const ACTIVITY_LABELS = {
   breakfast: 'Breakfast',
   lunch:     'Lunch',
   dinner:    'Dinner',
+  water:     'Water',
+  sleep:     'Sleep',
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,6 +95,46 @@ export function formatReminderTime(hour, minute) {
   const period       = hour >= 12 ? 'PM' : 'AM';
   const displayHour  = hour % 12 || 12;
   return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Compute water reminder times from wake to sleep at WATER_INTERVAL_MIN intervals.
+ * Returns array of { hour, minute } — capped at WATER_MAX_REMINDERS.
+ *
+ * Handles overnight wrap (e.g. night-shift worker wake=22:00, sleep=06:00).
+ *
+ * @param {number} wakeH   wake hour   (0–23)
+ * @param {number} wakeM   wake minute (0–59)
+ * @param {number} sleepH  sleep hour  (0–23)
+ * @param {number} sleepM  sleep minute(0–59)
+ * @returns {{ hour: number, minute: number }[]}
+ */
+export function computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM) {
+  const wakeTotal  = wakeH  * 60 + wakeM;
+  let   sleepTotal = sleepH * 60 + sleepM;
+  // Handle overnight: if sleep is before (or equal to) wake, add 24h
+  if (sleepTotal <= wakeTotal) sleepTotal += 24 * 60;
+
+  const times = [];
+  let cursor  = wakeTotal;
+  while (cursor < sleepTotal && times.length < WATER_MAX_REMINDERS) {
+    const h = Math.floor(cursor / 60) % 24;
+    const m = cursor % 60;
+    times.push({ hour: h, minute: m });
+    cursor += WATER_INTERVAL_MIN;
+  }
+  return times;
+}
+
+/**
+ * Compute the sleep reminder time: sleepTime − REMINDER_OFFSET minutes.
+ *
+ * @param {number} sleepH
+ * @param {number} sleepM
+ * @returns {{ hour: number, minute: number }}
+ */
+export function computeSleepReminderTime(sleepH, sleepM) {
+  return subtractMinutes(sleepH, sleepM, REMINDER_OFFSET);
 }
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -160,6 +206,19 @@ export function buildDefaultPreferences(timeWindowMap) {
   return {
     masterEnabled: true,
     activities,
+    water: {
+      enabled:      true,
+      wakeHour:     WATER_DEFAULT_WAKE.hour,
+      wakeMinute:   WATER_DEFAULT_WAKE.minute,
+      sleepHour:    WATER_DEFAULT_SLEEP.hour,
+      sleepMinute:  WATER_DEFAULT_SLEEP.minute,
+    },
+    sleep: {
+      enabled: true,
+      ...computeSleepReminderTime(WATER_DEFAULT_SLEEP.hour, WATER_DEFAULT_SLEEP.minute),
+      bedHour:    WATER_DEFAULT_SLEEP.hour,
+      bedMinute:  WATER_DEFAULT_SLEEP.minute,
+    },
   };
 }
 
@@ -198,7 +257,33 @@ export function mergePreferencesWithWindows(savedPrefs, timeWindowMap) {
     }
   }
 
-  return merged;
+  return ensureWaterSleepDefaults(merged);
+}
+
+/**
+ * Ensure saved prefs contain water + sleep keys (added in a later version).
+ * If missing, fill with defaults so existing users get the new reminders.
+ */
+function ensureWaterSleepDefaults(prefs) {
+  const out = { ...prefs };
+  if (!out.water) {
+    out.water = {
+      enabled:     true,
+      wakeHour:    WATER_DEFAULT_WAKE.hour,
+      wakeMinute:  WATER_DEFAULT_WAKE.minute,
+      sleepHour:   WATER_DEFAULT_SLEEP.hour,
+      sleepMinute: WATER_DEFAULT_SLEEP.minute,
+    };
+  }
+  if (!out.sleep) {
+    out.sleep = {
+      enabled:   true,
+      bedHour:   WATER_DEFAULT_SLEEP.hour,
+      bedMinute: WATER_DEFAULT_SLEEP.minute,
+      ...computeSleepReminderTime(WATER_DEFAULT_SLEEP.hour, WATER_DEFAULT_SLEEP.minute),
+    };
+  }
+  return out;
 }
 
 // ── Backend API ───────────────────────────────────────────────────────────────
@@ -243,13 +328,15 @@ const isNative = () => Capacitor.isNativePlatform();
  * Uses scheduleAll() so preferences are also persisted to SharedPreferences
  * for automatic re-scheduling after device reboot.
  */
-export async function applyRemindersToNative(prefs) {
+export async function applyRemindersToNative(prefsRaw) {
   if (!isNative()) {
     debugLog('[ReminderService] Not on native platform — skipping alarm scheduling');
     return;
   }
 
-  // Build the reminders array for the native plugin
+  const prefs = ensureWaterSleepDefaults(prefsRaw);
+
+  // ── 1. Standard activity reminders (weight / education / meals) ──────
   const reminders = ACTIVITY_TYPES.map((type) => {
     const activity = prefs.activities[type] || {};
     return {
@@ -260,6 +347,47 @@ export async function applyRemindersToNative(prefs) {
       enabled:      activity.enabled ?? false,
     };
   });
+
+  // ── 2. Water reminders — expand into individual slots ─────────────────
+  const { water } = prefs;
+  if (water) {
+    const times = computeWaterReminderTimes(
+      water.wakeHour, water.wakeMinute,
+      water.sleepHour, water.sleepMinute,
+    );
+    times.forEach((t, i) => {
+      reminders.push({
+        activityType: `water_${i + 1}`,
+        label:        'Drink Water 💧',
+        hour:         t.hour,
+        minute:       t.minute,
+        enabled:      water.enabled ?? true,
+      });
+    });
+    // Cancel any slots beyond what we just scheduled (e.g. user narrowed window)
+    for (let i = times.length + 1; i <= WATER_MAX_REMINDERS; i++) {
+      reminders.push({
+        activityType: `water_${i}`,
+        label:        'Drink Water 💧',
+        hour:         6,
+        minute:       0,
+        enabled:      false, // forces cancel in scheduleAll
+      });
+    }
+  }
+
+  // ── 3. Sleep reminder ─────────────────────────────────────────────────
+  const { sleep } = prefs;
+  if (sleep) {
+    const t = computeSleepReminderTime(sleep.bedHour ?? 22, sleep.bedMinute ?? 0);
+    reminders.push({
+      activityType: 'sleep',
+      label:        'Bedtime Soon 🌙',
+      hour:         t.hour,
+      minute:       t.minute,
+      enabled:      sleep.enabled ?? true,
+    });
+  }
 
   // scheduleAll handles master toggle + persists to SharedPreferences for boot recovery
   await ReminderPluginNative.scheduleAll({
@@ -363,6 +491,8 @@ export {
   ACTIVITY_TYPES,
   ACTIVITY_LABELS,
   REMINDER_OFFSET,
+  WATER_INTERVAL_MIN,
+  WATER_MAX_REMINDERS,
   ReminderPluginNative,
   subtractMinutes,
   parseTimeString,

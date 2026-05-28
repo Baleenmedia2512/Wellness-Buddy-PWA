@@ -28,6 +28,8 @@ import {
   AlertTriangle,
   Check,
   Info,
+  Droplets,
+  Sunrise,
 } from 'lucide-react';
 import BathroomScaleIcon from '../shared/components/icons/BathroomScaleIcon';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +39,7 @@ import {
   ACTIVITY_TYPES,
   ACTIVITY_LABELS,
   REMINDER_OFFSET,
+  WATER_INTERVAL_MIN,
   fetchTimeWindows,
   loadReminderPreferences,
   saveReminderPreferences,
@@ -49,6 +52,8 @@ import {
   formatReminderTime,
   subtractMinutes,
   parseTimeString,
+  computeWaterReminderTimes,
+  computeSleepReminderTime,
 } from '../shared/services/reminderService';
 
 // ── Activity icon/colour config ───────────────────────────────────────────────
@@ -98,6 +103,24 @@ const ACTIVITY_CONFIG = {
     ring:     'ring-indigo-200',
     dot:      'bg-indigo-500',
     light:    'bg-indigo-100',
+  },
+  water: {
+    label:    'Water',
+    icon:     Droplets,
+    color:    'text-cyan-600',
+    bg:       'bg-cyan-50',
+    ring:     'ring-cyan-200',
+    dot:      'bg-cyan-500',
+    light:    'bg-cyan-100',
+  },
+  sleep: {
+    label:    'Sleep',
+    icon:     Moon,
+    color:    'text-violet-600',
+    bg:       'bg-violet-50',
+    ring:     'ring-violet-200',
+    dot:      'bg-violet-500',
+    light:    'bg-violet-100',
   },
 };
 
@@ -698,6 +721,161 @@ const ReminderSettingsPage = ({ onBack }) => {
             </p>
           </div>
         )}
+
+        {/* ── 💧 Water Reminders Card ───────────────────────────────── */}
+        {prefs && (() => {
+          const water     = prefs.water || {};
+          const masterOff = !prefs.masterEnabled;
+          const wakeH     = water.wakeHour   ?? 6;
+          const wakeM     = water.wakeMinute ?? 0;
+          const sleepH    = water.sleepHour  ?? 22;
+          const sleepM    = water.sleepMinute ?? 0;
+          const slots     = computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM);
+          const isEditingWake  = activePicker === 'water_wake';
+          const isEditingSleep = activePicker === 'water_sleep';
+          return (
+            <motion.div layout
+              className={`bg-white rounded-2xl shadow-sm border transition-all duration-200
+                ${(isEditingWake||isEditingSleep) ? 'border-cyan-300 ring-2 ring-cyan-100 shadow-md' : 'border-gray-100'}
+                ${masterOff ? 'opacity-50' : ''}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-4 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-cyan-50">
+                  <Droplets className="h-5 w-5 text-cyan-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900">Water</p>
+                  {water.enabled && !masterOff
+                    ? <p className="text-xs font-semibold text-cyan-600">💧 Every {WATER_INTERVAL_MIN} min · {slots.length} reminders/day</p>
+                    : <p className="text-xs text-gray-400">Stay hydrated throughout the day</p>}
+                </div>
+                <Toggle enabled={!!water.enabled}
+                  onChange={(val) => setPrefs((prev) => ({ ...prev, water: { ...prev.water, enabled: val } }))}
+                  disabled={masterOff} />
+              </div>
+              <AnimatePresence>
+                {water.enabled && !masterOff && (
+                  <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }} exit={{ height:0, opacity:0 }}
+                    className="border-t border-gray-50 px-4 pb-4">
+                    <div className="flex gap-3 mt-3">
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Wake Up</p>
+                        <TouchFeedbackButton
+                          onClick={(e) => { e.stopPropagation(); setActivePicker(isEditingWake ? null : 'water_wake'); }}
+                          className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border-2 transition-all
+                            ${isEditingWake ? 'bg-cyan-50 border-cyan-400' : 'bg-gray-50 border-gray-100'}`}>
+                          <div className="flex items-center gap-2">
+                            <Sunrise className={`h-4 w-4 ${isEditingWake ? 'text-cyan-600' : 'text-gray-400'}`} />
+                            <span className={`text-sm font-bold ${isEditingWake ? 'text-cyan-700' : 'text-gray-800'}`}>{formatReminderTime(wakeH, wakeM)}</span>
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isEditingWake ? 'rotate-180' : ''}`} />
+                        </TouchFeedbackButton>
+                        <AnimatePresence>
+                          {isEditingWake && (
+                            <TimeScrollPicker hour={wakeH} minute={wakeM}
+                              onChange={(h,m) => setPrefs((prev) => ({ ...prev, water: { ...prev.water, wakeHour:h, wakeMinute:m } }))}
+                              onClose={() => setActivePicker(null)} />
+                          )}
+                        </AnimatePresence>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sleep</p>
+                        <TouchFeedbackButton
+                          onClick={(e) => { e.stopPropagation(); setActivePicker(isEditingSleep ? null : 'water_sleep'); }}
+                          className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border-2 transition-all
+                            ${isEditingSleep ? 'bg-cyan-50 border-cyan-400' : 'bg-gray-50 border-gray-100'}`}>
+                          <div className="flex items-center gap-2">
+                            <Moon className={`h-4 w-4 ${isEditingSleep ? 'text-cyan-600' : 'text-gray-400'}`} />
+                            <span className={`text-sm font-bold ${isEditingSleep ? 'text-cyan-700' : 'text-gray-800'}`}>{formatReminderTime(sleepH, sleepM)}</span>
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isEditingSleep ? 'rotate-180' : ''}`} />
+                        </TouchFeedbackButton>
+                        <AnimatePresence>
+                          {isEditingSleep && (
+                            <TimeScrollPicker hour={sleepH} minute={sleepM}
+                              onChange={(h,m) => setPrefs((prev) => ({ ...prev, water: { ...prev.water, sleepHour:h, sleepMinute:m } }))}
+                              onClose={() => setActivePicker(null)} />
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                    <p className="text-[11px] font-medium mt-3 ml-1 text-cyan-600">
+                      {slots.length > 0
+                        ? `⏱ First 3: ${slots.slice(0,3).map(t => formatReminderTime(t.hour, t.minute)).join(', ')}${slots.length > 3 ? ` … +${slots.length-3} more` : ''}`
+                        : '⚠️ Increase gap between wake and sleep times'}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })()}
+
+        {/* ── 🌙 Sleep Reminder Card ────────────────────────────────── */}
+        {prefs && (() => {
+          const sleep     = prefs.sleep || {};
+          const masterOff = !prefs.masterEnabled;
+          const bedH      = sleep.bedHour   ?? 22;
+          const bedM      = sleep.bedMinute ?? 0;
+          const remTime   = computeSleepReminderTime(bedH, bedM);
+          const isEditing = activePicker === 'sleep';
+          return (
+            <motion.div layout
+              className={`bg-white rounded-2xl shadow-sm border transition-all duration-200
+                ${isEditing ? 'border-violet-300 ring-2 ring-violet-100 shadow-md' : 'border-gray-100'}
+                ${masterOff ? 'opacity-50' : ''}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-4 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-violet-50">
+                  <Moon className="h-5 w-5 text-violet-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900">Sleep</p>
+                  {sleep.enabled && !masterOff
+                    ? <p className="text-xs font-semibold text-violet-600">🌙 {formatReminderTime(remTime.hour, remTime.minute)} — 15 min before bed</p>
+                    : <p className="text-xs text-gray-400">Bedtime wind-down reminder</p>}
+                </div>
+                <Toggle enabled={!!sleep.enabled}
+                  onChange={(val) => setPrefs((prev) => ({ ...prev, sleep: { ...prev.sleep, enabled: val } }))}
+                  disabled={masterOff} />
+              </div>
+              <AnimatePresence>
+                {sleep.enabled && !masterOff && (
+                  <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }} exit={{ height:0, opacity:0 }}
+                    className="border-t border-gray-50 px-4 pb-4">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-3 mb-2">Bedtime</p>
+                    <TouchFeedbackButton
+                      onClick={(e) => { e.stopPropagation(); setActivePicker(isEditing ? null : 'sleep'); }}
+                      className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all
+                        ${isEditing ? 'bg-violet-50 border-violet-400 shadow-sm' : 'bg-gray-50 border-gray-100'}`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isEditing ? 'bg-violet-100' : 'bg-white shadow-sm'}`}>
+                          <Moon className={`h-4 w-4 ${isEditing ? 'text-violet-600' : 'text-gray-400'}`} />
+                        </div>
+                        <span className={`text-lg font-bold tracking-tight ${isEditing ? 'text-violet-700' : 'text-gray-800'}`}>
+                          {formatReminderTime(bedH, bedM)}
+                        </span>
+                      </div>
+                      <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${isEditing ? 'rotate-180' : ''}`} />
+                    </TouchFeedbackButton>
+                    <AnimatePresence>
+                      {isEditing && (
+                        <TimeScrollPicker hour={bedH} minute={bedM}
+                          onChange={(h,m) => setPrefs((prev) => ({ ...prev, sleep: { ...prev.sleep, bedHour:h, bedMinute:m } }))}
+                          onClose={() => setActivePicker(null)} />
+                      )}
+                    </AnimatePresence>
+                    <p className="text-[11px] font-medium mt-2 ml-1 text-violet-600">
+                      🌙 Reminder at {formatReminderTime(remTime.hour, remTime.minute)} — 15 min before {formatReminderTime(bedH, bedM)}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })()}
       </div>
 
       {/* ── Sticky Save Button ───────────────────────────────────────────── */}

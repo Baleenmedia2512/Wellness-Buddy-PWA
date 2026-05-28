@@ -516,6 +516,9 @@ function WellnessValleyApp() {
     title: "",
     message: "",
     type: "info",
+    confirmText: undefined,
+    cancelText: undefined,
+    onConfirm: undefined,
   });
 
   // New user profile modal state - show profile page for first-time users
@@ -698,6 +701,35 @@ function WellnessValleyApp() {
       clearTimeout(t);
     };
   }, [user, permissionsReady, isUserActive]);
+
+  // On Android, request exact alarm permission once per login session.
+  // Fires after permissionsReady so it doesn't collide with camera/push/location dialogs.
+  const _hasFiredAlarmPermCheckRef = useRef(false);
+  useEffect(() => {
+    if (!user || !Capacitor.isNativePlatform() || _hasFiredAlarmPermCheckRef.current) return;
+    if (!permissionsReady) return;
+    _hasFiredAlarmPermCheckRef.current = true;
+    const t = setTimeout(async () => {
+      try {
+        const { canScheduleExact } = await checkExactAlarmPermission();
+        if (!canScheduleExact) {
+          setAlertModal({
+            isOpen: true,
+            title: "⏰ Allow Exact Reminders",
+            message:
+              "To receive reminders exactly on time, tap 'Open Settings', find Wellness Valley under Alarms & Reminders, and turn it on.",
+            type: "warning",
+            confirmText: "Open Settings",
+            cancelText: "Later",
+            onConfirm: async () => {
+              try { await openExactAlarmSettings(); } catch (_) {}
+            },
+          });
+        }
+      } catch (_) {}
+    }, 2000); // slight delay so the home screen has settled
+    return () => clearTimeout(t);
+  }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<uuid>) or the custom scheme
@@ -6270,6 +6302,9 @@ function WellnessValleyApp() {
         title={alertModal.title}
         message={alertModal.message}
         type={alertModal.type}
+        confirmText={alertModal.confirmText}
+        cancelText={alertModal.cancelText}
+        onConfirm={alertModal.onConfirm}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
