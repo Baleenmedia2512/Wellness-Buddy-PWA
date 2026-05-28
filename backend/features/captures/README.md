@@ -36,15 +36,16 @@ plus a nullable `CaptureID` FK back to its capture.
 
 | Path | Behaviour |
 |---|---|
-| `createPendingCapture` (new row) | Inserts `captures_table` **first**, then the food row with `CaptureID` set. Failure aborts the whole request. |
-| `updateCaptureType` (existing row) | Looks up `CaptureID` from the food row, then calls `captures.updateTypeById` — no more legacy column write, no more dual-write swallow. A food row with no `CaptureID` (pre-PR-2 historical) returns **404** (`CAPTURE_NOT_FOUND`). |
-| Share-link resolve (`/share/:token`, `/api/captures/resolve/:token`) | Reads `captures_table` first for owner / expiry / type; then joins `food_nutrition_data_table` by `CaptureID` for nutrition. Pre-PR-2 historical rows **404** by design. |
-| `listAnalyses` (food dashboard) | Filters on `AnalysisData IS NOT NULL` (the legacy `ImageType='food'` filter was removed with the column). Orphan re-tagged rows are excluded automatically. |
-| `save()` else-branch (Android background-service direct insert) | **Out of scope for PR 5** — still writes legacy-only and bypasses captures_table. Tracked as a follow-up. |
+| `createPendingCapture` (new row) | **PR 6** — Inserts `captures_table` ONLY. No speculative food-row pre-insert. Returns `{ id, token }` where `id` IS the `CaptureID`. Failure throws. |
+| `updateCaptureType` (existing row) | **PR 6** — `id` is the `CaptureID` (round-tripped from `createPendingCapture`). Delegates directly to `captures.updateTypeById`. Returns **404** (`CAPTURE_NOT_FOUND`) when the captures slice reports `NOT_FOUND_OR_NOT_OWNER`. |
+| `analysis.service.save()` | **PR 6** — When called with a `captureId`, upserts the food row keyed by `CaptureID` (find-then-update-or-insert via `findFoodByCaptureId`) and promotes the capture `pending → food` best-effort. Without `captureId`, falls back to plain insert (Android background-service path). |
+| Share-link resolve (`/share/:token`, `/api/captures/resolve/:token`) | Reads `captures_table` first for owner / expiry / type; then joins `food_nutrition_data_table` by `CaptureID` for nutrition. Pre-PR-2 historical rows **404** by design. **TODO(share-viewer-polling):** in-app viewers must now poll until `AnalysisData` lands, because the food row no longer exists at capture time. |
+| `listAnalyses` (food dashboard) | Filters on `AnalysisData IS NOT NULL`. `fetchMealsForDate` (food-corrections) added the same defensive filter in PR 6. |
 
-**Historical breakage:** any food share link generated before PR 2
-(create_captures_table.sql) now 404s. This was an explicit product decision —
-no backfill migration was written.
+**Historical breakage:** any food share link generated before PR 2 still 404s.
+Existing orphan `Unknown Food / 0 kcal` rows from before PR 6 are left in
+place by design — the user accepted them as historical noise. PR 6 only
+prevents *new* orphans from being created.
 
 ### `captures.service.js`
 
@@ -52,7 +53,7 @@ no backfill migration was written.
 |---|---|
 | `recordPending(input)` | Insert a `pending` capture row keyed by the supplied token. Returns `{ id, publicShareToken }`. |
 | `updateType({ publicShareToken, userId, toType })` | Promote `pending` to a terminal type by token, enforcing the state machine. |
-| `updateTypeById({ captureId, userId, toType })` | PR 5 — same as `updateType` but keyed by `CaptureID`. Used by `background-analysis.updateCaptureType` after `findCaptureIdForOwner`. |
+| `updateTypeById({ captureId, userId, toType })` | Same as `updateType` but keyed by `CaptureID`. Primary path post-PR-6: called by `background-analysis.updateCaptureType` AND by every vertical save (`food`, `weight`, `education`) when a `captureId` is supplied. |
 
 ## Dependencies
 

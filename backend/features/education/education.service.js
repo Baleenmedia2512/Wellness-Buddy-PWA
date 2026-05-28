@@ -1,6 +1,13 @@
 import * as repo from './education.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
+// PR 6 — captures_table is canonical for the at-capture-time write. The
+// education save endpoint promotes the linked capture pending → education
+// when `captureId` is supplied. Best-effort: a captures-side failure is
+// logged and does NOT fail the user's education save.
+import * as captures from '../captures/captures.service.js';
+import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
+import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -10,6 +17,7 @@ export async function saveLog(input) {
     userId, imageBase64, platform, topic, confidence, participantCount,
     deviceInfo, latitude, longitude, attendanceType, nutritionCenterId,
     centerName, imageTimestamp, city, village,
+    captureId,
   } = input;
 
   const imageBase64ToSave = (imageBase64 && imageBase64.trim() !== '') ? imageBase64 : null;
@@ -45,6 +53,7 @@ export async function saveLog(input) {
     center_name: centerName || null,
     City: city || null,
     Village: village || null,
+    CaptureID: captureId || null,
     IsDeleted: false,
     CreatedAt: logTimestampIST,
     UpdatedAt: logTimestampIST,
@@ -52,6 +61,22 @@ export async function saveLog(input) {
 
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.educationSummary(userId));
+
+  // PR 6 — promote the capture pending → education. Best-effort: see weight
+  // slice for rationale.
+  if (captureId) {
+    try {
+      await captures.updateTypeById({
+        captureId,
+        userId: userId.toString(),
+        toType: IMAGE_TYPE_EDUCATION,
+      });
+    } catch (err) {
+      logger.warn('education.saveLog: failed to promote capture to education', {
+        captureId, userId: userId.toString(), err: err.message,
+      });
+    }
+  }
 
   return {
     httpStatus: 200,

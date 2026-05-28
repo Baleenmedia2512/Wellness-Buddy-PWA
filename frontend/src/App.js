@@ -2296,6 +2296,15 @@ function WellnessValleyApp() {
         // Use EXIF capture timestamp if available � otherwise fall back to upload time
         clientTimestamp: captureTimestamp || new Date().toISOString(),
         clientTimezoneOffset: new Date().getTimezoneOffset(),
+        // PR 6 — link the weight record to its captures_table row so the backend
+        // can promote the capture pending → weight in the same request.
+        // `share.id` now semantically IS the CaptureID (the speculative food-row
+        // pre-insert was removed). Undefined when no share was created (e.g. the
+        // background-analysis worker bypassed share creation).
+        // TODO(share-viewer-polling): follow-up PR — in-app/web share viewer must
+        // poll the share endpoint until AnalysisData lands OR ImageType flips off
+        // 'pending', because we no longer pre-create the food row.
+        captureId: foodCaptureIdRef.current || undefined,
       };
 
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
@@ -3018,6 +3027,9 @@ function WellnessValleyApp() {
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
           city: userCity,
           village: userVillage,
+          // PR 6 — link to captures_table row; backend promotes pending → education.
+          // TODO(share-viewer-polling): see weight save site.
+          captureId: foodCaptureIdRef.current || undefined,
         }),
       });
 

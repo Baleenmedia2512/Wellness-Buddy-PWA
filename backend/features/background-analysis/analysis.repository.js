@@ -84,34 +84,29 @@ export async function touchLastActive(userId) {
 // ─── instant-share helpers ────────────────────────────────────────────────────
 
 /**
- * Insert a "pending" capture row that will be enriched once Gemini analysis
- * completes. The row is immediately addressable by its PublicShareToken.
+ * Look up the food row (if any) already created for a given capture, with an
+ * ownership guard. Used by `save()` to perform an idempotent upsert keyed by
+ * CaptureID — a retry of the same analysis (or a background-service replay)
+ * must not create a duplicate food row for one capture. Returns the row or null.
+ *
+ * Pre-PR-6 history: the food row was inserted speculatively at capture-time
+ * (`insertPendingCapture`), so an UPDATE-by-ID was always safe. PR 6 dropped
+ * that speculation — captures_table is now the only at-capture-time write —
+ * so the upsert has to look the row up by FK instead.
  */
-export async function insertPendingCapture({ userId, imageBase64, captureId = null }) {
+export async function findFoodByCaptureId(captureId, userId) {
+  if (!captureId || !userId) return null;
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .insert({
-      UserID: userId.toString(),
-      ImagePath: 'instant-share',
-      ImageBase64: imageBase64 || null,
-      // PR 5 — PublicShareToken / ShareExpiresAt / ImageType have been dropped
-      // from this table. captures_table is now canonical for share tokens and
-      // the image-type discriminator. The link from this food row to its
-      // capture is the (nullable) CaptureID FK populated below; createPendingCapture
-      // in the service layer inserts into captures_table FIRST and passes the
-      // resulting id here so every new food row is linked to its capture.
-      CaptureID: captureId,
-      ProcessedBy: 'manual_app',
-      DeviceInfo: 'Wellness Valley Web App',
-      CreatedAt: currentTime,
-      UpdatedAt: currentTime,
-    })
-    .select()
-    .single();
+    .select('"ID"')
+    .eq('"CaptureID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 0)
+    .limit(1)
+    .maybeSingle();
   if (error) throw error;
-  return data;
+  return data || null;
 }
 
 /**
@@ -299,26 +294,6 @@ export async function findUserName(userId) {
     .maybeSingle();
   if (error) throw error;
   return data?.UserName || null;
-}
-
-/**
- * PR 5 — resolve the captures_table primary key linked to a legacy food row,
- * with an ownership guard. Replaces the old `findTokenByIdForOwner`, which
- * read `food_nutrition_data_table.PublicShareToken` (column dropped in PR 5).
- * Returns the CaptureID (number) or null.
- */
-export async function findCaptureIdForOwner(id, userId) {
-  if (!id || !userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('food_nutrition_data_table')
-    .select('"CaptureID"')
-    .eq('"ID"', id)
-    .eq('"UserID"', userId.toString())
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.CaptureID || null;
 }
 
 export { getISTTimestamp, convertToIST };
