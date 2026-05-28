@@ -3751,6 +3751,16 @@ function WellnessValleyApp() {
             // AUTO-SAVE to database immediately
             setLoadingState("saving");
             setSaveLoading(true);
+            // Resolve the captures row BEFORE saving so the education row is
+            // linked to its capture via CaptureID. pendingSharePromise runs in
+            // parallel with Gemini detection, so by the time we reach here it
+            // has usually already resolved (no extra latency added).
+            try {
+              const capShare = await pendingSharePromise;
+              if (capShare?.id && !foodCaptureIdRef.current) {
+                foodCaptureIdRef.current = capShare.id;
+              }
+            } catch (_) {}
             // Pass exifTimestamp directly as captureTimestamp to avoid stale state read
             await saveEducationLog(educationData, processedImage, null, exifTimestamp);
           } else {
@@ -3894,6 +3904,14 @@ function WellnessValleyApp() {
           
           // Wrap save in try-catch to handle backend validation failures
           try {
+            // Resolve the captures row BEFORE saving so the weight row is
+            // linked to its capture via CaptureID. Same rationale as education above.
+            try {
+              const capShare = await pendingSharePromise;
+              if (capShare?.id && !foodCaptureIdRef.current) {
+                foodCaptureIdRef.current = capShare.id;
+              }
+            } catch (_) {}
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
