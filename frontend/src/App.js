@@ -2945,6 +2945,7 @@ function WellnessValleyApp() {
     imageBase64,
     selectedClub = null,
     captureTimestamp = null,
+    captureId = null,
   ) => {
     try {
       debugLog("?? Auto-saving education log:", educationData);
@@ -3005,8 +3006,8 @@ function WellnessValleyApp() {
       ) {
         debugLog("🏢 Multiple clubs detected, showing selection modal");
         setNearbyCenters(attendance.nearbyCenters);
-        // Store captureTimestamp so club-selection callback can pass it through
-        setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp });
+        // Store captureTimestamp and captureId so club-selection callback can pass them through
+        setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp, captureId });
         setShowClubSelectionModal(true);
         setSaveLoading(false);
         setLoadingState("idle");
@@ -3099,9 +3100,10 @@ function WellnessValleyApp() {
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
           city: userCity,
           village: userVillage,
-          // PR 6 — link to captures_table row; backend promotes pending → education.
-          // TODO(share-viewer-polling): see weight save site.
-          captureId: foodCaptureIdRef.current || undefined,
+          // PR 6 — captureId is passed explicitly as a param so it is always
+          // the value resolved BEFORE the GPS / geocoding awaits, not the
+          // potentially-stale ref value read after several async hops.
+          captureId: captureId || foodCaptureIdRef.current || undefined,
         }),
       });
 
@@ -3159,6 +3161,7 @@ function WellnessValleyApp() {
         pendingEducationData.imageBase64,
         selectedCenter,
         pendingEducationData.captureTimestamp || null,
+        pendingEducationData.captureId || null,
       );
       setPendingEducationData(null);
     }
@@ -3751,18 +3754,21 @@ function WellnessValleyApp() {
             // AUTO-SAVE to database immediately
             setLoadingState("saving");
             setSaveLoading(true);
-            // Resolve the captures row BEFORE saving so the education row is
-            // linked to its capture via CaptureID. pendingSharePromise runs in
-            // parallel with Gemini detection, so by the time we reach here it
-            // has usually already resolved (no extra latency added).
+            // Resolve the captures row BEFORE saving so captureId is ready.
+            // We pass it as an explicit parameter instead of relying on
+            // foodCaptureIdRef.current, which can be overwritten by other
+            // async paths (GPS check, geocoding) between here and the fetch.
+            let educationCaptureId = null;
             try {
               const capShare = await pendingSharePromise;
-              if (capShare?.id && !foodCaptureIdRef.current) {
-                foodCaptureIdRef.current = capShare.id;
+              if (capShare?.id) {
+                educationCaptureId = capShare.id;
+                // Also keep the ref in sync for other consumers.
+                if (!foodCaptureIdRef.current) foodCaptureIdRef.current = capShare.id;
               }
             } catch (_) {}
             // Pass exifTimestamp directly as captureTimestamp to avoid stale state read
-            await saveEducationLog(educationData, processedImage, null, exifTimestamp);
+            await saveEducationLog(educationData, processedImage, null, exifTimestamp, educationCaptureId);
           } else {
             setError("Unable to analyze meeting screenshot. Please try again.");
           }
@@ -5346,34 +5352,181 @@ function WellnessValleyApp() {
         </div>
       )}
 
-      {/* ?? Snapchat-style full-screen photo: covers the home screen during
-          the brief window between native-camera close and WhatsApp share
-          sheet open. Shows the actual captured photo (not a spinner) so the
-          hand-off from camera → share feels seamless. */}
+      {/* ✨ Share-pending overlay — covers the home screen during the brief
+          window between native-camera close and WhatsApp share-sheet open.
+          Glitter animations keep the user engaged so they don't navigate away. */}
       {sharingPendingImage && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            background: '#000',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <img
-            src={sharingPendingImage}
-            alt=""
+        <>
+          <style>{`
+            @keyframes _wb_shimmer {
+              0%   { transform: translateX(-120%) skewX(-18deg); }
+              100% { transform: translateX(350%)  skewX(-18deg); }
+            }
+            @keyframes _wb_sparkle {
+              0%   { opacity: 0; transform: translateY(0)    scale(0);   }
+              15%  { opacity: 1; transform: translateY(-14px) scale(1.1); }
+              75%  { opacity: 0.9; transform: translateY(-55px) scale(0.75); }
+              100% { opacity: 0; transform: translateY(-75px) scale(0);   }
+            }
+            @keyframes _wb_glow_pulse {
+              0%, 100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.55), 0 0 24px 6px rgba(255,140,0,0.25); }
+              50%       { box-shadow: 0 0 0 14px rgba(255,215,0,0), 0 0 40px 12px rgba(255,140,0,0.4); }
+            }
+            @keyframes _wb_dot {
+              0%, 80%, 100% { transform: scale(0.55); opacity: 0.35; }
+              40%           { transform: scale(1.05); opacity: 1; }
+            }
+            @keyframes _wb_pill_in {
+              from { opacity: 0; transform: translateY(18px) scale(0.95); }
+              to   { opacity: 1; transform: translateY(0)    scale(1);    }
+            }
+            @keyframes _wb_stars_spin {
+              from { transform: rotate(0deg);   }
+              to   { transform: rotate(360deg); }
+            }
+          `}</style>
+
+          <div
+            aria-hidden="true"
             style={{
-              maxWidth: '100%',
-              maxHeight: '100%',
-              objectFit: 'contain',
-              display: 'block',
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9999,
+              background: 'linear-gradient(160deg,#0a0a0a 0%,#111 100%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px 12px 32px',
+              gap: 0,
             }}
-          />
-        </div>
+          >
+            {/* ── Photo with shimmer + glow ring ── */}
+            <div style={{
+              position: 'relative',
+              maxWidth: '100%',
+              width: '100%',
+              flex: '1 1 auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 18,
+              animation: '_wb_glow_pulse 2s ease-in-out infinite',
+              overflow: 'hidden',
+            }}>
+              <img
+                src={sharingPendingImage}
+                alt=""
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                  borderRadius: 18,
+                }}
+              />
+
+              {/* Shimmer sweep */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                overflow: 'hidden',
+                borderRadius: 18,
+                pointerEvents: 'none',
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '45%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.22) 50%,transparent 100%)',
+                  animation: '_wb_shimmer 1.7s ease-in-out infinite',
+                  animationDelay: '0.4s',
+                }} />
+              </div>
+
+              {/* Sparkle particles — distributed across image width */}
+              {[
+                { color: '#FFD700', left: '8%',  delay: 0 },
+                { color: '#FF69B4', left: '20%', delay: 0.25 },
+                { color: '#00CFFF', left: '35%', delay: 0.1 },
+                { color: '#7CFC00', left: '50%', delay: 0.45 },
+                { color: '#FFD700', left: '63%', delay: 0.15 },
+                { color: '#FF8C00', left: '76%', delay: 0.35 },
+                { color: '#E88EFF', left: '88%', delay: 0.05 },
+                { color: '#00CFFF', left: '30%', delay: 0.55 },
+                { color: '#FFD700', left: '55%', delay: 0.65 },
+                { color: '#FF69B4', left: '72%', delay: 0.3 },
+              ].map((p, i) => (
+                <div key={i} style={{
+                  position: 'absolute',
+                  bottom: '8%',
+                  left: p.left,
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: p.color,
+                  boxShadow: `0 0 6px 2px ${p.color}99`,
+                  animation: `_wb_sparkle ${1.3 + i * 0.12}s ease-out infinite`,
+                  animationDelay: `${p.delay}s`,
+                  pointerEvents: 'none',
+                }} />
+              ))}
+            </div>
+
+            {/* ── Bottom status pill ── */}
+            <div style={{
+              marginTop: 24,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: 'rgba(255,255,255,0.10)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderRadius: 999,
+              padding: '11px 24px',
+              border: '1px solid rgba(255,255,255,0.18)',
+              animation: '_wb_pill_in 0.45s cubic-bezier(0.34,1.56,0.64,1) both',
+              animationDelay: '0.1s',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+              flexShrink: 0,
+            }}>
+              {/* Spinning star icon */}
+              <span style={{
+                display: 'inline-block',
+                fontSize: 20,
+                animation: '_wb_stars_spin 3s linear infinite',
+              }}>✨</span>
+
+              <span style={{
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 700,
+                letterSpacing: 0.3,
+                whiteSpace: 'nowrap',
+              }}>
+                Getting ready to share
+              </span>
+
+              {/* Bouncing dots */}
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: '#FFD700',
+                    boxShadow: '0 0 4px 1px #FFD70088',
+                    animation: '_wb_dot 1.3s ease-in-out infinite',
+                    animationDelay: `${i * 0.22}s`,
+                  }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
       )}
       <Header
         user={user}
