@@ -1,4 +1,4 @@
-// src/App.js
+﻿// src/App.js
 // ============================================================================
 // WellnessValleyApp � App.js architecture policy (post-hygiene-phase, May 2026)
 // ----------------------------------------------------------------------------
@@ -233,6 +233,13 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return true;
     return localStorage.getItem('wv.permissionsGranted') === '1';
   });
+  // Full-screen branded overlay that bridges the native splash → camera gap.
+  // Starts visible on native so the home screen is never shown during the
+  // ~100-300 ms between splash dismiss and native camera overlay appearing.
+  // Dismissed right before openCamera() is called, or by safety effects below.
+  const [showLaunchOverlay, setShowLaunchOverlay] = useState(
+    () => Capacitor.isNativePlatform()
+  );
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
@@ -607,9 +614,34 @@ function WellnessValleyApp() {
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // NATIVE CAMERA LAUNCH FLOW (event-driven, no time-based guards)
+  //
+  // Lifecycle this code orchestrates:
+  //   splash → launch overlay → camera UI → photo → share → home
+  //
+  // Three discrete events drive every state transition:
+  //   1. CAMERA_CONDITIONS_MET — user, permissionsReady, isUserActive, and
+  //      ImageUpload mounted (fileInputRef.current.openCamera defined).
+  //   2. CAMERA_OPENED — ImageUpload fires onCameraStateChange('opened') the
+  //      instant Camera.getPhoto is invoked → native camera UI takes the
+  //      screen. THIS is when we dismiss the launch overlay (zero flash).
+  //   3. CAMERA_CLOSED — onCameraStateChange('closed', {hadResult}) fires
+  //      when the user takes a photo OR cancels. We use this to suppress the
+  //      false-positive appStateChange that always follows.
+  //
+  // Cancel-loop fix: when the camera is on screen the OS sends
+  // appStateChange({isActive:false}) → user cancels → appStateChange({isActive:true}).
+  // The resume listener used to interpret that "isActive:true" as a fresh
+  // wake-up and re-open the camera. Now the resume listener checks
+  // fileInputRef.current?.isCameraActive() AND a one-shot
+  // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
+  // correctly ignores its own camera-driven state transitions.
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
-  // NOTE: excludes showCompleteProfile � the profile gate overlays the home
+  // NOTE: excludes showCompleteProfile — the profile gate overlays the home
   // screen, so auto-camera-open must not fire while it is visible.
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
@@ -622,83 +654,110 @@ function WellnessValleyApp() {
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
   // the user is actively filling out the form. Without this guard, returning
-  // from camera/gallery fires checkProfileCompletion ? profileChecking=true
-  // ? LoadingSpinner replaces the page ? form unmounts ? all input is lost.
+  // from camera/gallery fires checkProfileCompletion → profileChecking=true
+  // → LoadingSpinner replaces the page → form unmounts → all input is lost.
   const _profileGateActiveRef = useRef(false);
   useEffect(() => {
     _profileGateActiveRef.current = showCompleteProfile;
   }, [showCompleteProfile]);
 
-  // App resume (phone unlocked / app foregrounded) ? open camera if on home screen.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !user) return;
-    let handle = null;
-    let cancelled = false;
-    nativeLifecycle.addAppStateListener(({ isActive }) => {
-      if (isActive && _homeScreenActiveRef.current && !cancelled) {
-        // Only auto-open camera AFTER user has completed their first share.
-        // This prevents the annoying "user closes camera without taking photo ?
-        // app resumes ? camera re-opens" loop. Matches Snapchat: camera opens
-        // once on launch, but if you close it, you stay on feed until you actively
-        // use the camera again.
-        if (!_hasCompletedFirstShareRef.current) return;
-        // If the camera was just closed (user cancelled), don't immediately
-        // re-open it � that would create an infinite open?cancel?open loop.
-        // Allow 3 seconds after any camera close before auto-opening again.
-        const lastClose = fileInputRef.current?.lastCameraCloseAt?.() ?? 0;
-        if (Date.now() - lastClose < 3000) return;
-        setTimeout(() => {
-          if (!cancelled) fileInputRef.current?.openCamera?.();
-        }, 600);
-      }
-    }).then((h) => {
-      handle = h;
-      if (cancelled) handle?.remove?.();
-    }).catch(() => {});
-    return () => {
-      cancelled = true;
-      handle?.remove?.();
-    };
-  }, [user]);
-
-  // Auto-open camera once per session when the user first arrives at the home
-  // screen on a native device (fresh app launch or login). Retries until the
-  // ImageUpload component has mounted and exposed its openCamera method.
-  //
-  // ORDER GUARANTEE: camera must NOT open until:
-  //   1. permissionsReady � all three permission dialogs (camera ? push ? location)
-  //      have resolved. Without this guard the camera fires mid-dialog chain,
-  //      which is jarring and blocks the location prompt.
-  //   2. isUserActive � user validation confirms the account is active. Inactive
-  //      users never reach the home screen so they should never get the camera.
   // Tracks whether user has completed their first share (any image type).
-  // Foreground-resume camera auto-open is DISABLED until this is true, preventing
-  // the annoying "close camera ? app resumes ? camera re-opens" loop when user
-  // just wants to browse the home screen without taking photos.
+  // Foreground-resume camera auto-open is DISABLED until this is true,
+  // matching Snapchat: camera opens once on launch, but if you close it
+  // without sharing, you stay on the feed.
   const _hasCompletedFirstShareRef = useRef(false);
+
+  // True while the native Camera.getPhoto dialog is on screen. Set by
+  // onCameraStateChange. Used by the resume listener to ignore the
+  // appStateChange flap that always accompanies a camera open/close cycle.
+  const _cameraInFlightRef = useRef(false);
+
+  // One-shot flag: set true on CAMERA_CLOSED, cleared after the next
+  // appStateChange({isActive:true}) event is consumed. Belt-and-braces
+  // alongside _cameraInFlightRef because the OS sometimes fires isActive:true
+  // a few ms AFTER the camera promise resolves and we have already cleared
+  // _cameraInFlightRef.
+  const _justClosedCameraRef = useRef(false);
+
+  // True once the login-camera path has fired openCamera() in this session,
+  // so the login-camera effect never fires twice.
   const _hasFiredCameraOnLoginRef = useRef(false);
+
+  // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
+  // SINGLE source of truth for "the native camera UI is on/off the screen".
+  const handleCameraStateChange = useCallback((state /*, meta */) => {
+    if (state === 'opened') {
+      _cameraInFlightRef.current = true;
+      _justClosedCameraRef.current = false;
+      // The native camera UI now owns the screen — safe to drop the launch
+      // overlay. Doing it HERE (instead of via a timer) guarantees zero
+      // home-screen flash regardless of device speed.
+      setShowLaunchOverlay(false);
+    } else if (state === 'closed') {
+      _cameraInFlightRef.current = false;
+      _justClosedCameraRef.current = true;
+      // If the launch overlay somehow is still up at this point (e.g. user
+      // cancelled the very first camera before it could paint), drop it.
+      setShowLaunchOverlay(false);
+    }
+  }, []);
+
+  // App resume listener: intentionally DOES NOT re-open the camera on
+  // foreground resume. Auto-reopening on appStateChange({isActive:true})
+  // is unreliable on top of Capacitor — the same event fires when the
+  // native camera dialog itself yields focus back to the WebView after a
+  // user cancel, producing a cancel → reopen → cancel loop (and a brief
+  // launch-overlay flash between iterations) on every user role.
+  //
+  // Product requirement: the camera opens exactly once per app launch
+  // (handled by the cold-start useEffect below). If the user cancels,
+  // they stay on the home screen and reopen the camera manually via the
+  // camera button. See bug report 2026-05-28.
+  //
+  // Auto-open camera once per session when the user first arrives at the
+  // home screen on a native device. Conditions:
+  //   1. user authenticated AND active
+  //   2. permissionsReady (camera + push + geolocation dialogs resolved)
+  //   3. ImageUpload mounted (fileInputRef.current.openCamera defined)
+  // We poll fileInputRef on every render via a microtask-style retry loop,
+  // re-running whenever any input dep changes. Cancellation is handled by
+  // the cleanup function so a stale closure can never fire openCamera.
   useEffect(() => {
-    if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
-    if (!permissionsReady || !isUserActive) return;
+    if (!Capacitor.isNativePlatform()) return;
+    if (!user || !permissionsReady || !isUserActive) return;
+    if (_hasFiredCameraOnLoginRef.current) return;
+    if (showCompleteProfile) return; // wait until profile gate clears
+
     let cancelled = false;
-    let attempts = 0;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
-      if (fileInputRef.current?.openCamera) {
+      const api = fileInputRef.current;
+      if (api?.openCamera) {
         _hasFiredCameraOnLoginRef.current = true;
-        fileInputRef.current.openCamera();
+        api.openCamera(); // handleCameraStateChange('opened') will dismiss the overlay
         return;
       }
-      if (attempts++ < 20) {
-        setTimeout(tryOpen, 300);
-      }
+      // ImageUpload not yet mounted — try again next animation frame.
+      // No upper bound: this effect's deps will re-run when conditions change.
+      requestAnimationFrame(tryOpen);
     };
-    const t = setTimeout(tryOpen, 0); // try immediately; retry loop handles race with ImageUpload mount
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [user, permissionsReady, isUserActive]);
+    requestAnimationFrame(tryOpen);
+    return () => { cancelled = true; };
+  }, [user, permissionsReady, isUserActive, showCompleteProfile]);
+
+  // Dismiss launch overlay on non-camera paths (signed out, fresh-sign-in
+  // setup wizard, profile-completion gate). The camera path dismisses the
+  // overlay via handleCameraStateChange('opened').
+  useEffect(() => {
+    if (!showLaunchOverlay) return;
+    if (!Capacitor.isNativePlatform()) { setShowLaunchOverlay(false); return; }
+    if (authLoading) return; // still settling — wait
+    if (!user) { setShowLaunchOverlay(false); return; }     // signed out
+    if (showCompleteProfile) { setShowLaunchOverlay(false); return; } // profile gate
+    if (!isUserActive) { setShowLaunchOverlay(false); return; }       // inactive account
+    const freshSignIn = sessionStorage.getItem("freshGoogleSignIn") === "true";
+    if (freshSignIn) { setShowLaunchOverlay(false); return; }         // setup wizard
+  }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<uuid>) or the custom scheme
@@ -1650,28 +1709,34 @@ function WellnessValleyApp() {
           sessionStorage.getItem("freshGoogleSignIn") === "true";
 
         if (!isFreshSignIn) {
-          // Check user status before allowing access (for existing sessions)
-          const isActive = await checkUserStatus(user);
+          // Fast path for returning users: surface home screen (and camera)
+          // immediately — identical to the OTP synchronous cache restore.
+          // Status/setup/profile checks run in the background; modals
+          // (inactive, setup wizard, profile gate) appear when needed but
+          // never block the initial paint or the camera auto-open.
+          // This eliminates the white screen between native splash dismiss
+          // and the camera opening for Google/Firebase returning users.
+          setUser(user);
+          setAuthLoading(false);
 
-          if (!isActive) {
-            // Don't clear user state immediately - let modal show first
-            // Modal close handler will sign out and clear state
-            setUser(user); // Keep user state so modal can show user email
-            setAuthLoading(false);
-            return;
-          }
+          // Background validation — fire and forget. All inner awaits only
+          // mutate React state (setShow*, setIsUserActive, etc.) — safe to
+          // call from an async IIFE after the render is already committed.
+          ;(async () => {
+            const isActive = await checkUserStatus(user);
+            if (!isActive) return; // inactive/not-found modal already triggered
 
-          // Check setup wizard status for active users
-          if (isActive && userEmail) {
+            if (!userEmail) return;
             debugLog("?? [Auth State] Checking setup wizard status...");
 
-            // Check if user manually skipped setup (check localStorage first for quick bypass)
+            // Check if user manually skipped setup (localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
               debugLog(
                 "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // Still check profile completion even if setup was skipped
-              await checkProfileCompletion(userEmail, user);
+              // silent:true — Gate 3 (profileChecking spinner) must not fire
+              // when running from a background context after home screen is shown.
+              await checkProfileCompletion(userEmail, user, { silent: true });
               return;
             }
 
@@ -1699,13 +1764,12 @@ function WellnessValleyApp() {
                 );
                 Session.markSetupSkipped();
                 await checkProfileCompletion(userEmail, user, { silent: true });
-                return;
               } else if (status.result === "pendingOtp") {
                 if (Session.isCoachOtpVerified()) {
                   debugLog("? [Auth State] Coach OTP already verified (localStorage), skipping modal");
                   await checkProfileCompletion(userEmail, user, { silent: true });
                 } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog("?? [Auth State] Demo account pending OTP � completing silently");
+                  debugLog("?? [Auth State] Demo account pending OTP — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
@@ -1714,7 +1778,7 @@ function WellnessValleyApp() {
                 }
               } else if (status.result === "incomplete") {
                 if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog("?? [Auth State] Demo account setup incomplete � completing silently");
+                  debugLog("?? [Auth State] Demo account setup incomplete — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
@@ -1731,9 +1795,10 @@ function WellnessValleyApp() {
                 "?? [Auth State] Failed to check setup status:",
                 setupError,
               );
-              // Continue without blocking - setup check is not critical
+              // Continue without blocking — setup check is not critical
             }
-          }
+          })();
+          return; // Skip fall-through setUser/setAuthLoading — already called above
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
           debugLog(
@@ -5027,16 +5092,39 @@ function WellnessValleyApp() {
   // directly to the correct route. Background auth/profile checks continue
   // silently — they just don't show a UI spinner.
   if (authLoading) {
+    // On native, show the logo overlay instead of a blank screen — the native
+    // splash may have already faded, so returning null would show white.
+    if (Capacitor.isNativePlatform()) {
+      return (
+        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+        </div>
+      );
+    }
     return null;
   }
 
   // ? OTP user restore in progress — stay invisible until restored.
   if (isOtpVerified && !user) {
+    if (Capacitor.isNativePlatform()) {
+      return (
+        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+        </div>
+      );
+    }
     return null;
   }
 
   // ? Profile check in progress — stay invisible until check is done.
   if (profileChecking) {
+    if (Capacitor.isNativePlatform()) {
+      return (
+        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+        </div>
+      );
+    }
     return null;
   }
 
@@ -5207,6 +5295,32 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+      {/* Launch overlay — covers the home screen from app start until the
+          native camera overlay appears. Looks identical to the native splash
+          (white + centred logo) so the transition is seamless: native splash
+          fades, our overlay is already there, then camera opens on top.
+          Dismissed right before openCamera() is called (see camera effect). */}
+      {showLaunchOverlay && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <img
+            src="/logo.png"
+            alt=""
+            style={{ width: 120, height: 120, objectFit: 'contain' }}
+          />
+        </div>
+      )}
+
       {/* ?? Snapchat-style full-screen photo: covers the home screen during
           the brief window between native-camera close and WhatsApp share
           sheet open. Shows the actual captured photo (not a spinner) so the
@@ -5325,6 +5439,7 @@ function WellnessValleyApp() {
             ref={fileInputRef}
             onHelpClick={() => setShowHowToUse(!showHowToUse)}
             educationWindow={educationWindow}
+            onCameraStateChange={handleCameraStateChange}
           />
 
           {error && (() => {
