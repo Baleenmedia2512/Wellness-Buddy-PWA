@@ -4002,12 +4002,9 @@ function WellnessValleyApp() {
             const userId = user?.id || (await getUserId(user));
             // debugLog("?? [CORRECTION] User ID for corrections:", userId);
             if (userId) {
-              const correctedFoods = await applyUserCorrections(foods, userId);
-              // debugLog(
-              //   "?? [CORRECTION] Foods after correction:",
-              //   correctedFoods.map((f) => f.name),
-              // );
-              foods = correctedFoods;
+              // 🚫 AUTO-CORRECTION DISABLED (product decision 2026-05-29)
+              // const correctedFoods = await applyUserCorrections(foods, userId);
+              // foods = correctedFoods;
 
               // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
               const newLogs = correctedFoods.map((food) => ({
