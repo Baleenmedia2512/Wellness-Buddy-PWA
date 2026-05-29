@@ -3418,9 +3418,20 @@ function WellnessValleyApp() {
     // ?n= embeds the display name so the WhatsApp OG card shows the user name
     // even when WhatsApp crawls the page before the capture POST completes.
     const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}
-👆 Tap to view →
-${instantShareUrl}`;
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
+
+    // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
+    // the React commit phase (~16ms). By the time the share IIFE awaits it,
+    // the read is typically already done: net delay ≈ 0ms on the share sheet.
+    const fileDataUrlPromise =
+      Capacitor.isNativePlatform() && file
+        ? new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          })
+        : null;
 
     // Flag set here so the later share-fire block (post-compression) is skipped.
     foodAutoSharedRef.current = false;
@@ -3432,10 +3443,11 @@ ${instantShareUrl}`;
       }
     } catch (_) { /* non-fatal — overlay is a UX nicety */ }
 
-    // Fire share sheet immediately — overlay is now painted.
-    // Text+URL only (no FileReader / writeFile): the share sheet opens on the
-    // same frame as the overlay. WhatsApp still shows the food photo via the
-    // og-image OG card. The overlay stays visible until the share resolves.
+    // Fire share sheet — overlay is now painted.
+    // On native: await the pre-started FileReader (≈ 0ms extra wait) then
+    // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
+    // WhatsApp, not just an OG preview card.
+    // On web: fall back to text+URL share.
     if (!foodAutoSharedRef.current) {
       foodAutoSharedRef.current = true;
       const clearOverlayNow = () => {
@@ -3452,12 +3464,28 @@ ${instantShareUrl}`;
       };
       (async () => {
         try {
-          // Text-only share — no FileReader delay, sheet opens instantly.
-          const ok = await shareTextViaWhatsApp(shareText);
-          _hasCompletedFirstShareRef.current = true;
-          if (!ok) foodAutoSharedRef.current = false;
+          if (fileDataUrlPromise) {
+            // FileReader started before overlay — usually already resolved.
+            const fileDataUrl = await fileDataUrlPromise;
+            const result = await shareViaCapacitorAPI(fileDataUrl, {
+              title: shareDisplayName,
+              text: shareText,
+              fileName: `wellness-meal-${Date.now()}.jpg`,
+            });
+            _hasCompletedFirstShareRef.current = true;
+            if (!result?.ok && !result?.dismissed) foodAutoSharedRef.current = false;
+          } else {
+            // Web fallback: text + URL only.
+            const ok = await shareTextViaWhatsApp(shareText);
+            _hasCompletedFirstShareRef.current = true;
+            if (!ok) foodAutoSharedRef.current = false;
+          }
         } catch (_) {
-          _hasCompletedFirstShareRef.current = true;
+          // Native share failed — fall back to text-only.
+          try {
+            await shareTextViaWhatsApp(shareText);
+            _hasCompletedFirstShareRef.current = true;
+          } catch (__) { /* ignore */ }
         } finally {
           clearOverlayNow();
         }
