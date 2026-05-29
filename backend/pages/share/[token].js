@@ -31,15 +31,19 @@ export async function getServerSideProps({ params, req }) {
 
   let userName = null;
   let userPhotoUrl = null;
+  let hasPhoto = false;
 
   if (valid) {
     try {
       const capture = await findByToken(token);
-      if (capture?.UserID) {
-        const user = await findPublicProfileById(capture.UserID);
-        if (user) {
-          userName = user.UserName || null;
-          userPhotoUrl = user.ProfileImage || null;
+      if (capture) {
+        hasPhoto = !!capture.ImageBase64;
+        if (capture.UserID) {
+          const user = await findPublicProfileById(capture.UserID);
+          if (user) {
+            userName = user.UserName || null;
+            userPhotoUrl = user.ProfileImage || null;
+          }
         }
       }
     } catch {
@@ -47,7 +51,12 @@ export async function getServerSideProps({ params, req }) {
     }
   }
 
-  return { props: { token: valid ? token : null, baseUrl, userName, userPhotoUrl } };
+  // og:image priority: actual food photo > user profile photo > site icon
+  const ogImageUrl = hasPhoto
+    ? `${baseUrl}/api/share/og-image/${token}`
+    : (userPhotoUrl || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null));
+
+  return { props: { token: valid ? token : null, baseUrl, userName, userPhotoUrl, ogImageUrl } };
 }
 
 const pageBg = {
@@ -122,7 +131,7 @@ const secondaryBtn = {
 };
 const footer = { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 16 };
 
-export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl }) {
+export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, ogImageUrl }) {
   // Client-side: try to hand off to the app via Android intent:// for users
   // whose Android App Links haven't auto-verified yet (debug builds, first
   // launch). Verified production builds intercept the https URL directly
@@ -151,10 +160,7 @@ export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl })
         <meta property="og:type" content="website" />
         <meta property="og:title" content={userName ? `${userName} — Analysis Info` : 'Click here for Analysis Info'} />
         <meta property="og:description" content={userName ? `${userName} shared a meal analysis on Wellness Valley` : ''} />
-        {userPhotoUrl
-          ? <meta property="og:image" content={userPhotoUrl} />
-          : baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />
-        }
+        {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
         {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
         <meta property="og:image:width" content="512" />
         <meta property="og:image:height" content="512" />
