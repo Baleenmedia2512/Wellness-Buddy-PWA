@@ -3357,12 +3357,81 @@ function WellnessValleyApp() {
     // called, so the home screen is never visible. The object URL is
     // revoked when the overlay is cleared (in the share .then / safety
     // timeout below) to avoid the memory leak.
+    // ⚡ INSTANT SHARE — generate token synchronously so the share sheet
+    // fires on the exact same tick the overlay paints. All async operations
+    // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
+    // that used to add 2–4 s of delay now run AFTER the share is already open.
+    const instantToken = crypto.randomUUID();
+    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}`;
+    const shareDisplayName =
+      user?.displayName || user?.name || user?.email?.split('@')[0] || 'Wellness Valley';
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}
+👆 Tap to view →
+${instantShareUrl}`;
+
+    // Flag set here so the later share-fire block (post-compression) is skipped.
+    foodAutoSharedRef.current = false;
+
     try {
       if (file && typeof URL?.createObjectURL === 'function') {
         const objectUrl = URL.createObjectURL(file);
         setSharingPendingImage(objectUrl);
       }
     } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+
+    // Fire share sheet immediately — overlay is now painted.
+    // On native: read the raw file as base64 (~150-200ms) then share the
+    // actual photo + caption text so the recipient sees the full image
+    // directly in WhatsApp (not just a URL OG-thumbnail card).
+    // On web: fall back to text-only share.
+    if (!foodAutoSharedRef.current) {
+      foodAutoSharedRef.current = true;
+      const clearOverlayNow = () => {
+        setSharingPendingImage((prev) => {
+          if (prev && prev.startsWith('blob:')) {
+            try { URL.revokeObjectURL(prev); } catch (_) {}
+          }
+          return null;
+        });
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
+      };
+      (async () => {
+        try {
+          if (Capacitor.isNativePlatform() && file) {
+            // Read the original file as base64 for native image share.
+            const fileDataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            const result = await shareViaCapacitorAPI(fileDataUrl, {
+              title: shareDisplayName,
+              text: shareText,
+              fileName: `wellness-meal-${Date.now()}.jpg`,
+            });
+            _hasCompletedFirstShareRef.current = true;
+            if (!result?.ok && !result?.dismissed) foodAutoSharedRef.current = false;
+          } else {
+            // Web: text + URL only (OG meta tags handle the preview image).
+            const ok = await shareTextViaWhatsApp(shareText);
+            _hasCompletedFirstShareRef.current = true;
+            if (!ok) foodAutoSharedRef.current = false;
+          }
+        } catch (_) {
+          // Fallback to text-only if image share throws.
+          try {
+            await shareTextViaWhatsApp(shareText);
+            _hasCompletedFirstShareRef.current = true;
+          } catch (__) { /* ignore */ }
+        } finally {
+          clearOverlayNow();
+        }
+      })();
+    }
 
     // Safety timer: unblocks the user if the capture POST never resolves
     // (e.g. offline, server error). 8 s gives enough headroom for a slow
@@ -3526,44 +3595,9 @@ function WellnessValleyApp() {
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
-      foodAutoSharedRef.current = false; // reset so auto-share fires for every new food image
-
-      // ⚡ INSTANT SHARE — pre-generate the UUID here on the frontend so the
-      // share sheet can open the moment the overlay paints, without waiting
-      // for the POST /captures network round-trip. The server accepts this
-      // token via the optional `token` field and stores it as PublicShareToken.
-      const instantToken = crypto.randomUUID();
-      const instantShareUrl = `${apiBaseUrl}/share/${instantToken}`;
-
-      // Clear overlay helper — shared by instant path and fallback.
-      const clearOverlay = () => {
-        setSharingPendingImage((prev) => {
-          if (prev && prev.startsWith('blob:')) {
-            try { URL.revokeObjectURL(prev); } catch (_) {}
-          }
-          return null;
-        });
-        if (sharingPendingTimerRef.current) {
-          clearTimeout(sharingPendingTimerRef.current);
-          sharingPendingTimerRef.current = null;
-        }
-      };
-
-      // Fire the share sheet IMMEDIATELY — before any network call.
-      if (!foodAutoSharedRef.current) {
-        foodAutoSharedRef.current = true;
-        // Cancel the safety timer so it doesn't dismiss the overlay while the
-        // share sheet is still open.
-        if (sharingPendingTimerRef.current) {
-          clearTimeout(sharingPendingTimerRef.current);
-          sharingPendingTimerRef.current = null;
-        }
-        shareTextViaWhatsApp(instantShareUrl).then((ok) => {
-          _hasCompletedFirstShareRef.current = true;
-          if (!ok) foodAutoSharedRef.current = false;
-          clearOverlay();
-        });
-      }
+      // Note: foodAutoSharedRef.current is already true (set above when share
+      // fired instantly after overlay). Do not reset it here — that would allow
+      // the classification-gated share below to double-fire.
 
       const captureApiStart = Date.now();
       debugLog(
