@@ -37,16 +37,17 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
     scheduleAll:            async () => ({ success: false, scheduledCount: 0 }),
     canScheduleExactAlarms: async () => ({ canScheduleExact: false }),
     openExactAlarmSettings: async () => ({ success: false }),
+    updateWaterIntake:      async () => ({ success: false }),
   }),
 });
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const STORAGE_KEY         = 'wellnessReminders';
 const REMINDER_OFFSET     = 15;  // minutes before activity start
-const WATER_INTERVAL_MIN  = 90;  // water reminder every 90 minutes
+const WATER_INTERVAL_MIN  = 180; // water reminder every 3 hours
 const WATER_MAX_REMINDERS = 12;  // hard cap — request codes 3001–3012
-const WATER_DEFAULT_WAKE  = { hour: 6,  minute: 0  }; // 6:00 AM
-const WATER_DEFAULT_SLEEP = { hour: 22, minute: 0  }; // 10:00 PM
+const WATER_DEFAULT_WAKE  = { hour: 8,  minute: 30 }; // 8:30 AM
+const WATER_DEFAULT_SLEEP = { hour: 21, minute: 0  }; // 9:00 PM
 
 const ACTIVITY_TYPES = ['weight', 'education', 'breakfast', 'lunch', 'dinner'];
 
@@ -98,31 +99,56 @@ export function formatReminderTime(hour, minute) {
 }
 
 /**
- * Compute water reminder times from wake to sleep at WATER_INTERVAL_MIN intervals.
+ * Compute water reminder times.
+ *
+ * When `weightKg` is supplied the number of reminders is weight-based:
+ *   goalMl   = round(weightKg / 20) * 1000   (e.g. 60 kg → 3 000 ml)
+ *   count    = round(goalMl / 1000)            (e.g. 3 000 ml → 3 reminders)
+ *   spacing  = WATER_INTERVAL_MIN (3 h) from wake time
+ *
+ * Without `weightKg` falls back to interval-based fill from wake → sleep
+ * (backward-compatible with existing saved prefs that have no weight).
+ *
  * Returns array of { hour, minute } — capped at WATER_MAX_REMINDERS.
  *
- * Handles overnight wrap (e.g. night-shift worker wake=22:00, sleep=06:00).
- *
- * @param {number} wakeH   wake hour   (0–23)
- * @param {number} wakeM   wake minute (0–59)
- * @param {number} sleepH  sleep hour  (0–23)
- * @param {number} sleepM  sleep minute(0–59)
+ * @param {number} wakeH    wake hour   (0–23)
+ * @param {number} wakeM    wake minute (0–59)
+ * @param {number} sleepH   sleep hour  (0–23)
+ * @param {number} sleepM   sleep minute(0–59)
+ * @param {number|null} weightKg  body weight in kg (optional)
  * @returns {{ hour: number, minute: number }[]}
  */
-export function computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM) {
+export function computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM, weightKg = null) {
   const wakeTotal  = wakeH  * 60 + wakeM;
   let   sleepTotal = sleepH * 60 + sleepM;
   // Handle overnight: if sleep is before (or equal to) wake, add 24h
   if (sleepTotal <= wakeTotal) sleepTotal += 24 * 60;
 
   const times = [];
-  let cursor  = wakeTotal;
-  while (cursor < sleepTotal && times.length < WATER_MAX_REMINDERS) {
-    const h = Math.floor(cursor / 60) % 24;
-    const m = cursor % 60;
-    times.push({ hour: h, minute: m });
-    cursor += WATER_INTERVAL_MIN;
+
+  if (weightKg != null && weightKg > 0) {
+    // Weight-based: fixed count, evenly spaced every WATER_INTERVAL_MIN
+    const goalMl = Math.round(weightKg / 20) * 1000;
+    const count  = Math.min(Math.round(goalMl / 1000), WATER_MAX_REMINDERS);
+    let cursor   = wakeTotal;
+    for (let i = 0; i < count; i++) {
+      if (cursor >= sleepTotal) break; // don't fire after bedtime
+      const h = Math.floor(cursor / 60) % 24;
+      const m = cursor % 60;
+      times.push({ hour: h, minute: m });
+      cursor += WATER_INTERVAL_MIN;
+    }
+  } else {
+    // Interval-based fill (legacy / no weight data)
+    let cursor = wakeTotal;
+    while (cursor < sleepTotal && times.length < WATER_MAX_REMINDERS) {
+      const h = Math.floor(cursor / 60) % 24;
+      const m = cursor % 60;
+      times.push({ hour: h, minute: m });
+      cursor += WATER_INTERVAL_MIN;
+    }
   }
+
   return times;
 }
 
@@ -421,6 +447,30 @@ export async function openExactAlarmSettings() {
     await ReminderPluginNative.openExactAlarmSettings();
   } catch (e) {
     console.error('[ReminderService] Failed to open exact alarm settings:', e);
+  }
+}
+
+/**
+ * Push today's water intake totals to the native SharedPreferences cache.
+ * Water alarm notifications will read this cache at fire-time to display
+ * a smart remaining-balance message even without network access.
+ *
+ * Safe to call on web — silently no-ops.
+ *
+ * @param {number} drunkMl   Total ml consumed so far today
+ * @param {number} goalMl    Daily water goal in ml
+ */
+export async function updateWaterIntakeCache(drunkMl, goalMl) {
+  if (!isNative()) return;
+  try {
+    await ReminderPluginNative.updateWaterIntake({
+      drunkMl: Math.round(drunkMl || 0),
+      goalMl:  Math.round(goalMl  || 2500),
+    });
+    debugLog('[ReminderService] updateWaterIntakeCache:', drunkMl, '/', goalMl, 'ml');
+  } catch (e) {
+    // Non-critical — notifications will fall back to the generic message
+    debugLog('[ReminderService] updateWaterIntakeCache failed (non-critical):', e.message);
   }
 }
 

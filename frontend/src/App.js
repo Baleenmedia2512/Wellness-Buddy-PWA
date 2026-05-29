@@ -5151,7 +5151,7 @@ function WellnessValleyApp() {
   if (showReminders) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <ReminderSettingsPage onBack={() => setShowReminders(false)} />
+        <ReminderSettingsPage onBack={() => setShowReminders(false)} lastWeight={lastWeight} />
       </Suspense>
     );
   }

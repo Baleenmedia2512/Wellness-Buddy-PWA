@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioAttributes;
@@ -16,6 +17,12 @@ import android.os.Build;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Locale;
 
 import com.wellnessvalley.app.MainActivity;
 import com.wellnessvalley.app.R;
@@ -121,7 +128,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             int totalMinutes = hour * 60 + minute + 15;
             int activityHour   = (totalMinutes / 60) % 24;
             int activityMinute = totalMinutes % 60;
-            String message = getActivityMessage(activityType, activityHour, activityMinute);
+            String message = getActivityMessage(context, activityType, activityHour, activityMinute);
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
@@ -159,7 +166,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int totalMins = hour * 60 + minute + 15;
         int actHour   = (totalMins / 60) % 24;
         int actMinute = totalMins % 60;
-        String message = getActivityMessage(activityType, actHour, actMinute);
+        String message = getActivityMessage(context, activityType, actHour, actMinute);
 
         // Tap notification → open app
         Intent openApp = new Intent(context, MainActivity.class);
@@ -433,7 +440,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         }
     }
 
-    private String getActivityMessage(String activityType, int scheduledHour, int scheduledMinute) {
+    private String getActivityMessage(Context context, String activityType, int scheduledHour, int scheduledMinute) {
         String timeStr = formatTime(scheduledHour, scheduledMinute);
         switch (activityType.toLowerCase()) {
             case "weight":
@@ -455,10 +462,51 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 return "🌙 Bedtime in 15 minutes! Wind down and prepare for a good night's sleep.";
             default:
                 if (activityType.toLowerCase().startsWith("water_")) {
-                    return "💧 Time to drink water! Stay hydrated throughout the day.";
+                    return buildSmartWaterMessage(context);
                 }
                 return "Your " + capitalize(activityType) + " time starts at " + timeStr + ".";
         }
+    }
+
+    /**
+     * Build a smart water notification message by reading today's intake
+     * from the SharedPreferences cache written by updateWaterIntake().
+     *
+     * If the cache is missing, stale (different date), or unreadable, falls
+     * back to the generic reminder text so the notification always shows.
+     */
+    private String buildSmartWaterMessage(Context context) {
+        try {
+            SharedPreferences sp = context.getSharedPreferences("WellnessWater", Context.MODE_PRIVATE);
+            String raw = sp.getString("WellnessWaterToday", null);
+
+            if (raw != null) {
+                JSONObject data  = new JSONObject(raw);
+                String today     = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new java.util.Date());
+                String cacheDate = data.optString("date", "");
+
+                if (today.equals(cacheDate)) {
+                    int drunkMl = data.optInt("drunkMl", 0);
+                    int goalMl  = data.optInt("goalMl",  2500);
+                    int remaining = goalMl - drunkMl;
+
+                    if (drunkMl == 0) {
+                        String goalL = String.format(Locale.US, "%.1f", goalMl / 1000.0);
+                        return "💧 Drink water! Your goal today is " + goalL + " L. Start now!";
+                    } else if (remaining <= 0) {
+                        return "🎉 You've reached your water goal today! Great work staying hydrated!";
+                    } else {
+                        String drunkL  = String.format(Locale.US, "%.1f", drunkMl  / 1000.0);
+                        String remainL = String.format(Locale.US, "%.1f", remaining / 1000.0);
+                        return "💧 You've had " + drunkL + " L. Still need " + remainL + " L today — keep it up!";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ buildSmartWaterMessage: could not read cache — " + e.getMessage());
+        }
+        // Fallback when no cache data is available
+        return "💧 Time to drink water! Stay hydrated throughout the day.";
     }
 
     private static String formatTime(int hour, int minute) {

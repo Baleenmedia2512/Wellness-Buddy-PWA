@@ -3,10 +3,17 @@ package com.wellnessvalley.app.plugins;
 import android.app.AlarmManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
+
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -269,5 +276,47 @@ public class ReminderPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("success", true);
         call.resolve(result);
+    }
+
+    // ── updateWaterIntake ─────────────────────────────────────────────────
+
+    /**
+     * Cache today's water intake totals in SharedPreferences so that alarm
+     * notifications can display a smart remaining-balance message without
+     * needing network access at fire time.
+     *
+     * Key: "WellnessWaterToday"  (SharedPreferences file: "WellnessWater")
+     * Value: JSON  { "date": "YYYY-MM-DD", "drunkMl": N, "goalMl": N }
+     *
+     * JS usage:
+     *   await ReminderPlugin.updateWaterIntake({ drunkMl: 500, goalMl: 3000 });
+     */
+    @PluginMethod
+    public void updateWaterIntake(PluginCall call) {
+        int drunkMl = call.getInt("drunkMl", 0);
+        int goalMl  = call.getInt("goalMl",  2500);
+
+        try {
+            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+
+            JSONObject data = new JSONObject();
+            data.put("date",    today);
+            data.put("drunkMl", drunkMl);
+            data.put("goalMl",  goalMl);
+
+            SharedPreferences sp = getContext()
+                    .getSharedPreferences("WellnessWater", Context.MODE_PRIVATE);
+            sp.edit().putString("WellnessWaterToday", data.toString()).apply();
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+
+            Log.d(TAG, "💧 updateWaterIntake cached: " + drunkMl + "/" + goalMl + " ml on " + today);
+
+        } catch (Exception e) {
+            Log.e(TAG, "❌ updateWaterIntake failed", e);
+            call.reject("Failed to update water intake cache: " + e.getMessage());
+        }
     }
 }

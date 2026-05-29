@@ -304,7 +304,7 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const ReminderSettingsPage = ({ onBack }) => {
+const ReminderSettingsPage = ({ onBack, lastWeight }) => {
   const [loading,       setLoading]       = useState(true);
   const [saving,        setSaving]        = useState(false);
   const [prefs,         setPrefs]         = useState(null);
@@ -726,11 +726,30 @@ const ReminderSettingsPage = ({ onBack }) => {
         {prefs && (() => {
           const water     = prefs.water || {};
           const masterOff = !prefs.masterEnabled;
-          const wakeH     = water.wakeHour   ?? 6;
-          const wakeM     = water.wakeMinute ?? 0;
-          const sleepH    = water.sleepHour  ?? 22;
+          const wakeH     = water.wakeHour   ?? 8;
+          const wakeM     = water.wakeMinute ?? 30;
+          const sleepH    = water.sleepHour  ?? 21;
           const sleepM    = water.sleepMinute ?? 0;
-          const slots     = computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM);
+
+          // Derive weightKg from lastWeight prop (convert lbs → kg if needed)
+          let weightKg = null;
+          if (lastWeight?.value) {
+            const raw = parseFloat(lastWeight.value);
+            weightKg = !isNaN(raw)
+              ? (lastWeight.unit === 'lbs' ? raw * 0.453592 : raw)
+              : null;
+          }
+
+          const slots     = computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM, weightKg);
+
+          // Build goal info line
+          let goalInfo = null;
+          if (weightKg) {
+            const goalMl   = Math.round(weightKg / 20) * 1000;
+            const goalL    = (goalMl / 1000).toFixed(1);
+            const count    = Math.min(Math.round(goalMl / 1000), 12);
+            goalInfo = `Based on ${Math.round(weightKg)} kg: ${goalL} L/day · ${count} reminder${count !== 1 ? 's' : ''}`;
+          }
           const isEditingWake  = activePicker === 'water_wake';
           const isEditingSleep = activePicker === 'water_sleep';
           return (
@@ -747,7 +766,7 @@ const ReminderSettingsPage = ({ onBack }) => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900">Water</p>
                   {water.enabled && !masterOff
-                    ? <p className="text-xs font-semibold text-cyan-600">💧 Every {WATER_INTERVAL_MIN} min · {slots.length} reminders/day</p>
+                    ? <p className="text-xs font-semibold text-cyan-600">💧 Every 3 hrs · {slots.length} reminder{slots.length !== 1 ? 's' : ''}/day{goalInfo ? ` · ${goalInfo}` : ''}</p>
                     : <p className="text-xs text-gray-400">Stay hydrated throughout the day</p>}
                 </div>
                 <Toggle enabled={!!water.enabled}
@@ -800,11 +819,18 @@ const ReminderSettingsPage = ({ onBack }) => {
                         </AnimatePresence>
                       </div>
                     </div>
-                    <p className="text-[11px] font-medium mt-3 ml-1 text-cyan-600">
-                      {slots.length > 0
-                        ? `⏱ First 3: ${slots.slice(0,3).map(t => formatReminderTime(t.hour, t.minute)).join(', ')}${slots.length > 3 ? ` … +${slots.length-3} more` : ''}`
-                        : '⚠️ Increase gap between wake and sleep times'}
-                    </p>
+                    <div className="mt-3 ml-1">
+                      {goalInfo && (
+                        <p className="text-[11px] font-medium text-cyan-700 mb-1">
+                          ⚖️ {goalInfo}
+                        </p>
+                      )}
+                      <p className="text-[11px] font-medium text-cyan-600">
+                        {slots.length > 0
+                          ? `⏱ ${slots.slice(0,3).map(t => formatReminderTime(t.hour, t.minute)).join(', ')}${slots.length > 3 ? ` … +${slots.length-3} more` : ''}`
+                          : '⚠️ Increase gap between wake and sleep times'}
+                      </p>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
