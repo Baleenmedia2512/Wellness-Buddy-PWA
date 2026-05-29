@@ -304,17 +304,57 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const ReminderSettingsPage = ({ onBack, lastWeight }) => {
+const ReminderSettingsPage = ({ onBack, lastWeight: lastWeightProp }) => {
   const [loading,       setLoading]       = useState(true);
   const [saving,        setSaving]        = useState(false);
   const [prefs,         setPrefs]         = useState(null);
-  const [activePicker,  setActivePicker]  = useState(null); // activityType or null
-  const [toast,         setToast]         = useState(null); // { type: 'success'|'error', msg }
+  const [activePicker,  setActivePicker]  = useState(null);
+  const [toast,         setToast]         = useState(null);
   const [needsExactPerm, setNeedsExactPerm] = useState(false);
   const [resetting,     setResetting]     = useState(false);
+  // Resolved body weight in kg — updated whenever prop arrives OR fetched from API
+  // Initialise immediately from prop so first render shows the correct count.
+  const [resolvedWeightKg, setResolvedWeightKg] = useState(() => {
+    if (!lastWeightProp?.value) return null;
+    const raw = parseFloat(lastWeightProp.value);
+    if (isNaN(raw)) return null;
+    return lastWeightProp.unit === 'lbs' ? raw * 0.453592 : raw;
+  });
 
   const isNative   = Capacitor.isNativePlatform();
   const isAndroid  = Capacitor.getPlatform() === 'android';
+
+  // ── Always react when the prop arrives / changes after mount ──────────
+  useEffect(() => {
+    if (!lastWeightProp?.value) return;
+    const raw = parseFloat(lastWeightProp.value);
+    if (isNaN(raw)) return;
+    const kg = lastWeightProp.unit === 'lbs' ? raw * 0.453592 : raw;
+    setResolvedWeightKg(kg);
+  }, [lastWeightProp]);
+
+  // ── Fallback: fetch from API if prop never arrives ────────────────────
+  useEffect(() => {
+    // Give the prop 800 ms to arrive; if still null, fetch directly
+    const timer = setTimeout(() => {
+      if (resolvedWeightKg != null) return;
+      const apiBase = process.env.REACT_APP_API_BASE_URL;
+      const userId  = localStorage.getItem('dbUserId')
+                   || localStorage.getItem('wellness_user_id')
+                   || localStorage.getItem('userId');
+      if (!apiBase || !userId) return;
+      fetch(`${apiBase}/api/weight/history?userId=${encodeURIComponent(userId)}&includeImage=false`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.stats?.latestWeight?.value) {
+            const raw = parseFloat(data.stats.latestWeight.value);
+            if (!isNaN(raw)) setResolvedWeightKg(raw);
+          }
+        })
+        .catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load on mount ─────────────────────────────────────────────────────
 
@@ -731,14 +771,8 @@ const ReminderSettingsPage = ({ onBack, lastWeight }) => {
           const sleepH    = water.sleepHour  ?? 21;
           const sleepM    = water.sleepMinute ?? 0;
 
-          // Derive weightKg from lastWeight prop (convert lbs → kg if needed)
-          let weightKg = null;
-          if (lastWeight?.value) {
-            const raw = parseFloat(lastWeight.value);
-            weightKg = !isNaN(raw)
-              ? (lastWeight.unit === 'lbs' ? raw * 0.453592 : raw)
-              : null;
-          }
+          // Use weight resolved at mount (from prop or fetched from API)
+          const weightKg = resolvedWeightKg;
 
           const slots     = computeWaterReminderTimes(wakeH, wakeM, sleepH, sleepM, weightKg);
 
@@ -766,7 +800,8 @@ const ReminderSettingsPage = ({ onBack, lastWeight }) => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900">Water</p>
                   {water.enabled && !masterOff
-                    ? <p className="text-xs font-semibold text-cyan-600">💧 Every 3 hrs · {slots.length} reminder{slots.length !== 1 ? 's' : ''}/day{goalInfo ? ` · ${goalInfo}` : ''}</p>
+                  // reminder{slots.length !== 1 ? 's' : ''}/day{goalInfo ? ` · ${goalInfo}` : ''}
+                    ? <p className="text-xs font-semibold text-cyan-600">💧 Every 3 hrs  </p>
                     : <p className="text-xs text-gray-400">Stay hydrated throughout the day</p>}
                 </div>
                 <Toggle enabled={!!water.enabled}
@@ -819,18 +854,11 @@ const ReminderSettingsPage = ({ onBack, lastWeight }) => {
                         </AnimatePresence>
                       </div>
                     </div>
-                    <div className="mt-3 ml-1">
-                      {goalInfo && (
-                        <p className="text-[11px] font-medium text-cyan-700 mb-1">
-                          ⚖️ {goalInfo}
-                        </p>
-                      )}
-                      <p className="text-[11px] font-medium text-cyan-600">
-                        {slots.length > 0
-                          ? `⏱ ${slots.slice(0,3).map(t => formatReminderTime(t.hour, t.minute)).join(', ')}${slots.length > 3 ? ` … +${slots.length-3} more` : ''}`
-                          : '⚠️ Increase gap between wake and sleep times'}
+                    {goalInfo && (
+                      <p className="text-[11px] font-medium text-cyan-700 mt-3 ml-1">
+                        ⚖️ {goalInfo}
                       </p>
-                    </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
