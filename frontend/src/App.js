@@ -720,7 +720,53 @@ function WellnessValleyApp() {
   // (handled by the cold-start useEffect below). If the user cancels,
   // they stay on the home screen and reopen the camera manually via the
   // camera button. See bug report 2026-05-28.
+
+  // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
+  // Root cause: `permissionsReady` and `isUserActive` start as `true` for
+  // returning users (from localStorage). As soon as Firebase restores `user`
+  // from cache the camera effect fires its RAF — well before our previous
+  // async `getLaunchUrl().then(...)` could set the flag.
   //
+  // Fix: two-part guarantee:
+  //  A. `_launchUrlCheckedRef` — the camera RAF will NOT fire openCamera until
+  //     this is `true`. It is set true as soon as getLaunchUrl() resolves OR
+  //     after 150ms (timeout fallback so a hung bridge never blocks forever).
+  //  B. An early `appUrlOpen` listener — belt-and-suspenders for devices where
+  //     getLaunchUrl() returns null even on a share-link cold start (known
+  //     Capacitor/Android App Links issue on some OEM ROMs).
+  const _launchUrlCheckedRef = useRef(!Capacitor.isNativePlatform()); // web = already done
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const SHARE_RE = /\/share\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const isShareUrl = (url) => url && (SHARE_RE.test(url) || /^wellnessvalley:\/\/share\//i.test(url));
+
+    // Part B — early appUrlOpen listener. Fires on cold starts where the OS
+    // delivers the intent URL via the event bridge rather than getLaunchUrl().
+    let earlyHandle = null;
+    nativeLifecycle.addAppUrlOpenListener((event) => {
+      if (isShareUrl(event?.url)) _hasFiredCameraOnLoginRef.current = true;
+      _launchUrlCheckedRef.current = true;
+    }).then((h) => { earlyHandle = h; }).catch(() => {});
+
+    // Part A — timeout ensures the camera is never blocked forever.
+    const fallbackTimer = setTimeout(() => { _launchUrlCheckedRef.current = true; }, 150);
+
+    // getLaunchUrl() is the primary check for cold-start intent URLs.
+    nativeLifecycle.getLaunchUrl().then((url) => {
+      clearTimeout(fallbackTimer);
+      if (isShareUrl(url)) _hasFiredCameraOnLoginRef.current = true;
+      _launchUrlCheckedRef.current = true;
+    }).catch(() => {
+      clearTimeout(fallbackTimer);
+      _launchUrlCheckedRef.current = true;
+    });
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      earlyHandle?.remove?.();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
+
   // Auto-open camera once per session when the user first arrives at the
   // home screen on a native device. Conditions:
   //   1. user authenticated AND active
@@ -738,6 +784,11 @@ function WellnessValleyApp() {
     let cancelled = false;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
+      // Wait until the launch-URL check has completed (prevents opening the
+      // camera on share-link cold starts where getLaunchUrl() or appUrlOpen
+      // hasn't resolved yet). Re-queues the RAF — adds at most ~16ms per
+      // frame and resolves within 150ms worst case.
+      if (!_launchUrlCheckedRef.current) { requestAnimationFrame(tryOpen); return; }
       const api = fileInputRef.current;
       if (api?.openCamera) {
         _hasFiredCameraOnLoginRef.current = true;
@@ -750,7 +801,7 @@ function WellnessValleyApp() {
     };
     requestAnimationFrame(tryOpen);
     return () => { cancelled = true; };
-  }, [user, permissionsReady, isUserActive, showCompleteProfile]);
+  }, [user, permissionsReady, isUserActive, showCompleteProfile, _launchUrlCheckedRef]);
 
   // Dismiss launch overlay on non-camera paths (signed out, fresh-sign-in
   // setup wizard, profile-completion gate). The camera path dismisses the
@@ -3362,9 +3413,11 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
-    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}`;
     const shareDisplayName =
       user?.displayName || user?.name || user?.email?.split('@')[0] || 'Wellness Valley';
+    // ?n= embeds the display name so the WhatsApp OG card shows the user name
+    // even when WhatsApp crawls the page before the capture POST completes.
+    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
     const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}
 👆 Tap to view →
 ${instantShareUrl}`;
@@ -3380,10 +3433,9 @@ ${instantShareUrl}`;
     } catch (_) { /* non-fatal — overlay is a UX nicety */ }
 
     // Fire share sheet immediately — overlay is now painted.
-    // On native: read the raw file as base64 (~150-200ms) then share the
-    // actual photo + caption text so the recipient sees the full image
-    // directly in WhatsApp (not just a URL OG-thumbnail card).
-    // On web: fall back to text-only share.
+    // Text+URL only (no FileReader / writeFile): the share sheet opens on the
+    // same frame as the overlay. WhatsApp still shows the food photo via the
+    // og-image OG card. The overlay stays visible until the share resolves.
     if (!foodAutoSharedRef.current) {
       foodAutoSharedRef.current = true;
       const clearOverlayNow = () => {
@@ -3400,43 +3452,22 @@ ${instantShareUrl}`;
       };
       (async () => {
         try {
-          if (Capacitor.isNativePlatform() && file) {
-            // Read the original file as base64 for native image share.
-            const fileDataUrl = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = (e) => resolve(e.target.result);
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            });
-            const result = await shareViaCapacitorAPI(fileDataUrl, {
-              title: shareDisplayName,
-              text: shareText,
-              fileName: `wellness-meal-${Date.now()}.jpg`,
-            });
-            _hasCompletedFirstShareRef.current = true;
-            if (!result?.ok && !result?.dismissed) foodAutoSharedRef.current = false;
-          } else {
-            // Web: text + URL only (OG meta tags handle the preview image).
-            const ok = await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-            if (!ok) foodAutoSharedRef.current = false;
-          }
+          // Text-only share — no FileReader delay, sheet opens instantly.
+          const ok = await shareTextViaWhatsApp(shareText);
+          _hasCompletedFirstShareRef.current = true;
+          if (!ok) foodAutoSharedRef.current = false;
         } catch (_) {
-          // Fallback to text-only if image share throws.
-          try {
-            await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-          } catch (__) { /* ignore */ }
+          _hasCompletedFirstShareRef.current = true;
         } finally {
           clearOverlayNow();
         }
       })();
     }
 
-    // Safety timer: unblocks the user if the capture POST never resolves
-    // (e.g. offline, server error). 8 s gives enough headroom for a slow
-    // mobile network so the timer does NOT fire while a share sheet is
-    // normally open (was 3.5 s, which fired mid-sheet on slow connections).
+    // Safety timer: last-resort fallback if the share IIFE somehow never
+    // reaches its `finally` block (e.g. the JS bridge hangs indefinitely).
+    // 120 s is intentionally long — clearOverlayNow() in the `finally` block
+    // always cancels this before it fires under normal operation.
     if (sharingPendingTimerRef.current) clearTimeout(sharingPendingTimerRef.current);
     sharingPendingTimerRef.current = setTimeout(() => {
       setSharingPendingImage((prev) => {
@@ -3445,7 +3476,7 @@ ${instantShareUrl}`;
         }
         return null;
       });
-    }, 8000);
+    }, 120000);
 
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {

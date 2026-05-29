@@ -54,8 +54,16 @@ export function isLowConfidenceFood(detectorResult) {
 
   // Foods listed but zero calories across the board -> Gemini hallucinated
   // names without nutrition. Treat as uncertain.
+  // Exception: zero-calorie liquids (plain water, black coffee, black tea)
+  // are legitimately calorie-free — allow them through when every listed item
+  // has isLiquid:true and a positive volume_ml.
   const totalCalories = Number(details.total?.calories) || 0;
-  if (totalCalories === 0) return true;
+  if (totalCalories === 0) {
+    const allZeroCalorieLiquid =
+      foods.length > 0 &&
+      foods.every((f) => f.isLiquid === true && Number(f.volume_ml) > 0);
+    if (!allZeroCalorieLiquid) return true;
+  }
 
   return false;
 }

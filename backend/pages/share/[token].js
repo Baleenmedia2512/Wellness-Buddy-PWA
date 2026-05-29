@@ -19,7 +19,7 @@ const APP_STORE_ID = '6764327692';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
 const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
-export async function getServerSideProps({ params, req }) {
+export async function getServerSideProps({ params, req, query }) {
   const token = (params?.token || '').toString();
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const valid = UUID_RE.test(token);
@@ -48,6 +48,13 @@ export async function getServerSideProps({ params, req }) {
       }
     } catch {
       // non-fatal — fall back to generic Wellness Valley branding
+    }
+
+    // Instant-share race: the capture row may not exist yet when WhatsApp
+    // crawls this page. Use the ?n= query param (embedded by the client) as
+    // a fallback so the OG title always shows the sharer's name.
+    if (!userName && query?.n) {
+      userName = String(query.n).slice(0, 80) || null;
     }
   }
 
