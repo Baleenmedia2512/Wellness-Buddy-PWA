@@ -62,7 +62,7 @@ function buildOtpEmailHtml(otp) {
               <div class="security-note">
                 <div class="security-icon">🔒</div>
                 <div class="security-text">
-                  Never share this code with anyone. Wellness Valley will never ask for your OTP via phone or email.
+                  Never share this code with anyone. Wellness Valley Team will never ask for your OTP via phone or email.
                 </div>
               </div>
               <p class="message">

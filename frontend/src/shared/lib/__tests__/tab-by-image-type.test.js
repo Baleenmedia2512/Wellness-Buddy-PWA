@@ -9,7 +9,7 @@ describe('TAB_BY_IMAGE_TYPE', () => {
     expect(TAB_BY_IMAGE_TYPE.food).toBe('nutrition');
     expect(TAB_BY_IMAGE_TYPE.weight).toBe('weight');
     expect(TAB_BY_IMAGE_TYPE.education).toBe('education');
-    expect(TAB_BY_IMAGE_TYPE.smartwatch).toBe('smartwatch');
+    expect(TAB_BY_IMAGE_TYPE.smartwatch).toBe('education');
     expect(TAB_BY_IMAGE_TYPE.unknown).toBe(DEFAULT_TAB);
     expect(TAB_BY_IMAGE_TYPE.pending).toBe(DEFAULT_TAB);
   });
@@ -24,7 +24,7 @@ describe('tabForImageType()', () => {
     ['food', 'nutrition'],
     ['weight', 'weight'],
     ['education', 'education'],
-    ['smartwatch', 'smartwatch'],
+    ['smartwatch', 'education'],
     ['unknown', DEFAULT_TAB],
     ['pending', DEFAULT_TAB],
   ])('%s -> %s', (type, expected) => {

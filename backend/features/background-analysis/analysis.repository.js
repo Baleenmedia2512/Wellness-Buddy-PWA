@@ -233,7 +233,8 @@ export async function findOwnerByToken(token) {
       .maybeSingle();
     if (wtErr) throw wtErr;
     domainId = wt?.ID ?? null;
-  } else if (imageType === 'education') {
+  } else if (imageType === 'education' || imageType === 'smartwatch') {
+    // Smartwatch entries are saved to education_logs_table (same as education).
     const { data: edu, error: eduErr } = await supabase
       .from('education_logs_table')
       .select('"Id"')

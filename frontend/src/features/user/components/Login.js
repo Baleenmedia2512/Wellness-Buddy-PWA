@@ -65,9 +65,6 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
           {!showEmailForm ? (
             <LoginIntroPanel
               onChooseEmail={() => setShowEmailForm(true)}
-              onSignIn={onSignIn}
-              loading={loading}
-              error={error}
             />
           ) : !auth.otpSent ? (
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}

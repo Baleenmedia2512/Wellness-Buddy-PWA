@@ -3701,27 +3701,36 @@ function WellnessValleyApp() {
         if (!resolvedUserId) {
           try { resolvedUserId = await getUserId(user); } catch (err) { debugLog('[getUserId] failed, continuing with null userId', { err: err?.message }); }
         }
+        // Resolve captureId before mounting WatchActivityCard so the education
+        // log row links back to the captures row (same pattern as education branch).
+        let watchCaptureId = null;
+        try {
+          const capShare = await pendingSharePromise;
+          if (capShare?.id) {
+            watchCaptureId = capShare.id;
+            if (!foodCaptureIdRef.current) foodCaptureIdRef.current = capShare.id;
+          }
+          // Auto-share to WhatsApp once the share URL is resolved.
+          if (capShare?.url && !foodAutoSharedRef.current) {
+            foodAutoSharedRef.current = true;
+            shareTextViaWhatsApp(capShare.url).then((ok) => {
+              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+              if (!ok) { foodAutoSharedRef.current = false; }
+            });
+          }
+        } catch (_) {}
         setImageType("smartwatch");
         setWatchResult({
           caloriesBurned: detectedType.details?.caloriesBurned || 0,
           source: detectedType.details?.source || "Smartwatch",
           loggedAt: new Date().toISOString(),
           userId: resolvedUserId, // ← real DB id, not Firebase uid
+          captureId: watchCaptureId || undefined,
         });
         // Tag the pending capture as 'smartwatch' so it is excluded from the
         // nutrition dashboard (ImageType='food' filter) but the share link
-        // still resolves and routes to the correct dashboard tab.
+        // still resolves and routes to the education tab.
         updatePendingCaptureType(pendingSharePromise, 'smartwatch');
-        // Auto-share to WhatsApp immediately � same as food flow.
-        pendingSharePromise.then((share) => {
-          if (!share?.url || foodAutoSharedRef.current) return;
-          foodAutoSharedRef.current = true;
-          shareTextViaWhatsApp(share.url).then((ok) => {
-            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-            if (!ok) { foodAutoSharedRef.current = false; }
-            // Keep analysis on screen � do NOT resetCaptureUiOnly.
-          });
-        });
         setLoading(false);
         return;
       }

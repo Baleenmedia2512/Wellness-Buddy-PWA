@@ -376,6 +376,17 @@ describe('resolvePublicCapture', () => {
     expect(r.httpStatus).toBe(403);
     expect(r.body.error.code).toBe('FORBIDDEN');
   });
+
+  it('returns imageType=smartwatch so deep-link routes to education tab', async () => {
+    // Smartwatch entries are stored in education_logs_table; the repo join
+    // returns the education log Id as row.ID. The service surfaces it so
+    // EducationDashboard can auto-open the correct card.
+    repo.findOwnerByToken.mockResolvedValue({ ...ownerRow, ImageType: 'smartwatch' });
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.data.imageType).toBe('smartwatch');
+    expect(r.body.data.mealId).toBe('123');
+  });
 });
 
 // ─── validateUpdateCapture ───────────────────────────────────────────────────
