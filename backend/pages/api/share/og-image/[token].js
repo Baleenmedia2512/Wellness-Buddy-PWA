@@ -28,11 +28,23 @@ export default async function handler(req, res) {
     return res.status(400).end();
   }
 
-  let capture;
-  try {
-    capture = await findByToken(token);
-  } catch {
-    return res.status(500).end();
+  // Instant-share race: the frontend fires the share sheet before the
+  // POST /captures round-trip completes. WhatsApp crawls the og-image URL
+  // within 1–4 seconds of the share. We poll for up to 4 s (8 × 500 ms)
+  // so the image is available by the time the crawler arrives.
+  const RETRIES = 8;
+  const RETRY_DELAY_MS = 500;
+  let capture = null;
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    try {
+      capture = await findByToken(token);
+    } catch {
+      return res.status(500).end();
+    }
+    if (capture?.ImageBase64) break;
+    if (attempt < RETRIES - 1) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
   }
 
   if (!capture?.ImageBase64) {

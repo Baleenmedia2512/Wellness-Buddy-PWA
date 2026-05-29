@@ -3527,9 +3527,47 @@ function WellnessValleyApp() {
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
       foodAutoSharedRef.current = false; // reset so auto-share fires for every new food image
+
+      // ⚡ INSTANT SHARE — pre-generate the UUID here on the frontend so the
+      // share sheet can open the moment the overlay paints, without waiting
+      // for the POST /captures network round-trip. The server accepts this
+      // token via the optional `token` field and stores it as PublicShareToken.
+      const instantToken = crypto.randomUUID();
+      const instantShareUrl = `${apiBaseUrl}/share/${instantToken}`;
+
+      // Clear overlay helper — shared by instant path and fallback.
+      const clearOverlay = () => {
+        setSharingPendingImage((prev) => {
+          if (prev && prev.startsWith('blob:')) {
+            try { URL.revokeObjectURL(prev); } catch (_) {}
+          }
+          return null;
+        });
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
+      };
+
+      // Fire the share sheet IMMEDIATELY — before any network call.
+      if (!foodAutoSharedRef.current) {
+        foodAutoSharedRef.current = true;
+        // Cancel the safety timer so it doesn't dismiss the overlay while the
+        // share sheet is still open.
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
+        shareTextViaWhatsApp(instantShareUrl).then((ok) => {
+          _hasCompletedFirstShareRef.current = true;
+          if (!ok) foodAutoSharedRef.current = false;
+          clearOverlay();
+        });
+      }
+
       const captureApiStart = Date.now();
       debugLog(
-        `?? [PERF] ?? POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
+        `⏱️ [PERF] ➜ POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
       );
       const pendingSharePromise = (async () => {
         try {
@@ -3540,12 +3578,12 @@ function WellnessValleyApp() {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage }),
+              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage, token: instantToken }),
             },
           );
           if (!capRes.ok) {
             debugLog(
-              `?? [PERF] ?? POST /captures FAILED in ${Date.now() - captureApiStart}ms (status ${capRes.status})`,
+              `⏱️ [PERF] ➜ POST /captures FAILED in ${Date.now() - captureApiStart}ms (status ${capRes.status})`,
             );
             return null;
           }
@@ -3553,7 +3591,7 @@ function WellnessValleyApp() {
           const capDuration = Date.now() - captureApiStart;
           if (capData.ok && capData.data?.id) {
             debugLog(
-              `?? [PERF] ?? POST /captures: ${capDuration}ms (+${Date.now() - perfStart}ms from capture start) ? token ready`,
+              `⏱️ [PERF] ➜ POST /captures: ${capDuration}ms (+${Date.now() - perfStart}ms from capture start) → token ready`,
             );
             return {
               id: capData.data.id,
@@ -3561,12 +3599,12 @@ function WellnessValleyApp() {
             };
           }
           debugLog(
-            `?? [PERF] ?? POST /captures responded ok=false in ${capDuration}ms`,
+            `⏱️ [PERF] ➜ POST /captures responded ok=false in ${capDuration}ms`,
           );
           return null;
         } catch (err) {
           debugLog(
-            `?? [PERF] ?? POST /captures THREW after ${Date.now() - captureApiStart}ms: ${err?.message || err}`,
+            `⏱️ [PERF] ➜ POST /captures THREW after ${Date.now() - captureApiStart}ms: ${err?.message || err}`,
           );
           console.warn('[Share] pre-capture failed:', err);
           return null;
@@ -3575,48 +3613,6 @@ function WellnessValleyApp() {
       // Store a reference so performNutritionSave can await this promise
       // and guarantee captureId is set before the save request goes out.
       pendingSharePromiseRef.current = pendingSharePromise;
-
-      // ?? [PERF FIX] EARLY SHARE FIRE � fire WhatsApp share the instant the
-      // capture URL is ready, WITHOUT waiting for image-type classification.
-      // The classification gate (food/weight/education) used to delay this by
-      // 400�900ms, during which the home screen was visible to the user.
-      // Firing here means: camera closes ? WhatsApp opens immediately (no
-      // home screen flash). The foodAutoSharedRef guard prevents the existing
-      // classification-gated auto-share effect (line ~446) from double-firing.
-      pendingSharePromise.then((share) => {
-        const clearOverlay = () => {
-          setSharingPendingImage((prev) => {
-            if (prev && prev.startsWith('blob:')) {
-              try { URL.revokeObjectURL(prev); } catch (_) {}
-            }
-            return null;
-          });
-          if (sharingPendingTimerRef.current) {
-            clearTimeout(sharingPendingTimerRef.current);
-            sharingPendingTimerRef.current = null;
-          }
-        };
-        if (!share?.url || foodAutoSharedRef.current) {
-          if (!share?.url) clearOverlay();
-          return;
-        }
-        foodAutoSharedRef.current = true;
-        // Cancel the safety timer NOW, before Share.share() blocks waiting
-        // for the user to pick an app. Without this, the 3.5 s timer fires
-        // while the share sheet is still open and swaps the painted photo for
-        // the home/dashboard screen underneath — exactly the visual the user
-        // reported. clearOverlay() (called after share resolves) already
-        // cancels the timer, but that is too late for a long-open sheet.
-        if (sharingPendingTimerRef.current) {
-          clearTimeout(sharingPendingTimerRef.current);
-          sharingPendingTimerRef.current = null;
-        }
-        shareTextViaWhatsApp(share.url).then((ok) => {
-          _hasCompletedFirstShareRef.current = true;
-          if (!ok) foodAutoSharedRef.current = false;
-          clearOverlay();
-        });
-      });
 
       // --- [BUG 2 FIX] Always run AI analysis in the background ----------
       // The previous first-image-of-day gate skipped Gemini for subsequent

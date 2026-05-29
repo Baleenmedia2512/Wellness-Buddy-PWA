@@ -293,8 +293,8 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64 }) {
-  const token = randomUUID();
+export async function createPendingCapture({ userId, imageBase64, token: clientToken }) {
+  const token = clientToken || randomUUID();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   // PR 6 — captures_table is the ONLY at-capture-time write. No speculative

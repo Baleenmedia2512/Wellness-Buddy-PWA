@@ -51,8 +51,18 @@ export async function getServerSideProps({ params, req }) {
     }
   }
 
-  // og:image priority: actual food photo > user profile photo > site icon
-  const ogImageUrl = hasPhoto
+  // og:image priority:
+  //  1. food photo via /api/share/og-image/<token> — we always prefer this for
+  //     valid tokens. The endpoint has built-in retry so it waits for the
+  //     background POST to land (instant-share race condition).
+  //  2. user profile photo (Google avatar).
+  //  3. site icon fallback.
+  //
+  // We intentionally do NOT gate this on `hasPhoto` — for the instant-share
+  // flow the capture row is created a few hundred ms after the share URL is
+  // already in WhatsApp, so `hasPhoto` is often false at crawl time even
+  // though the image will be available by the time the og-image endpoint is hit.
+  const ogImageUrl = valid
     ? `${baseUrl}/api/share/og-image/${token}`
     : (userPhotoUrl || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null));
 
