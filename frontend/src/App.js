@@ -4006,8 +4006,8 @@ function WellnessValleyApp() {
               // const correctedFoods = await applyUserCorrections(foods, userId);
               // foods = correctedFoods;
 
-              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
-              const newLogs = correctedFoods.map((food) => ({
+              // 🐛 Capture ALL food detections for debug modal
+              const newLogs = foods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
                 userCorrected: food.name,
