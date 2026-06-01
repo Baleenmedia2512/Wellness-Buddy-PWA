@@ -584,6 +584,7 @@ function WellnessValleyApp() {
 
   // Register nutrition center state (for coaches)
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
+  const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -5685,7 +5686,7 @@ function WellnessValleyApp() {
         onShowWellnessCounselling={() => startTransition(() => setShowWellnessCounselling(true))}
         onShowAttendanceReport={() => startTransition(() => setShowAttendanceReport(true))}
         onShowNutritionCentersMap={() => startTransition(() => setShowNutritionCentersMap(true))}
-        onShowRegisterCenter={() => startTransition(() => setShowRegisterCenter(true))}
+        onShowRegisterCenter={null}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
         // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
@@ -6879,6 +6880,16 @@ function WellnessValleyApp() {
           <NutritionCentersMap
             user={user}
             onBack={() => setShowNutritionCentersMap(false)}
+            onEditCenter={(center) => {
+              setEditCenterData(center);
+              setShowNutritionCentersMap(false);
+              setShowRegisterCenter(true);
+            }}
+            onRegisterCenter={() => {
+              setEditCenterData(null);
+              setShowNutritionCentersMap(false);
+              setShowRegisterCenter(true);
+            }}
           />
         </Suspense>
       )}
@@ -6890,7 +6901,15 @@ function WellnessValleyApp() {
         >
           <NutritionCenterRegistration
             user={user}
-            onBack={() => setShowRegisterCenter(false)}
+            initialCenter={editCenterData}
+            onBack={() => {
+              setShowRegisterCenter(false);
+              if (editCenterData) {
+                // came from Physical Club Report via Edit — go back there
+                setShowNutritionCentersMap(true);
+              }
+              setEditCenterData(null);
+            }}
           />
         </Suspense>
       )}

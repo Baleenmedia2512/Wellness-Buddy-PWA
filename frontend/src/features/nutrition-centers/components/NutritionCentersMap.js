@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -71,9 +71,10 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
-const NutritionCentersMap = ({ user, onBack }) => {
+const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
   const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
@@ -243,6 +244,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
     if (!data.success) throw new Error('User not found');
     return data.userId;
   };
+
+  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
+  useEffect(() => {
+    if (user?.email) {
+      getUserId(user.email)
+        .then((id) => setCurrentUserId(Number(id)))
+        .catch(() => setCurrentUserId(null));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
+  }, [user]);
 
   // Open Street View for a center
   const openStreetView = (center) => {
@@ -692,7 +703,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
             </div>
             
             {/* Centres List */}
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-2 pb-24">
               {(() => {
                 const q = searchQuery.trim().toLowerCase();
                 const filteredCenters = q
@@ -784,6 +795,18 @@ const NutritionCentersMap = ({ user, onBack }) => {
                           </TouchFeedbackButton>
                         </>
                       )}
+
+                      {/* Edit — only visible to the centre owner */}
+                      {onEditCenter && currentUserId && center.owner_user_id === currentUserId && (
+                        <TouchFeedbackButton
+                          onClick={(e) => { e.stopPropagation(); onEditCenter(center); }}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors"
+                          ariaLabel="Edit centre"
+                        >
+                          <Pencil className="h-4 w-4 text-orange-600" />
+                          <span className="text-xs font-semibold text-orange-700">Edit</span>
+                        </TouchFeedbackButton>
+                      )}
                     </div>
                   </div>
                       ))
@@ -795,6 +818,32 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </>
         )}
       </div>
+
+      {/* Floating Add Button — opens Register Nutrition Centre */}
+      {onRegisterCenter && (
+        <button
+          onClick={onRegisterCenter}
+          aria-label="Register new nutrition centre"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
+            right: '1rem',
+            width: '3.5rem',
+            height: '3.5rem',
+            borderRadius: '50%',
+            backgroundColor: '#16a34a',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <Plus style={{ width: '1.75rem', height: '1.75rem', color: '#fff', strokeWidth: 2.5 }} />
+        </button>
+      )}
 
       {/* Street View Overlay */}
       {showStreetView && selectedCenter && (

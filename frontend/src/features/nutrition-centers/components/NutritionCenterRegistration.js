@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader, Pencil, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 
-const NutritionCenterRegistration = ({ user, onBack }) => {
+const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
   const [centerName, setCenterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -31,7 +31,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     onCancel: null,
   });
   const [centerToDelete, setCenterToDelete] = useState(null);
-  const [editingCenter, setEditingCenter] = useState(null); // centre object being edited, or null
+  const [editingCenter, setEditingCenter] = useState(null); // set when opened from Physical Club Report
   const [nameAvailable, setNameAvailable] = useState(null); // null=unchecked, true=available, false=taken
   const [nameChecking, setNameChecking] = useState(false);
   const nameCheckTimerRef = useRef(null);
@@ -482,6 +482,103 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [user]);
 
+  // Pre-fill form when opened from Physical Club Report via Edit button
+  const handleEdit = (center) => {
+    setEditingCenter(center);
+    setCenterName(center.center_name);
+    setLatitude(String(center.latitude));
+    setLongitude(String(center.longitude));
+    const storedPhone = center.owner_phone || '';
+    const knownCodes = ['+971', '+966', '+1', '+44', '+61', '+81', '+86', '+65', '+60', '+91'];
+    const matchedCode = knownCodes.find((c) => storedPhone.startsWith(c));
+    if (matchedCode) {
+      setCountryCode(matchedCode);
+      setOwnerPhone(storedPhone.slice(matchedCode.length));
+    } else {
+      setCountryCode('+91');
+      setOwnerPhone(storedPhone);
+    }
+    setNameAvailable(null);
+    setNameChecking(false);
+    setError(null);
+    setSuccess(null);
+    if (googleMapRef.current && window.google) {
+      const pos = { lat: center.latitude, lng: center.longitude };
+      if (markerRef.current) markerRef.current.setMap(null);
+      markerRef.current = new window.google.maps.Marker({
+        position: pos,
+        map: googleMapRef.current,
+        title: 'Selected Location',
+      });
+      googleMapRef.current.panTo(pos);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCenter(null);
+    setCenterName('');
+    setLatitude('');
+    setLongitude('');
+    setOwnerPhone('');
+    setCountryCode('+91');
+    setNameAvailable(null);
+    setNameChecking(false);
+    setError(null);
+    if (markerRef.current) {
+      markerRef.current.setMap(null);
+      markerRef.current = null;
+    }
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      if (!centerName || !latitude || !longitude) {
+        throw new Error('Please fill in all required fields and select a location on the map');
+      }
+      if (nameAvailable === false) {
+        throw new Error('This centre name is already taken. Please choose a different name.');
+      }
+      const userId = await getUserId(user.email);
+      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          centerId: editingCenter.id,
+          userId,
+          centerName,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          ownerPhone: ownerPhone ? `${countryCode}${ownerPhone}` : null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to update centre');
+      }
+      setSuccess('Nutrition centre updated successfully!');
+      handleCancelEdit();
+      fetchMyCenters();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      debugLog('Error updating centre:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-enter edit mode when opened from Physical Club Report
+  useEffect(() => {
+    if (initialCenter) {
+      handleEdit(initialCenter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
+  }, []);
+
   // Handle form submission
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -597,103 +694,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     } catch (err) {
       console.error('Error unregistering centre:', err);
       setError(err.message);
-    }
-  };
-
-  // Enter edit mode: pre-fill form fields with existing centre data
-  const handleEdit = (center) => {
-    setEditingCenter(center);
-    setCenterName(center.center_name);
-    setLatitude(String(center.latitude));
-    setLongitude(String(center.longitude));
-    // Parse stored phone into country code + number
-    const storedPhone = center.owner_phone || '';
-    const knownCodes = ['+971', '+966', '+1', '+44', '+61', '+81', '+86', '+65', '+60', '+91'];
-    const matchedCode = knownCodes.find((c) => storedPhone.startsWith(c));
-    if (matchedCode) {
-      setCountryCode(matchedCode);
-      setOwnerPhone(storedPhone.slice(matchedCode.length));
-    } else {
-      setCountryCode('+91');
-      setOwnerPhone(storedPhone);
-    }
-    setNameAvailable(null);
-    setNameChecking(false);
-    setError(null);
-    setSuccess(null);
-    // Reposition map marker if map is ready
-    if (googleMapRef.current && window.google) {
-      const pos = { lat: center.latitude, lng: center.longitude };
-      if (markerRef.current) {
-        markerRef.current.setMap(null);
-      }
-      markerRef.current = new window.google.maps.Marker({
-        position: pos,
-        map: googleMapRef.current,
-        title: 'Selected Location',
-      });
-      googleMapRef.current.panTo(pos);
-    }
-    // Scroll to top of form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Cancel edit mode: reset form
-  const handleCancelEdit = () => {
-    setEditingCenter(null);
-    setCenterName('');
-    setLatitude('');
-    setLongitude('');
-    setOwnerPhone('');
-    setCountryCode('+91');
-    setNameAvailable(null);
-    setNameChecking(false);
-    setError(null);
-    if (markerRef.current) {
-      markerRef.current.setMap(null);
-      markerRef.current = null;
-    }
-  };
-
-  // Submit update (PATCH)
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (!centerName || !latitude || !longitude) {
-        throw new Error('Please fill in all required fields and select a location on the map');
-      }
-      if (nameAvailable === false) {
-        throw new Error('This centre name is already taken. Please choose a different name.');
-      }
-      const userId = await getUserId(user.email);
-      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          centerId: editingCenter.id,
-          userId,
-          centerName,
-          latitude: parseFloat(latitude),
-          longitude: parseFloat(longitude),
-          ownerPhone: ownerPhone ? `${countryCode}${ownerPhone}` : null,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to update centre');
-      }
-      setSuccess('Nutrition centre updated successfully!');
-      handleCancelEdit();
-      fetchMyCenters();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      debugLog('Error updating centre:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -906,8 +906,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
           </form>
         </div>
 
-        {/* My Centres */}
-        <div className="bg-white rounded-lg shadow-md p-6">
+        {/* My Centres — hidden when editing an existing centre */}
+        {!editingCenter && <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">My Registered Centres</h2>
           {loadingCenters ? (
             <div className="flex justify-center py-8">
@@ -920,11 +920,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               {myCenters.map((center) => (
                 <div
                   key={center.id}
-                  className={`flex items-start justify-between p-4 border rounded-lg hover:bg-gray-50 ${
-                    editingCenter?.id === center.id
-                      ? 'border-green-400 bg-green-50'
-                      : 'border-gray-200'
-                  }`}
+                  className="flex items-start justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
                 >
                   <div className="flex-1">
                     <h3 className="font-bold text-gray-800">{center.center_name}</h3>
@@ -947,27 +943,18 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                       )}
                     </div>
                   </div>
-                  <div className="ml-4 flex items-center gap-1">
-                    <TouchFeedbackButton
-                      onClick={() => handleEdit(center)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                      ariaLabel="Edit centre"
-                    >
-                      <Pencil className="h-5 w-5" />
-                    </TouchFeedbackButton>
-                    <TouchFeedbackButton
-                      onClick={() => handleUnregister(center.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      ariaLabel="Unregister centre"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </TouchFeedbackButton>
-                  </div>
+                  <TouchFeedbackButton
+                    onClick={() => handleUnregister(center.id)}
+                    className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    ariaLabel="Unregister centre"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </TouchFeedbackButton>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
       
       {/* Custom Alert Modal */}
