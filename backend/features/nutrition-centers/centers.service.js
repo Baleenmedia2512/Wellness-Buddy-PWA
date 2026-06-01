@@ -54,25 +54,67 @@ export async function register(input) {
   };
 }
 
-// ─── unregister ──────────────────────────────────────────────────────────────
-export async function unregister({ centerId, userId }) {
+// ─── shared: ownership + role guard ─────────────────────────────────────────
+async function assertOwnerOrAdmin(centerId, userId) {
   const { data: center, error: centerErr } = await repo.findCenterOwner(centerId);
-  if (centerErr || !center) {
-    return { httpStatus: 500, body: { success: false, message: 'Center not found' } };
-  }
+  if (centerErr || !center) return { allowed: false, httpStatus: 404, message: 'Center not found' };
   const { data: user } = await repo.findUserRole(userId);
   const isOwner = center.owner_user_id === parseInt(userId, 10);
   const isAdmin = user && (user.Role === 'admin' || user.Role === 'developer');
   if (!isOwner && !isAdmin) {
-    return {
-      httpStatus: 403,
-      body: { success: false, message: 'Only the owner or admin can unregister this center' },
-    };
+    return { allowed: false, httpStatus: 403, message: 'Only the owner or admin can modify this center' };
+  }
+  return { allowed: true };
+}
+
+// ─── unregister ──────────────────────────────────────────────────────────────
+export async function unregister({ centerId, userId }) {
+  const guard = await assertOwnerOrAdmin(centerId, userId);
+  if (!guard.allowed) {
+    return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
   await repo.softDeleteCenter(centerId);
   return {
     httpStatus: 200,
     body: { success: true, message: 'Nutrition center unregistered successfully' },
+  };
+}
+
+// ─── update ──────────────────────────────────────────────────────────────────
+export async function updateCenter(input) {
+  const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = input;
+
+  const guard = await assertOwnerOrAdmin(centerId, userId);
+  if (!guard.allowed) {
+    return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
+  }
+
+  // Name uniqueness: only check if name is being changed; skip if it belongs to the same centre
+  if (centerName !== undefined) {
+    const { data: existing } = await repo.findByName(centerName.trim());
+    if (existing && existing.id !== parseInt(centerId, 10)) {
+      return {
+        httpStatus: 409,
+        body: {
+          success: false,
+          message: 'This centre name is already taken. Please choose a different name.',
+          duplicate: true,
+        },
+      };
+    }
+  }
+
+  const payload = {};
+  if (centerName !== undefined) payload.center_name = centerName.trim();
+  if (latitude !== undefined) payload.latitude = latitude;
+  if (longitude !== undefined) payload.longitude = longitude;
+  if (ownerPhone !== undefined) payload.owner_phone = ownerPhone || null;
+  if (educationHour !== undefined) payload.education_hour = educationHour || null;
+
+  const updated = await repo.updateCenter(centerId, payload);
+  return {
+    httpStatus: 200,
+    body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
   };
 }
 

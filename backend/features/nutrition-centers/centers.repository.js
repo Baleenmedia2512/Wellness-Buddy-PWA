@@ -48,8 +48,33 @@ export async function findCenterOwner(centerId) {
     .from('nutrition_centers_table')
     .select('owner_user_id')
     .eq('id', centerId)
+    .eq('is_deleted', false)
     .single();
   return { data, error };
+}
+
+export async function findCenterById(centerId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('nutrition_centers_table')
+    .select('id, center_name, latitude, longitude, education_hour, owner_user_id, owner_phone')
+    .eq('id', centerId)
+    .eq('is_deleted', false)
+    .single();
+  return { data, error };
+}
+
+export async function updateCenter(centerId, payload) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('nutrition_centers_table')
+    .update(payload)
+    .eq('id', centerId)
+    .eq('is_deleted', false)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function softDeleteCenter(centerId) {
