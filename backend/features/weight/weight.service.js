@@ -9,6 +9,13 @@ import {
 import { validateAndCorrectWeight } from '../../utils/weightValidation.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
 import * as repo from './weight.repository.js';
+// PR 6 — captures_table is canonical for the at-capture-time write. The
+// weight save endpoint promotes the linked capture pending → weight when
+// `captureId` is supplied. Best-effort: a captures-side failure is logged
+// and does NOT fail the user's weight save.
+import * as captures from '../captures/captures.service.js';
+import { IMAGE_TYPE_WEIGHT } from '../captures/domain/image-types.js';
+import logger from '../../shared/lib/logger.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -60,6 +67,7 @@ export async function saveWeight(input) {
     bmi, bodyFat, muscleMass, bmr,
     imageBase64ToSave: rawImage,
     clientTimestamp, entryId,
+    captureId,
   } = input;
 
   const bmiValue = toNumberOrNull(bmi);
@@ -116,6 +124,7 @@ export async function saveWeight(input) {
       MuscleMass: muscleMassValue,
       Bmr: bmrValue,
       WeightImageBase64: imageBase64ToSave,
+      CaptureID: captureId || null,
       CreatedAt: createdAtIST,
       UpdatedAt: currentTime,
     });
@@ -123,6 +132,24 @@ export async function saveWeight(input) {
 
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
+
+  // PR 6 — promote the capture pending → weight. Best-effort: the weight row
+  // is already persisted, the state machine is idempotent, and a transient
+  // failure here must not surface to the user. Only attempted on initial
+  // insert (entryId edits are not tied to a fresh capture).
+  if (captureId && !entryId) {
+    try {
+      await captures.updateTypeById({
+        captureId,
+        userId: userId.toString(),
+        toType: IMAGE_TYPE_WEIGHT,
+      });
+    } catch (err) {
+      logger.warn('weight.saveWeight: failed to promote capture to weight', {
+        captureId, userId: userId.toString(), err: err.message,
+      });
+    }
+  }
 
   return {
     httpStatus: 200,

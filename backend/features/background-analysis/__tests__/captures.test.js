@@ -6,18 +6,16 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, updateCaptureType } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, save, updateCaptureType } from '../analysis.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
 jest.mock('../analysis.repository.js', () => ({
-  insertPendingCapture: jest.fn(),
   updateWithAnalysisResult: jest.fn(),
-  // PR 5 — updateCaptureImageType / findTokenByIdForOwner were deleted from
-  // the repo (the legacy ImageType + PublicShareToken columns were dropped
-  // from food_nutrition_data_table). The service now goes through
-  // captures.updateTypeById keyed by CaptureID.
-  findCaptureIdForOwner: jest.fn(),
+  // PR 6 — insertPendingCapture and findCaptureIdForOwner were removed.
+  // captures_table is now the only at-capture-time write; food rows are
+  // upserted at save() time keyed by CaptureID via findFoodByCaptureId.
+  findFoodByCaptureId: jest.fn(),
   findPublicByToken: jest.fn(),
   findOwnerByToken: jest.fn(),
   insertAnalysis: jest.fn(),
@@ -115,7 +113,6 @@ describe('validatePublicCapture', () => {
 
 describe('createPendingCapture', () => {
   beforeEach(() => {
-    repo.insertPendingCapture.mockResolvedValue({ ID: 7, UserID: '42' });
     repo.touchLastActive.mockResolvedValue();
     captures.recordPending.mockReset().mockResolvedValue({ id: 7, publicShareToken: 'tok' });
   });
@@ -127,26 +124,17 @@ describe('createPendingCapture', () => {
     expect(typeof result.body.data.token).toBe('string');
     // UUID v4 format
     expect(result.body.data.token).toMatch(/^[0-9a-f-]{36}$/);
+    // PR 6 — `id` returned to the FE is the captures_table CaptureID.
     expect(result.body.data.id).toBe(7);
   });
 
-  it('calls insertPendingCapture with the CaptureID returned by captures.recordPending', async () => {
+  it('does NOT write to food_nutrition_data_table at capture time (PR 6)', async () => {
+    // PR 6 eliminated the speculative pre-insert that caused orphan
+    // "Unknown Food / 0kcal" rows. captures_table is the only writer here.
     captures.recordPending.mockReset().mockResolvedValue({ id: 4242, publicShareToken: 'tok' });
     await createPendingCapture({ userId: '99', imageBase64: 'data:abc' });
-    expect(repo.insertPendingCapture).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: '99',
-        imageBase64: 'data:abc',
-        captureId: 4242,
-      }),
-    );
-    // PR 5 — the legacy share-token columns were dropped from
-    // food_nutrition_data_table, so insertPendingCapture must NOT receive
-    // publicShareToken / shareExpiresAt / imageType anymore.
-    const args = repo.insertPendingCapture.mock.calls[0][0];
-    expect(args.publicShareToken).toBeUndefined();
-    expect(args.shareExpiresAt).toBeUndefined();
-    expect(args.imageType).toBeUndefined();
+    expect(repo.insertAnalysis).not.toHaveBeenCalled();
+    expect(repo.updateWithAnalysisResult).not.toHaveBeenCalled();
   });
 
   it('sets shareExpiresAt ~30 days in the future on the captures.recordPending call', async () => {
@@ -158,18 +146,10 @@ describe('createPendingCapture', () => {
     expect(diffDays).toBeLessThan(31);
   });
 
-  it('propagates repo errors', async () => {
-    repo.insertPendingCapture.mockRejectedValue(new Error('DB down'));
-    await expect(createPendingCapture({ userId: '1', imageBase64: 'x' })).rejects.toThrow('DB down');
-  });
-
-  // PR 4 — captures_table twin is now MANDATORY. The previous PR 2 behaviour
-  // (swallow + warn) is gone: any failure in captures.recordPending must fail
-  // the whole request, otherwise the caller would receive a token that points
-  // to a half-populated row. The legacy insert still succeeds and may leave
-  // an orphan legacy row, but that orphan is behaviourally identical to a
-  // pre-PR-2 row and resolves via the legacy share-token column.
-  it('fails the request when captures.recordPending throws (PR 4 fatal dual-write)', async () => {
+  // PR 6 — captures_table is the ONLY writer. Any failure in
+  // captures.recordPending must fail the whole request — there is no longer
+  // a legacy food-table insert that could provide a fallback.
+  it('fails the request when captures.recordPending throws', async () => {
     captures.recordPending.mockRejectedValueOnce(new Error('captures slice down'));
     await expect(
       createPendingCapture({ userId: '42', imageBase64: 'data:x' }),
@@ -396,6 +376,17 @@ describe('resolvePublicCapture', () => {
     expect(r.httpStatus).toBe(403);
     expect(r.body.error.code).toBe('FORBIDDEN');
   });
+
+  it('returns imageType=smartwatch so deep-link routes to education tab', async () => {
+    // Smartwatch entries are stored in education_logs_table; the repo join
+    // returns the education log Id as row.ID. The service surfaces it so
+    // EducationDashboard can auto-open the correct card.
+    repo.findOwnerByToken.mockResolvedValue({ ...ownerRow, ImageType: 'smartwatch' });
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.data.imageType).toBe('smartwatch');
+    expect(r.body.data.mealId).toBe('123');
+  });
 });
 
 // ─── validateUpdateCapture ───────────────────────────────────────────────────
@@ -439,52 +430,120 @@ describe('validateUpdateCapture', () => {
 
 describe('updateCaptureType', () => {
   beforeEach(() => {
-    repo.findCaptureIdForOwner.mockReset().mockResolvedValue(123);
     captures.updateTypeById.mockReset().mockResolvedValue({ changed: true, imageType: 'weight' });
   });
 
-  it('looks up the CaptureID for the food row and delegates to captures.updateTypeById', async () => {
-    const r = await updateCaptureType({ id: '5', userId: '42', imageType: 'weight' });
+  // PR 6 — `id` is now the captures_table CaptureID directly (returned by
+  // createPendingCapture). No food-row indirection / findCaptureIdForOwner.
+  it('delegates straight to captures.updateTypeById using `id` as the CaptureID', async () => {
+    const r = await updateCaptureType({ id: 5, userId: '42', imageType: 'weight' });
     expect(r.httpStatus).toBe(200);
     expect(r.body.ok).toBe(true);
-    expect(repo.findCaptureIdForOwner).toHaveBeenCalledWith('5', '42');
     expect(captures.updateTypeById).toHaveBeenCalledWith({
-      captureId: 123,
+      captureId: 5,
       userId: '42',
       toType: 'weight',
     });
   });
 
   it('works for education type', async () => {
-    await updateCaptureType({ id: '7', userId: '10', imageType: 'education' });
+    await updateCaptureType({ id: 7, userId: '10', imageType: 'education' });
     expect(captures.updateTypeById).toHaveBeenCalledWith({
-      captureId: 123, userId: '10', toType: 'education',
+      captureId: 7, userId: '10', toType: 'education',
     });
   });
 
   it('works for smartwatch type', async () => {
-    await updateCaptureType({ id: '9', userId: '10', imageType: 'smartwatch' });
+    await updateCaptureType({ id: 9, userId: '10', imageType: 'smartwatch' });
     expect(captures.updateTypeById).toHaveBeenCalledWith({
-      captureId: 123, userId: '10', toType: 'smartwatch',
+      captureId: 9, userId: '10', toType: 'smartwatch',
     });
   });
 
-  it('returns 404 when no CaptureID is linked to the food row (legacy / not owner)', async () => {
-    repo.findCaptureIdForOwner.mockResolvedValueOnce(null);
-    const r = await updateCaptureType({ id: '5', userId: '42', imageType: 'weight' });
+  it('returns 404 when captures.updateTypeById reports NOT_FOUND_OR_NOT_OWNER', async () => {
+    captures.updateTypeById.mockResolvedValueOnce({
+      changed: false, reason: 'NOT_FOUND_OR_NOT_OWNER',
+    });
+    const r = await updateCaptureType({ id: 5, userId: '42', imageType: 'weight' });
     expect(r.httpStatus).toBe(404);
     expect(r.body.ok).toBe(false);
     expect(r.body.error.code).toBe('CAPTURE_NOT_FOUND');
+  });
+
+  it('propagates errors from the captures slice', async () => {
+    captures.updateTypeById.mockRejectedValueOnce(new Error('captures slice down'));
+    await expect(
+      updateCaptureType({ id: 5, userId: '42', imageType: 'weight' }),
+    ).rejects.toThrow('captures slice down');
+  });
+});
+
+// ─── save ─────────────────────────────────────────────────────────────────────
+
+describe('save', () => {
+  const baseInput = {
+    userId: '42',
+    imagePath: 'test.jpg',
+    analysisResult: {
+      nutrition: { calories: 350, protein: 12, carbs: 45, fat: 10, fiber: 3 },
+      category: { name: 'Rice' },
+      confidence: 'high',
+    },
+    deviceInfo: 'test-device',
+    ImageBase64: null,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.insertAnalysis.mockResolvedValue({ ID: 99 });
+    repo.findFoodByCaptureId.mockResolvedValue(null);
+    captures.updateTypeById.mockResolvedValue({ changed: true, imageType: 'food' });
+    repo.touchLastActive.mockResolvedValue();
+  });
+
+  it('does NOT include ImageType in the food_nutrition_data_table insert (PR-6 regression guard)', async () => {
+    // ImageType was dropped from food_nutrition_data_table by
+    // drop_legacy_share_columns_from_food.sql. Including it would cause
+    // Supabase to reject the INSERT with a column-not-found error.
+    await save(baseInput);
+    expect(repo.insertAnalysis).toHaveBeenCalledTimes(1);
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('ImageType');
+  });
+
+  it('inserts with CaptureID FK when captureId is supplied', async () => {
+    await save({ ...baseInput, captureId: 1001 });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.CaptureID).toBe(1001);
+  });
+
+  it('promotes the capture to food after a successful insert', async () => {
+    await save({ ...baseInput, captureId: 1001 });
+    expect(captures.updateTypeById).toHaveBeenCalledWith({
+      captureId: 1001,
+      userId: '42',
+      toType: 'food',
+    });
+  });
+
+  it('does NOT call captures.updateTypeById when no captureId', async () => {
+    await save(baseInput);
     expect(captures.updateTypeById).not.toHaveBeenCalled();
   });
 
-  it('propagates errors from the captures slice (PR 5 — no more swallow)', async () => {
-    // PR 5 removed the legacy fallback path, so dual-write swallow is gone:
-    // captures_table is the only writer for ImageType and a failure there is
-    // a real failure that must surface to the caller.
-    captures.updateTypeById.mockRejectedValueOnce(new Error('captures slice down'));
-    await expect(
-      updateCaptureType({ id: '5', userId: '42', imageType: 'weight' }),
-    ).rejects.toThrow('captures slice down');
+  it('updates an existing food row when findFoodByCaptureId returns a match', async () => {
+    repo.findFoodByCaptureId.mockResolvedValue({ ID: 77 });
+    repo.updateWithAnalysisResult.mockResolvedValue({ ID: 77 });
+    const r = await save({ ...baseInput, captureId: 1001 });
+    expect(repo.insertAnalysis).not.toHaveBeenCalled();
+    expect(repo.updateWithAnalysisResult).toHaveBeenCalledWith(77, '42', expect.not.objectContaining({ ImageType: expect.anything() }));
+    expect(r.httpStatus).toBe(200);
+  });
+
+  it('returns 500 on a DB error without crashing the process', async () => {
+    repo.insertAnalysis.mockRejectedValueOnce(new Error('connection refused'));
+    const r = await save(baseInput);
+    expect(r.httpStatus).toBe(500);
+    expect(r.body.success).toBe(false);
   });
 });

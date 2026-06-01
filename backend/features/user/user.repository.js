@@ -135,6 +135,21 @@ export async function deleteApproval(id) {
   await supabase.from(APPROVALS).delete().eq('"Id"', id);
 }
 
+/**
+ * Fetch only the public-facing fields needed by the share landing page.
+ * Returns null when the user is not found or on error (non-fatal).
+ */
+export async function findPublicProfileById(userId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select('"UserName", "ProfileImage"')
+    .eq('"UserId"', userId)
+    .maybeSingle();
+  if (error) return null;
+  return data || null;
+}
+
 export async function getSnoozeRow(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase

@@ -471,6 +471,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              initialEntryId={initialMealId}
             />
           )}
 
@@ -480,6 +481,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
               refreshKey={educationRefreshKey}
+              initialEntryId={initialMealId}
             />
           )}
 

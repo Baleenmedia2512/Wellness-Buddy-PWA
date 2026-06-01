@@ -29,7 +29,7 @@ const WatchActivityCard = ({
   const [saveError, setSaveError] = useState(null);
   const hasSavedRef = useRef(false); // prevent double-save in StrictMode
 
-  const { caloriesBurned = 0, source = "Smartwatch", loggedAt, userId: resolvedUserId } = watchData || {};
+  const { caloriesBurned = 0, source = "Smartwatch", loggedAt, userId: resolvedUserId, captureId } = watchData || {};
 
   const formattedTime = new Date(loggedAt || Date.now()).toLocaleString("en-US", {
     month: "short",
@@ -84,6 +84,7 @@ const WatchActivityCard = ({
             deviceInfo: window.navigator.userAgent,
             clientTimestamp: new Date().toISOString(),
             clientTimezoneOffset: new Date().getTimezoneOffset(),
+            captureId: captureId || undefined,
           }),
         });
 

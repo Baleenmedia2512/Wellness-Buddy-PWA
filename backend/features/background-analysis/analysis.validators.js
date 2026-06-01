@@ -34,15 +34,23 @@ export function validateUndo(body) {
   return { id, userId };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function validateCreateCapture(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const { userId, imageBase64 } = body;
+  const { userId, imageBase64, token } = body;
   if (!userId) throw new ValidationError(400, 'userId is required');
   if (!imageBase64) throw new ValidationError(400, 'imageBase64 is required');
+  // token is optional. When supplied by the frontend (instant-share path),
+  // it MUST be a valid UUID so we can use it directly as the PublicShareToken.
+  // The server still generates its own UUID when the field is absent.
+  if (token !== undefined && !UUID_RE.test(token)) {
+    throw new ValidationError(400, 'token must be a valid UUID v4');
+  }
   // imageType is intentionally NOT accepted here. All pending captures start
   // as ImageType='pending' (set in the repository). The type is resolved via
   // PATCH /captures after AI analysis determines the correct category.
-  return { userId, imageBase64 };
+  return { userId, imageBase64, token: token || null };
 }
 
 export function validateUpdateCapture(body) {

@@ -113,6 +113,11 @@ export async function fetchMealsForDate(userId, date) {
     .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ProcessedBy, DeviceInfo, CreatedAt')
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0)
+    // PR 6 — defensive: exclude rows whose AnalysisData never landed (failed
+    // mid-write, or — pre-PR-6 — speculative pending-capture orphans left
+    // behind when the capture turned out to be weight/education/smartwatch).
+    // Matches the same predicate already enforced by `listAnalyses`.
+    .not('AnalysisData', 'is', null)
     .gte('CreatedAt', startOfDay)
     .lte('CreatedAt', endOfDay)
     .order('CreatedAt', { ascending: false });

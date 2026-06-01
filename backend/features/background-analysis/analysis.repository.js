@@ -84,34 +84,29 @@ export async function touchLastActive(userId) {
 // ─── instant-share helpers ────────────────────────────────────────────────────
 
 /**
- * Insert a "pending" capture row that will be enriched once Gemini analysis
- * completes. The row is immediately addressable by its PublicShareToken.
+ * Look up the food row (if any) already created for a given capture, with an
+ * ownership guard. Used by `save()` to perform an idempotent upsert keyed by
+ * CaptureID — a retry of the same analysis (or a background-service replay)
+ * must not create a duplicate food row for one capture. Returns the row or null.
+ *
+ * Pre-PR-6 history: the food row was inserted speculatively at capture-time
+ * (`insertPendingCapture`), so an UPDATE-by-ID was always safe. PR 6 dropped
+ * that speculation — captures_table is now the only at-capture-time write —
+ * so the upsert has to look the row up by FK instead.
  */
-export async function insertPendingCapture({ userId, imageBase64, captureId = null }) {
+export async function findFoodByCaptureId(captureId, userId) {
+  if (!captureId || !userId) return null;
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .insert({
-      UserID: userId.toString(),
-      ImagePath: 'instant-share',
-      ImageBase64: imageBase64 || null,
-      // PR 5 — PublicShareToken / ShareExpiresAt / ImageType have been dropped
-      // from this table. captures_table is now canonical for share tokens and
-      // the image-type discriminator. The link from this food row to its
-      // capture is the (nullable) CaptureID FK populated below; createPendingCapture
-      // in the service layer inserts into captures_table FIRST and passes the
-      // resulting id here so every new food row is linked to its capture.
-      CaptureID: captureId,
-      ProcessedBy: 'manual_app',
-      DeviceInfo: 'Wellness Valley Web App',
-      CreatedAt: currentTime,
-      UpdatedAt: currentTime,
-    })
-    .select()
-    .single();
+    .select('"ID"')
+    .eq('"CaptureID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 0)
+    .limit(1)
+    .maybeSingle();
   if (error) throw error;
-  return data;
+  return data || null;
 }
 
 /**
@@ -213,25 +208,52 @@ export async function findOwnerByToken(token) {
   if (capErr) throw capErr;
   if (!cap) return null;
 
-  const { data: food, error: foodErr } = await supabase
-    .from('food_nutrition_data_table')
-    .select('"ID"')
-    .eq('"CaptureID"', cap.ID)
-    .order('"ID"', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (foodErr) throw foodErr;
+  const imageType = cap.ImageType || 'food';
+
+  // For each image type, look up the domain row by CaptureID so the frontend
+  // can match the exact card (not just the date) when a share link is opened.
+  let domainId = null;
+
+  if (imageType === 'food') {
+    const { data: food, error: foodErr } = await supabase
+      .from('food_nutrition_data_table')
+      .select('"ID"')
+      .eq('"CaptureID"', cap.ID)
+      .order('"ID"', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (foodErr) throw foodErr;
+    domainId = food?.ID ?? null;
+  } else if (imageType === 'weight') {
+    const { data: wt, error: wtErr } = await supabase
+      .from('weight_records_table')
+      .select('"ID"')
+      .eq('"CaptureID"', cap.ID)
+      .limit(1)
+      .maybeSingle();
+    if (wtErr) throw wtErr;
+    domainId = wt?.ID ?? null;
+  } else if (imageType === 'education' || imageType === 'smartwatch') {
+    // Smartwatch entries are saved to education_logs_table (same as education).
+    const { data: edu, error: eduErr } = await supabase
+      .from('education_logs_table')
+      .select('"Id"')
+      .eq('"CaptureID"', cap.ID)
+      .limit(1)
+      .maybeSingle();
+    if (eduErr) throw eduErr;
+    domainId = edu?.Id ?? null;
+  }
 
   return {
-    // For food captures, expose the food row ID as the meal handle so the
-    // existing Dashboard deep-link logic ('expand this meal card') keeps
-    // working. For non-food captures, ID falls back to the capture ID and
-    // the frontend treats it as an opaque value.
-    ID:             food?.ID ?? cap.ID,
+    // domainId is the row ID inside the feature table (food/weight/education).
+    // Falls back to cap.ID when the lookup finds nothing (e.g. save failed
+    // or the CaptureID column was not yet populated for legacy rows).
+    ID:             domainId ?? cap.ID,
     UserID:         cap.UserID,
     CreatedAt:      cap.CreatedAt,
     ShareExpiresAt: cap.ShareExpiresAt,
-    ImageType:      cap.ImageType,
+    ImageType:      imageType,
     CaptureID:      cap.ID,
   };
 }
@@ -299,26 +321,6 @@ export async function findUserName(userId) {
     .maybeSingle();
   if (error) throw error;
   return data?.UserName || null;
-}
-
-/**
- * PR 5 — resolve the captures_table primary key linked to a legacy food row,
- * with an ownership guard. Replaces the old `findTokenByIdForOwner`, which
- * read `food_nutrition_data_table.PublicShareToken` (column dropped in PR 5).
- * Returns the CaptureID (number) or null.
- */
-export async function findCaptureIdForOwner(id, userId) {
-  if (!id || !userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('food_nutrition_data_table')
-    .select('"CaptureID"')
-    .eq('"ID"', id)
-    .eq('"UserID"', userId.toString())
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.CaptureID || null;
 }
 
 export { getISTTimestamp, convertToIST };

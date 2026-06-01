@@ -11,13 +11,15 @@
  * to point everyone else at the store.
  */
 import Head from 'next/head';
+import { findByToken } from '../../features/captures/data/captures.repository.js';
+import { findPublicProfileById } from '../../features/user/user.repository.js';
 
 const APP_PACKAGE = 'com.wellnessvalley.app';
 const APP_STORE_ID = '6764327692';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
 const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
-export async function getServerSideProps({ params, req }) {
+export async function getServerSideProps({ params, req, query }) {
   const token = (params?.token || '').toString();
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const valid = UUID_RE.test(token);
@@ -26,7 +28,52 @@ export async function getServerSideProps({ params, req }) {
   const proto = req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
   const host = req.headers['x-forwarded-host'] || req.headers.host || '';
   const baseUrl = `${proto}://${host}`;
-  return { props: { token: valid ? token : null, baseUrl } };
+
+  let userName = null;
+  let userPhotoUrl = null;
+  let hasPhoto = false;
+
+  if (valid) {
+    try {
+      const capture = await findByToken(token);
+      if (capture) {
+        hasPhoto = !!capture.ImageBase64;
+        if (capture.UserID) {
+          const user = await findPublicProfileById(capture.UserID);
+          if (user) {
+            userName = user.UserName || null;
+            userPhotoUrl = user.ProfileImage || null;
+          }
+        }
+      }
+    } catch {
+      // non-fatal — fall back to generic Wellness Valley branding
+    }
+
+    // Instant-share race: the capture row may not exist yet when WhatsApp
+    // crawls this page. Use the ?n= query param (embedded by the client) as
+    // a fallback so the OG title always shows the sharer's name.
+    if (!userName && query?.n) {
+      userName = String(query.n).slice(0, 80) || null;
+    }
+  }
+
+  // og:image priority:
+  //  1. food photo via /api/share/og-image/<token> — we always prefer this for
+  //     valid tokens. The endpoint has built-in retry so it waits for the
+  //     background POST to land (instant-share race condition).
+  //  2. user profile photo (Google avatar).
+  //  3. site icon fallback.
+  //
+  // We intentionally do NOT gate this on `hasPhoto` — for the instant-share
+  // flow the capture row is created a few hundred ms after the share URL is
+  // already in WhatsApp, so `hasPhoto` is often false at crawl time even
+  // though the image will be available by the time the og-image endpoint is hit.
+  const ogImageUrl = valid
+    ? `${baseUrl}/api/share/og-image/${token}`
+    : (userPhotoUrl || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null));
+
+  return { props: { token: valid ? token : null, baseUrl, userName, userPhotoUrl, ogImageUrl } };
 }
 
 const pageBg = {
@@ -101,7 +148,7 @@ const secondaryBtn = {
 };
 const footer = { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 16 };
 
-export default function ShareLanding({ token, baseUrl }) {
+export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, ogImageUrl }) {
   // Client-side: try to hand off to the app via Android intent:// for users
   // whose Android App Links haven't auto-verified yet (debug builds, first
   // launch). Verified production builds intercept the https URL directly
@@ -128,9 +175,9 @@ export default function ShareLanding({ token, baseUrl }) {
         {/* Open Graph tags — WhatsApp, Telegram, and other link-preview crawlers
             read these to render a branded card instead of a raw URL. */}
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="Click here for Analysis Info" />
-        <meta property="og:description" content="" />
-        {baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />}
+        <meta property="og:title" content={userName ? `${userName} — Analysis Info` : 'Click here for Analysis Info'} />
+        <meta property="og:description" content={userName ? `${userName} shared a meal analysis on Wellness Valley` : ''} />
+        {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
         {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
         <meta property="og:image:width" content="512" />
         <meta property="og:image:height" content="512" />
@@ -139,8 +186,11 @@ export default function ShareLanding({ token, baseUrl }) {
       <div style={pageBg}>
         <div style={card}>
           <div style={header}>
-            <div style={avatar}>W</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Wellness Valley</div>
+            {userPhotoUrl
+              ? <img src={userPhotoUrl} alt={userName || 'User'} style={{ width: 56, height: 56, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.6)', marginBottom: 12, objectFit: 'cover', display: 'block', margin: '0 auto 12px' }} referrerPolicy="no-referrer" />
+              : <div style={avatar}>W</div>
+            }
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{userName || 'Wellness Valley'}</div>
             <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>A meal was shared with you</div>
           </div>
           <div style={body}>

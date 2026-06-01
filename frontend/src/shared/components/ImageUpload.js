@@ -52,6 +52,12 @@ const ImageUpload = forwardRef(
       onHelpClick,
       // Live education window from DB passed by App.js — null until fetched
       educationWindow = null,
+      // Fired by ImageUpload to notify the parent about native camera/gallery
+      // state transitions so the parent can drive launch-overlay dismissal
+      // and resume-camera suppression deterministically (no timers).
+      //   onCameraStateChange('opened', { source: 'camera' | 'gallery' })
+      //   onCameraStateChange('closed', { source, hadResult: boolean })
+      onCameraStateChange = null,
     },
     ref,
   ) => {
@@ -75,6 +81,10 @@ const ImageUpload = forwardRef(
     // True while the native camera / gallery picker dialog is open.
     // Disables both buttons to prevent a second dialog opening mid-session.
     const [cameraActive, setCameraActive] = useState(false);
+    // Ref mirror of cameraActive so the imperative handle's isCameraActive()
+    // always returns the latest value (state would be stale between renders).
+    const cameraActiveRef = useRef(false);
+    useEffect(() => { cameraActiveRef.current = cameraActive; }, [cameraActive]);
     // Tracks when the camera/gallery dialog last closed (any outcome).
     // Read by App.js to suppress the resume-triggered auto-open if it fires
     // immediately after the user dismissed the camera (cancel loop guard).
@@ -171,6 +181,10 @@ const ImageUpload = forwardRef(
       // Use Capacitor Camera for native platforms
       if (Capacitor.isNativePlatform()) {
         setCameraActive(true);
+        let hadResult = false;
+        // Notify parent BEFORE awaiting Camera.getPhoto so the launch overlay
+        // can dismiss the instant the native camera UI takes over the screen.
+        try { onCameraStateChange?.('opened', { source: 'camera' }); } catch (_) {}
         try {
           const photo = await Camera.getPhoto({
             quality: 85,
@@ -229,16 +243,22 @@ const ImageUpload = forwardRef(
             }
 
             onImageSelect(file, captureTimestamp);
+            hadResult = true;
           }
         } catch (err) {
-          console.error("Camera capture failed:", err);
-          // User cancelled or error - fall back to HTML input
-          if (err.message !== "User cancelled photos app") {
-            cameraInputRef.current?.click();
+          // On native, any error or user cancel from Camera.getPhoto must NOT
+          // fall back to the HTML file input — clicking it re-opens the system
+          // camera and produces the double-open loop (Android cancel message is
+          // NOT "User cancelled photos app", so the old !== check always fired).
+          const msg = err?.message ?? '';
+          const isCancel = /cancel|cancelled|no image|dismissed/i.test(msg);
+          if (!isCancel) {
+            debugLog('Camera capture error (native):', msg);
           }
         } finally {
           lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
+          try { onCameraStateChange?.('closed', { source: 'camera', hadResult }); } catch (_) {}
         }
       } else {
         cameraInputRef.current?.click();
@@ -249,6 +269,8 @@ const ImageUpload = forwardRef(
       // Use Capacitor Camera for native platforms (more reliable for gallery)
       if (Capacitor.isNativePlatform()) {
         setCameraActive(true);
+        let hadResult = false;
+        try { onCameraStateChange?.('opened', { source: 'gallery' }); } catch (_) {}
         try {
           const photo = await Camera.getPhoto({
             quality: 90,
@@ -512,16 +534,20 @@ const ImageUpload = forwardRef(
             }
 
             onImageSelect(file, galleryTimestamp);
+            hadResult = true;
           }
         } catch (err) {
-          console.error("Gallery selection failed:", err);
-          // User cancelled or error - fall back to HTML input
-          if (err.message !== "User cancelled photos app") {
-            galleryInputRef.current?.click();
+          // On native, any error or user cancel from Camera.getPhoto must NOT
+          // fall back to the HTML file input — same reason as triggerCamera above.
+          const msg = err?.message ?? '';
+          const isCancel = /cancel|cancelled|no image|dismissed/i.test(msg);
+          if (!isCancel) {
+            debugLog('Gallery selection error (native):', msg);
           }
         } finally {
           lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
+          try { onCameraStateChange?.('closed', { source: 'gallery', hadResult }); } catch (_) {}
         }
       } else {
         galleryInputRef.current?.click();
@@ -541,6 +567,11 @@ const ImageUpload = forwardRef(
       // App.js uses this to suppress resume-triggered camera open immediately
       // after a user-cancel (prevents the camera re-open loop on Android/iOS).
       lastCameraCloseAt: () => lastCameraCloseRef.current,
+      // True while the native Camera.getPhoto dialog is on screen. App.js
+      // reads this from its appStateChange listener to distinguish "user
+      // returning from our own camera" from "user returning from a real OS
+      // background event", and skip the resume auto-open in the former case.
+      isCameraActive: () => cameraActiveRef.current,
     }));
 
     // Taglines for loading overlay based on state and image type

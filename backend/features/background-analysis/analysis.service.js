@@ -1,12 +1,16 @@
 import { randomUUID } from 'crypto';
 import * as repo from './analysis.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-// PR 2 dual-write: every pending-capture create + image-type update is
-// mirrored into `captures_table` via the new captures slice. The legacy
-// `food_nutrition_data_table` remains canonical until PR 4. Shadow-write
-// failures are swallowed (logged via the shared logger) so they cannot
-// break user-facing requests during the rollout.
+// PR 6 — captures_table is the ONLY at-capture-time write. The per-vertical
+// tables (food / weight / education / smartwatch) insert their own rows when
+// AI classification completes and promote the capture via
+// captures.updateTypeById (pending → terminal). The old speculative food row
+// at createPendingCapture time was removed: it left orphan "Unknown Food /
+// 0 kcal" rows whenever the capture turned out to be non-food.
 import * as captures from '../captures/captures.service.js';
+import {
+  IMAGE_TYPE_FOOD,
+} from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp, convertToIST } = repo;
@@ -98,22 +102,35 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
-    // Stamp the row as 'food' now that nutrition analysis has confirmed it.
-    // New pending captures start as ImageType='pending' to avoid a race
-    // condition where the row would match the listAnalyses ImageType='food'
-    // filter before the type is resolved.
-    ImageType: 'food',
+    // ImageType was dropped from food_nutrition_data_table by
+    // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
+    // now lives on captures_table and is promoted via captures.updateTypeById
+    // below. Including it here would cause Supabase to reject the INSERT/UPDATE.
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
     ImageBase64: imageBase64ToSave,
   };
 
+  // PR 6 — idempotent upsert keyed by CaptureID. The speculative pre-insert
+  // is gone, so the first save for a capture INSERTs (carrying CaptureID as
+  // FK); a retry or background-service replay finds the existing row and
+  // UPDATEs in place. Without this guard, retries would duplicate meal rows.
   let data;
   try {
     if (captureId) {
-      // Update the pre-created pending capture row (instant-share flow).
-      data = await repo.updateWithAnalysisResult(captureId, userId.toString(), analysisPayload);
+      const existing = await repo.findFoodByCaptureId(captureId, userId.toString());
+      if (existing) {
+        data = await repo.updateWithAnalysisResult(existing.ID, userId.toString(), analysisPayload);
+      } else {
+        data = await repo.insertAnalysis({
+          UserID: userId.toString(),
+          CaptureID: captureId,
+          ...analysisPayload,
+          CreatedAt: createdAtIST,
+          UpdatedAt: currentTime,
+        });
+      }
     } else {
       data = await repo.insertAnalysis({
         UserID: userId.toString(),
@@ -141,6 +158,24 @@ export async function save(input) {
         error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       },
     };
+  }
+
+  // Promote the capture pending → food. Best-effort: the food row is
+  // already persisted, and the state machine is idempotent (re-classifying
+  // an already-food capture is a no-op). Only logged on failure so a
+  // captures-side transient does not fail the user save.
+  if (captureId) {
+    try {
+      await captures.updateTypeById({
+        captureId,
+        userId: userId.toString(),
+        toType: IMAGE_TYPE_FOOD,
+      });
+    } catch (err) {
+      logger.warn('analysis.save: failed to promote capture to food', {
+        captureId, userId: userId.toString(), err: err.message,
+      });
+    }
   }
 
   await repo.touchLastActive(userId);
@@ -230,30 +265,24 @@ export async function undoDelete({ id, userId }) {
 }
 // ─── updateCaptureType ───────────────────────────────────────────────────────
 // Called by the frontend after AI determines the image is weight/education/
-// smartwatch. PR 5 — captures_table is now canonical for the image-type
-// discriminator (the legacy ImageType column on food_nutrition_data_table was
-// dropped). The whole update happens in the captures slice; we look up the
-// linked CaptureID from the food row and delegate to captures.updateTypeById,
-// which enforces the state machine in features/captures/domain/image-types.js.
+// smartwatch/unknown. PR 6 — `id` is now the CaptureID directly.
+// createPendingCapture returns captures.id as `id` in its response, the FE
+// round-trips it on the PATCH, and we delegate straight to
+// captures.updateTypeById. The previous food-table indirection
+// (findCaptureIdForOwner) is gone now that no speculative food row exists.
 export async function updateCaptureType({ id, userId, imageType }) {
-  const captureId = await repo.findCaptureIdForOwner(id, userId);
-  if (!captureId) {
-    // Either the food row doesn't exist, isn't owned by this user, or is a
-    // pre-PR-2 legacy row with no captures_table twin. The first two are real
-    // 404s; the third is the historical-row breakage already documented in
-    // migrations/drop_legacy_share_columns_from_food.sql. We can't tell them
-    // apart cheaply, so we return a 404-shaped response — the frontend
-    // already treats this branch as "share link expired/unavailable".
-    logger.warn('updateCaptureType: no captureId for legacy id', { id, userId });
-    return { httpStatus: 404, body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } } };
-  }
-
   const result = await captures.updateTypeById({
-    captureId,
+    captureId: id,
     userId,
     toType: imageType,
   });
 
+  if (!result.changed && result.reason === 'NOT_FOUND_OR_NOT_OWNER') {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } },
+    };
+  }
   return { httpStatus: 200, body: { ok: true, data: result } };
 }
 
@@ -264,14 +293,17 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64 }) {
-  const token = randomUUID();
+export async function createPendingCapture({ userId, imageBase64, token: clientToken }) {
+  const token = clientToken || randomUUID();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // PR 5 — captures_table is canonical. Insert it FIRST so we can
-  // pin the resulting CaptureID onto the food row in the same request.
-  // If this throws, no food row is created (the legacy table is no longer
-  // a fallback after PR 5 — see migrations/drop_legacy_share_columns_from_food.sql).
+  // PR 6 — captures_table is the ONLY at-capture-time write. No speculative
+  // food row: that previously polluted the nutrition feed with "Unknown Food
+  // / 0 kcal" cards whenever the capture turned out to be weight / education
+  // / smartwatch. The vertical that owns the final classification (food via
+  // analysis.save, weight via weight.saveWeight, etc.) is responsible for
+  // inserting its own row with CaptureID = id and promoting the capture via
+  // captures.updateTypeById.
   const capture = await captures.recordPending({
     userId: userId.toString(),
     publicShareToken: token,
@@ -282,28 +314,15 @@ export async function createPendingCapture({ userId, imageBase64 }) {
     processedBy: 'manual_app',
   });
 
-  // The food row is still inserted speculatively so save() has a stable id
-  // to UPDATE when AI analysis completes (preserves the existing instant-
-  // share flow). It carries CaptureID = the row we just created so the
-  // share-resolve path can join the two without legacy columns.
-  //
-  // If the user re-tags the capture as weight / education / smartwatch via
-  // the unknown picker (PR 3), this food row becomes an orphan with
-  // AnalysisData=NULL forever. listAnalyses (PR 5) excludes such orphans
-  // via `AnalysisData IS NOT NULL`, so they are invisible to the user.
-  // A periodic cleanup job can prune them — tracked as a follow-up.
-  const row = await repo.insertPendingCapture({
-    userId: userId.toString(),
-    imageBase64: imageBase64 || null,
-    captureId: capture.id,
-  });
-
+  // The `id` returned here is the captures_table primary key. The FE round-
+  // trips it as both the `captureId` payload field on the save endpoints and
+  // the `id` field on the PATCH /api/background-analysis/captures route.
   return {
     httpStatus: 201,
     body: {
       ok: true,
       data: {
-        id: row.ID || row.id,
+        id: capture.id,
         token,
       },
     },

@@ -34,7 +34,7 @@ export const TAB_BY_IMAGE_TYPE = Object.freeze({
   [IMAGE_TYPE_FOOD]:       'nutrition',
   [IMAGE_TYPE_WEIGHT]:     'weight',
   [IMAGE_TYPE_EDUCATION]:  'education',
-  [IMAGE_TYPE_SMARTWATCH]: 'smartwatch',
+  [IMAGE_TYPE_SMARTWATCH]: 'education',
   [IMAGE_TYPE_UNKNOWN]:    DEFAULT_TAB,
   [IMAGE_TYPE_PENDING]:    DEFAULT_TAB,
 });
