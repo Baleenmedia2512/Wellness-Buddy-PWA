@@ -5785,10 +5785,10 @@ function WellnessValleyApp() {
                             }}
                           >
                             {weightDiff.change > 0
-                              ? "?"
+                              ? "▲"
                               : weightDiff.change < 0
-                              ? "?"
-                              : "�"}{" "}
+                              ? "▼"
+                              : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
                               : Math.abs(weightDiff.change) < 1
@@ -5949,15 +5949,15 @@ function WellnessValleyApp() {
                       }`}
                     >
                       {weightDiff.change > 0
-                        ? "?"
+                        ? "▲"
                         : weightDiff.change < 0
-                        ? "?"
-                        : "�"}{" "}
+                        ? "▼"
+                        : "—"}{" "}
                       {weightDiff.change === 0
                         ? "No change"
                         : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
                       {weightDiff.change < 0 && (
-                        <span className="text-sm ml-1">??</span>
+                        <span className="text-sm ml-1">🎉</span>
                       )}
                     </div>
                   </div>
