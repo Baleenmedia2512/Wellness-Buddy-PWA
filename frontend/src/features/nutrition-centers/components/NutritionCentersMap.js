@@ -5,6 +5,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from '../../../shared/utils/logger.js';
+import AttendeeListModal from './AttendeeListModal';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -86,7 +87,8 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  
+  const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
   const panoramaRef = useRef(null);
@@ -517,6 +519,21 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
     };
   }, [centers]);
 
+  // ── Derived date strings for the attendee modal ───────────────────────────
+  const pad = (n) => String(n).padStart(2, '0');
+  const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const _now = new Date();
+  const _todayStr = localDateStr(_now);
+  const _yesterdayStr = localDateStr(new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 1));
+  const activeDateLabel = dateRange === 'yesterday' ? 'Yesterday'
+    : dateRange === 'custom' && customDate
+    ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : 'Today';
+  const activeDateStart = dateRange === 'yesterday' ? _yesterdayStr
+    : dateRange === 'custom' && customDate ? localDateStr(customDate)
+    : _todayStr;
+  const activeDateEnd = activeDateStart;
+
   return (
     <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
       {/* Header */}
@@ -748,13 +765,22 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
                           <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
                         </div>
-                        <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          (center.todayAttendance || 0) > 0
-                            ? 'bg-green-100 text-green-700 border-green-200'
-                            : 'bg-gray-50 text-gray-600 border-gray-300'
-                        }`}>
-                          {center.todayAttendance || 0} attended
-                        </span>
+                        {(center.todayAttendance || 0) > 0 ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAttendeeModal({ isOpen: true, center });
+                            }}
+                            className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200 active:bg-green-200 transition-colors"
+                            aria-label={`View ${center.todayAttendance} attendees`}
+                          >
+                            {center.todayAttendance} attended
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-gray-50 text-gray-600 border-gray-300">
+                            0 attended
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -867,6 +893,17 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
           />
         </div>
       )}
+
+      {/* Attendee List Modal */}
+      <AttendeeListModal
+        isOpen={attendeeModal.isOpen}
+        onClose={() => setAttendeeModal({ isOpen: false, center: null })}
+        center={attendeeModal.center}
+        dateLabel={activeDateLabel}
+        startDate={activeDateStart}
+        endDate={activeDateEnd}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 };

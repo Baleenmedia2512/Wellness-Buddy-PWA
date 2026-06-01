@@ -43,6 +43,17 @@ export function validateUnregister(body) {
   return { centerId, userId };
 }
 
+export function validateGetAttendees(query) {
+  if (!query?.centerId) throw new ValidationError(400, 'Missing required parameter: centerId');
+  const id = parseInt(query.centerId, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new ValidationError(400, 'centerId must be a positive integer');
+  return {
+    centerId: id,
+    startDate: query.startDate || null,
+    endDate: query.endDate || null,
+  };
+}
+
 export function validateUpdate(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = body;

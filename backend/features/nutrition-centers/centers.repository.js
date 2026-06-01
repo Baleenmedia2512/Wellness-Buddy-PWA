@@ -166,3 +166,31 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
     .lte('"CreatedAt"', rangeEnd);
   return data || [];
 }
+
+export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
+  const supabase = getSupabaseClient();
+  const { data: logs, error } = await supabase
+    .from('education_logs_table')
+    .select('"UserId"')
+    .eq('nutrition_center_id', centerId)
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', rangeStart)
+    .lte('"CreatedAt"', rangeEnd);
+  if (error) throw new Error(error.message);
+  if (!logs || logs.length === 0) return [];
+
+  const uniqueUserIds = [...new Set(logs.map((l) => l.UserId))];
+
+  const { data: users } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName"')
+    .in('"UserId"', uniqueUserIds);
+
+  const nameMap = {};
+  (users || []).forEach((u) => { nameMap[u.UserId] = u.UserName; });
+
+  return uniqueUserIds.map((uid) => ({
+    userId: uid,
+    userName: nameMap[uid] || 'Unknown Member',
+  }));
+}

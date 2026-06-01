@@ -1,5 +1,6 @@
 import * as repo from './centers.repository.js';
 import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
+import logger from '../../shared/lib/logger.js';
 
 // ─── check name ──────────────────────────────────────────────────────────────
 export async function checkName({ name }) {
@@ -184,4 +185,24 @@ export async function listCenters(input) {
   );
 
   return { httpStatus: 200, body: { success: true, data: centersWithMetrics } };
+}
+
+// ─── get attendees for a centre ──────────────────────────────────────────────
+export async function getAttendees({ centerId, startDate, endDate }) {
+  const today = new Date().toISOString().split('T')[0];
+  const rangeStart = `${startDate || today}T00:00:00`;
+  const rangeEnd = `${endDate || today}T23:59:59`;
+
+  try {
+    const attendees = await repo.getAttendeeList(
+      parseInt(centerId, 10),
+      rangeStart,
+      rangeEnd,
+    );
+    logger.info({ centerId, rangeStart, rangeEnd, count: attendees.length }, 'getAttendees');
+    return { httpStatus: 200, body: { success: true, data: attendees } };
+  } catch (err) {
+    logger.error({ err, centerId }, 'getAttendees failed');
+    return { httpStatus: 500, body: { success: false, error: { code: 'FETCH_FAILED', message: err.message } } };
+  }
 }

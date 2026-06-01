@@ -95,7 +95,7 @@ import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
-import { locationAttendanceService } from "./features/nutrition-centers";
+import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
@@ -2462,6 +2462,21 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       };
 
+      // Silently capture club GPS location (only when physically inside a club).
+      // Attached to payload so the backend can persist it once the schema supports it.
+      // Fails gracefully — weight save is never blocked by a GPS timeout.
+      try {
+        const clubLocation = await getClubLocationIfNearby(apiBaseUrl, userId);
+        if (clubLocation) {
+          payload.latitude = clubLocation.latitude;
+          payload.longitude = clubLocation.longitude;
+          payload.nutritionCenterId = clubLocation.nutritionCenterId;
+          debugLog("📍 [weight] Club location attached to save payload:", clubLocation);
+        }
+      } catch (gpsErr) {
+        debugLog("⚠️ [weight] Club GPS check failed, saving without location:", gpsErr.message);
+      }
+
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
       // This allows multiple weight entries per day with different timestamps
       // if (savedWeightIdRef.current) {
@@ -3274,8 +3289,26 @@ function WellnessValleyApp() {
         pendingSharePromiseRef.current = null;
       }
 
+      // Silently capture club GPS location (only when physically inside a club).
+      // Fails gracefully — nutrition save is never blocked by a GPS timeout.
+      let clubLocationFields = {};
+      try {
+        const clubLocation = await getClubLocationIfNearby(apiBaseUrl, saveData.userId);
+        if (clubLocation) {
+          clubLocationFields = {
+            latitude: clubLocation.latitude,
+            longitude: clubLocation.longitude,
+            nutritionCenterId: clubLocation.nutritionCenterId,
+          };
+          debugLog("📍 [nutrition] Club location attached to save payload:", clubLocation);
+        }
+      } catch (gpsErr) {
+        debugLog("⚠️ [nutrition] Club GPS check failed, saving without location:", gpsErr.message);
+      }
+
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
+        ...clubLocationFields,
         // Pass captureId so the backend updates the pre-created pending row
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.

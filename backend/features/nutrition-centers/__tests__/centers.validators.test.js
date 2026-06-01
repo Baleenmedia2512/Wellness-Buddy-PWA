@@ -14,6 +14,7 @@ import {
   validateRegister,
   validateUnregister,
   validateUpdate,
+  validateGetAttendees,
 } from '../centers.validators.js';
 
 function expectValidationError(fn, status, messageSubstring) {
@@ -168,5 +169,41 @@ describe('validateUpdate', () => {
       400,
       'coordinates',
     );
+  });
+});
+
+// ─── validateGetAttendees ─────────────────────────────────────────────────────
+describe('validateGetAttendees', () => {
+  it('returns parsed centerId when valid', () => {
+    const result = validateGetAttendees({ centerId: '42' });
+    expect(result.centerId).toBe(42);
+  });
+
+  it('passes through optional startDate and endDate', () => {
+    const result = validateGetAttendees({ centerId: '7', startDate: '2026-06-01', endDate: '2026-06-01' });
+    expect(result.startDate).toBe('2026-06-01');
+    expect(result.endDate).toBe('2026-06-01');
+  });
+
+  it('returns null dates when omitted', () => {
+    const result = validateGetAttendees({ centerId: '3' });
+    expect(result.startDate).toBeNull();
+    expect(result.endDate).toBeNull();
+  });
+
+  it('throws 400 when centerId is missing', () => {
+    expectValidationError(() => validateGetAttendees({}), 400, 'centerId');
+  });
+
+  it('throws 400 when centerId is zero', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: '0' }), 400, 'positive integer');
+  });
+
+  it('throws 400 when centerId is not a number', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: 'abc' }), 400, 'positive integer');
+  });
+
+  it('throws 400 when centerId is negative', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: '-5' }), 400, 'positive integer');
   });
 });
