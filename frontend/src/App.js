@@ -166,7 +166,7 @@ const WellnessCounselling = lazy(() =>
 );
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
-// const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage")); // FEATURE DISABLED
+const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
@@ -523,6 +523,9 @@ function WellnessValleyApp() {
     title: "",
     message: "",
     type: "info",
+    confirmText: undefined,
+    cancelText: undefined,
+    onConfirm: undefined,
   });
 
   // New user profile modal state - show profile page for first-time users
@@ -569,10 +572,9 @@ function WellnessValleyApp() {
   const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
-  // Reminders state � FEATURE DISABLED
-  const [showReminders] = useState(false);
-  // const [showReminders, setShowReminders] = useState(false);
-  // const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
+  // Reminders state
+  const [showReminders, setShowReminders] = useState(false);
+  const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
@@ -816,6 +818,35 @@ function WellnessValleyApp() {
     const freshSignIn = sessionStorage.getItem("freshGoogleSignIn") === "true";
     if (freshSignIn) { setShowLaunchOverlay(false); return; }         // setup wizard
   }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
+
+  // On Android, request exact alarm permission once per login session.
+  // Fires after permissionsReady so it doesn't collide with camera/push/location dialogs.
+  const _hasFiredAlarmPermCheckRef = useRef(false);
+  useEffect(() => {
+    if (!user || !Capacitor.isNativePlatform() || _hasFiredAlarmPermCheckRef.current) return;
+    if (!permissionsReady) return;
+    _hasFiredAlarmPermCheckRef.current = true;
+    const t = setTimeout(async () => {
+      try {
+        const { canScheduleExact } = await checkExactAlarmPermission();
+        if (!canScheduleExact) {
+          setAlertModal({
+            isOpen: true,
+            title: "⏰ Allow Exact Reminders",
+            message:
+              "To receive reminders exactly on time, tap 'Open Settings', find Wellness Valley under Alarms & Reminders, and turn it on.",
+            type: "warning",
+            confirmText: "Open Settings",
+            cancelText: "Later",
+            onConfirm: async () => {
+              try { await openExactAlarmSettings(); } catch (_) {}
+            },
+          });
+        }
+      } catch (_) {}
+    }, 2000); // slight delay so the home screen has settled
+    return () => clearTimeout(t);
+  }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<uuid>) or the custom scheme
@@ -4190,12 +4221,9 @@ function WellnessValleyApp() {
             const userId = user?.id || (await getUserId(user));
             // debugLog("?? [CORRECTION] User ID for corrections:", userId);
             if (userId) {
-              const correctedFoods = await applyUserCorrections(foods, userId);
-              // debugLog(
-              //   "?? [CORRECTION] Foods after correction:",
-              //   correctedFoods.map((f) => f.name),
-              // );
-              foods = correctedFoods;
+              // 🚫 AUTO-CORRECTION DISABLED (product decision 2026-05-29)
+              // const correctedFoods = await applyUserCorrections(foods, userId);
+              // foods = correctedFoods;
 
               // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
               const newLogs = correctedFoods.map((food) => ({
@@ -5361,14 +5389,14 @@ function WellnessValleyApp() {
   //   );
   // }
 
-  // Reminders page � FEATURE DISABLED
-  // if (showReminders) {
-  //   return (
-  //     <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-  //       <ReminderSettingsPage onBack={() => setShowReminders(false)} />
-  //     </Suspense>
-  //   );
-  // }
+  // Reminders page
+  if (showReminders) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+        <ReminderSettingsPage onBack={() => setShowReminders(false)} lastWeight={lastWeight} />
+      </Suspense>
+    );
+  }
 
   // Discipline Report for all users
   if (deferredShowDisciplineReport) {
@@ -5632,7 +5660,7 @@ function WellnessValleyApp() {
         onShowBackgroundHistory={showDashboardPage}
         // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
         // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
-        // onShowReminders={showRemindersPage}        // FEATURE DISABLED
+        onShowReminders={showRemindersPage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => startTransition(() => setShowAdminDashboard(true))
@@ -6687,6 +6715,9 @@ function WellnessValleyApp() {
         title={alertModal.title}
         message={alertModal.message}
         type={alertModal.type}
+        confirmText={alertModal.confirmText}
+        cancelText={alertModal.cancelText}
+        onConfirm={alertModal.onConfirm}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}

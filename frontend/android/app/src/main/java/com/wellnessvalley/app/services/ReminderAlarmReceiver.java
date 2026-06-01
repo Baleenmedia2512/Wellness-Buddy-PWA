@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioAttributes;
@@ -16,6 +17,12 @@ import android.os.Build;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Locale;
 
 import com.wellnessvalley.app.MainActivity;
 import com.wellnessvalley.app.R;
@@ -58,6 +65,21 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
     public static final int RC_BREAKFAST = 1003;
     public static final int RC_LUNCH     = 1004;
     public static final int RC_DINNER    = 1005;
+    // Water slots — one per 90-min interval (up to 12 per day)
+    public static final int RC_WATER_1   = 3001;
+    public static final int RC_WATER_2   = 3002;
+    public static final int RC_WATER_3   = 3003;
+    public static final int RC_WATER_4   = 3004;
+    public static final int RC_WATER_5   = 3005;
+    public static final int RC_WATER_6   = 3006;
+    public static final int RC_WATER_7   = 3007;
+    public static final int RC_WATER_8   = 3008;
+    public static final int RC_WATER_9   = 3009;
+    public static final int RC_WATER_10  = 3010;
+    public static final int RC_WATER_11  = 3011;
+    public static final int RC_WATER_12  = 3012;
+    // Sleep wind-down reminder
+    public static final int RC_SLEEP     = 4001;
 
     // ── Notification IDs ─────────────────────────────────────────────────
     private static final int NOTIF_WEIGHT    = 2001;
@@ -65,6 +87,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
     private static final int NOTIF_BREAKFAST = 2003;
     private static final int NOTIF_LUNCH     = 2004;
     private static final int NOTIF_DINNER    = 2005;
+    private static final int NOTIF_WATER     = 5001; // shared for all water slots
+    private static final int NOTIF_SLEEP     = 5002;
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -104,7 +128,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             int totalMinutes = hour * 60 + minute + 15;
             int activityHour   = (totalMinutes / 60) % 24;
             int activityMinute = totalMinutes % 60;
-            String message = getActivityMessage(activityType, activityHour, activityMinute);
+            String message = getActivityMessage(context, activityType, activityHour, activityMinute);
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
@@ -142,7 +166,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int totalMins = hour * 60 + minute + 15;
         int actHour   = (totalMins / 60) % 24;
         int actMinute = totalMins % 60;
-        String message = getActivityMessage(activityType, actHour, actMinute);
+        String message = getActivityMessage(context, activityType, actHour, actMinute);
 
         // Tap notification → open app
         Intent openApp = new Intent(context, MainActivity.class);
@@ -221,9 +245,13 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
 
-            // Use inexact alarms — no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM permission needed
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-            Log.d(TAG, "✅ Rescheduled (inexact) for " + activityType + " at " + nextDay.getTime());
+            // Use exact alarms for precise reminder times
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
+            }
+            Log.d(TAG, "✅ Rescheduled for " + activityType + " at " + nextDay.getTime());
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to reschedule for " + activityType, e);
@@ -278,10 +306,15 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 return;
             }
 
-            // Use inexact alarms — no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM permission needed
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                    trigger.getTimeInMillis(), pi);
-            Log.d(TAG, "✅ Scheduled (inexact) " + activityType + " at " + trigger.getTime());
+            // Use exact alarms for precise reminder times
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                        trigger.getTimeInMillis(), pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                        trigger.getTimeInMillis(), pi);
+            }
+            Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime());
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to schedule reminder for " + activityType, e);
@@ -317,11 +350,22 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
      * Cancel ALL activity reminders at once.
      */
     public static void cancelAllReminders(Context context) {
-        String[] activities = {"weight", "education", "breakfast", "lunch", "dinner"};
+        String[] activities = {"weight", "education", "breakfast", "lunch", "dinner", "sleep"};
         for (String activity : activities) {
             cancelReminder(context, activity);
         }
+        cancelWaterReminders(context);
         Log.d(TAG, "🛑 All reminders cancelled");
+    }
+
+    /**
+     * Cancel all water reminder slots (water_1 through water_12).
+     */
+    public static void cancelWaterReminders(Context context) {
+        for (int i = 1; i <= 12; i++) {
+            cancelReminder(context, "water_" + i);
+        }
+        Log.d(TAG, "🛑 All water reminders cancelled");
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -364,6 +408,19 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             case "breakfast": return RC_BREAKFAST;
             case "lunch":     return RC_LUNCH;
             case "dinner":    return RC_DINNER;
+            case "sleep":     return RC_SLEEP;
+            case "water_1":   return RC_WATER_1;
+            case "water_2":   return RC_WATER_2;
+            case "water_3":   return RC_WATER_3;
+            case "water_4":   return RC_WATER_4;
+            case "water_5":   return RC_WATER_5;
+            case "water_6":   return RC_WATER_6;
+            case "water_7":   return RC_WATER_7;
+            case "water_8":   return RC_WATER_8;
+            case "water_9":   return RC_WATER_9;
+            case "water_10":  return RC_WATER_10;
+            case "water_11":  return RC_WATER_11;
+            case "water_12":  return RC_WATER_12;
             default:          return 1000;
         }
     }
@@ -376,11 +433,14 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             case "breakfast": return NOTIF_BREAKFAST;
             case "lunch":     return NOTIF_LUNCH;
             case "dinner":    return NOTIF_DINNER;
-            default:          return 2000;
+            case "sleep":     return NOTIF_SLEEP;
+            default:
+                if (activityType.startsWith("water_")) return NOTIF_WATER;
+                return 2000;
         }
     }
 
-    private String getActivityMessage(String activityType, int scheduledHour, int scheduledMinute) {
+    private String getActivityMessage(Context context, String activityType, int scheduledHour, int scheduledMinute) {
         String timeStr = formatTime(scheduledHour, scheduledMinute);
         switch (activityType.toLowerCase()) {
             case "weight":
@@ -398,9 +458,55 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             case "dinner":
                 return "🌙 Dinner window opens at " + timeStr
                         + ". Plan your evening meal!";
+            case "sleep":
+                return "🌙 Bedtime in 15 minutes! Wind down and prepare for a good night's sleep.";
             default:
+                if (activityType.toLowerCase().startsWith("water_")) {
+                    return buildSmartWaterMessage(context);
+                }
                 return "Your " + capitalize(activityType) + " time starts at " + timeStr + ".";
         }
+    }
+
+    /**
+     * Build a smart water notification message by reading today's intake
+     * from the SharedPreferences cache written by updateWaterIntake().
+     *
+     * If the cache is missing, stale (different date), or unreadable, falls
+     * back to the generic reminder text so the notification always shows.
+     */
+    private String buildSmartWaterMessage(Context context) {
+        try {
+            SharedPreferences sp = context.getSharedPreferences("WellnessWater", Context.MODE_PRIVATE);
+            String raw = sp.getString("WellnessWaterToday", null);
+
+            if (raw != null) {
+                JSONObject data  = new JSONObject(raw);
+                String today     = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new java.util.Date());
+                String cacheDate = data.optString("date", "");
+
+                if (today.equals(cacheDate)) {
+                    int drunkMl = data.optInt("drunkMl", 0);
+                    int goalMl  = data.optInt("goalMl",  2500);
+                    int remaining = goalMl - drunkMl;
+
+                    if (drunkMl == 0) {
+                        String goalL = String.format(Locale.US, "%.1f", goalMl / 1000.0);
+                        return "💧 Drink water! Your goal today is " + goalL + " L. Start now!";
+                    } else if (remaining <= 0) {
+                        return "🎉 You've reached your water goal today! Great work staying hydrated!";
+                    } else {
+                        String drunkL  = String.format(Locale.US, "%.1f", drunkMl  / 1000.0);
+                        String remainL = String.format(Locale.US, "%.1f", remaining / 1000.0);
+                        return "💧 You've had " + drunkL + " L. Still need " + remainL + " L today — keep it up!";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ buildSmartWaterMessage: could not read cache — " + e.getMessage());
+        }
+        // Fallback when no cache data is available
+        return "💧 Time to drink water! Stay hydrated throughout the day.";
     }
 
     private static String formatTime(int hour, int minute) {

@@ -430,15 +430,13 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🎯 APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
-      // - Herbalife Formula 1: Auto-corrects for ALL users (global)
-      // - Other foods: Auto-corrects only for specific user (personal)
-      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
-        nutritionData.foods = await applyGlobalAutoCorrections(
-          nutritionData.foods,
-          userId, // Pass userId for user-specific corrections
-        );
-      }
+      // 🚫 AUTO-CORRECTION DISABLED (product decision 2026-05-29)
+      // if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
+      //   nutritionData.foods = await applyGlobalAutoCorrections(
+      //     nutritionData.foods,
+      //     userId,
+      //   );
+      // }
 
       // ðŸ” LOG AI DETECTION RESULTS (AFTER AUTO-CORRECTIONS FOR ACCURACY)
       debugLog("🤖 ========== AI DETECTION RESULTS ==========");

@@ -10,13 +10,19 @@ import UIKit
  * Notification permission is requested at login via PushNotifications.requestPermissions().
  * Here we just schedule — iOS will silently skip if permission is denied.
  * This avoids all call.keepAlive / Promise-rejection issues with Capacitor 8.
+ *
+ * Smart water messages: because iOS cannot read UserDefaults inside a scheduled
+ * UNNotificationRequest at delivery time (without a Notification Service Extension),
+ * updateWaterIntake() saves the latest totals AND immediately re-schedules all
+ * future water notifications with the smart message baked in.
  */
 @objc(ReminderPlugin)
 public class ReminderPlugin: CAPPlugin {
 
-    private let center   = UNUserNotificationCenter.current()
-    private let prefsKey = "wellnessReminderPrefs"
-    private let idPrefix = "wellness_reminder_"
+    private let center      = UNUserNotificationCenter.current()
+    private let prefsKey    = "wellnessReminderPrefs"
+    private let waterKey    = "wellnessWaterToday"    // UserDefaults key for water cache
+    private let idPrefix    = "wellness_reminder_"
 
     // MARK: - scheduleReminder (sync resolve)
     @objc func scheduleReminder(_ call: CAPPluginCall) {
@@ -110,12 +116,104 @@ public class ReminderPlugin: CAPPlugin {
         call.resolve(["success": true])
     }
 
+    // MARK: - updateWaterIntake
+    /**
+     * Cache today's water intake totals and re-schedule all pending water
+     * notifications with a smart remaining-balance message.
+     *
+     * iOS cannot read UserDefaults inside a scheduled UNNotificationRequest at
+     * delivery time (no Notification Service Extension), so we bake the updated
+     * message into each future water notification right now.
+     *
+     * JS usage:
+     *   await ReminderPlugin.updateWaterIntake({ drunkMl: 500, goalMl: 3000 });
+     */
+    @objc func updateWaterIntake(_ call: CAPPluginCall) {
+        let drunkMl = call.getInt("drunkMl") ?? 0
+        let goalMl  = call.getInt("goalMl")  ?? 2500
+
+        // 1. Persist to UserDefaults
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+
+        let cache: [String: Any] = ["date": today, "drunkMl": drunkMl, "goalMl": goalMl]
+        UserDefaults.standard.set(cache, forKey: waterKey)
+
+        // 2. Build the smart message
+        let smartMessage = buildSmartWaterMessage(drunkMl: drunkMl, goalMl: goalMl)
+
+        // 3. Re-schedule all saved water reminder slots with the updated message
+        let savedReminders = UserDefaults.standard.array(forKey: "\(prefsKey)_reminders")
+                               as? [[String: Any]] ?? []
+        let masterEnabled  = UserDefaults.standard.bool(forKey: "\(prefsKey)_masterEnabled")
+
+        for reminder in savedReminders {
+            guard let type = reminder["activityType"] as? String,
+                  type.hasPrefix("water_"),
+                  let enabled = (reminder["enabled"] as? NSNumber)?.boolValue,
+                  masterEnabled && enabled
+            else { continue }
+
+            let label  = reminder["label"]  as? String ?? "Drink Water 💧"
+            let hour   = (reminder["hour"]   as? NSNumber)?.intValue ?? 7
+            let minute = (reminder["minute"] as? NSNumber)?.intValue ?? 0
+
+            // Cancel existing slot then reschedule with fresh message
+            center.removePendingNotificationRequests(withIdentifiers: [idPrefix + type])
+            scheduleDailyWithMessage(activityType: type, label: label,
+                                     hour: hour, minute: minute, body: smartMessage)
+        }
+
+        print("[ReminderPlugin] 💧 updateWaterIntake — \(drunkMl)/\(goalMl) ml on \(today)")
+        call.resolve(["success": true])
+    }
+
     // MARK: - Private helpers
 
+    private func buildSmartWaterMessage(drunkMl: Int, goalMl: Int) -> String {
+        let remaining = goalMl - drunkMl
+        if drunkMl == 0 {
+            let goalL = String(format: "%.1f", Double(goalMl) / 1000.0)
+            return "💧 Drink water! Your goal today is \(goalL) L. Start now!"
+        } else if remaining <= 0 {
+            return "🎉 You've reached your water goal today! Great work staying hydrated!"
+        } else {
+            let drunkL  = String(format: "%.1f", Double(drunkMl)  / 1000.0)
+            let remainL = String(format: "%.1f", Double(remaining) / 1000.0)
+            return "💧 You've had \(drunkL) L. Still need \(remainL) L today — keep it up!"
+        }
+    }
+
     private func scheduleDaily(activityType: String, label: String, hour: Int, minute: Int) {
+        let body: String
+        if activityType.hasPrefix("water_") {
+            // Use cached smart message if available and fresh; otherwise use generic
+            if let cache   = UserDefaults.standard.dictionary(forKey: waterKey),
+               let date    = cache["date"]    as? String,
+               let drunkMl = cache["drunkMl"] as? Int,
+               let goalMl  = cache["goalMl"]  as? Int {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                let today = formatter.string(from: Date())
+                body = (date == today)
+                    ? buildSmartWaterMessage(drunkMl: drunkMl, goalMl: goalMl)
+                    : "💧 Time to drink water! Stay hydrated throughout the day."
+            } else {
+                body = "💧 Time to drink water! Stay hydrated throughout the day."
+            }
+        } else {
+            body = buildActivityMessage(activityType: activityType, label: label)
+        }
+        scheduleDailyWithMessage(activityType: activityType, label: label,
+                                 hour: hour, minute: minute, body: body)
+    }
+
+    private func scheduleDailyWithMessage(activityType: String, label: String,
+                                          hour: Int, minute: Int, body: String) {
         let content   = UNMutableNotificationContent()
-        content.title = "Wellness Valley"
-        content.body  = "Time for your \(label) activity! 💪"
+        content.title = "� \(label) Reminder"
+        content.body  = body
         content.sound = .default
 
         var dc        = DateComponents()
@@ -124,14 +222,34 @@ public class ReminderPlugin: CAPPlugin {
 
         let trigger    = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
         let identifier = idPrefix + activityType
-        let request    = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-
+        let request    = UNNotificationRequest(identifier: identifier,
+                                               content: content,
+                                               trigger: trigger)
         center.add(request) { error in
             if let error = error {
                 print("[ReminderPlugin] ❌ Failed \(activityType): \(error.localizedDescription)")
             } else {
                 print("[ReminderPlugin] ✅ Scheduled \(activityType) at \(hour):\(String(format: "%02d", minute))")
             }
+        }
+    }
+
+    private func buildActivityMessage(activityType: String, label: String) -> String {
+        switch activityType.lowercased() {
+        case "weight":
+            return "⚖️ Time to log your weight and stay on track!"
+        case "education":
+            return "📚 Your education session is starting soon. Get ready to learn!"
+        case "breakfast":
+            return "🥗 Breakfast time! Prepare your meal and log it."
+        case "lunch":
+            return "🍱 Lunch time! Don't forget to log your meal."
+        case "dinner":
+            return "🌙 Dinner time! Plan your evening meal."
+        case "sleep":
+            return "🌙 Bedtime in 15 minutes! Wind down and prepare for a good night's sleep."
+        default:
+            return "Time for your \(label) activity! 💪"
         }
     }
 }

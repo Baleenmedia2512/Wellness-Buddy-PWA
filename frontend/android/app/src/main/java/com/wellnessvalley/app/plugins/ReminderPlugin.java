@@ -2,8 +2,18 @@ package com.wellnessvalley.app.plugins;
 
 import android.app.AlarmManager;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
+
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -233,14 +243,80 @@ public class ReminderPlugin extends Plugin {
     // ── openExactAlarmSettings ───────────────────────────────────────────
 
     /**
-     * Stub — exact alarm settings no longer needed (using inexact alarms).
-     * Kept for backwards compatibility with JS calls.
+     * Opens the exact alarm permission settings on Android 12+,
+     * or app notification settings on older versions.
+     * SCHEDULE_EXACT_ALARM is declared in the manifest so the app
+     * will appear in the Alarms & Reminders list.
      */
     @PluginMethod
     public void openExactAlarmSettings(PluginCall call) {
-        // Exact alarm permission removed — app uses inexact alarms (setAndAllowWhileIdle)
+        Context ctx = getContext();
+        try {
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ — open Alarms & Reminders screen for this app
+                intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        Uri.parse("package:" + ctx.getPackageName()));
+            } else {
+                // Android 8–11 — open app notification settings
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName());
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+        } catch (Exception e) {
+            // Fallback: app details settings
+            try {
+                Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + ctx.getPackageName()));
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(fallback);
+            } catch (Exception ignored) {}
+        }
         JSObject result = new JSObject();
         result.put("success", true);
         call.resolve(result);
+    }
+
+    // ── updateWaterIntake ─────────────────────────────────────────────────
+
+    /**
+     * Cache today's water intake totals in SharedPreferences so that alarm
+     * notifications can display a smart remaining-balance message without
+     * needing network access at fire time.
+     *
+     * Key: "WellnessWaterToday"  (SharedPreferences file: "WellnessWater")
+     * Value: JSON  { "date": "YYYY-MM-DD", "drunkMl": N, "goalMl": N }
+     *
+     * JS usage:
+     *   await ReminderPlugin.updateWaterIntake({ drunkMl: 500, goalMl: 3000 });
+     */
+    @PluginMethod
+    public void updateWaterIntake(PluginCall call) {
+        int drunkMl = call.getInt("drunkMl", 0);
+        int goalMl  = call.getInt("goalMl",  2500);
+
+        try {
+            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+
+            JSONObject data = new JSONObject();
+            data.put("date",    today);
+            data.put("drunkMl", drunkMl);
+            data.put("goalMl",  goalMl);
+
+            SharedPreferences sp = getContext()
+                    .getSharedPreferences("WellnessWater", Context.MODE_PRIVATE);
+            sp.edit().putString("WellnessWaterToday", data.toString()).apply();
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+
+            Log.d(TAG, "💧 updateWaterIntake cached: " + drunkMl + "/" + goalMl + " ml on " + today);
+
+        } catch (Exception e) {
+            Log.e(TAG, "❌ updateWaterIntake failed", e);
+            call.reject("Failed to update water intake cache: " + e.getMessage());
+        }
     }
 }
