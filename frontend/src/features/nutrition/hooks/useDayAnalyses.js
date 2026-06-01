@@ -19,6 +19,9 @@ const EMPTY_STATS = {
   totalCarbs: 0,
   totalFat: 0,
   totalFiber: 0,
+  totalSugar: 0,
+  totalSodium: 0,
+  totalCholesterol: 0,
   mealCount: 0,
 };
 
@@ -44,12 +47,18 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId }
             const carbs = n.carbs || analysis.TotalCarbs || 0;
             const fat = n.fat || analysis.TotalFat || 0;
             const fiber = n.fiber || analysis.TotalFiber || 0;
+            const sugar = n.sugar ?? analysis.TotalSugar ?? 0;
+            const sodium = n.sodium ?? analysis.TotalSodium ?? 0;
+            const cholesterol = n.cholesterol ?? analysis.TotalCholesterol ?? 0;
             return {
               totalCalories: acc.totalCalories + calories,
               totalProtein: acc.totalProtein + protein,
               totalCarbs: acc.totalCarbs + carbs,
               totalFat: acc.totalFat + fat,
               totalFiber: acc.totalFiber + fiber,
+              totalSugar: acc.totalSugar + sugar,
+              totalSodium: acc.totalSodium + sodium,
+              totalCholesterol: acc.totalCholesterol + cholesterol,
               mealCount: acc.mealCount + 1,
             };
           },
@@ -115,13 +124,16 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId }
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(
-    ({ calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, mealCountDelta = 0 }) => {
+    ({ calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, sugar = 0, sodium = 0, cholesterol = 0, mealCountDelta = 0 }) => {
       setDailyStats((prev) => ({
         totalCalories: Math.max(0, prev.totalCalories + calories),
         totalProtein: Math.max(0, prev.totalProtein + protein),
         totalCarbs: Math.max(0, prev.totalCarbs + carbs),
         totalFat: Math.max(0, prev.totalFat + fat),
         totalFiber: Math.max(0, prev.totalFiber + fiber),
+        totalSugar: Math.max(0, prev.totalSugar + sugar),
+        totalSodium: Math.max(0, prev.totalSodium + sodium),
+        totalCholesterol: Math.max(0, prev.totalCholesterol + cholesterol),
         mealCount: Math.max(0, prev.mealCount + mealCountDelta),
       }));
     },

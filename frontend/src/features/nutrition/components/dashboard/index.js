@@ -8,3 +8,4 @@ export { default as DashboardHeader } from './DashboardHeader';
 export { default as HorizontalCalendarStrip } from './HorizontalCalendarStrip';
 export { default as OverviewPanels } from './OverviewPanels';
 export { default as MealAnalysisModal } from './MealAnalysisModal';
+export { default as NutritionCarousel } from './NutritionCarousel';

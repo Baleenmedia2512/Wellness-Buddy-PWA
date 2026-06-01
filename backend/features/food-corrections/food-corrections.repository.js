@@ -110,7 +110,7 @@ export async function fetchMealsForDate(userId, date) {
   const endOfDay = `${date}T23:59:59`;
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ProcessedBy, DeviceInfo, CreatedAt')
+    .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, TotalSugar, TotalSodium, TotalCholesterol, ProcessedBy, DeviceInfo, CreatedAt')
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0)
     // PR 6 — defensive: exclude rows whose AnalysisData never landed (failed

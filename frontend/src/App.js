@@ -64,7 +64,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
-import { NutritionCard, FoodImageShareCard } from "./features/nutrition";
+import { NutritionCard, FoodImageShareCard, HomeNutritionCarousel } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import { TestImageGuide } from "./features/admin";
@@ -4226,7 +4226,7 @@ function WellnessValleyApp() {
               // foods = correctedFoods;
 
               // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
-              const newLogs = correctedFoods.map((food) => ({
+              const newLogs = foods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
                 userCorrected: food.name,
@@ -5732,6 +5732,13 @@ function WellnessValleyApp() {
               {toast.message}
             </div>
           )}
+
+          {/* Today's Nutrition Carousel — Calories · Macros · Heart Healthy · Low Carb */}
+          <HomeNutritionCarousel
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            bmrUpdateKey={bmrUpdateKey}
+          />
 
           <ImageUpload
             onImageSelect={handleImageSelect}

@@ -64,6 +64,9 @@ export const parseAnalysisData = (analysisData, moreTextColor = 'text-gray-500')
           carbs:    parsed.total.carbs    || 0,
           fat:      parsed.total.fat      || 0,
           fiber:    parsed.total.fiber    || 0,
+          sugar:       parsed.total.sugar       ?? null,
+          sodium:      parsed.total.sodium      ?? null,
+          cholesterol: parsed.total.cholesterol ?? null,
         },
         detailedItems: parsed.foods || [],
       };

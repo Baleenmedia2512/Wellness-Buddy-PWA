@@ -33,6 +33,7 @@ const convertConfidenceToNumeric = (confidence) => {
 function extractNutrition(analysisResult, deviceInfo) {
   let totalCalories = null, totalProtein = null, totalCarbs = null,
       totalFat = null, totalFiber = null, confidenceScore = null;
+  let totalSugar = null, totalSodium = null, totalCholesterol = null;
   let processedBy = 'manual_app';
 
   try {
@@ -45,6 +46,9 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalCarbs = analysis.total.carbs || null;
       totalFat = analysis.total.fat || null;
       totalFiber = analysis.total.fiber || null;
+      totalSugar = analysis.total.sugar != null ? analysis.total.sugar : null;
+      totalSodium = analysis.total.sodium != null ? analysis.total.sodium : null;
+      totalCholesterol = analysis.total.cholesterol != null ? analysis.total.cholesterol : null;
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
         ? 'background_service' : 'manual_app';
@@ -54,6 +58,9 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalCarbs = analysis.nutrition.carbs || null;
       totalFat = analysis.nutrition.fat || null;
       totalFiber = analysis.nutrition.fiber || null;
+      totalSugar = analysis.nutrition.sugar != null ? analysis.nutrition.sugar : null;
+      totalSodium = analysis.nutrition.sodium != null ? analysis.nutrition.sodium : null;
+      totalCholesterol = analysis.nutrition.cholesterol != null ? analysis.nutrition.cholesterol : null;
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = 'manual_app';
     } else if (analysis.foods && analysis.foods.length > 0) {
@@ -64,13 +71,20 @@ function extractNutrition(analysisResult, deviceInfo) {
         totalCarbs = firstFood.nutrition.carbs || null;
         totalFat = firstFood.nutrition.fat || null;
         totalFiber = firstFood.nutrition.fiber || null;
+        totalSugar = firstFood.nutrition.sugar != null ? firstFood.nutrition.sugar : null;
+        totalSodium = firstFood.nutrition.sodium != null ? firstFood.nutrition.sodium : null;
+        totalCholesterol = firstFood.nutrition.cholesterol != null ? firstFood.nutrition.cholesterol : null;
       }
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
   } catch (_) { /* ignore parse */ }
 
-  return { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy };
+  return {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol,
+    confidenceScore, processedBy,
+  };
 }
 
 // ─── save ────────────────────────────────────────────────────────────────────
@@ -79,7 +93,11 @@ export async function save(input) {
     userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,    captureId,  } = input;
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
-  const { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy } = nutrition;
+  const {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol,
+    confidenceScore, processedBy,
+  } = nutrition;
 
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
   const analysisDataJson = typeof analysisResult === 'string'
@@ -102,6 +120,9 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
+    TotalSugar: totalSugar,
+    TotalSodium: totalSodium,
+    TotalCholesterol: totalCholesterol,
     // ImageType was dropped from food_nutrition_data_table by
     // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
     // now lives on captures_table and is promoted via captures.updateTypeById

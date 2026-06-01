@@ -5,9 +5,9 @@
  * macros are rounded UP (Math.ceil) — preserved exactly from the legacy
  * inline implementation.
  *
- * @param {{calories:number, protein:number, carbs:number, fat:number, fiber?:number}|null|undefined} per100g
+ * @param {{calories:number, protein:number, carbs:number, fat:number, fiber?:number, sugar?:number|null, sodium?:number|null, cholesterol?:number|null}|null|undefined} per100g
  * @param {number|string|null|undefined} grams
- * @returns {{calories:number, protein:number, carbs:number, fat:number, fiber:number}|null}
+ * @returns {{calories:number, protein:number, carbs:number, fat:number, fiber:number, sugar:number|null, sodium:number|null, cholesterol:number|null}|null}
  */
 export function computeNutrition(per100g, grams) {
   if (!per100g || !grams) return null;
@@ -20,5 +20,8 @@ export function computeNutrition(per100g, grams) {
     carbs: Math.ceil(per100g.carbs * multiplier),
     fat: Math.ceil(per100g.fat * multiplier),
     fiber: Math.ceil((per100g.fiber || 0) * multiplier),
+    sugar: per100g.sugar != null ? Math.ceil(per100g.sugar * multiplier) : null,
+    sodium: per100g.sodium != null ? Math.ceil(per100g.sodium * multiplier) : null,
+    cholesterol: per100g.cholesterol != null ? Math.ceil(per100g.cholesterol * multiplier) : null,
   };
 }

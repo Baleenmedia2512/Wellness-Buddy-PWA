@@ -189,8 +189,11 @@ export async function getStats({ userId, date, detailed }) {
       totalCarbs: t.totalCarbs + (r.TotalCarbs || 0),
       totalFat: t.totalFat + (r.TotalFat || 0),
       totalFiber: t.totalFiber + (r.TotalFiber || 0),
+      totalSugar: t.totalSugar + (r.TotalSugar || 0),
+      totalSodium: t.totalSodium + (r.TotalSodium || 0),
+      totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
       mealCount: t.mealCount + 1,
-    }), { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0, mealCount: 0 });
+    }), { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0, totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0 });
     const round2 = (n) => Math.round(n * 100) / 100;
     return {
       httpStatus: 200,
@@ -204,6 +207,9 @@ export async function getStats({ userId, date, detailed }) {
           totalCarbs: round2(dailyTotals.totalCarbs),
           totalFat: round2(dailyTotals.totalFat),
           totalFiber: round2(dailyTotals.totalFiber),
+          totalSugar: round2(dailyTotals.totalSugar),
+          totalSodium: round2(dailyTotals.totalSodium),
+          totalCholesterol: round2(dailyTotals.totalCholesterol),
         },
         queryInfo: { userId, date, recordCount: filtered.length },
       },
