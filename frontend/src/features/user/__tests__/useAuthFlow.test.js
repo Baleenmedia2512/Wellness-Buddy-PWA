@@ -18,9 +18,22 @@ jest.mock('../services/authService', () => ({
   verifyOtp: jest.fn(),
 }));
 
+// Mock storage so tests control what was "previously saved"
+jest.mock('../../../shared/lib/storage', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    set: jest.fn(),
+    remove: jest.fn(),
+  },
+}));
+import storage from '../../../shared/lib/storage';
+
 afterEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
+  storage.get.mockReset();
+  storage.set.mockReset();
 });
 
 // ─── sendOtp ─────────────────────────────────────────────────────────────────
@@ -208,5 +221,60 @@ describe('resetOtpScreen', () => {
   it('can be called safely when nothing was sent', () => {
     const { result } = renderHook(() => useAuthFlow({}));
     expect(() => act(() => result.current.resetOtpScreen())).not.toThrow();
+  });
+});
+
+// ─── Email autofill ───────────────────────────────────────────────────────────
+
+describe('email autofill (last-used email)', () => {
+  it('pre-populates email from storage on mount', () => {
+    storage.get.mockReturnValue('demo@gmail.com');
+    const { result } = renderHook(() => useAuthFlow({}));
+    expect(result.current.email).toBe('demo@gmail.com');
+  });
+
+  it('leaves email empty when storage returns null (first-time user)', () => {
+    storage.get.mockReturnValue(null);
+    const { result } = renderHook(() => useAuthFlow({}));
+    expect(result.current.email).toBe('');
+  });
+
+  it('leaves email empty when storage returns empty string', () => {
+    storage.get.mockReturnValue('');
+    const { result } = renderHook(() => useAuthFlow({}));
+    expect(result.current.email).toBe('');
+  });
+
+  it('calls storage.set with the email after a successful OTP send', async () => {
+    storage.get.mockReturnValue(null);
+    authService.sendOtp.mockResolvedValue({ success: true });
+    const { result } = renderHook(() => useAuthFlow({}));
+
+    act(() => { result.current.setEmail('user@example.com'); });
+    await act(async () => { await result.current.sendOtp(); });
+
+    expect(storage.set).toHaveBeenCalledWith('auth.lastEmail', 'user@example.com');
+  });
+
+  it('does NOT call storage.set when OTP send fails', async () => {
+    storage.get.mockReturnValue(null);
+    authService.sendOtp.mockResolvedValue({ success: false, message: 'Error' });
+    const { result } = renderHook(() => useAuthFlow({}));
+
+    act(() => { result.current.setEmail('bad@example.com'); });
+    await act(async () => { await result.current.sendOtp(); });
+
+    expect(storage.set).not.toHaveBeenCalled();
+  });
+
+  it('overwrites the stored email when a different address is used', async () => {
+    storage.get.mockReturnValue('old@example.com');
+    authService.sendOtp.mockResolvedValue({ success: true });
+    const { result } = renderHook(() => useAuthFlow({}));
+
+    act(() => { result.current.setEmail('new@example.com'); });
+    await act(async () => { await result.current.sendOtp(); });
+
+    expect(storage.set).toHaveBeenCalledWith('auth.lastEmail', 'new@example.com');
   });
 });
