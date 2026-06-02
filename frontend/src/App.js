@@ -104,6 +104,7 @@ import { ManualEducationEntryModal } from "./features/education";
 import { UnknownCaptureModal } from "./features/captures";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
+import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
@@ -2462,19 +2463,34 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       };
 
-      // Silently capture club GPS location (only when physically inside a club).
-      // Attached to payload so the backend can persist it once the schema supports it.
+      // Capture GPS location for every weight photo — not just when inside a club.
+      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — weight save is never blocked by a GPS timeout.
       try {
-        const clubLocation = await getClubLocationIfNearby(apiBaseUrl, userId);
-        if (clubLocation) {
-          payload.latitude = clubLocation.latitude;
-          payload.longitude = clubLocation.longitude;
-          payload.nutritionCenterId = clubLocation.nutritionCenterId;
-          debugLog("📍 [weight] Club location attached to save payload:", clubLocation);
+        const rawLocation = await locationAttendanceService.getCurrentLocation();
+        if (rawLocation && !rawLocation.error) {
+          payload.latitude = rawLocation.latitude;
+          payload.longitude = rawLocation.longitude;
+          debugLog("📍 [weight] Raw GPS attached to save payload:", rawLocation);
+
+          // Also check club proximity (within 100 m) for center linking
+          const clubLocation = await getClubLocationIfNearby(apiBaseUrl, userId);
+          if (clubLocation) {
+            payload.nutritionCenterId = clubLocation.nutritionCenterId;
+            payload.centerName = clubLocation.centerName;
+            payload.attendanceType = 'club';
+            debugLog("📍 [weight] Club location attached to save payload:", clubLocation);
+          } else {
+            payload.attendanceType = 'remote';
+          }
+
+          // Reverse-geocode to city + village
+          const { city, village } = await fetchCityVillage(rawLocation.latitude, rawLocation.longitude);
+          payload.city = city;
+          payload.village = village;
         }
       } catch (gpsErr) {
-        debugLog("⚠️ [weight] Club GPS check failed, saving without location:", gpsErr.message);
+        debugLog("⚠️ [weight] GPS check failed, saving without location:", gpsErr.message);
       }
 
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
@@ -3112,54 +3128,12 @@ function WellnessValleyApp() {
         return; // Wait for user to select club
       }
 
-      // Get address from GPS coordinates using reverse geocoding
-      let userCity = null;
-      let userVillage = null;
-      
-      if (attendance.latitude && attendance.longitude) {
-        try {
-          debugLog("📍 Fetching address from GPS:", {
-            lat: attendance.latitude,
-            lon: attendance.longitude
-          });
-          
-          const geoResponse = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1&accept-language=en`,
-            {
-              headers: {
-                'User-Agent': 'WellnessBuddy/1.0',
-                'Accept-Language': 'en'
-              }
-            }
-          );
-          
-          if (geoResponse.ok) {
-            const geoData = await geoResponse.json();
-            if (geoData && geoData.address) {
-              const addr = geoData.address;
-              
-              // Extract city (main city/town)
-              userCity = addr.city || addr.town || addr.village || addr.county || null;
-              
-              // Extract village (neighbourhood, suburb, hamlet - smaller areas)
-              const villageParts = [];
-              if (addr.neighbourhood) villageParts.push(addr.neighbourhood);
-              if (addr.suburb && addr.suburb !== addr.neighbourhood) villageParts.push(addr.suburb);
-              if (addr.hamlet) villageParts.push(addr.hamlet);
-              
-              userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
-              
-              debugLog("? Address extracted:", {
-                city: userCity,
-                village: userVillage,
-                fullAddress: geoData.display_name
-              });
-            }
-          }
-        } catch (err) {
-          console.warn("⚠️ Failed to fetch address from GPS:", err);
-        }
-      }
+      // Reverse-geocode GPS coordinates into city + village via shared helper.
+      // fetchCityVillage never throws — returns null fields on failure.
+      const { city: userCity, village: userVillage } = await fetchCityVillage(
+        attendance.latitude,
+        attendance.longitude,
+      );
 
       // Determine final values
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
@@ -3289,21 +3263,35 @@ function WellnessValleyApp() {
         pendingSharePromiseRef.current = null;
       }
 
-      // Silently capture club GPS location (only when physically inside a club).
+      // Capture GPS location for every food photo — not just when inside a club.
+      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — nutrition save is never blocked by a GPS timeout.
       let clubLocationFields = {};
       try {
-        const clubLocation = await getClubLocationIfNearby(apiBaseUrl, saveData.userId);
-        if (clubLocation) {
-          clubLocationFields = {
-            latitude: clubLocation.latitude,
-            longitude: clubLocation.longitude,
-            nutritionCenterId: clubLocation.nutritionCenterId,
-          };
-          debugLog("📍 [nutrition] Club location attached to save payload:", clubLocation);
+        const rawLocation = await locationAttendanceService.getCurrentLocation();
+        if (rawLocation && !rawLocation.error) {
+          clubLocationFields.latitude = rawLocation.latitude;
+          clubLocationFields.longitude = rawLocation.longitude;
+          debugLog("📍 [nutrition] Raw GPS attached to save payload:", rawLocation);
+
+          // Also check club proximity (within 100 m) for center linking
+          const clubLocation = await getClubLocationIfNearby(apiBaseUrl, saveData.userId);
+          if (clubLocation) {
+            clubLocationFields.nutritionCenterId = clubLocation.nutritionCenterId;
+            clubLocationFields.centerName = clubLocation.centerName;
+            clubLocationFields.attendanceType = 'club';
+            debugLog("📍 [nutrition] Club location attached to save payload:", clubLocation);
+          } else {
+            clubLocationFields.attendanceType = 'remote';
+          }
+
+          // Reverse-geocode to city + village
+          const { city, village } = await fetchCityVillage(rawLocation.latitude, rawLocation.longitude);
+          clubLocationFields.city = city;
+          clubLocationFields.village = village;
         }
       } catch (gpsErr) {
-        debugLog("⚠️ [nutrition] Club GPS check failed, saving without location:", gpsErr.message);
+        debugLog("⚠️ [nutrition] GPS check failed, saving without location:", gpsErr.message);
       }
 
       const saveRes = await saveNutritionAnalysis({

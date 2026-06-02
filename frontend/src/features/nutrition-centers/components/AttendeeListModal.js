@@ -12,7 +12,8 @@ import { debugLog } from '../../../shared/utils/logger.js';
  * Props:
  *   isOpen      {boolean}  — controls visibility
  *   onClose     {function} — called when user closes the modal
- *   center      {object}   — { id, center_name }
+ *   center      {object}   — { id, center_name } — single centre mode; null = summary mode
+ *   allCenters  {Array}    — list of all centres (used when center is null for summary mode)
  *   dateLabel   {string}   — e.g. "Today", "Yesterday", "Jun 1"
  *   startDate   {string}   — ISO date string YYYY-MM-DD
  *   endDate     {string}   — ISO date string YYYY-MM-DD
@@ -22,6 +23,7 @@ const AttendeeListModal = ({
   isOpen,
   onClose,
   center,
+  allCenters,
   dateLabel,
   startDate,
   endDate,
@@ -32,40 +34,76 @@ const AttendeeListModal = ({
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!isOpen || !center?.id) return;
+    if (!isOpen) return;
+    // Single-centre mode requires center.id; summary mode requires allCenters
+    if (!center?.id && (!allCenters || allCenters.length === 0)) return;
 
     let cancelled = false;
     setLoading(true);
     setError(null);
     setAttendees([]);
 
-    const params = new URLSearchParams({ centerId: center.id });
-    if (startDate) params.set('startDate', startDate);
-    if (endDate) params.set('endDate', endDate);
+    const fetchForCentre = (centreId) => {
+      const params = new URLSearchParams({ centerId: centreId });
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      return fetch(`${apiBaseUrl}/api/nutrition-centers/attendees?${params}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      }).then((res) => res.json());
+    };
 
-    fetch(`${apiBaseUrl}/api/nutrition-centers/attendees?${params}`, {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
-    })
-      .then((res) => res.json())
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.success) throw new Error(result.error?.message || 'Failed to load attendees');
-        debugLog(`✅ [AttendeeListModal] Loaded ${result.data.length} attendees for centre ${center.id}`);
-        setAttendees(result.data);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError('Could not load attendees. Please try again.');
-          debugLog('❌ [AttendeeListModal] fetch error:', err.message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    if (center?.id) {
+      // ── Single-centre mode ──────────────────────────────────────────────
+      fetchForCentre(center.id)
+        .then((result) => {
+          if (cancelled) return;
+          if (!result.success) throw new Error(result.error?.message || 'Failed to load attendees');
+          debugLog(`✅ [AttendeeListModal] Loaded ${result.data.length} attendees for centre ${center.id}`);
+          setAttendees(result.data);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError('Could not load attendees. Please try again.');
+            debugLog('❌ [AttendeeListModal] fetch error:', err.message);
+          }
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    } else {
+      // ── Summary mode — fetch all centres in parallel and de-duplicate ──
+      const centresWithAttendance = allCenters.filter((c) => (c.todayAttendance || 0) > 0);
+      if (centresWithAttendance.length === 0) {
+        setLoading(false);
+        return;
+      }
+      Promise.all(centresWithAttendance.map((c) => fetchForCentre(c.id).catch(() => null)))
+        .then((results) => {
+          if (cancelled) return;
+          const seen = new Set();
+          const merged = [];
+          results.forEach((result) => {
+            if (!result?.success) return;
+            result.data.forEach((a) => {
+              if (!seen.has(a.userId)) {
+                seen.add(a.userId);
+                merged.push(a);
+              }
+            });
+          });
+          debugLog(`✅ [AttendeeListModal] Summary: ${merged.length} unique attendees across ${centresWithAttendance.length} centres`);
+          setAttendees(merged);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError('Could not load attendees. Please try again.');
+            debugLog('❌ [AttendeeListModal] summary fetch error:', err.message);
+          }
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }
 
     return () => { cancelled = true; };
-  }, [isOpen, center?.id, startDate, endDate, apiBaseUrl]);
+  }, [isOpen, center?.id, allCenters, startDate, endDate, apiBaseUrl]);
 
   return (
     <AnimatePresence>
@@ -101,7 +139,7 @@ const AttendeeListModal = ({
                 <Users className="w-5 h-5 text-green-600" />
                 <div>
                   <h2 className="font-semibold text-gray-900 text-[15px] leading-tight">
-                    {center?.center_name || 'Club'}
+                    {center?.center_name || 'All Centres'}
                   </h2>
                   <p className="text-xs text-gray-500">{dateLabel} Attendees</p>
                 </div>
@@ -148,7 +186,6 @@ const AttendeeListModal = ({
                         </span>
                       </div>
                       <span className="text-sm text-gray-800">{a.userName}</span>
-                      <span className="ml-auto text-xs text-gray-400">#{idx + 1}</span>
                     </li>
                   ))}
                 </ul>

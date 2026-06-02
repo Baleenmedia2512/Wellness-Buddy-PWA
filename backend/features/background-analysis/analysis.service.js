@@ -76,7 +76,10 @@ function extractNutrition(analysisResult, deviceInfo) {
 // ─── save ────────────────────────────────────────────────────────────────────
 export async function save(input) {
   const {
-    userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,    captureId,  } = input;
+    userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,
+    captureId,
+    city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
+  } = input;
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy } = nutrition;
@@ -129,6 +132,13 @@ export async function save(input) {
           ...analysisPayload,
           CreatedAt: createdAtIST,
           UpdatedAt: currentTime,
+          City: city || null,
+          Village: village || null,
+          CenterName: centerName || null,
+          NutritionCenterId: nutritionCenterId || null,
+          AttendanceType: attendanceType || null,
+          Latitude: latitude || null,
+          Longitude: longitude || null,
         });
       }
     } else {
@@ -137,6 +147,13 @@ export async function save(input) {
         ...analysisPayload,
         CreatedAt: createdAtIST,
         UpdatedAt: currentTime,
+        City: city || null,
+        Village: village || null,
+        CenterName: centerName || null,
+        NutritionCenterId: nutritionCenterId || null,
+        AttendanceType: attendanceType || null,
+        Latitude: latitude || null,
+        Longitude: longitude || null,
       });
     }
   } catch (error) {
