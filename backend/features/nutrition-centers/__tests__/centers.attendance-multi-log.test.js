@@ -139,6 +139,34 @@ describe('Multi-log-type attendance tracking', () => {
       expect(result).toHaveLength(1);
       expect(result[0].UserId).toBe(15);
     });
+
+    it('should throw error if any query fails', async () => {
+      const okQuery = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        lte: jest.fn().mockResolvedValue({ data: [{ UserId: 1 }], error: null }),
+      };
+
+      const errorQuery = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        lte: jest.fn().mockResolvedValue({
+          data: null,
+          error: { message: 'Column "NutritionCenterId" does not exist' },
+        }),
+      };
+
+      mockSupabase.from.mockImplementation((table) => {
+        if (table === 'food_nutrition_data_table') return errorQuery;
+        return okQuery;
+      });
+
+      await expect(
+        attendanceForCenter(5, '2026-06-01T00:00:00', '2026-06-01T23:59:59')
+      ).rejects.toThrow('Food logs query failed');
+    });
   });
 
   describe('getAttendeeList', () => {

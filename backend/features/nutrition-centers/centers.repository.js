@@ -159,35 +159,42 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
   const supabase = getSupabaseClient();
   
   // Fetch from all three log types: education, weight, food
-  const [eduData, weightData, foodData] = await Promise.all([
+  const [eduRes, weightRes, foodRes] = await Promise.all([
     supabase
       .from('education_logs_table')
       .select('"UserId"')
       .eq('nutrition_center_id', centerId)
       .eq('"IsDeleted"', false)
       .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd)
-      .then((res) => res.data || []),
+      .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('weight_records_table')
       .select('"UserId"')
       .eq('"NutritionCenterId"', centerId)
       .eq('"IsDeleted"', false)
       .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd)
-      .then((res) => res.data || []),
+      .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('food_nutrition_data_table')
       .select('"UserId"')
       .eq('"NutritionCenterId"', centerId)
       .eq('"IsDeleted"', false)
       .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd)
-      .then((res) => res.data || []),
+      .lte('"CreatedAt"', rangeEnd),
   ]);
   
-  // Merge and deduplicate by UserId
-  const allLogs = [...eduData, ...weightData, ...foodData];
+  // Check for errors
+  if (eduRes.error) throw new Error(`Education logs query failed: ${eduRes.error.message}`);
+  if (weightRes.error) throw new Error(`Weight logs query failed: ${weightRes.error.message}`);
+  if (foodRes.error) throw new Error(`Food logs query failed: ${foodRes.error.message}`);
+  
+  // Merge all logs
+  const allLogs = [
+    ...(eduRes.data || []),
+    ...(weightRes.data || []),
+    ...(foodRes.data || []),
+  ];
+  
   return allLogs;
 }
 
