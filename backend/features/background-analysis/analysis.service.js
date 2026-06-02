@@ -80,6 +80,13 @@ function extractNutrition(analysisResult, deviceInfo) {
     }
   } catch (_) { /* ignore parse */ }
 
+  // 🔍 DEBUG: Log extracted nutrition values
+  console.log('🔍 [extractNutrition] Extracted values:', {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol,
+    confidenceScore, processedBy,
+  });
+
   return {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol,

@@ -179,12 +179,36 @@ CLASSIFY AS "weight" if you see ANY of these:
 🔥 NUTRITION ESTIMATION RULES (CRITICAL — for food only):
 - NEVER return 0 for calories UNLESS truly zero-calorie (water, black tea, black coffee only)
 - If unsure about exact values, provide REASONABLE ESTIMATES based on typical serving sizes
-- Indian food examples:
-  * Lemon Rice (1 plate ~150g) = ~230 cal, 45g carbs, 4g protein, 5g fat
-  * Biryani (1 plate ~200g) = ~350 cal, 48g carbs, 12g protein, 12g fat
-  * Idli (1 piece ~40g) = ~39 cal, 8g carbs, 2g protein, 0.2g fat
-  * Dosa (1 piece ~70g) = ~133 cal, 20g carbs, 4g protein, 4g fat
+- Indian food examples (calories, carbs g, protein g, fat g, fiber g, sugar g, sodium mg, cholesterol mg):
+  * Lemon Rice (1 plate ~150g)   = 230, 45, 4, 5, 1, 1, 380, 0
+  * Biryani (1 plate ~200g)      = 350, 48, 12, 12, 3, 2, 600, 35
+  * Idli (1 piece ~40g)          = 39, 8, 2, 0.2, 0.5, 0.3, 110, 0
+  * Dosa (1 piece ~70g)          = 133, 20, 4, 4, 1, 0.5, 220, 0
+  * Dal (1 bowl ~100g)           = 150, 15, 8, 6, 4, 1, 320, 0
+  * Roti / chapati (1 piece ~40g)= 110, 21, 3, 2, 2, 0.5, 190, 0
+  * Vegetable curry (1 bowl)     = 180, 15, 4, 10, 3, 4, 420, 5
+  * Chickpea curry (1 bowl)      = 160, 18, 7, 7, 5, 3, 380, 0
 - ALWAYS provide estimates - empty/null nutrition is NOT acceptable
+
+🧂 SUGAR / SODIUM / CHOLESTEROL — MANDATORY ESTIMATES (do NOT default to 0):
+- sugar (grams): estimate added + natural sugars. Typical ranges:
+  * savoury cooked dish: 0.5–4 g per serving
+  * fruit / dessert / sweetened drink: 8–40 g per serving
+  * plain water / black tea / black coffee: 0
+- sodium (milligrams): cooked Indian/restaurant food almost ALWAYS has salt. Typical ranges:
+  * home-cooked curry/dal/sabzi (1 bowl ~100g): 250–500 mg
+  * rice / roti / chapati (per serving): 150–250 mg
+  * fried snacks, pickles, papad, processed food: 400–900 mg
+  * fresh fruit / plain water: 0–10 mg
+  * ONLY return 0 if the food is genuinely sodium-free (plain water, fresh raw fruit)
+- cholesterol (milligrams): comes ONLY from animal products. Typical ranges:
+  * vegetarian / vegan dish: 0
+  * egg (1 whole): ~185 mg
+  * chicken/fish (100g cooked): 60–90 mg
+  * dairy (1 cup milk / 100g paneer): 10–25 mg
+  * red meat (100g cooked): 75–100 mg
+- 🚫 Returning 0 for sodium on a clearly cooked/salted dish (rice, roti, dal, curry, biryani, fried snacks, restaurant food) is WRONG — estimate from the ranges above.
+- 🚫 Returning 0 for sugar on sweets, desserts, juices, sweetened beverages, or fruit is WRONG.
 
 Return ONLY JSON matching ONE of the above formats.`;
 

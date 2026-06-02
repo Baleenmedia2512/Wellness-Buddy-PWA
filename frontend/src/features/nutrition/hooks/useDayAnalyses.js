@@ -25,7 +25,7 @@ const EMPTY_STATS = {
   mealCount: 0,
 };
 
-export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId }) {
+export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey = 0 }) {
   const [analyses, setAnalyses] = useState([]);
   const [dailyStats, setDailyStats] = useState(EMPTY_STATS);
   const [loading, setLoading] = useState(false);
@@ -117,10 +117,10 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId }
     [apiBaseUrl, resolveUserId],
   );
 
-  // Auto-refresh when user or date changes (preserves original timing).
+  // Auto-refresh when user, date, or nutritionRefreshKey changes.
   useEffect(() => {
     if (user) fetchDayAnalyses(selectedDate);
-  }, [user, selectedDate, fetchDayAnalyses]);
+  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(

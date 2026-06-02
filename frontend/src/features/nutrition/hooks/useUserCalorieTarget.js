@@ -10,14 +10,22 @@ import { fetchUserBmr, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashb
 
 export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
+  const [bmrLoading, setBmrLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.email) return undefined;
+    if (!user?.email) {
+      setBmrLoading(false);
+      return undefined;
+    }
 
     let cancelled = false;
+    setBmrLoading(true);
     const load = async () => {
       const bmr = await fetchUserBmr({ apiBaseUrl, email: user.email });
-      if (!cancelled) setCalorieTarget(bmr);
+      if (!cancelled) {
+        setCalorieTarget(bmr);
+        setBmrLoading(false);
+      }
     };
 
     load();
@@ -33,5 +41,5 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
     };
   }, [user?.email, apiBaseUrl, bmrUpdateKey]);
 
-  return calorieTarget;
+  return { calorieTarget, bmrLoading };
 }

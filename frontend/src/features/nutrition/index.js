@@ -13,4 +13,5 @@ export * from './services/duplicateDetectionService';
 export * from './services/backgroundNutritionService';
 export * from './services/nutritionSaveService';
 export * from './services/nutritionFallback';
+export { aggregateFoodTotals, FOOD_TOTAL_FIELDS } from './domain/aggregateFoodTotals';
 

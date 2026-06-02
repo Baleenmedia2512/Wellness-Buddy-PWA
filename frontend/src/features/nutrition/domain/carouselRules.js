@@ -71,10 +71,21 @@ export function computeMacroProgress({ consumed, target }) {
 // ─── Card 3: Heart Healthy ────────────────────────────────────────────────────
 
 /**
- * @param {{ consumedFat: number, consumedSodium: number, consumedCholesterol: number, fatTarget: number|null }}
+ * @param {{ consumedFat: number, consumedSodium: number, consumedCholesterol: number, fatTarget: number|null, weight?: number|null }}
  * @returns {{ fat: {consumed:number,target:number|null,pct:number}, sodium: {consumed:number,target:number,pct:number}, cholesterol: {consumed:number,target:number,pct:number} }}
+ *
+ * Personalized targets (when weight is provided):
+ *   sodium       — ~30 mg/kg body weight (AHA), capped at 2300 mg
+ *   cholesterol  — 300 mg base; reduced by 1 mg per kg above 70 kg ref; floored at 200 mg
  */
-export function computeHeartHealthyCard({ consumedFat, consumedSodium, consumedCholesterol, fatTarget }) {
+export function computeHeartHealthyCard({ consumedFat, consumedSodium, consumedCholesterol, fatTarget, weight = null }) {
+  const sodiumTarget = weight > 0
+    ? Math.min(SODIUM_TARGET_MG, Math.round(weight * 30))
+    : SODIUM_TARGET_MG;
+  const cholesterolTarget = weight > 0
+    ? Math.max(200, Math.round(CHOLESTEROL_TARGET_MG - Math.max(0, weight - 70)))
+    : CHOLESTEROL_TARGET_MG;
+
   const fat = {
     consumed: Math.round(consumedFat || 0),
     target: fatTarget,
@@ -84,13 +95,13 @@ export function computeHeartHealthyCard({ consumedFat, consumedSodium, consumedC
   };
   const sodium = {
     consumed: Math.round(consumedSodium || 0),
-    target: SODIUM_TARGET_MG,
-    pct: Math.min(100, Math.round(((consumedSodium || 0) / SODIUM_TARGET_MG) * 100)),
+    target: sodiumTarget,
+    pct: Math.min(100, Math.round(((consumedSodium || 0) / sodiumTarget) * 100)),
   };
   const cholesterol = {
     consumed: Math.round(consumedCholesterol || 0),
-    target: CHOLESTEROL_TARGET_MG,
-    pct: Math.min(100, Math.round(((consumedCholesterol || 0) / CHOLESTEROL_TARGET_MG) * 100)),
+    target: cholesterolTarget,
+    pct: Math.min(100, Math.round(((consumedCholesterol || 0) / cholesterolTarget) * 100)),
   };
   return { fat, sodium, cholesterol };
 }
@@ -98,10 +109,16 @@ export function computeHeartHealthyCard({ consumedFat, consumedSodium, consumedC
 // ─── Card 4: Low Carb ─────────────────────────────────────────────────────────
 
 /**
- * @param {{ consumedCarbs: number, consumedSugar: number, consumedFiber: number, carbsTarget: number|null }}
+ * @param {{ consumedCarbs: number, consumedSugar: number, consumedFiber: number, carbsTarget: number|null, calorieTarget?: number|null }}
  * @returns {{ carbs: {consumed:number,target:number|null,pct:number}, sugar: {consumed:number,target:number,pct:number}, fiber: {consumed:number,target:number,pct:number} }}
+ *
+ * Personalized targets (when calorieTarget is provided):
+ *   sugar — WHO guideline: ≤10 % of daily energy / 4 kcal per gram
  */
-export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber, carbsTarget }) {
+export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber, carbsTarget, calorieTarget = null }) {
+  const sugarTarget = calorieTarget > 0
+    ? Math.round((calorieTarget * 0.10) / 4)
+    : SUGAR_TARGET_G;
   const carbs = {
     consumed: Math.round(consumedCarbs || 0),
     target: carbsTarget,
@@ -111,8 +128,8 @@ export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber
   };
   const sugar = {
     consumed: Math.round(consumedSugar || 0),
-    target: SUGAR_TARGET_G,
-    pct: Math.min(100, Math.round(((consumedSugar || 0) / SUGAR_TARGET_G) * 100)),
+    target: sugarTarget,
+    pct: Math.min(100, Math.round(((consumedSugar || 0) / sugarTarget) * 100)),
   };
   const fiber = {
     consumed: Math.round(consumedFiber || 0),

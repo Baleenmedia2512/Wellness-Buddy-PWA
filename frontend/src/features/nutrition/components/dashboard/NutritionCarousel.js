@@ -55,6 +55,7 @@ const NutritionCarousel = ({
     consumedSodium:      dailyStats?.totalSodium      || 0,
     consumedCholesterol: dailyStats?.totalCholesterol || 0,
     fatTarget,
+    weight: latestWeight,
   });
 
   const lowCarbCard = computeLowCarbCard({
@@ -62,6 +63,7 @@ const NutritionCarousel = ({
     consumedSugar: dailyStats?.totalSugar || 0,
     consumedFiber: dailyStats?.totalFiber || 0,
     carbsTarget,
+    calorieTarget,
   });
 
   const cards = [

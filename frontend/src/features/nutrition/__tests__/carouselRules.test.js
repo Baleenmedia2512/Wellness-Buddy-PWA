@@ -201,3 +201,73 @@ describe('computeLowCarbCard', () => {
     expect(r.fiber.pct).toBe(100);
   });
 });
+
+// ─── Personalized targets ─────────────────────────────────────────────────────
+
+describe('computeHeartHealthyCard — personalized targets', () => {
+  it('sodium target scales with weight*30, capped at 2300 mg', () => {
+    const r60  = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: 60 });
+    const r100 = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: 100 });
+    expect(r60.sodium.target).toBe(1800);    // 60 * 30
+    expect(r100.sodium.target).toBe(2300);   // 100 * 30 = 3000, capped to 2300
+  });
+
+  it('sodium target falls back to 2300 when weight is null', () => {
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: null });
+    expect(r.sodium.target).toBe(SODIUM_TARGET_MG);
+  });
+
+  it('cholesterol target reduced by 1 mg per kg above 70 kg', () => {
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: 90 });
+    expect(r.cholesterol.target).toBe(280); // 300 - (90 - 70) = 280
+  });
+
+  it('cholesterol target floored at 200 mg for very heavy users', () => {
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: 200 });
+    expect(r.cholesterol.target).toBe(200); // 300 - 130 = 170, floored to 200
+  });
+
+  it('cholesterol target is 300 mg when weight is at ref (70 kg)', () => {
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: 70 });
+    expect(r.cholesterol.target).toBe(300);
+  });
+
+  it('cholesterol target falls back to 300 mg when weight is null', () => {
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 0, consumedCholesterol: 0, fatTarget: null, weight: null });
+    expect(r.cholesterol.target).toBe(CHOLESTEROL_TARGET_MG);
+  });
+
+  it('pct recalculates correctly against personalized sodium target', () => {
+    // weight 60 → sodiumTarget 1800. consumed 900 → 50 %
+    const r = computeHeartHealthyCard({ consumedFat: 0, consumedSodium: 900, consumedCholesterol: 0, fatTarget: null, weight: 60 });
+    expect(r.sodium.pct).toBe(50);
+  });
+});
+
+describe('computeLowCarbCard — personalized sugar target', () => {
+  it('sugar target = 10% of calorieTarget / 4 kcal per gram', () => {
+    const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 0, consumedFiber: 0, carbsTarget: null, calorieTarget: 2000 });
+    expect(r.sugar.target).toBe(50); // 2000 * 0.1 / 4
+  });
+
+  it('sugar target scales down with lower calorie target', () => {
+    const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 0, consumedFiber: 0, carbsTarget: null, calorieTarget: 1500 });
+    expect(r.sugar.target).toBe(38); // Math.round(1500 * 0.1 / 4) = Math.round(37.5) = 38
+  });
+
+  it('sugar target falls back to 50 g when calorieTarget is null', () => {
+    const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 0, consumedFiber: 0, carbsTarget: null, calorieTarget: null });
+    expect(r.sugar.target).toBe(SUGAR_TARGET_G);
+  });
+
+  it('sugar target falls back to 50 g when calorieTarget is 0', () => {
+    const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 0, consumedFiber: 0, carbsTarget: null, calorieTarget: 0 });
+    expect(r.sugar.target).toBe(SUGAR_TARGET_G);
+  });
+
+  it('pct recalculates correctly against personalized sugar target', () => {
+    // calorieTarget 2000 → sugarTarget 50. consumed 25 → 50 %
+    const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 25, consumedFiber: 0, carbsTarget: null, calorieTarget: 2000 });
+    expect(r.sugar.pct).toBe(50);
+  });
+});

@@ -141,7 +141,7 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
             <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-blue-50 flex items-center justify-center">
               <Scale className="w-5 h-5 text-blue-500" />
             </div>
-            <p className="text-xs text-gray-500 mb-0.5">Base Goal</p>
+            <p className="text-xs text-gray-500 mb-0.5">Allowed</p>
             <p className="text-sm font-bold text-gray-900">{target.toLocaleString()}</p>
           </div>
 

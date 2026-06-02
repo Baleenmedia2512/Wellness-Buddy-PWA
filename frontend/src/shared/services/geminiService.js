@@ -214,6 +214,159 @@ class GeminiService {
   }
 
   /**
+   * Enrich micronutrients with USDA fallback values when Gemini returns zeros
+   * @param {Object} nutritionData - The parsed Gemini response with foods array
+   * @returns {Object} Enriched nutrition data
+   */
+  enrichMicronutrients(nutritionData) {
+    if (!nutritionData.foods || !Array.isArray(nutritionData.foods)) {
+      return nutritionData;
+    }
+
+    // USDA-based fallback values per 100g (source: USDA FoodData Central)
+    const usdaDefaults = {
+      // Indian foods
+      dosa: { fiber: 1.5, sugar: 0.5, sodium: 250, cholesterol: 0 },
+      idli: { fiber: 1.2, sugar: 0.5, sodium: 180, cholesterol: 0 },
+      vada: { fiber: 2.0, sugar: 1.0, sodium: 300, cholesterol: 0 },
+      paratha: { fiber: 2.5, sugar: 1.0, sodium: 350, cholesterol: 15 },
+      roti: { fiber: 3.0, sugar: 1.0, sodium: 200, cholesterol: 0 },
+      chapati: { fiber: 3.0, sugar: 1.0, sodium: 200, cholesterol: 0 },
+      naan: { fiber: 2.0, sugar: 2.0, sodium: 400, cholesterol: 10 },
+      sambar: { fiber: 3.0, sugar: 3.0, sodium: 450, cholesterol: 0 },
+      rasam: { fiber: 1.0, sugar: 2.0, sodium: 500, cholesterol: 0 },
+      'coconut chutney': { fiber: 2.0, sugar: 1.5, sodium: 300, cholesterol: 0 },
+      'tomato chutney': { fiber: 2.5, sugar: 5.0, sodium: 400, cholesterol: 0 },
+      'mint chutney': { fiber: 2.0, sugar: 1.0, sodium: 350, cholesterol: 0 },
+      'coriander chutney': { fiber: 2.0, sugar: 1.0, sodium: 350, cholesterol: 0 },
+      biryani: { fiber: 1.5, sugar: 1.0, sodium: 500, cholesterol: 30 },
+      pulao: { fiber: 1.5, sugar: 1.0, sodium: 400, cholesterol: 10 },
+      'fried rice': { fiber: 1.0, sugar: 1.0, sodium: 600, cholesterol: 30 },
+      dal: { fiber: 7.6, sugar: 1.5, sodium: 400, cholesterol: 0 },
+      'dal fry': { fiber: 7.6, sugar: 1.5, sodium: 450, cholesterol: 0 },
+      'dal tadka': { fiber: 7.6, sugar: 1.5, sodium: 500, cholesterol: 0 },
+      'dal makhani': { fiber: 6.5, sugar: 2.0, sodium: 550, cholesterol: 15 },
+      'chickpea curry': { fiber: 6.0, sugar: 3.0, sodium: 400, cholesterol: 0 },
+      'chana masala': { fiber: 6.0, sugar: 3.0, sodium: 450, cholesterol: 0 },
+      'vegetable curry': { fiber: 3.5, sugar: 4.0, sodium: 400, cholesterol: 0 },
+      'mixed vegetable curry': { fiber: 3.5, sugar: 4.0, sodium: 400, cholesterol: 0 },
+      'paneer': { fiber: 0, sugar: 1.5, sodium: 350, cholesterol: 40 },
+      'paneer tikka': { fiber: 0, sugar: 2.0, sodium: 450, cholesterol: 40 },
+      'paneer butter masala': { fiber: 1.0, sugar: 3.0, sodium: 500, cholesterol: 50 },
+      'butter chicken': { fiber: 1.0, sugar: 4.0, sodium: 600, cholesterol: 60 },
+      'chicken curry': { fiber: 1.0, sugar: 3.0, sodium: 500, cholesterol: 70 },
+      'chicken tikka': { fiber: 0.5, sugar: 2.0, sodium: 550, cholesterol: 75 },
+      
+      // Common foods
+      rice: { fiber: 0.4, sugar: 0.1, sodium: 5, cholesterol: 0 },
+      bread: { fiber: 2.4, sugar: 4.0, sodium: 450, cholesterol: 0 },
+      egg: { fiber: 0, sugar: 0.4, sodium: 124, cholesterol: 372 },
+      chicken: { fiber: 0, sugar: 0, sodium: 70, cholesterol: 75 },
+      fish: { fiber: 0, sugar: 0, sodium: 50, cholesterol: 55 },
+      milk: { fiber: 0, sugar: 12, sodium: 107, cholesterol: 24 },
+      yogurt: { fiber: 0, sugar: 11, sodium: 120, cholesterol: 13 },
+      banana: { fiber: 2.6, sugar: 12, sodium: 1, cholesterol: 0 },
+      apple: { fiber: 2.4, sugar: 10, sodium: 1, cholesterol: 0 },
+      orange: { fiber: 2.4, sugar: 9, sodium: 0, cholesterol: 0 },
+      
+      // Fallback for unknown foods
+      default: { fiber: 1.0, sugar: 2.0, sodium: 150, cholesterol: 0 }
+    };
+
+    let enrichedCount = 0;
+
+    nutritionData.foods = nutritionData.foods.map(food => {
+      const nutrition = food.nutrition || {};
+      
+      // Check which specific micronutrients are missing
+      const missingSugar = !nutrition.sugar || nutrition.sugar === 0;
+      const missingSodium = !nutrition.sodium || nutrition.sodium === 0;
+      const missingCholesterol = !nutrition.cholesterol || nutrition.cholesterol === 0;
+      const missingFiber = !nutrition.fiber || nutrition.fiber === 0;
+      
+      // Enrich if ANY critical micronutrient is missing (sugar/sodium/cholesterol are invisible in photos)
+      const needsEnrichment = missingSugar || missingSodium || missingCholesterol || missingFiber;
+
+      if (needsEnrichment && food.name) {
+        // Find matching USDA defaults (case-insensitive, partial match)
+        const foodNameLower = food.name.toLowerCase();
+        let defaults = null;
+
+        // Try exact match first
+        if (usdaDefaults[foodNameLower]) {
+          defaults = usdaDefaults[foodNameLower];
+        } else {
+          // Try partial match (e.g., "masala dosa" matches "dosa")
+          for (const [key, value] of Object.entries(usdaDefaults)) {
+            if (key !== 'default' && foodNameLower.includes(key)) {
+              defaults = value;
+              break;
+            }
+          }
+        }
+
+        // Fallback to default if no match
+        if (!defaults) {
+          defaults = usdaDefaults.default;
+        }
+
+        // Calculate actual values based on weight/volume
+        const weightInGrams = food.weight_g || food.volume_ml || 100;
+        const scaleFactor = weightInGrams / 100;
+
+        // Apply enriched values ONLY for missing fields (preserve Gemini's good values)
+        food.nutrition = {
+          ...nutrition,
+          fiber: missingFiber ? Math.round((defaults.fiber * scaleFactor) * 10) / 10 : nutrition.fiber,
+          sugar: missingSugar ? Math.round((defaults.sugar * scaleFactor) * 10) / 10 : nutrition.sugar,
+          sodium: missingSodium ? Math.round(defaults.sodium * scaleFactor) : nutrition.sodium,
+          cholesterol: missingCholesterol ? Math.round(defaults.cholesterol * scaleFactor) : nutrition.cholesterol
+        };
+
+        enrichedCount++;
+        
+        const enrichedFields = [];
+        if (missingFiber) enrichedFields.push(`fiber: ${food.nutrition.fiber}g`);
+        if (missingSugar) enrichedFields.push(`sugar: ${food.nutrition.sugar}g`);
+        if (missingSodium) enrichedFields.push(`sodium: ${food.nutrition.sodium}mg`);
+        if (missingCholesterol) enrichedFields.push(`cholesterol: ${food.nutrition.cholesterol}mg`);
+        
+        debugLog(`🔧 USDA Enrichment Applied to "${food.name}":`, {
+          weight: weightInGrams + 'g',
+          enriched: enrichedFields.join(', '),
+          preserved: Object.entries(nutrition)
+            .filter(([key]) => ['fiber', 'sugar', 'sodium', 'cholesterol'].includes(key) && nutrition[key] > 0)
+            .map(([key, val]) => `${key}: ${val}`)
+            .join(', ') || 'none'
+        });
+      }
+
+      return food;
+    });
+
+    // Recalculate totals if any foods were enriched
+    if (enrichedCount > 0) {
+      nutritionData.total = nutritionData.foods.reduce(
+        (acc, food) => ({
+          calories: (acc.calories || 0) + (food.nutrition.calories || 0),
+          protein: (acc.protein || 0) + (food.nutrition.protein || 0),
+          carbs: (acc.carbs || 0) + (food.nutrition.carbs || 0),
+          fat: (acc.fat || 0) + (food.nutrition.fat || 0),
+          fiber: (acc.fiber || 0) + (food.nutrition.fiber || 0),
+          sugar: (acc.sugar || 0) + (food.nutrition.sugar || 0),
+          sodium: (acc.sodium || 0) + (food.nutrition.sodium || 0),
+          cholesterol: (acc.cholesterol || 0) + (food.nutrition.cholesterol || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 }
+      );
+
+      debugLog(`✅ USDA Enrichment Complete: ${enrichedCount} foods enriched`);
+    }
+
+    return nutritionData;
+  }
+
+  /**
    * Build personalized prompt with user context
    * @param {Object} userContext - User's personalization context
    * @returns {string} Personalized prompt for Gemini
@@ -293,9 +446,17 @@ class GeminiService {
     promptParts.push("2. Use standard USDA values");
     promptParts.push("3. Liquids: use ml/L; Solids: use grams");
     promptParts.push("4. For SOLID foods, continue using weight in grams/kg");
-    promptParts.push("5. IMPORTANT: You MUST provide ALL 8 nutrition fields (calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol)");
-    promptParts.push("6. For micronutrients (sugar/sodium/cholesterol), use USDA database values for the identified food type - these cannot be seen in photos but are critical health metrics");
-    promptParts.push("7. Return concise JSON only");
+    promptParts.push("");
+    promptParts.push("⚠️ CRITICAL NUTRITION REQUIREMENTS (VIOLATIONS REJECTED):");
+    promptParts.push("5. You MUST provide ALL 8 nutrition fields: calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol");
+    promptParts.push("6. sugar/sodium/cholesterol are INVISIBLE in photos - you MUST look them up in USDA database");
+    promptParts.push("   Examples:");
+    promptParts.push("   • 2 idlis (180g) = sugar: 1g, sodium: 180mg, cholesterol: 0mg");
+    promptParts.push("   • 1 cup milk (240ml) = sugar: 12g, sodium: 107mg, cholesterol: 24mg");
+    promptParts.push("   • 1 egg (50g) = sugar: 0g, sodium: 62mg, cholesterol: 186mg");
+    promptParts.push("   • 1 banana (120g) = sugar: 14g, sodium: 1mg, cholesterol: 0mg");
+    promptParts.push("7. DO NOT return 0 for sugar/sodium/cholesterol unless food genuinely contains none");
+    promptParts.push("8. Return concise JSON only");
     promptParts.push("");
     promptParts.push("FORMAT:");
     promptParts.push("{");
@@ -334,8 +495,14 @@ class GeminiService {
     promptParts.push('  "confidence": "high/medium/low"');
     promptParts.push("}");
     promptParts.push("");
+    promptParts.push("⛔ BEFORE YOU RESPOND - VERIFY:");
+    promptParts.push("✓ Every food has 8 nutrition fields (no missing sugar/sodium/cholesterol)");
+    promptParts.push("✓ sugar/sodium/cholesterol values come from USDA database, NOT visual guesses");
+    promptParts.push("✓ Total nutrition is SUM of all foods (all 8 fields)");
+    promptParts.push("✓ If you don't know USDA values, provide reasonable estimates based on food type");
+    promptParts.push("");
     promptParts.push(
-      'CRITICAL: ALL 8 nutrition fields are MANDATORY. Never return 0 or omit sugar/sodium/cholesterol - look up standard USDA values for the food type you identified.',
+      '🚨 REJECTION CRITERIA: Missing sugar/sodium/cholesterol OR all zeros OR values not from database',
     );
     promptParts.push("");
     promptParts.push(
@@ -467,6 +634,20 @@ class GeminiService {
       }
       debugLog("============================================");
 
+      // 🔧 Enrich micronutrients with USDA fallback values when Gemini returns zeros
+      nutritionData = this.enrichMicronutrients(nutritionData);
+
+      // 🔍 DEBUG: Log enriched data structure
+      debugLog('🔍 [After Enrichment] Nutrition data:', {
+        foodCount: nutritionData.foods?.length || 0,
+        total: nutritionData.total,
+        firstFood: nutritionData.foods?.[0],
+        allFoodsNutrition: nutritionData.foods?.map(f => ({
+          name: f.name,
+          nutrition: f.nutrition
+        }))
+      });
+
       return this.transformOptimizedResponse(nutritionData, "image");
     } catch (error) {
       const processingTime = Date.now() - startTime;
@@ -499,7 +680,9 @@ FORMAT:
   "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num}
 }
 
-CRITICAL: Include ALL 8 nutrition fields. Use USDA database values for sugar/sodium/cholesterol.
+⚠️ MANDATORY: ALL 8 nutrition fields required. sugar/sodium/cholesterol MUST come from USDA database.
+Examples: milk (240ml) = sugar:12g, sodium:107mg, cholesterol:24mg | banana = sugar:14g, sodium:1mg, cholesterol:0mg
+DO NOT return 0 unless food genuinely contains none.
 Liquids: use volume_ml+ml. Solids: use weight_g+g.
 JSON only.`;
 
@@ -522,6 +705,23 @@ JSON only.`;
       this.logTokenUsage(response, "text_analysis", processingTime);
 
       // debugLog(`✅ Text analysis completed in ${processingTime}ms`);
+
+      // 🔧 Enrich micronutrients for text analysis (wrap single food for processing)
+      const wrappedData = {
+        foods: [{
+          name: nutritionData.name,
+          portion: nutritionData.serving,
+          weight_g: nutritionData.weight_g,
+          volume_ml: nutritionData.volume_ml,
+          unit: nutritionData.unit,
+          isLiquid: nutritionData.isLiquid,
+          nutrition: nutritionData.nutrition
+        }],
+        total: nutritionData.nutrition
+      };
+      const enrichedData = this.enrichMicronutrients(wrappedData);
+      // Unwrap back to single food format
+      nutritionData.nutrition = enrichedData.foods[0].nutrition;
 
       return this.transformOptimizedResponse(nutritionData, "text");
     } catch (error) {
@@ -597,7 +797,9 @@ RULES:
 2. Use standard serving with quantity (e.g., "1/2 cup", "2 tbsp", "1 piece")
 3. Liquids: unit="ml", grams=ml value. Solids: unit="g", grams=weight
 4. Return defaultServing nutrition + per100g nutrition (ALL 8 fields required)
-5. Use USDA database values for sugar/sodium/cholesterol
+5. ⚠️ sugar/sodium/cholesterol MUST come from USDA database - these are INVISIBLE in photos
+6. Example: idli (90g) = sugar:0.5g, sodium:90mg, cholesterol:0mg | milk (240ml) = sugar:12g, sodium:107mg, cholesterol:24mg
+7. DO NOT return 0 for sugar/sodium/cholesterol unless food genuinely contains none
 Note: Serving options generated locally, don't include servingOptions array.`;
 
       debugLog("📤 Sending search request to Gemini...");
@@ -892,10 +1094,10 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           protein: Math.round(totalNutrition.protein || 0),
           carbs: Math.round(totalNutrition.carbs || 0),
           fat: Math.round(totalNutrition.fat || 0),
-          fiber: Math.round(totalNutrition.fiber || 0),
-          sugar: Math.round(totalNutrition.sugar || 0),
-          sodium: Math.round(totalNutrition.sodium || 0),
-          cholesterol: Math.round(totalNutrition.cholesterol || 0),
+          fiber: Math.round((totalNutrition.fiber || 0) * 10) / 10, // 1 decimal
+          sugar: Math.round((totalNutrition.sugar || 0) * 10) / 10, // 1 decimal
+          sodium: Math.round(totalNutrition.sodium || 0), // whole mg
+          cholesterol: Math.round(totalNutrition.cholesterol || 0), // whole mg
         },
         category: {
           name: categoryName,
@@ -917,10 +1119,10 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           protein: Math.round(food.nutrition.protein || 0),
           carbs: Math.round(food.nutrition.carbs || 0),
           fat: Math.round(food.nutrition.fat || 0),
-          fiber: Math.round(food.nutrition.fiber || 0),
-          sugar: Math.round(food.nutrition.sugar || 0),
-          sodium: Math.round(food.nutrition.sodium || 0),
-          cholesterol: Math.round(food.nutrition.cholesterol || 0),
+          fiber: Math.round((food.nutrition.fiber || 0) * 10) / 10, // 1 decimal for fiber
+          sugar: Math.round((food.nutrition.sugar || 0) * 10) / 10, // 1 decimal for sugar
+          sodium: Math.round(food.nutrition.sodium || 0), // whole mg for sodium
+          cholesterol: Math.round(food.nutrition.cholesterol || 0), // whole mg for cholesterol
           // 🔴 CRITICAL: Preserve correction metadata for UI display
           originalAiName: food.originalAiName || food.name,
           wasAutoCorrected: food.wasAutoCorrected || false,
@@ -940,8 +1142,8 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           protein: Math.round(data.nutrition.protein || 0),
           carbs: Math.round(data.nutrition.carbs || 0),
           fat: Math.round(data.nutrition.fat || 0),
-          fiber: Math.round(data.nutrition.fiber || 0),
-          sugar: Math.round(data.nutrition.sugar || 0),
+          fiber: Math.round((data.nutrition.fiber || 0) * 10) / 10,
+          sugar: Math.round((data.nutrition.sugar || 0) * 10) / 10,
           sodium: Math.round(data.nutrition.sodium || 0),
           cholesterol: Math.round(data.nutrition.cholesterol || 0),
         },
@@ -968,7 +1170,10 @@ Note: Serving options generated locally, don't include servingOptions array.`;
             protein: Math.round(data.nutrition.protein || 0),
             carbs: Math.round(data.nutrition.carbs || 0),
             fat: Math.round(data.nutrition.fat || 0),
-            fiber: Math.round(data.nutrition.fiber || 0),
+            fiber: Math.round((data.nutrition.fiber || 0) * 10) / 10,
+            sugar: Math.round((data.nutrition.sugar || 0) * 10) / 10,
+            sodium: Math.round(data.nutrition.sodium || 0),
+            cholesterol: Math.round(data.nutrition.cholesterol || 0),
           },
         ],
       };

@@ -94,6 +94,7 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
+import { aggregateFoodTotals } from "./features/nutrition";
 import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
@@ -311,6 +312,7 @@ function WellnessValleyApp() {
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
+  const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0); // Increment to force HomeNutritionCarousel re-fetch
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload ? pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
@@ -3295,6 +3297,9 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
+      // Signal HomeNutritionCarousel to re-fetch today's stats live.
+      setNutritionRefreshKey((prev) => prev + 1);
+
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
@@ -4269,18 +4274,9 @@ function WellnessValleyApp() {
           // ?? ALWAYS recalculate totals from corrected foods (don't use original AI total)
           // Original code used: detectedType.details.total || foods.reduce(...)
           // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
-          const total = foods.reduce(
-            (acc, food) => ({
-              calories:
-                acc.calories + (food.nutrition?.calories || food.calories || 0),
-              protein:
-                acc.protein + (food.nutrition?.protein || food.protein || 0),
-              carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
-              fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
-              fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
-            }),
-            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-          );
+          // NOTE: sugar/sodium/cholesterol MUST be summed here as well — see
+          // aggregateFoodTotals + transformAnalysisFormat regression tests.
+          const total = aggregateFoodTotals(foods);
 
           debugLog("?? [App.js] Calculated total from corrected foods:", {
             totalCalories: total.calories,
@@ -4314,6 +4310,12 @@ function WellnessValleyApp() {
               carbs: Math.round(total.carbs || 0),
               fat: Math.round(total.fat || 0),
               fiber: Math.round(total.fiber || 0),
+              // Persist the AI's invisible micronutrients so the backend
+              // saves TotalSugar / TotalSodium / TotalCholesterol instead
+              // of NULL. See aggregateFoodTotals + bug report.
+              sugar: Math.round(total.sugar || 0),
+              sodium: Math.round(total.sodium || 0),
+              cholesterol: Math.round(total.cholesterol || 0),
             },
             category: {
               name: categoryName,
@@ -4339,6 +4341,17 @@ function WellnessValleyApp() {
                 carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
                 fat: Math.round(food.nutrition?.fat || food.fat || 0),
                 fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+                // Carry sugar/sodium/cholesterol through to the save payload
+                // so they reach food_nutrition_data_table instead of NULL.
+                sugar: Math.round(
+                  food.nutrition?.sugar || food.sugar || 0,
+                ),
+                sodium: Math.round(
+                  food.nutrition?.sodium || food.sodium || 0,
+                ),
+                cholesterol: Math.round(
+                  food.nutrition?.cholesterol || food.cholesterol || 0,
+                ),
               };
 
               debugLog(
@@ -5738,6 +5751,7 @@ function WellnessValleyApp() {
             user={user}
             apiBaseUrl={apiBaseUrl}
             bmrUpdateKey={bmrUpdateKey}
+            nutritionRefreshKey={nutritionRefreshKey}
           />
 
           <ImageUpload
