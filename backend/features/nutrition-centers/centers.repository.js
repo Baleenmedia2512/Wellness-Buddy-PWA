@@ -176,7 +176,7 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('food_nutrition_data_table')
-      .select('"UserId"')
+      .select('"UserID"')
       .eq('"NutritionCenterId"', centerId)
       .eq('"IsDeleted"', false)
       .gte('"CreatedAt"', rangeStart)
@@ -188,11 +188,11 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
   if (weightRes.error) throw new Error(`Weight logs query failed: ${weightRes.error.message}`);
   if (foodRes.error) throw new Error(`Food logs query failed: ${foodRes.error.message}`);
   
-  // Merge all logs
+  // Merge all logs - normalize food table's UserID to UserId
   const allLogs = [
     ...(eduRes.data || []),
     ...(weightRes.data || []),
-    ...(foodRes.data || []),
+    ...(foodRes.data || []).map(row => ({ UserId: row.UserID })),
   ];
   
   return allLogs;
@@ -219,7 +219,7 @@ export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('food_nutrition_data_table')
-      .select('"UserId"')
+      .select('"UserID"')
       .eq('"NutritionCenterId"', centerId)
       .eq('"IsDeleted"', false)
       .gte('"CreatedAt"', rangeStart)
@@ -231,11 +231,11 @@ export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
   if (weightRes.error) throw new Error(weightRes.error.message);
   if (foodRes.error) throw new Error(foodRes.error.message);
   
-  // Merge all logs
+  // Merge all logs - normalize food table's UserID to UserId
   const allLogs = [
     ...(eduRes.data || []),
     ...(weightRes.data || []),
-    ...(foodRes.data || []),
+    ...(foodRes.data || []).map(row => ({ UserId: row.UserID })),
   ];
   
   if (allLogs.length === 0) return [];
