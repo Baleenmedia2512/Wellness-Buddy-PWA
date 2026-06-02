@@ -164,21 +164,21 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
       .from('education_logs_table')
       .select('"UserId"')
       .eq('nutrition_center_id', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('weight_records_table')
       .select('"UserId"')
       .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('food_nutrition_data_table')
       .select('"UserID"')
       .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
   ]);
@@ -207,21 +207,21 @@ export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
       .from('education_logs_table')
       .select('"UserId"')
       .eq('nutrition_center_id', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('weight_records_table')
       .select('"UserId"')
       .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
     supabase
       .from('food_nutrition_data_table')
       .select('"UserID"')
       .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', false)
+      .eq('"IsDeleted"', 0)
       .gte('"CreatedAt"', rangeStart)
       .lte('"CreatedAt"', rangeEnd),
   ]);
