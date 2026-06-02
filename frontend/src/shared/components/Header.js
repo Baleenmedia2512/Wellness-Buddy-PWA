@@ -580,7 +580,7 @@ const Header = ({
                             <TrendingUp className="h-5 w-5 text-indigo-700" />
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            My Attendance
+                            Education Attendance
                           </span>
                         </TouchFeedbackButton>
                       )}
