@@ -88,7 +88,7 @@ export default async function handler(req, res) {
         .in('UserId', allUserIds)
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', false),
+        .eq('IsDeleted', 0),
       
       // Education records
       supabase
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
         .in('UserId', allUserIds)
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', false),
+        .eq('IsDeleted', 0),
       
       // Food/nutrition records (include AnalysisData to filter out beverage-only entries)
       supabase
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
         .in('UserID', allUserIds.map(String))
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', false)
+        .eq('IsDeleted', 0)
     ]);
 
     // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
@@ -252,7 +252,7 @@ export default async function handler(req, res) {
           .from('education_logs_table')
           .select('id, attendance_type, CreatedAt')
           .eq('UserId', member.UserId)
-          .eq('IsDeleted', false)
+          .eq('IsDeleted', 0)
           .gte('CreatedAt', start)
           .lte('CreatedAt', end + 'T23:59:59');
 
