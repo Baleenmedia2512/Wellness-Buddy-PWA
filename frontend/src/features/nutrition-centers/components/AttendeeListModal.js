@@ -1,8 +1,58 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users } from 'lucide-react';
+import { X, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { debugLog } from '../../../shared/utils/logger.js';
+
+/**
+ * Helper to format timestamp as human-readable time
+ */
+const formatTime = (timestamp) => {
+  if (!timestamp) return '';
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Helper to get icon/emoji for log type
+ */
+const getLogIcon = (logType) => {
+  switch (logType) {
+    case 'education': return '📚';
+    case 'weight': return '⚖️';
+    case 'food': return '🍽️';
+    default: return '✅';
+  }
+};
+
+/**
+ * Helper to group logs by user
+ */
+const groupLogsByUser = (logs) => {
+  const grouped = {};
+  logs.forEach((log) => {
+    if (!grouped[log.userId]) {
+      grouped[log.userId] = {
+        userId: log.userId,
+        userName: log.userName,
+        logs: [],
+      };
+    }
+    grouped[log.userId].logs.push({
+      logType: log.logType || 'unknown',
+      timestamp: log.timestamp || new Date().toISOString(),
+    });
+  });
+  // Sort logs within each user by timestamp
+  Object.values(grouped).forEach((user) => {
+    user.logs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  });
+  return Object.values(grouped);
+};
 
 /**
  * AttendeeListModal
@@ -32,6 +82,7 @@ const AttendeeListModal = ({
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [expandedUsers, setExpandedUsers] = useState(new Set());
 
   useEffect(() => {
     if (!isOpen) return;
@@ -59,7 +110,8 @@ const AttendeeListModal = ({
         .then((result) => {
           if (cancelled) return;
           if (!result.success) throw new Error(result.error?.message || 'Failed to load attendees');
-          debugLog(`✅ [AttendeeListModal] Loaded ${result.data.length} attendees for centre ${center.id}`);
+          debugLog(`✅ [AttendeeListModal] Loaded ${result.data.length} log entries for centre ${center.id}`);
+          debugLog('[AttendeeListModal] Sample log entry:', result.data[0]);
           setAttendees(result.data);
         })
         .catch((err) => {
@@ -70,7 +122,7 @@ const AttendeeListModal = ({
         })
         .finally(() => { if (!cancelled) setLoading(false); });
     } else {
-      // ── Summary mode — fetch all centres in parallel and de-duplicate ──
+      // ── Summary mode — fetch all centres in parallel and merge ──
       const centresWithAttendance = allCenters.filter((c) => (c.todayAttendance || 0) > 0);
       if (centresWithAttendance.length === 0) {
         setLoading(false);
@@ -79,18 +131,12 @@ const AttendeeListModal = ({
       Promise.all(centresWithAttendance.map((c) => fetchForCentre(c.id).catch(() => null)))
         .then((results) => {
           if (cancelled) return;
-          const seen = new Set();
           const merged = [];
           results.forEach((result) => {
             if (!result?.success) return;
-            result.data.forEach((a) => {
-              if (!seen.has(a.userId)) {
-                seen.add(a.userId);
-                merged.push(a);
-              }
-            });
+            merged.push(...result.data);
           });
-          debugLog(`✅ [AttendeeListModal] Summary: ${merged.length} unique attendees across ${centresWithAttendance.length} centres`);
+          debugLog(`✅ [AttendeeListModal] Summary: ${merged.length} log entries across ${centresWithAttendance.length} centres`);
           setAttendees(merged);
         })
         .catch((err) => {
@@ -104,6 +150,22 @@ const AttendeeListModal = ({
 
     return () => { cancelled = true; };
   }, [isOpen, center?.id, allCenters, startDate, endDate, apiBaseUrl]);
+
+  const toggleUser = (userId) => {
+    setExpandedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  // Group logs by user for display
+  const groupedAttendees = groupLogsByUser(attendees);
+  const uniqueAttendeeCount = groupedAttendees.length;
 
   return (
     <AnimatePresence>
@@ -172,31 +234,73 @@ const AttendeeListModal = ({
                 </div>
               )}
 
-              {!loading && !error && attendees.length > 0 && (
+              {!loading && !error && groupedAttendees.length > 0 && (
                 <ul className="space-y-2">
-                  {attendees.map((a, idx) => (
-                    <li
-                      key={a.userId}
-                      className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0"
-                    >
-                      {/* Avatar circle */}
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                        <span className="text-green-700 font-semibold text-xs">
-                          {(a.userName || '?').charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="text-sm text-gray-800">{a.userName}</span>
-                    </li>
-                  ))}
+                  {groupedAttendees.map((user) => {
+                    const isExpanded = expandedUsers.has(user.userId);
+                    return (
+                      <li
+                        key={user.userId}
+                        className="border border-gray-100 rounded-lg overflow-hidden"
+                      >
+                        {/* User Header - clickable */}
+                        <button
+                          onClick={() => toggleUser(user.userId)}
+                          className="w-full flex items-center gap-3 py-3 px-3 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          {/* Avatar circle */}
+                          <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                            <span className="text-green-700 font-semibold text-sm">
+                              {(user.userName || '?').charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-800 block truncate">{user.userName}</span>
+                            <span className="text-xs text-gray-500">
+                              {user.logs.length} {user.logs.length === 1 ? 'log' : 'logs'}
+                            </span>
+                          </div>
+                          {/* Expand/Collapse icon */}
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {/* Expanded Log Details */}
+                        {isExpanded && (
+                          <div className="bg-gray-50 px-3 py-2 border-t border-gray-100">
+                            <div className="space-y-1.5">
+                              {user.logs.map((log, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between text-xs py-1.5 px-2 bg-white rounded border border-gray-100"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-base">{getLogIcon(log.logType)}</span>
+                                    <span className="font-medium text-gray-700 capitalize">
+                                      {log.logType}
+                                    </span>
+                                  </div>
+                                  <span className="text-gray-500">{formatTime(log.timestamp)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
 
             {/* Footer count */}
-            {!loading && attendees.length > 0 && (
+            {!loading && groupedAttendees.length > 0 && (
               <div className="px-5 py-3 border-t border-gray-100 text-center">
                 <span className="text-xs text-gray-500">
-                  {attendees.length} {attendees.length === 1 ? 'person' : 'people'} attended {dateLabel.toLowerCase()}
+                  {uniqueAttendeeCount} {uniqueAttendeeCount === 1 ? 'person' : 'people'} attended {dateLabel.toLowerCase()}
                 </span>
               </div>
             )}

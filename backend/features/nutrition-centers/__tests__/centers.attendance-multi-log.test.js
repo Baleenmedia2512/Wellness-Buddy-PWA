@@ -170,14 +170,17 @@ describe('Multi-log-type attendance tracking', () => {
   });
 
   describe('getAttendeeList', () => {
-    it('should deduplicate users across all log types and fetch their names', async () => {
+    it('should return all log entries with log type and timestamps (not de-duplicated)', async () => {
       // Mock chains for log queries
       const eduQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         gte: jest.fn().mockReturnThis(),
         lte: jest.fn().mockResolvedValue({
-          data: [{ UserId: 1 }, { UserId: 2 }],
+          data: [
+            { UserId: 1, CreatedAt: '2026-06-01T09:00:00' },
+            { UserId: 2, CreatedAt: '2026-06-01T10:00:00' },
+          ],
           error: null,
         }),
       };
@@ -187,7 +190,10 @@ describe('Multi-log-type attendance tracking', () => {
         eq: jest.fn().mockReturnThis(),
         gte: jest.fn().mockReturnThis(),
         lte: jest.fn().mockResolvedValue({
-          data: [{ UserId: 2 }, { UserId: 3 }], // UserId 2 duplicated
+          data: [
+            { UserId: 2, CreatedAt: '2026-06-01T11:00:00' }, // UserId 2 duplicated
+            { UserId: 3, CreatedAt: '2026-06-01T12:00:00' },
+          ],
           error: null,
         }),
       };
@@ -197,7 +203,10 @@ describe('Multi-log-type attendance tracking', () => {
         eq: jest.fn().mockReturnThis(),
         gte: jest.fn().mockReturnThis(),
         lte: jest.fn().mockResolvedValue({
-          data: [{ UserId: 3 }, { UserId: 4 }], // UserId 3 duplicated
+          data: [
+            { UserID: 3, CreatedAt: '2026-06-01T13:00:00' }, // UserId 3 duplicated
+            { UserID: 4, CreatedAt: '2026-06-01T14:00:00' },
+          ],
           error: null,
         }),
       };
@@ -216,7 +225,6 @@ describe('Multi-log-type attendance tracking', () => {
         }),
       };
 
-      let callCount = 0;
       mockSupabase.from.mockImplementation((table) => {
         if (table === 'education_logs_table') return eduQuery;
         if (table === 'weight_records_table') return weightQuery;
@@ -227,14 +235,22 @@ describe('Multi-log-type attendance tracking', () => {
 
       const result = await getAttendeeList(5, '2026-06-01T00:00:00', '2026-06-01T23:59:59');
 
-      // Should return 4 unique users despite duplicates
-      expect(result).toHaveLength(4);
-      expect(result).toEqual(expect.arrayContaining([
-        { userId: 1, userName: 'Alice' },
-        { userId: 2, userName: 'Bob' },
-        { userId: 3, userName: 'Charlie' },
-        { userId: 4, userName: 'Diana' },
-      ]));
+      // Should return 6 log entries (not 4 unique users)
+      expect(result).toHaveLength(6);
+      
+      // Verify all logs have required fields
+      result.forEach(log => {
+        expect(log).toHaveProperty('userId');
+        expect(log).toHaveProperty('userName');
+        expect(log).toHaveProperty('logType');
+        expect(log).toHaveProperty('timestamp');
+      });
+
+      // Verify log types are correctly set
+      const logTypes = result.map(r => r.logType);
+      expect(logTypes.filter(t => t === 'education')).toHaveLength(2);
+      expect(logTypes.filter(t => t === 'weight')).toHaveLength(2);
+      expect(logTypes.filter(t => t === 'food')).toHaveLength(2);
 
       // Verify team_table was queried with unique user IDs
       expect(teamQuery.in).toHaveBeenCalledWith('"UserId"', expect.arrayContaining([1, 2, 3, 4]));
@@ -284,6 +300,107 @@ describe('Multi-log-type attendance tracking', () => {
       const result = await getAttendeeList(5, '2026-06-01T00:00:00', '2026-06-01T23:59:59');
 
       expect(result).toEqual([]);
+    });
+
+    it('should return log type and timestamp for each attendance entry', async () => {
+      // Mock chains for log queries with timestamps
+      const eduQuery = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        lte: jest.fn().mockResolvedValue({
+          data: [
+            { UserId: 1, CreatedAt: '2026-06-01T09:00:00' },
+            { UserId: 2, CreatedAt: '2026-06-01T10:00:00' },
+          ],
+          error: null,
+        }),
+      };
+
+      const weightQuery = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        lte: jest.fn().mockResolvedValue({
+          data: [{ UserId: 2, CreatedAt: '2026-06-01T11:00:00' }], // User 2 logs again
+          error: null,
+        }),
+      };
+
+      const foodQuery = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        lte: jest.fn().mockResolvedValue({
+          data: [
+            { UserID: 2, CreatedAt: '2026-06-01T12:00:00' }, // User 2 logs third time
+            { UserID: 3, CreatedAt: '2026-06-01T13:00:00' },
+          ],
+          error: null,
+        }),
+      };
+
+      // Mock team_table query
+      const teamQuery = {
+        select: jest.fn().mockReturnThis(),
+        in: jest.fn().mockResolvedValue({
+          data: [
+            { UserId: 1, UserName: 'Alice' },
+            { UserId: 2, UserName: 'Bob' },
+            { UserId: 3, UserName: 'Charlie' },
+          ],
+          error: null,
+        }),
+      };
+
+      mockSupabase.from.mockImplementation((table) => {
+        if (table === 'education_logs_table') return eduQuery;
+        if (table === 'weight_records_table') return weightQuery;
+        if (table === 'food_nutrition_data_table') return foodQuery;
+        if (table === 'team_table') return teamQuery;
+        return eduQuery;
+      });
+
+      const result = await getAttendeeList(5, '2026-06-01T00:00:00', '2026-06-01T23:59:59');
+
+      // Should return 5 log entries (not 3 unique users)
+      expect(result).toHaveLength(5);
+      
+      // User 1 - one education log
+      expect(result).toContainEqual({
+        userId: 1,
+        userName: 'Alice',
+        logType: 'education',
+        timestamp: '2026-06-01T09:00:00',
+      });
+
+      // User 2 - three logs (education, weight, food)
+      expect(result).toContainEqual({
+        userId: 2,
+        userName: 'Bob',
+        logType: 'education',
+        timestamp: '2026-06-01T10:00:00',
+      });
+      expect(result).toContainEqual({
+        userId: 2,
+        userName: 'Bob',
+        logType: 'weight',
+        timestamp: '2026-06-01T11:00:00',
+      });
+      expect(result).toContainEqual({
+        userId: 2,
+        userName: 'Bob',
+        logType: 'food',
+        timestamp: '2026-06-01T12:00:00',
+      });
+
+      // User 3 - one food log
+      expect(result).toContainEqual({
+        userId: 3,
+        userName: 'Charlie',
+        logType: 'food',
+        timestamp: '2026-06-01T13:00:00',
+      });
     });
   });
 });

@@ -4,8 +4,9 @@ import { getAttendees } from '../../../features/nutrition-centers/centers.servic
 
 /**
  * GET /api/nutrition-centers/attendees?centerId=X&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
- * Returns the de-duplicated list of users who attended a specific nutrition centre
- * in the given date range.
+ * Returns the list of attendance log entries (with log type and timestamp) for users who attended
+ * a specific nutrition centre in the given date range. Each user may have multiple entries
+ * if they logged education, weight, or food at the club.
  */
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
