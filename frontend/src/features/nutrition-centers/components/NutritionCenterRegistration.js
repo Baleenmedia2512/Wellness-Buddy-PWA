@@ -528,6 +528,11 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
       markerRef.current.setMap(null);
       markerRef.current = null;
     }
+    
+    // Navigate back to Physical Club Report
+    if (onBack) {
+      onBack();
+    }
   };
 
   const handleUpdate = async (e) => {
@@ -562,7 +567,14 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
       setSuccess('Nutrition centre updated successfully!');
       handleCancelEdit();
       fetchMyCenters();
-      setTimeout(() => setSuccess(null), 3000);
+      
+      // Navigate back to Physical Club Report after successful save
+      setTimeout(() => {
+        setSuccess(null);
+        if (onBack) {
+          onBack();
+        }
+      }, 1500); // Show success message briefly before navigating back
     } catch (err) {
       debugLog('Error updating centre:', err);
       setError(err.message);
@@ -722,7 +734,7 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-4 space-y-6">
+      <div className="max-w-4xl mx-auto p-3 space-y-6">
         {/* Messages */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -737,9 +749,40 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
 
         {/* Registration Form */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">
-            {editingCenter ? 'Edit Centre Details' : 'New Centre Details'}
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-800">
+              {editingCenter ? 'Edit Centre Details' : 'New Centre Details'}
+            </h2>
+            {editingCenter && (
+              <div className="flex gap-2">
+                <TouchFeedbackButton
+                  type="button"
+                  onClick={handleUpdate}
+                  disabled={loading || nameAvailable === false || nameChecking}
+                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-lg">✓</span>
+                      Save
+                    </>
+                  )}
+                </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                >
+                  Cancel
+                </TouchFeedbackButton>
+              </div>
+            )}
+          </div>
           <form onSubmit={editingCenter ? handleUpdate : handleRegister} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -760,26 +803,28 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
                 required
               />
               {/* Name availability indicator */}
-              <div className="mt-1 h-5 flex items-center gap-1">
-                {nameChecking && (
-                  <>
-                    <Loader className="h-3.5 w-3.5 text-gray-400 animate-spin" />
-                    <span className="text-xs text-gray-400">Checking availability...</span>
-                  </>
-                )}
-                {!nameChecking && nameAvailable === true && (
-                  <>
-                    <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs text-green-600 font-medium">Name is available</span>
-                  </>
-                )}
-                {!nameChecking && nameAvailable === false && (
-                  <>
-                    <XCircle className="h-3.5 w-3.5 text-red-500" />
-                    <span className="text-xs text-red-600 font-medium">This name is already taken</span>
-                  </>
-                )}
-              </div>
+              {(nameChecking || nameAvailable !== null) && (
+                <div className="mt-1 flex items-center gap-1">
+                  {nameChecking && (
+                    <>
+                      <Loader className="h-3.5 w-3.5 text-gray-400 animate-spin" />
+                      <span className="text-xs text-gray-400">Checking availability...</span>
+                    </>
+                  )}
+                  {!nameChecking && nameAvailable === true && (
+                    <>
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                      <span className="text-xs text-green-600 font-medium">Name is available</span>
+                    </>
+                  )}
+                  {!nameChecking && nameAvailable === false && (
+                    <>
+                      <XCircle className="h-3.5 w-3.5 text-red-500" />
+                      <span className="text-xs text-red-600 font-medium">This name is already taken</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -876,31 +921,23 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
               </div>
             </div>
 
-            <TouchFeedbackButton
-              type="submit"
-              disabled={loading || nameAvailable === false || nameChecking}
-              className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-                  {editingCenter ? 'Saving...' : 'Registering...'}
-                </>
-              ) : (
-                <>
-                  <Save className="h-5 w-5" />
-                  {editingCenter ? 'Save Changes' : 'Register Centre'}
-                </>
-              )}
-            </TouchFeedbackButton>
-            {editingCenter && (
+            {!editingCenter && (
               <TouchFeedbackButton
-                type="button"
-                onClick={handleCancelEdit}
-                className="w-full py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 flex items-center justify-center gap-2"
+                type="submit"
+                disabled={loading || nameAvailable === false || nameChecking}
+                className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <X className="h-5 w-5" />
-                Cancel Edit
+                {loading ? (
+                  <>
+                    <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                    Registering...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-5 w-5" />
+                    Register Centre
+                  </>
+                )}
               </TouchFeedbackButton>
             )}
           </form>
