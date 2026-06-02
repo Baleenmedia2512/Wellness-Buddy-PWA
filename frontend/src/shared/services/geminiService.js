@@ -293,7 +293,9 @@ class GeminiService {
     promptParts.push("2. Use standard USDA values");
     promptParts.push("3. Liquids: use ml/L; Solids: use grams");
     promptParts.push("4. For SOLID foods, continue using weight in grams/kg");
-    promptParts.push("5. Return concise JSON only");
+    promptParts.push("5. IMPORTANT: You MUST provide ALL 8 nutrition fields (calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol)");
+    promptParts.push("6. For micronutrients (sugar/sodium/cholesterol), use USDA database values for the identified food type - these cannot be seen in photos but are critical health metrics");
+    promptParts.push("7. Return concise JSON only");
     promptParts.push("");
     promptParts.push("FORMAT:");
     promptParts.push("{");
@@ -312,7 +314,10 @@ class GeminiService {
     promptParts.push('        "protein": number,');
     promptParts.push('        "carbs": number,');
     promptParts.push('        "fat": number,');
-    promptParts.push('        "fiber": number');
+    promptParts.push('        "fiber": number,');
+    promptParts.push('        "sugar": number (REQUIRED - use USDA database value for this food type),');
+    promptParts.push('        "sodium": number (REQUIRED - use USDA database value, in mg),');
+    promptParts.push('        "cholesterol": number (REQUIRED - use USDA database value, in mg)');
     promptParts.push("      }");
     promptParts.push("    }");
     promptParts.push("  ],");
@@ -321,10 +326,17 @@ class GeminiService {
     promptParts.push('    "protein": number,');
     promptParts.push('    "carbs": number,');
     promptParts.push('    "fat": number,');
-    promptParts.push('    "fiber": number');
+    promptParts.push('    "fiber": number,');
+    promptParts.push('    "sugar": number (REQUIRED - sum of all foods),');
+    promptParts.push('    "sodium": number (REQUIRED - sum of all foods, in mg),');
+    promptParts.push('    "cholesterol": number (REQUIRED - sum of all foods, in mg)');
     promptParts.push("  },");
     promptParts.push('  "confidence": "high/medium/low"');
     promptParts.push("}");
+    promptParts.push("");
+    promptParts.push(
+      'CRITICAL: ALL 8 nutrition fields are MANDATORY. Never return 0 or omit sugar/sodium/cholesterol - look up standard USDA values for the food type you identified.',
+    );
     promptParts.push("");
     promptParts.push(
       'IMPORTANT: Liquids like water, juice, milk, coffee, tea, soup, smoothies should use volume_ml and unit="ml". Solids like rice, bread, meat should use weight_g and unit="g".',
@@ -484,11 +496,12 @@ FORMAT:
   "volume_ml": number (liquids),
   "unit": "g" or "ml",
   "isLiquid": boolean,
-  "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}
+  "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num}
 }
 
+CRITICAL: Include ALL 8 nutrition fields. Use USDA database values for sugar/sodium/cholesterol.
 Liquids: use volume_ml+ml. Solids: use weight_g+g.
-USDA values. JSON only.`;
+JSON only.`;
 
       // Make API call with timeout
       const result = await Promise.race([
@@ -577,13 +590,14 @@ USDA values. JSON only.`;
 
     try {
       const prompt = `"${foodQuery}" - Return 2 DIFFERENT variations:
-[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
+[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num}},"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num}}]
 
 RULES:
 1. Return 2 DISTINCT variations (e.g., "Coconut Chutney", "Spicy Coconut Chutney")
 2. Use standard serving with quantity (e.g., "1/2 cup", "2 tbsp", "1 piece")
 3. Liquids: unit="ml", grams=ml value. Solids: unit="g", grams=weight
-4. Return defaultServing nutrition + per100g nutrition
+4. Return defaultServing nutrition + per100g nutrition (ALL 8 fields required)
+5. Use USDA database values for sugar/sodium/cholesterol
 Note: Serving options generated locally, don't include servingOptions array.`;
 
       debugLog("📤 Sending search request to Gemini...");
@@ -847,9 +861,12 @@ Note: Serving options generated locally, don't include servingOptions array.`;
               carbs: (acc.carbs || 0) + (nutrition.carbs || 0),
               fat: (acc.fat || 0) + (nutrition.fat || 0),
               fiber: (acc.fiber || 0) + (nutrition.fiber || 0),
+              sugar: (acc.sugar || 0) + (nutrition.sugar || 0),
+              sodium: (acc.sodium || 0) + (nutrition.sodium || 0),
+              cholesterol: (acc.cholesterol || 0) + (nutrition.cholesterol || 0),
             };
           },
-          { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+          { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
         );
 
       // Match the formatFoodsTitle helper logic
@@ -876,6 +893,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(totalNutrition.carbs || 0),
           fat: Math.round(totalNutrition.fat || 0),
           fiber: Math.round(totalNutrition.fiber || 0),
+          sugar: Math.round(totalNutrition.sugar || 0),
+          sodium: Math.round(totalNutrition.sodium || 0),
+          cholesterol: Math.round(totalNutrition.cholesterol || 0),
         },
         category: {
           name: categoryName,
@@ -898,6 +918,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(food.nutrition.carbs || 0),
           fat: Math.round(food.nutrition.fat || 0),
           fiber: Math.round(food.nutrition.fiber || 0),
+          sugar: Math.round(food.nutrition.sugar || 0),
+          sodium: Math.round(food.nutrition.sodium || 0),
+          cholesterol: Math.round(food.nutrition.cholesterol || 0),
           // 🔴 CRITICAL: Preserve correction metadata for UI display
           originalAiName: food.originalAiName || food.name,
           wasAutoCorrected: food.wasAutoCorrected || false,
@@ -918,6 +941,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(data.nutrition.carbs || 0),
           fat: Math.round(data.nutrition.fat || 0),
           fiber: Math.round(data.nutrition.fiber || 0),
+          sugar: Math.round(data.nutrition.sugar || 0),
+          sodium: Math.round(data.nutrition.sodium || 0),
+          cholesterol: Math.round(data.nutrition.cholesterol || 0),
         },
         category: {
           name: data.name,

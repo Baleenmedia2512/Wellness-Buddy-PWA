@@ -30,6 +30,23 @@ describe('NutritionCarousel', () => {
     expect(screen.getByText('Calories')).toBeInTheDocument();
   });
 
+  it('slide track translateX uses per-card width (25%), not 100%, so other cards are reachable', () => {
+    // Regression: translateX(-100%) moves 4 cards at once (blank). Must be -25% per step.
+    const { container } = render(<NutritionCarousel {...BASE_PROPS} />);
+    const track = container.querySelector('.flex.transition-transform');
+    // Initially at card 0 — transform should be translateX(-0%)
+    expect(track.style.transform).toBe('translateX(-0%)');
+    // Click Macros dot (card 1)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Macros' }));
+    expect(track.style.transform).toBe('translateX(-25%)');
+    // Click Heart Healthy dot (card 2)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Heart Healthy' }));
+    expect(track.style.transform).toBe('translateX(-50%)');
+    // Click Low Carb dot (card 3)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Low Carb' }));
+    expect(track.style.transform).toBe('translateX(-75%)');
+  });
+
   it('renders four dot indicators', () => {
     render(<NutritionCarousel {...BASE_PROPS} />);
     const buttons = screen.getAllByRole('button', { name: /Go to/i });

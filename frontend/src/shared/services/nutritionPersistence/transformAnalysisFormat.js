@@ -7,6 +7,9 @@ const macros = (src) => ({
   carbs: src.carbs || 0,
   fat: src.fat || 0,
   fiber: src.fiber || 0,
+  sugar: src.sugar || 0,
+  sodium: src.sodium || 0,
+  cholesterol: src.cholesterol || 0,
 });
 
 const detailedItemToFood = (item) => ({
@@ -27,6 +30,9 @@ const detailedItemToFood = (item) => ({
     carbs: item.carbs || item.nutrition?.carbs || 0,
     fat: item.fat || item.nutrition?.fat || 0,
     fiber: item.fiber || item.nutrition?.fiber || 0,
+    sugar: item.sugar || item.nutrition?.sugar || 0,
+    sodium: item.sodium || item.nutrition?.sodium || 0,
+    cholesterol: item.cholesterol || item.nutrition?.cholesterol || 0,
   },
 });
 

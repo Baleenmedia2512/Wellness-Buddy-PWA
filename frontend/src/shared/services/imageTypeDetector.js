@@ -154,10 +154,10 @@ IF FOOD (default):
       "volume_ml": number (liquids),
       "unit": "g"|"ml",
       "isLiquid": boolean,
-      "nutrition": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
+      "nutrition": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num}
     }
   ],
-  "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
+  "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num}
 }
 
 ðŸ‹ï¸ WEIGHT SCALE DETECTION — READ CAREFULLY:

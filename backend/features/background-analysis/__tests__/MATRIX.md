@@ -6,6 +6,8 @@ Reference: [claude.md §9.3](../../../../claude.md#93-feature-testing-matrix-tem
 |------------|------|-------------|-----|-------------|------------|
 | `createPendingCapture` — validates + inserts pending row | ✅ | ⬜ | ⬜ | ⬜ | ✅ (invalid userId, missing base64) |
 | `getPublicCapture` — returns pending/enriched state | ✅ | ⬜ | ⬜ | ✅ (expired token) | ✅ (no expiry, pending) |
+| `save` — extracts sugar/sodium/cholesterol (migration 0009 regression) | ✅ | ⬜ | ⬜ | N/A | ✅ (foods+total, nutrition, foods-only, pre-fix null, explicit-zero) |
+| `getPublicCapture` — exposes sugar/sodium/cholesterol in nutrition response | ✅ | ⬜ | ⬜ | N/A | ✅ (populated values, NULL legacy rows) |
 | `list` — returns enriched captures with pagination | ✅ | ⬜ | ⬜ | ⬜ | ✅ (empty set, hasMore, userId forwarding) |
 | Orphan-row guard — pending captures (null AnalysisData) excluded from list | ✅ (service contract) | ⬜ (needs pg-mem or Supabase test project) | ⬜ | N/A | ✅ (all-orphan case returns empty) |
 

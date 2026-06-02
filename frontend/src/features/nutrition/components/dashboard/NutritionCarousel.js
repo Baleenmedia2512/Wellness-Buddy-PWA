@@ -89,7 +89,7 @@ const NutritionCarousel = ({
         {/* Slide track */}
         <div
           className="flex transition-transform duration-400 ease-out"
-          style={{ transform: `translateX(-${activeIndex * 100}%)`, width: `${cards.length * 100}%` }}
+          style={{ transform: `translateX(-${(activeIndex * 100) / cards.length}%)`, width: `${cards.length * 100}%` }}
         >
           {cards.map((card, i) => (
             <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[220px]">
