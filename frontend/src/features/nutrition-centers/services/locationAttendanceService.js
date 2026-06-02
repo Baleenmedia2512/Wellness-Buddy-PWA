@@ -270,6 +270,7 @@ export async function getClubLocationIfNearby(apiBaseUrl, userId) {
         latitude: result.latitude,
         longitude: result.longitude,
         nutritionCenterId: result.nutritionCenterId || null,
+        centerName: result.centerName || null,
       };
     }
     return null;

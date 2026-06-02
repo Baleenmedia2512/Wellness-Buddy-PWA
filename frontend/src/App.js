@@ -517,6 +517,8 @@ function WellnessValleyApp() {
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
   const [nearbyCenters, setNearbyCenters] = useState([]);
   const [pendingEducationData, setPendingEducationData] = useState(null);
+  const [pendingWeightData, setPendingWeightData] = useState(null);
+  const [pendingFoodData, setPendingFoodData] = useState(null);
 
   // Custom alert modal state
   const [alertModal, setAlertModal] = useState({
@@ -2466,31 +2468,40 @@ function WellnessValleyApp() {
       // Capture GPS location for every weight photo — not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — weight save is never blocked by a GPS timeout.
+      let attendance;
       try {
-        const rawLocation = await locationAttendanceService.getCurrentLocation();
-        if (rawLocation && !rawLocation.error) {
-          payload.latitude = rawLocation.latitude;
-          payload.longitude = rawLocation.longitude;
-          debugLog("📍 [weight] Raw GPS attached to save payload:", rawLocation);
+        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        debugLog("📍 [weight] Attendance determined:", attendance);
 
-          // Also check club proximity (within 100 m) for center linking
-          const clubLocation = await getClubLocationIfNearby(apiBaseUrl, userId);
-          if (clubLocation) {
-            payload.nutritionCenterId = clubLocation.nutritionCenterId;
-            payload.centerName = clubLocation.centerName;
-            payload.attendanceType = 'club';
-            debugLog("📍 [weight] Club location attached to save payload:", clubLocation);
-          } else {
-            payload.attendanceType = 'remote';
-          }
+        // If multiple clubs detected, show selection modal
+        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
+          debugLog("🏢 [weight] Multiple clubs detected, showing selection modal");
+          setNearbyCenters(attendance.nearbyCenters);
+          setPendingWeightData({ weightData, imageBase64, attendance, captureTimestamp });
+          setShowClubSelectionModal(true);
+          setSaveLoading(false);
+          setLoadingState("idle");
+          return; // Wait for user to select club
+        }
+
+        // Single club or remote
+        if (attendance.latitude && attendance.longitude) {
+          payload.latitude = attendance.latitude;
+          payload.longitude = attendance.longitude;
+          payload.attendanceType = attendance.attendanceType;
+          payload.nutritionCenterId = attendance.nutritionCenterId || null;
+          payload.centerName = attendance.centerName || null;
+          debugLog("📍 [weight] Location attached to save payload:", attendance);
 
           // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(rawLocation.latitude, rawLocation.longitude);
+          const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
           payload.city = city;
           payload.village = village;
         }
       } catch (gpsErr) {
         debugLog("⚠️ [weight] GPS check failed, saving without location:", gpsErr.message);
+        // Fallback to remote attendance
+        payload.attendanceType = 'remote';
       }
 
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
@@ -3225,6 +3236,7 @@ function WellnessValleyApp() {
     debugLog("🏢 Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
 
+    // Handle education attendance
     if (pendingEducationData) {
       setSaveLoading(true);
       setLoadingState("saving");
@@ -3236,6 +3248,151 @@ function WellnessValleyApp() {
         pendingEducationData.captureId || null,
       );
       setPendingEducationData(null);
+      return;
+    }
+
+    // Handle weight save
+    if (pendingWeightData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      
+      const { weightData, imageBase64, attendance, captureTimestamp } = pendingWeightData;
+      
+      // Get userId
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+
+      const payload = {
+        userId,
+        weightValue: weightData.weightValue,
+        unit: weightData.unit,
+        bmi: weightData.bmi,
+        bodyFat: weightData.bodyFat,
+        muscleMass: weightData.muscleMass,
+        bmr: weightData.bmr,
+        imageBase64ToSave: imageBase64,
+        clientTimestamp: captureTimestamp || new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset(),
+        captureId: foodCaptureIdRef.current || undefined,
+        // Add selected club location
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        attendanceType: 'club',
+        nutritionCenterId: selectedCenter.id,
+        centerName: selectedCenter.center_name,
+      };
+
+      // Reverse-geocode to city + village
+      const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+      payload.city = city;
+      payload.village = village;
+
+      // Continue with weight save
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          debugLog('❌ Weight validation failed:', data.validation);
+          setAlertModal({
+            isOpen: true,
+            title: data.validation?.title || "Weight Entry Issue",
+            message: data.validation?.message || data.message || "Failed to save weight entry",
+            type: data.validation?.severity || "warning",
+          });
+          setSaveLoading(false);
+          setLoadingState("idle");
+          setPendingWeightData(null);
+          return;
+        }
+
+        debugLog('✅ Weight entry saved successfully:', data.id);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingWeightData(null);
+        
+        // Refresh data
+        handleLeaderboardRefresh();
+        
+      } catch (error) {
+        console.error('❌ Error saving weight:', error);
+        setAlertModal({
+          isOpen: true,
+          title: "Save Failed",
+          message: "Failed to save weight entry. Please try again.",
+          type: "error",
+        });
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingWeightData(null);
+      }
+      return;
+    }
+
+    // Handle food save
+    if (pendingFoodData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      
+      const { saveData, attendance, captureId } = pendingFoodData;
+      
+      const clubLocationFields = {
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        attendanceType: 'club',
+        nutritionCenterId: selectedCenter.id,
+        centerName: selectedCenter.center_name,
+      };
+
+      // Reverse-geocode to city + village
+      const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+      clubLocationFields.city = city;
+      clubLocationFields.village = village;
+
+      // Continue with food save
+      try {
+        const saveRes = await saveNutritionAnalysis({
+          ...saveData,
+          ...clubLocationFields,
+          captureId: captureId || undefined,
+        });
+
+        // saveNutritionAnalysis returns data directly, not { ok, data }
+        // Success is indicated by not throwing an error
+        debugLog('✅ Nutrition analysis saved successfully:', saveRes);
+        
+        // Store meal ID for auto-save updates
+        setSavedNutritionMealId(saveRes.id || saveRes.insertId);
+        
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingFoodData(null);
+        setShowClubSelectionModal(false);
+        
+        // Refresh data
+        handleLeaderboardRefresh();
+        
+      } catch (error) {
+        console.error('❌ Error saving nutrition:', error);
+        setAlertModal({
+          isOpen: true,
+          title: "Save Failed",
+          message: error.message || "Failed to save nutrition analysis. Please try again.",
+          type: "error",
+        });
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingFoodData(null);
+        setShowClubSelectionModal(false);
+      }
+      return;
     }
   };
 
@@ -3267,31 +3424,43 @@ function WellnessValleyApp() {
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — nutrition save is never blocked by a GPS timeout.
       let clubLocationFields = {};
+      let attendance;
       try {
-        const rawLocation = await locationAttendanceService.getCurrentLocation();
-        if (rawLocation && !rawLocation.error) {
-          clubLocationFields.latitude = rawLocation.latitude;
-          clubLocationFields.longitude = rawLocation.longitude;
-          debugLog("📍 [nutrition] Raw GPS attached to save payload:", rawLocation);
+        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, saveData.userId);
+        debugLog("📍 [nutrition] Attendance determined:", attendance);
 
-          // Also check club proximity (within 100 m) for center linking
-          const clubLocation = await getClubLocationIfNearby(apiBaseUrl, saveData.userId);
-          if (clubLocation) {
-            clubLocationFields.nutritionCenterId = clubLocation.nutritionCenterId;
-            clubLocationFields.centerName = clubLocation.centerName;
-            clubLocationFields.attendanceType = 'club';
-            debugLog("📍 [nutrition] Club location attached to save payload:", clubLocation);
-          } else {
-            clubLocationFields.attendanceType = 'remote';
-          }
+        // If multiple clubs detected, show selection modal
+        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
+          debugLog("🏢 [nutrition] Multiple clubs detected, showing selection modal");
+          setNearbyCenters(attendance.nearbyCenters);
+          setPendingFoodData({ 
+            saveData, 
+            attendance,
+            captureId: foodCaptureIdRef.current || undefined 
+          });
+          setShowClubSelectionModal(true);
+          setSaveLoading(false);
+          setLoadingState("idle");
+          return; // Wait for user to select club
+        }
+
+        // Single club or remote
+        if (attendance.latitude && attendance.longitude) {
+          clubLocationFields.latitude = attendance.latitude;
+          clubLocationFields.longitude = attendance.longitude;
+          clubLocationFields.attendanceType = attendance.attendanceType;
+          clubLocationFields.nutritionCenterId = attendance.nutritionCenterId || null;
+          clubLocationFields.centerName = attendance.centerName || null;
+          debugLog("📍 [nutrition] Location attached to save payload:", attendance);
 
           // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(rawLocation.latitude, rawLocation.longitude);
+          const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
           clubLocationFields.city = city;
           clubLocationFields.village = village;
         }
       } catch (gpsErr) {
         debugLog("⚠️ [nutrition] GPS check failed, saving without location:", gpsErr.message);
+        clubLocationFields.attendanceType = 'remote';
       }
 
       const saveRes = await saveNutritionAnalysis({
@@ -4500,35 +4669,15 @@ function WellnessValleyApp() {
               actualUserId = await getUserId(user);
             } catch (userIdError) {
               console.error("Failed to get userId:", userIdError);
-              // Edge case: If userId lookup fails, proceed without duplicate check
-              await performNutritionSave({
-                userId: userIdentifier,
-                imagePath: file.name,
-                imageBase64: processedImage,
-                analysisResult: result,
-                deviceInfo: window.navigator.userAgent,
-                userEmail: user?.email || user?.Email || "unknown",
-                captureTimestamp: exifTimestamp || null,
-              });
-              return;
+              // Edge case: If userId lookup fails, cannot proceed with save
+              // because nutrition centers API requires integer userId
+              throw new Error("Unable to resolve user account. Please try again or contact support.");
             }
           }
 
           // Edge case: userId still invalid after lookup
           if (!actualUserId) {
-            console.warn(
-              "Could not determine userId, skipping duplicate check",
-            );
-            await performNutritionSave({
-              userId: userIdentifier,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
+            throw new Error("Unable to resolve user account. Please try again or contact support.");
           }
 
           // Check for duplicates in current meal time slot
@@ -4545,8 +4694,9 @@ function WellnessValleyApp() {
               "Duplicate check failed, proceeding with save:",
               duplicateError,
             );
+            // Still use actualUserId, not userIdentifier
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4562,8 +4712,9 @@ function WellnessValleyApp() {
             console.warn(
               "Invalid duplicate check response, proceeding with save",
             );
+            // Still use actualUserId, not userIdentifier
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4579,7 +4730,7 @@ function WellnessValleyApp() {
             debugLog("⚠️ Duplicate food detected:", duplicateCheck);
             setDuplicateInfo(duplicateCheck);
             setPendingSaveData({
-              userId: userIdentifier,
+              userId: actualUserId, // Use resolved integer ID, not email
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4592,7 +4743,7 @@ function WellnessValleyApp() {
           } else {
             // No duplicate - proceed with save
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId, // Use resolved integer ID, not email
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -6715,6 +6866,8 @@ function WellnessValleyApp() {
         onClose={() => {
           setShowClubSelectionModal(false);
           setPendingEducationData(null);
+          setPendingWeightData(null);
+          setPendingFoodData(null);
           setSaveLoading(false);
           setLoadingState("idle");
         }}
