@@ -3,6 +3,7 @@ import { weightDetectionService } from '../../features/weight';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
 import { applyFallbackNutrition } from '../../features/nutrition';
+import { geminiService } from './geminiService';
 import { debugLog } from '../utils/logger.js';
 
 /**
@@ -154,10 +155,10 @@ IF FOOD (default):
       "volume_ml": number (liquids),
       "unit": "g"|"ml",
       "isLiquid": boolean,
-      "nutrition": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num}
+      "nutrition": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num, "glycemic_index": num}
     }
   ],
-  "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num}
+  "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num, "sugar": num, "sodium": num, "cholesterol": num, "glycemic_index": num}
 }
 
 ðŸ‹ï¸ WEIGHT SCALE DETECTION — READ CAREFULLY:
@@ -209,6 +210,16 @@ CLASSIFY AS "weight" if you see ANY of these:
   * red meat (100g cooked): 75–100 mg
 - 🚫 Returning 0 for sodium on a clearly cooked/salted dish (rice, roti, dal, curry, biryani, fried snacks, restaurant food) is WRONG — estimate from the ranges above.
 - 🚫 Returning 0 for sugar on sweets, desserts, juices, sweetened beverages, or fruit is WRONG.
+
+🩺 GLYCEMIC INDEX (glycemic_index) — MANDATORY (⚠️ NEVER null):
+- Return a USDA glycemic index 0–100 for EVERY food. NEVER null, NEVER omit.
+- Reference values: apple=38, banana=51, orange=43, tangerine=42, grapes=46, mango=51, pineapple=66, watermelon=72,
+  white rice=72, brown rice=68, basmati=58, biryani/pulao=68, idli=69, dosa=77, roti/chapati=62, naan=65, bread=75, oats=55,
+  potato=78, sweet potato=63, dal/lentils=29, chickpea=33, rajma=24, paneer=27, milk=27, yogurt=35,
+  walnuts/almonds/peanuts=15, celery/cucumber/spinach=15, dried cranberries=64.
+- Pure protein / fat foods (chicken, fish, egg, oil, butter, cheese, paneer): use 0.
+- For meal total.glycemic_index: carb-weighted average = sum(food.gi * food.carbs) / sum(food.carbs). If meal has no carbs, return 0.
+- Estimate from food category if uncertain — NEVER return null.
 
 Return ONLY JSON matching ONE of the above formats.`;
 
@@ -343,8 +354,19 @@ Return ONLY JSON matching ONE of the above formats.`;
           name: f.name,
           calories: f.nutrition?.calories || 0
         }));
-        
+
         foodsWithNutrition = applyFallbackNutrition(foodsWithNutrition);
+
+        // 🩺 ENRICH: fill in any missing sugar/sodium/cholesterol/glycemic_index
+        // from the USDA fallback table. This is the same enrichment the
+        // analyzeImageForNutrition path uses and is what guarantees GI is
+        // never persisted as null.
+        const enriched = geminiService.enrichMicronutrients({
+          foods: foodsWithNutrition,
+          total: analysisData.total,
+        });
+        foodsWithNutrition = enriched.foods;
+        analysisData.total = enriched.total;
         
         const afterFallback = foodsWithNutrition.map(f => ({
           name: f.name,

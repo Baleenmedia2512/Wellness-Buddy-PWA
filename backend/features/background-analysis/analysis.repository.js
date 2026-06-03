@@ -163,7 +163,7 @@ export async function findPublicByToken(token) {
   // that the recipient should view via the feature tab, not the food viewer.
   const { data: food, error: foodErr } = await supabase
     .from('food_nutrition_data_table')
-    .select('"ID", "AnalysisData", "TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat", "TotalFiber", "TotalSugar", "TotalSodium", "TotalCholesterol"')
+    .select('"ID", "AnalysisData", "TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat", "TotalFiber", "TotalSugar", "TotalSodium", "TotalCholesterol", "GlycemicIndex"')
     .eq('"CaptureID"', cap.ID)
     .order('"ID"', { ascending: false })
     .limit(1)
@@ -189,6 +189,7 @@ export async function findPublicByToken(token) {
     TotalSugar:       food?.TotalSugar      ?? null,
     TotalSodium:      food?.TotalSodium     ?? null,
     TotalCholesterol: food?.TotalCholesterol ?? null,
+    GlycemicIndex:    food?.GlycemicIndex    ?? null,
   };
 }
 

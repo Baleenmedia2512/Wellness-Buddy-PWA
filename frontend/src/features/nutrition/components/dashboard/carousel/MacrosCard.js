@@ -6,8 +6,17 @@ import CircularProgress from './CircularProgress';
  * MacrosCard — Card 2 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with 3 macros side by side.
  */
-const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget, fatTarget, carbsTarget }) => {
+const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget, fatTarget, carbsTarget, glycemicIndex }) => {
   const hasTargets = proteinTarget != null;
+
+  const giLabel = glycemicIndex == null ? null
+    : glycemicIndex <= 55 ? 'Low'
+    : glycemicIndex <= 69 ? 'Medium'
+    : 'High';
+  const giColors = glycemicIndex == null ? null
+    : glycemicIndex <= 55 ? 'bg-green-100 text-green-700'
+    : glycemicIndex <= 69 ? 'bg-amber-100 text-amber-700'
+    : 'bg-red-100 text-red-700';
   
   const proteinPct = hasTargets && proteinTarget > 0 ? Math.round((consumedProtein / proteinTarget) * 100) : null;
   const fatPct = hasTargets && fatTarget > 0 ? Math.round((consumedFat / fatTarget) * 100) : null;
@@ -99,6 +108,16 @@ const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget
           <p className="text-[10px] text-gray-400 text-center mt-2 pt-2 border-t border-gray-100">
             Targets based on your weight
           </p>
+        )}
+
+        {/* Glycemic Index row */}
+        {glycemicIndex != null && (
+          <div className={`flex items-center justify-between mt-2 pt-2 ${hasTargets ? '' : 'border-t border-gray-100'}` }>
+            <span className="text-[10px] text-gray-500">Avg. Glycemic Index</span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${giColors}`}>
+              {glycemicIndex} · {giLabel}
+            </span>
+          </div>
         )}
       </div>
     </div>

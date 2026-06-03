@@ -10,6 +10,7 @@ const macros = (src) => ({
   sugar: src.sugar || 0,
   sodium: src.sodium || 0,
   cholesterol: src.cholesterol || 0,
+  glycemic_index: src.glycemic_index ?? null,
 });
 
 const detailedItemToFood = (item) => ({
@@ -33,16 +34,12 @@ const detailedItemToFood = (item) => ({
     sugar: item.sugar || item.nutrition?.sugar || 0,
     sodium: item.sodium || item.nutrition?.sodium || 0,
     cholesterol: item.cholesterol || item.nutrition?.cholesterol || 0,
+    glycemic_index: item.glycemic_index ?? item.nutrition?.glycemic_index ?? null,
   },
 });
 
 export function transformToBackgroundServiceFormat(analysisResult) {
   try {
-    if (!analysisResult) return analysisResult;
-    // Already in background-service format.
-    if (analysisResult.foods && analysisResult.total) return analysisResult;
-    if (!analysisResult.nutrition) return analysisResult; // unknown shape
-
     const { nutrition, detailedItems = [], confidence, category } = analysisResult;
     const foods = detailedItems.length > 0
       ? detailedItems.map(detailedItemToFood)

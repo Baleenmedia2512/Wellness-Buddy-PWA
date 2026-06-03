@@ -32,11 +32,27 @@ const pick = (food, field) => {
 
 export function aggregateFoodTotals(foods) {
   const seed = FOOD_TOTAL_FIELDS.reduce((acc, f) => ({ ...acc, [f]: 0 }), {});
-  if (!Array.isArray(foods)) return seed;
-  return foods.reduce((acc, food) => {
+  if (!Array.isArray(foods)) return { ...seed, glycemicIndex: null };
+  const totals = foods.reduce((acc, food) => {
     FOOD_TOTAL_FIELDS.forEach((field) => {
       acc[field] += pick(food, field);
     });
     return acc;
   }, seed);
+
+  // GI is a carb-weighted average, not a sum.
+  // Only include foods where GI is known (non-null) and carbs > 0.
+  let giCarbProduct = 0;
+  let totalCarbsForGI = 0;
+  foods.forEach((food) => {
+    const gi = food?.nutrition?.glycemic_index ?? food?.glycemic_index ?? null;
+    const carbs = pick(food, 'carbs');
+    if (gi != null && carbs > 0) {
+      giCarbProduct += gi * carbs;
+      totalCarbsForGI += carbs;
+    }
+  });
+  const glycemicIndex = totalCarbsForGI > 0 ? Math.round(giCarbProduct / totalCarbsForGI) : null;
+
+  return { ...totals, glycemicIndex };
 }

@@ -5,6 +5,17 @@ import EditableFoodItem from '../EditableFoodItem';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, istToLocalDate } from '../../services/nutritionDashboard/analysisHelpers';
 
+const GIPill = ({ value }) => {
+  if (value == null) return null;
+  const label = value <= 55 ? 'Low GI' : value <= 69 ? 'Mid GI' : 'High GI';
+  const color = value <= 55 ? 'bg-green-500/80' : value <= 69 ? 'bg-amber-500/80' : 'bg-red-500/80';
+  return (
+    <div className={`flex items-center ${color} backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10`}>
+      <span className="text-xs font-medium text-white">{Math.round(value)} {label}</span>
+    </div>
+  );
+};
+
 const MacroPill = ({ icon: Icon, value }) => (
   <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
     <Icon className="w-4 h-4 text-white mr-1.5" />
@@ -43,6 +54,9 @@ const NutritionAnalysisPanel = ({
   const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
   const fat = localNutrition.fat || foodData.nutrition.fat || selectedMeal.TotalFat || 0;
   const fiber = localNutrition.fiber || foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
+  const glycemicIndex = localNutrition.glycemicIndex != null
+    ? localNutrition.glycemicIndex
+    : (selectedMeal.GlycemicIndex ?? null);
   const imgSrc = selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== ''
     ? (selectedMeal.ImageBase64.startsWith('data:image') ? selectedMeal.ImageBase64 : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`)
     : selectedMeal.ImagePath;
@@ -84,6 +98,7 @@ const NutritionAnalysisPanel = ({
                 <MacroPill icon={Wheat} value={carbs} />
                 <MacroPill icon={Droplet} value={fat} />
                 <MacroPill icon={Leaf} value={fiber} />
+                <GIPill value={glycemicIndex} />
               </div>
             </div>
 

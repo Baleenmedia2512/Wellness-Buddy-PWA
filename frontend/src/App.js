@@ -4302,6 +4302,26 @@ function WellnessValleyApp() {
             categoryName = `${first} + ${others} more`;
           }
 
+          // Compute carb-weighted total Glycemic Index from foods. GI is
+          // never a sum; if the AI returned a total it may still be null,
+          // so we re-derive it here so the backend always saves a value.
+          let _giCarbProduct = 0;
+          let _giTotalCarbs = 0;
+          foods.forEach((f) => {
+            const fGI = f.nutrition?.glycemic_index ?? f.glycemic_index;
+            const fCarbs = f.nutrition?.carbs ?? f.carbs ?? 0;
+            if (fGI != null && fCarbs > 0) {
+              _giCarbProduct += Number(fGI) * Number(fCarbs);
+              _giTotalCarbs += Number(fCarbs);
+            }
+          });
+          const computedTotalGI =
+            _giTotalCarbs > 0
+              ? Math.round(_giCarbProduct / _giTotalCarbs)
+              : total.glycemic_index != null
+              ? Math.round(total.glycemic_index)
+              : null;
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
@@ -4316,6 +4336,8 @@ function WellnessValleyApp() {
               sugar: Math.round(total.sugar || 0),
               sodium: Math.round(total.sodium || 0),
               cholesterol: Math.round(total.cholesterol || 0),
+              // Carb-weighted Glycemic Index (intrinsic, never summed).
+              glycemic_index: computedTotalGI,
             },
             category: {
               name: categoryName,
@@ -4352,6 +4374,13 @@ function WellnessValleyApp() {
                 cholesterol: Math.round(
                   food.nutrition?.cholesterol || food.cholesterol || 0,
                 ),
+                // GI is intrinsic to the food (not summed); preserve as-is.
+                glycemic_index:
+                  (food.nutrition?.glycemic_index ?? food.glycemic_index) != null
+                    ? Math.round(
+                        food.nutrition?.glycemic_index ?? food.glycemic_index,
+                      )
+                    : null,
               };
 
               debugLog(

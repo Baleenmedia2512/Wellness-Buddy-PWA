@@ -34,6 +34,7 @@ function extractNutrition(analysisResult, deviceInfo) {
   let totalCalories = null, totalProtein = null, totalCarbs = null,
       totalFat = null, totalFiber = null, confidenceScore = null;
   let totalSugar = null, totalSodium = null, totalCholesterol = null;
+  let totalGlycemicIndex = null;
   let processedBy = 'manual_app';
 
   try {
@@ -49,6 +50,7 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalSugar = analysis.total.sugar != null ? analysis.total.sugar : null;
       totalSodium = analysis.total.sodium != null ? analysis.total.sodium : null;
       totalCholesterol = analysis.total.cholesterol != null ? analysis.total.cholesterol : null;
+      totalGlycemicIndex = analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null;
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
         ? 'background_service' : 'manual_app';
@@ -61,6 +63,7 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalSugar = analysis.nutrition.sugar != null ? analysis.nutrition.sugar : null;
       totalSodium = analysis.nutrition.sodium != null ? analysis.nutrition.sodium : null;
       totalCholesterol = analysis.nutrition.cholesterol != null ? analysis.nutrition.cholesterol : null;
+      totalGlycemicIndex = analysis.nutrition.glycemic_index != null ? analysis.nutrition.glycemic_index : null;
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = 'manual_app';
     } else if (analysis.foods && analysis.foods.length > 0) {
@@ -74,6 +77,7 @@ function extractNutrition(analysisResult, deviceInfo) {
         totalSugar = firstFood.nutrition.sugar != null ? firstFood.nutrition.sugar : null;
         totalSodium = firstFood.nutrition.sodium != null ? firstFood.nutrition.sodium : null;
         totalCholesterol = firstFood.nutrition.cholesterol != null ? firstFood.nutrition.cholesterol : null;
+        totalGlycemicIndex = firstFood.nutrition.glycemic_index != null ? firstFood.nutrition.glycemic_index : null;
       }
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
@@ -83,13 +87,13 @@ function extractNutrition(analysisResult, deviceInfo) {
   // 🔍 DEBUG: Log extracted nutrition values
   console.log('🔍 [extractNutrition] Extracted values:', {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
-    totalSugar, totalSodium, totalCholesterol,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     confidenceScore, processedBy,
   });
 
   return {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
-    totalSugar, totalSodium, totalCholesterol,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     confidenceScore, processedBy,
   };
 }
@@ -102,7 +106,7 @@ export async function save(input) {
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
-    totalSugar, totalSodium, totalCholesterol,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     confidenceScore, processedBy,
   } = nutrition;
 
@@ -130,6 +134,7 @@ export async function save(input) {
     TotalSugar: totalSugar,
     TotalSodium: totalSodium,
     TotalCholesterol: totalCholesterol,
+    GlycemicIndex: totalGlycemicIndex,
     // ImageType was dropped from food_nutrition_data_table by
     // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
     // now lives on captures_table and is promoted via captures.updateTypeById

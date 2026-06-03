@@ -32,9 +32,22 @@ export function applyFallbackNutrition(foods) {
     }
     debugLog(`✅ [NUTRITION-FALLBACK] Applied fallback nutrition:`, fallback);
     const { calories, protein, carbs, fat, fiber } = fallback;
+    // Preserve any sugar/sodium/cholesterol/glycemic_index the AI returned —
+    // fallback only covers macros, the micronutrient enrichment step
+    // (enrichMicronutrients) fills the rest.
+    const sugar       = food.nutrition?.sugar       ?? food.sugar       ?? null;
+    const sodium      = food.nutrition?.sodium      ?? food.sodium      ?? null;
+    const cholesterol = food.nutrition?.cholesterol ?? food.cholesterol ?? null;
+    const glycemicIndex = food.nutrition?.glycemic_index ?? food.glycemic_index ?? null;
     return {
       ...food,
-      nutrition: { calories, protein, carbs, fat, fiber },
+      nutrition: {
+        calories, protein, carbs, fat, fiber,
+        ...(sugar       != null ? { sugar }       : {}),
+        ...(sodium      != null ? { sodium }      : {}),
+        ...(cholesterol != null ? { cholesterol } : {}),
+        ...(glycemicIndex != null ? { glycemic_index: glycemicIndex } : {}),
+      },
       calories, protein, carbs, fat, fiber,
       nutritionSource: fallback.source,
       fallbackApplied: true,

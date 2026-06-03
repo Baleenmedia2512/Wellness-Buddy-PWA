@@ -76,6 +76,7 @@ const NutritionCarousel = ({
       proteinTarget={proteinTarget}
       fatTarget={fatTarget}
       carbsTarget={carbsTarget}
+      glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
     />,
     <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
     <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,

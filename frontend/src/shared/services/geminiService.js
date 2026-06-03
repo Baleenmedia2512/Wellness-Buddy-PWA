@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "./userIdentity";
-import { applyGlobalAutoCorrections } from "../../features/nutrition";
 import { debugLog } from '../utils/logger.js';
 
 // Comprehensive network debugging to catch ALL requests
@@ -257,20 +256,20 @@ class GeminiService {
       'chicken curry': { fiber: 1.0, sugar: 3.0, sodium: 500, cholesterol: 70 },
       'chicken tikka': { fiber: 0.5, sugar: 2.0, sodium: 550, cholesterol: 75 },
       
-      // Common foods
-      rice: { fiber: 0.4, sugar: 0.1, sodium: 5, cholesterol: 0 },
-      bread: { fiber: 2.4, sugar: 4.0, sodium: 450, cholesterol: 0 },
-      egg: { fiber: 0, sugar: 0.4, sodium: 124, cholesterol: 372 },
-      chicken: { fiber: 0, sugar: 0, sodium: 70, cholesterol: 75 },
-      fish: { fiber: 0, sugar: 0, sodium: 50, cholesterol: 55 },
-      milk: { fiber: 0, sugar: 12, sodium: 107, cholesterol: 24 },
-      yogurt: { fiber: 0, sugar: 11, sodium: 120, cholesterol: 13 },
-      banana: { fiber: 2.6, sugar: 12, sodium: 1, cholesterol: 0 },
-      apple: { fiber: 2.4, sugar: 10, sodium: 1, cholesterol: 0 },
-      orange: { fiber: 2.4, sugar: 9, sodium: 0, cholesterol: 0 },
-      
-      // Fallback for unknown foods
-      default: { fiber: 1.0, sugar: 2.0, sodium: 150, cholesterol: 0 }
+      // Common foods (gi = USDA glycemic index)
+      rice: { fiber: 0.4, sugar: 0.1, sodium: 5, cholesterol: 0, gi: 73 },
+      bread: { fiber: 2.4, sugar: 4.0, sodium: 450, cholesterol: 0, gi: 75 },
+      egg: { fiber: 0, sugar: 0.4, sodium: 124, cholesterol: 372, gi: 0 },
+      chicken: { fiber: 0, sugar: 0, sodium: 70, cholesterol: 75, gi: 0 },
+      fish: { fiber: 0, sugar: 0, sodium: 50, cholesterol: 55, gi: 0 },
+      milk: { fiber: 0, sugar: 12, sodium: 107, cholesterol: 24, gi: 27 },
+      yogurt: { fiber: 0, sugar: 11, sodium: 120, cholesterol: 13, gi: 35 },
+      banana: { fiber: 2.6, sugar: 12, sodium: 1, cholesterol: 0, gi: 51 },
+      apple: { fiber: 2.4, sugar: 10, sodium: 1, cholesterol: 0, gi: 38 },
+      orange: { fiber: 2.4, sugar: 9, sodium: 0, cholesterol: 0, gi: 43 },
+
+      // Fallback for unknown foods (medium GI default)
+      default: { fiber: 1.0, sugar: 2.0, sodium: 150, cholesterol: 0, gi: 55 }
     };
 
     let enrichedCount = 0;
@@ -283,9 +282,10 @@ class GeminiService {
       const missingSodium = !nutrition.sodium || nutrition.sodium === 0;
       const missingCholesterol = !nutrition.cholesterol || nutrition.cholesterol === 0;
       const missingFiber = !nutrition.fiber || nutrition.fiber === 0;
-      
-      // Enrich if ANY critical micronutrient is missing (sugar/sodium/cholesterol are invisible in photos)
-      const needsEnrichment = missingSugar || missingSodium || missingCholesterol || missingFiber;
+      const missingGI = nutrition.glycemic_index == null;
+
+      // Enrich if ANY critical micronutrient is missing (sugar/sodium/cholesterol/GI are invisible in photos)
+      const needsEnrichment = missingSugar || missingSodium || missingCholesterol || missingFiber || missingGI;
 
       if (needsEnrichment && food.name) {
         // Find matching USDA defaults (case-insensitive, partial match)
@@ -320,16 +320,19 @@ class GeminiService {
           fiber: missingFiber ? Math.round((defaults.fiber * scaleFactor) * 10) / 10 : nutrition.fiber,
           sugar: missingSugar ? Math.round((defaults.sugar * scaleFactor) * 10) / 10 : nutrition.sugar,
           sodium: missingSodium ? Math.round(defaults.sodium * scaleFactor) : nutrition.sodium,
-          cholesterol: missingCholesterol ? Math.round(defaults.cholesterol * scaleFactor) : nutrition.cholesterol
+          cholesterol: missingCholesterol ? Math.round(defaults.cholesterol * scaleFactor) : nutrition.cholesterol,
+          // GI is intrinsic to the food, NOT scaled by weight
+          glycemic_index: missingGI ? (defaults.gi ?? null) : nutrition.glycemic_index,
         };
 
         enrichedCount++;
-        
+
         const enrichedFields = [];
         if (missingFiber) enrichedFields.push(`fiber: ${food.nutrition.fiber}g`);
         if (missingSugar) enrichedFields.push(`sugar: ${food.nutrition.sugar}g`);
         if (missingSodium) enrichedFields.push(`sodium: ${food.nutrition.sodium}mg`);
         if (missingCholesterol) enrichedFields.push(`cholesterol: ${food.nutrition.cholesterol}mg`);
+        if (missingGI) enrichedFields.push(`glycemic_index: ${food.nutrition.glycemic_index}`);
         
         debugLog(`🔧 USDA Enrichment Applied to "${food.name}":`, {
           weight: weightInGrams + 'g',
@@ -346,7 +349,7 @@ class GeminiService {
 
     // Recalculate totals if any foods were enriched
     if (enrichedCount > 0) {
-      nutritionData.total = nutritionData.foods.reduce(
+      const totalsBase = nutritionData.foods.reduce(
         (acc, food) => ({
           calories: (acc.calories || 0) + (food.nutrition.calories || 0),
           protein: (acc.protein || 0) + (food.nutrition.protein || 0),
@@ -360,7 +363,69 @@ class GeminiService {
         { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 }
       );
 
+      // Carb-weighted GI across foods
+      let giCarbProduct = 0, giTotalCarbs = 0;
+      nutritionData.foods.forEach((food) => {
+        const gi = food.nutrition?.glycemic_index;
+        const carbs = food.nutrition?.carbs || 0;
+        if (gi != null && carbs > 0) {
+          giCarbProduct += gi * carbs;
+          giTotalCarbs += carbs;
+        }
+      });
+      totalsBase.glycemic_index = giTotalCarbs > 0
+        ? Math.round(giCarbProduct / giTotalCarbs)
+        : null;
+
+      nutritionData.total = totalsBase;
+
       debugLog(`✅ USDA Enrichment Complete: ${enrichedCount} foods enriched`);
+    }
+
+    // 🛡️ DEFENSIVE BACKFILL: guarantee every food has a numeric GI.
+    // If any food still has glycemic_index == null after the primary enrichment
+    // (edge case: food.name missing, or it slipped through the `needsEnrichment`
+    // gate), assign a sensible per-food default from the USDA table.
+    let backfilledGI = false;
+    nutritionData.foods.forEach((food) => {
+      if (!food || !food.nutrition) return;
+      if (food.nutrition.glycemic_index != null) return;
+      const name = (food.name || '').toLowerCase();
+      let gi = null;
+      if (usdaDefaults[name]) {
+        gi = usdaDefaults[name].gi;
+      } else {
+        for (const [key, val] of Object.entries(usdaDefaults)) {
+          if (key !== 'default' && name && name.includes(key) && val.gi != null) {
+            gi = val.gi;
+            break;
+          }
+        }
+      }
+      if (gi == null) {
+        // Carb-aware default: high-carb foods → medium GI (55), low/zero-carb → 0
+        const carbs = food.nutrition.carbs || 0;
+        gi = carbs > 5 ? 55 : 0;
+      }
+      food.nutrition.glycemic_index = gi;
+      backfilledGI = true;
+    });
+
+    // Re-compute carb-weighted total GI if we backfilled OR total is still null
+    if (backfilledGI || nutritionData.total?.glycemic_index == null) {
+      let giCarbProduct = 0, giTotalCarbs = 0;
+      nutritionData.foods.forEach((food) => {
+        const gi = food.nutrition?.glycemic_index;
+        const carbs = food.nutrition?.carbs || 0;
+        if (gi != null && carbs > 0) {
+          giCarbProduct += gi * carbs;
+          giTotalCarbs += carbs;
+        }
+      });
+      if (!nutritionData.total) nutritionData.total = {};
+      nutritionData.total.glycemic_index = giTotalCarbs > 0
+        ? Math.round(giCarbProduct / giTotalCarbs)
+        : 0;
     }
 
     return nutritionData;
@@ -448,8 +513,8 @@ class GeminiService {
     promptParts.push("4. For SOLID foods, continue using weight in grams/kg");
     promptParts.push("");
     promptParts.push("⚠️ CRITICAL NUTRITION REQUIREMENTS (VIOLATIONS REJECTED):");
-    promptParts.push("5. You MUST provide ALL 8 nutrition fields: calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol");
-    promptParts.push("6. sugar/sodium/cholesterol are INVISIBLE in photos - you MUST look them up in USDA database");
+    promptParts.push("5. You MUST provide ALL 9 nutrition fields: calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index");
+    promptParts.push("6. sugar/sodium/cholesterol/glycemic_index are INVISIBLE in photos - you MUST look them up in USDA database");
     promptParts.push("   Examples:");
     promptParts.push("   • 2 idlis (180g) = sugar: 1g, sodium: 180mg, cholesterol: 0mg");
     promptParts.push("   • 1 cup milk (240ml) = sugar: 12g, sodium: 107mg, cholesterol: 24mg");
@@ -478,7 +543,8 @@ class GeminiService {
     promptParts.push('        "fiber": number,');
     promptParts.push('        "sugar": number (REQUIRED - use USDA database value for this food type),');
     promptParts.push('        "sodium": number (REQUIRED - use USDA database value, in mg),');
-    promptParts.push('        "cholesterol": number (REQUIRED - use USDA database value, in mg)');
+    promptParts.push('        "cholesterol": number (REQUIRED - use USDA database value, in mg),');
+    promptParts.push('        "glycemic_index": number (⚠️ NEVER null. Required USDA GI 0-100. apple=38, banana=51, white rice=72, brown rice=68, bread=75, oats=55, milk=27, yogurt=35, potato=78, sweet potato=63, walnuts=15, almonds=15, cranberries dried=64, celery=15. For pure protein/fat foods (chicken, eggs, fish, oil, butter, cheese) use 0. Estimate if uncertain — NEVER return null)');
     promptParts.push("      }");
     promptParts.push("    }");
     promptParts.push("  ],");
@@ -490,19 +556,20 @@ class GeminiService {
     promptParts.push('    "fiber": number,');
     promptParts.push('    "sugar": number (REQUIRED - sum of all foods),');
     promptParts.push('    "sodium": number (REQUIRED - sum of all foods, in mg),');
-    promptParts.push('    "cholesterol": number (REQUIRED - sum of all foods, in mg)');
+    promptParts.push('    "cholesterol": number (REQUIRED - sum of all foods, in mg),');
+    promptParts.push('    "glycemic_index": number (⚠️ NEVER null. Carb-weighted average of all foods\' GI values, formula: sum(food.gi * food.carbs) / sum(food.carbs). If meal has no carbs, return 0)');
     promptParts.push("  },");
     promptParts.push('  "confidence": "high/medium/low"');
     promptParts.push("}");
     promptParts.push("");
     promptParts.push("⛔ BEFORE YOU RESPOND - VERIFY:");
-    promptParts.push("✓ Every food has 8 nutrition fields (no missing sugar/sodium/cholesterol)");
-    promptParts.push("✓ sugar/sodium/cholesterol values come from USDA database, NOT visual guesses");
-    promptParts.push("✓ Total nutrition is SUM of all foods (all 8 fields)");
+    promptParts.push("✓ Every food has 9 nutrition fields (no missing sugar/sodium/cholesterol/glycemic_index)");
+    promptParts.push("✓ sugar/sodium/cholesterol/glycemic_index values come from USDA database, NOT visual guesses");
+    promptParts.push("✓ Total nutrition is SUM of all foods (all 8 fields); total.glycemic_index is carb-weighted average");
     promptParts.push("✓ If you don't know USDA values, provide reasonable estimates based on food type");
     promptParts.push("");
     promptParts.push(
-      '🚨 REJECTION CRITERIA: Missing sugar/sodium/cholesterol OR all zeros OR values not from database',
+      '🚨 REJECTION CRITERIA: Missing sugar/sodium/cholesterol/glycemic_index OR all zeros OR values not from database',
     );
     promptParts.push("");
     promptParts.push(
@@ -677,11 +744,11 @@ FORMAT:
   "volume_ml": number (liquids),
   "unit": "g" or "ml",
   "isLiquid": boolean,
-  "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num}
+  "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num,"sugar":num,"sodium":num,"cholesterol":num,"glycemic_index":num}
 }
 
-⚠️ MANDATORY: ALL 8 nutrition fields required. sugar/sodium/cholesterol MUST come from USDA database.
-Examples: milk (240ml) = sugar:12g, sodium:107mg, cholesterol:24mg | banana = sugar:14g, sodium:1mg, cholesterol:0mg
+⚠️ MANDATORY: ALL 9 nutrition fields required. sugar/sodium/cholesterol/glycemic_index MUST come from USDA database.
+Examples: milk (240ml) = sugar:12g, sodium:107mg, cholesterol:24mg, glycemic_index:27 | banana = sugar:14g, sodium:1mg, cholesterol:0mg, glycemic_index:51
 DO NOT return 0 unless food genuinely contains none.
 Liquids: use volume_ml+ml. Solids: use weight_g+g.
 JSON only.`;
@@ -1098,6 +1165,10 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           sugar: Math.round((totalNutrition.sugar || 0) * 10) / 10, // 1 decimal
           sodium: Math.round(totalNutrition.sodium || 0), // whole mg
           cholesterol: Math.round(totalNutrition.cholesterol || 0), // whole mg
+          // GI is a carb-weighted average, not a sum — preserve as-is
+          glycemic_index: totalNutrition.glycemic_index != null
+            ? Math.round(totalNutrition.glycemic_index)
+            : null,
         },
         category: {
           name: categoryName,
@@ -1123,6 +1194,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           sugar: Math.round((food.nutrition.sugar || 0) * 10) / 10, // 1 decimal for sugar
           sodium: Math.round(food.nutrition.sodium || 0), // whole mg for sodium
           cholesterol: Math.round(food.nutrition.cholesterol || 0), // whole mg for cholesterol
+          glycemic_index: food.nutrition.glycemic_index != null
+            ? Math.round(food.nutrition.glycemic_index)
+            : null,
           // 🔴 CRITICAL: Preserve correction metadata for UI display
           originalAiName: food.originalAiName || food.name,
           wasAutoCorrected: food.wasAutoCorrected || false,
@@ -1146,6 +1220,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           sugar: Math.round((data.nutrition.sugar || 0) * 10) / 10,
           sodium: Math.round(data.nutrition.sodium || 0),
           cholesterol: Math.round(data.nutrition.cholesterol || 0),
+          glycemic_index: data.nutrition.glycemic_index != null
+            ? Math.round(data.nutrition.glycemic_index)
+            : null,
         },
         category: {
           name: data.name,
@@ -1174,6 +1251,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
             sugar: Math.round((data.nutrition.sugar || 0) * 10) / 10,
             sodium: Math.round(data.nutrition.sodium || 0),
             cholesterol: Math.round(data.nutrition.cholesterol || 0),
+            glycemic_index: data.nutrition.glycemic_index != null
+              ? Math.round(data.nutrition.glycemic_index)
+              : null,
           },
         ],
       };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Utensils, HeartPulse } from 'lucide-react';
+import { Flame, Utensils, User } from 'lucide-react';
 
 /**
  * CaloriesCard — Mobile-First Compact Card 1 of the Nutrition Carousel.
@@ -154,7 +154,7 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
           {/* Base Goal */}
           <div className="text-center">
             <div className="w-8 h-8 mx-auto mb-1 rounded-full bg-blue-50 flex items-center justify-center">
-              <HeartPulse className="w-4 h-4 text-blue-500" />
+              <User className="w-4 h-4 text-blue-500" />
             </div>
             <p className="text-xs text-gray-500 mb-0.5">BMR</p>
             <p className="text-sm font-bold text-gray-900">{target.toLocaleString()}</p>

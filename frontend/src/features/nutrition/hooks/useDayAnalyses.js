@@ -22,6 +22,7 @@ const EMPTY_STATS = {
   totalSugar: 0,
   totalSodium: 0,
   totalCholesterol: 0,
+  averageGlycemicIndex: null,
   mealCount: 0,
 };
 
@@ -50,6 +51,9 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
             const sugar = n.sugar ?? analysis.TotalSugar ?? 0;
             const sodium = n.sodium ?? analysis.TotalSodium ?? 0;
             const cholesterol = n.cholesterol ?? analysis.TotalCholesterol ?? 0;
+            // GI is meal-level — read from DB column (carb-weighted per meal)
+            const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
+            const mealGI = analysis.GlycemicIndex ?? null;
             return {
               totalCalories: acc.totalCalories + calories,
               totalProtein: acc.totalProtein + protein,
@@ -59,12 +63,29 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
               totalSugar: acc.totalSugar + sugar,
               totalSodium: acc.totalSodium + sodium,
               totalCholesterol: acc.totalCholesterol + cholesterol,
+              // Accumulate numerator and denominator for carb-weighted daily GI
+              _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealCarbs > 0 ? mealGI * mealCarbs : 0),
+              _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealCarbs > 0 ? mealCarbs : 0),
               mealCount: acc.mealCount + 1,
             };
           },
-          { ...EMPTY_STATS },
+          { ...EMPTY_STATS, _giCarbProduct: 0, _giTotalCarbs: 0 },
         );
-        setDailyStats(stats);
+        const averageGlycemicIndex = stats._giTotalCarbs > 0
+          ? Math.round(stats._giCarbProduct / stats._giTotalCarbs)
+          : null;
+        setDailyStats({
+          totalCalories: stats.totalCalories,
+          totalProtein: stats.totalProtein,
+          totalCarbs: stats.totalCarbs,
+          totalFat: stats.totalFat,
+          totalFiber: stats.totalFiber,
+          totalSugar: stats.totalSugar,
+          totalSodium: stats.totalSodium,
+          totalCholesterol: stats.totalCholesterol,
+          averageGlycemicIndex,
+          mealCount: stats.mealCount,
+        });
       };
 
       try {

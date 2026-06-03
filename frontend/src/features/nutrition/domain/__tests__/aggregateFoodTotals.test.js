@@ -74,3 +74,62 @@ describe('aggregateFoodTotals', () => {
     expect(aggregateFoodTotals(undefined).sodium).toBe(0);
   });
 });
+
+describe('aggregateFoodTotals — glycemicIndex (carb-weighted average)', () => {
+  test('computes carb-weighted GI across multiple foods', () => {
+    const foods = [
+      { name: 'White rice', nutrition: { calories: 200, protein: 4, carbs: 44, fat: 0.5, fiber: 0, sugar: 0, sodium: 5, cholesterol: 0, glycemic_index: 72 } },
+      { name: 'Apple',      nutrition: { calories: 52,  protein: 0, carbs: 14, fat: 0.2, fiber: 2, sugar: 10, sodium: 1, cholesterol: 0, glycemic_index: 38 } },
+    ];
+    const total = aggregateFoodTotals(foods);
+    // Expected: (72*44 + 38*14) / (44+14) = (3168+532)/58 ≈ 63.8 → rounds to 64
+    expect(total.glycemicIndex).toBe(Math.round((72 * 44 + 38 * 14) / (44 + 14)));
+  });
+
+  test('returns null when all foods have null GI', () => {
+    const foods = [
+      { name: 'Manual entry', nutrition: { calories: 100, protein: 5, carbs: 10, fat: 3, fiber: 1, sugar: 0, sodium: 0, cholesterol: 0 } },
+    ];
+    expect(aggregateFoodTotals(foods).glycemicIndex).toBeNull();
+  });
+
+  test('returns null for pure protein/fat meal (zero carbs)', () => {
+    const foods = [
+      { name: 'Egg whites', nutrition: { calories: 50, protein: 11, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 160, cholesterol: 0, glycemic_index: 0 } },
+    ];
+    expect(aggregateFoodTotals(foods).glycemicIndex).toBeNull();
+  });
+
+  test('excludes foods with null GI from weighted average', () => {
+    const foods = [
+      { name: 'White bread', nutrition: { calories: 80, protein: 3, carbs: 15, fat: 1, fiber: 1, sugar: 1, sodium: 150, cholesterol: 0, glycemic_index: 75 } },
+      { name: 'Mystery food', nutrition: { calories: 100, protein: 5, carbs: 20, fat: 2, fiber: 0, sugar: 2, sodium: 50, cholesterol: 0 } },
+    ];
+    const total = aggregateFoodTotals(foods);
+    // Only white bread has GI → weighted avg uses only that food
+    expect(total.glycemicIndex).toBe(75);
+  });
+
+  test('returns null for empty array', () => {
+    expect(aggregateFoodTotals([]).glycemicIndex).toBeNull();
+  });
+
+  test('returns null for null/undefined input', () => {
+    expect(aggregateFoodTotals(null).glycemicIndex).toBeNull();
+    expect(aggregateFoodTotals(undefined).glycemicIndex).toBeNull();
+  });
+
+  test('picks glycemic_index from flat fields when nutrition block is absent', () => {
+    const foods = [
+      { calories: 120, protein: 2, carbs: 25, fat: 0.5, fiber: 1, sugar: 5, sodium: 10, cholesterol: 0, glycemic_index: 60 },
+    ];
+    expect(aggregateFoodTotals(foods).glycemicIndex).toBe(60);
+  });
+
+  test('nested glycemic_index takes precedence over flat field', () => {
+    const foods = [
+      { glycemic_index: 99, nutrition: { calories: 100, protein: 5, carbs: 20, fat: 1, fiber: 0, sugar: 1, sodium: 5, cholesterol: 0, glycemic_index: 45 } },
+    ];
+    expect(aggregateFoodTotals(foods).glycemicIndex).toBe(45);
+  });
+});
