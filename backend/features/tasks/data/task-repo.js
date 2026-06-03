@@ -9,8 +9,11 @@
  * Per claude.md §2.7: Use dbPool with parameterised queries
  */
 
-import { dbPool } from '../../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 import logger from '../../../shared/lib/logger.js';
+
+// Alias for backward compatibility
+const dbPool = getPool;
 
 /**
  * Get all tasks for a user on a specific date with status filter
