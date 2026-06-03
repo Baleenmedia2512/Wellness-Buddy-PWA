@@ -132,7 +132,7 @@ function validateWaterCompletion(data) {
   };
 }
 
-module.exports = {
+export {
   validateCompleteTaskRequest,
   validateWeightCompletion,
   validateFoodCompletion,

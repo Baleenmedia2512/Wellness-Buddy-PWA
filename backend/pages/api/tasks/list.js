@@ -8,11 +8,11 @@
  * - Log with requestId, userId, route, durationMs
  */
 
-const { format } = require('date-fns');
-const { getTasksByUserAndDate } = require('../../../features/tasks/data/task-repo');
-const { isTaskVisible } = require('../../../features/tasks/domain/task-rules');
-const logger = require('../../../shared/lib/logger');
-const { getUserIdFromSession } = require('../../../shared/lib/auth-helpers');
+import { format } from 'date-fns';
+import { getTasksByUserAndDate } from '../../../features/tasks/data/task-repo.js';
+import { isTaskVisible } from '../../../features/tasks/domain/task-rules.js';
+import logger from '../../../shared/lib/logger.js';
+import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
 export default async function handler(req, res) {
   const startTime = Date.now();

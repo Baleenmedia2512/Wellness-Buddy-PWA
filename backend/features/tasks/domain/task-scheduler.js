@@ -14,15 +14,15 @@
  * For now, can be triggered via API or scheduled function
  */
 
-const { format } = require('date-fns');
-const { 
+import { format } from 'date-fns';
+import { 
   getTimeWindowsByStartTime,
   createTask,
   markNotificationSent,
   expireOldTasks
-} = require('../data/task-repo');
-const logger = require('../../../shared/lib/logger');
-const { sendPushNotification } = require('../../../shared/services/pushNotificationService');
+} from '../data/task-repo.js';
+import logger from '../../../shared/lib/logger.js';
+import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
 
 /**
  * Check and create tasks for time windows starting now
@@ -170,7 +170,7 @@ function getNotificationBody(taskType) {
   return bodies[taskType] || 'Tap to complete';
 }
 
-module.exports = {
+export {
   checkAndCreateTasksForCurrentTime,
   expirePreviousDayTasks,
   sendTaskNotification

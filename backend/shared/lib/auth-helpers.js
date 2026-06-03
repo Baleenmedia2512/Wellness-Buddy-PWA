@@ -59,7 +59,7 @@ function canAccessUserResource(userId, resourceUserId) {
   return userId === resourceUserId;
 }
 
-module.exports = {
+export {
   getUserIdFromSession,
   canAccessUserResource
 };

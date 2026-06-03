@@ -5,13 +5,13 @@
  * Requires Firebase service account key
  */
 
-const admin = require('firebase-admin');
-const logger = require('../../../shared/lib/logger');
+import admin from 'firebase-admin';
+import logger from '../lib/logger.js';
 
 // Initialize Firebase Admin SDK (only once)
 let firebaseInitialized = false;
 
-function initializeFirebase() {
+async function initializeFirebase() {
   if (firebaseInitialized) return;
   
   try {
@@ -19,7 +19,7 @@ function initializeFirebase() {
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 
                                '../../../config/firebase-service-account.json';
     
-    const serviceAccount = require(serviceAccountPath);
+    const { default: serviceAccount } = await import(serviceAccountPath, { assert: { type: 'json' } });
     
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
@@ -51,7 +51,7 @@ async function sendPushNotification(pushToken, notification) {
   try {
     // Initialize Firebase if not already done
     if (!firebaseInitialized) {
-      initializeFirebase();
+      await initializeFirebase();
     }
     
     const message = {
@@ -113,7 +113,7 @@ async function sendBatchNotifications(pushTokens, notification) {
   
   try {
     if (!firebaseInitialized) {
-      initializeFirebase();
+      await initializeFirebase();
     }
     
     const messages = pushTokens.map(token => ({
@@ -173,7 +173,7 @@ async function sendBatchNotifications(pushTokens, notification) {
   }
 }
 
-module.exports = {
+export {
   sendPushNotification,
   sendBatchNotifications
 };

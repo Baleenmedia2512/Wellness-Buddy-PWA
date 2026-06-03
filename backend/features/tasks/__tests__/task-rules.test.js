@@ -5,7 +5,7 @@
  * Per claude.md §9.6: Domain tests have no mocks (pure inputs → outputs)
  */
 
-const {
+import {
   isTaskVisible,
   shouldTaskExpire,
   shouldSendNotification,
@@ -13,7 +13,7 @@ const {
   validateTaskCompletion,
   getTaskTitle,
   getTaskIcon
-} = require('../domain/task-rules');
+} from '../domain/task-rules.js';
 
 describe('task-rules', () => {
   describe('isTaskVisible', () => {

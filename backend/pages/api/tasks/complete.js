@@ -4,11 +4,11 @@
  * Per claude.md §2.6: Validate input, return { ok, data/error }, explicit status codes
  */
 
-const { completeTask } = require('../../../features/tasks/data/task-repo');
-const { validateTaskCompletion } = require('../../../features/tasks/domain/task-rules');
-const { validateCompleteTaskRequest } = require('../../../features/tasks/validation/complete-task.schema');
-const logger = require('../../../shared/lib/logger');
-const { getUserIdFromSession } = require('../../../shared/lib/auth-helpers');
+import { completeTask } from '../../../features/tasks/data/task-repo.js';
+import { validateTaskCompletion } from '../../../features/tasks/domain/task-rules.js';
+import { validateCompleteTaskRequest } from '../../../features/tasks/validation/complete-task.schema.js';
+import logger from '../../../shared/lib/logger.js';
+import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
 export default async function handler(req, res) {
   const startTime = Date.now();

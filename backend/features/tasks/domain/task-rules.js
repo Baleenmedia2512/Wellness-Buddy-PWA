@@ -11,7 +11,7 @@
  * - Priority calculation
  */
 
-const { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } = require('date-fns');
+import { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 
 /**
  * Determine if a task should be visible to user right now
@@ -230,7 +230,7 @@ function getTaskIcon(taskType) {
   return icons[taskType] || '📋';
 }
 
-module.exports = {
+export {
   isTaskVisible,
   shouldTaskExpire,
   shouldSendNotification,

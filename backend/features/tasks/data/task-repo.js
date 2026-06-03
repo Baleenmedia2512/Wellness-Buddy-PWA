@@ -9,8 +9,8 @@
  * Per claude.md §2.7: Use dbPool with parameterised queries
  */
 
-const { dbPool } = require('../../../utils/dbPool');
-const logger = require('../../../shared/lib/logger');
+import { dbPool } from '../../../utils/dbPool.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * Get all tasks for a user on a specific date with status filter
@@ -307,7 +307,7 @@ async function getTimeWindowsByStartTime(startTime) {
   }
 }
 
-module.exports = {
+export {
   getTasksByUserAndDate,
   getTasksNeedingNotification,
   createTask,
