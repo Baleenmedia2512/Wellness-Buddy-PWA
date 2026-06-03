@@ -226,8 +226,8 @@ const Header = ({
                   <span className="text-green-600">
                     {APP_VERSION.VERSION.split(".")[1]}
                   </span>
-                  {/* <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span> */}
+                  <span className="text-gray-400">.</span>
+                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span>
                 </span>
               </h1>
               <p className="text-xs sm:text-sm text-green-600 truncate">

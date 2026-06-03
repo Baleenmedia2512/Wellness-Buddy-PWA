@@ -74,25 +74,25 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.2',
+  VERSION: '3.2.1',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 39,
+  VERSION_CODE: 40,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 39,
+  IOS_BUILD_NUMBER: 40,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Account Deletion & Ideal Weight',
+  RELEASE_NAME: 'Glycemic Index & UI Improvements',
   
   // Build date
-  BUILD_DATE: '2026-05-12',
+  BUILD_DATE: '2026-06-03',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 40, versionName: '3.2' },
-    IOS: { buildNumber: 39, versionName: '3.1' },
+    ANDROID: { versionCode: 40, versionName: '3.2.1' },
+    IOS: { buildNumber: 40, versionName: '3.2.1' },
   },
 };
 
