@@ -23,7 +23,7 @@ import MacrosCard     from './carousel/MacrosCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
 import LowCarbCard    from './carousel/LowCarbCard';
 
-const CARD_LABELS = ['Calories', 'Macros', 'Heart Healthy', 'Low Carb'];
+const CARD_LABELS = ['Calories', 'Macros', 'Heart Health', 'Low Carb'];
 
 const NutritionCarousel = ({
   calorieTarget,

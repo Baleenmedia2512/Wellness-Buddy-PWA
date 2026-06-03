@@ -6,7 +6,7 @@
  *
  * Targets:
  *   Card 1 — Calories:     target = BMR (latestBmr), consumed = food cals, exercise = 0
- *   Card 2 — Macros:       protein = weight×2.0g, fat = weight×0.8g, carbs = derived
+ *   Card 2 — Macros:       protein = weight×1.5g, fat = weight×0.75g, carbs = derived
  *   Card 3 — Heart Healthy: fat = macro target, sodium = 2300mg, cholesterol = 300mg
  *   Card 4 — Low Carb:     carbs = macro target, sugar = 50g, fiber = 25g
  */
@@ -31,7 +31,7 @@ export function computeCaloriesCard({ calorieTarget, consumedCalories, burnedCal
   const consumed = Math.max(0, consumedCalories || 0);
   const exercise = Math.max(0, burnedCalories || 0);
   const remaining = Math.max(0, target - consumed + exercise);
-  const progressPercent = Math.min(100, Math.round((consumed / target) * 100));
+  const progressPercent = Math.round((consumed / target) * 100);
   return { target, consumed, exercise, remaining, progressPercent };
 }
 
@@ -50,8 +50,8 @@ export function computeMacroTargets({ latestWeight, calorieTarget }) {
   if (!latestWeight || latestWeight <= 0) {
     return { proteinTarget: null, fatTarget: null, carbsTarget: null };
   }
-  const proteinTarget = Math.round(latestWeight * 2.0);
-  const fatTarget     = Math.round(latestWeight * 0.8);
+  const proteinTarget = Math.round(latestWeight * 1.5);
+  const fatTarget     = Math.round(latestWeight * 0.75);
   const proteinCals   = proteinTarget * CALORIES_PER_PROTEIN_G;
   const fatCals       = fatTarget     * CALORIES_PER_FAT_G;
   const effectiveCals = calorieTarget > 0 ? calorieTarget : 1500;

@@ -7,15 +7,15 @@ import CircularProgress from './CircularProgress';
  * Compact MyFitnessPal-style with 3 nutrients side by side.
  */
 const LowCarbCard = ({ carbs, sugar, fiber }) => {
-  const carbsPct = carbs.target != null ? Math.min(100, Math.round((carbs.consumed / carbs.target) * 100)) : null;
-  const sugarPct = Math.min(100, Math.round((sugar.consumed / sugar.target) * 100));
-  const fiberPct = Math.min(100, Math.round(((fiber.consumed || 0) / fiber.target) * 100));
+  const carbsPct = carbs.target != null ? Math.round((carbs.consumed / carbs.target) * 100) : null;
+  const sugarPct = Math.round((sugar.consumed / sugar.target) * 100);
+  const fiberPct = Math.round(((fiber.consumed || 0) / fiber.target) * 100);
 
   return (
-    <div className="h-full flex items-start justify-center pt-4 px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-5 w-full max-w-md">
+    <div className="h-full flex items-start justify-center pt-2 px-3">
+      <div className="bg-white rounded-2xl shadow-lg p-4 w-full max-w-md">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-md">
               <Wheat className="w-4 h-4 text-white" />
@@ -30,13 +30,13 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
           {/* Carbs */}
           <div className="text-center">
             {carbsPct != null ? (
-              <CircularProgress percentage={carbsPct} color="from-orange-400 to-amber-400" size={70} strokeWidth={6} />
+              <CircularProgress percentage={carbsPct} color="from-orange-400 to-amber-400" size={70} strokeWidth={6} targetLabel={carbs.target != null ? `${carbs.target}g` : undefined} />
             ) : (
               <div className="w-[70px] h-[70px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <Wheat className="w-5 h-5 text-gray-400" />
               </div>
             )}
-            <div className="mt-3">
+            <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Wheat className="w-3.5 h-3.5 text-orange-500" />
                 <p className="text-xs font-semibold text-gray-700">Carbs</p>
@@ -49,8 +49,8 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
 
           {/* Sugar */}
           <div className="text-center">
-            <CircularProgress percentage={sugarPct} color="from-pink-400 to-rose-400" size={70} strokeWidth={6} />
-            <div className="mt-3">
+            <CircularProgress percentage={sugarPct} color="from-pink-400 to-rose-400" size={70} strokeWidth={6} targetLabel={`${sugar.target}g`} />
+            <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Candy className="w-3.5 h-3.5 text-pink-500" />
                 <p className="text-xs font-semibold text-gray-700">Sugar</p>
@@ -62,8 +62,8 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
 
           {/* Fiber (goal, not limit) */}
           <div className="text-center">
-            <CircularProgress percentage={fiberPct} color="from-green-400 to-emerald-500" size={70} strokeWidth={6} />
-            <div className="mt-3">
+            <CircularProgress percentage={fiberPct} color="from-green-400 to-emerald-500" size={70} strokeWidth={6} targetLabel={`${fiber.target}g`} />
+            <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Leaf className="w-3.5 h-3.5 text-green-600" />
                 <p className="text-xs font-semibold text-gray-700">Fiber</p>
@@ -78,7 +78,7 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
         </div>
 
         {/* Footer */}
-        <p className="text-[10px] text-gray-400 text-center mt-4 pt-3 border-t border-gray-100">
+        <p className="text-[10px] text-gray-400 text-center mt-2 pt-2 border-t border-gray-100">
           Track your carb intake goals
         </p>
       </div>

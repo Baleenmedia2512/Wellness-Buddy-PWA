@@ -26,10 +26,20 @@ describe('computeCaloriesCard', () => {
     expect(r.progressPercent).toBe(60);
   });
 
-  it('over target: remaining = 0, progressPercent = 100', () => {
+  it('over target: remaining = 0, progressPercent reflects actual overage (no cap)', () => {
     const r = computeCaloriesCard({ calorieTarget: 1500, consumedCalories: 2000 });
     expect(r.remaining).toBe(0);
-    expect(r.progressPercent).toBe(100);
+    expect(r.progressPercent).toBe(133); // Math.round(2000/1500*100)
+  });
+
+  it('progressPercent in yellow zone (100–150%) when moderately over target', () => {
+    const r = computeCaloriesCard({ calorieTarget: 2000, consumedCalories: 2500 });
+    expect(r.progressPercent).toBe(125);
+  });
+
+  it('progressPercent in red zone (>150%) when far over target', () => {
+    const r = computeCaloriesCard({ calorieTarget: 1000, consumedCalories: 1600 });
+    expect(r.progressPercent).toBe(160);
   });
 
   it('zero consumed: all zeros, progressPercent = 0', () => {
@@ -62,10 +72,10 @@ describe('computeCaloriesCard', () => {
 describe('computeMacroTargets', () => {
   it('calculates targets from weight 70kg, 2000 kcal', () => {
     const r = computeMacroTargets({ latestWeight: 70, calorieTarget: 2000 });
-    expect(r.proteinTarget).toBe(140);   // 70 * 2.0
-    expect(r.fatTarget).toBe(56);        // 70 * 0.8
-    // (2000 - 140*4 - 56*9) / 4 = (2000 - 560 - 504) / 4 = 936/4 = 234
-    expect(r.carbsTarget).toBe(234);
+    expect(r.proteinTarget).toBe(105);   // 70 * 1.5
+    expect(r.fatTarget).toBe(53);        // Math.round(70 * 0.75) = Math.round(52.5) = 53
+    // (2000 - 105*4 - 53*9) / 4 = (2000 - 420 - 477) / 4 = 1103/4 ≈ 276
+    expect(r.carbsTarget).toBe(276);
   });
 
   it('returns null targets when weight is null', () => {
@@ -88,8 +98,8 @@ describe('computeMacroTargets', () => {
 
   it('falls back to 1500 kcal target when calorieTarget = 0', () => {
     const r = computeMacroTargets({ latestWeight: 60, calorieTarget: 0 });
-    expect(r.proteinTarget).toBe(120);
-    expect(r.fatTarget).toBe(48);
+    expect(r.proteinTarget).toBe(90);   // 60 * 1.5
+    expect(r.fatTarget).toBe(45);       // Math.round(60 * 0.75)
     expect(r.carbsTarget).toBeGreaterThanOrEqual(0);
   });
 });

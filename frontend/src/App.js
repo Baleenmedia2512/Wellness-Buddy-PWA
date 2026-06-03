@@ -5737,7 +5737,7 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-3 xs:px-4 pt-14 xs:pt-16" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
+      <div className="flex-1 overflow-y-auto px-3 xs:px-4 pt-1" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
         <div className="max-w-lg w-full mx-auto space-y-4 xs:space-y-6 py-2 xs:py-3">
           {/* Back button toast message */}
           {toast.visible && (
