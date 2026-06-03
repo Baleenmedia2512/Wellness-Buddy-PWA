@@ -22,6 +22,7 @@ const {
   expireOldTasks
 } = require('../data/task-repo');
 const logger = require('../../../shared/lib/logger');
+const { sendPushNotification } = require('../../../shared/services/pushNotificationService');
 
 /**
  * Check and create tasks for time windows starting now
@@ -88,8 +89,7 @@ async function expirePreviousDayTasks() {
 
 /**
  * Send notification for a task
- * Placeholder - implement based on your notification system
- * (Firebase Cloud Messaging, OneSignal, etc.)
+ * Sends push notification via Firebase Cloud Messaging
  */
 async function sendTaskNotification(task, window) {
   try {
@@ -111,11 +111,32 @@ async function sendTaskNotification(task, window) {
       taskType: task.task_type
     });
     
-    // TODO: Integrate with actual notification service
-    // await sendPushNotification(task.user_id, notification);
+    // Get user's push token from window data (populated by task-repo query)
+    const pushToken = window.PushToken;
     
-    // Mark notification as sent
-    await markNotificationSent(task.task_id);
+    if (!pushToken) {
+      logger.warn('Cannot send notification: user has no push token', {
+        userId: task.user_id
+      });
+      return;
+    }
+    
+    // Send push notification via Firebase
+    const sent = await sendPushNotification(pushToken, notification);
+    
+    if (sent) {
+      // Mark notification as sent in database
+      await markNotificationSent(task.task_id);
+      logger.info('Task notification sent successfully', {
+        taskId: task.task_id,
+        userId: task.user_id
+      });
+    } else {
+      logger.error('Failed to send task notification', {
+        taskId: task.task_id,
+        userId: task.user_id
+      });
+    }
     
   } catch (error) {
     logger.error('Error sending task notification', {

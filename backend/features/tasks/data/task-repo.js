@@ -289,7 +289,8 @@ async function getTimeWindowsByStartTime(startTime) {
         u."UserId" as user_id,
         u."Email",
         u."UserName",
-        u."Status"
+        u."Status",
+        u."PushToken"
       FROM activity_time_windows_table tw
       CROSS JOIN team_table u
       WHERE tw."EffectiveToDate" IS NULL
