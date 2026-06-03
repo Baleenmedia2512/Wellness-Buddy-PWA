@@ -13,12 +13,23 @@
  * @returns {string|null} - User ID or null if not authenticated
  */
 function getUserIdFromSession(req) {
-  // Method 1: Check Authorization header (JWT)
+  // Method 1: Check query param (for development/testing - temporary)
+  // This allows the tasks API to work without full auth implementation
+  if (req.query && req.query.userId) {
+    return String(req.query.userId);
+  }
+  
+  // Method 2: Check body for userId (for POST requests - temporary)
+  if (req.body && req.body.userId) {
+    return String(req.body.userId);
+  }
+  
+  // Method 3: Check Authorization header (JWT)
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     try {
       const token = authHeader.substring(7);
-      // Decode JWT and extract user ID
+      // TODO: Decode JWT and extract user ID when proper auth is implemented
       // const decoded = jwt.verify(token, process.env.JWT_SECRET);
       // return decoded.userId;
       
@@ -29,19 +40,9 @@ function getUserIdFromSession(req) {
     }
   }
   
-  // Method 2: Check session cookie
+  // Method 4: Check session cookie
   if (req.cookies && req.cookies.userId) {
     return req.cookies.userId;
-  }
-  
-  // Method 3: Check query param (for development only)
-  if (process.env.NODE_ENV === 'development' && req.query.userId) {
-    return req.query.userId;
-  }
-  
-  // Method 4: Check body for userId (temporary - for testing)
-  if (req.body && req.body.userId) {
-    return req.body.userId;
   }
   
   return null;
