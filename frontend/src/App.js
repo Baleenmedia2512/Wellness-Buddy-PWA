@@ -111,6 +111,7 @@ import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
+import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -247,6 +248,10 @@ function WellnessValleyApp() {
   const [showManualFoodModal, setShowManualFoodModal] = useState(false);
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  
+  // -- Task Notification Panel (June 2026) -----------------------------------
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -5919,6 +5924,29 @@ function WellnessValleyApp() {
             onCameraStateChange={handleCameraStateChange}
           />
 
+          {/* Task Notification FAB (Floating Action Button) */}
+          {user && user.id && (
+            <button
+              onClick={() => setShowTaskPanel(true)}
+              className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold w-14 h-14 rounded-full shadow-2xl transform transition-all duration-200 hover:scale-110 flex items-center justify-center"
+              aria-label="Show My Tasks"
+            >
+              <svg 
+                className="w-6 h-6" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
+                />
+              </svg>
+            </button>
+          )}
+
           {error && (() => {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
 
@@ -7411,6 +7439,40 @@ function WellnessValleyApp() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Task Notification Panel (June 2026) */}
+      {showTaskPanel && user && (
+        <TaskNotificationPanel
+          userId={user.id}
+          onClose={() => {
+            setShowTaskPanel(false);
+            setHighlightedTaskId(null);
+          }}
+          highlightedTaskId={highlightedTaskId}
+          onTaskComplete={(task) => {
+            debugLog('[App] Task completion triggered', { taskId: task.task_id, taskType: task.task_type });
+            
+            // Open appropriate modal/screen based on task type
+            if (task.task_type === 'weight') {
+              setImageType('weight');
+              setShowManualWeightModal(true);
+            } else if (['breakfast', 'lunch', 'dinner'].includes(task.task_type)) {
+              setImageType('food');
+              setManualMealType(task.task_type);
+              setShowManualFoodModal(true);
+            } else if (task.task_type === 'education') {
+              setShowManualEducationModal(true);
+            } else if (task.task_type === 'water') {
+              setDashboardInitialTab('water');
+              setShowDashboard(true);
+              Session.setCurrentPage('dashboard');
+            }
+            
+            // Close task panel after opening the relevant UI
+            setShowTaskPanel(false);
+          }}
+        />
       )}
     </div>
     </LocationGuard>
