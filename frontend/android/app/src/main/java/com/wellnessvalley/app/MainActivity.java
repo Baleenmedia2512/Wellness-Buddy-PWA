@@ -16,6 +16,7 @@ import android.graphics.Bitmap;
 import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
+import com.wellnessvalley.app.plugins.KeepAwakePlugin;
 import com.wellnessvalley.app.plugins.ReminderPlugin;
 import com.wellnessvalley.app.plugins.ScreenTimePlugin;
 import com.wellnessvalley.app.plugins.StepCounterPlugin;
@@ -53,6 +54,9 @@ public class MainActivity extends BridgeActivity {
 
         // ✅ Register ReminderPlugin for daily activity reminders (AlarmManager)
         registerPlugin(ReminderPlugin.class);
+        
+        // ✅ Register KeepAwakePlugin to prevent screen sleep while app is active
+        registerPlugin(KeepAwakePlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
