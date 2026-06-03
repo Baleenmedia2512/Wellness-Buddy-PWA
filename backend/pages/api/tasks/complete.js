@@ -123,7 +123,8 @@ export default async function handler(req, res) {
       ok: false,
       error: {
         code: 'INTERNAL_ERROR',
-        message: 'Failed to complete task'
+        message: process.env.NODE_ENV === 'production' ? 'Failed to complete task' : error.message,
+        ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
       }
     });
   }
