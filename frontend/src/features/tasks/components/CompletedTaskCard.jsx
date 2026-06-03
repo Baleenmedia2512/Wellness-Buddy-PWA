@@ -2,7 +2,7 @@
  * CompletedTaskCard.jsx — Display completed task in Completed tab
  * 
  * Shows task completion info with checkmark
- */
+ *///
 
 import React from 'react';
 import { format, parseISO } from 'date-fns';
