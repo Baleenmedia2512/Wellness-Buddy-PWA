@@ -7056,7 +7056,8 @@ function WellnessValleyApp() {
             onBack={() => setShowNutritionCentersMap(false)}
             onEditCenter={(center) => {
               setEditCenterData(center);
-              setShowNutritionCentersMap(false);
+              // Keep map mounted in background - don't unmount
+              // setShowNutritionCentersMap(false); 
               setShowRegisterCenter(true);
             }}
             onRegisterCenter={() => {
@@ -7079,8 +7080,8 @@ function WellnessValleyApp() {
             onBack={() => {
               setShowRegisterCenter(false);
               if (editCenterData) {
-                // came from Physical Club Report via Edit — go back there
-                setShowNutritionCentersMap(true);
+                // came from Physical Club Report via Edit — map already visible, just close form
+                // No need to re-open map: setShowNutritionCentersMap(true);
               }
               setEditCenterData(null);
             }}

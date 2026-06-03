@@ -47,9 +47,11 @@ const groupLogsByUser = (logs) => {
       timestamp: log.timestamp || new Date().toISOString(),
     });
   });
-  // Sort logs within each user by timestamp
+  // Sort logs within each user by timestamp ascending, then capture first log time
   Object.values(grouped).forEach((user) => {
     user.logs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    // First log time is now at index 0 after sort
+    user.firstLogTime = user.logs.length > 0 ? user.logs[0].timestamp : null;
   });
   return Object.values(grouped);
 };
@@ -163,8 +165,14 @@ const AttendeeListModal = ({
     });
   };
 
-  // Group logs by user for display
-  const groupedAttendees = groupLogsByUser(attendees);
+  // Group logs by user for display, then sort by first log time ascending (earliest first)
+  const groupedAttendees = groupLogsByUser(attendees).sort((a, b) => {
+    // Handle null timestamps (users without valid timestamps go last)
+    if (!a.firstLogTime && !b.firstLogTime) return 0;
+    if (!a.firstLogTime) return 1;
+    if (!b.firstLogTime) return -1;
+    return new Date(a.firstLogTime) - new Date(b.firstLogTime);
+  });
   const uniqueAttendeeCount = groupedAttendees.length;
 
   return (
@@ -255,7 +263,14 @@ const AttendeeListModal = ({
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-800 block truncate">{user.userName}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-800 block truncate">{user.userName}</span>
+                              {user.firstLogTime && (
+                                <span className="text-xs font-semibold text-green-600 shrink-0">
+                                  {formatTime(user.firstLogTime)}
+                                </span>
+                              )}
+                            </div>
                             <span className="text-xs text-gray-500">
                               {user.logs.length} {user.logs.length === 1 ? 'log' : 'logs'}
                             </span>

@@ -710,7 +710,7 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
+    <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-[70] overflow-auto">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white shadow-md">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
