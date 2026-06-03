@@ -22,7 +22,6 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
             </div>
             <span className="text-lg font-bold text-gray-900">Low Carb</span>
           </div>
-          <span className="text-xs font-semibold bg-orange-50 text-orange-600 px-2.5 py-1 rounded-full">Goals</span>
         </div>
 
         {/* 3 Nutrients in a Row */}

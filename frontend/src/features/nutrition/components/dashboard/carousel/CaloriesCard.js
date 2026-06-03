@@ -9,68 +9,79 @@ import { Flame, Utensils, User } from 'lucide-react';
  * Design: Compact, mobile-optimized with circular progress.
  */
 
-// Compact Circular Progress for mobile (lap-based zone coloring)
+// Compact Circular Progress for mobile (two-layer: green base + red overlay when exceeding)
 const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  // Unified zone colors — matches CircularProgress.js
-  //   0–100%   → green gradient (lime-400 → emerald-600)
-  //   100–150% → yellow/amber gradient, arc restarts from 0 (second lap)
-  //   150%+    → red gradient, arc fully filled
-  let arcPct, strokeStart, strokeEnd;
-  if (percentage > 150) {
-    arcPct = 100;
-    strokeStart = '#f87171';
-    strokeEnd   = '#dc2626';
-  } else if (percentage > 100) {
-    arcPct = ((percentage - 100) / 50) * 100;
-    strokeStart = '#fde047';
-    strokeEnd   = '#f59e0b';
-  } else {
-    arcPct = percentage;
-    strokeStart = '#4ade80';
-    strokeEnd   = '#059669';
-  }
+  // Green arc: always capped at 100%
+  const greenPct = Math.min(percentage, 100);
+  const greenOffset = circumference - (greenPct / 100) * circumference;
+  
+  // Red arc: only shows excess beyond 100%
+  const isExceeding = percentage > 100;
+  const excessPct = isExceeding ? percentage - 100 : 0;
+  const redOffset = circumference - (excessPct / 100) * circumference;
 
-  const offset    = circumference - (arcPct / 100) * circumference;
-  const textColor = percentage > 150 ? '#dc2626' : percentage > 100 ? '#d97706' : '#065f46';
+  const textColor = isExceeding ? '#dc2626' : '#065f46';
   const subtitle  = bmrTarget ? `of ${bmrTarget.toLocaleString()}` : 'of BMR';
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
+        <defs>
+          {/* Green gradient */}
+          <linearGradient id="compactCalGreen" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#4ade80" />
+            <stop offset="100%" stopColor="#059669" />
+          </linearGradient>
+          {/* Red gradient */}
+          <linearGradient id="compactCalRed" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f87171" />
+            <stop offset="100%" stopColor="#dc2626" />
+          </linearGradient>
+        </defs>
+
         {/* Background track */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#E5E7EB"
+          stroke="#e5e7eb"
           strokeWidth={strokeWidth}
+          opacity="0.3"
         />
 
-        <defs>
-          <linearGradient id="compactCalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   style={{ stopColor: strokeStart, stopOpacity: 1 }} />
-            <stop offset="100%" style={{ stopColor: strokeEnd,   stopOpacity: 1 }} />
-          </linearGradient>
-        </defs>
-
-        {/* Progress arc */}
+        {/* Green arc (base, up to 100%) */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="url(#compactCalGradient)"
+          stroke="url(#compactCalGreen)"
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          strokeDashoffset={offset}
+          strokeDashoffset={greenOffset}
           strokeLinecap="round"
-          className="transition-all duration-500 ease-out"
-          style={{ willChange: 'stroke-dashoffset' }}
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
+
+        {/* Red arc (excess, only when > 100%) */}
+        {isExceeding && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="url(#compactCalRed)"
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={redOffset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+          />
+        )}
       </svg>
 
       {/* Center text */}
@@ -102,7 +113,7 @@ const MiniProgressBar = ({ percentage, color }) => {
 };
 
 const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }) => {
-  const isExceed = progressPercent > 110;
+  const isExceed = progressPercent > 100;
   const exceeded = Math.max(0, consumed - target);
 
   return (

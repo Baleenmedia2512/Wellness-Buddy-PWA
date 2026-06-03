@@ -24,7 +24,6 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol }) => {
             </div>
             <span className="text-lg font-bold text-gray-900">Heart Health</span>
           </div>
-          <span className="text-xs font-semibold bg-rose-50 text-rose-600 px-2.5 py-1 rounded-full">Limits</span>
         </div>
 
         {/* 3 Nutrients in a Row */}

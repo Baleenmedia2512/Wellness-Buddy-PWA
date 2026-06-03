@@ -30,17 +30,17 @@ describe('computeCaloriesCard', () => {
   it('over target: remaining = 0, progressPercent reflects actual overage (no cap)', () => {
     const r = computeCaloriesCard({ calorieTarget: 1500, consumedCalories: 2000 });
     expect(r.remaining).toBe(0);
-    expect(r.progressPercent).toBe(133); // Math.round(2000/1500*100)
+    expect(r.progressPercent).toBe(133); // 2000/1500 = 133% (red zone: >100%)
   });
 
-  it('progressPercent in yellow zone (100–150%) when moderately over target', () => {
+  it('progressPercent in red zone (>100%) when moderately over target', () => {
     const r = computeCaloriesCard({ calorieTarget: 2000, consumedCalories: 2500 });
-    expect(r.progressPercent).toBe(125);
+    expect(r.progressPercent).toBe(125); // red zone starts immediately after 100%
   });
 
-  it('progressPercent in red zone (>150%) when far over target', () => {
+  it('progressPercent in red zone when far over target', () => {
     const r = computeCaloriesCard({ calorieTarget: 1000, consumedCalories: 1600 });
-    expect(r.progressPercent).toBe(160);
+    expect(r.progressPercent).toBe(160); // all above 100% is red
   });
 
   it('zero consumed: all zeros, progressPercent = 0', () => {
