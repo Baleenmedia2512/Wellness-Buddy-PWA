@@ -8,6 +8,7 @@ import {
   computeMacroProgress,
   computeHeartHealthyCard,
   computeLowCarbCard,
+  computeGICard,
   SODIUM_TARGET_MG,
   CHOLESTEROL_TARGET_MG,
   SUGAR_TARGET_G,
@@ -279,5 +280,77 @@ describe('computeLowCarbCard — personalized sugar target', () => {
     // calorieTarget 2000 → sugarTarget 50. consumed 25 → 50 %
     const r = computeLowCarbCard({ consumedCarbs: 0, consumedSugar: 25, consumedFiber: 0, carbsTarget: null, calorieTarget: 2000 });
     expect(r.sugar.pct).toBe(50);
+  });
+});
+
+// ─── Card 5: Glycemic Index ───────────────────────────────────────────────────
+
+describe('computeGICard', () => {
+  it('returns Low zone when GI ≤55', () => {
+    const r = computeGICard({ averageGlycemicIndex: 45, mealCount: 2 });
+    expect(r.averageGI).toBe(45);
+    expect(r.zone).toBe('Low');
+    expect(r.mealCount).toBe(2);
+  });
+
+  it('returns Low zone at boundary (GI = 55)', () => {
+    const r = computeGICard({ averageGlycemicIndex: 55, mealCount: 3 });
+    expect(r.averageGI).toBe(55);
+    expect(r.zone).toBe('Low');
+  });
+
+  it('returns Medium zone when 56 ≤ GI ≤ 69', () => {
+    const r = computeGICard({ averageGlycemicIndex: 62, mealCount: 1 });
+    expect(r.averageGI).toBe(62);
+    expect(r.zone).toBe('Medium');
+  });
+
+  it('returns Medium zone at lower boundary (GI = 56)', () => {
+    const r = computeGICard({ averageGlycemicIndex: 56, mealCount: 4 });
+    expect(r.averageGI).toBe(56);
+    expect(r.zone).toBe('Medium');
+  });
+
+  it('returns Medium zone at upper boundary (GI = 69)', () => {
+    const r = computeGICard({ averageGlycemicIndex: 69, mealCount: 2 });
+    expect(r.averageGI).toBe(69);
+    expect(r.zone).toBe('Medium');
+  });
+
+  it('returns High zone when GI ≥ 70', () => {
+    const r = computeGICard({ averageGlycemicIndex: 78, mealCount: 5 });
+    expect(r.averageGI).toBe(78);
+    expect(r.zone).toBe('High');
+  });
+
+  it('returns High zone at boundary (GI = 70)', () => {
+    const r = computeGICard({ averageGlycemicIndex: 70, mealCount: 1 });
+    expect(r.averageGI).toBe(70);
+    expect(r.zone).toBe('High');
+  });
+
+  it('returns null zone when no meals logged', () => {
+    const r = computeGICard({ averageGlycemicIndex: null, mealCount: 0 });
+    expect(r.averageGI).toBeNull();
+    expect(r.zone).toBeNull();
+    expect(r.mealCount).toBe(0);
+  });
+
+  it('returns null zone when averageGlycemicIndex is null even with meals', () => {
+    // Edge case: legacy data where meals exist but GI was never computed
+    const r = computeGICard({ averageGlycemicIndex: null, mealCount: 3 });
+    expect(r.averageGI).toBeNull();
+    expect(r.zone).toBeNull();
+  });
+
+  it('rounds GI to whole number', () => {
+    const r = computeGICard({ averageGlycemicIndex: 62.7, mealCount: 2 });
+    expect(r.averageGI).toBe(63);
+  });
+
+  it('returns 0 meals when mealCount is 0', () => {
+    const r = computeGICard({ averageGlycemicIndex: 50, mealCount: 0 });
+    expect(r.mealCount).toBe(0);
+    expect(r.averageGI).toBeNull(); // null because mealCount=0
   });
 });

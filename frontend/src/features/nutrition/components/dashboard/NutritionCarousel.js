@@ -1,11 +1,12 @@
 /**
- * NutritionCarousel — 4-card horizontal swipe carousel for the nutrition dashboard.
+ * NutritionCarousel — 5-card horizontal swipe carousel for the nutrition dashboard.
  *
  * Cards (in order):
  *   0 — Calories       (BMR target, consumed, exercise=0, remaining)
  *   1 — Macros         (protein/fat/carbs with weight-derived targets)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
  *   3 — Low Carb       (carbs, sugar ≤50g, fiber ≥25g)
+ *   4 — Glycemic Index (average GI with Low/Medium/High zones)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
  * Resets to card 0 when selectedDate changes.
@@ -16,14 +17,16 @@ import {
   computeMacroTargets,
   computeHeartHealthyCard,
   computeLowCarbCard,
+  computeGICard,
 } from '../../domain/carouselRules';
 import { useCarouselSwipe } from '../../hooks/useCarouselSwipe';
 import CaloriesCard   from './carousel/CaloriesCard';
 import MacrosCard     from './carousel/MacrosCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
 import LowCarbCard    from './carousel/LowCarbCard';
+import GICard         from './carousel/GICard';
 
-const CARD_LABELS = ['Calories', 'Macros', 'Heart Health', 'Low Carb'];
+const CARD_LABELS = ['Calories', 'Macros', 'Heart Health', 'Low Carb', 'Glycemic Index'];
 
 const NutritionCarousel = ({
   calorieTarget,
@@ -66,6 +69,11 @@ const NutritionCarousel = ({
     calorieTarget,
   });
 
+  const giCard = computeGICard({
+    averageGlycemicIndex: dailyStats?.averageGlycemicIndex ?? null,
+    mealCount: dailyStats?.mealCount || 0,
+  });
+
   const cards = [
     <CaloriesCard key="calories" {...calCard} />,
     <MacrosCard
@@ -80,6 +88,7 @@ const NutritionCarousel = ({
     />,
     <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
     <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,
+    <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
   ];
 
   return (

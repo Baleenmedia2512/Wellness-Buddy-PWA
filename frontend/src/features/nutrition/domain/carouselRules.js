@@ -138,3 +138,23 @@ export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber
   };
   return { carbs, sugar, fiber };
 }
+
+// ─── Card 5: Glycemic Index ───────────────────────────────────────────────────
+
+/**
+ * @param {{ averageGlycemicIndex: number|null, mealCount: number }}
+ * @returns {{ averageGI: number|null, mealCount: number, zone: string|null }}
+ *
+ * GI Zones (carb-weighted average):
+ *   Low: ≤55 (green) — Good for blood sugar control
+ *   Medium: 56-69 (amber) — Moderate impact
+ *   High: ≥70 (red) — Rapid blood sugar spike
+ */
+export function computeGICard({ averageGlycemicIndex, mealCount }) {
+  if (averageGlycemicIndex == null || mealCount === 0) {
+    return { averageGI: null, mealCount: 0, zone: null };
+  }
+  const gi = Math.round(averageGlycemicIndex);
+  const zone = gi <= 55 ? 'Low' : gi <= 69 ? 'Medium' : 'High';
+  return { averageGI: gi, mealCount, zone };
+}
