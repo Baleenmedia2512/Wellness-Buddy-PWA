@@ -92,9 +92,9 @@ const NutritionCarousel = ({
   ];
 
   return (
-    <div className="px-3 md:px-4 mb-4">
+    <div className="px-2 md:px-3 mb-2">
       <div
-        className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden"
+        className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-xl shadow-md border border-gray-100 overflow-hidden"
         {...swipeHandlers}
         style={{ touchAction: 'pan-y' }}
       >
@@ -104,14 +104,14 @@ const NutritionCarousel = ({
           style={{ transform: `translateX(-${(activeIndex * 100) / cards.length}%)`, width: `${cards.length * 100}%` }}
         >
           {cards.map((card, i) => (
-            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[220px]">
+            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[180px]">
               {card}
             </div>
           ))}
         </div>
 
         {/* Dot indicators */}
-        <div className="flex items-center justify-center gap-1.5 pb-3 pt-1">
+        <div className="flex items-center justify-center gap-1.5 pb-2 pt-0.5">
           {CARD_LABELS.map((label, i) => (
             <button
               key={label}

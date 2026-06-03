@@ -155,16 +155,16 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
   const categoryIcons = {
     weight: (score) => (
       <BathroomScaleIcon
-        className="w-3.5 h-3.5 sm:w-4 sm:h-4"
+        className="w-3 h-3 sm:w-3.5 sm:h-3.5"
         variant={getScoreVariant(score)}
       />
     ),
-    education: <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
-    breakfast: <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
-    lunch: <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
-    dinner: <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
-    water: <Droplets className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
-    caloriesBurned: <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
+    education: <BookOpen className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
+    breakfast: <Coffee className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
+    lunch: <Utensils className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
+    dinner: <Moon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
+    water: <Droplets className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
+    caloriesBurned: <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5" />,
   };
 
   // Don't render if loading
@@ -187,7 +187,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
 
   return (
     <div className="w-full bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-4xl mx-auto px-2 sm:px-3 py-1 sm:py-2">
+      <div className="max-w-4xl mx-auto px-2 sm:px-3 py-0.5 sm:py-1">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           {/* Header - Overall Score Removed */}
 
@@ -196,10 +196,10 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
             {Object.entries(categories).map(([key, data]) => (
               <div
                 key={key}
-                className="p-1.5 sm:p-2 flex flex-col items-center justify-center text-center min-h-[70px] sm:min-h-[85px] hover:bg-gray-50 transition-colors"
+                className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[60px] sm:min-h-[70px] hover:bg-gray-50 transition-colors"
               >
                 <div
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center mb-1 shadow-sm border-2 ${getScoreColor(
+                  className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center mb-0.5 shadow-sm border-2 ${getScoreColor(
                     data.percentage,
                   )}`}
                 >
@@ -208,7 +208,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                     : categoryIcons[key]}
                 </div>
                 <span
-                  className={`text-[11px] font-bold mt-0.5 ${
+                  className={`text-[10px] font-bold mt-0 ${
                     data.percentage >= 80
                       ? "text-green-600"
                       : data.percentage >= 60

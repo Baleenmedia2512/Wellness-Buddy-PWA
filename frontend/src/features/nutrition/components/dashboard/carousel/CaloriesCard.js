@@ -117,18 +117,18 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
   const exceeded = Math.max(0, consumed - target);
 
   return (
-    <div className="h-full flex items-start justify-center pt-2 px-3">
+    <div className="h-full flex items-start justify-center pt-1 px-2">
       {/* Compact Card Container */}
-      <div className="bg-white rounded-2xl shadow-lg p-4 w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center shadow-md">
-              <Flame className="w-4 h-4 text-white" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center shadow-md">
+              <Flame className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="text-lg font-bold text-gray-900">Calories</span>
+            <span className="text-base font-bold text-gray-900">Calories</span>
           </div>
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
             isExceed
               ? 'bg-rose-100 text-rose-700'
               : 'bg-emerald-100 text-emerald-700'
@@ -138,55 +138,55 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
         </div>
 
         {/* Formula */}
-        <p className="text-[10px] text-gray-500 text-center mb-2">
+        <p className="text-[9px] text-gray-500 text-center mb-1.5">
           Remaining = Goal - Food + Exercise
         </p>
 
         {/* Main Section — Circle + Remaining */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           {/* Left: Circular progress */}
-          <CompactCircularProgress percentage={progressPercent} size={80} strokeWidth={8} bmrTarget={target} />
+          <CompactCircularProgress percentage={progressPercent} size={70} strokeWidth={7} bmrTarget={target} />
           
           {/* Right: Remaining */}
           <div className="flex-1 text-center">
-            <p className={`text-4xl font-extrabold leading-none mb-1 ${
+            <p className={`text-3xl font-extrabold leading-none mb-0.5 ${
               isExceed ? 'text-rose-600' : 'text-gray-900'
             }`}>
               {isExceed ? exceeded.toLocaleString() : remaining.toLocaleString()}
             </p>
-            <p className="text-sm text-gray-600 font-semibold">
+            <p className="text-xs text-gray-600 font-semibold">
               {isExceed ? 'Exceeded' : 'Remaining'}
             </p>
           </div>
         </div>
 
         {/* Breakdown Stats - Small Icons on Right */}
-        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
+        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
           {/* Base Goal */}
           <div className="text-center">
-            <div className="w-8 h-8 mx-auto mb-1 rounded-full bg-blue-50 flex items-center justify-center">
-              <User className="w-4 h-4 text-blue-500" />
+            <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-blue-50 flex items-center justify-center">
+              <User className="w-3.5 h-3.5 text-blue-500" />
             </div>
-            <p className="text-xs text-gray-500 mb-0.5">BMR</p>
-            <p className="text-sm font-bold text-gray-900">{target.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500 mb-0">BMR</p>
+            <p className="text-xs font-bold text-gray-900">{target.toLocaleString()}</p>
           </div>
 
           {/* Food */}
           <div className="text-center">
-            <div className="w-8 h-8 mx-auto mb-1 rounded-full bg-orange-50 flex items-center justify-center">
-              <Utensils className="w-4 h-4 text-orange-500" />
+            <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
+              <Utensils className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-xs text-gray-500 mb-0.5">Food</p>
-            <p className="text-sm font-bold text-gray-900">{consumed.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500 mb-0">Food</p>
+            <p className="text-xs font-bold text-gray-900">{consumed.toLocaleString()}</p>
           </div>
 
           {/* Exercise */}
           <div className="text-center">
-            <div className="w-8 h-8 mx-auto mb-1 rounded-full bg-orange-50 flex items-center justify-center">
-              <Flame className="w-4 h-4 text-orange-500" />
+            <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
+              <Flame className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-xs text-gray-500 mb-0.5">Exercise</p>
-            <p className="text-sm font-bold text-gray-900">{exercise.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500 mb-0">Exercise</p>
+            <p className="text-xs font-bold text-gray-900">{exercise.toLocaleString()}</p>
           </div>
         </div>
 

@@ -55,8 +55,8 @@ export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey =
   // Show skeleton only on the very first paint, not on background refreshes.
   if (!hasLoadedOnce.current && (bmrLoading || loading)) {
     return (
-      <div className="px-3 md:px-4 mb-4">
-        <div className="w-full max-w-md mx-auto bg-white/70 rounded-2xl shadow-md border border-gray-100 min-h-[220px] animate-pulse" />
+      <div className="px-2 md:px-3 mb-2">
+        <div className="w-full max-w-md mx-auto bg-white/70 rounded-xl shadow-md border border-gray-100 min-h-[180px] animate-pulse" />
       </div>
     );
   }
