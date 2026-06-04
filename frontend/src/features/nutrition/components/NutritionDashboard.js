@@ -654,7 +654,7 @@ const NutritionDashboard = ({
               renderCaloriePointLabel={renderCaloriePointLabel}
             />
             {/* Meals */}
-            <div className="px-4 md:px-6 space-y-4">
+            <div className="px-3 md:px-4 space-y-3">
               <NutritionMealList
                 analyses={analyses}
                 displayedMeals={displayedMeals}

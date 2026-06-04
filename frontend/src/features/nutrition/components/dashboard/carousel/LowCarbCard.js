@@ -12,8 +12,8 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
   const fiberPct = Math.round(((fiber.consumed || 0) / fiber.target) * 100);
 
   return (
-    <div className="h-full flex items-start justify-center pt-2 px-3">
-      <div className="bg-white rounded-2xl shadow-lg p-4 w-full max-w-md">
+    <div className="h-full flex items-start justify-center pt-1 px-2">
+      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full max-w-md">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">

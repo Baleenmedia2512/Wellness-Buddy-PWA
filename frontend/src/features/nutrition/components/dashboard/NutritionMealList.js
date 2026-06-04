@@ -72,19 +72,19 @@ const NutritionMealList = ({
         }, 0);
 
         return (
-          <div key={category}>
-            <div className="flex items-center justify-between mb-3 px-2">
+          <div key={category} className="mb-3">
+            <div className="flex items-center justify-between mb-2 px-2">
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">{info.name}</h3>
-                <p className="text-sm text-gray-500">{formatTimeRangeAMPM(info.timeRange)}</p>
+                <h3 className="text-base font-semibold text-gray-800">{info.name}</h3>
+                <p className="text-xs text-gray-500">{formatTimeRangeAMPM(info.timeRange)}</p>
               </div>
               <div className="text-right">
-                <p className="text-base font-semibold text-gray-800">{Math.round(categoryCalories)}</p>
+                <p className="text-sm font-semibold text-gray-800">{Math.round(categoryCalories)}</p>
                 <p className="text-xs text-gray-500">kcal</p>
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {meals
                 .slice()
                 .sort((a, b) => istToLocalDate(a.CreatedAt) - istToLocalDate(b.CreatedAt))

@@ -36,11 +36,6 @@ const NutritionCarousel = ({
   latestWeight,
   selectedDate,
 }) => {
-  const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
-    cardCount: CARD_LABELS.length,
-    resetKey: selectedDate,
-  });
-
   // Derive values from domain rules (pure)
   const calCard = computeCaloriesCard({
     calorieTarget,
@@ -74,7 +69,12 @@ const NutritionCarousel = ({
     mealCount: dailyStats?.mealCount || 0,
   });
 
-  const cards = [
+  const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
+    cardCount: CARD_LABELS.length,
+    resetKey: selectedDate,
+  });
+
+  const allCards = [
     <CaloriesCard key="calories" {...calCard} />,
     <MacrosCard
       key="macros"
@@ -91,8 +91,10 @@ const NutritionCarousel = ({
     <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
   ];
 
+  const cards = allCards;
+
   return (
-    <div className="px-2 md:px-3 mb-2">
+    <div className="px-2 md:px-3 mb-1.5">
       <div
         className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-xl shadow-md border border-gray-100 overflow-hidden"
         {...swipeHandlers}
@@ -104,14 +106,14 @@ const NutritionCarousel = ({
           style={{ transform: `translateX(-${(activeIndex * 100) / cards.length}%)`, width: `${cards.length * 100}%` }}
         >
           {cards.map((card, i) => (
-            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[180px]">
+            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[160px]">
               {card}
             </div>
           ))}
         </div>
 
         {/* Dot indicators */}
-        <div className="flex items-center justify-center gap-1.5 pb-2 pt-0.5">
+        <div className="flex items-center justify-center gap-1 pb-1.5 pt-0">
           {CARD_LABELS.map((label, i) => (
             <button
               key={label}
@@ -120,8 +122,8 @@ const NutritionCarousel = ({
               onClick={() => goTo(i)}
               className={`rounded-full transition-all duration-300 ${
                 i === activeIndex
-                  ? 'w-5 h-2 bg-emerald-500'
-                  : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                  ? 'w-4 h-1.5 bg-emerald-500'
+                  : 'w-1.5 h-1.5 bg-gray-300 hover:bg-gray-400'
               }`}
             />
           ))}

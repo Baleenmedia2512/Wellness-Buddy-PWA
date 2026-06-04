@@ -671,35 +671,34 @@ const ImageUpload = forwardRef(
 
     return (
       <>
-        <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
-          {/* Camera input */}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          {/* Gallery input */}
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          {/* Fallback input */}
-          <input
-            ref={fallbackInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+        {/* Hidden file inputs - always present for programmatic access */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <input
+          ref={fallbackInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
 
-          {imagePreview ? (
+        {/* Only show the card when there's an image to display or analyze */}
+        {imagePreview && (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
             <div className="space-y-3 sm:space-y-4">
               <div className="relative">
                 {/* Image - Always Visible */}
@@ -742,65 +741,62 @@ const ImageUpload = forwardRef(
 
               {/* Camera access moved to floating button - no UI shown here */}
             </div>
-          ) : (
-            // Component mounted but no UI - camera accessed via floating button in App.js
-            <div className="w-full" />
-          )}
+          </div>
+        )}
 
-          {/* Custom Alert Modal */}
-          <CustomAlertModal
-            isOpen={alertModal.isOpen}
-            onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
-            title={alertModal.title}
-            message={alertModal.message}
-            type={alertModal.type}
-          />
+        {/* Custom Alert Modal */}
+        <CustomAlertModal
+          isOpen={alertModal.isOpen}
+          onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+          title={alertModal.title}
+          message={alertModal.message}
+          type={alertModal.type}
+        />
 
-          {/* Full Screen Image Preview Modal */}
-          <AnimatePresence>
-            {showImageModal && imagePreview && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+        {/* Full Screen Image Preview Modal */}
+        <AnimatePresence>
+          {showImageModal && imagePreview && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowImageModal(false)}
+              className="fixed inset-0 bg-black bg-opacity-90 z-[10000] flex items-center justify-center p-4"
+            >
+              {/* Close Button */}
+              <button
                 onClick={() => setShowImageModal(false)}
-                className="fixed inset-0 bg-black bg-opacity-90 z-[10000] flex items-center justify-center p-4"
+                className="absolute top-4 right-4 bg-red-400 hover:bg-red-500 active:bg-red-800 text-white rounded-full p-3 transition-all duration-200 z-[10001] shadow-lg"
+                aria-label="Close"
               >
-                {/* Close Button */}
-                <button
-                  onClick={() => setShowImageModal(false)}
-                  className="absolute top-4 right-4 bg-red-400 hover:bg-red-500 active:bg-red-800 text-white rounded-full p-3 transition-all duration-200 z-[10001] shadow-lg"
-                  aria-label="Close"
+                <svg
+                  className="w-7 h-7"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <svg
-                    className="w-7 h-7"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2.5}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
 
-                {/* Full Size Image */}
-                <motion.img
-                  initial={{ scale: 0.9 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.9 }}
-                  onClick={(e) => e.stopPropagation()}
-                  src={imagePreview}
-                  alt="Full size preview"
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              {/* Full Size Image */}
+              <motion.img
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.9 }}
+                onClick={(e) => e.stopPropagation()}
+                src={imagePreview}
+                alt="Full size preview"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </>
     );
   },
