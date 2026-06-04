@@ -111,7 +111,7 @@ import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
-import { TaskNotificationPanel } from "./features/tasks";
+// import { TaskNotificationPanel } from "./features/tasks"; // Commented out - Task Scheduler UI hidden
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -246,9 +246,9 @@ function WellnessValleyApp() {
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
   
-  // -- Task Notification Panel (June 2026) -----------------------------------
-  const [showTaskPanel, setShowTaskPanel] = useState(false);
-  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+  // -- Task Notification Panel (June 2026) ----------------------------------- COMMENTED OUT
+  // const [showTaskPanel, setShowTaskPanel] = useState(false);
+  // const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -5920,7 +5920,7 @@ function WellnessValleyApp() {
             onCameraStateChange={handleCameraStateChange}
           />
 
-          {/* Task Notification FAB (Floating Action Button) */}
+          {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
           {user && user.id && (
             <button
               onClick={() => setShowTaskPanel(true)}
@@ -5942,6 +5942,7 @@ function WellnessValleyApp() {
               </svg>
             </button>
           )}
+          */}
 
           {error && (() => {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
@@ -7427,7 +7428,7 @@ function WellnessValleyApp() {
         </div>
       )}
 
-      {/* Task Notification Panel (June 2026) */}
+      {/* Task Notification Panel (June 2026) - COMMENTED OUT
       {showTaskPanel && user && (
         <TaskNotificationPanel
           userId={user.id}
@@ -7460,6 +7461,7 @@ function WellnessValleyApp() {
           }}
         />
       )}
+      */}
     </div>
     </LocationGuard>
   );
