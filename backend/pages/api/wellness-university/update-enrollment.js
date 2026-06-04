@@ -117,7 +117,6 @@ export default async function handler(req, res) {
       .from('wellness_university_enrollments_table')
       .upsert({
         UserId: user.UserId,
-        UserName: user.UserName,
         EnrolledPrograms: programsJson,
         EnrollmentDate: existing ? undefined : updateTime, // Only set on first insert
         LastUpdated: updateTime,
