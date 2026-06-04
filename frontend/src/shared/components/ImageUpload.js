@@ -563,6 +563,8 @@ const ImageUpload = forwardRef(
       },
       // Called by App.js to auto-open the camera (same as tapping Take Photo)
       openCamera: () => triggerCamera(),
+      // Called by App.js to open the gallery picker
+      openGallery: () => triggerGallery(),
       // Returns the timestamp (ms) when the camera/gallery dialog last closed.
       // App.js uses this to suppress resume-triggered camera open immediately
       // after a user-cancel (prevents the camera re-open loop on Android/iOS).

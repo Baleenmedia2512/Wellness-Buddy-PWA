@@ -62,7 +62,7 @@ import React, {
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
-import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon, Camera, Image } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import { NutritionCard, FoodImageShareCard, HomeNutritionCarousel } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
@@ -7087,22 +7087,37 @@ function WellnessValleyApp() {
 
       {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
       {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <button
-          onClick={() => {
-            if (fileInputRef.current?.openCamera && !fileInputRef.current?.isCameraActive()) {
-              fileInputRef.current.openCamera();
-            }
-          }}
-          disabled={loading || fileInputRef.current?.isCameraActive?.()}
-          className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 bg-gradient-to-br from-blue-500 to-blue-600 text-white p-5 rounded-full shadow-2xl transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-xl active:scale-95 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Take Photo"
-          aria-label="Quick camera access"
-        >
-          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        <>
+          {/* Camera Button */}
+          <button
+            onClick={() => {
+              if (fileInputRef.current?.openCamera && !fileInputRef.current?.isCameraActive()) {
+                fileInputRef.current.openCamera();
+              }
+            }}
+            disabled={loading || fileInputRef.current?.isCameraActive?.()}
+            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2 transition-all duration-200 active:scale-95 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Take Photo"
+            aria-label="Quick camera access"
+          >
+            <img src="/app.png" alt="Camera" className="w-12 h-12" />
+          </button>
+          
+          {/* Gallery Button */}
+          <button
+            onClick={() => {
+              if (fileInputRef.current?.openGallery && !fileInputRef.current?.isCameraActive()) {
+                fileInputRef.current.openGallery();
+              }
+            }}
+            disabled={loading || fileInputRef.current?.isCameraActive?.()}
+            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2 transition-all duration-200 active:scale-95 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Choose from Gallery"
+            aria-label="Quick gallery access"
+          >
+            <img src="/gallery.png" alt="Gallery" className="w-12 h-12" />
+          </button>
+        </>
       )}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
