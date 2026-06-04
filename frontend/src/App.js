@@ -468,6 +468,10 @@ function WellnessValleyApp() {
   // there is zero html2canvas wait: the user can share the link+image to
   // WhatsApp while Gemini is still analysing nutrition in the background.
   useEffect(() => {
+    // Check user preference for auto-share
+    const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+    if (!autoShareEnabled) return; // Skip auto-share if disabled
+    
     if (imageType !== "food") return;
     if (!foodShareUrl) return;
     if (foodAutoSharedRef.current) return;
@@ -496,12 +500,12 @@ function WellnessValleyApp() {
 
       _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera after first share
       if (!ok) {
-        // Hard failure � reset the guard so a manual retry is possible.
+        // Hard failure – reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
       }
-      // Keep analysis on screen � user returns from WhatsApp and sees the
-      // AI results (loading ? complete). Camera will NOT auto-reopen because
-      // imagePreview is still set ? _homeScreenActiveRef stays false.
+      // Keep analysis on screen – user returns from WhatsApp and sees the
+      // AI results (loading → complete). Camera WILL auto-reopen on next
+      // app resume if auto-camera setting is enabled.
     })();
 
     return () => {
@@ -648,13 +652,14 @@ function WellnessValleyApp() {
   // Used by the app-resume listener to avoid stale closure over state.
   // NOTE: excludes showCompleteProfile — the profile gate overlays the home
   // screen, so auto-camera-open must not fire while it is visible.
+  // Updated: removed imagePreview/selectedImage checks to allow camera open
+  // even when returning to app during/after analysis (user expectation).
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
     _homeScreenActiveRef.current =
       !!user && !authLoading && !showDashboard && !showCompleteProfile &&
-      !showActivityTimeReport && !showDisciplineReport && !showScreenTime &&
-      !imagePreview && !selectedImage; // don't re-open camera while analysis is in progress
-  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime, imagePreview, selectedImage]);
+      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -714,17 +719,51 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  // App resume listener: intentionally DOES NOT re-open the camera on
-  // foreground resume. Auto-reopening on appStateChange({isActive:true})
-  // is unreliable on top of Capacitor — the same event fires when the
-  // native camera dialog itself yields focus back to the WebView after a
-  // user cancel, producing a cancel → reopen → cancel loop (and a brief
-  // launch-overlay flash between iterations) on every user role.
-  //
-  // Product requirement: the camera opens exactly once per app launch
-  // (handled by the cold-start useEffect below). If the user cancels,
-  // they stay on the home screen and reopen the camera manually via the
-  // camera button. See bug report 2026-05-28.
+  // App resume listener: opens camera on foreground resume if user has
+  // enabled the setting. Guards prevent cancel loops:
+  //  - _cameraInFlightRef: skip if native camera is currently open
+  //  - _justClosedCameraRef: skip if camera just closed (cancel)
+  //  - _launchUrlCheckedRef: skip if returning from share link
+  //  - _homeScreenActiveRef: skip if not on home screen
+  // User can toggle this behavior via Header menu → Auto Camera Setting.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    
+    let handle = null;
+    let cancelled = false;
+
+    nativeLifecycle.addAppStateListener(({ isActive }) => {
+      if (!isActive || cancelled) return;
+      
+      // Check user setting
+      const autoCameraEnabled = localStorage.getItem('autoCameraOnResume') !== 'false';
+      if (!autoCameraEnabled) return;
+      
+      // Existing guards to prevent loops
+      if (_cameraInFlightRef.current) return; // camera currently open
+      if (_justClosedCameraRef.current) {
+        _justClosedCameraRef.current = false;
+        return; // just cancelled camera
+      }
+      if (!_launchUrlCheckedRef.current) return; // share link check pending
+      if (!_homeScreenActiveRef.current) return; // not on home screen
+      if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
+      
+      // All guards passed - open camera
+      fileInputRef.current.openCamera();
+    }).then((h) => {
+      if (cancelled) {
+        h?.remove?.();
+      } else {
+        handle = h;
+      }
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
   // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
   // Root cause: `permissionsReady` and `isUserActive` start as `true` for
@@ -3480,22 +3519,28 @@ function WellnessValleyApp() {
           })
         : null;
 
+    // Check user preference for auto-share BEFORE creating overlay
+    const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+    
     // Flag set here so the later share-fire block (post-compression) is skipped.
     foodAutoSharedRef.current = false;
 
-    try {
-      if (file && typeof URL?.createObjectURL === 'function') {
-        const objectUrl = URL.createObjectURL(file);
-        setSharingPendingImage(objectUrl);
-      }
-    } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+    // Only create share overlay and fire share sheet if auto-share is enabled
+    if (autoShareEnabled) {
+      try {
+        if (file && typeof URL?.createObjectURL === 'function') {
+          const objectUrl = URL.createObjectURL(file);
+          setSharingPendingImage(objectUrl);
+        }
+      } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+    }
 
-    // Fire share sheet — overlay is now painted.
+    // Fire share sheet — overlay is now painted (if auto-share enabled) (if auto-share enabled).
     // On native: await the pre-started FileReader (≈ 0ms extra wait) then
     // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
     // WhatsApp, not just an OG preview card.
     // On web: fall back to text+URL share.
-    if (!foodAutoSharedRef.current) {
+    if (autoShareEnabled && !foodAutoSharedRef.current) {
       foodAutoSharedRef.current = true;
       const clearOverlayNow = () => {
         setSharingPendingImage((prev) => {
@@ -3847,7 +3892,8 @@ function WellnessValleyApp() {
             if (!foodCaptureIdRef.current) foodCaptureIdRef.current = capShare.id;
           }
           // Auto-share to WhatsApp once the share URL is resolved.
-          if (capShare?.url && !foodAutoSharedRef.current) {
+          const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+          if (autoShareEnabled && capShare?.url && !foodAutoSharedRef.current) {
             foodAutoSharedRef.current = true;
             shareTextViaWhatsApp(capShare.url).then((ok) => {
               _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
@@ -3927,15 +3973,18 @@ function WellnessValleyApp() {
         // still resolves and routes to the education dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'education');
         // Auto-share to WhatsApp immediately � same as food flow.
-        pendingSharePromise.then((share) => {
-          if (!share?.url || foodAutoSharedRef.current) return;
-          foodAutoSharedRef.current = true;
-          shareTextViaWhatsApp(share.url).then((ok) => {
-            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-            if (!ok) { foodAutoSharedRef.current = false; }
-            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+        const autoShareEnabled1 = localStorage.getItem('autoShareOnCapture') !== 'false';
+        if (autoShareEnabled1) {
+          pendingSharePromise.then((share) => {
+            if (!share?.url || foodAutoSharedRef.current) return;
+            foodAutoSharedRef.current = true;
+            shareTextViaWhatsApp(share.url).then((ok) => {
+              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+              if (!ok) { foodAutoSharedRef.current = false; }
+              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+            });
           });
-        });
+        }
         setLoading(false);
         return;
       }
@@ -4141,15 +4190,18 @@ function WellnessValleyApp() {
         // still resolves and routes to the weight dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'weight');
         // Auto-share to WhatsApp immediately � same as food flow.
-        pendingSharePromise.then((share) => {
-          if (!share?.url || foodAutoSharedRef.current) return;
-          foodAutoSharedRef.current = true;
-          shareTextViaWhatsApp(share.url).then((ok) => {
-            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-            if (!ok) { foodAutoSharedRef.current = false; }
-            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+        const autoShareEnabled2 = localStorage.getItem('autoShareOnCapture') !== 'false';
+        if (autoShareEnabled2) {
+          pendingSharePromise.then((share) => {
+            if (!share?.url || foodAutoSharedRef.current) return;
+            foodAutoSharedRef.current = true;
+            shareTextViaWhatsApp(share.url).then((ok) => {
+              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+              if (!ok) { foodAutoSharedRef.current = false; }
+              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+            });
           });
-        });
+        }
         setLoading(false);
         return;
       }

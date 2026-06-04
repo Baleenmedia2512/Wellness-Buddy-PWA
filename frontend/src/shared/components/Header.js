@@ -15,6 +15,9 @@ import {
   Heart,
   X,
   Trash2,
+  Video,
+  VideoOff,
+  Share2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -48,6 +51,12 @@ const Header = ({
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [autoCameraEnabled, setAutoCameraEnabled] = useState(
+    localStorage.getItem('autoCameraOnResume') !== 'false'
+  );
+  const [autoShareEnabled, setAutoShareEnabled] = useState(
+    localStorage.getItem('autoShareOnCapture') !== 'false'
+  );
   const menuPanelRef = useRef(null);
 
   // ✅ Auto-reopen delete modal if user closed app mid-OTP flow
@@ -623,6 +632,86 @@ const Header = ({
                         </TouchFeedbackButton>
                       )}
                     </div>
+                  </div>
+
+                  {/* ── AUTO CAMERA TOGGLE ── */}
+                  <div className="px-4 py-2 border-t border-gray-100">
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        const newValue = !autoCameraEnabled;
+                        setAutoCameraEnabled(newValue);
+                        localStorage.setItem('autoCameraOnResume', String(newValue));
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      ariaLabel="Toggle Auto Camera"
+                    >
+                      <div className="flex items-center gap-2">
+                        {autoCameraEnabled ? (
+                          <Video className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <VideoOff className="h-4 w-4 text-gray-400" />
+                        )}
+                        <div className="text-left">
+                          <div className="text-xs font-medium text-gray-900">
+                            Auto Camera
+                          </div>
+                          <div className="text-[10px] text-gray-500 leading-tight">
+                            {autoCameraEnabled
+                              ? 'Opens when you return to app'
+                              : 'Manual camera button only'}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          autoCameraEnabled ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                            autoCameraEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </div>
+                    </TouchFeedbackButton>
+                  </div>
+
+                  {/* ── AUTO SHARE TOGGLE ── */}
+                  <div className="px-4 py-2 border-t border-gray-100">
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        const newValue = !autoShareEnabled;
+                        setAutoShareEnabled(newValue);
+                        localStorage.setItem('autoShareOnCapture', String(newValue));
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      ariaLabel="Toggle Auto Share"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Share2 className={`h-4 w-4 ${autoShareEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
+                        <div className="text-left">
+                          <div className="text-xs font-medium text-gray-900">
+                            Auto Share
+                          </div>
+                          <div className="text-[10px] text-gray-500 leading-tight">
+                            {autoShareEnabled
+                              ? 'Opens WhatsApp share instantly'
+                              : 'See results first, share manually'}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          autoShareEnabled ? 'bg-blue-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                            autoShareEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </div>
+                    </TouchFeedbackButton>
                   </div>
 
                   {/* ── FOOTER: Sign out + Delete Account + Version ── */}
