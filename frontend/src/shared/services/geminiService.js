@@ -1,6 +1,94 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "./userIdentity";
 import { debugLog } from '../utils/logger.js';
+
+// ─── Structured-output schema for food image analysis ────────────────────────
+// Gemini 2.5-flash-lite with temperature 0 has been observed to silently drop
+// fields that are described only in the prompt text. Passing a `responseSchema`
+// forces the SDK to validate the model output against this shape — every field
+// listed in `required` MUST be present in every response.
+//
+// Source of truth for the 17 micronutrient keys: must match
+// `frontend/src/features/nutrition/domain/micronutrientRules.js` (snake_case
+// AI keys) and `backend/features/background-analysis/analysis.service.js`
+// (MICRO_FIELDS table).
+const NUMBER = { type: SchemaType.NUMBER };
+const NUTRITION_FIELDS = {
+  calories: NUMBER, protein: NUMBER, carbs: NUMBER, fat: NUMBER, fiber: NUMBER,
+  sugar: NUMBER, sodium: NUMBER, cholesterol: NUMBER, glycemic_index: NUMBER,
+  // Vitamins (fat-soluble + C, then B-complex)
+  vitamin_a: NUMBER, vitamin_c: NUMBER, vitamin_d: NUMBER, vitamin_e: NUMBER, vitamin_k: NUMBER,
+  vitamin_b1: NUMBER, vitamin_b2: NUMBER, vitamin_b3: NUMBER, vitamin_b6: NUMBER, vitamin_b9: NUMBER, vitamin_b12: NUMBER,
+  // Minerals
+  calcium: NUMBER, iron: NUMBER, magnesium: NUMBER, potassium: NUMBER, zinc: NUMBER, phosphorus: NUMBER,
+};
+const NUTRITION_REQUIRED = Object.keys(NUTRITION_FIELDS);
+
+const FOOD_ANALYSIS_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    foods: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          name: { type: SchemaType.STRING },
+          portion: { type: SchemaType.STRING },
+          weight_g: NUMBER,
+          volume_ml: NUMBER,
+          unit: { type: SchemaType.STRING },
+          isLiquid: { type: SchemaType.BOOLEAN },
+          nutrition: {
+            type: SchemaType.OBJECT,
+            properties: NUTRITION_FIELDS,
+            required: NUTRITION_REQUIRED,
+          },
+        },
+        required: ['name', 'portion', 'unit', 'isLiquid', 'nutrition'],
+      },
+    },
+    total: {
+      type: SchemaType.OBJECT,
+      properties: NUTRITION_FIELDS,
+      required: NUTRITION_REQUIRED,
+    },
+    confidence: { type: SchemaType.STRING },
+  },
+  required: ['foods', 'total', 'confidence'],
+};
+export { FOOD_ANALYSIS_SCHEMA, NUTRITION_REQUIRED };
+
+/**
+ * Ensure every nutrition object on the parsed Gemini response carries all 26
+ * expected keys (9 macros + 17 micros). Gemini-2.5-flash-lite frequently omits
+ * vitamin/mineral keys even with `responseSchema`, which leaves the UI
+ * progress bars with `undefined` values that render as empty rather than 0%.
+ *
+ * Pure: takes a parsed object, returns a new object with defaults filled in.
+ * Missing keys default to `0` (NOT a USDA fallback — that is the job of
+ * `enrichMicronutrients`). If Gemini truly did not detect a vitamin, the bar
+ * legitimately shows 0% rather than disappearing.
+ */
+function normalizeNutritionFields(data) {
+  if (!data || typeof data !== 'object') return data;
+  const fill = (obj) => {
+    const out = { ...(obj || {}) };
+    for (const key of NUTRITION_REQUIRED) {
+      const v = out[key];
+      out[key] = typeof v === 'number' && Number.isFinite(v) ? v : 0;
+    }
+    return out;
+  };
+  const next = { ...data };
+  if (Array.isArray(next.foods)) {
+    next.foods = next.foods.map((f) => ({ ...f, nutrition: fill(f?.nutrition) }));
+  }
+  if (next.total || Array.isArray(next.foods)) {
+    next.total = fill(next.total);
+  }
+  return next;
+}
+export { normalizeNutritionFields };
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -272,6 +360,65 @@ class GeminiService {
       default: { fiber: 1.0, sugar: 2.0, sodium: 150, cholesterol: 0, gi: 55 }
     };
 
+    // USDA vitamin/mineral defaults per 100g (source: USDA FoodData Central).
+    // Units: vitamin_a µg RAE, vitamin_c mg, vitamin_d µg, vitamin_e mg,
+    //        vitamin_k µg, vitamin_b1..b6 mg, vitamin_b9 µg, vitamin_b12 µg,
+    //        calcium/iron/magnesium/potassium/zinc/phosphorus mg.
+    // Only fields present override missing-or-zero values from Gemini;
+    // unspecified nutrients stay at whatever Gemini returned (likely 0).
+    const usdaMicroDefaults = {
+      // South-Indian staples
+      idli:   { vitamin_b1: 0.12, vitamin_b9: 20, calcium: 20, iron: 1.0, magnesium: 30, potassium: 62, phosphorus: 88, zinc: 0.7 },
+      dosa:   { vitamin_b1: 0.10, vitamin_b9: 12, calcium: 15, iron: 0.8, magnesium: 22, potassium: 50, phosphorus: 68, zinc: 0.5 },
+      appam:  { vitamin_b1: 0.10, vitamin_b9: 15, calcium: 15, iron: 0.7, magnesium: 20, potassium: 150, phosphorus: 50, zinc: 0.5 },
+      vada:   { vitamin_b1: 0.15, vitamin_b6: 0.10, vitamin_b9: 60, calcium: 25, iron: 2.0, magnesium: 40, potassium: 280, phosphorus: 110, zinc: 1.0 },
+      sambar: { vitamin_a: 25, vitamin_c: 6, vitamin_k: 8, vitamin_b6: 0.10, vitamin_b9: 30, calcium: 35, iron: 1.4, magnesium: 25, potassium: 220, phosphorus: 85, zinc: 0.8 },
+      rasam:  { vitamin_a: 30, vitamin_c: 12, vitamin_b6: 0.08, calcium: 18, iron: 0.8, magnesium: 14, potassium: 180, phosphorus: 35, zinc: 0.3 },
+
+      // Breads
+      roti:    { vitamin_b1: 0.18, vitamin_b3: 2.0, vitamin_b6: 0.10, vitamin_b9: 12, calcium: 22, iron: 1.6, magnesium: 50, potassium: 130, phosphorus: 120, zinc: 1.2 },
+      chapati: { vitamin_b1: 0.18, vitamin_b3: 2.0, vitamin_b6: 0.10, vitamin_b9: 12, calcium: 22, iron: 1.6, magnesium: 50, potassium: 130, phosphorus: 120, zinc: 1.2 },
+      paratha: { vitamin_a: 30, vitamin_b1: 0.18, vitamin_b3: 1.8, calcium: 25, iron: 1.5, magnesium: 45, potassium: 130, phosphorus: 110, zinc: 1.1 },
+      naan:    { vitamin_b1: 0.20, vitamin_b3: 2.5, calcium: 30, iron: 1.8, magnesium: 25, potassium: 100, phosphorus: 100, zinc: 0.8 },
+
+      // Legumes / curries
+      dal:               { vitamin_a: 8,  vitamin_b1: 0.18, vitamin_b6: 0.20, vitamin_b9: 90, calcium: 35, iron: 3.3, magnesium: 50, potassium: 370, phosphorus: 140, zinc: 1.2 },
+      'dal fry':         { vitamin_a: 12, vitamin_b1: 0.18, vitamin_b6: 0.20, vitamin_b9: 80, calcium: 40, iron: 3.0, magnesium: 48, potassium: 350, phosphorus: 135, zinc: 1.2 },
+      'dal tadka':       { vitamin_a: 15, vitamin_b1: 0.18, vitamin_b6: 0.20, vitamin_b9: 80, calcium: 40, iron: 3.0, magnesium: 48, potassium: 350, phosphorus: 135, zinc: 1.2 },
+      'dal makhani':     { vitamin_a: 30, vitamin_b1: 0.18, vitamin_b6: 0.18, vitamin_b9: 70, calcium: 60, iron: 2.8, magnesium: 45, potassium: 320, phosphorus: 140, zinc: 1.3 },
+      'chickpea curry':  { vitamin_a: 15, vitamin_c: 4,  vitamin_k: 4,  vitamin_b6: 0.14, vitamin_b9: 55, calcium: 45, iron: 2.4, magnesium: 45, potassium: 290, phosphorus: 125, zinc: 1.3 },
+      'chana masala':    { vitamin_a: 18, vitamin_c: 4,  vitamin_k: 4,  vitamin_b6: 0.14, vitamin_b9: 55, calcium: 45, iron: 2.4, magnesium: 45, potassium: 290, phosphorus: 125, zinc: 1.3 },
+      'vegetable curry': { vitamin_a: 200, vitamin_c: 15, vitamin_k: 20, vitamin_b6: 0.12, vitamin_b9: 25, calcium: 35, iron: 1.2, magnesium: 22, potassium: 280, phosphorus: 55, zinc: 0.4 },
+      'mixed vegetable curry': { vitamin_a: 200, vitamin_c: 15, vitamin_k: 20, vitamin_b6: 0.12, vitamin_b9: 25, calcium: 35, iron: 1.2, magnesium: 22, potassium: 280, phosphorus: 55, zinc: 0.4 },
+
+      // Paneer / dairy curries
+      paneer:                 { vitamin_a: 200, vitamin_b2: 0.30, vitamin_b12: 0.8, calcium: 480, magnesium: 17, potassium: 130, phosphorus: 340, zinc: 1.5 },
+      'paneer tikka':         { vitamin_a: 180, vitamin_b2: 0.28, vitamin_b12: 0.7, calcium: 420, magnesium: 18, potassium: 180, phosphorus: 320, zinc: 1.4 },
+      'paneer butter masala': { vitamin_a: 260, vitamin_c: 4, vitamin_b2: 0.25, vitamin_b12: 0.6, calcium: 280, magnesium: 18, potassium: 200, phosphorus: 220, zinc: 1.1 },
+
+      // Chicken
+      'butter chicken': { vitamin_a: 120, vitamin_b3: 8,  vitamin_b6: 0.4, vitamin_b12: 0.3, calcium: 60,  iron: 1.4, magnesium: 22, potassium: 240, phosphorus: 170, zinc: 1.4 },
+      'chicken curry':  { vitamin_a: 60,  vitamin_b3: 9,  vitamin_b6: 0.5, vitamin_b12: 0.3, calcium: 30,  iron: 1.2, magnesium: 22, potassium: 260, phosphorus: 180, zinc: 1.4 },
+      'chicken tikka':  { vitamin_b3: 12, vitamin_b6: 0.7, vitamin_b12: 0.4, calcium: 18, iron: 1.0, magnesium: 25, potassium: 280, phosphorus: 200, zinc: 1.5 },
+
+      // Rice dishes
+      biryani:      { vitamin_a: 40, vitamin_b1: 0.10, vitamin_b3: 2.5, vitamin_b6: 0.20, vitamin_b12: 0.2, calcium: 25, iron: 1.5, magnesium: 30, potassium: 180, phosphorus: 110, zinc: 1.0 },
+      pulao:        { vitamin_a: 30, vitamin_b1: 0.10, vitamin_b3: 2.0, calcium: 18, iron: 1.0, magnesium: 25, potassium: 130, phosphorus: 80, zinc: 0.8 },
+      'fried rice': { vitamin_a: 25, vitamin_b1: 0.08, vitamin_b3: 2.0, vitamin_b12: 0.1, calcium: 20, iron: 1.2, magnesium: 22, potassium: 130, phosphorus: 90, zinc: 0.7 },
+
+      // Common foods
+      rice:   { vitamin_b1: 0.02, vitamin_b3: 0.4, calcium: 10, iron: 0.2, magnesium: 12, potassium: 35,  phosphorus: 43, zinc: 0.5 },
+      bread:  { vitamin_b1: 0.45, vitamin_b3: 4.5, vitamin_b9: 85, calcium: 144, iron: 3.6, magnesium: 24, potassium: 115, phosphorus: 95, zinc: 0.8 },
+      egg:    { vitamin_a: 160, vitamin_d: 2.0, vitamin_b2: 0.50, vitamin_b12: 1.1, calcium: 56, iron: 1.8, magnesium: 12, potassium: 138, phosphorus: 198, zinc: 1.3 },
+      chicken: { vitamin_b3: 13.7, vitamin_b6: 0.9, vitamin_b12: 0.34, calcium: 15, iron: 0.7, magnesium: 29, potassium: 256, phosphorus: 210, zinc: 1.0 },
+      fish:    { vitamin_a: 50, vitamin_d: 8.0, vitamin_b3: 8.0, vitamin_b6: 0.4, vitamin_b12: 2.4, calcium: 12, iron: 0.5, magnesium: 30, potassium: 380, phosphorus: 240, zinc: 0.5 },
+      milk:    { vitamin_a: 46, vitamin_d: 1.2, vitamin_b2: 0.18, vitamin_b12: 0.55, calcium: 125, magnesium: 11, potassium: 152, phosphorus: 95, zinc: 0.4 },
+      yogurt:  { vitamin_a: 27, vitamin_b2: 0.27, vitamin_b12: 0.75, calcium: 121, magnesium: 12, potassium: 155, phosphorus: 95, zinc: 0.6 },
+      banana:  { vitamin_a: 3,  vitamin_c: 8.7, vitamin_b6: 0.37, vitamin_b9: 20, calcium: 5, iron: 0.3, magnesium: 27, potassium: 358, phosphorus: 22, zinc: 0.2 },
+      apple:   { vitamin_c: 4.6, vitamin_k: 2.2, vitamin_b6: 0.04, calcium: 6, magnesium: 5, potassium: 107, phosphorus: 11 },
+      orange:  { vitamin_a: 11, vitamin_c: 53.2, vitamin_b9: 30, calcium: 40, magnesium: 10, potassium: 181, phosphorus: 14 },
+    };
+
     let enrichedCount = 0;
 
     nutritionData.foods = nutritionData.foods.map(food => {
@@ -428,6 +575,53 @@ class GeminiService {
         : 0;
     }
 
+    // ─── Micronutrient backfill ──────────────────────────────────────────────
+    // Gemini-2.5-flash-lite frequently returns 0 for every vitamin/mineral.
+    // For known foods, fill in any missing-or-zero micronutrient from the USDA
+    // table, scaled by portion weight. Values Gemini provided that are > 0 are
+    // preserved (trust the model when it bothered to estimate).
+    const MICRO_KEYS = Object.freeze([
+      'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+      'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b6','vitamin_b9','vitamin_b12',
+      'calcium','iron','magnesium','potassium','zinc','phosphorus',
+    ]);
+    const roundMicro = (v) => Math.round(v * 100) / 100;
+    let microBackfilled = false;
+    nutritionData.foods.forEach((food) => {
+      if (!food || !food.name) return;
+      const n = food.nutrition || (food.nutrition = {});
+      const nameLower = food.name.toLowerCase();
+      let micros = usdaMicroDefaults[nameLower];
+      if (!micros) {
+        for (const [key, val] of Object.entries(usdaMicroDefaults)) {
+          if (nameLower.includes(key)) { micros = val; break; }
+        }
+      }
+      if (!micros) return; // unknown food — leave as-is (0 or whatever AI gave)
+      const grams = food.weight_g || food.volume_ml || 100;
+      const scale = grams / 100;
+      for (const key of MICRO_KEYS) {
+        const existing = n[key];
+        if (typeof existing === 'number' && existing > 0) continue;
+        if (typeof micros[key] === 'number') {
+          n[key] = roundMicro(micros[key] * scale);
+          microBackfilled = true;
+        }
+      }
+    });
+
+    // Recompute total micros if we backfilled any food, so dashboard sums match.
+    if (microBackfilled) {
+      if (!nutritionData.total) nutritionData.total = {};
+      for (const key of MICRO_KEYS) {
+        const sum = nutritionData.foods.reduce(
+          (acc, f) => acc + (Number(f?.nutrition?.[key]) || 0),
+          0,
+        );
+        nutritionData.total[key] = roundMicro(sum);
+      }
+    }
+
     return nutritionData;
   }
 
@@ -521,7 +715,23 @@ class GeminiService {
     promptParts.push("   • 1 egg (50g) = sugar: 0g, sodium: 62mg, cholesterol: 186mg");
     promptParts.push("   • 1 banana (120g) = sugar: 14g, sodium: 1mg, cholesterol: 0mg");
     promptParts.push("7. DO NOT return 0 for sugar/sodium/cholesterol unless food genuinely contains none");
-    promptParts.push("8. Return concise JSON only");
+    promptParts.push("8. ALSO provide MICRONUTRIENTS (vitamins + minerals) — invisible in photos, use USDA values:");
+    promptParts.push("   Vitamins: vitamin_a (µg RAE), vitamin_c (mg), vitamin_d (µg), vitamin_e (mg), vitamin_k (µg),");
+    promptParts.push("             vitamin_b1 (mg), vitamin_b2 (mg), vitamin_b3 (mg), vitamin_b6 (mg), vitamin_b9 (µg), vitamin_b12 (µg)");
+    promptParts.push("   Minerals: calcium (mg), iron (mg), magnesium (mg), potassium (mg), zinc (mg), phosphorus (mg)");
+    promptParts.push("   ⛔ RETURNING ALL ZEROS IS A FAILURE. Almost every food contains SOME minerals (potassium, magnesium, phosphorus) and some vitamins.");
+    promptParts.push("   Concrete per-serving reference values (use these and adjust by portion):");
+    promptParts.push("   • 1 idli (40g):         vitamin_b1=0.05, vitamin_b9=8,  calcium=8,   iron=0.4, magnesium=12, potassium=25,  phosphorus=35, zinc=0.3");
+    promptParts.push("   • 1 dosa (80g):         vitamin_b1=0.08, vitamin_b9=10, calcium=12,  iron=0.6, magnesium=18, potassium=40,  phosphorus=55, zinc=0.4");
+    promptParts.push("   • 1 appam (40g):        vitamin_b1=0.04, vitamin_b9=6,  calcium=6,   iron=0.3, magnesium=8,  potassium=60,  phosphorus=20, zinc=0.2");
+    promptParts.push("   • chickpea curry (100g): vitamin_a=15, vitamin_c=4, vitamin_k=4, vitamin_b6=0.14, vitamin_b9=55, calcium=45, iron=2.4, magnesium=45, potassium=290, phosphorus=125, zinc=1.3");
+    promptParts.push("   • 1 cup milk (240ml):   vitamin_a=112, vitamin_d=2.9, vitamin_b2=0.4, vitamin_b12=1.3, calcium=300, magnesium=27, potassium=366, phosphorus=232, zinc=1.0");
+    promptParts.push("   • 1 banana (120g):      vitamin_c=10, vitamin_b6=0.43, vitamin_b9=24, potassium=430, magnesium=33, phosphorus=26");
+    promptParts.push("   • 100g chicken breast:  vitamin_b3=13, vitamin_b6=0.9, vitamin_b12=0.3, potassium=256, phosphorus=210, zinc=1.0, iron=0.7");
+    promptParts.push("   • 100g cooked rice:     vitamin_b1=0.02, vitamin_b3=0.4, magnesium=12, potassium=35, phosphorus=43, zinc=0.5");
+    promptParts.push("   Scale these by actual portion. Only return 0 for a SPECIFIC nutrient when the food genuinely lacks it");
+    promptParts.push("   (e.g. plant foods → vitamin_b12=0; pure fat/oil → most vitamins=0). NEVER return all-zero micronutrients.");
+    promptParts.push("9. Return concise JSON only");
     promptParts.push("");
     promptParts.push("FORMAT:");
     promptParts.push("{");
@@ -544,7 +754,10 @@ class GeminiService {
     promptParts.push('        "sugar": number (REQUIRED - use USDA database value for this food type),');
     promptParts.push('        "sodium": number (REQUIRED - use USDA database value, in mg),');
     promptParts.push('        "cholesterol": number (REQUIRED - use USDA database value, in mg),');
-    promptParts.push('        "glycemic_index": number (⚠️ NEVER null. Required USDA GI 0-100. apple=38, banana=51, white rice=72, brown rice=68, bread=75, oats=55, milk=27, yogurt=35, potato=78, sweet potato=63, walnuts=15, almonds=15, cranberries dried=64, celery=15. For pure protein/fat foods (chicken, eggs, fish, oil, butter, cheese) use 0. Estimate if uncertain — NEVER return null)');
+    promptParts.push('        "glycemic_index": number (⚠️ NEVER null. Required USDA GI 0-100. apple=38, banana=51, white rice=72, brown rice=68, bread=75, oats=55, milk=27, yogurt=35, potato=78, sweet potato=63, walnuts=15, almonds=15, cranberries dried=64, celery=15. For pure protein/fat foods (chicken, eggs, fish, oil, butter, cheese) use 0. Estimate if uncertain — NEVER return null),');
+    promptParts.push('        "vitamin_a": number, "vitamin_c": number, "vitamin_d": number, "vitamin_e": number, "vitamin_k": number,');
+    promptParts.push('        "vitamin_b1": number, "vitamin_b2": number, "vitamin_b3": number, "vitamin_b6": number, "vitamin_b9": number, "vitamin_b12": number,');
+    promptParts.push('        "calcium": number, "iron": number, "magnesium": number, "potassium": number, "zinc": number, "phosphorus": number');
     promptParts.push("      }");
     promptParts.push("    }");
     promptParts.push("  ],");
@@ -557,19 +770,23 @@ class GeminiService {
     promptParts.push('    "sugar": number (REQUIRED - sum of all foods),');
     promptParts.push('    "sodium": number (REQUIRED - sum of all foods, in mg),');
     promptParts.push('    "cholesterol": number (REQUIRED - sum of all foods, in mg),');
-    promptParts.push('    "glycemic_index": number (⚠️ NEVER null. Carb-weighted average of all foods\' GI values, formula: sum(food.gi * food.carbs) / sum(food.carbs). If meal has no carbs, return 0)');
+    promptParts.push('    "glycemic_index": number (⚠️ NEVER null. Carb-weighted average of all foods\' GI values, formula: sum(food.gi * food.carbs) / sum(food.carbs). If meal has no carbs, return 0),');
+    promptParts.push('    "vitamin_a": number, "vitamin_c": number, "vitamin_d": number, "vitamin_e": number, "vitamin_k": number,');
+    promptParts.push('    "vitamin_b1": number, "vitamin_b2": number, "vitamin_b3": number, "vitamin_b6": number, "vitamin_b9": number, "vitamin_b12": number,');
+    promptParts.push('    "calcium": number, "iron": number, "magnesium": number, "potassium": number, "zinc": number, "phosphorus": number');
     promptParts.push("  },");
     promptParts.push('  "confidence": "high/medium/low"');
     promptParts.push("}");
     promptParts.push("");
     promptParts.push("⛔ BEFORE YOU RESPOND - VERIFY:");
     promptParts.push("✓ Every food has 9 nutrition fields (no missing sugar/sodium/cholesterol/glycemic_index)");
+    promptParts.push("✓ Every food AND total includes all 17 micronutrient fields (vitamin_a..vitamin_b12, calcium..phosphorus) — use USDA values, 0 only if truly absent");
     promptParts.push("✓ sugar/sodium/cholesterol/glycemic_index values come from USDA database, NOT visual guesses");
-    promptParts.push("✓ Total nutrition is SUM of all foods (all 8 fields); total.glycemic_index is carb-weighted average");
+    promptParts.push("✓ Total nutrition is SUM of all foods (all 8 fields + 17 micros); total.glycemic_index is carb-weighted average");
     promptParts.push("✓ If you don't know USDA values, provide reasonable estimates based on food type");
     promptParts.push("");
     promptParts.push(
-      '🚨 REJECTION CRITERIA: Missing sugar/sodium/cholesterol/glycemic_index OR all zeros OR values not from database',
+      '🚨 REJECTION CRITERIA: Missing sugar/sodium/cholesterol/glycemic_index OR missing any of the 17 micronutrients OR all zeros OR values not from database',
     );
     promptParts.push("");
     promptParts.push(
@@ -657,9 +874,17 @@ class GeminiService {
         },
       };
 
-      // Make API call with timeout
+      // Make API call with timeout. Pass `responseSchema` per-call so the
+      // model is forced to emit all macros + 17 micronutrient fields (text
+      // instructions alone were silently dropped by gemini-2.5-flash-lite).
       const result = await Promise.race([
-        this.model.generateContent([prompt, imagePart]),
+        this.model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }, imagePart] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: FOOD_ANALYSIS_SCHEMA,
+          },
+        }),
         this.timeoutPromise(
           this.timeout,
           `API timeout after ${this.timeout}ms`,
@@ -670,7 +895,10 @@ class GeminiService {
       const text = response.text();
 
       // Parse response
-      const nutritionData = this.parseJsonResponse(text);
+      let nutritionData = this.parseJsonResponse(text);
+      // Guarantee all 26 nutrition keys exist on every food + total (Gemini
+      // flash-lite drops vitamin/mineral keys even with responseSchema).
+      nutritionData = normalizeNutritionFields(nutritionData);
       const processingTime = Date.now() - startTime;
 
       // Log token usage

@@ -62,7 +62,7 @@ import React, {
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
-import { Bug, Share2, Pencil, Check, X as XIcon, Camera, Image } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import { NutritionCard, FoodImageShareCard, HomeNutritionCarousel } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
@@ -4381,6 +4381,23 @@ function WellnessValleyApp() {
               ? Math.round(total.glycemic_index)
               : null;
 
+          // Keep in sync with NUTRITION_REQUIRED in geminiService.js. These 17
+          // fields are populated by enrichMicronutrients(); without forwarding
+          // them here they would be silently dropped before save.
+          const MICRO_KEYS = [
+            'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+            'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b6','vitamin_b9','vitamin_b12',
+            'calcium','iron','magnesium','potassium','zinc','phosphorus',
+          ];
+          const pickMicros = (src) => {
+            const o = {};
+            for (const k of MICRO_KEYS) {
+              const v = src?.[k];
+              o[k] = typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+            }
+            return o;
+          };
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
@@ -4397,6 +4414,8 @@ function WellnessValleyApp() {
               cholesterol: Math.round(total.cholesterol || 0),
               // Carb-weighted Glycemic Index (intrinsic, never summed).
               glycemic_index: computedTotalGI,
+              // 17 vitamins/minerals (from enrichMicronutrients + Gemini).
+              ...pickMicros(total),
             },
             category: {
               name: categoryName,
@@ -4440,6 +4459,8 @@ function WellnessValleyApp() {
                         food.nutrition?.glycemic_index ?? food.glycemic_index,
                       )
                     : null,
+                // 17 vitamins/minerals carried through from enrichMicronutrients.
+                ...pickMicros(food.nutrition || food),
               };
 
               debugLog(

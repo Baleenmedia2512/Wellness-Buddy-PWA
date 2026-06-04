@@ -135,6 +135,87 @@ describe('save — TotalSugar / TotalSodium / TotalCholesterol extraction', () =
   });
 });
 
+// ─── save — vitamin + mineral micronutrients (migration 0011) ─────────────────
+
+describe('save — vitamin / mineral micronutrient extraction', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.insertAnalysis.mockResolvedValue({ ID: 1 });
+    repo.findFoodByCaptureId.mockResolvedValue(null);
+    captures.updateTypeById.mockResolvedValue({ changed: true, imageType: 'food' });
+    repo.touchLastActive.mockResolvedValue();
+  });
+
+  it('reads all 17 micronutrients from { foods, total } shape', async () => {
+    const analysisResult = {
+      foods: [{ name: 'Spinach salad', nutrition: { calories: 100, protein: 3, carbs: 10, fat: 5, fiber: 4 } }],
+      total: {
+        calories: 100, protein: 3, carbs: 10, fat: 5, fiber: 4,
+        sugar: 2, sodium: 80, cholesterol: 0, glycemic_index: 15,
+        vitamin_a: 469, vitamin_c: 28, vitamin_d: 0, vitamin_e: 2, vitamin_k: 483,
+        vitamin_b1: 0.08, vitamin_b2: 0.2, vitamin_b3: 0.7, vitamin_b6: 0.2,
+        vitamin_b9: 194, vitamin_b12: 0,
+        calcium: 99, iron: 2.7, magnesium: 79, potassium: 558, zinc: 0.5, phosphorus: 49,
+      },
+      confidence: 'high',
+    };
+    await save({ ...BASE_INPUT, analysisResult });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.TotalVitaminA).toBe(469);
+    expect(payload.TotalVitaminC).toBe(28);
+    expect(payload.TotalVitaminB9).toBe(194);
+    expect(payload.TotalVitaminB12).toBe(0);
+    expect(payload.TotalCalcium).toBe(99);
+    expect(payload.TotalPotassium).toBe(558);
+    expect(payload.TotalPhosphorus).toBe(49);
+  });
+
+  it('writes null for absent micronutrient fields (legacy / pre-prompt payloads)', async () => {
+    const analysisResult = {
+      foods: [{ name: 'Rice', nutrition: { calories: 200, protein: 4, carbs: 44, fat: 0, fiber: 1 } }],
+      total: { calories: 200, protein: 4, carbs: 44, fat: 0, fiber: 1 },
+      confidence: 'high',
+    };
+    await save({ ...BASE_INPUT, analysisResult });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.TotalVitaminA).toBeNull();
+    expect(payload.TotalCalcium).toBeNull();
+    expect(payload.TotalZinc).toBeNull();
+  });
+
+  it('reads micronutrients from { nutrition } legacy shape', async () => {
+    const analysisResult = {
+      nutrition: {
+        calories: 250, protein: 12, carbs: 30, fat: 8, fiber: 3,
+        calcium: 300, iron: 4, vitamin_d: 1.2,
+      },
+      confidence: 'medium',
+    };
+    await save({ ...BASE_INPUT, analysisResult });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.TotalCalcium).toBe(300);
+    expect(payload.TotalIron).toBe(4);
+    expect(payload.TotalVitaminD).toBe(1.2);
+    expect(payload.TotalVitaminA).toBeNull();
+  });
+
+  it('preserves explicit 0 (not null) for present-but-zero values', async () => {
+    const analysisResult = {
+      foods: [{ name: 'Oil', nutrition: { calories: 120, protein: 0, carbs: 0, fat: 14, fiber: 0 } }],
+      total: {
+        calories: 120, protein: 0, carbs: 0, fat: 14, fiber: 0,
+        calcium: 0, iron: 0, magnesium: 0,
+      },
+      confidence: 'high',
+    };
+    await save({ ...BASE_INPUT, analysisResult });
+    const payload = repo.insertAnalysis.mock.calls[0][0];
+    expect(payload.TotalCalcium).toBe(0);
+    expect(payload.TotalIron).toBe(0);
+    expect(payload.TotalMagnesium).toBe(0);
+  });
+});
+
 // ─── getPublicCapture — nutrition shape includes new fields ───────────────────
 
 describe('getPublicCapture — sugar / sodium / cholesterol in nutrition response', () => {

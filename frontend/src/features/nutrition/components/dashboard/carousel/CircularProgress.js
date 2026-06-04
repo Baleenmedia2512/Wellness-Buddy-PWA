@@ -3,9 +3,9 @@ import React from 'react';
 /**
  * CircularProgress — Circular progress ring for nutrition metrics.
  *
- * Two-layer color system:
- *   0–100%  : green gradient fills the ring
- *   100%+   : green stays at 100%, red arc overlays showing excess
+ * Color rules:
+ *   0–100%  : green gradient fills the ring proportionally
+ *   >100%   : entire ring is solid red (over-target = unhealthy, no green)
  *
  * A percentage label is always rendered in the centre of the ring.
  *
@@ -22,20 +22,16 @@ const CircularProgress = ({
 }) => {
   const radius = (size - strokeWidth) / 2;
   const circum = 2 * Math.PI * radius;
-  
-  // Green arc: always capped at 100%
-  const greenPct = Math.min(percentage, 100);
-  const greenOffset = circum - (greenPct / 100) * circum;
-  
-  // Red arc: only shows excess beyond 100%
+
   const isExceeding = percentage > 100;
-  const excessPct = isExceeding ? percentage - 100 : 0;
-  const redOffset = circum - (excessPct / 100) * circum;
-  
+  // When exceeding, fill the entire ring red. Otherwise fill green up to %.
+  const fillPct = isExceeding ? 100 : Math.max(0, percentage);
+  const fillOffset = circum - (fillPct / 100) * circum;
+
   // Unique gradient ids
   const greenGradId = `cpg-green-${size}-${percentage}`;
   const redGradId = `cpg-red-${size}-${percentage}`;
-  
+
   const pctStr = `${percentage}%`;
   const fontSize  = targetLabel ? 15 : (pctStr.length > 3 ? Math.round(size * 0.13) : Math.round(size * 0.155));
   const textColor = isExceeding ? '#dc2626' : '#065f46';
@@ -69,30 +65,17 @@ const CircularProgress = ({
           fill="none" stroke="#e5e7eb" strokeWidth={strokeWidth}
           opacity="0.3"
         />
-        {/* Green arc (base, up to 100%) */}
+        {/* Fill arc — green up to 100%, solid red when over */}
         <circle
           cx={size / 2} cy={size / 2} r={radius}
           fill="none"
-          stroke={`url(#${greenGradId})`}
+          stroke={`url(#${isExceeding ? redGradId : greenGradId})`}
           strokeWidth={strokeWidth}
           strokeDasharray={circum}
-          strokeDashoffset={greenOffset}
+          strokeDashoffset={fillOffset}
           strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
-        {/* Red arc (excess, only when > 100%) */}
-        {isExceeding && (
-          <circle
-            cx={size / 2} cy={size / 2} r={radius}
-            fill="none"
-            stroke={`url(#${redGradId})`}
-            strokeWidth={strokeWidth}
-            strokeDasharray={circum}
-            strokeDashoffset={redOffset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-          />
-        )}
       </svg>
       <div className="relative flex flex-col items-center justify-center leading-none gap-0.5">
         <span className="font-bold" style={{ fontSize, color: textColor }}>

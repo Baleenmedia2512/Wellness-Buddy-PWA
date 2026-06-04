@@ -108,9 +108,22 @@ export async function fetchMealsForDate(userId, date) {
   const supabase = getSupabaseClient();
   const startOfDay = `${date}T00:00:00`;
   const endOfDay = `${date}T23:59:59`;
+  // Keep this column list in sync with MICRO_TOTAL_FIELDS in
+  // food-corrections.service.js (getStats) and MICRO_FIELDS in
+  // frontend/src/features/nutrition/hooks/useDayAnalyses.js. Omitting any
+  // Total<Vitamin/Mineral> column here silently zeroes the carousel cards
+  // even though the DB has the values.
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex, ProcessedBy, DeviceInfo, CreatedAt')
+    .select([
+      'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
+      'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+      'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
+      'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+      'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+      'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+      'ProcessedBy, DeviceInfo, CreatedAt',
+    ].join(', '))
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0)
     // PR 6 — defensive: exclude rows whose AnalysisData never landed (failed
