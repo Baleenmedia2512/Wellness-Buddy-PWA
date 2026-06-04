@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
@@ -32,6 +32,9 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [currentUserName, setCurrentUserName] = useState(""); // Logged-in user's name
   const [profileModalEmail, setProfileModalEmail] = useState(null); // Profile viewer modal
   
+  // Track if this is the first load to only set search query once
+  const isInitialLoad = useRef(true);
+  
   // Everyone starts in edit mode by default
   const isRegularUser = !["admin", "coach", "developer"].includes(userRole);
   const [isEditMode, setIsEditMode] = useState(true); // Always start in edit mode
@@ -63,7 +66,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         setCurrentUserId(userProfileData.data.userId);
         const name = userProfileData.data?.UserName || userProfileData.data?.userName || user?.displayName || "";
         setCurrentUserName(name);
-        setSearchQuery(name); // Pre-fill search with logged-in username
+        
+        // Only set search query on initial load, not on subsequent refreshes
+        if (isInitialLoad.current) {
+          setSearchQuery(name); // Pre-fill search with logged-in username
+          isInitialLoad.current = false; // Mark as no longer initial load
+        }
       }
 
       // Fetch team hierarchy FIRST to get proper CoachId/CoCoachId relationships
