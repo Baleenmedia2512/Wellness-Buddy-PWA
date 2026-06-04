@@ -118,7 +118,6 @@ export default async function handler(req, res) {
       .upsert({
         UserId: user.UserId,
         UserName: user.UserName,
-        Email: user.Email,
         EnrolledPrograms: programsJson,
         EnrollmentDate: existing ? undefined : updateTime, // Only set on first insert
         LastUpdated: updateTime,
