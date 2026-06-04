@@ -106,14 +106,15 @@ const NutritionCarousel = ({
           style={{ transform: `translateX(-${(activeIndex * 100) / cards.length}%)`, width: `${cards.length * 100}%` }}
         >
           {cards.map((card, i) => (
-            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[160px]">
+            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[148px]">
               {card}
             </div>
           ))}
         </div>
 
-        {/* Dot indicators */}
-        <div className="flex items-center justify-center gap-1 pb-1.5 pt-0">
+        {/* Dot indicators + swipe hint */}
+        <div className="flex items-center justify-center gap-1 pb-1.5 pt-0.5">
+          <span className="text-[8px] text-gray-300 mr-0.5 select-none">‹</span>
           {CARD_LABELS.map((label, i) => (
             <button
               key={label}
@@ -122,11 +123,12 @@ const NutritionCarousel = ({
               onClick={() => goTo(i)}
               className={`rounded-full transition-all duration-300 ${
                 i === activeIndex
-                  ? 'w-4 h-1.5 bg-emerald-500'
-                  : 'w-1.5 h-1.5 bg-gray-300 hover:bg-gray-400'
+                  ? 'w-3 h-1 bg-emerald-400'
+                  : 'w-1 h-1 bg-gray-200 hover:bg-gray-300'
               }`}
             />
           ))}
+          <span className="text-[8px] text-gray-300 ml-0.5 select-none">›</span>
         </div>
       </div>
     </div>

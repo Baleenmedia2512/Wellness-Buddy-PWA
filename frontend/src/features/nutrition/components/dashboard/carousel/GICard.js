@@ -12,7 +12,7 @@ const GICard = ({ averageGI, mealCount }) => {
   if (averageGI == null || mealCount === 0) {
     return (
       <div className="h-full flex items-start justify-center pt-1 px-2">
-        <div className="bg-white rounded-xl shadow-lg p-2.5 w-full max-w-md">
+        <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
@@ -23,60 +23,46 @@ const GICard = ({ averageGI, mealCount }) => {
             </div>
             <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">No Data</span>
           </div>
-
           {/* Empty state */}
-          <div className="flex flex-col items-center justify-center py-4">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-2">
-              <Activity className="w-8 h-8 text-gray-400" />
+          <div className="flex items-center justify-between">
+            <div className="w-[70px] h-[70px] rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+              <Activity className="w-7 h-7 text-gray-300" />
             </div>
-            <p className="text-xs text-gray-700 font-semibold mb-0.5">No meals logged today</p>
-            <p className="text-[10px] text-gray-500 text-center px-4 leading-relaxed">
-              Capture a meal to see your average Glycemic Index
-            </p>
+            <div className="flex-1 pl-3">
+              <p className="text-xs text-gray-700 font-semibold mb-0.5">No meals logged</p>
+              <p className="text-[10px] text-gray-500 leading-relaxed">
+                Capture a meal to see your average GI
+              </p>
+            </div>
           </div>
-
-          {/* Footer */}
-          <p className="text-[9px] text-gray-400 text-center mt-1.5 pt-2 border-t border-gray-100">
-            Low ≤55 · Medium 56-69 · High ≥70
+          <p className="text-[9px] text-gray-400 text-center mt-2 pt-1.5 border-t border-gray-100">
+            Low ≤55 · Medium 56–69 · High ≥70
           </p>
         </div>
       </div>
     );
   }
 
-  // Determine zone and styling
   const gi = Math.round(averageGI);
-  let zone, zoneBg, zoneText, zoneGradient, zoneBorder, zoneDescription;
-
+  let zone, zoneBg, zoneText, zoneDescription;
   if (gi <= 55) {
-    zone = 'Low';
-    zoneBg = 'bg-emerald-50';
-    zoneText = 'text-emerald-700';
-    zoneGradient = 'from-emerald-400 to-green-500';
-    zoneBorder = 'border-emerald-200';
-    zoneDescription = 'Excellent for blood sugar control';
+    zone = 'Low'; zoneBg = 'bg-emerald-50'; zoneText = 'text-emerald-700'; zoneDescription = 'Excellent for blood sugar';
   } else if (gi <= 69) {
-    zone = 'Medium';
-    zoneBg = 'bg-amber-50';
-    zoneText = 'text-amber-700';
-    zoneGradient = 'from-amber-400 to-orange-400';
-    zoneBorder = 'border-amber-200';
-    zoneDescription = 'Moderate impact on blood sugar';
+    zone = 'Medium'; zoneBg = 'bg-amber-50'; zoneText = 'text-amber-700'; zoneDescription = 'Moderate blood sugar impact';
   } else {
-    zone = 'High';
-    zoneBg = 'bg-rose-50';
-    zoneText = 'text-rose-700';
-    zoneGradient = 'from-rose-400 to-red-500';
-    zoneBorder = 'border-rose-200';
-    zoneDescription = 'May cause blood sugar spikes';
+    zone = 'High'; zoneBg = 'bg-rose-50'; zoneText = 'text-rose-700'; zoneDescription = 'May cause sugar spikes';
   }
 
-  // Percentage for circular progress: map GI 0-100 → 0-100%
-  const percentage = Math.min(100, gi);
+  const size = 70;
+  const sw = 7;
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const pct = Math.min(100, gi);
+  const offset = circ - (pct / 100) * circ;
 
   return (
     <div className="h-full flex items-start justify-center pt-1 px-2">
-      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
@@ -90,78 +76,47 @@ const GICard = ({ averageGI, mealCount }) => {
           </span>
         </div>
 
-        {/* Main Content — Circular Progress */}
-        <div className="flex items-center justify-center mb-2">
-          <div className="relative inline-flex items-center justify-center" style={{ width: 100, height: 100 }}>
-            {/* SVG Ring */}
-            <svg
-              width={100}
-              height={100}
-              className="absolute inset-0"
-              style={{ transform: 'rotate(-90deg)' }}
-            >
+        {/* Main — ring left, stats right */}
+        <div className="flex items-center justify-between mb-2">
+          {/* Ring */}
+          <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+            <svg width={size} height={size} className="transform -rotate-90">
               <defs>
-                <linearGradient id={`gi-gradient-${gi}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style={{ stopColor: zone === 'High' ? '#f87171' : zone === 'Medium' ? '#fbbf24' : '#4ade80', stopOpacity: 1 }} />
-                  <stop offset="100%" style={{ stopColor: zone === 'High' ? '#dc2626' : zone === 'Medium' ? '#f59e0b' : '#059669', stopOpacity: 1 }} />
+                <linearGradient id={`gi-grad-${gi}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor={gi <= 55 ? '#4ade80' : gi <= 69 ? '#fbbf24' : '#f87171'} />
+                  <stop offset="100%" stopColor={gi <= 55 ? '#059669' : gi <= 69 ? '#f59e0b' : '#dc2626'} />
                 </linearGradient>
               </defs>
-              {/* Background track */}
-              <circle
-                cx={50}
-                cy={50}
-                r={42}
-                fill="none"
-                stroke="#E5E7EB"
-                strokeWidth={8}
-              />
-              {/* Progress arc */}
-              <circle
-                cx={50}
-                cy={50}
-                r={42}
-                fill="none"
-                stroke={`url(#gi-gradient-${gi})`}
-                strokeWidth={8}
-                strokeDasharray={2 * Math.PI * 42}
-                strokeDashoffset={2 * Math.PI * 42 - (percentage / 100) * 2 * Math.PI * 42}
-                strokeLinecap="round"
-                className="transition-all duration-500 ease-out"
-              />
+              <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={sw} opacity="0.3" />
+              <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`url(#gi-grad-${gi})`} strokeWidth={sw}
+                strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+                style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
             </svg>
-            {/* Center label */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className={`text-4xl font-extrabold leading-none ${zoneText}`}>{gi}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Average GI</p>
+              <span className={`text-2xl font-extrabold leading-none ${zoneText}`}>{gi}</span>
+              <span className="text-[9px] text-gray-500 mt-0.5">Avg GI</span>
             </div>
           </div>
-        </div>
-
-        {/* Zone Description */}
-        <div className={`border ${zoneBorder} rounded-lg p-2 mb-2 ${zoneBg}`}>
-          <p className={`text-xs font-bold ${zoneText} mb-0.5`}>{zone} GI Zone</p>
-          <p className="text-[10px] text-gray-600">{zoneDescription}</p>
-        </div>
-
-        {/* GI Scale Reference */}
-        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-          <div className={`text-center py-1.5 px-1 rounded-lg ${gi <= 55 ? 'bg-emerald-100 border-2 border-emerald-300' : 'bg-emerald-50'}`}>
-            <p className={`text-[10px] font-semibold ${gi <= 55 ? 'text-emerald-800' : 'text-emerald-600'}`}>Low</p>
-            <p className="text-[9px] text-gray-600 mt-0.5">≤55</p>
-          </div>
-          <div className={`text-center py-1.5 px-1 rounded-lg ${gi > 55 && gi <= 69 ? 'bg-amber-100 border-2 border-amber-300' : 'bg-amber-50'}`}>
-            <p className={`text-[10px] font-semibold ${gi > 55 && gi <= 69 ? 'text-amber-800' : 'text-amber-600'}`}>Medium</p>
-            <p className="text-[9px] text-gray-600 mt-0.5">56-69</p>
-          </div>
-          <div className={`text-center py-1.5 px-1 rounded-lg ${gi >= 70 ? 'bg-rose-100 border-2 border-rose-300' : 'bg-rose-50'}`}>
-            <p className={`text-[10px] font-semibold ${gi >= 70 ? 'text-rose-800' : 'text-rose-600'}`}>High</p>
-            <p className="text-[9px] text-gray-600 mt-0.5">≥70</p>
+          {/* Stats */}
+          <div className="flex-1 pl-3">
+            <p className={`text-xs font-bold ${zoneText} mb-0.5`}>{zone} GI Zone</p>
+            <p className="text-[10px] text-gray-500 mb-1.5 leading-tight">{zoneDescription}</p>
+            <div className="grid grid-cols-3 gap-1">
+              {[['Low','≤55', gi <= 55, 'emerald'], ['Med','56–69', gi > 55 && gi <= 69, 'amber'], ['High','≥70', gi >= 70, 'rose']].map(([label, range, active, color]) => (
+                <div key={label} className={`text-center py-1 rounded-md ${
+                  active ? `bg-${color}-100 border border-${color}-300` : `bg-${color}-50`
+                }`}>
+                  <p className={`text-[9px] font-semibold text-${color}-${active ? '800' : '600'}`}>{label}</p>
+                  <p className="text-[8px] text-gray-500">{range}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Footer */}
         <p className="text-[9px] text-gray-400 text-center pt-1.5 border-t border-gray-100">
-          Carb-weighted average from all meals
+          Carb-weighted avg · {mealCount} meal{mealCount !== 1 ? 's' : ''} today
         </p>
       </div>
     </div>

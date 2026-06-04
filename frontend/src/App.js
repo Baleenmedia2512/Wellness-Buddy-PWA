@@ -735,10 +735,6 @@ function WellnessValleyApp() {
     nativeLifecycle.addAppStateListener(({ isActive }) => {
       if (!isActive || cancelled) return;
       
-      // Check user setting
-      const autoCameraEnabled = localStorage.getItem('autoCameraOnResume') !== 'false';
-      if (!autoCameraEnabled) return;
-      
       // Existing guards to prevent loops
       if (_cameraInFlightRef.current) return; // camera currently open
       if (_justClosedCameraRef.current) {
@@ -7090,32 +7086,24 @@ function WellnessValleyApp() {
         <>
           {/* Camera Button */}
           <button
-            onClick={() => {
-              if (fileInputRef.current?.openCamera && !fileInputRef.current?.isCameraActive()) {
-                fileInputRef.current.openCamera();
-              }
-            }}
-            disabled={loading || fileInputRef.current?.isCameraActive?.()}
-            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2 transition-all duration-200 active:scale-95 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { fileInputRef.current?.openCamera?.(); }}
+            disabled={loading}
+            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Take Photo"
             aria-label="Quick camera access"
           >
-            <img src="/app.png" alt="Camera" className="w-12 h-12" />
+            <img src="/app.png" alt="Camera" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
           </button>
           
           {/* Gallery Button */}
           <button
-            onClick={() => {
-              if (fileInputRef.current?.openGallery && !fileInputRef.current?.isCameraActive()) {
-                fileInputRef.current.openGallery();
-              }
-            }}
-            disabled={loading || fileInputRef.current?.isCameraActive?.()}
-            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2 transition-all duration-200 active:scale-95 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { fileInputRef.current?.openGallery?.(); }}
+            disabled={loading}
+            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
-            <img src="/gallery.png" alt="Gallery" className="w-12 h-12" />
+            <img src="/gallery.png" alt="Gallery" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
           </button>
         </>
       )}

@@ -51,9 +51,28 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
             const sugar = n.sugar ?? analysis.TotalSugar ?? 0;
             const sodium = n.sodium ?? analysis.TotalSodium ?? 0;
             const cholesterol = n.cholesterol ?? analysis.TotalCholesterol ?? 0;
-            // GI is meal-level — read from DB column (carb-weighted per meal)
+            // GI is meal-level — read from DB column first; fallback to AnalysisData JSON
             const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
-            const mealGI = analysis.GlycemicIndex ?? null;
+            let mealGI = analysis.GlycemicIndex ?? null;
+            if (mealGI == null) {
+              try {
+                const parsed = typeof analysis.AnalysisData === 'string'
+                  ? JSON.parse(analysis.AnalysisData) : analysis.AnalysisData;
+                if (parsed?.total?.glycemic_index != null) {
+                  mealGI = parsed.total.glycemic_index;
+                } else if (parsed?.nutrition?.glycemic_index != null) {
+                  mealGI = parsed.nutrition.glycemic_index;
+                } else if (parsed?.foods?.length > 0) {
+                  let giCarbs = 0, totalFoodCarbs = 0;
+                  for (const f of parsed.foods) {
+                    const fgi = f.nutrition?.glycemic_index ?? null;
+                    const fc = f.nutrition?.carbs || 0;
+                    if (fgi != null && fc > 0) { giCarbs += fgi * fc; totalFoodCarbs += fc; }
+                  }
+                  mealGI = totalFoodCarbs > 0 ? Math.round(giCarbs / totalFoodCarbs) : null;
+                }
+              } catch { /* ignore */ }
+            }
             return {
               totalCalories: acc.totalCalories + calories,
               totalProtein: acc.totalProtein + protein,
