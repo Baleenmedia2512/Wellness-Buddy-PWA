@@ -242,23 +242,22 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Marquee Animation with manual scroll capability
   return (
     <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
-      <div className="py-1 px-2 sm:px-3">
-        {/* Title */}
-        <div className="flex items-center justify-between mb-0.5">
-          {/* <span className="text-xs sm:text-sm font-semibold text-purple-700">
-            🎯 Discipline Champions
-          </span> */}
-          <span className="text-[9px] sm:text-[10px] text-purple-600">
-            (Last 10 Days)
-          </span>
+      <div className="py-1 px-2 sm:px-3 relative">
+        {/* Fixed label overlay */}
+        <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+          <div className="inline-flex items-center justify-center px-2 sm:px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
+            <span className="text-[9px] sm:text-[11px] font-medium text-purple-700 whitespace-nowrap">
+              (Last 10 Days)
+            </span>
+          </div>
         </div>
-
+        
         <div
           className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
           onClick={() => setIsPaused(!isPaused)}
         >
           <div
-            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            className="animate-smooth-marquee whitespace-nowrap inline-flex items-center"
             style={{
               animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
               animationPlayState: isPaused ? "paused" : "running",
@@ -266,6 +265,9 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
               WebkitAnimationPlayState: isPaused ? "paused" : "running",
             }}
           >
+            {/* Spacer to avoid overlap with fixed label */}
+            <div className="w-32 sm:w-40 flex-shrink-0"></div>
+            
             {/* First set of items */}
             {leaderboardData.map((user) =>
               renderLeaderboardCard(user, `first-${user.userId}`),
