@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
+import WellnessUniversityEnrollment from "./WellnessUniversityEnrollment";
 import { debugLog } from '../shared/utils/logger.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
@@ -15,7 +16,7 @@ const PROGRAMS = [
   { id: "weight-loss", name: "Weight Loss", icon: "📉" },
   { id: "weight-gain", name: "Weight Gain", icon: "📈" },
   { id: "kids-nutrition", name: "Kids Nutrition", icon: "🧒" },
-  { id: "sports-nutrition", name: "Sports Nutrition", icon: "⚽" },
+  { id: "sports-nutrition", name: "Sports Nutrition", icon: "ðŸƒ" },
   { id: "targeted-nutrition", name: "Targeted Nutrition", icon: "🎯" },
   { id: "earn-product-cost", name: "How to Earn My Product Cost", icon: "💰" },
   { id: "extra-income", name: "Extra Income Opportunity", icon: "💼" },
@@ -31,18 +32,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [showSuggestions, setShowSuggestions] = useState(false); // Dropdown
   const [currentUserName, setCurrentUserName] = useState(""); // Logged-in user's name
   const [profileModalEmail, setProfileModalEmail] = useState(null); // Profile viewer modal
-  
-  // Everyone starts in edit mode by default
-  const isRegularUser = !["admin", "coach", "developer"].includes(userRole);
-  const [isEditMode, setIsEditMode] = useState(true); // Always start in edit mode
-  const [selectedPrograms, setSelectedPrograms] = useState([]); // Selected programs during edit
+  const [showEnrollmentModal, setShowEnrollmentModal] = useState(false); // Edit enrollment modal
   const [viewMode, setViewMode] = useState("own"); // 'own' or 'member'
   const [selectedMember, setSelectedMember] = useState(null); // Selected team member
   const [memberEnrollment, setMemberEnrollment] = useState(null); // Selected member's enrollment
   const [myEnrollment, setMyEnrollment] = useState(null); // Current user's enrollment
-  const [isSaving, setIsSaving] = useState(false); // Saving state
-  const [memberSelectedPrograms, setMemberSelectedPrograms] = useState([]); // For editing member's programs
-  const [isSavingMember, setIsSavingMember] = useState(false); // Saving state for member
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -207,34 +201,6 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   useEffect(() => {
     fetchEnrollments();
   }, [fetchEnrollments]);
-
-  // Auto-populate selected programs when enrollment data loads
-  useEffect(() => {
-    if (myEnrollment && isEditMode) {
-      try {
-        const parsed = JSON.parse(myEnrollment.EnrolledPrograms || "[]");
-        const enrolledPrograms = Array.isArray(parsed) ? parsed : Object.keys(parsed);
-        setSelectedPrograms(enrolledPrograms);
-      } catch {
-        setSelectedPrograms([]);
-      }
-    }
-  }, [myEnrollment, isEditMode]);
-
-  // Auto-populate member's selected programs when member enrollment changes
-  useEffect(() => {
-    if (memberEnrollment) {
-      try {
-        const parsed = JSON.parse(memberEnrollment.EnrolledPrograms || "[]");
-        const enrolledPrograms = Array.isArray(parsed) ? parsed : Object.keys(parsed);
-        setMemberSelectedPrograms(enrolledPrograms);
-      } catch {
-        setMemberSelectedPrograms([]);
-      }
-    } else {
-      setMemberSelectedPrograms([]);
-    }
-  }, [memberEnrollment]);
 
   // Calculate program statistics
   const calculateProgramStats = () => {
@@ -620,156 +586,91 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         })
       : null;
 
-    // Handle save enrollment
-    const handleSaveEnrollment = async () => {
-      setIsSaving(true);
-      try {
-        const response = await fetch(`${API_BASE}/api/wellness-university/update-enrollment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: user?.email,
-            programs: selectedPrograms,
-          }),
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          await fetchEnrollments(); // Refresh data
-          // Stay in edit mode so user can make more changes immediately
-        } else {
-          alert("Failed to update enrollment: " + (result.message || "Unknown error"));
-        }
-      } catch (err) {
-        alert("Error updating enrollment: " + err.message);
-      } finally {
-        setIsSaving(false);
-      }
-    };
-
-    // Toggle program selection
-    const toggleProgram = (programName) => {
-      setSelectedPrograms(prev => 
-        prev.includes(programName) 
-          ? prev.filter(p => p !== programName)
-          : [...prev, programName]
-      );
-    };
-
     return (
       <div className="space-y-4">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4 border border-green-200">
-          <h3 className="text-lg font-bold text-gray-800 mb-1">
-            📚 Your Programs
-          </h3>
-          {/* <p className="text-sm text-gray-600">Select the programs you want to enroll in</p> */}
+          <h3 className="text-lg font-bold text-gray-800 mb-1">📋 Your Enrollment</h3>
+          {enrollmentDate && (
+            <p className="text-sm text-gray-600">Enrolled on: {enrollmentDate}</p>
+          )}
         </div>
 
-        {/* Programs Selection */}
-        <div className="space-y-2">
-          {PROGRAMS.map((program) => {
-                const isSelected = selectedPrograms.includes(program.name);
-                return (
-                  <div
-                    key={program.id}
-                    onClick={() => toggleProgram(program.name)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                      isSelected
-                        ? "bg-green-50 border-green-400 shadow-md"
-                        : "bg-white border-gray-200 hover:border-green-300"
-                    }`}
-                  >
-                    <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl">
-                      {program.icon}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-800 text-sm">{program.name}</p>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${
-                        isSelected
-                          ? "bg-green-500 border-green-500 text-white"
-                          : "bg-white border-gray-300"
-                      }`}>
-                        {isSelected && "✓"}
-                      </div>
+        {/* Enrolled Programs List */}
+        {enrolledPrograms.length > 0 ? (
+          <div className="space-y-2">
+            {enrolledPrograms.map((programName) => {
+              const program = PROGRAMS.find(p => p.name === programName);
+              return (
+                <div
+                  key={programName}
+                  className="flex items-center gap-3 bg-white p-3 rounded-lg border border-green-200 shadow-sm"
+                >
+                  <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl">
+                    {program?.icon || "✓"}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-800 text-sm">{programName}</p>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <div className="bg-green-100 text-green-700 text-xs font-medium px-3 py-1 rounded-full">
+                      ✅ Enrolled
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl p-8 text-center">
+            <div className="text-5xl mb-3">📚</div>
+            <p className="text-gray-600 font-medium">No programs enrolled yet</p>
+            <p className="text-gray-500 text-sm mt-1">Click "Edit Programs" to get started!</p>
+          </div>
+        )}
 
-            {/* Action Button */}
-            <button
-              onClick={handleSaveEnrollment}
-              disabled={isSaving}
-              className="w-full bg-gradient-to-r from-green-400 to-green-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
+        {/* Edit Button */}
+        <button
+          onClick={() => setShowEnrollmentModal(true)}
+          className="w-full bg-gradient-to-r from-green-400 to-green-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+        >
+          Edit Programs
+        </button>
       </div>
     );
   };
 
-  // Render member enrollment view (when searching) - EDITABLE for coaches
+  // Render member enrollment view (when searching)
   const renderMemberEnrollment = () => {
     if (!selectedMember) return null;
 
-    // Handle save for member
-    const handleSaveMemberEnrollment = async () => {
-      setIsSavingMember(true);
+    const enrolledPrograms = memberEnrollment ? (() => {
       try {
-        const response = await fetch(`${API_BASE}/api/wellness-university/update-enrollment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: selectedMember.email, // Update for the selected member
-            programs: memberSelectedPrograms,
-          }),
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          await fetchEnrollments(); // Refresh data
-          // Re-fetch member's enrollment
-          try {
-            const cacheBuster = Date.now();
-            const response = await fetch(
-              `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
-                user.email
-              )}&_t=${cacheBuster}`
-            );
-            const data = await response.json();
-            if (data.success) {
-              const memberEnroll = data.enrollments?.find(e => e.UserId === selectedMember.userId);
-              setMemberEnrollment(memberEnroll || null);
-            }
-          } catch (err) {
-            console.error("Error refreshing member enrollment:", err);
-          }
-        } else {
-          alert("Failed to update enrollment: " + (result.message || "Unknown error"));
+        const parsed = JSON.parse(memberEnrollment.EnrolledPrograms || "[]");
+        // Handle both array format and object format (with timestamps)
+        if (Array.isArray(parsed)) {
+          return parsed;
+        } else if (typeof parsed === 'object') {
+          return Object.keys(parsed);
         }
-      } catch (err) {
-        alert("Error updating enrollment: " + err.message);
-      } finally {
-        setIsSavingMember(false);
-      }
-    };
+        return [];
+      } catch { return []; }
+    })() : [];
 
-    // Toggle program selection for member
-    const toggleMemberProgram = (programName) => {
-      setMemberSelectedPrograms(prev => 
-        prev.includes(programName) 
-          ? prev.filter(p => p !== programName)
-          : [...prev, programName]
-      );
+    const getProgramTimestamp = (programName) => {
+      if (!memberEnrollment) return null;
+      try {
+        const parsed = JSON.parse(memberEnrollment.EnrolledPrograms || "[]");
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed[programName];
+        }
+      } catch {}
+      return null;
     };
 
     return (
       <div className="space-y-4">
-        {/* Member Header - Profile Icon and Name Only */}
+        {/* Member Header */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
           <div className="flex items-center gap-3">
             <div
@@ -780,60 +681,81 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               {(selectedMember.name || "?").charAt(0).toUpperCase()}
             </div>
             <div className="flex-1">
-              <h3 
-                className="text-lg font-bold text-gray-800 cursor-pointer hover:text-blue-600 transition-colors"
-                onClick={() => setProfileModalEmail(selectedMember.email)}
-                title="View full profile"
-              >
-                {selectedMember.name}
-              </h3>
+              <h3 className="text-lg font-bold text-gray-800">👤 {selectedMember.name}'s Enrollment</h3>
               <p className="text-sm text-gray-600">{selectedMember.email}</p>
             </div>
           </div>
         </div>
 
-        {/* Programs Selection - EDITABLE */}
+        {/* Programs List - Show ALL programs (enrolled + not enrolled) */}
         <div className="space-y-2">
           {PROGRAMS.map((program) => {
-            const isSelected = memberSelectedPrograms.includes(program.name);
+            const isEnrolled = enrolledPrograms.includes(program.name);
+            const timestamp = getProgramTimestamp(program.name);
+
             return (
               <div
                 key={program.id}
-                onClick={() => toggleMemberProgram(program.name)}
-                className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  isSelected
-                    ? "bg-blue-50 border-blue-400 shadow-md"
-                    : "bg-white border-gray-200 hover:border-blue-300"
+                className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                  isEnrolled
+                    ? "bg-white border-green-200"
+                    : "bg-gray-50 border-gray-300 opacity-60"
                 }`}
               >
-                <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl">
+                <div className={`w-10 h-10 flex-shrink-0 border-2 rounded-xl flex items-center justify-center text-2xl ${
+                  isEnrolled
+                    ? "bg-gradient-to-br from-green-50 to-green-100 border-green-200"
+                    : "bg-gray-100 border-gray-200"
+                }`}>
                   {program.icon}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-800 text-sm">{program.name}</p>
+                  <p className={`font-semibold text-sm ${
+                    isEnrolled ? "text-gray-800" : "text-gray-500"
+                  }`}>
+                    {program.name}
+                  </p>
+                  {isEnrolled && timestamp && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(timestamp).toLocaleDateString("en-US", { 
+                        month: "short", 
+                        day: "numeric", 
+                        year: "numeric" 
+                      })} · {new Date(timestamp).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div className="flex-shrink-0">
-                  <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${
-                    isSelected
-                      ? "bg-blue-500 border-blue-500 text-white"
-                      : "bg-white border-gray-300"
-                  }`}>
-                    {isSelected && "✓"}
-                  </div>
+                  {isEnrolled ? (
+                    <div className="bg-green-100 text-green-700 text-xs font-medium px-3 py-1 rounded-full">
+                      ✅ Enrolled
+                    </div>
+                  ) : (
+                    <div className="bg-gray-200 text-gray-500 text-xs font-medium px-3 py-1 rounded-full">
+                      ❌ Not enrolled
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Save Button */}
+        {/* View Profile Button */}
         <button
-          onClick={handleSaveMemberEnrollment}
-          disabled={isSavingMember}
-          className="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+          onClick={() => setProfileModalEmail(selectedMember.email)}
+          className="w-full bg-blue-500 text-white py-3 rounded-xl font-semibold hover:bg-blue-600 transition-all"
         >
-          {isSavingMember ? "Saving..." : "Save"}
+          View Full Profile
         </button>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+          <p className="text-yellow-800 text-sm font-medium">👁️ View Only - You cannot edit this enrollment</p>
+        </div>
       </div>
     );
   };
@@ -1296,10 +1218,10 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             </button>
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-bold text-gray-800 truncate">
-                Wellness University
+                Wellness University Reprorts
               </h1>
               <p className="text-gray-700 text-xs hidden sm:block">
-                {isRegularUser ? "Manage your program enrollment" : "Your enrollment & team programs"}
+                Track program enrollments across your team
               </p>
             </div>
             <button
@@ -1326,10 +1248,9 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {/* Search Bar - Only for Coach/Admin/Developer */}
-        {!isRegularUser && (
-          <div className="mb-4 relative">
-            <div className={`relative flex items-center bg-white border shadow-sm px-3 py-2.5 ${showSuggestions && searchQuery.trim() ? "rounded-t-2xl border-green-400 border-b-0" : "rounded-2xl border-gray-200"}`}>
+        {/* Search Bar */}
+        <div className="mb-4 relative">
+          <div className={`relative flex items-center bg-white border shadow-sm px-3 py-2.5 ${showSuggestions && searchQuery.trim() ? "rounded-t-2xl border-green-400 border-b-0" : "rounded-2xl border-gray-200"}`}>
             {/* Person icon - left */}
             <svg
               className="w-5 h-5 text-gray-400 flex-shrink-0 mr-2"
@@ -1464,8 +1385,6 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             );
           })()}
         </div>
-        )}
-        
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 sm:py-20">
             <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-green-500 mb-4"></div>
@@ -1485,8 +1404,453 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           </div>
         ) : (
           <>
-            {/* Main Content - Simple View */}
-            {viewMode === "own" ? renderOwnEnrollment() : renderMemberEnrollment()}
+            {/* Programs List */}
+            <div className="space-y-3 sm:space-y-4">
+              {/* ── INDIVIDUAL VIEW: any name is searched ── */}
+              {isSearchingAnyone ? (
+                !searchedMember ? (
+                  <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
+                    <div className="text-5xl sm:text-6xl mb-4">ðŸ”</div>
+                    <p className="text-gray-600 text-base sm:text-lg">No member found</p>
+                    <p className="text-gray-500 text-xs sm:text-sm mt-2">Try searching by a different name or email.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Member Profile Card — only shown when searching for someone else */}
+                    {isSearchingOther && (
+                    <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-3 sm:p-4 flex items-center gap-3 mb-1">
+                      <div
+                        className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg cursor-pointer active:opacity-70"
+                        onClick={() => setProfileModalEmail(searchedMember.Email)}
+                        title="View full profile"
+                      >
+                        {(searchedMember.UserName || searchedMember.Email || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setProfileModalEmail(searchedMember.Email)}
+                          className="font-semibold text-blue-600 active:text-green-600 text-sm sm:text-base truncate block hover:underline transition-colors"
+                          title="View full profile"
+                        >
+                          {searchedMember.UserName || searchedMember.Email}
+                        </button>
+                        <p className="text-xs text-gray-400 truncate">{searchedMember.Email}</p>
+                      </div>
+                    </div>
+                    )}
+
+                    {[...PROGRAMS]
+                      .sort((a, b) => {
+                        const aEnrolled = searchedMemberEnrolledPrograms.includes(a.name) ? 1 : 0;
+                        const bEnrolled = searchedMemberEnrolledPrograms.includes(b.name) ? 1 : 0;
+                        return bEnrolled - aEnrolled; // enrolled first
+                      })
+                      .map((program) => {
+                      const isEnrolled = searchedMemberEnrolledPrograms.includes(program.name);
+                      return (
+                        <div key={program.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                          <div className="p-3 sm:p-4 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl sm:text-3xl">
+                                {program.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-gray-800 text-sm sm:text-base truncate">
+                                  {program.name}
+                                </h3>
+                                {isEnrolled && (() => { const d = getSearchedMemberProgramDate(program.name); return d ? (
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    {new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" })}
+                                    {" · "}
+                                    {new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
+                                  </p>
+                                ) : null; })()}
+                              </div>
+                            </div>
+                            <div className={`flex flex-col items-center px-4 py-2 rounded-xl border ${
+                              isEnrolled
+                                ? "bg-blue-50 border-blue-200"
+                                : "bg-gray-50 border-gray-200"
+                            }`}>
+                              <SelfLogo className={`w-4 h-4 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`} />
+                              <div className={`text-[10px] font-bold mt-0.5 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>Individual</div>
+                              <div className={`text-xl font-bold ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>
+                                {isEnrolled ? "✓" : "✗"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )
+              ) : (
+              /* ── NORMAL HIERARCHICAL VIEW ── */
+              <>
+              {PROGRAMS.filter((program) => {
+                const rawStats = programStats[program.name] || {
+                  mine: 0, directTeam: 0, fullTeam: 0,
+                  directTeamMembers: [], fullTeamMembers: [],
+                };
+                const stats = getFilteredStats(rawStats);
+                const hasEnrollments = stats.mine > 0 || stats.directTeam > 0 || stats.fullTeam > 0;
+                return hasEnrollments;
+              }).length === 0 ? (
+                <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
+                  <div className="text-5xl sm:text-6xl mb-4">📋</div>
+                  <p className="text-gray-600 text-base sm:text-lg">
+                    No enrollments found
+                  </p>
+                  <p className="text-gray-500 text-xs sm:text-sm mt-2">
+                    Be the first to enroll in a program!
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {PROGRAMS.map((program) => {
+                    const stats = getFilteredStats(programStats[program.name] || {
+                      mine: 0,
+                      directTeam: 0,
+                      fullTeam: 0,
+                      directTeamMembers: [],
+                      fullTeamMembers: [],
+                    });
+                    // Hide programs with no enrollments
+                    if (
+                      stats.mine === 0 &&
+                      stats.directTeam === 0 &&
+                      stats.fullTeam === 0
+                    ) {
+                      return null;
+                    }
+
+                    const isExpanded = expandedProgram === program.name;
+
+                    return (
+                      <div
+                        key={program.id}
+                        className="bg-white rounded-xl shadow-md overflow-hidden"
+                      >
+                        {/* Program Header - Responsive Layout */}
+                        <div className="p-3 sm:p-4">
+                          {/* Mobile: Stacked Layout (< 640px) */}
+                          <div className="sm:hidden space-y-3">
+                            {/* Program Name */}
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl">
+                                {program.icon}
+                              </div>
+                              <h3 className="font-semibold text-gray-800 text-sm flex-1 min-w-0">
+                                {program.name}
+                              </h3>
+                            </div>
+
+                            {/* Metrics in 3 columns */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {/* Mine - Mobile */}
+                              <div
+                                onClick={() =>
+                                  stats.mine > 0 &&
+                                  handleViewClick(program.name, "mine")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.mine > 0
+                                    ? "bg-blue-50 border-blue-200 cursor-pointer active:bg-blue-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "mine"
+                                    ? "ring-2 ring-blue-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <SelfLogo className="w-4 h-4 text-blue-600" />
+                                  <div className="text-[10px] font-bold text-blue-600">Individual</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.mine > 0 ? "text-blue-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.mine > 0 ? "✓" : "✗"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Direct Team - Mobile */}
+                              <div
+                                onClick={() =>
+                                  stats.directTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "direct")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.directTeamMembers.length > 0
+                                    ? "bg-green-50 border-green-200 cursor-pointer active:bg-green-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "direct"
+                                    ? "ring-2 ring-green-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <DirectLogo className="w-4 h-4 text-green-600" />
+                                  <div className="text-[10px] font-bold text-green-600">DIRECT</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.directTeamMembers.length > 0 ? "text-green-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.directTeam}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Full Team - Mobile */}
+                              <div
+                                onClick={() =>
+                                  stats.fullTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "full")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.fullTeamMembers.length > 0
+                                    ? "bg-purple-50 border-purple-200 cursor-pointer active:bg-purple-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "full"
+                                    ? "ring-2 ring-purple-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <FullTeamLogo className="w-4 h-4 text-purple-600" />
+                                  <div className="text-[10px] font-bold text-purple-600">FULL</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.fullTeamMembers.length > 0 ? "text-purple-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.fullTeam}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Desktop: One Row Layout (>= 640px) */}
+                          <div className="hidden sm:flex items-center justify-between gap-4">
+                            {/* Left: Icon + Name */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-12 h-12 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-3xl">
+                                {program.icon}
+                              </div>
+                              <h3 className="font-semibold text-gray-800 text-base truncate">
+                                {program.name}
+                              </h3>
+                            </div>
+
+                            {/* Right: Metrics in horizontal row */}
+                            <div className="flex items-center gap-2">
+                              {/* Mine - Desktop */}
+                              <div
+                                onClick={() =>
+                                  stats.mine > 0 &&
+                                  handleViewClick(program.name, "mine")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.mine > 0
+                                    ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "mine"
+                                    ? "ring-2 ring-blue-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <SelfLogo className="w-4 h-4 text-blue-600" />
+                                  <div className="text-xs font-bold text-blue-600 whitespace-nowrap">Individual</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.mine > 0 ? "text-blue-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.mine > 0 ? "✓" : "✗"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Direct Team - Desktop */}
+                              <div
+                                onClick={() =>
+                                  stats.directTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "direct")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.directTeamMembers.length > 0
+                                    ? "bg-green-50 border-green-200 cursor-pointer hover:bg-green-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "direct"
+                                    ? "ring-2 ring-green-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <DirectLogo className="w-4 h-4 text-green-600" />
+                                  <div className="text-xs font-bold text-green-600 whitespace-nowrap">DIRECT</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.directTeamMembers.length > 0 ? "text-green-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.directTeam}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Full Team - Desktop */}
+                              <div
+                                onClick={() =>
+                                  stats.fullTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "full")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.fullTeamMembers.length > 0
+                                    ? "bg-purple-50 border-purple-200 cursor-pointer hover:bg-purple-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "full"
+                                    ? "ring-2 ring-purple-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <FullTeamLogo className="w-4 h-4 text-purple-600" />
+                                  <div className="text-xs font-bold text-purple-600 whitespace-nowrap">FULL</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.fullTeamMembers.length > 0 ? "text-purple-600" : "text-gray-400"
+                                  }`}>
+                                    {stats.fullTeam}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Member List */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t border-gray-200 bg-gray-50 p-3 sm:p-4">
+                                {/* Header with Toggles */}
+                                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                                  <h4 className="text-xs sm:text-sm font-semibold text-gray-700">
+                                    {viewType === "mine" && "My Enrollment"}
+                                    {viewType === "direct" &&
+                                      `Direct Team (${stats.directEnrolledCount} / ${stats.directTeamMembers.length})`}
+                                    {viewType === "full" &&
+                                      `Full Team - Hierarchy View (${stats.fullEnrolledCount} / ${stats.fullTeamMembers.length})`}
+                                  </h4>
+
+                                  {/* Toggle button for non-enrolled members (only show for non-hierarchy views) */}
+                                  {viewType === "direct" && (
+                                    <button
+                                      onClick={() =>
+                                        setShowNotEnrolled(!showNotEnrolled)
+                                      }
+                                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${
+                                        showNotEnrolled
+                                          ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                          : "bg-green-100 text-green-700 hover:bg-green-200"
+                                      }`}
+                                    >
+                                      {showNotEnrolled ? (
+                                        <>
+                                          <svg
+                                            className="w-3 h-3 sm:w-4 sm:h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                            />
+                                          </svg>
+                                          <span className="hidden sm:inline">
+                                            Hide
+                                          </span>{" "}
+                                          Unenrolled
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg
+                                            className="w-3 h-3 sm:w-4 sm:h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                            />
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                            />
+                                          </svg>
+                                          <span className="hidden sm:inline">
+                                            Show
+                                          </span>{" "}
+                                          Unenrolled
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {viewType === "mine" && stats.mine > 0 && (
+                                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 text-center">
+                                    <div className="text-3xl sm:text-4xl mb-2">
+                                      ✅
+                                    </div>
+                                    <p className="text-blue-800 font-semibold text-sm sm:text-base">
+                                      You're enrolled in this program!
+                                    </p>
+                                  </div>
+                                )}
+                                {viewType === "mine" && stats.mine === 0 && (
+                                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4 text-center">
+                                    <div className="text-3xl sm:text-4xl mb-2">
+                                      📋
+                                    </div>
+                                    <p className="text-gray-600 font-semibold text-sm sm:text-base">
+                                      You're unenrolled in this program
+                                    </p>
+                                  </div>
+                                )}
+                                {viewType === "direct" &&
+                                  renderMemberList(stats.directTeamMembers)}
+                                {viewType === "full" &&
+                                  renderHierarchyView(
+                                    stats.fullTeamMembers,
+                                    program.name,
+                                  )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+              </> /* end normal hierarchical view */
+              )} {/* end isSearchingAnyone ternary */}
+            </div>
           </>
         )}
       </div>

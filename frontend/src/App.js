@@ -157,9 +157,6 @@ const NutritionCenterRegistration = lazy(() =>
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
-const WellnessUniversityEnrollment = lazy(() =>
-  import("./pages/WellnessUniversityEnrollment"),
-);
 const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
@@ -604,7 +601,6 @@ function WellnessValleyApp() {
   // -------------------------------------------------------------------------
 
   // Wellness University state
-  const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
   const [showWellnessReport, setShowWellnessReport] = useState(false);
 
   // Wellness Counselling state
@@ -5852,7 +5848,7 @@ function WellnessValleyApp() {
           startTransition(() => setShowActivityTimeReport(true));
           Session.setCurrentPage("activity-time-report");
         }}
-        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessEnrollment(true))}
+        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessReport(true))}
         onShowWellnessReport={
           userRole === "admin" ||
           userRole === "coach" ||
@@ -7147,16 +7143,6 @@ function WellnessValleyApp() {
               // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}
-          />
-        </Suspense>
-      )}
-
-      {/* Wellness University Enrollment */}
-      {showWellnessEnrollment && (
-        <Suspense fallback={<LoadingSpinner message="Loading enrollment..." />}>
-          <WellnessUniversityEnrollment
-            onClose={() => setShowWellnessEnrollment(false)}
-            user={user}
           />
         </Suspense>
       )}

@@ -112,28 +112,40 @@ export default async function handler(req, res) {
 
     const programsJson = JSON.stringify(newMap);
 
+    // Use UPSERT to handle both insert and update cases
     const { data: updatedEnrollment, error: updateError } = await supabase
       .from('wellness_university_enrollments_table')
-      .update({
+      .upsert({
+        UserId: user.UserId,
+        UserName: user.UserName,
+        Email: user.Email,
         EnrolledPrograms: programsJson,
+        EnrollmentDate: existing ? undefined : updateTime, // Only set on first insert
         LastUpdated: updateTime,
+      }, {
+        onConflict: 'UserId', // Use UserId as the unique key for upsert
+        ignoreDuplicates: false, // Always update if exists
       })
-      .eq('"UserId"', user.UserId)
-      .select()
-      .single();
+      .select();
 
     if (updateError) {
-      console.error('❌ [update-enrollment] Update error:', updateError);
+      console.error('❌ [update-enrollment] Upsert error:', updateError);
       throw new Error(updateError.message);
     }
 
-    logger.debug('✅ [update-enrollment] Enrollment updated successfully:', { enrollmentId: updatedEnrollment.Id });
+    // Get the first result (upsert returns an array)
+    const enrollment = updatedEnrollment?.[0];
+    if (!enrollment) {
+      throw new Error('No enrollment record returned after upsert');
+    }
+
+    logger.debug('✅ [update-enrollment] Enrollment upserted successfully:', { enrollmentId: enrollment.Id });
 
     return res.status(200).json({
       success: true,
       message: 'Enrollment updated successfully',
       enrollment: {
-        id: updatedEnrollment.Id,
+        id: enrollment.Id,
         programs: Object.keys(newMap),
       },
     });
