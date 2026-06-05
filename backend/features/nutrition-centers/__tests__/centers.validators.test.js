@@ -13,6 +13,8 @@ import {
   validateGetCenters,
   validateRegister,
   validateUnregister,
+  validateUpdate,
+  validateGetAttendees,
 } from '../centers.validators.js';
 
 function expectValidationError(fn, status, messageSubstring) {
@@ -122,5 +124,86 @@ describe('validateUnregister', () => {
 
   it.each([null, {}, { centerId: 1 }, { userId: 1 }])('rejects %p', (input) => {
     expectValidationError(() => validateUnregister(input), 400);
+  });
+});
+
+describe('validateUpdate', () => {
+  const base = { centerId: 5, userId: 3, centerName: 'New Name' };
+
+  it('accepts a valid update with centerName only', () => {
+    const result = validateUpdate(base);
+    expect(result.centerId).toBe(5);
+    expect(result.userId).toBe(3);
+    expect(result.centerName).toBe('New Name');
+  });
+
+  it('accepts lat/lng update and parses floats', () => {
+    const result = validateUpdate({ centerId: 5, userId: 3, latitude: '12.34', longitude: '56.78' });
+    expect(result.latitude).toBe(12.34);
+    expect(result.longitude).toBe(56.78);
+  });
+
+  it('rejects null body', () => {
+    expectValidationError(() => validateUpdate(null), 400, 'missing');
+  });
+
+  it('rejects missing centerId', () => {
+    expectValidationError(() => validateUpdate({ userId: 3, centerName: 'x' }), 400, 'centerId');
+  });
+
+  it('rejects missing userId', () => {
+    expectValidationError(() => validateUpdate({ centerId: 5, centerName: 'x' }), 400, 'userId');
+  });
+
+  it('rejects empty centerName', () => {
+    expectValidationError(() => validateUpdate({ centerId: 5, userId: 3, centerName: '   ' }), 400, 'empty');
+  });
+
+  it('rejects payload with no updatable fields', () => {
+    expectValidationError(() => validateUpdate({ centerId: 5, userId: 3 }), 400, 'field');
+  });
+
+  it('rejects out-of-range coordinates', () => {
+    expectValidationError(
+      () => validateUpdate({ centerId: 5, userId: 3, latitude: 200, longitude: 0 }),
+      400,
+      'coordinates',
+    );
+  });
+});
+
+// ─── validateGetAttendees ─────────────────────────────────────────────────────
+describe('validateGetAttendees', () => {
+  it('returns parsed centerId when valid', () => {
+    const result = validateGetAttendees({ centerId: '42' });
+    expect(result.centerId).toBe(42);
+  });
+
+  it('passes through optional startDate and endDate', () => {
+    const result = validateGetAttendees({ centerId: '7', startDate: '2026-06-01', endDate: '2026-06-01' });
+    expect(result.startDate).toBe('2026-06-01');
+    expect(result.endDate).toBe('2026-06-01');
+  });
+
+  it('returns null dates when omitted', () => {
+    const result = validateGetAttendees({ centerId: '3' });
+    expect(result.startDate).toBeNull();
+    expect(result.endDate).toBeNull();
+  });
+
+  it('throws 400 when centerId is missing', () => {
+    expectValidationError(() => validateGetAttendees({}), 400, 'centerId');
+  });
+
+  it('throws 400 when centerId is zero', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: '0' }), 400, 'positive integer');
+  });
+
+  it('throws 400 when centerId is not a number', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: 'abc' }), 400, 'positive integer');
+  });
+
+  it('throws 400 when centerId is negative', () => {
+    expectValidationError(() => validateGetAttendees({ centerId: '-5' }), 400, 'positive integer');
   });
 });

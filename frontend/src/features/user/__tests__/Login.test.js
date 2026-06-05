@@ -26,6 +26,15 @@ jest.mock('../services/authService', () => ({
   verifyOtp: jest.fn().mockResolvedValue({ success: false, message: 'Invalid OTP' }),
 }));
 
+// Phone auth pulls in the real Firebase SDK; stub it at the boundary so the
+// Login render path stays pure-JS in jsdom.
+jest.mock('../services/phoneAuthService', () => ({
+  sendPhoneOtp: jest.fn(),
+  confirmPhoneOtp: jest.fn(),
+  exchangeFirebaseIdToken: jest.fn(),
+  resetPhoneAuth: jest.fn(),
+}));
+
 // Stub TermsAndConditions / PrivacyPolicy so they don't add noise to the DOM
 jest.mock('../../../shared/components/TermsAndConditions', () =>
   function TermsStub({ onClose }) {

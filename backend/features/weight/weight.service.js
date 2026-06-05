@@ -68,6 +68,9 @@ export async function saveWeight(input) {
     imageBase64ToSave: rawImage,
     clientTimestamp, entryId,
     captureId,
+    city, village,
+    centerName, nutritionCenterId, attendanceType,
+    latitude, longitude,
   } = input;
 
   const bmiValue = toNumberOrNull(bmi);
@@ -127,6 +130,13 @@ export async function saveWeight(input) {
       CaptureID: captureId || null,
       CreatedAt: createdAtIST,
       UpdatedAt: currentTime,
+      City: city || null,
+      Village: village || null,
+      CenterName: centerName || null,
+      NutritionCenterId: nutritionCenterId || null,
+      AttendanceType: attendanceType || null,
+      Latitude: latitude || null,
+      Longitude: longitude || null,
     });
   }
 

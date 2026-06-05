@@ -96,7 +96,7 @@ import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
 import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
-import { locationAttendanceService } from "./features/nutrition-centers";
+import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
@@ -105,12 +105,14 @@ import { ManualEducationEntryModal } from "./features/education";
 import { UnknownCaptureModal } from "./features/captures";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
+import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
+// import { TaskNotificationPanel } from "./features/tasks"; // Commented out - Task Scheduler UI hidden
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -157,9 +159,6 @@ const NutritionCenterRegistration = lazy(() =>
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
-const WellnessUniversityEnrollment = lazy(() =>
-  import("./pages/WellnessUniversityEnrollment"),
-);
 const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
@@ -248,6 +247,10 @@ function WellnessValleyApp() {
   const [showManualFoodModal, setShowManualFoodModal] = useState(false);
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  
+  // -- Task Notification Panel (June 2026) ----------------------------------- COMMENTED OUT
+  // const [showTaskPanel, setShowTaskPanel] = useState(false);
+  // const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -523,6 +526,8 @@ function WellnessValleyApp() {
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
   const [nearbyCenters, setNearbyCenters] = useState([]);
   const [pendingEducationData, setPendingEducationData] = useState(null);
+  const [pendingWeightData, setPendingWeightData] = useState(null);
+  const [pendingFoodData, setPendingFoodData] = useState(null);
 
   // Custom alert modal state
   const [alertModal, setAlertModal] = useState({
@@ -591,6 +596,7 @@ function WellnessValleyApp() {
 
   // Register nutrition center state (for coaches)
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
+  const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -602,7 +608,6 @@ function WellnessValleyApp() {
   // -------------------------------------------------------------------------
 
   // Wellness University state
-  const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
   const [showWellnessReport, setShowWellnessReport] = useState(false);
 
   // Wellness Counselling state
@@ -2509,6 +2514,45 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       };
 
+      // Capture GPS location for every weight photo — not just when inside a club.
+      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
+      // Fails gracefully — weight save is never blocked by a GPS timeout.
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        debugLog("📍 [weight] Attendance determined:", attendance);
+
+        // If multiple clubs detected, show selection modal
+        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
+          debugLog("🏢 [weight] Multiple clubs detected, showing selection modal");
+          setNearbyCenters(attendance.nearbyCenters);
+          setPendingWeightData({ weightData, imageBase64, attendance, captureTimestamp });
+          setShowClubSelectionModal(true);
+          setSaveLoading(false);
+          setLoadingState("idle");
+          return; // Wait for user to select club
+        }
+
+        // Single club or remote
+        if (attendance.latitude && attendance.longitude) {
+          payload.latitude = attendance.latitude;
+          payload.longitude = attendance.longitude;
+          payload.attendanceType = attendance.attendanceType;
+          payload.nutritionCenterId = attendance.nutritionCenterId || null;
+          payload.centerName = attendance.centerName || null;
+          debugLog("📍 [weight] Location attached to save payload:", attendance);
+
+          // Reverse-geocode to city + village
+          const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+          payload.city = city;
+          payload.village = village;
+        }
+      } catch (gpsErr) {
+        debugLog("⚠️ [weight] GPS check failed, saving without location:", gpsErr.message);
+        // Fallback to remote attendance
+        payload.attendanceType = 'remote';
+      }
+
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
       // This allows multiple weight entries per day with different timestamps
       // if (savedWeightIdRef.current) {
@@ -3144,54 +3188,12 @@ function WellnessValleyApp() {
         return; // Wait for user to select club
       }
 
-      // Get address from GPS coordinates using reverse geocoding
-      let userCity = null;
-      let userVillage = null;
-      
-      if (attendance.latitude && attendance.longitude) {
-        try {
-          debugLog("📍 Fetching address from GPS:", {
-            lat: attendance.latitude,
-            lon: attendance.longitude
-          });
-          
-          const geoResponse = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1&accept-language=en`,
-            {
-              headers: {
-                'User-Agent': 'WellnessBuddy/1.0',
-                'Accept-Language': 'en'
-              }
-            }
-          );
-          
-          if (geoResponse.ok) {
-            const geoData = await geoResponse.json();
-            if (geoData && geoData.address) {
-              const addr = geoData.address;
-              
-              // Extract city (main city/town)
-              userCity = addr.city || addr.town || addr.village || addr.county || null;
-              
-              // Extract village (neighbourhood, suburb, hamlet - smaller areas)
-              const villageParts = [];
-              if (addr.neighbourhood) villageParts.push(addr.neighbourhood);
-              if (addr.suburb && addr.suburb !== addr.neighbourhood) villageParts.push(addr.suburb);
-              if (addr.hamlet) villageParts.push(addr.hamlet);
-              
-              userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
-              
-              debugLog("? Address extracted:", {
-                city: userCity,
-                village: userVillage,
-                fullAddress: geoData.display_name
-              });
-            }
-          }
-        } catch (err) {
-          console.warn("⚠️ Failed to fetch address from GPS:", err);
-        }
-      }
+      // Reverse-geocode GPS coordinates into city + village via shared helper.
+      // fetchCityVillage never throws — returns null fields on failure.
+      const { city: userCity, village: userVillage } = await fetchCityVillage(
+        attendance.latitude,
+        attendance.longitude,
+      );
 
       // Determine final values
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
@@ -3283,6 +3285,7 @@ function WellnessValleyApp() {
     debugLog("🏢 Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
 
+    // Handle education attendance
     if (pendingEducationData) {
       setSaveLoading(true);
       setLoadingState("saving");
@@ -3294,6 +3297,151 @@ function WellnessValleyApp() {
         pendingEducationData.captureId || null,
       );
       setPendingEducationData(null);
+      return;
+    }
+
+    // Handle weight save
+    if (pendingWeightData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      
+      const { weightData, imageBase64, attendance, captureTimestamp } = pendingWeightData;
+      
+      // Get userId
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+
+      const payload = {
+        userId,
+        weightValue: weightData.weightValue,
+        unit: weightData.unit,
+        bmi: weightData.bmi,
+        bodyFat: weightData.bodyFat,
+        muscleMass: weightData.muscleMass,
+        bmr: weightData.bmr,
+        imageBase64ToSave: imageBase64,
+        clientTimestamp: captureTimestamp || new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset(),
+        captureId: foodCaptureIdRef.current || undefined,
+        // Add selected club location
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        attendanceType: 'club',
+        nutritionCenterId: selectedCenter.id,
+        centerName: selectedCenter.center_name,
+      };
+
+      // Reverse-geocode to city + village
+      const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+      payload.city = city;
+      payload.village = village;
+
+      // Continue with weight save
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          debugLog('❌ Weight validation failed:', data.validation);
+          setAlertModal({
+            isOpen: true,
+            title: data.validation?.title || "Weight Entry Issue",
+            message: data.validation?.message || data.message || "Failed to save weight entry",
+            type: data.validation?.severity || "warning",
+          });
+          setSaveLoading(false);
+          setLoadingState("idle");
+          setPendingWeightData(null);
+          return;
+        }
+
+        debugLog('✅ Weight entry saved successfully:', data.id);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingWeightData(null);
+        
+        // Refresh data
+        handleLeaderboardRefresh();
+        
+      } catch (error) {
+        console.error('❌ Error saving weight:', error);
+        setAlertModal({
+          isOpen: true,
+          title: "Save Failed",
+          message: "Failed to save weight entry. Please try again.",
+          type: "error",
+        });
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingWeightData(null);
+      }
+      return;
+    }
+
+    // Handle food save
+    if (pendingFoodData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      
+      const { saveData, attendance, captureId } = pendingFoodData;
+      
+      const clubLocationFields = {
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        attendanceType: 'club',
+        nutritionCenterId: selectedCenter.id,
+        centerName: selectedCenter.center_name,
+      };
+
+      // Reverse-geocode to city + village
+      const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+      clubLocationFields.city = city;
+      clubLocationFields.village = village;
+
+      // Continue with food save
+      try {
+        const saveRes = await saveNutritionAnalysis({
+          ...saveData,
+          ...clubLocationFields,
+          captureId: captureId || undefined,
+        });
+
+        // saveNutritionAnalysis returns data directly, not { ok, data }
+        // Success is indicated by not throwing an error
+        debugLog('✅ Nutrition analysis saved successfully:', saveRes);
+        
+        // Store meal ID for auto-save updates
+        setSavedNutritionMealId(saveRes.id || saveRes.insertId);
+        
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingFoodData(null);
+        setShowClubSelectionModal(false);
+        
+        // Refresh data
+        handleLeaderboardRefresh();
+        
+      } catch (error) {
+        console.error('❌ Error saving nutrition:', error);
+        setAlertModal({
+          isOpen: true,
+          title: "Save Failed",
+          message: error.message || "Failed to save nutrition analysis. Please try again.",
+          type: "error",
+        });
+        setSaveLoading(false);
+        setLoadingState("idle");
+        setPendingFoodData(null);
+        setShowClubSelectionModal(false);
+      }
+      return;
     }
   };
 
@@ -3321,8 +3469,52 @@ function WellnessValleyApp() {
         pendingSharePromiseRef.current = null;
       }
 
+      // Capture GPS location for every food photo — not just when inside a club.
+      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
+      // Fails gracefully — nutrition save is never blocked by a GPS timeout.
+      let clubLocationFields = {};
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, saveData.userId);
+        debugLog("📍 [nutrition] Attendance determined:", attendance);
+
+        // If multiple clubs detected, show selection modal
+        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
+          debugLog("🏢 [nutrition] Multiple clubs detected, showing selection modal");
+          setNearbyCenters(attendance.nearbyCenters);
+          setPendingFoodData({ 
+            saveData, 
+            attendance,
+            captureId: foodCaptureIdRef.current || undefined 
+          });
+          setShowClubSelectionModal(true);
+          setSaveLoading(false);
+          setLoadingState("idle");
+          return; // Wait for user to select club
+        }
+
+        // Single club or remote
+        if (attendance.latitude && attendance.longitude) {
+          clubLocationFields.latitude = attendance.latitude;
+          clubLocationFields.longitude = attendance.longitude;
+          clubLocationFields.attendanceType = attendance.attendanceType;
+          clubLocationFields.nutritionCenterId = attendance.nutritionCenterId || null;
+          clubLocationFields.centerName = attendance.centerName || null;
+          debugLog("📍 [nutrition] Location attached to save payload:", attendance);
+
+          // Reverse-geocode to city + village
+          const { city, village } = await fetchCityVillage(attendance.latitude, attendance.longitude);
+          clubLocationFields.city = city;
+          clubLocationFields.village = village;
+        }
+      } catch (gpsErr) {
+        debugLog("⚠️ [nutrition] GPS check failed, saving without location:", gpsErr.message);
+        clubLocationFields.attendanceType = 'remote';
+      }
+
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
+        ...clubLocationFields,
         // Pass captureId so the backend updates the pre-created pending row
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.
@@ -4600,35 +4792,15 @@ function WellnessValleyApp() {
               actualUserId = await getUserId(user);
             } catch (userIdError) {
               console.error("Failed to get userId:", userIdError);
-              // Edge case: If userId lookup fails, proceed without duplicate check
-              await performNutritionSave({
-                userId: userIdentifier,
-                imagePath: file.name,
-                imageBase64: processedImage,
-                analysisResult: result,
-                deviceInfo: window.navigator.userAgent,
-                userEmail: user?.email || user?.Email || "unknown",
-                captureTimestamp: exifTimestamp || null,
-              });
-              return;
+              // Edge case: If userId lookup fails, cannot proceed with save
+              // because nutrition centers API requires integer userId
+              throw new Error("Unable to resolve user account. Please try again or contact support.");
             }
           }
 
           // Edge case: userId still invalid after lookup
           if (!actualUserId) {
-            console.warn(
-              "Could not determine userId, skipping duplicate check",
-            );
-            await performNutritionSave({
-              userId: userIdentifier,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
+            throw new Error("Unable to resolve user account. Please try again or contact support.");
           }
 
           // Check for duplicates in current meal time slot
@@ -4645,8 +4817,9 @@ function WellnessValleyApp() {
               "Duplicate check failed, proceeding with save:",
               duplicateError,
             );
+            // Still use actualUserId, not userIdentifier
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4662,8 +4835,9 @@ function WellnessValleyApp() {
             console.warn(
               "Invalid duplicate check response, proceeding with save",
             );
+            // Still use actualUserId, not userIdentifier
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4679,7 +4853,7 @@ function WellnessValleyApp() {
             debugLog("⚠️ Duplicate food detected:", duplicateCheck);
             setDuplicateInfo(duplicateCheck);
             setPendingSaveData({
-              userId: userIdentifier,
+              userId: actualUserId, // Use resolved integer ID, not email
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -4692,7 +4866,7 @@ function WellnessValleyApp() {
           } else {
             // No duplicate - proceed with save
             await performNutritionSave({
-              userId: userIdentifier,
+              userId: actualUserId, // Use resolved integer ID, not email
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
@@ -5796,7 +5970,7 @@ function WellnessValleyApp() {
           startTransition(() => setShowActivityTimeReport(true));
           Session.setCurrentPage("activity-time-report");
         }}
-        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessEnrollment(true))}
+        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessReport(true))}
         onShowWellnessReport={
           userRole === "admin" ||
           userRole === "coach" ||
@@ -5807,7 +5981,7 @@ function WellnessValleyApp() {
         onShowWellnessCounselling={() => startTransition(() => setShowWellnessCounselling(true))}
         onShowAttendanceReport={() => startTransition(() => setShowAttendanceReport(true))}
         onShowNutritionCentersMap={() => startTransition(() => setShowNutritionCentersMap(true))}
-        onShowRegisterCenter={() => startTransition(() => setShowRegisterCenter(true))}
+        onShowRegisterCenter={null}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
         // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
@@ -5875,6 +6049,30 @@ function WellnessValleyApp() {
             educationWindow={educationWindow}
             onCameraStateChange={handleCameraStateChange}
           />
+
+          {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
+          {user && user.id && (
+            <button
+              onClick={() => setShowTaskPanel(true)}
+              className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold w-14 h-14 rounded-full shadow-2xl transform transition-all duration-200 hover:scale-110 flex items-center justify-center"
+              aria-label="Show My Tasks"
+            >
+              <svg 
+                className="w-6 h-6" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
+                />
+              </svg>
+            </button>
+          )}
+          */}
 
           {error && (() => {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
@@ -6331,10 +6529,10 @@ function WellnessValleyApp() {
                             }}
                           >
                             {weightDiff.change > 0
-                              ? "?"
+                              ? "▲"
                               : weightDiff.change < 0
-                              ? "?"
-                              : "�"}{" "}
+                              ? "▼"
+                              : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
                               : Math.abs(weightDiff.change) < 1
@@ -6495,15 +6693,15 @@ function WellnessValleyApp() {
                       }`}
                     >
                       {weightDiff.change > 0
-                        ? "?"
+                        ? "▲"
                         : weightDiff.change < 0
-                        ? "?"
-                        : "�"}{" "}
+                        ? "▼"
+                        : "—"}{" "}
                       {weightDiff.change === 0
                         ? "No change"
                         : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
                       {weightDiff.change < 0 && (
-                        <span className="text-sm ml-1">??</span>
+                        <span className="text-sm ml-1">🎉</span>
                       )}
                     </div>
                   </div>
@@ -6823,6 +7021,8 @@ function WellnessValleyApp() {
         onClose={() => {
           setShowClubSelectionModal(false);
           setPendingEducationData(null);
+          setPendingWeightData(null);
+          setPendingFoodData(null);
           setSaveLoading(false);
           setLoadingState("idle");
         }}
@@ -7009,6 +7209,17 @@ function WellnessValleyApp() {
           <NutritionCentersMap
             user={user}
             onBack={() => setShowNutritionCentersMap(false)}
+            onEditCenter={(center) => {
+              setEditCenterData(center);
+              // Keep map mounted in background - don't unmount
+              // setShowNutritionCentersMap(false); 
+              setShowRegisterCenter(true);
+            }}
+            onRegisterCenter={() => {
+              setEditCenterData(null);
+              setShowNutritionCentersMap(false);
+              setShowRegisterCenter(true);
+            }}
           />
         </Suspense>
       )}
@@ -7020,7 +7231,15 @@ function WellnessValleyApp() {
         >
           <NutritionCenterRegistration
             user={user}
-            onBack={() => setShowRegisterCenter(false)}
+            initialCenter={editCenterData}
+            onBack={() => {
+              setShowRegisterCenter(false);
+              if (editCenterData) {
+                // came from Physical Club Report via Edit — map already visible, just close form
+                // No need to re-open map: setShowNutritionCentersMap(true);
+              }
+              setEditCenterData(null);
+            }}
           />
         </Suspense>
       )}
@@ -7055,16 +7274,6 @@ function WellnessValleyApp() {
               // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}
-          />
-        </Suspense>
-      )}
-
-      {/* Wellness University Enrollment */}
-      {showWellnessEnrollment && (
-        <Suspense fallback={<LoadingSpinner message="Loading enrollment..." />}>
-          <WellnessUniversityEnrollment
-            onClose={() => setShowWellnessEnrollment(false)}
-            user={user}
           />
         </Suspense>
       )}
@@ -7375,6 +7584,41 @@ function WellnessValleyApp() {
           </div>
         </div>
       )}
+
+      {/* Task Notification Panel (June 2026) - COMMENTED OUT
+      {showTaskPanel && user && (
+        <TaskNotificationPanel
+          userId={user.id}
+          onClose={() => {
+            setShowTaskPanel(false);
+            setHighlightedTaskId(null);
+          }}
+          highlightedTaskId={highlightedTaskId}
+          onTaskComplete={(task) => {
+            debugLog('[App] Task completion triggered', { taskId: task.task_id, taskType: task.task_type });
+            
+            // Open appropriate modal/screen based on task type
+            if (task.task_type === 'weight') {
+              setImageType('weight');
+              setShowManualWeightModal(true);
+            } else if (['breakfast', 'lunch', 'dinner'].includes(task.task_type)) {
+              setImageType('food');
+              setManualMealType(task.task_type);
+              setShowManualFoodModal(true);
+            } else if (task.task_type === 'education') {
+              setShowManualEducationModal(true);
+            } else if (task.task_type === 'water') {
+              setDashboardInitialTab('water');
+              setShowDashboard(true);
+              Session.setCurrentPage('dashboard');
+            }
+            
+            // Close task panel after opening the relevant UI
+            setShowTaskPanel(false);
+          }}
+        />
+      )}
+      */}
     </div>
     </LocationGuard>
   );

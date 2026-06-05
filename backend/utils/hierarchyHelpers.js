@@ -299,3 +299,69 @@ export function buildDataMap(records, userIdField = 'UserId', transformFn = null
   });
   return map;
 }
+
+/**
+ * Resolves the effective coach for a user, handling inactive coaches.
+ * 
+ * Business Logic:
+ * - If the user's coach is Active, return that coach
+ * - If the user's coach is Inactive, recursively find the first Active coach up the chain
+ * - If no Active coach is found, return null
+ * 
+ * This keeps the database hierarchy intact but resolves to active coaches at runtime.
+ * 
+ * @param {string} userId - The user's UserId
+ * @param {Object} supabase - Supabase client instance
+ * @returns {Promise<{coachId: string|null, coachName: string|null, isOriginalCoach: boolean}>}
+ * 
+ * @example
+ * // Member1's coach is Ramesh (inactive), Ramesh's coach is Yasheer (active)
+ * const result = await resolveActiveCoach('member1_id', supabase);
+ * // => { coachId: 'yasheer_id', coachName: 'Yasheer', isOriginalCoach: false }
+ */
+export async function resolveActiveCoach(userId, supabase) {
+  const MAX_DEPTH = 10; // Prevent infinite loops
+  let currentUserId = userId;
+  let depth = 0;
+  
+  while (depth < MAX_DEPTH) {
+    // Get the coach for the current user
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('CoachId, Status, UserName')
+      .eq('UserId', currentUserId)
+      .single();
+    
+    if (error || !data || !data.CoachId) {
+      // No coach found or reached top of hierarchy
+      return { coachId: null, coachName: null, isOriginalCoach: depth === 0 };
+    }
+    
+    // Get the coach's details
+    const { data: coachData, error: coachError } = await supabase
+      .from('team_table')
+      .select('UserId, Status, UserName')
+      .eq('UserId', data.CoachId)
+      .single();
+    
+    if (coachError || !coachData) {
+      return { coachId: null, coachName: null, isOriginalCoach: depth === 0 };
+    }
+    
+    // If coach is Active, return them
+    if (coachData.Status === 'Active') {
+      return {
+        coachId: coachData.UserId,
+        coachName: coachData.UserName,
+        isOriginalCoach: depth === 0,
+      };
+    }
+    
+    // Coach is Inactive, move up the hierarchy
+    currentUserId = coachData.UserId;
+    depth++;
+  }
+  
+  // Max depth reached, return null
+  return { coachId: null, coachName: null, isOriginalCoach: false };
+}

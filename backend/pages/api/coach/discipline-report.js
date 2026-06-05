@@ -10,6 +10,77 @@ import {
 } from "../../../utils/disciplineHelpers.js";
 import logger from '../../../shared/lib/logger.js';
 
+/**
+ * Reorganizes team hierarchy to hide inactive coaches and move their members up.
+ * This is code-level only - no database changes.
+ * 
+ * When a coach is inactive:
+ * - Their direct members get reassigned to their parent coach in the VIEW
+ * - The inactive coach appears as a regular member
+ * - Database CoachId remains unchanged
+ * 
+ * @param {Array} teamMembers - Array of team member objects
+ * @param {number} topCoachId - The top-level coach's ID
+ * @returns {Array} Reorganized team members array
+ */
+function reorganizeHierarchyForInactiveCoaches(teamMembers, topCoachId) {
+  if (!teamMembers || teamMembers.length === 0) {
+    return teamMembers;
+  }
+
+  // Step 1: Create a map of userId -> member for quick lookup
+  const memberMap = new Map();
+  teamMembers.forEach(member => {
+    memberMap.set(member.userId, member);
+  });
+
+  // Step 2: Identify inactive coaches
+  const inactiveCoaches = new Set();
+  teamMembers.forEach(member => {
+    if (member.status === 'Inactive' && member.role === 'coach') {
+      inactiveCoaches.add(member.userId);
+    }
+  });
+
+  // Step 3: For each member, check if their coach is inactive
+  const reorganized = teamMembers.map(member => {
+    const memberCopy = { ...member };
+    
+    // If this member's coach is inactive, reassign to grandparent coach
+    if (member.coachId && inactiveCoaches.has(member.coachId)) {
+      const inactiveCoach = memberMap.get(member.coachId);
+      
+      if (inactiveCoach && inactiveCoach.coachId) {
+        // Move member up to grandparent coach
+        memberCopy.effectiveCoachId = inactiveCoach.coachId;
+        memberCopy.originalCoachId = member.coachId; // Keep track of original
+        memberCopy.coachId = inactiveCoach.coachId; // Update for hierarchy display
+        memberCopy.coachReassigned = true; // Flag for frontend
+      } else {
+        // Inactive coach has no parent, move to top level
+        memberCopy.effectiveCoachId = topCoachId;
+        memberCopy.originalCoachId = member.coachId;
+        memberCopy.coachId = topCoachId;
+        memberCopy.coachReassigned = true;
+      }
+    }
+    
+    return memberCopy;
+  });
+
+  // Step 4: Mark inactive coaches (they become leaf nodes with no team)
+  return reorganized.map(member => {
+    if (inactiveCoaches.has(member.userId)) {
+      return {
+        ...member,
+        teamMembers: [], // Inactive coaches show no team members
+        isInactiveCoach: true, // Flag for frontend
+      };
+    }
+    return member;
+  });
+}
+
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:35) are counted on-time
 // const WINDOW_BUFFER_SECONDS = 300.
@@ -1139,7 +1210,13 @@ export default async function handler(req, res) {
       (m) => m.periodDiscipline.percentage < 60,
     );
 
-    // Step 9: Return response
+    // Step 9: Reorganize hierarchy to hide inactive coaches (code-level only, no DB changes)
+    const reorganizedTeamMembers = reorganizeHierarchyForInactiveCoaches(
+      formattedTeamMembers,
+      coachIdInt
+    );
+
+    // Step 10: Return response
     res.status(200).json({
       success: true,
       source: "realtime",
@@ -1150,7 +1227,7 @@ export default async function handler(req, res) {
       startDate: formatDateForMySQL(dates.start),
       endDate: formatDateForMySQL(dates.end),
       coachPerformance: coachPerformanceData,
-      teamMembers: formattedTeamMembers, // Includes duplicates for dual reporting
+      teamMembers: reorganizedTeamMembers, // ✅ Reorganized hierarchy (inactive coaches hidden)
       teamSummary: {
         totalMembers: uniqueMembers.length, // Unique count
         totalTeamMembers: formattedTeamMembers.length, // Total entries (with duplicates)

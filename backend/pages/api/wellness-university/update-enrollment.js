@@ -112,28 +112,59 @@ export default async function handler(req, res) {
 
     const programsJson = JSON.stringify(newMap);
 
-    const { data: updatedEnrollment, error: updateError } = await supabase
-      .from('wellness_university_enrollments_table')
-      .update({
-        EnrolledPrograms: programsJson,
-        LastUpdated: updateTime,
-      })
-      .eq('"UserId"', user.UserId)
-      .select()
-      .single();
+    // Update or insert based on whether record exists
+    let enrollment;
+    if (existing) {
+      // Update existing record
+      const { data: updatedEnrollment, error: updateError } = await supabase
+        .from('wellness_university_enrollments_table')
+        .update({
+          EnrolledPrograms: programsJson,
+          LastUpdated: updateTime,
+        })
+        .eq('UserId', user.UserId)
+        .select()
+        .single();
 
-    if (updateError) {
-      console.error('❌ [update-enrollment] Update error:', updateError);
-      throw new Error(updateError.message);
+      if (updateError) {
+        console.error('❌ [update-enrollment] Update error:', updateError);
+        throw new Error(updateError.message);
+      }
+
+      enrollment = updatedEnrollment;
+    } else {
+      // Insert new record
+      const { data: newEnrollment, error: insertError } = await supabase
+        .from('wellness_university_enrollments_table')
+        .insert({
+          UserId: user.UserId,
+          EnrolledPrograms: programsJson,
+          EnrollmentDate: updateTime,
+          LastUpdated: updateTime,
+          CreatedAt: updateTime,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('❌ [update-enrollment] Insert error:', insertError);
+        throw new Error(insertError.message);
+      }
+
+      enrollment = newEnrollment;
     }
 
-    logger.debug('✅ [update-enrollment] Enrollment updated successfully:', { enrollmentId: updatedEnrollment.Id });
+    if (!enrollment) {
+      throw new Error('No enrollment record returned after save');
+    }
+
+    logger.debug('✅ [update-enrollment] Enrollment upserted successfully:', { enrollmentId: enrollment.Id });
 
     return res.status(200).json({
       success: true,
       message: 'Enrollment updated successfully',
       enrollment: {
-        id: updatedEnrollment.Id,
+        id: enrollment.Id,
         programs: Object.keys(newMap),
       },
     });
