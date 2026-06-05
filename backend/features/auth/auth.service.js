@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
+import { verifyFirebaseIdToken } from './firebaseAdmin.js';
+import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
 
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
@@ -232,6 +234,77 @@ export async function verifyOtp(input) {
         id: userInfo.UserId,
         username: userInfo.UserName,
         email: userInfo.Email,
+        status: userInfo.Status,
+      },
+    },
+  };
+}
+
+/**
+ * Exchange a Firebase Phone Auth ID token for an app session, find-or-create
+ * the user keyed on the phone number returned in the verified token.
+ *
+ * Flow:
+ *   1. Client calls Firebase signInWithPhoneNumber → user enters SMS code
+ *      → confirmationResult.confirm(code) → idToken.
+ *   2. Client POSTs { idToken, name? } to /api/auth/firebase-phone-login.
+ *   3. We re-verify the token with firebase-admin (NEVER trust the client),
+ *      pull the verified phone number out of the claims, and resolve to a
+ *      `team_table` row.
+ *
+ * Trust: the only fields that survive verification are `phone_number` and
+ * `uid`. The `name` body field is OPTIONAL display-name input for the very
+ * first sign-up; we ignore it for existing users.
+ */
+export async function firebasePhoneLogin({ idToken, name }) {
+  let decoded;
+  try {
+    decoded = await verifyFirebaseIdToken(idToken);
+  } catch (err) {
+    logger.warn('🚫 [firebasePhoneLogin] Token verification failed:', err.message);
+    return { httpStatus: 401, body: { success: false, message: 'Invalid or expired token' } };
+  }
+
+  const phone = decoded.phone_number;
+  if (!phone || !isValidPhoneE164(phone)) {
+    logger.warn('🚫 [firebasePhoneLogin] Token has no phone_number claim');
+    return {
+      httpStatus: 400,
+      body: { success: false, message: 'Phone number missing from verification token' },
+    };
+  }
+
+  let userInfo = await repo.findUserByPhone(phone);
+  let isNewUser = false;
+
+  if (!userInfo) {
+    const currentTime = getISTTimestamp();
+    const username = (name && name.trim()) || usernameFromPhone(phone);
+    userInfo = await repo.insertUser({
+      EntryDateTime: currentTime,
+      EntryUser: 'Wellness Valley',
+      UserName: username,
+      Password: 'User@123#',
+      TargetWeightInKg: 0,
+      Status: 'Active',
+      CoachApproved: 0,
+      Phone: phone,
+    });
+    isNewUser = true;
+    logger.debug('🆕 [firebasePhoneLogin] New phone user created:', phone);
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: 'Phone verified successfully',
+      isNewUser,
+      user: {
+        id: userInfo.UserId,
+        username: userInfo.UserName,
+        email: userInfo.Email || '',
+        phone: userInfo.Phone || phone,
         status: userInfo.Status,
       },
     },

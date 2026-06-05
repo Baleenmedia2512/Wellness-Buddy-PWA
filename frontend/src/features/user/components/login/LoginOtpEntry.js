@@ -79,7 +79,7 @@ const LoginOtpEntry = ({
         )}
       </div>
       <button onClick={onBack} className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200">
-        ← Back to email entry
+        ← Back
       </button>
     </div>
   );
