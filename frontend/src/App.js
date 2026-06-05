@@ -143,7 +143,7 @@ const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/componen
 const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalDisciplineScore"));
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
-const Dashboard = lazy(() => import("./shared/components/Dashboard"));
+const Dashboard = lazy(() => import("./shell/components/Dashboard"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));

@@ -1,9 +1,18 @@
-﻿// src/components/Dashboard.js
+﻿// src/shell/components/Dashboard.js
+//
+// Moved from `frontend/src/shared/components/Dashboard.js` in F1 of
+// ADR-0003 (preceded by ADR-0001 §"shell composition layer").
+//
+// This is the in-app dashboard SHELL — a cross-feature composition root
+// that legitimately imports from `features/*`. It lives under `shell/`
+// (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
+// longer flags it. See `frontend/src/shell/README.md` for the layer's
+// charter and import policy.
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
-import TouchFeedbackButton from './TouchFeedbackButton';
+import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
-import TeamMemberProfileModal from './TeamMemberProfileModal';
+import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
