@@ -103,6 +103,21 @@ function extractMatchingItems(row, lowerTerm) {
 }
 
 function dedupItems(rows, lowerTerm) {
+  // INVARIANT (PR-A / ADR-0003): "latest record wins" per food name.
+  //
+  // The repository contract MUST return `rows` ordered by `CreatedAt DESC`
+  // (see `searchUserMeals` / `searchCommunityMeals`). Combined with the
+  // first-seen-wins `if (!seen.has(key))` guard below, that means the FIRST
+  // row processed for any given food name is the NEWEST one — exactly the
+  // behaviour the Diary spec requires ("if same name exists, use the latest
+  // record's nutrition").
+  //
+  // DO NOT change either side of this invariant without also flipping the
+  // other: removing the `DESC` order in the repo OR switching this to
+  // `seen.set(key, item)` unconditionally would silently start returning
+  // older nutrition for repeated names. The `dedupItems_latestWins`
+  // regression test in __tests__/food-corrections.service.test.js exists
+  // exactly to catch that drift.
   const seen = new Map();
   for (const row of rows) {
     for (const item of extractMatchingItems(row, lowerTerm)) {

@@ -113,4 +113,32 @@ describe('updateType', () => {
     const out = await service.updateType({ publicShareToken: token, userId: '42', toType: 'food' });
     expect(out).toEqual({ changed: false, reason: 'UPDATE_RETURNED_NO_ROW' });
   });
+
+  // PR-A / ADR-0003 — Diary Retry/Edit promotion path.
+  it('promotes unknown → food (the single cross-terminal exception)', async () => {
+    repo.findByToken.mockResolvedValueOnce({ UserID: '42', ImageType: 'unknown' });
+    repo.updateImageTypeByToken.mockResolvedValueOnce({ ImageType: 'food' });
+    const out = await service.updateType({ publicShareToken: token, userId: '42', toType: 'food' });
+    expect(out).toEqual({ changed: true, imageType: 'food' });
+    expect(repo.updateImageTypeByToken).toHaveBeenCalledWith({
+      token, userId: '42', imageType: 'food',
+    });
+  });
+
+  it.each(['weight', 'education', 'smartwatch'])(
+    'still rejects unknown → %s (only unknown→food is allowed)', async (toType) => {
+      repo.findByToken.mockResolvedValueOnce({ UserID: '42', ImageType: 'unknown' });
+      await expect(
+        service.updateType({ publicShareToken: token, userId: '42', toType }),
+      ).rejects.toMatchObject({ status: 409, code: 'INVALID_STATE_TRANSITION' });
+      expect(repo.updateImageTypeByToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still rejects food → unknown (food remains immutable)', async () => {
+    repo.findByToken.mockResolvedValueOnce({ UserID: '42', ImageType: 'food' });
+    await expect(
+      service.updateType({ publicShareToken: token, userId: '42', toType: 'unknown' }),
+    ).rejects.toMatchObject({ status: 409, code: 'INVALID_STATE_TRANSITION' });
+  });
 });
