@@ -9,60 +9,24 @@
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
-
-// Custom weighing scale icon component
-const WeighingScaleIcon = ({ className }) => (
-  <svg 
-    className={className} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2.5" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-  >
-    {/* Outer rounded square (scale body) */}
-    <rect x="3" y="3" width="18" height="18" rx="3" ry="3" />
-    {/* Inner dial display area */}
-    <path d="M6 10 C6 7, 18 7, 18 10" />
-    {/* Dial tick marks */}
-    <line x1="8" y1="8.5" x2="8" y2="9.5" />
-    <line x1="12" y1="7" x2="12" y2="8" />
-    <line x1="16" y1="8.5" x2="16" y2="9.5" />
-    {/* Needle pointing up */}
-    <line x1="12" y1="12" x2="12" y2="9" />
-  </svg>
-);
-
-// Custom education icon component
-const EducationIcon = ({ className }) => (
-  <svg 
-    className={className} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2.5" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-  >
-    {/* Book cover */}
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-    {/* Book pages */}
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    {/* Bookmark */}
-    <path d="M12 6v7" />
-    <path d="M10 11l2 2 2-2" />
-  </svg>
-);
+import { isFlagEnabled } from '../../config/featureFlags';
+import DashboardTabs from './DashboardTabs';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
 const WeightDashboard = lazy(() => import('../../features/weight/components/WeightDashboard'));
 const EducationDashboard = lazy(() => import('../../features/education/components/EducationDashboard'));
+// PR-C / ADR-0003 — mounted only when `ff.diary-feed` is enabled. The
+// import call is still wrapped in `lazy()` so the bundle chunk for
+// `features/diary/` is fetched on-demand the first time the tab is
+// shown (zero-cost when the flag is OFF).
+const DiaryFeed = lazy(() =>
+  import('../../features/diary').then((m) => ({ default: m.DiaryFeed })),
+);
 // FEATURE DISABLED: const StepsDashboard = lazy(() => import('./StepsDashboard'));
 // FEATURE DISABLED: const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
@@ -75,13 +39,25 @@ const EducationDashboard = lazy(() => import('../../features/education/component
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
 const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+  // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
+  // Resolution order is documented in `config/featureFlags.js`. Resolved
+  // once per mount so toggling the flag at runtime requires a re-mount
+  // (matches the other tab-visibility decisions in this component).
+  const diaryEnabled = isFlagEnabled('ff.diary-feed');
+
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
-    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education' || initialTab === 'steps' || initialTab === 'screen')) {
+    const validTabs = ['nutrition', 'weight', 'education', 'steps', 'screen'];
+    if (diaryEnabled) validTabs.push('diary');
+    if (initialTab && validTabs.includes(initialTab)) {
       localStorage.setItem('dashboard_activeTab', initialTab);
       return initialTab;
     }
-    return localStorage.getItem('dashboard_activeTab') || 'nutrition';
+    const stored = localStorage.getItem('dashboard_activeTab');
+    // Fall back to 'nutrition' if the stored tab is now invalid (e.g.
+    // user landed on 'diary' previously but the flag was flipped off).
+    if (stored && validTabs.includes(stored)) return stored;
+    return 'nutrition';
   });
 
   // Team member selection state (for coaches)
@@ -109,10 +85,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   useEffect(() => {
     if (!initialTab) return;
     const valid = ['nutrition', 'weight', 'education', 'steps', 'screen'];
+    if (diaryEnabled) valid.push('diary');
     if (!valid.includes(initialTab)) return;
     setActiveTab(initialTab);
     localStorage.setItem('dashboard_activeTab', initialTab);
-  }, [initialTab]);
+  }, [initialTab, diaryEnabled]);
 
   useEffect(() => {
     // null means "view self" (isSelf deep-link); undefined means not provided.
@@ -209,84 +186,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </TouchFeedbackButton>
             )}
             {/* Empty space for tabs without top-right action */}
-            {(activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
+            {(activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education' || activeTab === 'diary') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
 
           {/* Tab navigation */}
-          <div className="flex justify-center border-b border-gray-200">
-            <TouchFeedbackButton
-              onClick={() => handleTabChange('nutrition')}
-              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
-                activeTab === 'nutrition'
-                  ? 'border-green-600 text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <AppleIcon 
-                className="h-4 w-4 flex-shrink-0" 
-                strokeWidth={3}
-                style={{
-                  stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
-                  fill: 'none'
-                }}
-              />
-              <span>Food</span>
-            </TouchFeedbackButton>
-
-            <TouchFeedbackButton
-              onClick={() => handleTabChange('weight')}
-              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
-                activeTab === 'weight'
-                  ? 'border-green-600 text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <WeighingScaleIcon className="h-4 w-4 flex-shrink-0" />
-              <span>Weight</span>
-            </TouchFeedbackButton>
-
-            <TouchFeedbackButton
-              onClick={() => handleTabChange('education')}
-              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
-                activeTab === 'education'
-                  ? 'border-green-600 text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <EducationIcon className="h-4 w-4 flex-shrink-0" />
-              <span>Education</span>
-            </TouchFeedbackButton>
-
-            {/* FEATURE DISABLED: Steps tab button
-            <TouchFeedbackButton
-              onClick={() => handleTabChange('steps')}
-              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
-                activeTab === 'steps'
-                  ? 'border-green-600 text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Footprints className="hidden md:block h-4 w-4" />
-              <span>Steps</span>
-            </TouchFeedbackButton>
-            */}
-
-            {/* FEATURE DISABLED: Screen tab button
-            <TouchFeedbackButton
-              onClick={() => handleTabChange('screen')}
-              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
-                activeTab === 'screen'
-                  ? 'border-green-600 text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Smartphone className="hidden md:block h-4 w-4" />
-              <span>Screen</span>
-            </TouchFeedbackButton>
-            */}
-          </div>
+          <DashboardTabs
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            diaryEnabled={diaryEnabled}
+          />
+          {/* Steps + Screen tab buttons remain DISABLED — see
+              feature-disabled banners in App.js. When re-enabled,
+              extend DashboardTabs.jsx, not this file. */}
         </div>
       </div>
 
@@ -492,6 +405,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               refreshKey={educationRefreshKey}
               initialEntryId={initialMealId}
             />
+          )}
+
+          {/* PR-C / ADR-0003 — Diary feed. ownerUserId follows the selected
+              member when a coach is viewing someone else; viewerUserId is
+              always the authenticated session user so the backend can run
+              the owner-or-coach permission gate. */}
+          {diaryEnabled && activeTab === 'diary' && (
+            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-24 mt-2">
+              <DiaryFeed
+                ownerUserId={displayUser?.id || displayUser?.userId}
+                viewerUserId={user?.id || user?.userId}
+                date={selectedDate}
+              />
+            </div>
           )}
 
           {/* FEATURE DISABLED: Steps tab content
