@@ -64,7 +64,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
-import { NutritionCard, FoodImageShareCard } from "./features/nutrition";
+import { NutritionCard, FoodImageShareCard, HomeNutritionCarousel } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import { TestImageGuide } from "./features/admin";
@@ -94,6 +94,7 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
+import { aggregateFoodTotals } from "./features/nutrition";
 import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
 import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
@@ -116,6 +117,7 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
+import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 import * as authFsm from "./shared/services/auth/fsm";
@@ -314,6 +316,7 @@ function WellnessValleyApp() {
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
+  const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0); // Increment to force HomeNutritionCarousel re-fetch
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload ? pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
@@ -468,6 +471,10 @@ function WellnessValleyApp() {
   // there is zero html2canvas wait: the user can share the link+image to
   // WhatsApp while Gemini is still analysing nutrition in the background.
   useEffect(() => {
+    // Check user preference for auto-share
+    const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+    if (!autoShareEnabled) return; // Skip auto-share if disabled
+    
     if (imageType !== "food") return;
     if (!foodShareUrl) return;
     if (foodAutoSharedRef.current) return;
@@ -496,12 +503,12 @@ function WellnessValleyApp() {
 
       _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera after first share
       if (!ok) {
-        // Hard failure � reset the guard so a manual retry is possible.
+        // Hard failure – reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
       }
-      // Keep analysis on screen � user returns from WhatsApp and sees the
-      // AI results (loading ? complete). Camera will NOT auto-reopen because
-      // imagePreview is still set ? _homeScreenActiveRef stays false.
+      // Keep analysis on screen – user returns from WhatsApp and sees the
+      // AI results (loading → complete). Camera WILL auto-reopen on next
+      // app resume if auto-camera setting is enabled.
     })();
 
     return () => {
@@ -650,13 +657,14 @@ function WellnessValleyApp() {
   // Used by the app-resume listener to avoid stale closure over state.
   // NOTE: excludes showCompleteProfile — the profile gate overlays the home
   // screen, so auto-camera-open must not fire while it is visible.
+  // Updated: removed imagePreview/selectedImage checks to allow camera open
+  // even when returning to app during/after analysis (user expectation).
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
     _homeScreenActiveRef.current =
       !!user && !authLoading && !showDashboard && !showCompleteProfile &&
-      !showActivityTimeReport && !showDisciplineReport && !showScreenTime &&
-      !imagePreview && !selectedImage; // don't re-open camera while analysis is in progress
-  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime, imagePreview, selectedImage]);
+      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -716,17 +724,47 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  // App resume listener: intentionally DOES NOT re-open the camera on
-  // foreground resume. Auto-reopening on appStateChange({isActive:true})
-  // is unreliable on top of Capacitor — the same event fires when the
-  // native camera dialog itself yields focus back to the WebView after a
-  // user cancel, producing a cancel → reopen → cancel loop (and a brief
-  // launch-overlay flash between iterations) on every user role.
-  //
-  // Product requirement: the camera opens exactly once per app launch
-  // (handled by the cold-start useEffect below). If the user cancels,
-  // they stay on the home screen and reopen the camera manually via the
-  // camera button. See bug report 2026-05-28.
+  // App resume listener: opens camera on foreground resume if user has
+  // enabled the setting. Guards prevent cancel loops:
+  //  - _cameraInFlightRef: skip if native camera is currently open
+  //  - _justClosedCameraRef: skip if camera just closed (cancel)
+  //  - _launchUrlCheckedRef: skip if returning from share link
+  //  - _homeScreenActiveRef: skip if not on home screen
+  // User can toggle this behavior via Header menu → Auto Camera Setting.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    
+    let handle = null;
+    let cancelled = false;
+
+    nativeLifecycle.addAppStateListener(({ isActive }) => {
+      if (!isActive || cancelled) return;
+      
+      // Existing guards to prevent loops
+      if (_cameraInFlightRef.current) return; // camera currently open
+      if (_justClosedCameraRef.current) {
+        _justClosedCameraRef.current = false;
+        return; // just cancelled camera
+      }
+      if (!_launchUrlCheckedRef.current) return; // share link check pending
+      if (!_homeScreenActiveRef.current) return; // not on home screen
+      if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
+      
+      // All guards passed - open camera
+      fileInputRef.current.openCamera();
+    }).then((h) => {
+      if (cancelled) {
+        h?.remove?.();
+      } else {
+        handle = h;
+      }
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
   // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
   // Root cause: `permissionsReady` and `isUserActive` start as `true` for
@@ -1431,6 +1469,11 @@ function WellnessValleyApp() {
         // App.removeAllListeners()).
         appStateHandle = await nativeLifecycle.addAppStateListener(({ isActive }) => {
           if (isActive) {
+            // Activate screen keep-awake when app comes to foreground
+            KeepAwakePlugin.activate().catch((err) => {
+              console.warn('⚠️ Failed to activate keep-awake:', err);
+            });
+            
             GalleryMonitor.checkGallery();
             // Re-start step tracking in case Android killed the service while in background
             import("./shared/plugins/stepCounterPlugin")
@@ -1447,6 +1490,11 @@ function WellnessValleyApp() {
               })
               .catch(() => {});
           } else {
+            // Deactivate screen keep-awake when app goes to background
+            KeepAwakePlugin.deactivate().catch((err) => {
+              console.warn('⚠️ Failed to deactivate keep-awake:', err);
+            });
+            
             // Background ? reset transient sub-pages so reopening shows dashboard
             const page = Session.getCurrentPage();
             if (page === "step-counter" || page === "screen-time") {
@@ -3487,6 +3535,9 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
+      // Signal HomeNutritionCarousel to re-fetch today's stats live.
+      setNutritionRefreshKey((prev) => prev + 1);
+
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
@@ -3656,22 +3707,28 @@ function WellnessValleyApp() {
           })
         : null;
 
+    // Check user preference for auto-share BEFORE creating overlay
+    const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+    
     // Flag set here so the later share-fire block (post-compression) is skipped.
     foodAutoSharedRef.current = false;
 
-    try {
-      if (file && typeof URL?.createObjectURL === 'function') {
-        const objectUrl = URL.createObjectURL(file);
-        setSharingPendingImage(objectUrl);
-      }
-    } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+    // Only create share overlay and fire share sheet if auto-share is enabled
+    if (autoShareEnabled) {
+      try {
+        if (file && typeof URL?.createObjectURL === 'function') {
+          const objectUrl = URL.createObjectURL(file);
+          setSharingPendingImage(objectUrl);
+        }
+      } catch (_) { /* non-fatal — overlay is a UX nicety */ }
+    }
 
-    // Fire share sheet — overlay is now painted.
+    // Fire share sheet — overlay is now painted (if auto-share enabled) (if auto-share enabled).
     // On native: await the pre-started FileReader (≈ 0ms extra wait) then
     // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
     // WhatsApp, not just an OG preview card.
     // On web: fall back to text+URL share.
-    if (!foodAutoSharedRef.current) {
+    if (autoShareEnabled && !foodAutoSharedRef.current) {
       foodAutoSharedRef.current = true;
       const clearOverlayNow = () => {
         setSharingPendingImage((prev) => {
@@ -4023,7 +4080,8 @@ function WellnessValleyApp() {
             if (!foodCaptureIdRef.current) foodCaptureIdRef.current = capShare.id;
           }
           // Auto-share to WhatsApp once the share URL is resolved.
-          if (capShare?.url && !foodAutoSharedRef.current) {
+          const autoShareEnabled = localStorage.getItem('autoShareOnCapture') !== 'false';
+          if (autoShareEnabled && capShare?.url && !foodAutoSharedRef.current) {
             foodAutoSharedRef.current = true;
             shareTextViaWhatsApp(capShare.url).then((ok) => {
               _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
@@ -4103,15 +4161,18 @@ function WellnessValleyApp() {
         // still resolves and routes to the education dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'education');
         // Auto-share to WhatsApp immediately � same as food flow.
-        pendingSharePromise.then((share) => {
-          if (!share?.url || foodAutoSharedRef.current) return;
-          foodAutoSharedRef.current = true;
-          shareTextViaWhatsApp(share.url).then((ok) => {
-            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-            if (!ok) { foodAutoSharedRef.current = false; }
-            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+        const autoShareEnabled1 = localStorage.getItem('autoShareOnCapture') !== 'false';
+        if (autoShareEnabled1) {
+          pendingSharePromise.then((share) => {
+            if (!share?.url || foodAutoSharedRef.current) return;
+            foodAutoSharedRef.current = true;
+            shareTextViaWhatsApp(share.url).then((ok) => {
+              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+              if (!ok) { foodAutoSharedRef.current = false; }
+              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+            });
           });
-        });
+        }
         setLoading(false);
         return;
       }
@@ -4317,15 +4378,18 @@ function WellnessValleyApp() {
         // still resolves and routes to the weight dashboard tab.
         updatePendingCaptureType(pendingSharePromise, 'weight');
         // Auto-share to WhatsApp immediately � same as food flow.
-        pendingSharePromise.then((share) => {
-          if (!share?.url || foodAutoSharedRef.current) return;
-          foodAutoSharedRef.current = true;
-          shareTextViaWhatsApp(share.url).then((ok) => {
-            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-            if (!ok) { foodAutoSharedRef.current = false; }
-            // Keep analysis on screen � do NOT resetCaptureUiOnly.
+        const autoShareEnabled2 = localStorage.getItem('autoShareOnCapture') !== 'false';
+        if (autoShareEnabled2) {
+          pendingSharePromise.then((share) => {
+            if (!share?.url || foodAutoSharedRef.current) return;
+            foodAutoSharedRef.current = true;
+            shareTextViaWhatsApp(share.url).then((ok) => {
+              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+              if (!ok) { foodAutoSharedRef.current = false; }
+              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+            });
           });
-        });
+        }
         setLoading(false);
         return;
       }
@@ -4417,7 +4481,7 @@ function WellnessValleyApp() {
               // const correctedFoods = await applyUserCorrections(foods, userId);
               // foods = correctedFoods;
 
-              // 🐛 Capture ALL food detections for debug modal
+              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
               const newLogs = foods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
@@ -4461,18 +4525,9 @@ function WellnessValleyApp() {
           // ?? ALWAYS recalculate totals from corrected foods (don't use original AI total)
           // Original code used: detectedType.details.total || foods.reduce(...)
           // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
-          const total = foods.reduce(
-            (acc, food) => ({
-              calories:
-                acc.calories + (food.nutrition?.calories || food.calories || 0),
-              protein:
-                acc.protein + (food.nutrition?.protein || food.protein || 0),
-              carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
-              fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
-              fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
-            }),
-            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-          );
+          // NOTE: sugar/sodium/cholesterol MUST be summed here as well — see
+          // aggregateFoodTotals + transformAnalysisFormat regression tests.
+          const total = aggregateFoodTotals(foods);
 
           debugLog("?? [App.js] Calculated total from corrected foods:", {
             totalCalories: total.calories,
@@ -4498,6 +4553,43 @@ function WellnessValleyApp() {
             categoryName = `${first} + ${others} more`;
           }
 
+          // Compute carb-weighted total Glycemic Index from foods. GI is
+          // never a sum; if the AI returned a total it may still be null,
+          // so we re-derive it here so the backend always saves a value.
+          let _giCarbProduct = 0;
+          let _giTotalCarbs = 0;
+          foods.forEach((f) => {
+            const fGI = f.nutrition?.glycemic_index ?? f.glycemic_index;
+            const fCarbs = f.nutrition?.carbs ?? f.carbs ?? 0;
+            if (fGI != null && fCarbs > 0) {
+              _giCarbProduct += Number(fGI) * Number(fCarbs);
+              _giTotalCarbs += Number(fCarbs);
+            }
+          });
+          const computedTotalGI =
+            _giTotalCarbs > 0
+              ? Math.round(_giCarbProduct / _giTotalCarbs)
+              : total.glycemic_index != null
+              ? Math.round(total.glycemic_index)
+              : null;
+
+          // Keep in sync with NUTRITION_REQUIRED in geminiService.js. These 17
+          // fields are populated by enrichMicronutrients(); without forwarding
+          // them here they would be silently dropped before save.
+          const MICRO_KEYS = [
+            'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+            'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b6','vitamin_b9','vitamin_b12',
+            'calcium','iron','magnesium','potassium','zinc','phosphorus',
+          ];
+          const pickMicros = (src) => {
+            const o = {};
+            for (const k of MICRO_KEYS) {
+              const v = src?.[k];
+              o[k] = typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+            }
+            return o;
+          };
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
@@ -4506,6 +4598,16 @@ function WellnessValleyApp() {
               carbs: Math.round(total.carbs || 0),
               fat: Math.round(total.fat || 0),
               fiber: Math.round(total.fiber || 0),
+              // Persist the AI's invisible micronutrients so the backend
+              // saves TotalSugar / TotalSodium / TotalCholesterol instead
+              // of NULL. See aggregateFoodTotals + bug report.
+              sugar: Math.round(total.sugar || 0),
+              sodium: Math.round(total.sodium || 0),
+              cholesterol: Math.round(total.cholesterol || 0),
+              // Carb-weighted Glycemic Index (intrinsic, never summed).
+              glycemic_index: computedTotalGI,
+              // 17 vitamins/minerals (from enrichMicronutrients + Gemini).
+              ...pickMicros(total),
             },
             category: {
               name: categoryName,
@@ -4531,6 +4633,26 @@ function WellnessValleyApp() {
                 carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
                 fat: Math.round(food.nutrition?.fat || food.fat || 0),
                 fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+                // Carry sugar/sodium/cholesterol through to the save payload
+                // so they reach food_nutrition_data_table instead of NULL.
+                sugar: Math.round(
+                  food.nutrition?.sugar || food.sugar || 0,
+                ),
+                sodium: Math.round(
+                  food.nutrition?.sodium || food.sodium || 0,
+                ),
+                cholesterol: Math.round(
+                  food.nutrition?.cholesterol || food.cholesterol || 0,
+                ),
+                // GI is intrinsic to the food (not summed); preserve as-is.
+                glycemic_index:
+                  (food.nutrition?.glycemic_index ?? food.glycemic_index) != null
+                    ? Math.round(
+                        food.nutrition?.glycemic_index ?? food.glycemic_index,
+                      )
+                    : null,
+                // 17 vitamins/minerals carried through from enrichMicronutrients.
+                ...pickMicros(food.nutrition || food),
               };
 
               debugLog(
@@ -5898,14 +6020,22 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-3 xs:px-4 pt-14 xs:pt-16" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
-        <div className="max-w-lg w-full mx-auto space-y-4 xs:space-y-6 py-2 xs:py-3">
+      <div className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
+        <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1">
           {/* Back button toast message */}
           {toast.visible && (
             <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
               {toast.message}
             </div>
           )}
+
+          {/* Today's Nutrition Carousel — Calories · Macros · Heart Healthy · Low Carb */}
+          <HomeNutritionCarousel
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            bmrUpdateKey={bmrUpdateKey}
+            nutritionRefreshKey={nutritionRefreshKey}
+          />
 
           <ImageUpload
             onImageSelect={handleImageSelect}
@@ -7180,6 +7310,33 @@ function WellnessValleyApp() {
           )}
         </button>
       )} */}
+
+      {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
+      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
+        <>
+          {/* Camera Button */}
+          <button
+            onClick={() => { fileInputRef.current?.openCamera?.(); }}
+            disabled={loading}
+            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Take Photo"
+            aria-label="Quick camera access"
+          >
+            <img src="/app.png" alt="Camera" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
+          </button>
+          
+          {/* Gallery Button */}
+          <button
+            onClick={() => { fileInputRef.current?.openGallery?.(); }}
+            disabled={loading}
+            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Choose from Gallery"
+            aria-label="Quick gallery access"
+          >
+            <img src="/gallery.png" alt="Gallery" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
+          </button>
+        </>
+      )}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (

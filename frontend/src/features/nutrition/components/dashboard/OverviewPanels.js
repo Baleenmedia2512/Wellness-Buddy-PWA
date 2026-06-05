@@ -42,14 +42,14 @@ function OverviewPanels({
   renderCaloriePointLabel,
 }) {
   return (
-    <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
+    <div className="px-2 md:px-3 mt-2 md:mt-3 mb-2">
       <div
-        className={`w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
+        className={`w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
           showTrendCard ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-6'
         }`}
         {...overviewSwipeHandlers}
       >
-        <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between">
+        <div className="px-3 md:px-4 pt-2 md:pt-3 pb-1.5 flex items-center justify-between">
           <div className="text-xs md:text-sm text-gray-500">
             {activeOverviewPanel === 'summary'
               ? 'Daily Summary'
@@ -132,12 +132,12 @@ function OverviewPanels({
           </div>
         </div>
 
-        <div className="pb-3 md:pb-4 flex items-center justify-center gap-1.5">
+        <div className="pb-2 md:pb-3 flex items-center justify-center gap-1.5">
           <button
             type="button"
             aria-label="Go to summary slide"
             onClick={() => setActiveOverviewPanel('summary')}
-            style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
+            style={{ width: 6, height: 6, minWidth: 0, minHeight: 0, padding: 0 }}
             className={`rounded-full transition-all duration-300 ${
               activeOverviewPanel === 'summary'
                 ? 'bg-emerald-500'
@@ -148,7 +148,7 @@ function OverviewPanels({
             type="button"
             aria-label="Go to trend slide"
             onClick={() => setActiveOverviewPanel('trend')}
-            style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
+            style={{ width: 6, height: 6, minWidth: 0, minHeight: 0, padding: 0 }}
             className={`rounded-full transition-all duration-300 ${
               activeOverviewPanel === 'trend'
                 ? 'bg-emerald-500'

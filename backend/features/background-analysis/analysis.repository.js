@@ -163,7 +163,7 @@ export async function findPublicByToken(token) {
   // that the recipient should view via the feature tab, not the food viewer.
   const { data: food, error: foodErr } = await supabase
     .from('food_nutrition_data_table')
-    .select('"ID", "AnalysisData", "TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat", "TotalFiber"')
+    .select('"ID", "AnalysisData", "TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat", "TotalFiber", "TotalSugar", "TotalSodium", "TotalCholesterol", "GlycemicIndex"')
     .eq('"CaptureID"', cap.ID)
     .order('"ID"', { ascending: false })
     .limit(1)
@@ -173,19 +173,23 @@ export async function findPublicByToken(token) {
   return {
     // Surface the food row id when present (legacy mealId semantics);
     // fall back to the captures id so callers always have a stable handle.
-    ID:             food?.ID ?? cap.ID,
-    UserID:         cap.UserID,
-    ShareExpiresAt: cap.ShareExpiresAt,
-    ImageBase64:    cap.ImageBase64,
-    CreatedAt:      cap.CreatedAt,
-    ImageType:      cap.ImageType,
-    CaptureID:      cap.ID,
-    AnalysisData:   food?.AnalysisData ?? null,
-    TotalCalories:  food?.TotalCalories ?? null,
-    TotalProtein:   food?.TotalProtein  ?? null,
-    TotalCarbs:     food?.TotalCarbs    ?? null,
-    TotalFat:       food?.TotalFat      ?? null,
-    TotalFiber:     food?.TotalFiber    ?? null,
+    ID:               food?.ID ?? cap.ID,
+    UserID:           cap.UserID,
+    ShareExpiresAt:   cap.ShareExpiresAt,
+    ImageBase64:      cap.ImageBase64,
+    CreatedAt:        cap.CreatedAt,
+    ImageType:        cap.ImageType,
+    CaptureID:        cap.ID,
+    AnalysisData:     food?.AnalysisData    ?? null,
+    TotalCalories:    food?.TotalCalories   ?? null,
+    TotalProtein:     food?.TotalProtein    ?? null,
+    TotalCarbs:       food?.TotalCarbs      ?? null,
+    TotalFat:         food?.TotalFat        ?? null,
+    TotalFiber:       food?.TotalFiber      ?? null,
+    TotalSugar:       food?.TotalSugar      ?? null,
+    TotalSodium:      food?.TotalSodium     ?? null,
+    TotalCholesterol: food?.TotalCholesterol ?? null,
+    GlycemicIndex:    food?.GlycemicIndex    ?? null,
   };
 }
 

@@ -34,6 +34,15 @@ export async function saveNutritionAnalysis({
     const actualUserId = await resolveTeamUserId(userId);
     const transformed = transformToBackgroundServiceFormat(analysisResult);
 
+    // 🔍 DEBUG: Log what's being sent to backend
+    console.log('🚀 [saveAnalysis] Data being sent to backend:', {
+      hasFoods: !!transformed.foods,
+      foodCount: transformed.foods?.length || 0,
+      total: transformed.total,
+      firstFood: transformed.foods?.[0],
+      allFoods: transformed.foods,
+    });
+
     const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

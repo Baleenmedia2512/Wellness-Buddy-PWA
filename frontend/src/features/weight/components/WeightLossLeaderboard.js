@@ -141,7 +141,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         <img
           src={profileImage}
           alt={userName || "User"}
-          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shadow-md border-2 border-white"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -171,7 +171,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
     return (
       <div
-        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-md`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
       >
         {initial}
       </div>
@@ -210,13 +210,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const renderLeaderboardCard = (user, key) => (
     <div
       key={key}
-      className="inline-flex items-center gap-2 sm:gap-3 md:gap-4 mx-4 sm:mx-6 md:mx-8 flex-shrink-0"
+      className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
       {/* Trophy + Rank */}
-      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-10 sm:w-12 md:w-14">
-        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500" />
+      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-8 sm:w-10 md:w-12">
+        <Trophy className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-500" />
         <div
-          className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-bold leading-none ${getRankColor(
+          className={`px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold leading-none ${getRankColor(
             user.rank,
           )}`}
         >
@@ -230,22 +230,22 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       </div>
 
       {/* User Details */}
-      <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[140px] sm:max-w-[180px] md:max-w-[200px]">
-        <span className="font-bold text-gray-800 text-sm sm:text-base md:text-lg truncate leading-tight">
+      <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
+        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
           {user.userName}
         </span>
         {user.coachName && user.coachName.toLowerCase() !== "no coach" && (
-          <span className="text-xs sm:text-sm md:text-base text-gray-600 truncate leading-tight">
+          <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 truncate leading-tight">
             Coach: {user.coachName}
           </span>
         )}
       </div>
 
       {/* Weight Loss Badge */}
-      <div className="flex items-center gap-0.5 bg-white px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
-        <span className="font-bold text-green-600 text-sm sm:text-base md:text-lg whitespace-nowrap">
+      <div className="flex items-center gap-0.5 bg-white px-1.5 sm:px-2 md:px-2.5 py-1 sm:py-1.5 rounded-lg shadow-sm flex-shrink-0">
+        <span className="font-bold text-green-600 text-xs sm:text-sm md:text-base whitespace-nowrap">
           -{formatWeightLoss(user.weightLoss).value}{" "}
-          <span className="font-medium text-xs sm:text-sm md:text-base">
+          <span className="font-medium text-[10px] sm:text-xs md:text-sm">
             {formatWeightLoss(user.weightLoss).unit}
           </span>
         </span>
@@ -256,23 +256,22 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Marquee Animation with manual scroll capability
   return (
     <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 shadow-sm">
-      <div className="py-2 sm:py-2.5 px-3 sm:px-4">
-        {/* Title */}
-        <div className="flex items-center justify-between mb-1.5">
-          {/* <span className="text-xs sm:text-sm font-semibold text-green-700">
-            ≡ƒÅà Weight Loss Marathon
-          </span> */}
-          <span className="text-[10px] sm:text-xs text-green-600">
-            (Today vs Yesterday)
-          </span>
+      <div className="py-1 px-2 sm:px-3 relative">
+        {/* Fixed label overlay */}
+        <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+          <div className="inline-flex items-center justify-center px-2 sm:px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
+            <span className="text-[9px] sm:text-[11px] font-medium text-green-700 whitespace-nowrap">
+              (Today vs Yesterday)
+            </span>
+          </div>
         </div>
-
+        
         <div
           className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
           onClick={() => setIsPaused(!isPaused)}
         >
           <div
-            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            className="animate-smooth-marquee whitespace-nowrap inline-flex items-center"
             style={{
               animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
               animationPlayState: isPaused ? "paused" : "running",
@@ -280,7 +279,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
               WebkitAnimationPlayState: isPaused ? "paused" : "running",
             }}
           >
-            {/* First set of items */}
+            {/* Spacer to avoid overlap with fixed label */}
+            <div className="w-32 sm:w-40 flex-shrink-0"></div>
+            
+            {/* First set of items */}}
             {leaderboardData.map((user) =>
               renderLeaderboardCard(user, `first-${user.userId}`),
             )}

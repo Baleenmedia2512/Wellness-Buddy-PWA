@@ -106,7 +106,32 @@ const NutritionCard = ({
     debugLog("   New detailedItems count:", data?.detailedItems?.length);
 
     if (data?.nutrition) {
-      setLocalNutrition(data.nutrition);
+      // Backfill total Glycemic Index from items when the upstream payload
+      // (legacy saves, partial AI responses) didn't include it. Carb-weighted.
+      let nextNutrition = data.nutrition;
+      if (
+        (nextNutrition.glycemic_index == null) &&
+        Array.isArray(data?.detailedItems) &&
+        data.detailedItems.length > 0
+      ) {
+        let p = 0;
+        let c = 0;
+        data.detailedItems.forEach((it) => {
+          const g = it.nutrition?.glycemic_index ?? it.glycemic_index;
+          const cb = it.nutrition?.carbs ?? it.carbs ?? 0;
+          if (g != null && cb > 0) {
+            p += Number(g) * Number(cb);
+            c += Number(cb);
+          }
+        });
+        if (c > 0) {
+          nextNutrition = {
+            ...nextNutrition,
+            glycemic_index: Math.round(p / c),
+          };
+        }
+      }
+      setLocalNutrition(nextNutrition);
     }
     if (data?.detailedItems) {
       setLocalDetailedItems(data.detailedItems);
@@ -306,43 +331,65 @@ const NutritionCard = ({
       items.length,
     );
 
+    let giCarbProduct = 0;
+    let giTotalCarbs = 0;
     const totals = items.reduce(
       (acc, item, index) => {
-        const itemCalories = item.nutrition?.calories || item.calories || 0;
-        const itemProtein = item.nutrition?.protein || item.protein || 0;
-        const itemCarbs = item.nutrition?.carbs || item.carbs || 0;
-        const itemFat = item.nutrition?.fat || item.fat || 0;
-        const itemFiber = item.nutrition?.fiber || item.fiber || 0;
+        const n = item.nutrition || {};
+        const itemCalories    = n.calories    ?? item.calories    ?? 0;
+        const itemProtein     = n.protein     ?? item.protein     ?? 0;
+        const itemCarbs       = n.carbs       ?? item.carbs       ?? 0;
+        const itemFat         = n.fat         ?? item.fat         ?? 0;
+        const itemFiber       = n.fiber       ?? item.fiber       ?? 0;
+        const itemSugar       = n.sugar       ?? item.sugar       ?? 0;
+        const itemSodium      = n.sodium      ?? item.sodium      ?? 0;
+        const itemCholesterol = n.cholesterol ?? item.cholesterol ?? 0;
+        const itemGI          = n.glycemic_index ?? item.glycemic_index ?? null;
+
+        if (itemGI != null && itemCarbs > 0) {
+          giCarbProduct += itemGI * itemCarbs;
+          giTotalCarbs  += itemCarbs;
+        }
 
         debugLog(`   📊 Item ${index + 1}: ${item.name}`);
         debugLog(
-          `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
+          `      - calories: nutrition=${n.calories}, top-level=${item.calories}, using=${itemCalories}`,
         );
         debugLog(
-          `      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
+          `      - carbs: nutrition=${n.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
         );
         debugLog(
-          `      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`,
+          `      - GI: nutrition=${n.glycemic_index}, top-level=${item.glycemic_index}, using=${itemGI}`,
         );
 
         return {
-          calories: acc.calories + itemCalories,
-          protein: acc.protein + itemProtein,
-          carbs: acc.carbs + itemCarbs,
-          fat: acc.fat + itemFat,
-          fiber: acc.fiber + itemFiber,
+          calories:    acc.calories    + itemCalories,
+          protein:     acc.protein     + itemProtein,
+          carbs:       acc.carbs       + itemCarbs,
+          fat:         acc.fat         + itemFat,
+          fiber:       acc.fiber       + itemFiber,
+          sugar:       acc.sugar       + itemSugar,
+          sodium:      acc.sodium      + itemSodium,
+          cholesterol: acc.cholesterol + itemCholesterol,
         };
       },
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
     );
 
     // Round to 1 decimal
     const rounded = {
-      calories: Math.round(totals.calories),
-      protein: Math.round(totals.protein * 10) / 10,
-      carbs: Math.round(totals.carbs * 10) / 10,
-      fat: Math.round(totals.fat * 10) / 10,
-      fiber: Math.round(totals.fiber * 10) / 10,
+      calories:    Math.round(totals.calories),
+      protein:     Math.round(totals.protein * 10) / 10,
+      carbs:       Math.round(totals.carbs   * 10) / 10,
+      fat:         Math.round(totals.fat     * 10) / 10,
+      fiber:       Math.round(totals.fiber   * 10) / 10,
+      sugar:       Math.round(totals.sugar   * 10) / 10,
+      sodium:      Math.round(totals.sodium),
+      cholesterol: Math.round(totals.cholesterol),
+      // Carb-weighted average GI
+      glycemic_index: giTotalCarbs > 0
+        ? Math.round(giCarbProduct / giTotalCarbs)
+        : null,
     };
 
     debugLog("   ✅ Final totals:", rounded);
@@ -413,7 +460,14 @@ const NutritionCard = ({
             protein: Math.round(item.nutrition?.protein || item.protein || 0),
             carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
             fat: Math.round(item.nutrition?.fat || item.fat || 0),
-            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
+            fiber: Math.round((item.nutrition?.fiber ?? item.fiber ?? 0) * 10) / 10,
+            sugar: Math.round((item.nutrition?.sugar ?? item.sugar ?? 0) * 10) / 10,
+            sodium: Math.round(item.nutrition?.sodium ?? item.sodium ?? 0),
+            cholesterol: Math.round(item.nutrition?.cholesterol ?? item.cholesterol ?? 0),
+            glycemic_index:
+              (item.nutrition?.glycemic_index ?? item.glycemic_index) != null
+                ? Math.round(item.nutrition?.glycemic_index ?? item.glycemic_index)
+                : null,
           },
         };
       }),
@@ -422,7 +476,14 @@ const NutritionCard = ({
         protein: Math.round(newTotals.protein || 0),
         carbs: Math.round(newTotals.carbs || 0),
         fat: Math.round(newTotals.fat || 0),
-        fiber: Math.round(newTotals.fiber || 0),
+        fiber: Math.round((newTotals.fiber || 0) * 10) / 10,
+        sugar: Math.round((newTotals.sugar || 0) * 10) / 10,
+        sodium: Math.round(newTotals.sodium || 0),
+        cholesterol: Math.round(newTotals.cholesterol || 0),
+        glycemic_index:
+          newTotals.glycemic_index != null
+            ? Math.round(newTotals.glycemic_index)
+            : null,
       },
       confidence: "high",
     };
@@ -939,7 +1000,7 @@ const NutritionCard = ({
 
           <div style={{ padding: "48px" }}>
             <div
-              className="grid grid-cols-2 gap-3 mb-4"
+              className="grid grid-cols-3 gap-3 mb-4"
               style={{ gap: "24px", marginBottom: "32px" }}
             >
               <div
@@ -1026,31 +1087,77 @@ const NutritionCard = ({
                   Fat
                 </div>
               </div>
-            </div>
-            <div
-              className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center"
-              style={{
-                padding: "32px",
-                borderRadius: "24px",
-                marginBottom: "32px",
-              }}
-            >
+              {/* Fiber */}
               <div
-                style={{ fontSize: "72px", fontWeight: "bold" }}
-                className="text-green-600"
+                className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
               >
-                {localNutrition.fiber}g
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-green-600"
+                >
+                  {localNutrition.fiber}g
+                </div>
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-green-700"
+                >
+                  Fiber
+                </div>
               </div>
-              <div
-                style={{
-                  fontSize: "32px",
-                  fontWeight: "500",
-                  marginTop: "8px",
-                }}
-                className="text-green-700"
-              >
-                Fiber
-              </div>
+              {/* Glycemic Index */}
+              {(() => {
+                const gi = localNutrition.glycemic_index;
+                if (gi == null) {
+                  return (
+                    <div
+                      className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl text-center"
+                      style={{ padding: "32px", borderRadius: "24px" }}
+                    >
+                      <div
+                        style={{ fontSize: "72px", fontWeight: "bold" }}
+                        className="text-gray-400"
+                      >
+                        —
+                      </div>
+                      <div
+                        style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }}
+                        className="text-gray-500"
+                      >
+                        GI
+                      </div>
+                    </div>
+                  );
+                }
+                const tone = gi <= 55
+                  ? { box: 'from-emerald-50 to-emerald-100 border-emerald-200', val: 'text-emerald-600', label: 'text-emerald-700', tag: 'Low' }
+                  : gi <= 69
+                  ? { box: 'from-amber-50 to-amber-100 border-amber-200', val: 'text-amber-600', label: 'text-amber-700', tag: 'Medium' }
+                  : { box: 'from-rose-50 to-rose-100 border-rose-200', val: 'text-rose-600', label: 'text-rose-700', tag: 'High' };
+                return (
+                  <div
+                    className={`bg-gradient-to-br ${tone.box} border rounded-xl text-center`}
+                    style={{ padding: "32px", borderRadius: "24px" }}
+                  >
+                    <div
+                      style={{ fontSize: "72px", fontWeight: "bold" }}
+                      className={tone.val}
+                    >
+                      {Math.round(gi)}
+                    </div>
+                    <div
+                      style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }}
+                      className={tone.label}
+                    >
+                      GI · {tone.tag}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Macronutrient Bar */}
@@ -1252,7 +1359,7 @@ const NutritionCard = ({
 
         {/* Nutrition Grid */}
         <div className="p-6">
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {/* Calories */}
             <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
               <div className="text-3xl font-bold text-red-600">
@@ -1292,14 +1399,40 @@ const NutritionCard = ({
                 Fat
               </div>
             </div>
-          </div>
 
-          {/* Fiber - Full Width */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
-            <div className="text-3xl font-bold text-green-600">
-              {localNutrition.fiber}g
+            {/* Fiber */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-green-600">
+                {localNutrition.fiber}g
+              </div>
+              <div className="text-sm font-medium text-green-700 mt-1">
+                Fiber
+              </div>
             </div>
-            <div className="text-sm font-medium text-green-700 mt-1">Fiber</div>
+
+            {/* Glycemic Index */}
+            {(() => {
+              const gi = localNutrition.glycemic_index;
+              if (gi == null) {
+                return (
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-4 text-center">
+                    <div className="text-3xl font-bold text-gray-400">—</div>
+                    <div className="text-sm font-medium text-gray-500 mt-1">GI</div>
+                  </div>
+                );
+              }
+              const tone = gi <= 55
+                ? { box: 'from-emerald-50 to-emerald-100 border-emerald-200', val: 'text-emerald-600', label: 'text-emerald-700', tag: 'Low' }
+                : gi <= 69
+                ? { box: 'from-amber-50 to-amber-100 border-amber-200', val: 'text-amber-600', label: 'text-amber-700', tag: 'Medium' }
+                : { box: 'from-rose-50 to-rose-100 border-rose-200', val: 'text-rose-600', label: 'text-rose-700', tag: 'High' };
+              return (
+                <div className={`bg-gradient-to-br ${tone.box} border rounded-xl p-4 text-center`}>
+                  <div className={`text-3xl font-bold ${tone.val}`}>{Math.round(gi)}</div>
+                  <div className={`text-sm font-medium ${tone.label} mt-1`}>GI · {tone.tag}</div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Macronutrient Bar */}

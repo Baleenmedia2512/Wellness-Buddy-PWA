@@ -126,7 +126,7 @@ const NutritionDashboard = ({
   } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
-  const calorieTarget = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
+  const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
 
   // Burn-to-Balance: today's calories burned (steps disabled, watch-derived only)
   const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
@@ -654,7 +654,7 @@ const NutritionDashboard = ({
               renderCaloriePointLabel={renderCaloriePointLabel}
             />
             {/* Meals */}
-            <div className="px-4 md:px-6 space-y-4">
+            <div className="px-3 md:px-4 space-y-3">
               <NutritionMealList
                 analyses={analyses}
                 displayedMeals={displayedMeals}

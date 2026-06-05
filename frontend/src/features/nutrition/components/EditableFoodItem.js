@@ -1027,6 +1027,25 @@ const EditableFoodItem = forwardRef(
               {foodItem.nutrition?.fiber || foodItem.fiber || 0}g · Fat{" "}
               {foodItem.nutrition?.fat || foodItem.fat || 0}g
             </div>
+            <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+              <span>Sugar {foodItem.nutrition?.sugar ?? foodItem.sugar ?? 0}g</span>
+              <span>· Sodium {foodItem.nutrition?.sodium ?? foodItem.sodium ?? 0}mg</span>
+              <span>· Cholesterol {foodItem.nutrition?.cholesterol ?? foodItem.cholesterol ?? 0}mg</span>
+              {(() => {
+                const gi = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
+                if (gi == null) return null;
+                const tone = gi <= 55
+                  ? 'bg-green-100 text-green-700'
+                  : gi <= 69 ? 'bg-amber-100 text-amber-700'
+                  : 'bg-red-100 text-red-700';
+                const label = gi <= 55 ? 'Low' : gi <= 69 ? 'Mid' : 'High';
+                return (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${tone}`}>
+                    GI {gi} · {label}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {isDeletePending ? (

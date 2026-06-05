@@ -64,6 +64,9 @@ export const parseAnalysisData = (analysisData, moreTextColor = 'text-gray-500')
           carbs:    parsed.total.carbs    || 0,
           fat:      parsed.total.fat      || 0,
           fiber:    parsed.total.fiber    || 0,
+          sugar:       parsed.total.sugar       ?? null,
+          sodium:      parsed.total.sodium      ?? null,
+          cholesterol: parsed.total.cholesterol ?? null,
         },
         detailedItems: parsed.foods || [],
       };
@@ -83,21 +86,42 @@ export const parseAnalysisData = (analysisData, moreTextColor = 'text-gray-500')
 
 /** Sum & round per-item nutrition into day/meal totals. */
 export const recalculateTotals = (items) => {
+  let giCarbProduct = 0;
+  let giTotalCarbs = 0;
   const t = items.reduce(
-    (acc, item) => ({
-      calories: acc.calories + (item.nutrition?.calories || item.calories || 0),
-      protein:  acc.protein  + (item.nutrition?.protein  || item.protein  || 0),
-      carbs:    acc.carbs    + (item.nutrition?.carbs    || item.carbs    || 0),
-      fat:      acc.fat      + (item.nutrition?.fat      || item.fat      || 0),
-      fiber:    acc.fiber    + (item.nutrition?.fiber    || item.fiber    || 0),
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+    (acc, item) => {
+      const n = item.nutrition || {};
+      const itemCarbs   = n.carbs       ?? item.carbs       ?? 0;
+      const itemGI      = n.glycemic_index ?? item.glycemic_index ?? null;
+      if (itemGI != null && itemCarbs > 0) {
+        giCarbProduct += itemGI * itemCarbs;
+        giTotalCarbs  += itemCarbs;
+      }
+      return {
+        calories:    acc.calories    + (n.calories    ?? item.calories    ?? 0),
+        protein:     acc.protein     + (n.protein     ?? item.protein     ?? 0),
+        carbs:       acc.carbs       + itemCarbs,
+        fat:         acc.fat         + (n.fat         ?? item.fat         ?? 0),
+        fiber:       acc.fiber       + (n.fiber       ?? item.fiber       ?? 0),
+        sugar:       acc.sugar       + (n.sugar       ?? item.sugar       ?? 0),
+        sodium:      acc.sodium      + (n.sodium      ?? item.sodium      ?? 0),
+        cholesterol: acc.cholesterol + (n.cholesterol ?? item.cholesterol ?? 0),
+      };
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
   );
   return {
-    calories: Math.round(t.calories),
-    protein:  Math.round(t.protein * 10) / 10,
-    carbs:    Math.round(t.carbs   * 10) / 10,
-    fat:      Math.round(t.fat     * 10) / 10,
-    fiber:    Math.round(t.fiber   * 10) / 10,
+    calories:    Math.round(t.calories),
+    protein:     Math.round(t.protein * 10) / 10,
+    carbs:       Math.round(t.carbs   * 10) / 10,
+    fat:         Math.round(t.fat     * 10) / 10,
+    fiber:       Math.round(t.fiber   * 10) / 10,
+    sugar:       Math.round(t.sugar   * 10) / 10,
+    sodium:      Math.round(t.sodium),
+    cholesterol: Math.round(t.cholesterol),
+    // Carb-weighted average GI across items
+    glycemic_index: giTotalCarbs > 0
+      ? Math.round(giCarbProduct / giTotalCarbs)
+      : null,
   };
 };

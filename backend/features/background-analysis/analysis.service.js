@@ -33,7 +33,41 @@ const convertConfidenceToNumeric = (confidence) => {
 function extractNutrition(analysisResult, deviceInfo) {
   let totalCalories = null, totalProtein = null, totalCarbs = null,
       totalFat = null, totalFiber = null, confidenceScore = null;
+  let totalSugar = null, totalSodium = null, totalCholesterol = null;
+  let totalGlycemicIndex = null;
+  let micronutrients = {};
   let processedBy = 'manual_app';
+
+  // Source-of-truth list mirrors features/nutrition/domain/micronutrientRules.js
+  // Maps the AI JSON snake_case keys → DB PascalCase column names.
+  const MICRO_FIELDS = [
+    ['vitamin_a',   'TotalVitaminA'],
+    ['vitamin_c',   'TotalVitaminC'],
+    ['vitamin_d',   'TotalVitaminD'],
+    ['vitamin_e',   'TotalVitaminE'],
+    ['vitamin_k',   'TotalVitaminK'],
+    ['vitamin_b1',  'TotalVitaminB1'],
+    ['vitamin_b2',  'TotalVitaminB2'],
+    ['vitamin_b3',  'TotalVitaminB3'],
+    ['vitamin_b6',  'TotalVitaminB6'],
+    ['vitamin_b9',  'TotalVitaminB9'],
+    ['vitamin_b12', 'TotalVitaminB12'],
+    ['calcium',     'TotalCalcium'],
+    ['iron',        'TotalIron'],
+    ['magnesium',   'TotalMagnesium'],
+    ['potassium',   'TotalPotassium'],
+    ['zinc',        'TotalZinc'],
+    ['phosphorus',  'TotalPhosphorus'],
+  ];
+
+  const pickMicros = (src) => {
+    const out = {};
+    if (!src) return out;
+    for (const [jsonKey, dbCol] of MICRO_FIELDS) {
+      out[dbCol] = src[jsonKey] != null ? src[jsonKey] : null;
+    }
+    return out;
+  };
 
   try {
     const analysis = typeof analysisResult === 'string'
@@ -45,6 +79,11 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalCarbs = analysis.total.carbs || null;
       totalFat = analysis.total.fat || null;
       totalFiber = analysis.total.fiber || null;
+      totalSugar = analysis.total.sugar != null ? analysis.total.sugar : null;
+      totalSodium = analysis.total.sodium != null ? analysis.total.sodium : null;
+      totalCholesterol = analysis.total.cholesterol != null ? analysis.total.cholesterol : null;
+      totalGlycemicIndex = analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null;
+      micronutrients = pickMicros(analysis.total);
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
         ? 'background_service' : 'manual_app';
@@ -54,6 +93,11 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalCarbs = analysis.nutrition.carbs || null;
       totalFat = analysis.nutrition.fat || null;
       totalFiber = analysis.nutrition.fiber || null;
+      totalSugar = analysis.nutrition.sugar != null ? analysis.nutrition.sugar : null;
+      totalSodium = analysis.nutrition.sodium != null ? analysis.nutrition.sodium : null;
+      totalCholesterol = analysis.nutrition.cholesterol != null ? analysis.nutrition.cholesterol : null;
+      totalGlycemicIndex = analysis.nutrition.glycemic_index != null ? analysis.nutrition.glycemic_index : null;
+      micronutrients = pickMicros(analysis.nutrition);
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = 'manual_app';
     } else if (analysis.foods && analysis.foods.length > 0) {
@@ -64,13 +108,31 @@ function extractNutrition(analysisResult, deviceInfo) {
         totalCarbs = firstFood.nutrition.carbs || null;
         totalFat = firstFood.nutrition.fat || null;
         totalFiber = firstFood.nutrition.fiber || null;
+        totalSugar = firstFood.nutrition.sugar != null ? firstFood.nutrition.sugar : null;
+        totalSodium = firstFood.nutrition.sodium != null ? firstFood.nutrition.sodium : null;
+        totalCholesterol = firstFood.nutrition.cholesterol != null ? firstFood.nutrition.cholesterol : null;
+        totalGlycemicIndex = firstFood.nutrition.glycemic_index != null ? firstFood.nutrition.glycemic_index : null;
+        micronutrients = pickMicros(firstFood.nutrition);
       }
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
   } catch (_) { /* ignore parse */ }
 
-  return { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy };
+  // 🔍 DEBUG: Log extracted nutrition values
+  console.log('🔍 [extractNutrition] Extracted values:', {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
+    micronutrients,
+    confidenceScore, processedBy,
+  });
+
+  return {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
+    micronutrients,
+    confidenceScore, processedBy,
+  };
 }
 
 // ─── save ────────────────────────────────────────────────────────────────────
@@ -82,7 +144,12 @@ export async function save(input) {
   } = input;
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
-  const { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy } = nutrition;
+  const {
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
+    micronutrients,
+    confidenceScore, processedBy,
+  } = nutrition;
 
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
   const analysisDataJson = typeof analysisResult === 'string'
@@ -105,6 +172,11 @@ export async function save(input) {
     TotalCarbs: totalCarbs,
     TotalFat: totalFat,
     TotalFiber: totalFiber,
+    TotalSugar: totalSugar,
+    TotalSodium: totalSodium,
+    TotalCholesterol: totalCholesterol,
+    ...(micronutrients || {}),
+    GlycemicIndex: totalGlycemicIndex,
     // ImageType was dropped from food_nutrition_data_table by
     // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
     // now lives on captures_table and is promoted via captures.updateTypeById
@@ -444,6 +516,9 @@ export async function getPublicCapture({ token }) {
           carbs: row.TotalCarbs,
           fat: row.TotalFat,
           fiber: row.TotalFiber,
+          sugar: row.TotalSugar ?? null,
+          sodium: row.TotalSodium ?? null,
+          cholesterol: row.TotalCholesterol ?? null,
         },
         createdAt: row.CreatedAt,
         imageBase64: row.ImageBase64 || null,

@@ -563,6 +563,8 @@ const ImageUpload = forwardRef(
       },
       // Called by App.js to auto-open the camera (same as tapping Take Photo)
       openCamera: () => triggerCamera(),
+      // Called by App.js to open the gallery picker
+      openGallery: () => triggerGallery(),
       // Returns the timestamp (ms) when the camera/gallery dialog last closed.
       // App.js uses this to suppress resume-triggered camera open immediately
       // after a user-cancel (prevents the camera re-open loop on Android/iOS).
@@ -671,35 +673,34 @@ const ImageUpload = forwardRef(
 
     return (
       <>
-        <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
-          {/* Camera input */}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          {/* Gallery input */}
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          {/* Fallback input */}
-          <input
-            ref={fallbackInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+        {/* Hidden file inputs - always present for programmatic access */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <input
+          ref={fallbackInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
 
-          {imagePreview ? (
+        {/* Only show the card when there's an image to display or analyze */}
+        {imagePreview && (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
             <div className="space-y-3 sm:space-y-4">
               <div className="relative">
                 {/* Image - Always Visible */}
@@ -740,150 +741,64 @@ const ImageUpload = forwardRef(
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <TouchFeedbackButton
-                  onClick={triggerCamera}
-                  disabled={loading || cameraActive}
-                  className="bg-blue-100 text-blue-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-blue-200 transition-colors duration-200 border border-blue-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  ariaLabel="Take Photo"
-                >
-                  {isIOS ? (
-                    <CameraIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  ) : (
-                    <span className="text-base sm:text-lg">📷</span>
-                  )}
-                  <span className="hidden xs:inline sm:inline">Take Photo</span>
-                  <span className="xs:hidden sm:hidden">Photo</span>
-                </TouchFeedbackButton>
-                <TouchFeedbackButton
-                  onClick={triggerGallery}
-                  disabled={loading || cameraActive}
-                  className="bg-green-100 text-green-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-green-200 transition-colors duration-200 border border-green-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  ariaLabel="From Gallery"
-                >
-                  {isIOS ? (
-                    <GalleryIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  ) : (
-                    <span className="text-base sm:text-lg">🖼️</span>
-                  )}
-                  <span className="hidden xs:inline sm:inline">Gallery</span>
-                  <span className="xs:hidden sm:hidden">Gallery</span>
-                </TouchFeedbackButton>
-              </div>
+              {/* Camera access moved to floating button - no UI shown here */}
             </div>
-          ) : (
-            <div className="flex items-center justify-center w-full">
-              <div className="border-2 border-dashed border-green-300 rounded-lg p-4 sm:p-6 md:p-8 hover:border-green-400 transition-colors duration-200 text-center w-full">
-                <div className="flex justify-center mb-2 sm:mb-4">
-                  {/* 🍎 */}
-                  <div className="text-3xl sm:text-5xl md:text-6xl"></div>
-                </div>
-                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-green-700 mb-1.5 sm:mb-2 text-center">
-                  {" "}
-                </h3>
-                {/* Take photo of your Food • Weighing scale • Meeting screenshot• Smartwatch */}
-                <p className="text-gray-600 mb-3 sm:mb-6 text-[11px] sm:text-sm text-center"></p>
-                {/* Take a photo with camera or select from gallery */}
-                <div className="flex gap-2 sm:gap-4 mb-2.5 sm:mb-4 w-full">
-                  <TouchFeedbackButton
-                    onClick={triggerCamera}
-                    disabled={loading || cameraActive}
-                    className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    ariaLabel="Take Photo"
-                  >
-                    {isIOS ? (
-                      <CameraIcon className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                    ) : (
-                      <span className="text-xl sm:text-2xl">📷</span>
-                    )}
-                    <span className="text-xs sm:text-base leading-tight whitespace-nowrap">
-                      Take Photo
-                    </span>
-                  </TouchFeedbackButton>
-                  <TouchFeedbackButton
-                    onClick={triggerGallery}
-                    disabled={loading || cameraActive}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    ariaLabel="From Gallery"
-                  >
-                    {isIOS ? (
-                      <GalleryIcon className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                    ) : (
-                      <span className="text-xl sm:text-2xl">🖼️</span>
-                    )}
-                    <span className="text-xs sm:text-base leading-tight whitespace-nowrap">
-                      From Gallery
-                    </span>
-                  </TouchFeedbackButton>
-                </div>
+          </div>
+        )}
 
-                <div className="text-[10px] sm:text-xs text-gray-500 text-center mt-2">
-                  {/* Camera works best on mobile devices • Max 10MB •{' '} */}
-                  <button
-                    onClick={onHelpClick}
-                    className="text-red-500 font-normal hover:text-red-600 focus:outline-none underline"
-                  >
-                    Help
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Custom Alert Modal */}
+        <CustomAlertModal
+          isOpen={alertModal.isOpen}
+          onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+          title={alertModal.title}
+          message={alertModal.message}
+          type={alertModal.type}
+        />
 
-          {/* Custom Alert Modal */}
-          <CustomAlertModal
-            isOpen={alertModal.isOpen}
-            onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
-            title={alertModal.title}
-            message={alertModal.message}
-            type={alertModal.type}
-          />
-
-          {/* Full Screen Image Preview Modal */}
-          <AnimatePresence>
-            {showImageModal && imagePreview && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+        {/* Full Screen Image Preview Modal */}
+        <AnimatePresence>
+          {showImageModal && imagePreview && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowImageModal(false)}
+              className="fixed inset-0 bg-black bg-opacity-90 z-[10000] flex items-center justify-center p-4"
+            >
+              {/* Close Button */}
+              <button
                 onClick={() => setShowImageModal(false)}
-                className="fixed inset-0 bg-black bg-opacity-90 z-[10000] flex items-center justify-center p-4"
+                className="absolute top-4 right-4 bg-red-400 hover:bg-red-500 active:bg-red-800 text-white rounded-full p-3 transition-all duration-200 z-[10001] shadow-lg"
+                aria-label="Close"
               >
-                {/* Close Button */}
-                <button
-                  onClick={() => setShowImageModal(false)}
-                  className="absolute top-4 right-4 bg-red-400 hover:bg-red-500 active:bg-red-800 text-white rounded-full p-3 transition-all duration-200 z-[10001] shadow-lg"
-                  aria-label="Close"
+                <svg
+                  className="w-7 h-7"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <svg
-                    className="w-7 h-7"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2.5}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
 
-                {/* Full Size Image */}
-                <motion.img
-                  initial={{ scale: 0.9 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.9 }}
-                  onClick={(e) => e.stopPropagation()}
-                  src={imagePreview}
-                  alt="Full size preview"
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              {/* Full Size Image */}
+              <motion.img
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.9 }}
+                onClick={(e) => e.stopPropagation()}
+                src={imagePreview}
+                alt="Full size preview"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </>
     );
   },
