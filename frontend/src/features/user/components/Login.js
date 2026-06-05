@@ -59,7 +59,9 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
               {auth.otpSent ? 'Enter OTP' : 'Wellness Valley'}
             </h1>
             <p className="text-sm xs:text-base text-gray-500">
-              {auth.otpSent ? `We've sent a verification code to ${auth.email}` : 'Sign in to continue your wellness journey'}
+              {auth.otpSent
+                ? `We've sent a verification code to ${auth.activeChannel === 'phone' ? 'your phone' : auth.email}`
+                : 'Sign in to continue your wellness journey'}
             </p>
           </div>
           {!showEmailForm ? (
@@ -68,6 +70,7 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             />
           ) : !auth.otpSent ? (
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
+              countryDial={auth.countryDial} setCountryDial={auth.setCountryDial}
               onSubmit={handleSendOtp} loading={auth.loading} />
           ) : (
             <LoginOtpEntry otpCtl={otpCtl} onVerify={auth.verifyOtp}

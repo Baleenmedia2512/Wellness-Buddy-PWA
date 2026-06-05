@@ -18,6 +18,15 @@ jest.mock('../services/authService', () => ({
   verifyOtp: jest.fn(),
 }));
 
+// Phone path uses Firebase under the hood — mock at the boundary so Jest
+// never imports the real Firebase web SDK.
+jest.mock('../services/phoneAuthService', () => ({
+  sendPhoneOtp: jest.fn(),
+  confirmPhoneOtp: jest.fn(),
+  exchangeFirebaseIdToken: jest.fn(),
+  resetPhoneAuth: jest.fn(),
+}));
+
 afterEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
@@ -44,6 +53,7 @@ describe('sendOtp', () => {
   it('sets errorMessage and returns false when server returns success=false', async () => {
     authService.sendOtp.mockResolvedValue({ success: false, message: 'Too many attempts' });
     const { result } = renderHook(() => useAuthFlow({}));
+    act(() => { result.current.setEmail('test@example.com'); });
 
     let returnValue;
     await act(async () => { returnValue = await result.current.sendOtp(); });
@@ -57,6 +67,7 @@ describe('sendOtp', () => {
   it('sets default errorMessage on network error', async () => {
     authService.sendOtp.mockRejectedValue(new Error('Network error'));
     const { result } = renderHook(() => useAuthFlow({}));
+    act(() => { result.current.setEmail('test@example.com'); });
 
     let returnValue;
     await act(async () => { returnValue = await result.current.sendOtp(); });
@@ -70,6 +81,7 @@ describe('sendOtp', () => {
     let resolve;
     authService.sendOtp.mockReturnValue(new Promise((r) => { resolve = r; }));
     const { result } = renderHook(() => useAuthFlow({}));
+    act(() => { result.current.setEmail('test@example.com'); });
 
     act(() => { result.current.sendOtp(); });
     expect(result.current.loading).toBe(true);
@@ -195,6 +207,7 @@ describe('resetOtpScreen', () => {
   it('resets otpSent and clears errorMessage', async () => {
     authService.sendOtp.mockResolvedValue({ success: true });
     const { result } = renderHook(() => useAuthFlow({}));
+    act(() => { result.current.setEmail('test@example.com'); });
 
     await act(async () => { await result.current.sendOtp(); });
     expect(result.current.otpSent).toBe(true);
