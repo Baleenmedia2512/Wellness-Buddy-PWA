@@ -22,6 +22,7 @@ const parseSaveResponse = async (res) => {
 
 export async function saveNutritionAnalysis({
   userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail, captureTimestamp = null, captureId = null,
+  city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
 }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
@@ -59,6 +60,14 @@ export async function saveNutritionAnalysis({
         // If a pending capture row was pre-created (instant-share flow), update
         // it instead of inserting a new row so there is exactly one DB record.
         ...(captureId ? { captureId } : {}),
+        // Location context for reporting (city, village, club attendance)
+        city: city || null,
+        village: village || null,
+        centerName: centerName || null,
+        nutritionCenterId: nutritionCenterId || null,
+        attendanceType: attendanceType || null,
+        latitude: latitude || null,
+        longitude: longitude || null,
       }),
     });
 

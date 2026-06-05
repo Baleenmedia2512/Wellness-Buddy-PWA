@@ -149,7 +149,7 @@ IF FOOD (default):
   "reason": "brief explanation",
   "foods": [
     {
-      "name": "food item name",
+      "name": "REQUIRED: non-empty string — the food or drink name (e.g. 'Milk tea', 'Biryani', 'Orange juice'). NEVER null or empty.",
       "portion": "e.g. 2 idlis, 250ml juice",
       "weight_g": number (solids),
       "volume_ml": number (liquids),
@@ -380,13 +380,21 @@ Return ONLY JSON matching ONE of the above formats.`;
       debugLog('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
       
       // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
-      // This ensures debug logging shows the correct AI detected name
-      const foodsWithOriginalName = foodsWithNutrition.map(food => ({
-        ...food,
-        originalAiName: food.name,  // Preserve the AI detected name
-        wasAutoCorrected: false,    // Not corrected yet
-        correctionSource: null
-      }));
+      // This ensures debug logging shows the correct AI detected name.
+      // Also guard against Gemini returning null/empty name (LLM inconsistency).
+      const foodsWithOriginalName = foodsWithNutrition.map((food, idx) => {
+        const rawName = food.name;
+        if (!rawName || typeof rawName !== 'string' || rawName.trim() === '') {
+          console.warn(`⚠️ [IMAGE-DETECTOR] food[${idx}] has no name from Gemini — raw value: ${JSON.stringify(rawName)}`);
+        }
+        return {
+          ...food,
+          name: (rawName && typeof rawName === 'string' && rawName.trim()) ? rawName.trim() : food.item || food.foodName || food.food_name || `Food item ${idx + 1}`,
+          originalAiName: rawName || null,  // Preserve the AI detected name (even if blank)
+          wasAutoCorrected: false,          // Not corrected yet
+          correctionSource: null,
+        };
+      });
       
       return {
         type: 'food',

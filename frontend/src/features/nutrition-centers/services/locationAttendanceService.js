@@ -251,3 +251,30 @@ class LocationAttendanceService {
 }
 
 export const locationAttendanceService = new LocationAttendanceService();
+
+/**
+ * Lightweight helper: silently get GPS location ONLY when user is physically
+ * inside a nutrition club (within 100 m).  Returns the club location payload
+ * or null (remote, GPS denied, timeout).  Never throws — safe to call before
+ * any photo save.
+ *
+ * @param {string} apiBaseUrl
+ * @param {number|string} userId
+ * @returns {Promise<{latitude: number, longitude: number, nutritionCenterId: number|null}|null>}
+ */
+export async function getClubLocationIfNearby(apiBaseUrl, userId) {
+  try {
+    const result = await locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+    if (result.attendanceType === 'club' && result.latitude && result.longitude) {
+      return {
+        latitude: result.latitude,
+        longitude: result.longitude,
+        nutritionCenterId: result.nutritionCenterId || null,
+        centerName: result.centerName || null,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

@@ -93,6 +93,12 @@
       ]
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/deactivate-idle-users",
+      "schedule": "0 0 * * *"
+    }
+  ],
   "env": {
     "NODE_ENV": "production"
   }

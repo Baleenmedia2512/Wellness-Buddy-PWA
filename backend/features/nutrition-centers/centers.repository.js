@@ -48,8 +48,33 @@ export async function findCenterOwner(centerId) {
     .from('nutrition_centers_table')
     .select('owner_user_id')
     .eq('id', centerId)
+    .eq('is_deleted', false)
     .single();
   return { data, error };
+}
+
+export async function findCenterById(centerId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('nutrition_centers_table')
+    .select('id, center_name, latitude, longitude, education_hour, owner_user_id, owner_phone')
+    .eq('id', centerId)
+    .eq('is_deleted', false)
+    .single();
+  return { data, error };
+}
+
+export async function updateCenter(centerId, payload) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('nutrition_centers_table')
+    .update(payload)
+    .eq('id', centerId)
+    .eq('is_deleted', false)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function softDeleteCenter(centerId) {
@@ -132,12 +157,105 @@ export async function getOwnerNames(ownerIds) {
 
 export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
   const supabase = getSupabaseClient();
-  const { data } = await supabase
-    .from('education_logs_table')
-    .select('"UserId"')
-    .eq('nutrition_center_id', centerId)
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', rangeStart)
-    .lte('"CreatedAt"', rangeEnd);
-  return data || [];
+  
+  // Fetch from all three log types: education, weight, food
+  const [eduRes, weightRes, foodRes] = await Promise.all([
+    supabase
+      .from('education_logs_table')
+      .select('"UserId"')
+      .eq('nutrition_center_id', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+    supabase
+      .from('weight_records_table')
+      .select('"UserId"')
+      .eq('"NutritionCenterId"', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+    supabase
+      .from('food_nutrition_data_table')
+      .select('"UserID"')
+      .eq('"NutritionCenterId"', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+  ]);
+  
+  // Check for errors
+  if (eduRes.error) throw new Error(`Education logs query failed: ${eduRes.error.message}`);
+  if (weightRes.error) throw new Error(`Weight logs query failed: ${weightRes.error.message}`);
+  if (foodRes.error) throw new Error(`Food logs query failed: ${foodRes.error.message}`);
+  
+  // Merge all logs - normalize food table's UserID to UserId
+  const allLogs = [
+    ...(eduRes.data || []),
+    ...(weightRes.data || []),
+    ...(foodRes.data || []).map(row => ({ UserId: row.UserID })),
+  ];
+  
+  return allLogs;
+}
+
+export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
+  const supabase = getSupabaseClient();
+  
+  // Fetch from all three log types: education, weight, food - NOW INCLUDING CreatedAt
+  const [eduRes, weightRes, foodRes] = await Promise.all([
+    supabase
+      .from('education_logs_table')
+      .select('"UserId", "CreatedAt"')
+      .eq('nutrition_center_id', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+    supabase
+      .from('weight_records_table')
+      .select('"UserId", "CreatedAt"')
+      .eq('"NutritionCenterId"', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+    supabase
+      .from('food_nutrition_data_table')
+      .select('"UserID", "CreatedAt"')
+      .eq('"NutritionCenterId"', centerId)
+      .eq('"IsDeleted"', 0)
+      .gte('"CreatedAt"', rangeStart)
+      .lte('"CreatedAt"', rangeEnd),
+  ]);
+  
+  // Check for errors
+  if (eduRes.error) throw new Error(eduRes.error.message);
+  if (weightRes.error) throw new Error(weightRes.error.message);
+  if (foodRes.error) throw new Error(foodRes.error.message);
+  
+  // Merge all logs with log type annotation
+  const allLogs = [
+    ...(eduRes.data || []).map(row => ({ UserId: row.UserId, CreatedAt: row.CreatedAt, logType: 'education' })),
+    ...(weightRes.data || []).map(row => ({ UserId: row.UserId, CreatedAt: row.CreatedAt, logType: 'weight' })),
+    ...(foodRes.data || []).map(row => ({ UserId: row.UserID, CreatedAt: row.CreatedAt, logType: 'food' })),
+  ];
+  
+  if (allLogs.length === 0) return [];
+
+  // Collect unique user IDs to fetch names
+  const uniqueUserIds = [...new Set(allLogs.map((l) => l.UserId))];
+
+  const { data: users } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName"')
+    .in('"UserId"', uniqueUserIds);
+
+  const nameMap = {};
+  (users || []).forEach((u) => { nameMap[u.UserId] = u.UserName; });
+
+  // Return array of log entries (NOT de-duplicated by user) with enriched data
+  return allLogs.map((log) => ({
+    userId: log.UserId,
+    userName: nameMap[log.UserId] || 'Unknown Member',
+    logType: log.logType,
+    timestamp: log.CreatedAt,
+  }));
 }

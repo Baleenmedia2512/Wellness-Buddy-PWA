@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from '../../../shared/utils/logger.js';
+import AttendeeListModal from './AttendeeListModal';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -71,9 +72,10 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
-const NutritionCentersMap = ({ user, onBack }) => {
+const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
   const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
@@ -85,7 +87,8 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  
+  const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
   const panoramaRef = useRef(null);
@@ -244,12 +247,22 @@ const NutritionCentersMap = ({ user, onBack }) => {
     return data.userId;
   };
 
+  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
+  useEffect(() => {
+    if (user?.email) {
+      getUserId(user.email)
+        .then((id) => setCurrentUserId(Number(id)))
+        .catch(() => setCurrentUserId(null));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
+  }, [user]);
+
   // Open Street View for a center
   const openStreetView = (center) => {
-    debugLog('ðŸ—ºï¸ Opening Street View for:', center.center_name, center);
-    debugLog('ðŸ“ Coordinates:', center.latitude, center.longitude);
-    debugLog('ðŸ” Google Maps available:', !!window.google?.maps);
-    debugLog('ðŸ” StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
+    debugLog('🗺️ Opening Street View for:', center.center_name, center);
+    debugLog('📍 Coordinates:', center.latitude, center.longitude);
+    debugLog('📍 Google Maps available:', !!window.google?.maps);
+    debugLog('📍 StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
     
     if (!window.google || !window.google.maps) {
       alert('Google Maps is not loaded yet. Please wait a moment and try again.');
@@ -263,7 +276,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   // Initialize Street View when overlay is shown
   useEffect(() => {
     if (showStreetView && selectedCenter && panoramaRef.current && window.google && window.google.maps) {
-      debugLog('ðŸ—ï¸ Initializing Street View...');
+      debugLog('🏗️ Initializing Street View...');
       
       const position = {
         lat: parseFloat(selectedCenter.latitude),
@@ -291,7 +304,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           map: panorama,
           title: selectedCenter.center_name,
           label: {
-            text: 'ðŸ“',
+            text: '📍',
             fontSize: '24px',
           },
           icon: {
@@ -326,7 +339,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
         streetViewRef.current = panorama;
         debugLog('✅ Street View initialized successfully with marker');
       } catch (err) {
-        console.error('âŒ Error initializing Street View:', err);
+        console.error('❌ Error initializing Street View:', err);
       }
     }
   }, [showStreetView, selectedCenter]);
@@ -446,7 +459,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               onclick="window.openStreetViewForCenter(${center.id})" 
               style="padding: 8px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;"
             >
-              ðŸ‘ï¸ View Street View
+              👁️ View Street View
             </button>
             ${center.owner_phone ? `
               <div style="display: flex; gap: 8px; justify-content: center;">
@@ -505,6 +518,21 @@ const NutritionCentersMap = ({ user, onBack }) => {
       delete window.openWhatsAppForCenter;
     };
   }, [centers]);
+
+  // ── Derived date strings for the attendee modal ───────────────────────────
+  const pad = (n) => String(n).padStart(2, '0');
+  const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const _now = new Date();
+  const _todayStr = localDateStr(_now);
+  const _yesterdayStr = localDateStr(new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 1));
+  const activeDateLabel = dateRange === 'yesterday' ? 'Yesterday'
+    : dateRange === 'custom' && customDate
+    ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : 'Today';
+  const activeDateStart = dateRange === 'yesterday' ? _yesterdayStr
+    : dateRange === 'custom' && customDate ? localDateStr(customDate)
+    : _todayStr;
+  const activeDateEnd = activeDateStart;
 
   return (
     <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
@@ -692,15 +720,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
             </div>
             
             {/* Centres List */}
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-2 pb-24">
               {(() => {
                 const q = searchQuery.trim().toLowerCase();
-                const filteredCenters = q
+                const filteredCenters = (q
                   ? centers.filter(c =>
                       c.center_name?.toLowerCase().includes(q) ||
                       c.ownerName?.toLowerCase().includes(q)
                     )
-                  : centers;
+                  : centers
+                ).slice().sort((a, b) => (b.todayAttendance || 0) - (a.todayAttendance || 0));
                 const totalAttendance = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
                 const dateLabel = dateRange === 'yesterday' ? 'Yesterday'
                   : dateRange === 'custom' && customDate
@@ -712,11 +741,19 @@ const NutritionCentersMap = ({ user, onBack }) => {
                       <h2 className="text-lg font-bold text-gray-800">
                         Centres ({q ? `${filteredCenters.length}/` : ''}{centers.length})
                       </h2>
-                      {centers.length > 0 && (
-                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                      {centers.length > 0 && totalAttendance > 0 ? (
+                        <button
+                          onClick={() => setAttendeeModal({ isOpen: true, center: null })}
+                          className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full active:bg-green-200 transition-colors"
+                          aria-label={`View all ${totalAttendance} attendees`}
+                        >
                           {totalAttendance} attended {dateLabel}
+                        </button>
+                      ) : centers.length > 0 ? (
+                        <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">
+                          0 attended {dateLabel}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     {filteredCenters.length === 0 ? (
                       <div className="bg-white rounded-lg p-6 text-center shadow-sm">
@@ -737,13 +774,22 @@ const NutritionCentersMap = ({ user, onBack }) => {
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
                           <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
                         </div>
-                        <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          (center.todayAttendance || 0) > 0
-                            ? 'bg-green-100 text-green-700 border-green-200'
-                            : 'bg-gray-50 text-gray-600 border-gray-300'
-                        }`}>
-                          {center.todayAttendance || 0} attended
-                        </span>
+                        {(center.todayAttendance || 0) > 0 ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAttendeeModal({ isOpen: true, center });
+                            }}
+                            className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200 active:bg-green-200 transition-colors"
+                            aria-label={`View ${center.todayAttendance} attendees`}
+                          >
+                            {center.todayAttendance} attended
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-gray-50 text-gray-600 border-gray-300">
+                            0 attended
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -784,6 +830,18 @@ const NutritionCentersMap = ({ user, onBack }) => {
                           </TouchFeedbackButton>
                         </>
                       )}
+
+                      {/* Edit — only visible to the centre owner */}
+                      {onEditCenter && currentUserId && center.owner_user_id === currentUserId && (
+                        <TouchFeedbackButton
+                          onClick={(e) => { e.stopPropagation(); onEditCenter(center); }}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors"
+                          ariaLabel="Edit centre"
+                        >
+                          <Pencil className="h-4 w-4 text-orange-600" />
+                          <span className="text-xs font-semibold text-orange-700">Edit</span>
+                        </TouchFeedbackButton>
+                      )}
                     </div>
                   </div>
                       ))
@@ -795,6 +853,32 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </>
         )}
       </div>
+
+      {/* Floating Add Button — opens Register Nutrition Centre */}
+      {onRegisterCenter && (
+        <button
+          onClick={onRegisterCenter}
+          aria-label="Register new nutrition centre"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
+            right: '1rem',
+            width: '3.5rem',
+            height: '3.5rem',
+            borderRadius: '50%',
+            backgroundColor: '#16a34a',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <Plus style={{ width: '1.75rem', height: '1.75rem', color: '#fff', strokeWidth: 2.5 }} />
+        </button>
+      )}
 
       {/* Street View Overlay */}
       {showStreetView && selectedCenter && (
@@ -818,6 +902,18 @@ const NutritionCentersMap = ({ user, onBack }) => {
           />
         </div>
       )}
+
+      {/* Attendee List Modal */}
+      <AttendeeListModal
+        isOpen={attendeeModal.isOpen}
+        onClose={() => setAttendeeModal({ isOpen: false, center: null })}
+        center={attendeeModal.center}
+        allCenters={attendeeModal.center ? null : centers}
+        dateLabel={activeDateLabel}
+        startDate={activeDateStart}
+        endDate={activeDateEnd}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 };
