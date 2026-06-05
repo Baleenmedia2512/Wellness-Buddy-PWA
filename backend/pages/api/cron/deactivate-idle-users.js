@@ -88,6 +88,7 @@ export default async function handler(req, res) {
       usersFound: idleUsers.length,
       success: results.success,
       failed: results.failed,
+      totalReassigned: results.totalReassigned,
       durationMs: Date.now() - startTime,
     });
 
@@ -99,6 +100,7 @@ export default async function handler(req, res) {
         usersProcessed: idleUsers.length,
         success: results.success,
         failed: results.failed,
+        membersReassigned: results.totalReassigned,
         errors: results.errors.length > 0 ? results.errors : undefined,
       },
     });
