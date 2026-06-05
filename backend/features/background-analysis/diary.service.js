@@ -30,10 +30,15 @@
  */
 
 import * as repo from './analysis.repository.js';
+import * as diaryRepo from './diary.repository.js';
 import { save } from './analysis.service.js';
 import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_UNKNOWN } from '../captures/domain/image-types.js';
-import { assertCanRetryCapture } from '../captures/domain/permissions/retry.policy.js';
+import {
+  assertCanRetryCapture,
+  canRetryCapture,
+} from '../captures/domain/permissions/retry.policy.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
@@ -191,4 +196,270 @@ export async function retryPromotionToFood(input) {
     ImageBase64: capture.ImageBase64 || null,
     captureId,
   });
+}
+
+// ─── listDiaryEntries ───────────────────────────────────────────────────────
+//
+// PR-B / ADR-0003 — the Diary feed read-model.
+//
+// Joins food + weight + education + watch (+ optionally `unknown`
+// captures when `ff.diary-feed` is ON) for a single owner + IST day,
+// normalises each row to the same envelope shape, and sorts by
+// `capturedAt` DESC (newest at the top, matching every per-vertical
+// dashboard convention).
+//
+// Auth posture
+//   - Owner viewing self    → always allowed.
+//   - Coach viewing member  → allowed iff in the owner's upline chain.
+//                             Re-uses `canRetryCapture` for the predicate
+//                             so the "may I view this user's diary"
+//                             question stays bit-for-bit identical to
+//                             the "may I Retry this user's capture"
+//                             question. ADR-0003 §"Pinned product answers"
+//                             explicitly aligns the two.
+//   - Anyone else           → 403.
+//   - No auth                → 401.
+//
+// Feature flag `ff.diary-feed`
+//   - OFF (default): inclusion of `unknown` rows is suppressed. The
+//     response shape is unchanged; the `entries` array simply has zero
+//     `kind: 'unknown'` rows. This lets PR-B ship before PR-C/D and lets
+//     the client opt in per build.
+//   - ON: `unknown` captures for the day are included. PR-3's "don't
+//     pollute the food feed" intent is preserved because the rows arrive
+//     as `kind: 'unknown'`, never `kind: 'food'`.
+//
+// Output
+//   {
+//     httpStatus: 200,
+//     body: {
+//       ok: true,
+//       data: {
+//         date, ownerUserId, isSelf, includesUnknown,
+//         entries: [
+//           {
+//             kind: 'food' | 'weight' | 'education' | 'watch' | 'unknown',
+//             capturedAt: ISO string,
+//             capture: { id, type, ... } | null,
+//             payload: { … kind-specific projection … },
+//           },
+//           ...
+//         ],
+//       },
+//     },
+//   }
+//
+//   { httpStatus: 401 }  — no viewer
+//   { httpStatus: 403 }  — viewer not in owner's chain
+//   { httpStatus: 400 }  — validation error (handled by validator before us)
+//
+// Defensive notes
+//   - Each per-table read is independent — one failure does NOT take
+//     down the whole feed. Failures are caught, warn-logged with the
+//     `kind`, and substituted with an empty array so the rest of the
+//     diary still renders. This mirrors the "fail loudly to the error
+//     sink, but don't cascade" rule for background jobs (§2.8).
+//   - Watch rows whose `Topic` does not match the
+//     `Calories Burned: <n> kcal` pattern parse to `kcal=0` instead of
+//     throwing; this matches the existing
+//     `activity.service.getWatchBurnedCalories` parser.
+export async function listDiaryEntries(input) {
+  const { ownerUserId, viewerUserId, date } = input;
+
+  // 1. Permission. The diary aggregates four verticals' data, so the gate
+  // must cover all of them — same gate `canRetryCapture` uses for the
+  // single-capture mutation path (ADR-0003 §"Pinned product answers").
+  const coachChain = await repo.getCoachChain(ownerUserId);
+  const decision = canRetryCapture({
+    viewerId: viewerUserId,
+    ownerId:  ownerUserId,
+    coachChain,
+  });
+  if (!decision.allowed) {
+    if (decision.reason === 'NO_VIEWER') {
+      const err = new Error('Authentication required');
+      err.status = 401; err.code = 'UNAUTHENTICATED';
+      throw err;
+    }
+    const err = new Error('You do not have access to this diary');
+    err.status = 403; err.code = 'FORBIDDEN_DIARY';
+    err.reason = decision.reason;
+    throw err;
+  }
+  const isSelf = decision.actorRole === 'OWNER';
+
+  // 2. Audit-log coach-on-member reads, same posture as
+  // `retryPromotionToFood` (F5). Reads are higher-volume than writes,
+  // so info-level is correct — `logger` is expected to ship to the
+  // structured sink with throttling configured per environment.
+  if (!isSelf) {
+    logger.info('listDiaryEntries: coach reading member diary', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      date,
+    });
+  }
+
+  // 3. Resolve the flag once per request — never per row.
+  const includesUnknown = isEnabled('ff.diary-feed');
+
+  // 4. Fan out the per-vertical reads in parallel. Each call is wrapped
+  // so a partial failure degrades gracefully instead of failing the
+  // whole feed.
+  const safe = async (kind, fn) => {
+    try { return { kind, rows: await fn() }; }
+    catch (err) {
+      logger.warn('listDiaryEntries: per-vertical read failed', {
+        kind, ownerUserId, date, err: err.message,
+      });
+      return { kind, rows: [] };
+    }
+  };
+  const reads = [
+    safe('food',      () => diaryRepo.fetchFoodForDay(ownerUserId, date)),
+    safe('weight',    () => diaryRepo.fetchWeightForDay(ownerUserId, date)),
+    safe('education', () => diaryRepo.fetchEducationForDay(ownerUserId, date)),
+    safe('watch',     () => diaryRepo.fetchWatchForDay(ownerUserId, date)),
+  ];
+  if (includesUnknown) {
+    reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date)));
+  }
+  const results = await Promise.all(reads);
+
+  // 5. Normalise + flatten. Per-kind projections are deliberately small
+  // (the card UI does not need micronutrients or full image base64 in
+  // the list; the detail modal still fetches via the established
+  // per-vertical endpoints).
+  const entries = [];
+  for (const { kind, rows } of results) {
+    for (const row of rows) {
+      entries.push(toDiaryEntry(kind, row));
+    }
+  }
+  entries.sort((a, b) =>
+    new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+  );
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        date,
+        ownerUserId,
+        isSelf,
+        includesUnknown,
+        entries,
+      },
+    },
+  };
+}
+
+/**
+ * Pure projection — given a kind + row, build the diary envelope.
+ * No DB, no I/O. Exported only for tests; production callers should
+ * always go through `listDiaryEntries`.
+ *
+ * @internal
+ */
+export function toDiaryEntry(kind, row) {
+  switch (kind) {
+    case 'food':
+      return {
+        kind: 'food',
+        capturedAt: row.CreatedAt,
+        capture: row.CaptureID ? { id: row.CaptureID } : null,
+        payload: {
+          id:           row.ID,
+          imagePath:    row.ImagePath,
+          imageBase64:  row.ImageBase64,
+          analysisData: row.AnalysisData,
+          confidence:   row.ConfidenceScore,
+          totals: {
+            calories: row.TotalCalories,
+            protein:  row.TotalProtein,
+            carbs:    row.TotalCarbs,
+            fat:      row.TotalFat,
+            fiber:    row.TotalFiber,
+          },
+          processedBy: row.ProcessedBy,
+          deviceInfo:  row.DeviceInfo,
+        },
+      };
+
+    case 'weight':
+      return {
+        kind: 'weight',
+        capturedAt: row.CreatedAt,
+        capture: null,
+        payload: {
+          id:           row.ID,
+          weight:       row.Weight,
+          bmi:          row.Bmi,
+          bodyFat:      row.BodyFat,
+          muscleMass:   row.MuscleMass,
+          bmr:          row.Bmr,
+          imageBase64:  row.WeightImageBase64,
+        },
+      };
+
+    case 'education':
+      return {
+        kind: 'education',
+        capturedAt: row.CreatedAt,
+        capture: null,
+        payload: {
+          id:          row.Id,
+          platform:    row.Platform,
+          topic:       row.Topic,
+          confidence:  row.Confidence,
+          imageBase64: row.ImageBase64,
+        },
+      };
+
+    case 'watch': {
+      // Mirrors activity.service.getWatchBurnedCalories parser:
+      //   "Calories Burned: 245 kcal" → 245
+      // Non-matching topics parse to 0 (not throw) so a stray row
+      // doesn't take the feed down.
+      const match = (row.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+      const kcal = match ? Math.round(parseFloat(match[1])) : 0;
+      return {
+        kind: 'watch',
+        capturedAt: row.CreatedAt,
+        capture: null,
+        payload: {
+          id:    row.Id,
+          topic: row.Topic,
+          kcal,
+        },
+      };
+    }
+
+    case 'unknown':
+      return {
+        kind: 'unknown',
+        capturedAt: row.CreatedAt,
+        capture: {
+          id:               row.ID,
+          type:             row.ImageType,
+          publicShareToken: row.PublicShareToken,
+        },
+        payload: {
+          id:          row.ID,
+          imagePath:   row.ImagePath,
+          imageBase64: row.ImageBase64,
+        },
+      };
+
+    default: {
+      // Defensive — should be unreachable because `kind` is constructed
+      // in this file. If it ever isn't, we want loud failure during
+      // tests, not silent data loss.
+      const err = new Error(`toDiaryEntry: unknown kind '${kind}'`);
+      err.status = 500;
+      err.code = 'UNKNOWN_DIARY_KIND';
+      throw err;
+    }
+  }
 }

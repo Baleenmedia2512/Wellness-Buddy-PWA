@@ -127,3 +127,44 @@ export function validateRetryPromotion(body) {
     imagePath: imagePath ? imagePath.toString() : null,
   };
 }
+
+/**
+ * PR-B / ADR-0003 — input schema for GET /api/diary/list.
+ *
+ * Query params:
+ *   - ownerUserId  required — the diary subject. Coach reads pass the
+ *                  member's id; self reads pass the viewer's own id.
+ *   - viewerUserId required — the authenticated session user.
+ *   - date         required — `YYYY-MM-DD` in IST. Future dates are
+ *                  rejected because no per-vertical write produces a
+ *                  future row, and the predicate prevents callers from
+ *                  trivially scanning years of history with a single
+ *                  request.
+ */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function validateDiaryList(query) {
+  const { ownerUserId, viewerUserId, date } = query || {};
+  if (!ownerUserId) throw new ValidationError(400, 'ownerUserId is required');
+  if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
+  if (!date) throw new ValidationError(400, 'date is required (YYYY-MM-DD)');
+  if (!DATE_RE.test(date)) {
+    throw new ValidationError(400, 'date must match YYYY-MM-DD');
+  }
+  // Guard against impossible dates that pass the regex (e.g. 2026-02-31).
+  // Parsing as UTC because the format itself is calendar-only.
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new ValidationError(400, 'date is not a valid calendar date');
+  }
+  // Reject future dates (per ADR-0003 PR-B test plan).
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  if (date > todayUtc) {
+    throw new ValidationError(400, 'date cannot be in the future');
+  }
+  return {
+    ownerUserId:  ownerUserId.toString(),
+    viewerUserId: viewerUserId.toString(),
+    date,
+  };
+}
