@@ -664,12 +664,21 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       );
     };
 
+    // Extract first name from current user's name
+    const getFirstName = (fullName) => {
+      if (!fullName) return "Your";
+      const parts = fullName.trim().split(/\s+/);
+      return parts[0];
+    };
+
+    const firstName = getFirstName(currentUserName);
+
     return (
       <div className="space-y-4">
-        {/* Header */}
+        {/* Header with user's name */}
         <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4 border border-green-200">
           <h3 className="text-lg font-bold text-gray-800 mb-1">
-            📚 Your Programs
+            📚 {firstName}'s Programmes
           </h3>
           {/* <p className="text-sm text-gray-600">Select the programs you want to enroll in</p> */}
         </div>
@@ -775,9 +784,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       );
     };
 
+    // Extract first name from member's name
+    const getFirstName = (fullName) => {
+      if (!fullName) return "Member";
+      const parts = fullName.trim().split(/\s+/);
+      return parts[0];
+    };
+
+    const firstName = getFirstName(selectedMember.name);
+
     return (
       <div className="space-y-4">
-        {/* Member Header - Profile Icon and Name Only */}
+        {/* Header with possessive name and member info */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
           <div className="flex items-center gap-3">
             <div
@@ -793,7 +811,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                 onClick={() => setProfileModalEmail(selectedMember.email)}
                 title="View full profile"
               >
-                {selectedMember.name}
+                📚 {firstName}'s Programmes
               </h3>
               <p className="text-sm text-gray-600">{selectedMember.email}</p>
             </div>
