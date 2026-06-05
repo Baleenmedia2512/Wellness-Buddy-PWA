@@ -9,19 +9,15 @@ import { Flame, Utensils, User } from 'lucide-react';
  * Design: Compact, mobile-optimized with circular progress.
  */
 
-// Compact Circular Progress for mobile (two-layer: green base + red overlay when exceeding)
+// Compact Circular Progress for mobile (green up to 100%, solid red when over)
 const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  // Green arc: always capped at 100%
-  const greenPct = Math.min(percentage, 100);
-  const greenOffset = circumference - (greenPct / 100) * circumference;
-  
-  // Red arc: only shows excess beyond 100%
   const isExceeding = percentage > 100;
-  const excessPct = isExceeding ? percentage - 100 : 0;
-  const redOffset = circumference - (excessPct / 100) * circumference;
+  // When over target, fill the entire ring solid red. Otherwise green up to %.
+  const fillPct = isExceeding ? 100 : Math.max(0, percentage);
+  const fillOffset = circumference - (fillPct / 100) * circumference;
 
   const textColor = isExceeding ? '#dc2626' : '#065f46';
   const subtitle  = bmrTarget ? `of ${bmrTarget.toLocaleString()}` : 'of BMR';
@@ -59,29 +55,14 @@ const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmr
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="url(#compactCalGreen)"
+          stroke={isExceeding ? 'url(#compactCalRed)' : 'url(#compactCalGreen)'}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          strokeDashoffset={greenOffset}
+          strokeDashoffset={fillOffset}
           strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
 
-        {/* Red arc (excess, only when > 100%) */}
-        {isExceeding && (
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke="url(#compactCalRed)"
-            strokeWidth={strokeWidth}
-            strokeDasharray={circumference}
-            strokeDashoffset={redOffset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-          />
-        )}
       </svg>
 
       {/* Center text */}

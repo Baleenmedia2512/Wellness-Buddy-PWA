@@ -1,5 +1,5 @@
 /**
- * NutritionCarousel — 5-card horizontal swipe carousel for the nutrition dashboard.
+ * NutritionCarousel — 8-card horizontal swipe carousel for the nutrition dashboard.
  *
  * Cards (in order):
  *   0 — Calories       (BMR target, consumed, exercise=0, remaining)
@@ -7,6 +7,9 @@
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
  *   3 — Low Carb       (carbs, sugar ≤50g, fiber ≥25g)
  *   4 — Glycemic Index (average GI with Low/Medium/High zones)
+ *   5 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
+ *   6 — B Vitamins     (B1, B2, B3, B6, B9, B12 vs. adult RDA)
+ *   7 — Minerals       (Ca, Fe, Mg, K, Zn, P vs. adult RDA)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
  * Resets to card 0 when selectedDate changes.
@@ -19,14 +22,25 @@ import {
   computeLowCarbCard,
   computeGICard,
 } from '../../domain/carouselRules';
+import {
+  computeVitaminsFatSolubleCard,
+  computeVitaminsBComplexCard,
+  computeMineralsCard,
+} from '../../domain/micronutrientRules';
 import { useCarouselSwipe } from '../../hooks/useCarouselSwipe';
 import CaloriesCard   from './carousel/CaloriesCard';
 import MacrosCard     from './carousel/MacrosCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
 import LowCarbCard    from './carousel/LowCarbCard';
 import GICard         from './carousel/GICard';
+import VitaminsFatSolubleCard from './carousel/VitaminsFatSolubleCard';
+import VitaminsBComplexCard   from './carousel/VitaminsBComplexCard';
+import MineralsCard           from './carousel/MineralsCard';
 
-const CARD_LABELS = ['Calories', 'Macros', 'Heart Health', 'Low Carb', 'Glycemic Index'];
+const CARD_LABELS = [
+  'Calories', 'Macros', 'Heart Healthy', 'Low Carb', 'Glycemic Index',
+  'Vitamins A-K', 'B Vitamins', 'Minerals',
+];
 
 const NutritionCarousel = ({
   calorieTarget,
@@ -69,6 +83,10 @@ const NutritionCarousel = ({
     mealCount: dailyStats?.mealCount || 0,
   });
 
+  const vitFatTiles  = computeVitaminsFatSolubleCard(dailyStats || {});
+  const vitBTiles    = computeVitaminsBComplexCard(dailyStats || {});
+  const mineralTiles = computeMineralsCard(dailyStats || {});
+
   const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
     cardCount: CARD_LABELS.length,
     resetKey: selectedDate,
@@ -89,6 +107,9 @@ const NutritionCarousel = ({
     <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
     <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,
     <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
+    <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} />,
+    <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} />,
+    <MineralsCard           key="minerals" tiles={mineralTiles} />,
   ];
 
   const cards = allCards;
