@@ -196,23 +196,23 @@ export async function findIdleUsers(options = {}) {
 
 /**
  * Deactivates multiple users by setting Status='Inactive'.
- * Also reassigns their downline members to the parent coach (hierarchy maintenance).
+ * Does NOT modify the database hierarchy (CoachId remains unchanged).
  * 
  * Business Logic:
- * 1. Deactivate the user
- * 2. Find all members under this user (if they are a coach)
- * 3. Reassign those members to the user's parent coach
+ * 1. Only deactivate the user (Status = 'Inactive')
+ * 2. CoachId stays the same in the database
+ * 3. Application code will handle inactive coach resolution when fetching data
  * 
  * Reuses existing setUserStatus() from user.repository.js.
  * Per-user error isolation: logs failures but continues processing.
  * 
  * @param {Array<string>} userIds - Array of UserIds to deactivate
  * @param {string} correlationId - Correlation ID for logging
- * @returns {Promise<{success: number, failed: number, totalReassigned: number, errors: Array<{userId: string, error: string}>}>}
+ * @returns {Promise<{success: number, failed: number, errors: Array<{userId: string, error: string}>}>}
  * 
  * @example
  * const result = await batchDeactivateUsers(['123', '456'], 'cron-xyz');
- * // => { success: 1, failed: 1, totalReassigned: 5, errors: [{ userId: '456', error: 'Not found' }] }
+ * // => { success: 1, failed: 1, errors: [{ userId: '456', error: 'Not found' }] }
  */
 export async function batchDeactivateUsers(userIds, correlationId) {
   // Import here to avoid circular dependency
@@ -221,13 +221,12 @@ export async function batchDeactivateUsers(userIds, correlationId) {
   const results = {
     success: 0,
     failed: 0,
-    totalReassigned: 0,
     errors: [],
   };
 
   for (const userId of userIds) {
     try {
-      // Step 1: Deactivate the user
+      // Only deactivate the user - don't modify hierarchy
       await setUserStatus(userId, 'Inactive');
       results.success++;
       
@@ -236,18 +235,6 @@ export async function batchDeactivateUsers(userIds, correlationId) {
         userId,
         action: 'deactivate',
       });
-      
-      // Step 2: Reassign their downline members to parent coach
-      const reassignResult = await reassignMembersToParentCoach(userId, correlationId);
-      results.totalReassigned += reassignResult.reassigned;
-      
-      if (reassignResult.reassigned > 0) {
-        logger.info('Downline members reassigned after deactivation', {
-          correlationId,
-          deactivatedCoachId: userId,
-          membersReassigned: reassignResult.reassigned,
-        });
-      }
       
     } catch (err) {
       results.failed++;
@@ -270,7 +257,6 @@ export async function batchDeactivateUsers(userIds, correlationId) {
     totalUsers: userIds.length,
     success: results.success,
     failed: results.failed,
-    totalReassigned: results.totalReassigned,
   });
 
   return results;
