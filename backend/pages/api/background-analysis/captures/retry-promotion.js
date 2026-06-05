@@ -1,7 +1,7 @@
 import { largeBodyConfig as config } from '../../../../utils/apiConfig.js';
 import { applyCors, methodNotAllowed, runService } from '../../../../shared/lib/handler.js';
 import { validateRetryPromotion } from '../../../../features/background-analysis/analysis.validators.js';
-import { retryPromotionToFood } from '../../../../features/background-analysis/analysis.service.js';
+import { retryPromotionToFood } from '../../../../features/background-analysis/diary.service.js';
 
 export { config };
 
@@ -12,7 +12,7 @@ export { config };
  *
  * Thin proxy (claude.md §2.1 / §15.2). All orchestration, permission
  * enforcement, and audit logging live in
- * `features/background-analysis/analysis.service.js :: retryPromotionToFood`.
+ * `features/background-analysis/diary.service.js :: retryPromotionToFood`.
  *
  * Body:  { captureId, viewerUserId, analysisResult, imagePath? }
  * 200:   { ok: true, data: { id, message, data: { … } } }    // save() shape

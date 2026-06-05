@@ -1,17 +1,20 @@
 /**
  * Integration-style unit tests for retryPromotionToFood
- * (backend/features/background-analysis/analysis.service.js).
+ * (backend/features/background-analysis/diary.service.js).
  *
  * PR-A.2 / ADR-0003 — Diary "Other → Retry / Edit" promotion endpoint.
+ * Moved from analysis.service.js → diary.service.js in PR-B (refactor commit).
  *
  * Mocks the captures slice + analysis repository at the module boundary
  * (claude.md §9.6 — domain tests are pure; integration tests mock at the
- * boundary). The state-machine guard and permission policy are exercised
- * via their actual implementations (not mocked) so a regression in either
- * one is caught here too.
+ * boundary). `save()` itself is NOT mocked — it lives in
+ * `analysis.service.js` and is exercised end-to-end via the mocked repo
+ * so the integration between the two service files cannot silently break.
+ * The state-machine guard and permission policy are exercised via their
+ * actual implementations.
  */
 
-import * as service from '../analysis.service.js';
+import * as service from '../diary.service.js';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 // The analysis.repository handles food-row writes and the coach chain walk.

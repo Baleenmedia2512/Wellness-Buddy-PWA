@@ -10,9 +10,7 @@ import { cache, cacheKeys } from '../../utils/cache.js';
 import * as captures from '../captures/captures.service.js';
 import {
   IMAGE_TYPE_FOOD,
-  IMAGE_TYPE_UNKNOWN,
 } from '../captures/domain/image-types.js';
-import { assertCanRetryCapture } from '../captures/domain/permissions/retry.policy.js';
 import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp, convertToIST } = repo;
@@ -360,125 +358,7 @@ export async function updateCaptureType({ id, userId, imageType }) {
   return { httpStatus: 200, body: { ok: true, data: result } };
 }
 
-// ─── retryPromotionToFood ────────────────────────────────────────────────────
-// PR-A.2 / ADR-0003 — Diary "Other → Retry / Edit" promotion endpoint.
-//
-// Called when the user (or a coach in the user's upline) supplies a new
-// Gemini analysis (Retry path) or a manual nutrition edit (Edit path) for
-// a capture currently tagged `unknown`. Promotes the capture
-// `unknown → food` and upserts the corresponding `food_nutrition_data_table`
-// row by delegating to the existing `save()` orchestrator.
-//
-// Why this lives in background-analysis (not captures):
-//   - It is an orchestration that spans captures (read + promote),
-//     food-nutrition (insert/upsert), and the audit logger. background-
-//     analysis is already the single place that composes these.
-//   - It reuses save() for ALL nutrition extraction + persistence, so the
-//     `unknown → food` and `pending → food` paths cannot diverge.
-//
-// Auth posture:
-//   1. The capture is read WITHOUT owner guard (captures.findById).
-//   2. The OWNER is taken from the row and a coach chain is fetched.
-//   3. assertCanRetryCapture decides; throws 401 / 403 on denial.
-//   4. State-machine guard inside save() → captures.updateTypeById
-//      → assertCanTransition('unknown', 'food') enforces immutability for
-//      every other path.
-//
-// Returns:
-//   { httpStatus: 200, body: { ok: true, data: { foodId, captureId } } }
-//   { httpStatus: 404, body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } } }
-//   { httpStatus: 409, body: { ok: false, error: { code: 'NOT_RETRYABLE', ... } } }
-//   throws 401 / 403 (caught by runService) on permission denial.
-export async function retryPromotionToFood(input) {
-  const { captureId, viewerUserId, analysisResult, imagePath } = input;
-
-  // 1. Load the capture. NO owner guard — the policy decides.
-  const capture = await captures.findById(captureId);
-  if (!capture) {
-    return {
-      httpStatus: 404,
-      body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND', message: 'Capture not found' } },
-    };
-  }
-
-  const ownerUserId = capture.UserID ? capture.UserID.toString() : null;
-  if (!ownerUserId) {
-    // Defensive — captures_table rows always have UserID, but explicit
-    // failure is safer than passing null down to save().
-    return {
-      httpStatus: 404,
-      body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND', message: 'Capture has no owner' } },
-    };
-  }
-
-  // 2. Only `unknown` captures may be retried via this endpoint.
-  //    PR-A's state machine permits exactly `unknown → food`; any other
-  //    starting state (pending / food / weight / education / smartwatch)
-  //    would either be illegal or already-classified. Reject early with
-  //    a precise reason so the client can degrade gracefully.
-  if (capture.ImageType !== IMAGE_TYPE_UNKNOWN) {
-    return {
-      httpStatus: 409,
-      body: {
-        ok: false,
-        error: {
-          code: 'NOT_RETRYABLE',
-          message: `Only 'unknown' captures may be retried. Current type: '${capture.ImageType}'.`,
-          currentType: capture.ImageType,
-        },
-      },
-    };
-  }
-
-  // 3. Fetch the owner's upline coach chain and run the permission policy.
-  //    Re-fetched on every request so a coach who has since lost access
-  //    (member left team, role revoked) is denied immediately.
-  const coachChain = await repo.getCoachChain(ownerUserId);
-
-  // assertCanRetryCapture throws { status: 401 | 403, code: ... } on denial.
-  // runService maps that to the HTTP response shape. We catch only to add
-  // the audit log entry for forensic visibility before re-throwing.
-  let decision;
-  try {
-    decision = assertCanRetryCapture({
-      viewerId: viewerUserId,
-      ownerId: ownerUserId,
-      coachChain,
-    });
-  } catch (err) {
-    logger.warn('retryPromotionToFood: permission denied', {
-      captureId, viewerUserId, ownerUserId, reason: err.reason, code: err.code,
-    });
-    throw err;
-  }
-
-  // 4. Audit-log every coach-on-member promotion (ADR-0003 F5).
-  //    Owner-on-self actions are routine and intentionally not logged.
-  if (decision.actorRole === 'COACH') {
-    logger.info('retryPromotionToFood: coach action on member capture', {
-      actorId: viewerUserId,
-      ownerId: ownerUserId,
-      captureId,
-      action: 'retry-promotion-to-food',
-    });
-  }
-
-  // 5. Delegate to save() — which already handles upsert + capture
-  //    promotion via captures.updateTypeById({ toType: IMAGE_TYPE_FOOD }).
-  //    With PR-A's state-machine loosening, the same call works whether
-  //    the capture started as pending or unknown.
-  //
-  //    Pass the OWNER's userId, not the viewer's — the food row belongs to
-  //    the capture owner regardless of who triggered the retry.
-  return save({
-    userId: ownerUserId,
-    imagePath: imagePath || capture.ImagePath || 'retry-promotion',
-    analysisResult,
-    deviceInfo: 'Wellness Valley Diary Retry',
-    ImageBase64: capture.ImageBase64 || null,
-    captureId,
-  });
-}
+// retryPromotionToFood moved to ./diary.service.js (PR-B refactor of ADR-0003).
 
 // ─── createPendingCapture ─────────────────────────────────────────────────────
 
@@ -523,67 +403,7 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   };
 }
 
-// ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
-
-/**
- * Look up the OWNER + meal date for a shared token. Used by the in-app
- * deep-link handler: the app opens Dashboard for that user/date and
- * automatically expands the specific meal card. Enforces permission — viewer
- * must be the owner OR appear in the owner's upline coach chain.
- *
- * Returns:
- *   { ok: true,  data: { mealId, ownerUserId, ownerUserName, mealDate, isSelf } }
- *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
- */
-export async function resolvePublicCapture({ token, viewerUserId }) {
-  const row = await repo.findOwnerByToken(token);
-  if (!row) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
-  }
-  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
-    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
-  }
-  const mealId = row.ID ? row.ID.toString() : null;
-  const ownerUserId = row.UserID ? row.UserID.toString() : null;
-  if (!ownerUserId) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
-  }
-
-  const viewer = viewerUserId.toString();
-  const isSelf = viewer === ownerUserId;
-  if (!isSelf) {
-    // Permission: viewer must appear in the owner's upline coach chain.
-    // Co-coach partners are NOT granted access — they are peers of the owner's
-    // coach and have no supervisory relationship with the owner.
-    const chain = await repo.getCoachChain(ownerUserId);
-    if (!chain.includes(viewer)) {
-      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
-    }
-  }
-
-  const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
-  // correct local date. Using toISOString() would shift a late-evening IST
-  // timestamp to the next UTC day, showing the wrong nutrition entries.
-  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
-
-  return {
-    httpStatus: 200,
-    body: {
-      ok: true,
-      data: {
-        mealId,
-        ownerUserId,
-        ownerUserName,
-        mealDate,
-        isSelf,
-        // imageType drives in-app deep-link tab routing.
-        // Falls back to 'food' for legacy rows that pre-date this column.
-        imageType: row.ImageType || 'food',
-      },
-    },
-  };
-}
+// resolvePublicCapture moved to ./diary.service.js (PR-B refactor of ADR-0003).
 
 // ─── getPublicCapture ─────────────────────────────────────────────────────
 

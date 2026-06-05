@@ -6,7 +6,8 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, save, updateCaptureType } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, save, updateCaptureType } from '../analysis.service.js';
+import { resolvePublicCapture } from '../diary.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
