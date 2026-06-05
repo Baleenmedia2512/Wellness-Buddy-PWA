@@ -10,6 +10,8 @@ Reference: [claude.md §9.3](../../../../claude.md#93-feature-testing-matrix-tem
 | `getPublicCapture` — exposes sugar/sodium/cholesterol in nutrition response | ✅ | ⬜ | ⬜ | N/A | ✅ (populated values, NULL legacy rows) |
 | `list` — returns enriched captures with pagination | ✅ | ⬜ | ⬜ | ⬜ | ✅ (empty set, hasMore, userId forwarding) |
 | Orphan-row guard — pending captures (null AnalysisData) excluded from list | ✅ (service contract) | ⬜ (needs pg-mem or Supabase test project) | ⬜ | N/A | ✅ (all-orphan case returns empty) |
+| `retryPromotionToFood` — Diary Other → Retry/Edit promotion (PR-A.2 / ADR-0003) | ✅ | ⬜ | ⬜ | ✅ (owner allowed, coach-of-owner allowed + audit-logged, stranger 403, co-coach 403, member-left-team 403) | ✅ (NOT_RETRYABLE for every non-unknown state, CAPTURE_NOT_FOUND, missing UserID, insert vs update path, imagePath fallback) |
+| `validateRetryPromotion` — input schema | ✅ | N/A | N/A | N/A | ✅ (missing fields, wrong types, null analysis, JSON-string vs object) |
 
 Legend: ✅ covered · ⚠️ partial · ❌ missing · ⬜ not yet assessed.
 
@@ -20,9 +22,12 @@ Legend: ✅ covered · ⚠️ partial · ❌ missing · ⬜ not yet assessed.
 3. **Education screenshot captured** — user takes a screenshot of a meeting; pending capture is soft-deleted; does not pollute the nutrition dashboard.
 4. **Smartwatch screenshot captured** — pending capture is soft-deleted; calorie burn is recorded separately; nutrition dashboard unaffected.
 5. **Public share link opened** — visitor opens the share URL; sees nutrition data if analysis complete, "pending" state if not yet enriched.
+6. **Diary "Other" row Retry/Edit** (PR-A.2 → PR-C/D for UI) — user (or their coach) opens an `unknown` capture in the Diary, supplies a new Gemini analysis (Retry) or a manual nutrition payload (Edit), and the capture is promoted to `food` in place. Auth gate: owner or anyone in the owner's upline.
 
 ## Known gaps
 
 - Integration tests (`⬜`) require a test Supabase project or `pg-mem` setup. The orphan-row filter (`.not('"AnalysisData"', 'is', null)`) is verified at the unit level by testing service contracts; a DB-level integration test would give higher confidence.
 - E2E coverage is not yet written for this feature. Target: next sprint.
+- `retryPromotionToFood` integration (live HTTP → DB) lands with the cross-feature integration suite once `pg-mem` ships per `governance/ROLLOUT.md`.
+
 

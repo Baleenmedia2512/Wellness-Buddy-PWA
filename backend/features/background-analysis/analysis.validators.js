@@ -90,3 +90,40 @@ export function validateResolveCapture(query) {
   if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
   return { token, viewerUserId: viewerUserId.toString() };
 }
+
+/**
+ * PR-A.2 / ADR-0003 — input schema for POST /api/background-analysis/captures/retry-promotion.
+ *
+ * The body carries:
+ *   - captureId        — primary key of the captures_table row to promote.
+ *   - viewerUserId     — the authenticated session user performing the action.
+ *                        The OWNER of the capture is resolved server-side from
+ *                        the captures_table row — NEVER trusted from the body.
+ *   - analysisResult   — the new Gemini analysis JSON (Retry path) OR the
+ *                        manually-edited nutrition object (Edit path). Shape
+ *                        validation is delegated to extractNutrition() in the
+ *                        service so we don't duplicate the schema here.
+ *   - imagePath        — optional. Falls back to the original capture's
+ *                        ImagePath in the service if absent.
+ */
+export function validateRetryPromotion(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const { captureId, viewerUserId, analysisResult, imagePath } = body;
+  if (!captureId) throw new ValidationError(400, 'captureId is required');
+  if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
+  if (analysisResult == null) {
+    throw new ValidationError(400, 'analysisResult is required');
+  }
+  // analysisResult may arrive as a JSON string (Retry from native client) or
+  // an object (Edit from the web modal). Both are accepted; the service
+  // normalises via the existing extractNutrition() path.
+  if (typeof analysisResult !== 'string' && typeof analysisResult !== 'object') {
+    throw new ValidationError(400, 'analysisResult must be an object or JSON string');
+  }
+  return {
+    captureId: captureId.toString(),
+    viewerUserId: viewerUserId.toString(),
+    analysisResult,
+    imagePath: imagePath ? imagePath.toString() : null,
+  };
+}

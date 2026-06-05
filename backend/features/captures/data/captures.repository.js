@@ -99,6 +99,30 @@ export async function findByIdForOwner(captureId, userId) {
 }
 
 /**
+ * PR-A.2 / ADR-0003 — look up a capture by primary key WITHOUT an owner
+ * guard. Used by the retry-promotion orchestrator: the orchestrator must
+ * read the row to learn who the owner is BEFORE the permission policy can
+ * decide whether the viewer may act on it. The policy
+ * (`domain/permissions/retry.policy.js`) enforces access; this read does
+ * NOT — callers MUST pair it with `assertCanRetryCapture(...)`.
+ *
+ * Returns the row or null when not found / soft-deleted.
+ */
+export async function findById(captureId) {
+  if (!captureId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('"ID"', captureId)
+    .eq('"IsDeleted"', 0)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
  * Set the ImageType on a capture row identified by its token, with an
  * ownership guard. Returns the updated row, or null if no row matched
  * (wrong owner, wrong token, or already deleted).
