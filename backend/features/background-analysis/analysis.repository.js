@@ -156,6 +156,7 @@ export async function findPublicByToken(token) {
   if (capErr) throw capErr;
   if (!cap) return null;
 
+  
   // Look up the most recent food row linked to this capture (if any).
   // Non-food captures (weight / education / smartwatch / pending) never have
   // a food row — in that case AnalysisData stays null and getPublicCapture
