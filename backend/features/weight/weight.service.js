@@ -169,10 +169,6 @@ export async function saveWeight(input) {
       updated: wasUpdated,
       message: wasUpdated ? 'Weight entry updated successfully' : 'Weight entry saved successfully',
       correctionInfo,
-      // Always expose the previous entry's weight so the frontend can compute
-      // the correct diff without re-fetching history (EXIF timestamps can cause
-      // history to sort the new entry behind older same-day entries).
-      previousWeightValue: lastEntry ? parseFloat(lastEntry.Weight) : null,
       data: {
         userId,
         weightValue: weight,
@@ -252,13 +248,15 @@ export async function getHistory({ userId, includeImage, limit = null, offset = 
 
   if (latestRow) {
     stats.latestWeight = { value: parseFloat(latestRow.Weight), date: latestRow.CreatedAt };
-    // Always use the immediately previous entry (row[1]) regardless of whether it is
-    // the same calendar day. The frontend tips popup needs the true prior entry so
-    // it can show "Previous: 45.5 kg → Today: 81.5 kg" correctly for same-day uploads.
-    const prevEntry = formattedRows.length > 1 ? formattedRows[1] : null;
-    if (prevEntry) {
-      stats.previousWeight = { value: parseFloat(prevEntry.Weight), date: prevEntry.CreatedAt };
-      stats.weightChange = parseFloat(formattedRows[0].Weight) - parseFloat(prevEntry.Weight);
+    if (formattedRows[0]) {
+      const latestDateStr = getISTDateStr(formattedRows[0].CreatedAt);
+      const prevEntry = formattedRows.find(
+        (r, idx) => idx > 0 && getISTDateStr(r.CreatedAt) !== latestDateStr,
+      );
+      if (prevEntry) {
+        stats.previousWeight = { value: parseFloat(prevEntry.Weight), date: prevEntry.CreatedAt };
+        stats.weightChange = parseFloat(formattedRows[0].Weight) - parseFloat(prevEntry.Weight);
+      }
     }
   }
 
