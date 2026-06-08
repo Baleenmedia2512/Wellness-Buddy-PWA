@@ -100,6 +100,7 @@ import { locationAttendanceService, getClubLocationIfNearby } from "./features/n
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
+import { selectTips as selectReverseProgressTips } from "./features/weight/domain/reverseProgressTips";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
 import { UnknownCaptureModal } from "./features/captures";
@@ -301,6 +302,9 @@ function WellnessValleyApp() {
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
+  // Prevents the reverse-progress tips popup from firing twice if weightDiff
+  // is set twice in quick succession (e.g. photo path + manual correction).
+  const reverseProgressShownRef = useRef(false);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -361,6 +365,31 @@ function WellnessValleyApp() {
   // can be reconstructed from a single log dump.
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
+
+  // ── Reverse-progress weight tips ─────────────────────────────────────────
+  // Fires a wellness tip popup when weightDiff.change ≥ 4 kg (threshold lives
+  // in domain/reverseProgressTips.js — the ONLY source of truth for this rule).
+  // The ref guard prevents the popup appearing twice if weightDiff is updated
+  // back-to-back (photo save + auto-correction paths both set weightDiff).
+  useEffect(() => {
+    if (!weightDiff) return;
+    if (reverseProgressShownRef.current) return;
+    const tips = selectReverseProgressTips(weightDiff.change);
+    if (!tips) return;
+    reverseProgressShownRef.current = true;
+    const timerId = setTimeout(() => {
+      setAlertModal({
+        isOpen: true,
+        title: "📈 Weight Went Up — Here's What to Do",
+        message:
+          `Your weight increased by ${weightDiff.change.toFixed(1)} kg since your last entry.\n\n` +
+          tips.join("\n"),
+        type: "warning",
+        confirmText: "Got it!",
+      });
+    }, 800); // small delay so the save-success UI settles first
+    return () => clearTimeout(timerId);
+  }, [weightDiff]); // eslint-disable-line react-hooks/exhaustive-deps -- setAlertModal is stable
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -2480,6 +2509,8 @@ function WellnessValleyApp() {
     cachedUserId = null,
     captureTimestamp = null,
   ) => {
+    // Re-arm the reverse-progress popup guard so each new save can trigger it.
+    reverseProgressShownRef.current = false;
     try {
       // Use cached userId if provided, otherwise get it
       let userId = cachedUserId || user?.id;
@@ -2729,6 +2760,8 @@ function WellnessValleyApp() {
       setWeightEditError("Weight must be between 20 and 300 kg");
       return;
     }
+    // Re-arm the reverse-progress popup guard for the manual edit save path.
+    reverseProgressShownRef.current = false;
     setIsSavingWeightEdit(true);
     setWeightEditError("");
     try {
