@@ -25,7 +25,10 @@ export async function fetchWeightProgressCheck(userId, currentWeightId = null) {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
     },
+    cache: 'no-store',
     // Don't include credentials - not needed for this endpoint
   });
 
