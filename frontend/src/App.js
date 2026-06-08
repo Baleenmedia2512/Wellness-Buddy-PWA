@@ -2610,15 +2610,21 @@ function WellnessValleyApp() {
 
       debugLog("? Weight entry saved successfully");
 
-      // ? ALWAYS update weight result with final saved weight (corrected or original)
+      // ? Update weight result with final saved weight (may be corrected by backend)
       // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
       const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
-      setWeightResult({
-        ...weightData,
+      console.log('🔍 [DEBUG] Updating weightResult with final saved weight:', {
+        finalSavedWeight,
+        wasCorrected: !!data.correction?.wasCorrected,
+      });
+      
+      // Update weightResult with final backend value (overwrites the pre-save value set earlier)
+      setWeightResult((prev) => ({
+        ...prev,
         weightValue: finalSavedWeight,
         originalWeight: data.correction?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
-      });
+      }));
 
       // Fetch previous weight to show "vs Previous entry" diff immediately
       try {
@@ -4263,7 +4269,14 @@ function WellnessValleyApp() {
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           
-          // 🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          // � FIX: Set weightResult BEFORE save so card appears even if save fails
+          console.log('🔍 [DEBUG] Setting weightResult before save:', weightToSave);
+          setWeightResult({
+            ...weightToSave,
+            loggedAt: exifTimestamp || new Date().toISOString(),
+          });
+          
+          // �🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
           try {
             const tempUserId = user?.id || (await getUserId(user));
             const prevWeightRes = await fetch(
@@ -4314,8 +4327,7 @@ function WellnessValleyApp() {
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
-            // ? Weight result is now set INSIDE performWeightSave with corrected value
-            // Don't set weightResult here - performWeightSave handles it with final weight
+            // ✅ Weight result already set before save, updated after if backend corrects it
             setWeightEntrySaved(true);
             
             // Fetch weight diff (previous vs today) for the share card
