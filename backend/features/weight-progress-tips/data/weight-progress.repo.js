@@ -6,17 +6,28 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 /**
  * Get user's weight goal mode and current weight
+ * Falls back to 'loss' if WeightGoalMode column doesn't exist yet
  */
 export async function getUserWeightGoal(userId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('"WeightGoalMode", "Height"')
-    .eq('"UserId"', userId)
-    .maybeSingle();
+  
+  try {
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"WeightGoalMode", "Height"')
+      .eq('"UserId"', userId)
+      .maybeSingle();
 
-  if (error) throw error;
-  return data || null;
+    if (error) throw error;
+    return data || { WeightGoalMode: 'loss', Height: null };
+  } catch (error) {
+    // If WeightGoalMode column doesn't exist, return default
+    if (error.message?.includes('column') && error.message?.includes('WeightGoalMode')) {
+      console.warn('⚠️ WeightGoalMode column not found, using default "loss". Run migration: add_weight_goal_mode.sql');
+      return { WeightGoalMode: 'loss', Height: null };
+    }
+    throw error;
+  }
 }
 
 /**

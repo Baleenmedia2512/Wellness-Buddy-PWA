@@ -18,7 +18,10 @@ export async function fetchWeightProgressCheck(userId, currentWeightId = null) {
     params.append('currentWeightId', currentWeightId.toString());
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/weight-progress-tips/check?${params}`, {
+  const url = `${API_BASE_URL}/api/weight-progress-tips/check?${params}`;
+  console.log('🌐 [weightProgressClient] Fetching:', url);
+
+  const response = await fetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -26,14 +29,19 @@ export async function fetchWeightProgressCheck(userId, currentWeightId = null) {
     // Don't include credentials - not needed for this endpoint
   });
 
+  console.log('📥 [weightProgressClient] Response status:', response.status);
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    console.error('❌ [weightProgressClient] Error response:', errorData);
     throw new Error(errorData.error?.message || `HTTP ${response.status}`);
   }
 
   const result = await response.json();
+  console.log('✅ [weightProgressClient] Success response:', result);
   
   if (!result.ok) {
+    console.error('❌ [weightProgressClient] API returned ok=false:', result.error);
     throw new Error(result.error?.message || 'Unknown error');
   }
 
