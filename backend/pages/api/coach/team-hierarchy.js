@@ -91,11 +91,8 @@ export default async function handler(req, res) {
       .from("team_table")
       .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage");
 
-    // Only filter by Active status if includeInactive is not true
-    if (includeInactive !== "true") {
-      query = query.eq("Status", "Active");
-    }
-
+    // Always fetch ALL users (Active + Inactive) so inactive intermediate coaches
+    // can be detected and their members promoted up to the nearest active ancestor.
     const { data: allUsers, error: usersError } = await query.order("UserName");
 
     if (usersError) {
@@ -190,6 +187,44 @@ export default async function handler(req, res) {
       });
     });
 
+    // Collect the active descendants of an Inactive node, recursively.
+    // Called when buildHierarchy encounters an Inactive direct report — the
+    // inactive node itself is hidden; its active children bubble up to the
+    // nearest active ancestor.
+    // NOTE: defined before buildHierarchy but only called at runtime (mutual
+    //       recursion is safe because both are fully defined before first call).
+    const collectPromotedChildren = (inactiveUserId, promotedParentId, visited, coachPartnerIds) => {
+      const result = [];
+      const newVisited = new Set(visited);
+      newVisited.add(inactiveUserId);
+
+      const directReports = allUsers.filter((u) => {
+        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+        return (
+          (u.CoachId === inactiveUserId || derivedCoCoachId === inactiveUserId) &&
+          u.UserId !== inactiveUserId &&
+          !coachPartnerIds.includes(u.UserId) &&
+          !newVisited.has(u.UserId)
+        );
+      });
+
+      directReports.forEach((report) => {
+        if (report.Status !== 'Active') {
+          // Inactive chain: keep promoting deeper
+          const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          result.push(...deeper);
+        } else {
+          const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          if (childNode) {
+            childNode.isCoachRelationship = true;
+            result.push(childNode);
+          }
+        }
+      });
+
+      return result;
+    };
+
     // Recursive function to build hierarchy (creates duplicate entries for dual reporting)
     const buildHierarchy = (
       userId,
@@ -242,6 +277,13 @@ export default async function handler(req, res) {
       directReports.forEach((report) => {
         // Skip if report is the same as current user (self-reference)
         if (report.UserId === userId) return;
+
+        // If this direct report is Inactive: hide it, promote its active descendants up
+        if (report.Status !== 'Active') {
+          const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
+          promoted.forEach((child) => userNode.teamMembers.push(child));
+          return;
+        }
 
         // If this user reports through CoachId
         if (report.CoachId === userId) {
