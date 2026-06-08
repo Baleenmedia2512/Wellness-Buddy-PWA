@@ -92,6 +92,7 @@ import { geminiService } from "./shared/services/geminiService";
 import { imageTypeDetector } from "./shared/services/imageTypeDetector";
 import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
+import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
@@ -301,6 +302,8 @@ function WellnessValleyApp() {
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
+  const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
+  const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(''); // Celebration message
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -2635,6 +2638,14 @@ function WellnessValleyApp() {
               previousDate: prevDate,
               change: Math.round(weightChange * 100) / 100,
             });
+
+            // 🎉 Trigger celebration if weight loss detected (at least 0.1 kg)
+            if (weightChange < -0.1) {
+              const lossAmount = Math.abs(weightChange).toFixed(1);
+              setWeightCelebrationMessage(`Amazing! You lost ${lossAmount} kg! Keep going! 💪`);
+              setShowWeightCelebration(true);
+              debugLog('🎉 [celebration] Weight loss detected, triggering celebration:', lossAmount);
+            }
           } else {
             setWeightDiff(null);
           }
@@ -6194,6 +6205,13 @@ function WellnessValleyApp() {
               }}
             />
           )}
+
+          {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
+          <CelebrationConfetti
+            show={showWeightCelebration}
+            message={weightCelebrationMessage}
+            onComplete={() => setShowWeightCelebration(false)}
+          />
 
           {imageType === "weight" && weightResult && (
             <>
