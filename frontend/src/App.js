@@ -2483,16 +2483,28 @@ function WellnessValleyApp() {
     cachedUserId = null,
     captureTimestamp = null,
   ) => {
+    console.log('🚀 [performWeightSave] FUNCTION CALLED with:', {
+      weightValue: weightData.weightValue,
+      unit: weightData.unit,
+      hasCachedUserId: !!cachedUserId,
+      hasCaptureTimestamp: !!captureTimestamp
+    });
+    
     try {
       // Use cached userId if provided, otherwise get it
       let userId = cachedUserId || user?.id;
+      console.log('🔍 [performWeightSave] Step 1: Getting userId...', { cachedUserId, hasUser: !!user });
+      
       if (!userId) {
         userId = await getUserId(user);
+        console.log('🔍 [performWeightSave] userId fetched:', userId);
       }
 
       if (!userId) {
         throw new Error("User not authenticated or not found in database");
       }
+      
+      console.log('🔍 [performWeightSave] Step 2: Building payload...');
 
       const payload = {
         userId,
@@ -2517,12 +2529,21 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       };
 
+      console.log('🔍 [performWeightSave] Step 3: Capturing GPS location...');
+      
       // Capture GPS location for every weight photo — not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — weight save is never blocked by a GPS timeout.
       let attendance;
       try {
-        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        // Add 5-second timeout to prevent hanging on web browsers
+        const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('GPS timeout after 5s')), 5000)
+        );
+        
+        attendance = await Promise.race([gpsPromise, timeoutPromise]);
+        console.log("📍 [performWeightSave] GPS location captured successfully");
         debugLog("📍 [weight] Attendance determined:", attendance);
 
         // If multiple clubs detected, show selection modal
@@ -2551,10 +2572,13 @@ function WellnessValleyApp() {
           payload.village = village;
         }
       } catch (gpsErr) {
+        console.log("⚠️ [performWeightSave] GPS failed, proceeding without location:", gpsErr.message);
         debugLog("⚠️ [weight] GPS check failed, saving without location:", gpsErr.message);
         // Fallback to remote attendance
         payload.attendanceType = 'remote';
       }
+      
+      console.log('🔍 [performWeightSave] GPS location captured, payload ready');
 
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
       // This allows multiple weight entries per day with different timestamps
@@ -2565,6 +2589,8 @@ function WellnessValleyApp() {
 
       // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
+      console.log('🔍 [performWeightSave] Step 4: Calling API /api/weight/save...');
+      
       const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2572,6 +2598,14 @@ function WellnessValleyApp() {
       });
 
       const data = await response.json();
+      
+      console.log('📡 [performWeightSave] API response received:', {
+        ok: response.ok,
+        status: response.status,
+        success: data.success,
+        hasData: !!data.data,
+        hasCorrection: !!data.correction
+      });
 
       if (!response.ok || !data.success) {
         // Weight validation failed - show user-friendly alert modal
@@ -2632,33 +2666,60 @@ function WellnessValleyApp() {
           `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`
         );
         const histData = await histRes.json();
+        console.log('🔍 [celebration] Weight history data:', {
+          success: histData.success,
+          hasPrevious: !!histData.stats?.previousWeight,
+          previousWeight: histData.stats?.previousWeight?.value,
+          latestWeight: histData.stats?.latestWeight?.value,
+          finalSavedWeight
+        });
+        
         if (histData.success && histData.stats?.previousWeight) {
           const prevWeight = parseFloat(histData.stats.previousWeight.value);
           const weightChange = parseFloat(finalSavedWeight) - prevWeight;
           const latestDate = histData.stats.latestWeight?.date;
           const prevDate = histData.stats.previousWeight.date;
+          const isDifferentDay = latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate);
+          
+          console.log('🔍 [celebration] Weight comparison:', {
+            prevWeight,
+            finalSavedWeight,
+            weightChange,
+            isDifferentDay,
+            latestDate,
+            prevDate
+          });
+          
           // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
+          if (isDifferentDay) {
             setWeightDiff({
               previous: Math.round(prevWeight * 100) / 100,
               previousDate: prevDate,
               change: Math.round(weightChange * 100) / 100,
             });
-
-            // 🎉 Trigger celebration if weight loss detected (at least 0.1 kg)
-            if (weightChange < -0.1) {
-              const lossAmount = Math.abs(weightChange).toFixed(1);
-              setWeightCelebrationMessage(`Amazing! You lost ${lossAmount} kg! Keep going! 💪`);
-              setShowWeightCelebration(true);
-              debugLog('🎉 [celebration] Weight loss detected, triggering celebration:', lossAmount);
-            }
           } else {
             setWeightDiff(null);
           }
+          
+          // 🎉 Trigger celebration if weight loss detected (at least 0.1 kg)
+          // CELEBRATION TRIGGERS REGARDLESS OF DATE - we celebrate ANY progress!
+          if (weightChange < -0.1) {
+            const lossAmount = Math.abs(weightChange).toFixed(1);
+            setWeightCelebrationMessage(`You lost ${lossAmount} kg! Keep it up! 💪`);
+            setShowWeightCelebration(true);
+            console.log('🎉 [celebration] TRIGGERING celebration! Weight loss:', lossAmount, 'kg');
+            debugLog('🎉 [celebration] Weight loss detected, triggering celebration:', lossAmount);
+          } else {
+            console.log('🔍 [celebration] No celebration - weight change:', weightChange, 'kg (need < -0.1)');
+          }
         } else {
+          console.log('🔍 [celebration] No celebration - no previous weight found');
           setWeightDiff(null);
         }
-      } catch (_) { /* non-critical */ }
+      } catch (histErr) {
+        console.error('❌ [celebration] Failed to fetch weight history:', histErr);
+        /* non-critical */
+      }
 
       // Fetch user height ? compute ideal weight for the share card
       refreshIdealWeight();
@@ -6219,10 +6280,14 @@ function WellnessValleyApp() {
           )}
 
           {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
+          {console.log('🔍 [celebration] Render check:', { showWeightCelebration, weightCelebrationMessage })}
           <CelebrationConfetti
             show={showWeightCelebration}
             message={weightCelebrationMessage}
-            onComplete={() => setShowWeightCelebration(false)}
+            onComplete={() => {
+              console.log('🎉 [celebration] User dismissed celebration');
+              setShowWeightCelebration(false);
+            }}
           />
 
           {imageType === "weight" && weightResult && (

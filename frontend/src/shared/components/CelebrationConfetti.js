@@ -1,17 +1,18 @@
 /**
- * CelebrationConfetti.js — Celebration confetti animation.
+ * CelebrationConfetti.js — Full-screen celebration animation.
  *
- * Shows a joyful party burst with confetti when triggered (e.g., weight progress).
- * Auto-dismisses after animation completes. Pure presentational component.
+ * Shows a dramatic full-screen celebration (like Subway Surfer high score)
+ * when triggered (e.g., weight progress). Auto-dismisses after animation.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Simple celebration sound using Web Audio API
+// Celebratory musical sequence (more notes for dramatic effect)
 const playCelebrationSound = () => {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 - happy major chord
+    // Victory fanfare: C5-E5-G5-C6 ascending
+    const notes = [523.25, 659.25, 783.99, 1046.50];
     
     notes.forEach((freq, index) => {
       const oscillator = audioContext.createOscillator();
@@ -24,14 +25,14 @@ const playCelebrationSound = () => {
       oscillator.type = 'sine';
       
       const now = audioContext.currentTime;
-      const startTime = now + (index * 0.1);
+      const startTime = now + (index * 0.15);
       
       gainNode.gain.setValueAtTime(0, startTime);
-      gainNode.gain.linearRampToValueAtTime(0.15, startTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.4);
+      gainNode.gain.linearRampToValueAtTime(0.2, startTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.5);
       
       oscillator.start(startTime);
-      oscillator.stop(startTime + 0.4);
+      oscillator.stop(startTime + 0.5);
     });
   } catch (error) {
     // Silently fail if audio context is not supported
@@ -46,17 +47,20 @@ const CelebrationConfetti = ({ show, onComplete, message = '🎉 Great Progress!
   const [confettiParticles, setConfettiParticles] = useState([]);
 
   useEffect(() => {
+    console.log('🎉 [CelebrationConfetti] useEffect triggered, show:', show, 'message:', message);
     if (!show) return;
 
+    console.log('🎉 [CelebrationConfetti] SHOWING celebration! Playing sound and initializing confetti...');
+    
     // Play celebration sound
     if (playSound) {
       playCelebrationSound();
     }
 
-    // Initialize confetti particles
+    // Initialize confetti particles (MORE for dramatic effect!)
     const particles = [];
-    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-    const particleCount = 50;
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#fbbf24', '#fb923c'];
+    const particleCount = 100; // Double the confetti!
 
     for (let i = 0; i < particleCount; i++) {
       particles.push({
@@ -155,56 +159,140 @@ const CelebrationConfetti = ({ show, onComplete, message = '🎉 Great Progress!
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 pointer-events-none"
-        style={{ touchAction: 'none' }}
+        transition={{ duration: 0.3 }}
+        className="fixed inset-0 z-[9999] flex items-center justify-center cursor-pointer"
+        onClick={onComplete}
+        style={{ touchAction: 'auto' }}
       >
-        {/* Confetti canvas */}
+        {/* Dark overlay background - like Subway Surfer's score screen */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.85 }}
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900"
+        />
+
+        {/* Confetti canvas - behind the content */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
           style={{ pointerEvents: 'none' }}
         />
 
-        {/* Celebration message */}
+        {/* Main celebration content - zooms in dramatically */}
         <motion.div
-          initial={{ scale: 0.5, opacity: 0, y: 100 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.8, opacity: 0, y: -50 }}
+          initial={{ scale: 0.3, opacity: 0, rotateZ: -10 }}
+          animate={{ 
+            scale: 1, 
+            opacity: 1, 
+            rotateZ: 0,
+            y: [0, -20, 0] // Bounce effect
+          }}
+          exit={{ scale: 0.8, opacity: 0, y: -100 }}
           transition={{
             type: 'spring',
-            stiffness: 200,
-            damping: 15,
+            stiffness: 180,
+            damping: 12,
+            y: {
+              repeat: 2,
+              duration: 0.6,
+              ease: 'easeInOut'
+            }
           }}
-          className="absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+          className="relative z-10 text-center px-6 max-w-md"
         >
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 border-4 border-green-400">
-            <div className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: [0, 1.2, 1] }}
-                transition={{ duration: 0.5, times: [0, 0.6, 1] }}
-                className="text-6xl mb-2"
-              >
-                🎉
-              </motion.div>
-              <motion.h3
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-2xl font-bold text-green-600 mb-1"
-              >
-                Amazing!
-              </motion.h3>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-lg text-gray-700 font-medium"
-              >
-                {message}
-              </motion.p>
+          {/* Trophy/Star icon with glow */}
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ 
+              scale: 1, 
+              rotate: 0,
+            }}
+            transition={{
+              delay: 0.2,
+              type: 'spring',
+              stiffness: 200,
+              damping: 10,
+            }}
+            className="mb-6"
+          >
+            <div className="relative inline-block">
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-yellow-400 rounded-full blur-3xl opacity-60 animate-pulse" />
+              {/* Trophy emoji */}
+              <div className="relative text-8xl filter drop-shadow-2xl">
+                🏆
+              </div>
             </div>
-          </div>
+          </motion.div>
+
+          {/* "NEW RECORD" style heading */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mb-4"
+          >
+            <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 uppercase tracking-wider mb-2"
+                style={{ 
+                  textShadow: '0 0 30px rgba(255, 215, 0, 0.8), 0 0 60px rgba(255, 165, 0, 0.5)',
+                  WebkitTextStroke: '2px rgba(255, 255, 255, 0.3)'
+                }}>
+              Amazing!
+            </h2>
+            <div className="h-1 w-32 mx-auto bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 rounded-full" />
+          </motion.div>
+
+          {/* Main message with glowing box */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.4 }}
+            className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl px-8 py-6 border-4 border-yellow-400 relative overflow-hidden"
+          >
+            {/* Animated shine effect */}
+            <motion.div
+              animate={{
+                x: ['-200%', '200%'],
+              }}
+              transition={{
+                repeat: Infinity,
+                duration: 2,
+                ease: 'linear',
+              }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+              style={{ width: '50%' }}
+            />
+            
+            <p className="text-2xl font-bold text-gray-800 relative z-10">
+              {message}
+            </p>
+          </motion.div>
+
+          {/* Stars decoration */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="mt-6 text-4xl"
+          >
+            ⭐ ✨ ⭐
+          </motion.div>
+
+          {/* Tap to continue hint */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0] }}
+            transition={{
+              delay: 2,
+              repeat: Infinity,
+              duration: 1.5,
+              ease: 'easeInOut'
+            }}
+            className="mt-8 text-white/80 text-sm font-medium"
+          >
+            Tap to continue
+          </motion.div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
