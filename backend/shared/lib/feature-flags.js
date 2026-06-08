@@ -121,5 +121,5 @@ registerFlag({
   // promotion-to-prod; never extend without an ADR amendment.
   removeBy:       '2026-12-05',
   description:    'PR-B/PR-C of ADR-0003 — include `unknown` captures in the Diary list-entries read-model. When OFF, the endpoint behaves identically to the pre-Diary listAnalyses contract (food-only). When ON, the response also carries weight / education / watch / unknown rows for the same date.',
-  defaultEnabled: false,
+  defaultEnabled: true,
 });

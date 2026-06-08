@@ -92,6 +92,29 @@ export function validateResolveCapture(query) {
 }
 
 /**
+ * PR-E / ADR-0003 — input schema for GET /api/captures/unknown-share.
+ *
+ * Backs the share-link viewer for `unknown` captures. Unlike
+ * `validateResolveCapture`, `viewerUserId` is OPTIONAL: anonymous link
+ * recipients are allowed (they receive image-only, `canMutate: false`).
+ * Owner / coach viewers pass their id so the service can compute
+ * `canMutate`.
+ */
+export function validateResolveUnknownShare(query) {
+  const { token, viewerUserId } = query || {};
+  if (!token) throw new ValidationError(400, 'token is required');
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
+  return {
+    token,
+    viewerUserId:
+      viewerUserId != null && viewerUserId !== ''
+        ? viewerUserId.toString()
+        : null,
+  };
+}
+
+/**
  * PR-A.2 / ADR-0003 — input schema for POST /api/background-analysis/captures/retry-promotion.
  *
  * The body carries:

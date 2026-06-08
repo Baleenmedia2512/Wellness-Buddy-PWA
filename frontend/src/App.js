@@ -103,9 +103,10 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
-import { UnknownCaptureModal } from "./features/captures";
+import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood } from "./features/captures";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
+import { isFlagEnabled } from "./config/featureFlags";
 import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
@@ -258,6 +259,19 @@ function WellnessValleyApp() {
     open: false,
     pendingSharePromise: null,
   });
+  // PR-E / ADR-0003 — share-link viewer for `unknown` captures. Opened by the
+  // deep-link handler when a resolved share has ImageType 'unknown'.
+  const [unknownShareView, setUnknownShareView] = useState({
+    open: false,
+    captureId: null,
+    imageBase64: null,
+    canMutate: false,
+    retrying: false,
+    error: null,
+  });
+  // PR-E — when the share viewer's "Edit" is tapped, this drives a dedicated
+  // SmartFoodSearchModal whose save promotes the capture unknown → food.
+  const [shareEditView, setShareEditView] = useState({ open: false, captureId: null });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
@@ -944,6 +958,29 @@ function WellnessValleyApp() {
         }
 
         const data = body.data || {};
+
+        // PR-E / ADR-0003: an `unknown` capture's share link opens the
+        // dedicated viewer (image + Retry/Edit) instead of an empty
+        // nutrition tab. Gated on ff.diary-feed so legacy behaviour is
+        // preserved while the flag is OFF.
+        if (data.imageType === "unknown" && isFlagEnabled("ff.diary-feed")) {
+          try {
+            const share = await fetchUnknownShare({ token, viewerUserId: user.id });
+            if (cancelled) return;
+            setUnknownShareView({
+              open: true,
+              captureId: share.captureId,
+              imageBase64: share.imageBase64,
+              canMutate: !!share.canMutate,
+              retrying: false,
+              error: null,
+            });
+          } catch (e) {
+            if (!cancelled) showToast("This shared photo is no longer available");
+          }
+          return;
+        }
+
         if (data.isSelf) {
           setDashboardInitialSelectedMember(null);
         } else {
@@ -3185,6 +3222,95 @@ function WellnessValleyApp() {
     }
   };
 
+  // ── PR-E / ADR-0003 — Unknown share viewer Retry / Edit actions ───────────
+
+  // Convert a stored base64 image back into a File for Gemini re-analysis.
+  const base64ToImageFile = (b64, filename = "capture.jpg") => {
+    const dataUrl = b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
+    const [meta, content] = dataUrl.split(",");
+    const mime = (meta.match(/data:(.*?);/) || [, "image/jpeg"])[1];
+    const bin = atob(content);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  };
+
+  // Build the analysisResult envelope extractNutrition() understands from a
+  // SmartFoodSearchModal manual payload (single food or plate).
+  const buildAnalysisFromManualFood = (m) => {
+    const toItem = (f) => ({
+      name: f.name,
+      nutrition: {
+        calories: f.calories ?? 0,
+        protein: f.protein ?? 0,
+        carbs: f.carbs ?? 0,
+        fat: f.fat ?? 0,
+        fiber: f.fiber ?? 0,
+      },
+    });
+    if (m.isPlate && Array.isArray(m.items)) {
+      const foods = m.items.map(toItem);
+      const total = m.total || foods.reduce(
+        (a, f) => ({
+          calories: a.calories + (f.nutrition.calories || 0),
+          protein: a.protein + (f.nutrition.protein || 0),
+          carbs: a.carbs + (f.nutrition.carbs || 0),
+          fat: a.fat + (f.nutrition.fat || 0),
+          fiber: a.fiber + (f.nutrition.fiber || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      );
+      return { foods, total, confidence: "high" };
+    }
+    const item = toItem({
+      name: m.foodName,
+      calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber,
+    });
+    return { foods: [item], total: item.nutrition, confidence: "high" };
+  };
+
+  // Retry: re-run Gemini on the stored image and, if confident, promote the
+  // capture unknown → food. Still-low-confidence keeps the row as unknown.
+  const handleUnknownShareRetry = async () => {
+    const { captureId, imageBase64 } = unknownShareView;
+    if (!captureId || !imageBase64 || !user?.id) return;
+    setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
+    try {
+      const file = base64ToImageFile(imageBase64);
+      const analysis = await geminiService.analyzeImageForNutrition(file);
+      const noFood = !analysis?.foods?.length || !(Number(analysis?.total?.calories) > 0);
+      if (noFood) {
+        setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
+        return;
+      }
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult: analysis });
+      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+      showToast("Saved to your diary");
+    } catch (e) {
+      setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
+    }
+  };
+
+  // Edit: open SmartFoodSearchModal whose save promotes the capture to food.
+  const handleUnknownShareEdit = () => {
+    if (!unknownShareView.captureId) return;
+    setShareEditView({ open: true, captureId: unknownShareView.captureId });
+  };
+
+  const handleShareEditSave = async (manualData) => {
+    const { captureId } = shareEditView;
+    if (!captureId || !user?.id) return;
+    try {
+      const analysisResult = buildAnalysisFromManualFood(manualData);
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
+      setShareEditView({ open: false, captureId: null });
+      setUnknownShareView((v) => ({ ...v, open: false }));
+      showToast("Saved to your diary");
+    } catch (e) {
+      showToast("Couldn't save — please try again");
+    }
+  };
+
   /**
    * Save education meeting log to database (AUTO-SAVE)
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
@@ -4494,7 +4620,14 @@ function WellnessValleyApp() {
         // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
         // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, 'unknown');
-        setUnknownCaptureModal({ open: true, pendingSharePromise });
+        // PR-D / ADR-0003: when the Diary feed is enabled, AI detection
+        // failures must NOT prompt the user. The capture stays tagged
+        // 'unknown' and surfaces as an "Other" row in the Diary (with Retry /
+        // Edit there). Only fall back to the legacy PR-3 disambiguation modal
+        // when the flag is OFF, preserving backward-compatible behaviour.
+        if (!isFlagEnabled('ff.diary-feed')) {
+          setUnknownCaptureModal({ open: true, pendingSharePromise });
+        }
         setLoading(false);
         return;
       }
@@ -6998,6 +7131,29 @@ function WellnessValleyApp() {
             setShowManualEducationModal(true);
           }
         }}
+      />
+
+      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit) */}
+      <UnknownShareViewer
+        isOpen={unknownShareView.open}
+        imageBase64={unknownShareView.imageBase64}
+        canMutate={unknownShareView.canMutate}
+        retrying={unknownShareView.retrying}
+        error={unknownShareView.error}
+        onRetry={handleUnknownShareRetry}
+        onEdit={handleUnknownShareEdit}
+        onClose={() => setUnknownShareView({ open: false, captureId: null, imageBase64: null, canMutate: false, retrying: false, error: null })}
+      />
+
+      {/* PR-E — dedicated food search modal whose save promotes unknown → food */}
+      <SmartFoodSearchModal
+        isOpen={shareEditView.open}
+        onClose={() => setShareEditView({ open: false, captureId: null })}
+        onSave={handleShareEditSave}
+        mealType={manualMealType}
+        apiBaseUrl={apiBaseUrl}
+        userId={user?.id}
+        timeLabel="What was in this photo?"
       />
 
       {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}

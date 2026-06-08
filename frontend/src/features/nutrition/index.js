@@ -7,6 +7,10 @@ export { default as SmartFoodSearchModal } from './components/SmartFoodSearchMod
 export { default as ManualFoodEntryModal } from './components/ManualFoodEntryModal';
 export { default as DuplicateFoodModal } from './components/DuplicateFoodModal';
 export { default as EditableFoodItem } from './components/EditableFoodItem';
+export { default as FoodDetailModal } from './components/FoodDetailModal';
+export { default as NutritionSummaryCards } from './components/dashboard/NutritionSummaryCards';
+export { default as NutritionFilters } from './components/dashboard/NutritionFilters';
+export { useUserCalorieTarget, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData } from './hooks';
 export * from './services/foodCorrectionService';
 export * from './services/foodCorrection';
 export * from './services/duplicateDetectionService';

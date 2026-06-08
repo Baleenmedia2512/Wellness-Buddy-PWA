@@ -15,6 +15,13 @@ import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import DashboardTabs from './DashboardTabs';
+// ADR-0003 — when the Diary feed is the single surface, the shell hosts the
+// per-feature detail modals. Imported via feature barrels (VSA §2.2).
+import { WeightCardModal, deleteWeight, saveWeight } from '../../features/weight';
+import { EducationCardModal, deleteEducationLog } from '../../features/education';
+import { FoodDetailModal } from '../../features/nutrition';
+import DiarySummaryCards from './DiarySummaryCards';
+import UnknownEntryFlow from './UnknownEntryFlow';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -115,6 +122,58 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
   };
 
+  // ── ADR-0003 single-page Diary: detail-modal hosting ──────────────────────
+  // When diary is the only surface, tapping a row opens the matching detail
+  // card here in the shell. `openEntry` is the normalised record + kind; the
+  // diary feed remounts (via `diaryReloadKey`) after a delete / weight edit.
+  const ownerId = displayUser?.id || displayUser?.userId;
+  const [openEntry, setOpenEntry] = useState(null);
+  const [diaryReloadKey, setDiaryReloadKey] = useState(0);
+  const reloadDiary = () => setDiaryReloadKey((k) => k + 1);
+  // Unknown ("Other") row flow: image viewer + Retry / Edit → respective vertical.
+  const [unknownFlow, setUnknownFlow] = useState(null);
+  const viewingSelf = !selectedMember || selectedMember.isSelf;
+
+  const handleEntryOpen = (entry) => {
+    const p = entry.payload || {};
+    if (entry.kind === 'weight') {
+      setOpenEntry({
+        kind: 'weight',
+        record: {
+          ID: p.id, Weight: p.weight, CreatedAt: entry.capturedAt,
+          Bmi: p.bmi, BodyFat: p.bodyFat, MuscleMass: p.muscleMass, Bmr: p.bmr,
+          WeightImageBase64: p.imageBase64,
+        },
+      });
+    } else if (entry.kind === 'education' || entry.kind === 'watch') {
+      setOpenEntry({
+        kind: 'education',
+        record: {
+          Id: p.id, Topic: p.topic, Platform: p.platform, CreatedAt: entry.capturedAt,
+          Confidence: p.confidence, ImageBase64: p.imageBase64,
+        },
+      });
+    } else if (entry.kind === 'food') {
+      setOpenEntry({ kind: 'food', record: p, capturedAt: entry.capturedAt });
+    } else if (entry.kind === 'unknown') {
+      // Open the image viewer with Retry / Edit. captureId is on capture.id
+      // (or payload.id, which is the same CaptureID for unknown rows).
+      setUnknownFlow({
+        captureId: entry.capture?.id ?? p.id,
+        imageBase64: p.imageBase64,
+      });
+    }
+  };
+
+  // One-day-at-a-time stepper for the single Diary page (no future days).
+  const shiftDay = (delta) => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + delta);
+    if (next > new Date()) return;
+    setSelectedDate(next);
+  };
+  const isToday = selectedDate.toDateString() === new Date().toDateString();
+
   return (
     <>
     <div className="min-h-screen" style={{ backgroundColor: '#e8f5e9' }}>
@@ -147,7 +206,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <div className="text-center">
               <h1 className="text-lg md:text-xl font-semibold text-gray-900">
-                Dashboard{selectedMember && !selectedMember.isSelf ? (
+                {diaryEnabled ? 'Diary' : 'Dashboard'}{selectedMember && !selectedMember.isSelf ? (
                   <>
                     {' - '}
                     <button
@@ -175,8 +234,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </p>
             </div>
 
-            {/* Calendar button - show for steps and screen tabs */}
-            {(activeTab === 'steps' || activeTab === 'screen') && (
+            {/* Calendar button - show for steps and screen tabs, and diary (for date picking) */}
+            {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
@@ -186,25 +245,56 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </TouchFeedbackButton>
             )}
             {/* Empty space for tabs without top-right action */}
-            {(activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education' || activeTab === 'diary') && (
+            {!diaryEnabled && (activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
 
           {/* Tab navigation */}
-          <DashboardTabs
-            activeTab={activeTab}
-            onTabChange={handleTabChange}
-            diaryEnabled={diaryEnabled}
-          />
+          {!diaryEnabled && (
+            <DashboardTabs
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              diaryEnabled={diaryEnabled}
+            />
+          )}
+          {/* Single-page Diary: date stepper with clickable date label opening the calendar. */}
+          {diaryEnabled && (
+            <div className="flex items-center justify-center gap-4 pb-3">
+              <TouchFeedbackButton
+                onClick={() => shiftDay(-1)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                ariaLabel="Previous day"
+              >
+                <ChevronLeft className="w-5 h-5 text-gray-700" />
+              </TouchFeedbackButton>
+              <button
+                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
+                className="text-sm font-semibold text-gray-800 min-w-[8rem] text-center hover:text-emerald-600 transition-colors"
+                title="Pick a date"
+              >
+                {isToday
+                  ? 'Today'
+                  : selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </button>
+              <TouchFeedbackButton
+                onClick={() => shiftDay(1)}
+                disabled={isToday}
+                className={`p-2 rounded-lg transition-colors ${isToday ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+                ariaLabel="Next day"
+              >
+                <ChevronRight className="w-5 h-5 text-gray-700" />
+              </TouchFeedbackButton>
+            </div>
+          )}
           {/* Steps + Screen tab buttons remain DISABLED — see
               feature-disabled banners in App.js. When re-enabled,
               extend DashboardTabs.jsx, not this file. */}
         </div>
       </div>
 
-      {/* Inline Calendar with Slide Animation - only show for steps and screen tabs */}
-      {(activeTab === 'steps' || activeTab === 'screen') && (
+      {/* Inline Calendar - for steps/screen tabs AND diary date picker */}
+      {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
         }`}>
@@ -372,6 +462,29 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-300 border-t-emerald-600"></div>
           </div>
         }>
+          {/* ADR-0003 — when the flag is ON, the Diary feed is the single
+              surface. The legacy per-tab dashboards below are only mounted
+              when the flag is OFF (backward-compatible fallback). */}
+          {diaryEnabled ? (
+            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-24 mt-2">
+              <DiarySummaryCards
+                user={displayUser}
+                apiBaseUrl={apiBaseUrl}
+                selectedDate={selectedDate}
+                bmrUpdateKey={bmrUpdateKey}
+                educationRefreshKey={educationRefreshKey}
+                watchBurnedCalories={watchBurnedCalories}
+              />
+              <DiaryFeed
+                key={diaryReloadKey}
+                ownerUserId={ownerId}
+                viewerUserId={user?.id || user?.userId}
+                date={selectedDate}
+                onEntryOpen={handleEntryOpen}
+              />
+            </div>
+          ) : (
+          <>
           {activeTab === 'nutrition' && (
             <NutritionDashboard
               user={displayUser}
@@ -406,20 +519,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               initialEntryId={initialMealId}
             />
           )}
-
-          {/* PR-C / ADR-0003 — Diary feed. ownerUserId follows the selected
-              member when a coach is viewing someone else; viewerUserId is
-              always the authenticated session user so the backend can run
-              the owner-or-coach permission gate. */}
-          {diaryEnabled && activeTab === 'diary' && (
-            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-24 mt-2">
-              <DiaryFeed
-                ownerUserId={displayUser?.id || displayUser?.userId}
-                viewerUserId={user?.id || user?.userId}
-                date={selectedDate}
-              />
-            </div>
+          </>
           )}
+
+          {/* PR-C / ADR-0003 — Diary feed is now rendered as the single
+              surface above when `diaryEnabled`. The legacy per-tab block
+              remains for the flag-OFF fallback only. */}
 
           {/* FEATURE DISABLED: Steps tab content
           {activeTab === 'steps' && (
@@ -456,6 +561,64 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         onClose={() => setShowMemberProfile(false)}
         memberEmail={selectedMember.email}
         apiBaseUrl={apiBaseUrl}
+      />
+    )}
+
+    {/* ADR-0003 single-page Diary — detail modals opened from a feed row */}
+    {openEntry?.kind === 'weight' && (
+      <Suspense fallback={null}>
+        <WeightCardModal
+          data={openEntry.record}
+          apiBaseUrl={apiBaseUrl}
+          userId={ownerId}
+          onClose={() => setOpenEntry(null)}
+          onDelete={async (entryId) => {
+            await deleteWeight({ userId: ownerId, entryId });
+            setOpenEntry(null);
+            reloadDiary();
+          }}
+          onUpdate={async (entryId, weightValue) => {
+            await saveWeight({ userId: ownerId, entryId, weightValue });
+            reloadDiary();
+          }}
+        />
+      </Suspense>
+    )}
+
+    {openEntry?.kind === 'education' && (
+      <EducationCardModal
+        log={openEntry.record}
+        apiBaseUrl={apiBaseUrl}
+        userId={ownerId}
+        isDeleting={false}
+        onClose={() => setOpenEntry(null)}
+        onDelete={async (log) => {
+          await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: log.Id });
+          setOpenEntry(null);
+          reloadDiary();
+        }}
+      />
+    )}
+
+    {openEntry?.kind === 'food' && (
+      <FoodDetailModal
+        payload={openEntry.record}
+        capturedAt={openEntry.capturedAt}
+        onClose={() => setOpenEntry(null)}
+      />
+    )}
+
+    {/* ADR-0003 — "Other" (unknown) row: image viewer + Retry / Edit */}
+    {unknownFlow && (
+      <UnknownEntryFlow
+        open
+        captureId={unknownFlow.captureId}
+        imageBase64={unknownFlow.imageBase64}
+        canMutate={viewingSelf}
+        userId={ownerId}
+        apiBaseUrl={apiBaseUrl}
+        onClose={() => setUnknownFlow(null)}
+        onChanged={() => { setUnknownFlow(null); reloadDiary(); }}
       />
     )}
     </>

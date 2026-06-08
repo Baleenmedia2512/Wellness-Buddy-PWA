@@ -23,11 +23,14 @@ const REGISTRY = Object.freeze({
   // PR-C of ADR-0003 — mount the new Diary tab inside Dashboard.js.
   // Backend mirror controls whether the read-model surfaces `unknown`
   // captures; this frontend flag controls whether the tab is visible
-  // at all. Both default OFF so PR-C ships dark.
+  // at all. Default ON: AI-detection failures route to the Diary "Other"
+  // row flow (PR-D) and the unknown share viewer (PR-E) instead of the
+  // legacy disambiguation modal. Set REACT_APP_FF_DIARY_FEED=false or
+  // localStorage 'ff.diary-feed'='false' to fall back to the old method.
   'ff.diary-feed': {
     envKey:         'REACT_APP_FF_DIARY_FEED',
     storageKey:     'ff.diary-feed',
-    defaultEnabled: false,
+    defaultEnabled: true,
     description:    'Mount the Diary tab in Dashboard.js (ADR-0003 PR-C).',
   },
 });

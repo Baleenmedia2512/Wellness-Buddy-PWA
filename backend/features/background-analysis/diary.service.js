@@ -463,3 +463,80 @@ export function toDiaryEntry(kind, row) {
     }
   }
 }
+
+// ─── resolveUnknownShare ─────────────────────────────────────────────────────
+//
+// PR-E / ADR-0003 — share-link viewer target for `unknown` captures.
+//
+// Today an `unknown` capture's share link routes (via tabForImageType) to an
+// empty nutrition tab. PR-E instead opens a dedicated viewer that shows the
+// image with Retry / Edit buttons. This endpoint backs that viewer:
+//
+//   - It returns the capture IMAGE so the viewer can render the card.
+//   - It returns `canMutate` so the frontend only shows Retry / Edit to a
+//     viewer the policy permits (owner OR a coach in the owner's upline).
+//     Anonymous link recipients (no viewerUserId) get `canMutate: false`
+//     and see image-only — matching the Q4 / Q6 product answers.
+//
+// Permission posture mirrors `retryPromotionToFood`: the row is read WITHOUT
+// an owner guard (the viewer may legitimately not own it), and the
+// `canRetryCapture` policy — fed the owner's pre-fetched coach chain —
+// decides `canMutate`. The mutate endpoint itself
+// (`retryPromotionToFood`) re-checks the same policy, so a forged
+// `canMutate:true` from a tampered client cannot actually promote a capture.
+//
+// Returns:
+//   { httpStatus: 200, body: { ok: true, data: { kind: 'unknown', captureId, imageBase64, createdAt, canMutate } } }
+//   { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND' } } }       — missing / soft-deleted
+//   { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED' } } }         — share window passed
+//   { httpStatus: 409, body: { ok: false, error: { code: 'NOT_UNKNOWN', currentType } } } — already classified
+export async function resolveUnknownShare({ token, viewerUserId }) {
+  const capture = await captures.findByToken(token);
+  if (!capture || capture.IsDeleted === 1) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
+  }
+  if (capture.ShareExpiresAt && new Date(capture.ShareExpiresAt) < new Date()) {
+    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
+  }
+  if (capture.ImageType !== IMAGE_TYPE_UNKNOWN) {
+    return {
+      httpStatus: 409,
+      body: {
+        ok: false,
+        error: {
+          code: 'NOT_UNKNOWN',
+          message: `Capture is '${capture.ImageType}', not 'unknown'.`,
+          currentType: capture.ImageType,
+        },
+      },
+    };
+  }
+
+  const ownerUserId = capture.UserID ? capture.UserID.toString() : null;
+
+  // canMutate is false for anonymous viewers and for authenticated strangers.
+  // The owner and any upline coach get true.
+  let canMutate = false;
+  if (ownerUserId && viewerUserId != null && viewerUserId !== '') {
+    const coachChain = await repo.getCoachChain(ownerUserId);
+    canMutate = canRetryCapture({
+      viewerId: viewerUserId,
+      ownerId:  ownerUserId,
+      coachChain,
+    }).allowed;
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        kind:        'unknown',
+        captureId:   capture.ID ? capture.ID.toString() : null,
+        imageBase64: capture.ImageBase64 || null,
+        createdAt:   capture.CreatedAt ? capture.CreatedAt.toString() : null,
+        canMutate,
+      },
+    },
+  };
+}

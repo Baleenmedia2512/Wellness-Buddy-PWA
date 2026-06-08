@@ -410,7 +410,7 @@ const Header = ({
                           <LayoutDashboard className="h-5 w-5 text-green-700" />
                         </div>
                         <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                          Dashboard
+                          Diary
                         </span>
                       </TouchFeedbackButton>
 

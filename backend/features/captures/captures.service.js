@@ -160,3 +160,23 @@ export async function findById(captureId) {
   }
   return repo.findById(captureId);
 }
+
+/**
+ * PR-E / ADR-0003 — look up a capture by its public share token WITHOUT an
+ * owner guard. Used by the unknown-capture share viewer
+ * (`resolveUnknownShare`): the viewer must read the row (image + owner)
+ * BEFORE the permission policy can decide whether the viewer may Retry /
+ * Edit it. Access is NOT granted here — callers MUST pair this with the
+ * `canRetryCapture(...)` policy when exposing mutate actions.
+ *
+ * Returns the full row (PascalCase keys, including ImageBase64) or null
+ * when not found.
+ */
+export async function findByToken(token) {
+  if (!token) {
+    const err = new Error('captures.findByToken: token required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findByToken(token);
+}

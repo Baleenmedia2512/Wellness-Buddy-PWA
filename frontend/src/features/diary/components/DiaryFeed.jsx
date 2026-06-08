@@ -135,17 +135,19 @@ export default function DiaryFeed({
   }
 
   return (
-    <div className="space-y-3" data-testid="diary-feed">
-      {loading && (
-        <div
-          className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1"
-          aria-live="polite"
-        >
-          <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-          Refreshing…
-        </div>
-      )}
-      {entries.map(renderRow)}
+    <div data-testid="diary-feed">
+      <div className="space-y-3">
+        {loading && (
+          <div
+            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1"
+            aria-live="polite"
+          >
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            Refreshing…
+          </div>
+        )}
+        {entries.map(renderRow)}
+      </div>
     </div>
   );
 }
