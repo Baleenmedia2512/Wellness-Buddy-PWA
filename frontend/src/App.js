@@ -4342,31 +4342,25 @@ function WellnessValleyApp() {
               );
               const diffData = await diffRes.json();
               if (diffData.success && diffData.stats?.previousWeight) {
-                const latestDate = diffData.stats.latestWeight?.date;
-                const prevDate = diffData.stats.previousWeight.date;
-                // Safety guard: only show diff if previous entry is from a different IST calendar date
-                if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
-                  const weightChange = parseFloat(diffData.stats.weightChange);
-                  setWeightDiff({
-                    previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
-                    previousDate: prevDate,
-                    change: Math.round(weightChange * 100) / 100,
+                const weightChange = parseFloat(diffData.stats.weightChange);
+                // Always compare against the immediately previous entry — same day is fine
+                setWeightDiff({
+                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
+                  previousDate: diffData.stats.previousWeight.date,
+                  change: Math.round(weightChange * 100) / 100,
+                });
+                // Compute ideal weight for the share card
+                refreshIdealWeight();
+                // ✅ Immediately inject into leaderboard strip — no API wait needed
+                if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
+                  leaderboardRef.current.injectEntry({
+                    userId: diffUserId,
+                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                    email: user?.email || "",
+                    weightLoss: Math.abs(weightChange),
+                    profileImage: user?.photoURL || user?.ProfileImage || null,
+                    coachName: "",
                   });
-                  // Compute ideal weight for the share card
-                  refreshIdealWeight();
-                  // ? Immediately inject into leaderboard strip � no API wait needed
-                  if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
-                    leaderboardRef.current.injectEntry({
-                      userId: diffUserId,
-                      userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
-                      email: user?.email || "",
-                      weightLoss: Math.abs(weightChange),
-                      profileImage: user?.photoURL || user?.ProfileImage || null,
-                      coachName: "",
-                    });
-                  }
-                } else {
-                  setWeightDiff(null);
                 }
               }
             } catch (_) {
