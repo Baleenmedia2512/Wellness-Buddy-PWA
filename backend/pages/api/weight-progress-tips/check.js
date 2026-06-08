@@ -7,24 +7,17 @@
  *   - currentWeightId (optional): Specific weight record ID
  */
 import { checkProgressHandler } from '../../../features/weight-progress-tips/api/check-progress.handler.js';
-import { withAuth } from '../../../shared/lib/auth-wrapper.js';
+import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import logger from '../../../shared/lib/logger.js';
 
-async function handler(req, res) {
+export default async function handler(req, res) {
+  if (applyCors(req, res, 'GET, OPTIONS')) return;
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
   const requestId = req.headers['x-request-id'] || Math.random().toString(36).substring(7);
   const startTime = Date.now();
 
   try {
-    if (req.method !== 'GET') {
-      return res.status(405).json({
-        ok: false,
-        error: {
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Only GET requests are allowed',
-        },
-      });
-    }
-
     const result = await checkProgressHandler(req.query);
 
     logger.info('Weight progress check completed', {
@@ -66,5 +59,3 @@ async function handler(req, res) {
     });
   }
 }
-
-export default withAuth(handler);
