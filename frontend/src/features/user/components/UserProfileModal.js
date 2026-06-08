@@ -45,6 +45,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           phone: data.phoneNumber || '',
           dietType: data.dietType || '',
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
+          weightGoalMode: data.weightGoalMode || 'loss',
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);
@@ -121,6 +122,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <UserProfileHeader user={user} name={form.name} userRole={userRole}
           profileImagePreview={profileImagePreview} faceStatus={face.status}
           showRecrop={!!profileImagePreview && !!cropper.rawImageSrc}
+          weightGoalMode={form.weightGoalMode}
           onPickImage={() => cropper.fileInputRef.current?.click()}
           onRecrop={cropper.reopenCropper} onClose={handleCancel} isSaving={isSaving} />
         <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"

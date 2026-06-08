@@ -50,6 +50,7 @@ export const saveProfile = async (payload) => {
       if (payload.dietType !== undefined) merged.dietType = payload.dietType;
       if (payload.phoneNumber !== undefined) merged.phoneNumber = payload.phoneNumber;
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
+      if (payload.weightGoalMode !== undefined) merged.weightGoalMode = payload.weightGoalMode;
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }
