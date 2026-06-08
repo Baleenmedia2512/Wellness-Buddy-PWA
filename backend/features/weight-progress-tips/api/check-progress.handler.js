@@ -46,17 +46,66 @@ export async function checkProgressHandler(query) {
 
   // Step 3: Fetch recent weight records (today and yesterday)
   const weights = await getRecentWeights(userId, 2);
-  if (weights.length < 2) {
+  
+  // ✅ MODIFIED: Show popup even on first upload (no comparison needed)
+  if (weights.length < 1) {
     return {
       ok: true,
       data: {
         shouldShow: false,
-        reason: 'Insufficient weight history (need at least 2 records)',
+        reason: 'No weight records found',
       },
     };
   }
 
-  const [currentWeight, previousWeight] = weights;
+  const currentWeight = weights[0]; // Most recent weight
+  
+  // If this is the first weight upload, show popup anyway (no comparison)
+  if (weights.length === 1) {
+    // First upload - show popup with welcome tips
+    const currentWeightValue = parseFloat(currentWeight.Weight);
+    
+    // Calculate water target
+    const waterTarget = calculateWaterTarget(currentWeightValue);
+    
+    // Generate first-time tips (no comparison)
+    const firstTimeTips = [
+      { tip: `Start your journey! Your target: ${goalMode === 'loss' ? 'lose' : 'gain'} weight`, priority: 'high' },
+      { tip: `Drink at least ${Math.round(waterTarget / 1000)} liters of water daily`, priority: 'high' },
+      { tip: 'Track your meals every day for best results', priority: 'medium' },
+      { tip: 'Upload your weight at the same time every morning', priority: 'medium' },
+    ];
+    
+    return {
+      ok: true,
+      data: {
+        shouldShow: true,
+        comparison: {
+          weight: {
+            previous: null,
+            current: currentWeightValue,
+            change: 0,
+            direction: 'first',
+          },
+          nutrition: {
+            yesterday: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+            today: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+            diff: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          },
+          water: {
+            yesterday: 0,
+            target: waterTarget,
+          },
+        },
+        tips: firstTimeTips,
+        goalMode,
+        isFirstUpload: true,
+      },
+    };
+  }
+
+  // From second upload onwards - check for reverse progress
+  const previousWeight = weights[1];
 
   // Step 4: Check for reverse progress using domain logic
   const reverseCheck = checkReverseProgress({
