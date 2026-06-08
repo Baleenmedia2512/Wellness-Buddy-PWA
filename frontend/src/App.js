@@ -2654,25 +2654,19 @@ function WellnessValleyApp() {
         loggedAt: captureTimestamp || new Date().toISOString(),
       });
 
-      // Fetch previous weight to show "vs Previous entry" diff immediately
-      try {
-        const histRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`
-        );
-        const histData = await histRes.json();
-        if (histData.success && histData.stats?.previousWeight) {
-          const prevWeight = parseFloat(histData.stats.previousWeight.value);
-          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          // Always compare against the immediately previous entry — same day is fine
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: histData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
-        } else {
-          setWeightDiff(null);
-        }
-      } catch (_) { /* non-critical */ }
+      // Compute diff directly from save response — avoids EXIF timestamp ordering bug
+      // where a re-uploaded old photo gets an old CreatedAt and sorts behind same-day entries.
+      // data.previousWeightValue is the true prior entry weight captured BEFORE the insert.
+      if (data.previousWeightValue !== null && data.previousWeightValue !== undefined) {
+        const prevWeight = parseFloat(data.previousWeightValue);
+        const weightChange = parseFloat(finalSavedWeight) - prevWeight;
+        setWeightDiff({
+          previous: Math.round(prevWeight * 100) / 100,
+          change: Math.round(weightChange * 100) / 100,
+        });
+      } else {
+        setWeightDiff(null);
+      }
 
       // Fetch user height ? compute ideal weight for the share card
       refreshIdealWeight();
@@ -4334,21 +4328,17 @@ function WellnessValleyApp() {
             // Don't set weightResult here - performWeightSave handles it with final weight
             setWeightEntrySaved(true);
             
-            // Fetch weight diff (previous vs today) for the share card
+            // Fetch history ONLY for leaderboard inject — weightDiff is already set
+            // correctly inside performWeightSave using data.previousWeightValue.
+            // Do NOT call setWeightDiff here — EXIF timestamps cause wrong ordering.
             try {
               const diffUserId = user?.id || (await getUserId(user));
               const diffRes = await fetch(
                 `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
               );
               const diffData = await diffRes.json();
-              if (diffData.success && diffData.stats?.previousWeight) {
+              if (diffData.success && diffData.stats?.weightChange) {
                 const weightChange = parseFloat(diffData.stats.weightChange);
-                // Always compare against the immediately previous entry — same day is fine
-                setWeightDiff({
-                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
-                  previousDate: diffData.stats.previousWeight.date,
-                  change: Math.round(weightChange * 100) / 100,
-                });
                 // Compute ideal weight for the share card
                 refreshIdealWeight();
                 // ✅ Immediately inject into leaderboard strip — no API wait needed
@@ -4364,7 +4354,7 @@ function WellnessValleyApp() {
                 }
               }
             } catch (_) {
-              /* non-critical � share card just won't show diff */
+              /* non-critical — share card just won't show diff */
             }
           } catch (saveError) {
             // Validation failed or other save error - don't show weight result

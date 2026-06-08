@@ -169,6 +169,10 @@ export async function saveWeight(input) {
       updated: wasUpdated,
       message: wasUpdated ? 'Weight entry updated successfully' : 'Weight entry saved successfully',
       correctionInfo,
+      // Always expose the previous entry's weight so the frontend can compute
+      // the correct diff without re-fetching history (EXIF timestamps can cause
+      // history to sort the new entry behind older same-day entries).
+      previousWeightValue: lastEntry ? parseFloat(lastEntry.Weight) : null,
       data: {
         userId,
         weightValue: weight,
