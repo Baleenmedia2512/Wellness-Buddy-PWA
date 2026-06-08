@@ -7,11 +7,21 @@
  *   - currentWeightId (optional): Specific weight record ID
  */
 import { checkProgressHandler } from '../../../features/weight-progress-tips/api/check-progress.handler.js';
-import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { methodNotAllowed } from '../../../shared/lib/handler.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
-  if (applyCors(req, res, 'GET, OPTIONS')) return;
+  // Custom CORS for credentials support
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   if (req.method !== 'GET') return methodNotAllowed(res);
 
   const requestId = req.headers['x-request-id'] || Math.random().toString(36).substring(7);

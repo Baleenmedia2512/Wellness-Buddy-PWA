@@ -23,7 +23,7 @@ export async function fetchWeightProgressCheck(userId, currentWeightId = null) {
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include', // Include cookies for auth
+    // Don't include credentials - not needed for this endpoint
   });
 
   if (!response.ok) {
