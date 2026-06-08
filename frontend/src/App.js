@@ -374,18 +374,24 @@ function WellnessValleyApp() {
   useEffect(() => {
     if (!weightDiff) return;
     if (reverseProgressShownRef.current) return;
-    const tips = selectReverseProgressTips(weightDiff.change);
-    if (!tips) return;
+    const result = selectReverseProgressTips(weightDiff.change);
+    if (!result) return;
     reverseProgressShownRef.current = true;
+    const { direction, color, tips } = result;
     const timerId = setTimeout(() => {
+      const prev = weightDiff.previous;
+      const today = (prev + weightDiff.change).toFixed(1);
+      const isGain = direction === "gain";
       setAlertModal({
         isOpen: true,
-        title: "📈 Weight Went Up — Here's What to Do",
-        message:
-          `Your weight increased by ${weightDiff.change.toFixed(1)} kg since your last entry.\n\n` +
-          tips.join("\n"),
-        type: "warning",
-        confirmText: "Got it!",
+        type: color, // 'warning' (yellow) for gain · 'success' (green) for loss
+        title: isGain
+          ? "Hey, don't worry! 😊 You've got this."
+          : "Hey, well done! 🎉 Keep it up!",
+        message: isGain
+          ? `Previous: ${prev} kg  →  Today: ${today} kg\n\n${tips.join("\n\n")}`
+          : `Previous: ${prev} kg  →  Today: ${today} kg\n\n${tips.join("\n\n")}`,
+        confirmText: isGain ? "Thanks, I'll try! 💪" : "On it! 🏃",
       });
     }, 800); // small delay so the save-success UI settles first
     return () => clearTimeout(timerId);
@@ -2657,18 +2663,12 @@ function WellnessValleyApp() {
         if (histData.success && histData.stats?.previousWeight) {
           const prevWeight = parseFloat(histData.stats.previousWeight.value);
           const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          const latestDate = histData.stats.latestWeight?.date;
-          const prevDate = histData.stats.previousWeight.date;
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
-            setWeightDiff({
-              previous: Math.round(prevWeight * 100) / 100,
-              previousDate: prevDate,
-              change: Math.round(weightChange * 100) / 100,
-            });
-          } else {
-            setWeightDiff(null);
-          }
+          // Always compare against the immediately previous entry — same day is fine
+          setWeightDiff({
+            previous: Math.round(prevWeight * 100) / 100,
+            previousDate: histData.stats.previousWeight.date,
+            change: Math.round(weightChange * 100) / 100,
+          });
         } else {
           setWeightDiff(null);
         }
@@ -2816,18 +2816,12 @@ function WellnessValleyApp() {
         if (diffData.success && diffData.stats?.previousWeight) {
           const prevWeight = parseFloat(diffData.stats.previousWeight.value);
           const weightChange = val - prevWeight;
-          const latestDate = diffData.stats.latestWeight?.date;
-          const prevDate = diffData.stats.previousWeight.date;
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
-            setWeightDiff({
-              previous: Math.round(prevWeight * 100) / 100,
-              previousDate: prevDate,
-              change: Math.round(weightChange * 100) / 100,
-            });
-          } else {
-            setWeightDiff(null);
-          }
+          // Always compare against the immediately previous entry — same day is fine
+          setWeightDiff({
+            previous: Math.round(prevWeight * 100) / 100,
+            previousDate: diffData.stats.previousWeight.date,
+            change: Math.round(weightChange * 100) / 100,
+          });
         }
       } catch (_) {
         /* non-critical */

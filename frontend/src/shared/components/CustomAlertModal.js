@@ -42,6 +42,14 @@ const CustomAlertModal = ({
   // Get icon and colors based on type
   const getTypeConfig = () => {
     switch (type) {
+      case 'danger':
+        return {
+          icon: <XCircle className="h-12 w-12 text-red-600" />,
+          bgColor: 'bg-red-50',
+          borderColor: 'border-red-300',
+          titleColor: 'text-red-900',
+          buttonColor: 'bg-red-600 hover:bg-red-700',
+        };
       case 'warning':
         return {
           icon: <AlertTriangle className="h-12 w-12 text-yellow-600" />,
