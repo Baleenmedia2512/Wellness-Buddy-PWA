@@ -16,7 +16,7 @@ import {
   getTodayNutrition,
   getYesterdayWater,
 } from '../data/weight-progress.repo.js';
-import { convertToIST } from '../../../utils/timezoneConverter.js';
+import { convertToIST } from '../../../utils/supabaseClient.js';
 
 /**
  * Check if user has reverse weight progress and generate actionable tips.
@@ -79,17 +79,18 @@ export async function checkProgressHandler(query) {
 
   // Step 5: Calculate date ranges for yesterday and today (IST timezone)
   const now = new Date();
-  const todayIST = convertToIST(now);
-  const todayStart = new Date(todayIST.toDateString()).toISOString();
+  const istResult = convertToIST(now);
+  const todayIST = istResult.istDate; // This is a Date object in IST
+  const todayStart = new Date(todayIST.toISOString().substring(0, 10) + 'T00:00:00.000Z');
 
   const yesterdayIST = new Date(todayIST);
   yesterdayIST.setDate(yesterdayIST.getDate() - 1);
-  const yesterdayStart = new Date(yesterdayIST.toDateString()).toISOString();
-  const yesterdayEnd = todayStart; // yesterday ends when today starts
+  const yesterdayStart = new Date(yesterdayIST.toISOString().substring(0, 10) + 'T00:00:00.000Z');
+  const yesterdayEnd = todayStart.toISOString(); // yesterday ends when today starts
 
   // Step 6: Fetch yesterday's and today's nutrition
-  const yesterdayNutrition = await getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd);
-  const todayNutrition = await getTodayNutrition(userId, todayStart);
+  const yesterdayNutrition = await getYesterdayNutrition(userId, yesterdayStart.toISOString(), yesterdayEnd);
+  const todayNutrition = await getTodayNutrition(userId, todayStart.toISOString());
 
   // Step 7: Compare nutrition using domain logic
   const nutritionDiff = compareNutrition({
@@ -98,7 +99,7 @@ export async function checkProgressHandler(query) {
   });
 
   // Step 8: Fetch yesterday's water intake
-  const waterYesterday = await getYesterdayWater(userId, yesterdayStart, yesterdayEnd);
+  const waterYesterday = await getYesterdayWater(userId, yesterdayStart.toISOString(), yesterdayEnd);
 
   // Step 9: Calculate water target based on weight
   const waterTarget = calculateWaterTarget(parseFloat(currentWeight.Weight));
