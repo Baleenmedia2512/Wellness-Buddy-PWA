@@ -114,6 +114,8 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 // import { TaskNotificationPanel } from "./features/tasks"; // Commented out - Task Scheduler UI hidden
 import CustomAlertModal from "./shared/components/CustomAlertModal";
+import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
+import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
@@ -363,6 +365,9 @@ function WellnessValleyApp() {
   const foodShareImageReadyAtRef = useRef(0);
 
   // ── Reverse-progress weight tips ─────────────────────────────────────────
+  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
+  const weightProgressCheck = useWeightProgressCheck();
+  
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
   // (no html2canvas in the click handler). Re-runs whenever the underlying
@@ -2689,6 +2694,22 @@ function WellnessValleyApp() {
       setTimeout(() => {
         handleLeaderboardRefresh();
       }, 3000);
+
+      // ✅ Check for reverse weight progress and show tips modal
+      if (userId) {
+        try {
+          const progressResult = await weightProgressCheck.checkProgress(userId);
+          if (progressResult?.shouldShow) {
+            debugLog('🚨 [weight-progress] Reverse progress detected, showing tips modal');
+            setShowWeightProgressModal(true);
+          } else {
+            debugLog('✅ [weight-progress] No reverse progress, modal not needed');
+          }
+        } catch (progressErr) {
+          debugLog('⚠️ [weight-progress] Failed to check progress (non-blocking):', progressErr.message);
+          // Don't block weight save on progress check failure
+        }
+      }
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -7021,6 +7042,18 @@ function WellnessValleyApp() {
         confirmText={alertModal.confirmText}
         cancelText={alertModal.cancelText}
         onConfirm={alertModal.onConfirm}
+      />
+
+      {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
+      <WeightProgressTipsModal
+        isOpen={showWeightProgressModal}
+        onClose={() => {
+          setShowWeightProgressModal(false);
+          weightProgressCheck.reset();
+        }}
+        comparison={weightProgressCheck.comparison}
+        tips={weightProgressCheck.tips}
+        goalMode={weightProgressCheck.goalMode}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
