@@ -11,14 +11,18 @@ export function useWeightProgressCheck() {
   const [error, setError] = useState(null);
 
   const checkProgress = useCallback(async (userId, currentWeightId = null) => {
+    console.log('🎯 [useWeightProgressCheck] Starting check for userId:', userId, 'weightId:', currentWeightId);
     setLoading(true);
     setError(null);
 
     try {
+      console.log('📡 [useWeightProgressCheck] Calling API...');
       const result = await fetchWeightProgressCheck(userId, currentWeightId);
+      console.log('✅ [useWeightProgressCheck] API Success:', result);
       setData(result);
       return result;
     } catch (err) {
+      console.error('❌ [useWeightProgressCheck] API Error:', err);
       setError(err.message || 'Failed to check weight progress');
       setData(null);
       throw err;

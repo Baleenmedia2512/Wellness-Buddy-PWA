@@ -33,6 +33,8 @@ export function WeightProgressTipsModal({
 
   if (!isOpen || !comparison) return null;
 
+  const isFirstUpload = comparison.weight.direction === 'first';
+
   const handleAcknowledgeNutrition = (nutrient) => {
     setAcknowledgedNutrition((prev) => ({
       ...prev,
@@ -59,7 +61,7 @@ export function WeightProgressTipsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-red-500 text-white p-6 rounded-t-2xl">
+        <div className={`sticky top-0 ${isFirstUpload ? 'bg-gradient-to-r from-green-500 to-blue-500' : 'bg-gradient-to-r from-orange-500 to-red-500'} text-white p-6 rounded-t-2xl`}>
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition"
@@ -67,11 +69,16 @@ export function WeightProgressTipsModal({
             <X size={24} />
           </button>
           <div className="flex items-center gap-3">
-            <AlertCircle size={32} />
+            {isFirstUpload ? <CheckCircle size={32} /> : <AlertCircle size={32} />}
             <div>
-              <h2 className="text-2xl font-bold">Weight Progress Alert</h2>
+              <h2 className="text-2xl font-bold">
+                {isFirstUpload ? '🎉 Welcome to Your Journey!' : 'Weight Progress Alert'}
+              </h2>
               <p className="text-sm opacity-90">
-                Your weight moved in the opposite direction of your {goalMode} goal
+                {isFirstUpload 
+                  ? `Starting weight: ${comparison.weight.current} kg - Let's achieve your ${goalMode} goal!`
+                  : `Your weight moved in the opposite direction of your ${goalMode} goal`
+                }
               </p>
             </div>
           </div>
@@ -80,28 +87,41 @@ export function WeightProgressTipsModal({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Weight Change Summary */}
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-gray-600">Previous Weight</p>
-                <p className="text-2xl font-bold">{comparison.weight.previous} kg</p>
-              </div>
-              <div className="text-3xl">→</div>
-              <div>
-                <p className="text-sm text-gray-600">Current Weight</p>
-                <p className="text-2xl font-bold text-orange-600">{comparison.weight.current} kg</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Change</p>
-                <p className={`text-2xl font-bold ${comparison.weight.direction === 'increase' ? 'text-red-600' : 'text-green-600'}`}>
-                  {comparison.weight.change > 0 ? '+' : ''}{comparison.weight.change} kg
-                </p>
+          {!isFirstUpload && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-gray-600">Previous Weight</p>
+                  <p className="text-2xl font-bold">{comparison.weight.previous} kg</p>
+                </div>
+                <div className="text-3xl">→</div>
+                <div>
+                  <p className="text-sm text-gray-600">Current Weight</p>
+                  <p className="text-2xl font-bold text-orange-600">{comparison.weight.current} kg</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Change</p>
+                  <p className={`text-2xl font-bold ${comparison.weight.direction === 'increase' ? 'text-red-600' : 'text-green-600'}`}>
+                    {comparison.weight.change > 0 ? '+' : ''}{comparison.weight.change} kg
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Nutrition Comparison */}
-          <div>
+          {isFirstUpload && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Starting Weight</p>
+                <p className="text-4xl font-bold text-green-600">{comparison.weight.current} kg</p>
+                <p className="text-sm text-gray-500 mt-2">Your journey begins here! 🚀</p>
+              </div>
+            </div>
+          )}
+
+          {/* Nutrition Comparison - Skip for first upload */}
+          {!isFirstUpload && (
+            <div>
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <span>📊</span> Nutrition Comparison (Yesterday vs Target)
             </h3>
@@ -195,6 +215,7 @@ export function WeightProgressTipsModal({
               </div>
             </div>
           </div>
+          )}
 
           {/* Water Question */}
           <div>
@@ -364,9 +385,9 @@ export function WeightProgressTipsModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!allNutritionAcknowledged}
+            disabled={!isFirstUpload && !allNutritionAcknowledged}
             className={`flex-1 py-3 rounded-lg font-medium transition ${
-              allNutritionAcknowledged
+              (isFirstUpload || allNutritionAcknowledged)
                 ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}

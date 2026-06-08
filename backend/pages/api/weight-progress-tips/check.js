@@ -59,12 +59,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Generic server error
+    // Generic server error - include actual error in development
     return res.status(500).json({
       ok: false,
       error: {
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to check weight progress',
+        message: process.env.NODE_ENV === 'production' 
+          ? 'Failed to check weight progress'
+          : `Failed to check weight progress: ${error.message}`,
+        ...(process.env.NODE_ENV !== 'production' && { stack: error.stack }),
       },
     });
   }

@@ -2698,14 +2698,20 @@ function WellnessValleyApp() {
       // ✅ Check for reverse weight progress and show tips modal
       if (userId) {
         try {
+          console.log('🔍 [weight-progress] Calling checkProgress for userId:', userId);
           const progressResult = await weightProgressCheck.checkProgress(userId);
+          console.log('📊 [weight-progress] API Response:', JSON.stringify(progressResult, null, 2));
+          
           if (progressResult?.shouldShow) {
+            console.log('🚨 [weight-progress] shouldShow=true, opening modal');
             debugLog('🚨 [weight-progress] Reverse progress detected, showing tips modal');
             setShowWeightProgressModal(true);
           } else {
+            console.log('ℹ️ [weight-progress] shouldShow=false, reason:', progressResult?.reason);
             debugLog('✅ [weight-progress] No reverse progress, modal not needed');
           }
         } catch (progressErr) {
+          console.error('❌ [weight-progress] API Error:', progressErr);
           debugLog('⚠️ [weight-progress] Failed to check progress (non-blocking):', progressErr.message);
           // Don't block weight save on progress check failure
         }
