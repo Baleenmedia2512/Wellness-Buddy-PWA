@@ -8,8 +8,8 @@
  * Per claude.md §2.8: idempotent, logs with correlation ID, fails loudly.
  */
 
-import { checkAndSendWaterReminders } from '../../features/water/domain/water-scheduler.js';
-import logger from '../../shared/lib/logger.js';
+import { checkAndSendWaterReminders } from '../../../features/water/domain/water-scheduler.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   const correlationId  = `cron-water-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
