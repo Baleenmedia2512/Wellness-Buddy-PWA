@@ -123,3 +123,12 @@ registerFlag({
   description:    'PR-B/PR-C of ADR-0003 — include `unknown` captures in the Diary list-entries read-model. When OFF, the endpoint behaves identically to the pre-Diary listAnalyses contract (food-only). When ON, the response also carries weight / education / watch / unknown rows for the same date.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.body-parameters-card',
+  owner:          '@principal-eng',
+  createdAt:      '2026-06-09',
+  removeBy:       '2026-09-30',
+  description:    'ADR-0004 — Body Parameters Card share feature. Coach creates a styled card in Wellness Counselling, shares via WhatsApp. New members use the link to pre-fill setup wizard; existing members get silent profile override.',
+  defaultEnabled: true,
+});

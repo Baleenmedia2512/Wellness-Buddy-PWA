@@ -1,6 +1,8 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import BodyParamsForm from "../features/body-parameters-card/components/BodyParamsForm.jsx";
+import BodyParamsShareSheet from "../features/body-parameters-card/components/BodyParamsShareSheet.jsx";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
@@ -34,6 +36,10 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [viewingAssessment, setViewingAssessment] = useState(null);
+
+  // Body Parameters Card states
+  const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
+  const [bodyParamsShareData, setBodyParamsShareData] = useState(null); // { card, shareUrl }
   
   // Mock assessment data - replace with API call
   const [assessmentData, setAssessmentData] = useState({});
@@ -608,6 +614,35 @@ const WellnessCounselling = ({ user, onBack }) => {
         isOpen={!!profileModalEmail}
         onClose={() => setProfileModalEmail(null)}
         memberEmail={profileModalEmail}
+      />
+
+      {/* ── Body Parameters Card FAB ── */}
+      <button
+        onClick={() => setIsBodyParamsFormOpen(true)}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+        aria-label="Create Body Parameters Card"
+      >
+        <Plus size={28} />
+      </button>
+
+      {/* Body Parameters Card Form */}
+      <BodyParamsForm
+        isOpen={isBodyParamsFormOpen}
+        onClose={() => setIsBodyParamsFormOpen(false)}
+        user={user}
+        selectedMember={null}
+        onSaveSuccess={(card, shareUrl) => {
+          setIsBodyParamsFormOpen(false);
+          setBodyParamsShareData({ card, shareUrl });
+        }}
+      />
+
+      {/* Body Parameters Share Sheet */}
+      <BodyParamsShareSheet
+        isOpen={!!bodyParamsShareData}
+        onClose={() => setBodyParamsShareData(null)}
+        card={bodyParamsShareData?.card}
+        shareUrl={bodyParamsShareData?.shareUrl}
       />
     </div>
   );

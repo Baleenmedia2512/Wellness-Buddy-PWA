@@ -113,6 +113,8 @@ import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
+import { fetchPublicCard } from "./features/body-parameters-card/services/bodyParamsCardApi.js";
+import { savePendingCard } from "./features/body-parameters-card/domain/pendingBodyParamsCard.js";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
@@ -927,6 +929,7 @@ function WellnessValleyApp() {
     const seenTokens = new Set(); // guard against duplicate fires
 
     const SHARE_PATH_RE = /\/share\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const BPC_PATH_RE   = /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
@@ -938,7 +941,36 @@ function WellnessValleyApp() {
       return httpsMatch ? httpsMatch[1] : null;
     };
 
+    const extractBpcToken = (rawUrl) => {
+      if (!rawUrl || typeof rawUrl !== "string") return null;
+      const m = rawUrl.match(BPC_PATH_RE);
+      return m ? m[1] : null;
+    };
+
     const handleUrl = async (rawUrl) => {
+      // ── Body Parameters Card deep link ───────────────────────────────────
+      const bpcToken = extractBpcToken(rawUrl);
+      if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
+        seenTokens.add(`bpc:${bpcToken}`);
+        try {
+          const card = await fetchPublicCard(bpcToken);
+          if (cancelled) return;
+          if (user?.id) {
+            // Already logged in: save to profile inline, no pending storage needed.
+            const { saveCardToProfile } = await import(
+              './features/body-parameters-card/services/bodyParamsCardApi.js'
+            );
+            await saveCardToProfile(bpcToken, user.id).catch(() => {});
+          } else {
+            // Not logged in: persist so the post-login auth handler can save it.
+            savePendingCard({ ...card, _token: bpcToken });
+          }
+        } catch {
+          // Expired / not-found: show nothing, fall through.
+        }
+        return;
+      }
+
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
       seenTokens.add(token);

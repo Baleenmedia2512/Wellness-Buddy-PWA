@@ -1,0 +1,166 @@
+/**
+ * useBodyParamsCard.js
+ * Owns state + validation + submit lifecycle for the body-parameters card form.
+ * Includes three auto-calculations:
+ *   1. Height → ideal weight  (BMI 23 × heightM²)
+ *   2. Height + Weight → BMI  (weight ÷ heightM²)
+ *   3. Gender → fat% hint label
+ * Components only render — no fetch logic here.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import { debugLog } from '../../../shared/utils/logger.js';
+
+const EMPTY_FORM = {
+  name:         '',
+  age:          '',
+  gender:       '',
+  heightCm:     '',
+  weightKg:     '',
+  bmi:          '',
+  fatPercent:   '',
+  bmr:          '',
+  bodyAge:      '',
+  recordedDate: new Date().toISOString().substring(0, 10),
+  locationName: '',
+};
+
+/**
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function }} opts
+ */
+export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) {
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [isSaving, setIsSaving]           = useState(false);
+  const [error, setError]                 = useState('');
+  const [savedCard, setSavedCard]         = useState(null);
+  const [shareUrl, setShareUrl]           = useState('');
+
+  // Track whether the user manually typed in each computed field.
+  // When true, auto-fill is disabled for that field.
+  const [weightUserEdited, setWeightUserEdited] = useState(false);
+  const [bmiUserEdited,    setBmiUserEdited]    = useState(false);
+
+  const targetUserId = selectedMember?.userId || selectedMember?.id || null;
+
+  // ── Derived calculations ──────────────────────────────────────────────────
+
+  /** Ideal weight: BMI-23 upper bound from height. null when height invalid. */
+  const derivedIdealWeight = useMemo(() => {
+    const h = parseFloat(form.heightCm);
+    if (!h || h < 50 || h > 250) return null;
+    const m = h / 100;
+    return Math.round(23 * m * m * 10) / 10;
+  }, [form.heightCm]);
+
+  /** BMI computed from current height + weight. null when either invalid. */
+  const derivedBmi = useMemo(() => {
+    const h = parseFloat(form.heightCm);
+    const w = parseFloat(form.weightKg);
+    if (!h || h < 50 || !w || w < 20) return null;
+    const m = h / 100;
+    return Math.round((w / (m * m)) * 10) / 10;
+  }, [form.heightCm, form.weightKg]);
+
+  /** Fat% healthy-range hint based on selected gender. */
+  const fatHint = useMemo(() => {
+    if (form.gender === 'Male')   return '10–20%';
+    if (form.gender === 'Female') return '20–30%';
+    return 'Male: 10–20 / Female: 20–30';
+  }, [form.gender]);
+
+  /** Short range string used as placeholder inside the Fat% input field. */
+  const fatPlaceholder = useMemo(() => {
+    if (form.gender === 'Male')   return '10–20%';
+    if (form.gender === 'Female') return '20–30%';
+    return '%';
+  }, [form.gender]);
+
+  // ── Auto-fill effects ─────────────────────────────────────────────────────
+
+  // Auto-fill weight when height changes — only if user has not manually typed weight.
+  useEffect(() => {
+    if (weightUserEdited || derivedIdealWeight === null) return;
+    setForm((prev) => ({ ...prev, weightKg: String(derivedIdealWeight) }));
+  }, [derivedIdealWeight, weightUserEdited]);
+
+  // Auto-fill BMI whenever height or weight changes — only if user has not manually typed BMI.
+  useEffect(() => {
+    if (bmiUserEdited || derivedBmi === null) return;
+    setForm((prev) => ({ ...prev, bmi: String(derivedBmi) }));
+  }, [derivedBmi, bmiUserEdited]);
+
+  // ── Setters ───────────────────────────────────────────────────────────────
+
+  const setField = useCallback((field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  /** Called when user manually types in the Weight field. Disables auto-fill for weight. */
+  const setWeightManually = useCallback((value) => {
+    setWeightUserEdited(true);
+    setForm((prev) => ({ ...prev, weightKg: value }));
+  }, []);
+
+  /** Called when user manually types in the BMI field. Disables auto-fill for BMI. */
+  const setBmiManually = useCallback((value) => {
+    setBmiUserEdited(true);
+    setForm((prev) => ({ ...prev, bmi: value }));
+  }, []);
+
+  const resetForm = useCallback(() => {
+    setForm(EMPTY_FORM);
+    setError('');
+    setSavedCard(null);
+    setShareUrl('');
+    setWeightUserEdited(false);
+    setBmiUserEdited(false);
+  }, []);
+
+  const isValid = form.name.trim().length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!isValid) { setError('Name is required'); return; }
+    setError('');
+    setIsSaving(true);
+    try {
+      const payload = {
+        createdBy:   user?.id,
+        userId:      targetUserId,
+        name:        form.name.trim(),
+        age:         form.age          || undefined,
+        gender:      form.gender       || undefined,
+        heightCm:    form.heightCm     || undefined,
+        weightKg:    form.weightKg     || undefined,
+        bmi:         form.bmi          || undefined,
+        fatPercent:  form.fatPercent   || undefined,
+        bmr:         form.bmr          || undefined,
+        bodyAge:     form.bodyAge      || undefined,
+        recordedDate: form.recordedDate || undefined,
+        locationName: form.locationName || undefined,
+      };
+      const card = await createBodyParamsCard(payload);
+      const url = `${getApiBaseUrl()}/share/bpc/${card.publicShareToken}`;
+      setSavedCard(card);
+      setShareUrl(url);
+      debugLog('✅ [BodyParamsCard] Created:', card);
+      if (onSaveSuccess) onSaveSuccess(card, url);
+    } catch (err) {
+      setError(err.message || 'Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isValid, form, user, targetUserId, onSaveSuccess]);
+
+  return {
+    form, setField,
+    setWeightManually, setBmiManually,
+    fatHint, fatPlaceholder,
+    derivedIdealWeight, derivedBmi,
+    weightUserEdited, bmiUserEdited,
+    isSaving, error,
+    isValid,
+    savedCard, shareUrl,
+    handleSave, resetForm,
+  };
+}
