@@ -2789,9 +2789,11 @@ function WellnessValleyApp() {
       // ? Update weight result with final saved weight (may be corrected by backend)
       // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
       const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
+      const corrInfo = data.correction || null;
       console.log('🔍 [DEBUG] Updating weightResult with final saved weight:', {
         finalSavedWeight,
-        wasCorrected: !!data.correction?.wasCorrected,
+        wasCorrected: !!corrInfo?.wasCorrected,
+        corrInfo,
       });
       
       // Update weightResult with final backend value (overwrites the pre-save value set earlier)
