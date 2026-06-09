@@ -116,6 +116,68 @@ public class ReminderPlugin: CAPPlugin {
         call.resolve(["success": true])
     }
 
+    // MARK: - scheduleSnooze
+    /**
+     * Schedule a one-shot local notification that fires after <snoozeMinutes>.
+     *
+     * JS call: await ReminderPlugin.scheduleSnooze({ taskId, taskType, label, snoozeMinutes })
+     *
+     * Identifier: "wellness_snooze_<taskId>" — allows cancellation.
+     */
+    @objc func scheduleSnooze(_ call: CAPPluginCall) {
+        guard let taskId       = call.getInt("taskId"),
+              let snoozeMinutes = call.getInt("snoozeMinutes"),
+              snoozeMinutes > 0, snoozeMinutes <= 120
+        else {
+            call.reject("Invalid parameters: taskId and snoozeMinutes (1–120) are required")
+            return
+        }
+
+        let taskType = call.getString("taskType") ?? "task"
+        let label    = call.getString("label")    ?? taskType.capitalized
+
+        let content       = UNMutableNotificationContent()
+        content.title     = "🔔 \(label) — Snoozed Reminder"
+        content.body      = buildActivityMessage(activityType: taskType, label: label)
+        content.sound     = .default
+
+        let trigger    = UNTimeIntervalNotificationTrigger(
+                            timeInterval: TimeInterval(snoozeMinutes * 60),
+                            repeats: false)
+        let identifier = "wellness_snooze_\(taskId)"
+        let request    = UNNotificationRequest(identifier: identifier,
+                                               content: content,
+                                               trigger: trigger)
+
+        // Cancel any previous snooze for this task first
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.add(request) { error in
+            if let error = error {
+                print("[ReminderPlugin] ❌ scheduleSnooze \(taskId): \(error.localizedDescription)")
+            } else {
+                print("[ReminderPlugin] ✅ scheduleSnooze taskId=\(taskId) in \(snoozeMinutes) min")
+            }
+        }
+        call.resolve(["success": true, "taskId": taskId, "snoozeMinutes": snoozeMinutes])
+    }
+
+    // MARK: - cancelSnooze
+    /**
+     * Cancel a previously scheduled snooze notification.
+     *
+     * JS call: await ReminderPlugin.cancelSnooze({ taskId })
+     */
+    @objc func cancelSnooze(_ call: CAPPluginCall) {
+        guard let taskId = call.getInt("taskId") else {
+            call.reject("Missing required parameter: taskId")
+            return
+        }
+        let identifier = "wellness_snooze_\(taskId)"
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        print("[ReminderPlugin] 🛑 cancelSnooze taskId=\(taskId)")
+        call.resolve(["success": true, "taskId": taskId])
+    }
+
     // MARK: - updateWaterIntake
     /**
      * Cache today's water intake totals and re-schedule all pending water

@@ -10,10 +10,11 @@
  * Per claude.md §2.3: PascalCase for React components
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TaskCard from './TaskCard';
 import CompletedTaskCard from './CompletedTaskCard';
+import ReminderActionBar from './ReminderActionBar';
 import { useTaskData } from '../hooks/useTaskData';
 import { debugLog } from '../../../shared/utils/logger';
 
@@ -52,14 +53,17 @@ const TaskNotificationPanel = ({
   
   const handleTaskClick = async (task) => {
     debugLog('[TaskPanel] Task clicked', { taskId: task.task_id, taskType: task.task_type });
-    
-    // Trigger parent callback to open camera/completion flow
     if (onTaskComplete) {
       await onTaskComplete(task);
-      // Refresh task list after completion
       refresh();
     }
   };
+
+  /** Called by ReminderActionBar after a successful snooze or dismiss. */
+  const handleReminderAction = useCallback((action, meta) => {
+    debugLog('[TaskPanel] Reminder action', { action, meta });
+    refresh();
+  }, [refresh]);
   
   return (
     <motion.div
@@ -148,12 +152,20 @@ const TaskNotificationPanel = ({
                   </div>
                 ) : (
                   pendingTasks.map((task) => (
-                    <TaskCard
-                      key={task.task_id}
-                      task={task}
-                      onClick={() => handleTaskClick(task)}
-                      isHighlighted={task.task_id === highlightedTaskId}
-                    />
+                    <div key={task.task_id}>
+                      <TaskCard
+                        task={task}
+                        onClick={() => handleTaskClick(task)}
+                        isHighlighted={task.task_id === highlightedTaskId}
+                      />
+                      {/* Snooze / Don't remind again today actions */}
+                      {!task.reminder_dismissed_today && (
+                        <ReminderActionBar
+                          task={task}
+                          onActionComplete={handleReminderAction}
+                        />
+                      )}
+                    </div>
                   ))
                 )}
               </motion.div>

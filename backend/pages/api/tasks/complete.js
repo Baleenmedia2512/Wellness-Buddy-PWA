@@ -4,7 +4,7 @@
  * Per claude.md §2.6: Validate input, return { ok, data/error }, explicit status codes
  */
 
-import { completeTask } from '../../../features/tasks/data/task-repo.js';
+import { completeTask, upsertTaskAverage } from '../../../features/tasks/data/task-repo.js';
 import { validateTaskCompletion } from '../../../features/tasks/domain/task-rules.js';
 import { validateCompleteTaskRequest } from '../../../features/tasks/validation/complete-task.schema.js';
 import logger from '../../../shared/lib/logger.js';
@@ -78,7 +78,23 @@ export default async function handler(req, res) {
     
     // Complete the task
     const completedTask = await completeTask(taskId, completionData);
-    
+
+    // Update rolling average completion time for personalised reminders.
+    // Non-critical — fire-and-forget; failure must not block the response.
+    if (completedTask.completed_at) {
+      const completionTime = new Date(completedTask.completed_at)
+        .toTimeString()
+        .substring(0, 8); // 'HH:mm:ss'
+      upsertTaskAverage(userId, completedTask.task_type || taskType, completionTime)
+        .catch((err) =>
+          logger.error('upsertTaskAverage failed (non-critical)', {
+            taskId,
+            userId,
+            error: err.message
+          })
+        );
+    }
+
     const durationMs = Date.now() - startTime;
     logger.info('Task completed', {
       requestId,

@@ -38,6 +38,8 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
     canScheduleExactAlarms: async () => ({ canScheduleExact: false }),
     openExactAlarmSettings: async () => ({ success: false }),
     updateWaterIntake:      async () => ({ success: false }),
+    scheduleSnooze:         async () => ({ success: false, reason: 'not-native' }),
+    cancelSnooze:           async () => ({ success: false }),
   }),
 });
 
@@ -533,6 +535,45 @@ export async function resetRemindersToDefaults() {
   saveReminderPreferences(prefs);
   await applyRemindersToNative(prefs);
   return prefs;
+}
+
+// ── Snooze helpers (native local notification bridge) ──────────────────────────
+
+/**
+ * Schedule a one-shot native local notification at the snooze expiry time.
+ * Works on Android (AlarmManager) and iOS (UNTimeIntervalNotificationTrigger).
+ * Safe to call on web — silently no-ops.
+ *
+ * @param {number} taskId        - Task ID (used to uniquely identify the alarm).
+ * @param {string} taskType      - e.g. 'weight', 'breakfast'.
+ * @param {string} label         - Human-readable label for the notification title.
+ * @param {number} snoozeMinutes - Must be 15, 30, or 60.
+ */
+export async function scheduleSnooze(taskId, taskType, label, snoozeMinutes) {
+  if (!isNative()) return;
+  try {
+    await ReminderPluginNative.scheduleSnooze({ taskId, taskType, label, snoozeMinutes });
+    debugLog('[ReminderService] scheduleSnooze', { taskId, taskType, snoozeMinutes });
+  } catch (e) {
+    // Non-critical — FCM server-side push is the fallback
+    debugLog('[ReminderService] scheduleSnooze failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Cancel a previously scheduled native snooze notification.
+ * Safe to call on web — silently no-ops.
+ *
+ * @param {number} taskId - Task ID passed to scheduleSnooze().
+ */
+export async function cancelSnooze(taskId) {
+  if (!isNative()) return;
+  try {
+    await ReminderPluginNative.cancelSnooze({ taskId });
+    debugLog('[ReminderService] cancelSnooze', { taskId });
+  } catch (e) {
+    debugLog('[ReminderService] cancelSnooze failed (non-critical):', e.message);
+  }
 }
 
 // ── Exports ────────────────────────────────────────────────────────────────────

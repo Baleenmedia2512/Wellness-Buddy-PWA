@@ -112,7 +112,7 @@ import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
-// import { TaskNotificationPanel } from "./features/tasks"; // Commented out - Task Scheduler UI hidden
+import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
@@ -250,9 +250,9 @@ function WellnessValleyApp() {
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
   
-  // -- Task Notification Panel (June 2026) ----------------------------------- COMMENTED OUT
-  // const [showTaskPanel, setShowTaskPanel] = useState(false);
-  // const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+  // -- Task Notification Panel (June 2026) -----------------------------------
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -1564,6 +1564,51 @@ function WellnessValleyApp() {
   //   };
   //   startStepTrackingIfPermitted();
   // }, [user, isUserActive]);
+
+  // -- FCM notification tap → open TaskNotificationPanel ------------------
+  // Fires when user taps a push notification while app is in foreground,
+  // background, or cold-start. Reads data.action to decide what to open.
+  // Only registered on native (Capacitor) — no-op on web.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+
+    let handle = null;
+    let cancelled = false;
+
+    const register = async () => {
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        handle = await PushNotifications.addListener(
+          'pushNotificationActionPerformed',
+          (event) => {
+            const data = event?.notification?.data || {};
+            debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
+
+            if (data.action === 'openTaskPanel') {
+              startTransition(() => {
+                if (data.taskId) setHighlightedTaskId(data.taskId);
+                setShowTaskPanel(true);
+              });
+            }
+          },
+        );
+        if (cancelled) {
+          handle?.remove?.();
+          handle = null;
+        }
+      } catch (err) {
+        debugLog('[App] FCM tap listener registration failed', { err: err?.message });
+      }
+    };
+
+    register();
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
+  }, []);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -7597,7 +7642,36 @@ function WellnessValleyApp() {
         </div>
       )}
 
-      {/* Task Notification Panel (June 2026) - COMMENTED OUT
+      {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
+      {user && !showTaskPanel && (
+        <button
+          onClick={() => startTransition(() => setShowTaskPanel(true))}
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 20,
+            zIndex: 9990,
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            background: '#10b981',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,.3)',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+          aria-label="Open task notifications"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </button>
+      )}
+
+      {/* Task Notification Panel — opens when user taps a task/water FCM notification */}
       {showTaskPanel && user && (
         <TaskNotificationPanel
           userId={user.id}
@@ -7630,7 +7704,6 @@ function WellnessValleyApp() {
           }}
         />
       )}
-      */}
     </div>
     </LocationGuard>
   );

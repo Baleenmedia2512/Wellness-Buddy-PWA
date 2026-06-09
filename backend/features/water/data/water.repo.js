@@ -10,6 +10,7 @@
  * ---------------------------------------------------------------------------
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getPool } from '../../../utils/dbPool.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -62,4 +63,89 @@ export async function getFoodRowsForDate(userId, date) {
     return [];
   }
   return data || [];
+}
+
+// ─── Water reminder queries (tasks_table) ─────────────────────────────────────
+
+/**
+ * Return every active user's pending 'water' task for the given date,
+ * including their push token so the scheduler can send FCM notifications.
+ *
+ * Uses the pg pool (not Supabase client) because it requires a JOIN
+ * across tasks_table and team_table.
+ *
+ * @param {string} date  YYYY-MM-DD
+ * @returns {Promise<Array<{
+ *   task_id:                  number,
+ *   user_id:                  string,
+ *   task_date:                string,
+ *   window_start:             string,
+ *   window_end:               string,
+ *   reminder_count:           number,
+ *   reminder_dismissed_today: boolean,
+ *   snoozed_until:            string|null,
+ *   push_token:               string,
+ * }>>}
+ */
+export async function getPendingWaterTasksForDate(date) {
+  const client = await getPool();
+  try {
+    const result = await client.query(
+      `SELECT
+         t."TaskId"                  AS task_id,
+         t."UserId"                  AS user_id,
+         t."TaskDate"                AS task_date,
+         t."WindowStart"             AS window_start,
+         t."WindowEnd"               AS window_end,
+         t."ReminderCount"           AS reminder_count,
+         t."ReminderDismissedToday"  AS reminder_dismissed_today,
+         t."SnoozedUntil"            AS snoozed_until,
+         u."PushToken"               AS push_token
+       FROM tasks_table t
+       JOIN team_table u ON t."UserId"::text = u."UserId"::text
+       WHERE t."TaskDate" = $1::date
+         AND t."TaskType" = 'water'
+         AND t."Status"   = 'pending'
+         AND u."Status"   = 'Active'
+         AND u."PushToken" IS NOT NULL
+       ORDER BY t."UserId"`,
+      [date],
+    );
+    return result.rows;
+  } catch (error) {
+    logger.error('[water.repo] getPendingWaterTasksForDate failed', {
+      date,
+      err: error.message,
+    });
+    return [];
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Increment ReminderCount on a water task after a hydration reminder is sent.
+ * Ensures each scheduled slot fires exactly once (idempotency guard lives in
+ * shouldSendWaterReminder — this is the write-side of the same mechanism).
+ *
+ * @param {number} taskId
+ * @returns {Promise<void>}
+ */
+export async function incrementWaterTaskReminderCount(taskId) {
+  const client = await getPool();
+  try {
+    await client.query(
+      'UPDATE tasks_table SET "ReminderCount" = "ReminderCount" + 1 WHERE "TaskId" = $1',
+      [taskId],
+    );
+    logger.info('[water.repo] reminder count incremented', { taskId });
+  } catch (error) {
+    logger.error('[water.repo] incrementWaterTaskReminderCount failed', {
+      taskId,
+      err: error.message,
+    });
+    throw error;
+  } finally {
+    client.release();
+  }
 }

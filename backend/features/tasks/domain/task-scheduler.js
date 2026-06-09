@@ -15,12 +15,16 @@
  */
 
 import { format } from 'date-fns';
-import { 
+import {
   getTimeWindowsByStartTime,
   createTask,
   markNotificationSent,
-  expireOldTasks
+  expireOldTasks,
+  getTasksNeedingReminder,
+  incrementReminderCount,
+  getTasksPastAverageTime
 } from '../data/task-repo.js';
+import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
 
@@ -170,8 +174,176 @@ function getNotificationBody(taskType) {
   return bodies[taskType] || 'Tap to complete';
 }
 
+// ─── Follow-up reminder (second push) ────────────────────────────────────────
+
+/**
+ * Check for pending tasks whose snooze has expired and send a follow-up FCM push.
+ *
+ * Rules enforced by shouldTriggerReminder() (domain layer, pure):
+ * - Status must be pending
+ * - Not dismissed today
+ * - ReminderCount < 2
+ * - SnoozedUntil must have passed (or be null)
+ *
+ * Should run every minute alongside checkAndCreateTasksForCurrentTime().
+ */
+async function checkAndSendFollowUpReminders() {
+  const now         = new Date();
+  const currentDate = format(now, 'yyyy-MM-dd');
+
+  logger.info('Running follow-up reminder check', { currentDate });
+
+  try {
+    const tasks = await getTasksNeedingReminder(now, currentDate);
+
+    logger.info(`Found ${tasks.length} tasks eligible for follow-up reminder`);
+
+    for (const task of tasks) {
+      // Double-check domain rules with injected clock (defence-in-depth)
+      if (!shouldTriggerReminder(task, now)) continue;
+      if (!isWithinTaskWindow(task, now)) {
+        logger.info('Skipping follow-up reminder — outside window', {
+          taskId: task.task_id, taskType: task.task_type,
+          window: `${task.window_start}–${task.window_end}`
+        });
+        continue;
+      }
+
+      const pushToken = task.PushToken || task.push_token;
+      if (!pushToken) {
+        logger.warn('No push token for follow-up reminder', { taskId: task.task_id, userId: task.user_id });
+        continue;
+      }
+
+      const notification = {
+        title: `🔔 Reminder: ${getNotificationTitle(task.task_type)}`,
+        body: getNotificationBody(task.task_type),
+        data: {
+          action: 'openTaskPanel',
+          taskId: task.task_id.toString(),
+          taskType: task.task_type,
+          userId: task.user_id.toString(),
+          isFollowUp: 'true'
+        }
+      };
+
+      const sent = await sendPushNotification(pushToken, notification);
+
+      if (sent) {
+        await incrementReminderCount(task.task_id);
+        logger.info('Follow-up reminder sent', {
+          taskId: task.task_id,
+          userId: task.user_id,
+          taskType: task.task_type
+        });
+      } else {
+        logger.error('Failed to send follow-up reminder', {
+          taskId: task.task_id,
+          userId: task.user_id
+        });
+      }
+    }
+
+    logger.info('Follow-up reminder check completed');
+  } catch (error) {
+    logger.error('Error in follow-up reminder check', { error: error.message, stack: error.stack });
+  }
+}
+
+// ─── Personalised reminder (past average time) ────────────────────────────────
+
+/**
+ * Send a personalised reminder to any user who has NOT yet completed a task
+ * and whose personal average completion time for that task has already passed.
+ *
+ * Example:
+ *   User normally uploads weight at 06:30.
+ *   Today at 06:31 the weight task is still pending.
+ *   → Send: "You usually log your weight around 6:30 AM — still pending!"
+ *
+ * Runs every minute as part of the cron job.
+ * Only fires when user_task_averages has a record (at least 1 past completion).
+ */
+async function checkAndSendPersonalisedReminders() {
+  const now         = new Date();
+  const currentDate = format(now, 'yyyy-MM-dd');
+
+  logger.info('Running personalised reminder check', { currentDate });
+
+  try {
+    const tasks = await getTasksPastAverageTime(currentDate, now);
+
+    logger.info(`Found ${tasks.length} tasks past user average time`);
+
+    for (const task of tasks) {
+      // Domain rule guard (defence-in-depth)
+      if (!shouldTriggerReminder(task, now)) continue;
+      if (!isWithinTaskWindow(task, now)) {
+        logger.info('Skipping personalised reminder — outside window', {
+          taskId: task.task_id, taskType: task.task_type,
+          window: `${task.window_start}–${task.window_end}`
+        });
+        continue;
+      }
+
+      const pushToken = task.PushToken || task.push_token;
+      if (!pushToken) {
+        logger.warn('No push token for personalised reminder', {
+          taskId: task.task_id,
+          userId: task.user_id
+        });
+        continue;
+      }
+
+      // Format the average time for the message: '06:30:00' → '6:30 AM'
+      const avgRaw  = task.average_completion_time || '';       // e.g. '06:30:00'
+      const [h, m]  = avgRaw.split(':').map(Number);
+      const period  = h >= 12 ? 'PM' : 'AM';
+      const dh      = h % 12 || 12;
+      const avgLabel = `${dh}:${String(m).padStart(2, '0')} ${period}`;
+
+      const notification = {
+        title: `⏰ ${getNotificationTitle(task.task_type)}`,
+        body:  `You usually complete this around ${avgLabel} — it's still pending!`,
+        data: {
+          action:     'openTaskPanel',
+          taskId:     task.task_id.toString(),
+          taskType:   task.task_type,
+          userId:     task.user_id.toString(),
+          isPersonal: 'true'
+        }
+      };
+
+      const sent = await sendPushNotification(pushToken, notification);
+
+      if (sent) {
+        await incrementReminderCount(task.task_id);
+        logger.info('Personalised reminder sent', {
+          taskId:  task.task_id,
+          userId:  task.user_id,
+          avgTime: avgLabel
+        });
+      } else {
+        logger.error('Failed to send personalised reminder', {
+          taskId: task.task_id,
+          userId: task.user_id
+        });
+      }
+    }
+
+    logger.info('Personalised reminder check completed');
+  } catch (error) {
+    logger.error('Error in personalised reminder check', {
+      error: error.message,
+      stack: error.stack
+    });
+  }
+}
+
 export {
   checkAndCreateTasksForCurrentTime,
   expirePreviousDayTasks,
-  sendTaskNotification
+  sendTaskNotification,
+  checkAndSendFollowUpReminders,
+  checkAndSendPersonalisedReminders
 };

@@ -109,8 +109,11 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         // 1. Start AlarmSoundService → plays alarm ringtone + shows foreground notification
         startAlarmSound(context, activityType, label, hour, minute);
 
-        // 2. Reschedule for the SAME time tomorrow
-        scheduleNextDay(context, activityType, label, hour, minute);
+        // 2. Reschedule for the SAME time tomorrow — only for daily alarms (not one-shot snooze)
+        boolean isOneShot = intent.getBooleanExtra("oneShot", false);
+        if (!isOneShot && hour >= 0 && minute >= 0) {
+            scheduleNextDay(context, activityType, label, hour, minute);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -366,6 +369,87 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             cancelReminder(context, "water_" + i);
         }
         Log.d(TAG, "🛑 All water reminders cancelled");
+    }
+
+    // ── One-shot snooze helpers ───────────────────────────────────────────
+
+    /**
+     * Schedule a one-shot (non-repeating) local notification for a snoozed task.
+     * Fires at <triggerAtMs> (epoch milliseconds).
+     * Uses request codes in the range 9001–9099 (task-snooze range, keyed by taskId % 99).
+     *
+     * @param context     App context.
+     * @param taskId      Unique task ID (used to derive request code + notification id).
+     * @param taskType    e.g. "weight", "breakfast" — used to build the notification text.
+     * @param label       Human-readable label for the notification.
+     * @param triggerAtMs Epoch millis when the alarm should fire.
+     */
+    public static void scheduleOneShot(Context context,
+                                       int taskId,
+                                       String taskType,
+                                       String label,
+                                       long triggerAtMs) {
+        try {
+            int requestCode = 9001 + (taskId % 99);
+
+            Intent intent = new Intent(context, ReminderAlarmReceiver.class);
+            intent.setAction("com.wellnessvalley.app.SNOOZE_" + taskId);
+            intent.putExtra(EXTRA_ACTIVITY_TYPE, taskType);
+            intent.putExtra(EXTRA_HOUR,   -1);   // -1 signals one-shot (no self-reschedule)
+            intent.putExtra(EXTRA_MINUTE, -1);
+            intent.putExtra(EXTRA_LABEL,  label);
+            // Extra flag so onReceive() skips the "reschedule for tomorrow" step
+            intent.putExtra("oneShot", true);
+
+            PendingIntent pi = PendingIntent.getBroadcast(
+                    context, requestCode, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) {
+                Log.e(TAG, "❌ AlarmManager null");
+                return;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            }
+            Log.d(TAG, "✅ One-shot snooze scheduled: taskId=" + taskId
+                    + " type=" + taskType + " at=" + new java.util.Date(triggerAtMs));
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to schedule one-shot snooze", e);
+        }
+    }
+
+    /**
+     * Cancel a previously scheduled one-shot snooze alarm.
+     *
+     * @param context App context.
+     * @param taskId  The task ID that was passed to scheduleOneShot().
+     */
+    public static void cancelOneShot(Context context, int taskId) {
+        try {
+            int requestCode = 9001 + (taskId % 99);
+
+            Intent intent = new Intent(context, ReminderAlarmReceiver.class);
+            intent.setAction("com.wellnessvalley.app.SNOOZE_" + taskId);
+
+            PendingIntent pi = PendingIntent.getBroadcast(
+                    context, requestCode, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (am != null) {
+                am.cancel(pi);
+                Log.d(TAG, "🛑 One-shot snooze cancelled: taskId=" + taskId);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to cancel one-shot snooze", e);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

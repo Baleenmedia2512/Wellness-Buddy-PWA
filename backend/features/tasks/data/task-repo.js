@@ -42,7 +42,10 @@ async function getTasksByUserAndDate(userId, date, status = null) {
         "TaskData" as task_data,
         "CompletionData" as completion_data,
         "NotificationSent" as notification_sent,
-        "NotificationSentAt" as notification_sent_at
+        "NotificationSentAt" as notification_sent_at,
+        "ReminderCount" as reminder_count,
+        "SnoozedUntil" as snoozed_until,
+        "ReminderDismissedToday" as reminder_dismissed_today
       FROM tasks_table
       WHERE "UserId" = $1 AND "TaskDate" = $2
     `;
@@ -310,6 +313,263 @@ async function getTimeWindowsByStartTime(startTime) {
   }
 }
 
+// ─── Snooze / dismiss / reminder queries ────────────────────────────────────
+
+/**
+ * Increment ReminderCount after a follow-up reminder is sent.
+ * Used by the background scheduler after each second-reminder FCM push.
+ *
+ * @param {number} taskId - Task ID.
+ * @returns {Promise<void>}
+ */
+async function incrementReminderCount(taskId) {
+  const client = await dbPool();
+  try {
+    await client.query(`
+      UPDATE tasks_table
+      SET "ReminderCount" = "ReminderCount" + 1
+      WHERE "TaskId" = $1
+    `, [taskId]);
+    logger.info('Reminder count incremented', { taskId });
+  } catch (error) {
+    logger.error('Error incrementing reminder count', { taskId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Snooze a task — sets SnoozedUntil and increments ReminderCount.
+ *
+ * @param {number} taskId      - Task ID.
+ * @param {Date}   snoozedUntil - Expiry timestamp returned by calculateSnoozeExpiry().
+ * @returns {Promise<Object>}   - Updated task row.
+ */
+async function snoozeTask(taskId, snoozedUntil) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      UPDATE tasks_table
+      SET
+        "SnoozedUntil"   = $1,
+        "ReminderCount"  = "ReminderCount" + 1
+      WHERE "TaskId" = $2 AND "Status" = 'pending'
+      RETURNING
+        "TaskId"              as task_id,
+        "ReminderCount"       as reminder_count,
+        "SnoozedUntil"        as snoozed_until
+    `, [snoozedUntil, taskId]);
+
+    if (result.rows.length === 0) {
+      throw new Error('Task not found or not pending');
+    }
+
+    logger.info('Task snoozed', { taskId, snoozedUntil });
+    return result.rows[0];
+  } catch (error) {
+    logger.error('Error snoozing task', { taskId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Dismiss reminders for a task for the rest of today.
+ * Sets ReminderDismissedToday = true; does NOT change task Status.
+ *
+ * @param {number} taskId - Task ID.
+ * @returns {Promise<Object>} - Updated task row.
+ */
+async function dismissTaskToday(taskId) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      UPDATE tasks_table
+      SET "ReminderDismissedToday" = true
+      WHERE "TaskId" = $1 AND "Status" = 'pending'
+      RETURNING
+        "TaskId"                  as task_id,
+        "ReminderDismissedToday"  as reminder_dismissed_today
+    `, [taskId]);
+
+    if (result.rows.length === 0) {
+      throw new Error('Task not found or not pending');
+    }
+
+    logger.info('Task reminders dismissed for today', { taskId });
+    return result.rows[0];
+  } catch (error) {
+    logger.error('Error dismissing task reminders', { taskId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fetch pending tasks whose snooze has expired and that are still eligible
+ * for a follow-up reminder (ReminderCount < 2, not dismissed).
+ *
+ * Used by the background scheduler to trigger second reminders.
+ *
+ * @param {Date}   currentDateTime - Injected clock.
+ * @param {string} currentDate     - YYYY-MM-DD.
+ * @returns {Promise<Array>}
+ */
+async function getTasksNeedingReminder(currentDateTime, currentDate) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        t."TaskId"                  as task_id,
+        t."UserId"                  as user_id,
+        t."TaskType"                as task_type,
+        t."TaskDate"                as task_date,
+        t."WindowStart"             as window_start,
+        t."WindowEnd"               as window_end,
+        t."ReminderCount"           as reminder_count,
+        t."SnoozedUntil"            as snoozed_until,
+        t."ReminderDismissedToday"  as reminder_dismissed_today,
+        t."NotificationSent"        as notification_sent,
+        u."PushToken"
+      FROM tasks_table t
+      JOIN team_table u ON t."UserId"::text = u."UserId"::text
+      WHERE t."TaskDate"                = $1::date
+        AND t."Status"                  = 'pending'
+        AND t."ReminderDismissedToday"  = false
+        AND t."ReminderCount"           < 2
+        AND t."NotificationSent"        = true
+        AND (
+              t."SnoozedUntil" IS NULL
+              OR t."SnoozedUntil" <= $2
+            )
+        AND $2::time BETWEEN t."WindowStart" AND t."WindowEnd"
+    `, [currentDate, currentDateTime]);
+
+    return result.rows;
+  } catch (error) {
+    logger.error('Error fetching tasks needing reminder', { currentDate, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Upsert a user's rolling average completion time for a task type.
+ *
+ * Uses an incremental running-average formula so no historical rows are needed:
+ *   new_avg = old_avg + (new_value - old_avg) / new_count
+ *
+ * @param {number} userId           - User ID.
+ * @param {string} taskType         - e.g. 'weight', 'breakfast'.
+ * @param {string} completionTimeStr - Time string in HH:mm:ss (local wall-clock, already tz-converted).
+ * @returns {Promise<Object>}        - Updated average row.
+ */
+async function upsertTaskAverage(userId, taskType, completionTimeStr) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      INSERT INTO user_task_averages (
+        "UserId", "TaskType", "AverageCompletionTime", "SampleCount", "LastCalculatedAt"
+      ) VALUES ($1, $2, $3::time, 1, NOW())
+      ON CONFLICT ("UserId", "TaskType") DO UPDATE
+        SET
+          "AverageCompletionTime" = (
+            -- incremental running average (stored as epoch seconds, then cast back to time)
+            to_timestamp(
+              (
+                EXTRACT(EPOCH FROM user_task_averages."AverageCompletionTime"::interval)
+                + (
+                    EXTRACT(EPOCH FROM $3::time::interval)
+                    - EXTRACT(EPOCH FROM user_task_averages."AverageCompletionTime"::interval)
+                  )
+                  / (user_task_averages."SampleCount" + 1)
+              )
+            )::time
+          ),
+          "SampleCount"          = user_task_averages."SampleCount" + 1,
+          "LastCalculatedAt"     = NOW()
+      RETURNING
+        "AverageId"             as average_id,
+        "UserId"                as user_id,
+        "TaskType"              as task_type,
+        "AverageCompletionTime" as average_completion_time,
+        "SampleCount"           as sample_count
+    `, [userId, taskType, completionTimeStr]);
+
+    logger.info('Task average upserted', { userId, taskType, completionTimeStr });
+    return result.rows[0];
+  } catch (error) {
+    logger.error('Error upserting task average', { userId, taskType, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Find pending tasks where the current time has passed the user's personal
+ * average completion time for that task type.
+ *
+ * Example:
+ *   User usually uploads weight at 06:30. Today at 06:31 it is still pending.
+ *   → this query returns that task so a personalised reminder can be sent.
+ *
+ * Guards (all must be true to return a row):
+ *   1. Task is pending today.
+ *   2. Current time > user's AverageCompletionTime for that TaskType.
+ *   3. NotificationSent = true  (first push already sent — this is a follow-up only).
+ *   4. ReminderDismissedToday = false.
+ *   5. ReminderCount < 2  (cap at 2 reminders per day).
+ *   6. SnoozedUntil is NULL or already expired  (respect active snooze).
+ *
+ * @param {string} currentDate - YYYY-MM-DD
+ * @param {Date}   currentDateTime - injected clock
+ * @returns {Promise<Array>}
+ */
+async function getTasksPastAverageTime(currentDate, currentDateTime) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        t."TaskId"                  AS task_id,
+        t."UserId"                  AS user_id,
+        t."TaskType"                AS task_type,
+        t."TaskDate"                AS task_date,
+        t."ReminderCount"           AS reminder_count,
+        t."SnoozedUntil"            AS snoozed_until,
+        t."ReminderDismissedToday"  AS reminder_dismissed_today,
+        uta."AverageCompletionTime" AS average_completion_time,
+        u."PushToken"
+      FROM tasks_table t
+      JOIN user_task_averages uta
+        ON uta."UserId"   = t."UserId"::integer
+       AND uta."TaskType" = t."TaskType"
+      JOIN team_table u
+        ON u."UserId"::text = t."UserId"::text
+      WHERE t."TaskDate"               = $1::date
+        AND t."Status"                 = 'pending'
+        AND t."NotificationSent"       = true
+        AND t."ReminderDismissedToday" = false
+        AND t."ReminderCount"          < 2
+        AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $2)
+        AND $2::time BETWEEN t."WindowStart" AND t."WindowEnd"
+        AND $2::time >= uta."AverageCompletionTime"
+        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '2 minutes')::time
+    `, [currentDate, currentDateTime]);
+
+    return result.rows;
+  } catch (error) {
+    logger.error('Error in getTasksPastAverageTime', { currentDate, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export {
   getTasksByUserAndDate,
   getTasksNeedingNotification,
@@ -318,5 +578,12 @@ export {
   markNotificationSent,
   expireOldTasks,
   getTimeWindowsByUser,
-  getTimeWindowsByStartTime
+  getTimeWindowsByStartTime,
+  // reminder helpers
+  snoozeTask,
+  dismissTaskToday,
+  getTasksNeedingReminder,
+  upsertTaskAverage,
+  incrementReminderCount,
+  getTasksPastAverageTime
 };

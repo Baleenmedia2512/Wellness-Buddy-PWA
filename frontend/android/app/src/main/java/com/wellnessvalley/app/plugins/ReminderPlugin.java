@@ -278,9 +278,76 @@ public class ReminderPlugin extends Plugin {
         call.resolve(result);
     }
 
-    // ── updateWaterIntake ─────────────────────────────────────────────────
+    // ── scheduleSnooze ────────────────────────────────────────────────────
 
     /**
+     * Schedule a one-shot local notification at the snooze expiry time.
+     *
+     * JS call: await ReminderPlugin.scheduleSnooze({ taskId, taskType, label, snoozeMinutes })
+     */
+    @PluginMethod
+    public void scheduleSnooze(PluginCall call) {
+        Integer taskId        = call.getInt("taskId");
+        String  taskType      = call.getString("taskType", "task");
+        String  label         = call.getString("label", taskType);
+        Integer snoozeMinutes = call.getInt("snoozeMinutes");
+
+        if (taskId == null || snoozeMinutes == null) {
+            call.reject("Missing required parameters: taskId, snoozeMinutes");
+            return;
+        }
+        if (snoozeMinutes <= 0 || snoozeMinutes > 120) {
+            call.reject("snoozeMinutes must be between 1 and 120");
+            return;
+        }
+
+        try {
+            long triggerAtMs = System.currentTimeMillis() + (long) snoozeMinutes * 60 * 1000;
+            ReminderAlarmReceiver.scheduleOneShot(getContext(), taskId, taskType, label, triggerAtMs);
+
+            JSObject res = new JSObject();
+            res.put("success",   true);
+            res.put("taskId",    taskId);
+            res.put("triggerAt", triggerAtMs);
+            call.resolve(res);
+
+            Log.d(TAG, "✅ scheduleSnooze: taskId=" + taskId + " snoozeMinutes=" + snoozeMinutes);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ scheduleSnooze failed", e);
+            call.reject("Failed to schedule snooze: " + e.getMessage());
+        }
+    }
+
+    // ── cancelSnooze ──────────────────────────────────────────────────────
+
+    /**
+     * Cancel a previously scheduled snooze alarm.
+     *
+     * JS call: await ReminderPlugin.cancelSnooze({ taskId })
+     */
+    @PluginMethod
+    public void cancelSnooze(PluginCall call) {
+        Integer taskId = call.getInt("taskId");
+        if (taskId == null) {
+            call.reject("Missing required parameter: taskId");
+            return;
+        }
+        try {
+            ReminderAlarmReceiver.cancelOneShot(getContext(), taskId);
+
+            JSObject res = new JSObject();
+            res.put("success", true);
+            res.put("taskId",  taskId);
+            call.resolve(res);
+
+            Log.d(TAG, "🛑 cancelSnooze: taskId=" + taskId);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ cancelSnooze failed", e);
+            call.reject("Failed to cancel snooze: " + e.getMessage());
+        }
+    }
+
+    // ── updateWaterIntake ─────────────────────────────────────────────────
      * Cache today's water intake totals in SharedPreferences so that alarm
      * notifications can display a smart remaining-balance message without
      * needing network access at fire time.

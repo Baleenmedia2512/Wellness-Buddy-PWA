@@ -230,6 +230,102 @@ function getTaskIcon(taskType) {
   return icons[taskType] || '📋';
 }
 
+// ─── Snooze / dismiss / reminder helpers ────────────────────────────────────
+
+/** Maximum number of reminder notifications per task per day. */
+const MAX_DAILY_REMINDERS = 2;
+
+/** Allowed snooze durations in minutes. */
+const VALID_SNOOZE_MINUTES = [15, 30, 60];
+
+/**
+ * Return true when the current time falls inside the task's activity window.
+ *
+ * Example (Weight window 03:00 – 07:30):
+ *   05:00 → true   (inside)
+ *   07:45 → false  (window closed)
+ *   02:55 → false  (window not open yet)
+ *
+ * This must be checked before sending ANY reminder so we never notify
+ * outside the configured activity_time_windows_table range.
+ *
+ * @param {Object} task          - Task row (window_start / window_end as 'HH:mm:ss').
+ * @param {Date}   currentDateTime - Injected clock.
+ * @returns {boolean}
+ */
+function isWithinTaskWindow(task, currentDateTime) {
+  const currentTime = format(currentDateTime, 'HH:mm:ss');
+  return currentTime >= task.window_start && currentTime <= task.window_end;
+}
+
+/**
+ * Determine whether a follow-up reminder should fire for a task.
+ *
+ * Rules:
+ * 1. Task must still be pending.
+ * 2. User must NOT have dismissed reminders for today.
+ * 3. Reminder count must be < MAX_DAILY_REMINDERS (2 per day).
+ * 4. If SnoozedUntil is set, current time must have passed it.
+ * 5. Task must not have been completed.
+ *
+ * @param {Object} task          - Task row from DB (snake_case aliases).
+ * @param {Date}   currentDateTime - Injected clock; never call Date.now() directly.
+ * @returns {boolean}
+ */
+function shouldTriggerReminder(task, currentDateTime) {
+  if (task.status !== 'pending') return false;
+  if (task.reminder_dismissed_today === true) return false;
+  if ((task.reminder_count ?? 0) >= MAX_DAILY_REMINDERS) return false;
+
+  // If snooze is active, wait until it expires
+  if (task.snoozed_until) {
+    const snoozeExpiry = new Date(task.snoozed_until);
+    if (currentDateTime < snoozeExpiry) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Calculate the timestamp at which a snooze period expires.
+ *
+ * @param {number} snoozeMinutes  - Must be one of VALID_SNOOZE_MINUTES.
+ * @param {Date}   currentDateTime - Injected clock.
+ * @returns {Date} - Expiry timestamp.
+ * @throws {Error} - If snoozeMinutes is not a valid option.
+ */
+function calculateSnoozeExpiry(snoozeMinutes, currentDateTime) {
+  if (!VALID_SNOOZE_MINUTES.includes(snoozeMinutes)) {
+    throw new Error(
+      `Invalid snooze duration: ${snoozeMinutes}. Must be one of ${VALID_SNOOZE_MINUTES.join(', ')}.`
+    );
+  }
+  const expiry = new Date(currentDateTime.getTime() + snoozeMinutes * 60 * 1000);
+  return expiry;
+}
+
+/**
+ * Return true when the user has dismissed reminders for this task today.
+ *
+ * @param {Object} task - Task row from DB.
+ * @returns {boolean}
+ */
+function isDismissedToday(task) {
+  return task.reminder_dismissed_today === true;
+}
+
+/**
+ * Return true when the task is currently within an active snooze period.
+ *
+ * @param {Object} task          - Task row from DB.
+ * @param {Date}   currentDateTime - Injected clock.
+ * @returns {boolean}
+ */
+function isSnoozedNow(task, currentDateTime) {
+  if (!task.snoozed_until) return false;
+  return currentDateTime < new Date(task.snoozed_until);
+}
+
 export {
   isTaskVisible,
   shouldTaskExpire,
@@ -238,5 +334,13 @@ export {
   validateTaskCompletion,
   getTaskTitle,
   getTaskIcon,
-  getMinutesDifference
+  getMinutesDifference,
+  // reminder helpers
+  shouldTriggerReminder,
+  calculateSnoozeExpiry,
+  isDismissedToday,
+  isSnoozedNow,
+  isWithinTaskWindow,
+  MAX_DAILY_REMINDERS,
+  VALID_SNOOZE_MINUTES
 };
