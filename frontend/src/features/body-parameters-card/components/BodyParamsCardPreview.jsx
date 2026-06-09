@@ -10,10 +10,10 @@ import React from 'react';
 /* ── Single full-width row: LABEL : value ──────────────────────────────── */
 const Row = ({ label, value }) => (
   <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 80 }}>
+    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
       {label}
     </span>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 8 }}>:</span>
+    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 6 }}>:</span>
     <span style={{ fontSize: 12, color: '#1a1a6e' }}>{value || '—'}</span>
   </div>
 );
@@ -21,7 +21,7 @@ const Row = ({ label, value }) => (
 /* ── Half-width row used side-by-side ──────────────────────────────────── */
 const HalfRow = ({ label, value }) => (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 54 }}>
+    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
       {label}
     </span>
     <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 6 }}>:</span>
@@ -37,9 +37,12 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
 
   const fmtDate = (v) => {
     if (!v) return '';
-    const s = String(v).replace(/-/g, '');
-    if (s.length === 8) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
-    return v;
+    const str = String(v);
+    // Already YYYY-MM-DD (from HTML date input)
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+    // Compact YYYYMMDD (no hyphens)
+    if (/^\d{8}$/.test(str)) return `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}`;
+    return str;
   };
 
   const fatValue = card.fatPercent !== '' && card.fatPercent !== null && card.fatPercent !== undefined

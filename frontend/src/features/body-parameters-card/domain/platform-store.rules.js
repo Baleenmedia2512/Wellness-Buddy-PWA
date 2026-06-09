@@ -29,6 +29,6 @@ export function getStoreLink(platform) {
  * @returns {string}
  */
 export function buildShareText(shareUrl, memberName) {
-  const name = memberName ? memberName.split(' ')[0] : 'you';
+  const name = memberName ? memberName.trim() : 'you';
   return `👋 Hey ${name}! Your body parameters card is ready.\nTap to view → ${shareUrl}`;
 }
