@@ -12,8 +12,9 @@
 import { getPool } from '../../../utils/dbPool.js';
 import logger from '../../../shared/lib/logger.js';
 
-// Alias for backward compatibility
-const dbPool = getPool;
+// Each call acquires a dedicated connection (has .query() and .release()).
+// getPool() returns the pool wrapper, not a connection — do NOT call it directly.
+const dbPool = () => getPool().getConnection();
 
 /**
  * Get all tasks for a user on a specific date with status filter
@@ -60,7 +61,7 @@ async function getTasksByUserAndDate(userId, date, status = null) {
     query += ` ORDER BY "WindowStart" ASC, "Priority" DESC`;
     
     const result = await client.query(query, params);
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error fetching tasks', { userId, date, status, error: error.message });
     throw error;
@@ -98,7 +99,7 @@ async function getTasksNeedingNotification(currentTime, currentDate) {
         AND substring(t."WindowStart"::text, 1, 5) = $2
     `, [currentDate, currentTime]);
     
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error fetching tasks needing notification', { currentTime, currentDate, error: error.message });
     throw error;
@@ -142,9 +143,9 @@ async function createTask(taskData) {
       RETURNING *
     `, [userId, taskType, taskDate, windowStart, windowEnd, priority, JSON.stringify(taskDataJson)]);
     
-    if (result.rows.length > 0) {
-      logger.info('Task created', { taskId: result.rows[0].TaskId, userId, taskType, taskDate });
-      return result.rows[0];
+    if (result[0].length > 0) {
+      logger.info('Task created', { taskId: result[0][0].TaskId, userId, taskType, taskDate });
+      return result[0][0];
     }
     
     return null; // Task already exists
@@ -177,9 +178,9 @@ async function completeTask(taskId, completionData) {
       RETURNING *
     `, [JSON.stringify(completionData), taskId]);
     
-    if (result.rows.length > 0) {
-      logger.info('Task completed', { taskId, userId: result.rows[0].UserId });
-      return result.rows[0];
+    if (result[0].length > 0) {
+      logger.info('Task completed', { taskId, userId: result[0][0].UserId });
+      return result[0][0];
     }
     
     throw new Error('Task not found or already completed');
@@ -235,7 +236,7 @@ async function expireOldTasks(beforeDate) {
         AND "Status" = 'pending'
     `, [beforeDate]);
     
-    const count = result.rowCount;
+    const count = result[0].affectedRows;
     logger.info('Expired old tasks', { count, beforeDate });
     return count;
   } catch (error) {
@@ -268,7 +269,7 @@ async function getTimeWindowsByUser(userId) {
       ORDER BY "WindowStartTime" ASC
     `);
     
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error fetching time windows', { userId, error: error.message });
     throw error;
@@ -304,7 +305,7 @@ async function getTimeWindowsByStartTime(startTime) {
         AND substring(tw."WindowStartTime"::text, 1, 5) = $1
     `, [startTime]);
     
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error fetching time windows by start time', { startTime, error: error.message });
     throw error;
@@ -361,12 +362,12 @@ async function snoozeTask(taskId, snoozedUntil) {
         "SnoozedUntil"        as snoozed_until
     `, [snoozedUntil, taskId]);
 
-    if (result.rows.length === 0) {
+    if (result[0].length === 0) {
       throw new Error('Task not found or not pending');
     }
 
     logger.info('Task snoozed', { taskId, snoozedUntil });
-    return result.rows[0];
+    return result[0][0];
   } catch (error) {
     logger.error('Error snoozing task', { taskId, error: error.message });
     throw error;
@@ -394,12 +395,12 @@ async function dismissTaskToday(taskId) {
         "ReminderDismissedToday"  as reminder_dismissed_today
     `, [taskId]);
 
-    if (result.rows.length === 0) {
+    if (result[0].length === 0) {
       throw new Error('Task not found or not pending');
     }
 
     logger.info('Task reminders dismissed for today', { taskId });
-    return result.rows[0];
+    return result[0][0];
   } catch (error) {
     logger.error('Error dismissing task reminders', { taskId, error: error.message });
     throw error;
@@ -448,7 +449,7 @@ async function getTasksNeedingReminder(currentDateTime, currentDate) {
         AND $2::time BETWEEN t."WindowStart" AND t."WindowEnd"
     `, [currentDate, currentDateTime]);
 
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error fetching tasks needing reminder', { currentDate, error: error.message });
     throw error;
@@ -501,7 +502,7 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
     `, [userId, taskType, completionTimeStr]);
 
     logger.info('Task average upserted', { userId, taskType, completionTimeStr });
-    return result.rows[0];
+    return result[0][0];
   } catch (error) {
     logger.error('Error upserting task average', { userId, taskType, error: error.message });
     throw error;
@@ -561,7 +562,7 @@ async function getTasksPastAverageTime(currentDate, currentDateTime) {
         AND $2::time <  (uta."AverageCompletionTime"::interval + interval '2 minutes')::time
     `, [currentDate, currentDateTime]);
 
-    return result.rows;
+    return result[0];
   } catch (error) {
     logger.error('Error in getTasksPastAverageTime', { currentDate, error: error.message });
     throw error;
