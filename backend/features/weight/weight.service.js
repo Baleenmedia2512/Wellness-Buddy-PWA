@@ -169,6 +169,10 @@ export async function saveWeight(input) {
       updated: wasUpdated,
       message: wasUpdated ? 'Weight entry updated successfully' : 'Weight entry saved successfully',
       correctionInfo,
+      // Expose the previous entry so the frontend can compute and display the
+      // "VS PREVIOUS" strip without a second API round-trip.
+      previousWeightValue: lastEntry ? parseFloat(lastEntry.Weight) : null,
+      previousWeightDate: lastEntry ? lastEntry.CreatedAt : null,
       data: {
         userId,
         weightValue: weight,

@@ -2622,92 +2622,99 @@ function WellnessValleyApp() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        // Weight validation failed - show user-friendly alert modal
-        debugLog('❌ Weight validation failed:', data.validation);
+        debugLog('❌ Weight save failed:', { status: response.status, validation: data.validation, message: data.message });
 
-        // ?? Even though weight was rejected, BMR may have been saved by the backend.
+        // Even though weight was rejected, BMR may have been saved by the backend.
         // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
         if (data.bmrSaved && weightData.bmr) {
-          debugLog('?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:', weightData.bmr);
+          debugLog('🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:', weightData.bmr);
           setBmrUpdateKey((prev) => prev + 1);
         }
-        
-        // Build friendly, supportive message for user
-        let alertMessage = `We noticed a significant change from your last weigh-in.`;
-        
-        if (data.validation && data.message) {
-          // Capitalise first letter of the backend message for display
-          const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
-          alertMessage = detail;
+
+        // Distinguish a server/infrastructure failure (5xx) from a business validation
+        // failure (400/422). Showing "Unrealistic Weight Change" for a DB outage is
+        // misleading and confusing for the user.
+        if (response.status >= 500) {
+          setAlertModal({
+            isOpen: true,
+            title: "⚠️ Couldn't Save Your Weight",
+            message: "We couldn't save your weight entry right now. Please try again in a moment.",
+            type: "error",
+          });
+        } else {
+          // Validation failure — build a friendly, supportive message
+          let alertMessage = `We noticed a significant change from your last weigh-in.`;
+          if (data.validation && data.message) {
+            const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
+            alertMessage = detail;
+          }
+          setAlertModal({
+            isOpen: true,
+            title: "⚖️ Unrealistic Weight Change",
+            message: alertMessage,
+            type: "warning",
+          });
         }
-        
-        setAlertModal({
-          isOpen: true,
-          title: "⚖️ Unrealistic Weight Change",
-          message: alertMessage,
-          type: "warning",
-        });
-        
+
         // Clear loading states
         setSaveLoading(false);
         setLoadingState("idle");
-        
-        // Throw error so caller knows validation failed
-        throw new Error(data.message || "Weight validation failed");
+
+        // Throw so the caller knows the save failed
+        throw new Error(data.message || "Weight save failed");
       }
 
-      debugLog("? Weight entry saved successfully");
+      debugLog("✅ Weight entry saved successfully");
 
-      // ? ALWAYS update weight result with final saved weight (corrected or original)
-      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
-      const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
+      // ALWAYS update weight result with final saved weight (corrected or original).
+      // Backend returns correctionInfo (not correction) — use the correct key.
+      const corrInfo = data.correctionInfo;
+      const finalSavedWeight = data.data?.weightValue || corrInfo?.correctedWeight || weightData.weightValue;
       setWeightResult({
         ...weightData,
         weightValue: finalSavedWeight,
-        originalWeight: data.correction?.originalWeight || weightData.weightValue,
+        originalWeight: corrInfo?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
       });
 
-      // Compute diff directly from save response — avoids EXIF timestamp ordering bug
-      // where a re-uploaded old photo gets an old CreatedAt and sorts behind same-day entries.
-      // data.previousWeightValue is the true prior entry weight captured BEFORE the insert.
+      // Compute diff directly from save response — avoids EXIF timestamp ordering bug.
+      // Backend now returns previousWeightValue + previousWeightDate captured BEFORE insert.
       if (data.previousWeightValue !== null && data.previousWeightValue !== undefined) {
         const prevWeight = parseFloat(data.previousWeightValue);
         const weightChange = parseFloat(finalSavedWeight) - prevWeight;
         setWeightDiff({
           previous: Math.round(prevWeight * 100) / 100,
+          previousDate: data.previousWeightDate || null,
           change: Math.round(weightChange * 100) / 100,
         });
       } else {
         setWeightDiff(null);
       }
 
-      // Fetch user height ? compute ideal weight for the share card
+      // Fetch user height → compute ideal weight for the share card
       refreshIdealWeight();
 
       // Check if weight was auto-corrected
-      if (data.correction && data.correction.wasCorrected) {
+      if (corrInfo && corrInfo.wasCorrected) {
         // Show custom alert modal about auto-correction with user-friendly message
-        const corrInfo = data.correction;
-        
         setTimeout(() => {
           setAlertModal({
             isOpen: true,
-            title: "? Weight Adjusted",
+            title: "✅ Weight Adjusted",
             message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
             type: "info",
           });
         }, 500);
-        
-        debugLog('?? Weight auto-corrected:', corrInfo);
-      } else if (data.correction && data.correction.message) {
-        // Weight changed significantly but within limits - only show if change is notable
-        const change = Math.abs(data.correction.difference || 0);
+
+        debugLog('🔧 Weight auto-corrected:', corrInfo);
+      } else if (corrInfo && corrInfo.message) {
+        // Weight changed significantly but within limits — only surface if notable
+        const change = Math.abs(corrInfo.difference || 0);
         if (change > 1.5) {
           setTimeout(() => {
             setAlertModal({
               isOpen: true,
-              title: "?? Weight Updated",
+              title: "📊 Weight Updated",
               message: `Your weight changed by ${change.toFixed(1)} kg. Keep up the great work!`,
               type: "info",
             });
