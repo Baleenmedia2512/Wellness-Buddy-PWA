@@ -349,8 +349,29 @@ function createPoolWrapper(pgPool) {
     
     // MySQL-style getConnection method
     async getConnection() {
-      const client = await pgPool.connect();
-      return wrapClient(client);
+      try {
+        const client = await pgPool.connect();
+        return wrapClient(client);
+      } catch (error) {
+        // If the pooler rejects the connection entirely (e.g. Supabase project
+        // paused → XX000, or wrong credentials → 28P01), the pool itself is
+        // unusable.  Null the module-level cache so the very next getPool()
+        // call creates a fresh pool, picking up any credential rotation that
+        // may have happened in the meantime.
+        const isPoolerRejection =
+          error.code === 'XX000' ||  // Supabase: tenant/user not found (paused project)
+          error.code === '28P01' ||  // invalid_password
+          error.code === '28000' ||  // invalid_authorization_specification
+          error.code === '3D000' ||  // invalid_catalog_name
+          error.code === 'ENOTFOUND' ||
+          error.code === 'ECONNREFUSED';
+
+        if (isPoolerRejection) {
+          pool = null;
+          globalForPool.__dbPool = null;
+        }
+        throw error;
+      }
     },
     
     // Direct access to pg pool methods if needed
@@ -412,6 +433,11 @@ export function getPool() {
         console.error('📍 Error Code:', err.code);
         console.error('🔍 Full Error:', err);
         console.error('=========================================\n');
+        // Invalidate the cached pool so the next request creates a fresh one.
+        // Without this, a paused/wrong-credential DB causes every subsequent
+        // request to reuse the same broken pool until a cold-start.
+        pool = null;
+        globalForPool.__dbPool = null;
       });
     
     // Handle pool errors
