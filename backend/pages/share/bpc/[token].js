@@ -155,17 +155,30 @@ export default function BpcShareLanding({ token, baseUrl, memberName, isExpired 
               <>
                 <h1 style={title}>Open in the app</h1>
                 <p style={sub}>
-                  Your Body Parameters card opens inside the Wellness Valley app.
-                  Install the app to save your data to your profile.
+                  Your Body Parameters card is ready. Once you open it in the app,
+                  your <strong>Height</strong> and <strong>BMR</strong> will be saved to your profile automatically.
                 </p>
-                <a href={PLAY_STORE_URL} style={primaryBtn}>Get the app on Google Play</a>
-                <a href={APP_STORE_URL}  style={secondaryBtn}>Available on the App Store</a>
+
+                {/* Step-by-step for new users */}
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 16px', marginBottom: 16, textAlign: 'left' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#065f46', marginBottom: 8 }}>📲 NEW USER? FOLLOW THESE STEPS:</div>
+                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>
+                    <div>1️⃣ Tap <strong>Get on Google Play</strong> below &amp; install</div>
+                    <div>2️⃣ Come back to WhatsApp &amp; tap this link again</div>
+                    <div>3️⃣ Tap <strong>"I have the app — open it"</strong></div>
+                    <div>4️⃣ Sign in — your Height &amp; BMR auto-fill ✅</div>
+                  </div>
+                </div>
+
+                {/* Primary: open in app (for already-installed users) */}
                 <a
                   href={`wellnessvalley://share/bpc/${token}`}
-                  style={{ ...secondaryBtn, background: '#ecfdf5', color: '#065f46' }}
+                  style={{ ...primaryBtn, marginBottom: 10 }}
                 >
-                  I already have the app — open it
+                  ✅ I have the app — open it
                 </a>
+                <a href={PLAY_STORE_URL} style={secondaryBtn}>⬇️ Get on Google Play (new user)</a>
+                <a href={APP_STORE_URL}  style={{ ...secondaryBtn, marginBottom: 0 }}>🍎 Available on the App Store</a>
               </>
             )}
             <div style={footer}>Your data is private. Only people you share with can view this.</div>

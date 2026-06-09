@@ -114,7 +114,7 @@ import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { fetchPublicCard } from "./features/body-parameters-card/services/bodyParamsCardApi.js";
-import { savePendingCard } from "./features/body-parameters-card/domain/pendingBodyParamsCard.js";
+import { savePendingCard, consumePendingCard } from "./features/body-parameters-card/domain/pendingBodyParamsCard.js";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
@@ -1990,6 +1990,20 @@ function WellnessValleyApp() {
           ;(async () => {
             const isActive = await checkUserStatus(user);
             if (!isActive) return; // inactive/not-found modal already triggered
+
+            // ── Consume any BPC card stored pre-login (deep link before sign-in) ──
+            // Happens when: user tapped WhatsApp link → app not logged in → savePendingCard()
+            // was called → user now logged in → save height+BMR to their profile silently.
+            const bpcPending = consumePendingCard();
+            if (bpcPending?._token && user?.id) {
+              const { saveCardToProfile } = await import(
+                './features/body-parameters-card/services/bodyParamsCardApi.js'
+              );
+              saveCardToProfile(bpcPending._token, user.id).catch((err) => {
+                debugLog('[BPC] post-login pending card save failed:', err?.message);
+              });
+              debugLog('✅ [BPC] Consumed pending card after login, height+BMR saved to profile');
+            }
 
             if (!userEmail) return;
             debugLog("?? [Auth State] Checking setup wizard status...");
@@ -5430,6 +5444,15 @@ function WellnessValleyApp() {
 
           if (isActive) {
             setUser(user);
+            // ── Consume any BPC card stored pre-login (new user from deep link) ──
+            const bpcPendingSignIn = consumePendingCard();
+            if (bpcPendingSignIn?._token && user?.id) {
+              import('./features/body-parameters-card/services/bodyParamsCardApi.js')
+                .then(({ saveCardToProfile }) => {
+                  saveCardToProfile(bpcPendingSignIn._token, user.id).catch(() => {});
+                });
+              debugLog('✅ [BPC] Consumed pending card on first sign-in, height+BMR saved');
+            }
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
