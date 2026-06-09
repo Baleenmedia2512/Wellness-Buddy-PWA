@@ -72,6 +72,8 @@ export function isTerminal(type) {
  * Legal transitions:
  *   - pending → <any terminal>
  *   - unknown → food                (PR-A / ADR-0003)
+ *   - unknown → weight              (ADR-0003 Diary Edit flow)
+ *   - unknown → education           (ADR-0003 Diary Edit flow)
  *
  * Every other from→to pair is illegal.
  */
@@ -79,6 +81,8 @@ export function canTransition(from, to) {
   if (!isValidImageType(from) || !isValidImageType(to)) return false;
   if (from === IMAGE_TYPE_PENDING) return isTerminal(to);
   if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_FOOD) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_WEIGHT) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_EDUCATION) return true;
   return false;
 }
 
@@ -92,7 +96,7 @@ export function assertCanTransition(from, to) {
     const err = new Error(
       `Illegal capture state transition: ${from} → ${to}. ` +
       `Allowed: 'pending' → any terminal (${TERMINAL_IMAGE_TYPES.join(', ')}), ` +
-      `or 'unknown' → 'food'.`,
+      `or 'unknown' → 'food' / 'weight' / 'education'.`,
     );
     err.status = 409;
     err.code = 'INVALID_STATE_TRANSITION';

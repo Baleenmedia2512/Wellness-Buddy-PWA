@@ -14,7 +14,7 @@
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
  * Resets to card 0 when selectedDate changes.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   computeCaloriesCard,
   computeMacroTargets,
@@ -92,27 +92,38 @@ const NutritionCarousel = ({
     resetKey: selectedDate,
   });
 
-  const allCards = [
-    <CaloriesCard key="calories" {...calCard} />,
-    <MacrosCard
-      key="macros"
-      consumedProtein={dailyStats?.totalProtein || 0}
-      consumedFat={dailyStats?.totalFat        || 0}
-      consumedCarbs={dailyStats?.totalCarbs    || 0}
-      proteinTarget={proteinTarget}
-      fatTarget={fatTarget}
-      carbsTarget={carbsTarget}
-      glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
-    />,
-    <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
-    <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,
-    <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
-    <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} />,
-    <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} />,
-    <MineralsCard           key="minerals" tiles={mineralTiles} />,
-  ];
-
-  const cards = allCards;
+  // Memoize cards to prevent re-renders on swipe (only transform changes)
+  const cards = useMemo(
+    () => [
+      <CaloriesCard key="calories" {...calCard} />,
+      <MacrosCard
+        key="macros"
+        consumedProtein={dailyStats?.totalProtein || 0}
+        consumedFat={dailyStats?.totalFat        || 0}
+        consumedCarbs={dailyStats?.totalCarbs    || 0}
+        proteinTarget={proteinTarget}
+        fatTarget={fatTarget}
+        carbsTarget={carbsTarget}
+        glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+      />,
+      <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
+      <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,
+      <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
+      <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} />,
+      <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} />,
+      <MineralsCard           key="minerals" tiles={mineralTiles} />,
+    ],
+    [
+      calCard.target, calCard.consumed, calCard.exercise, calCard.remaining,
+      proteinTarget, fatTarget, carbsTarget,
+      dailyStats?.totalProtein, dailyStats?.totalFat, dailyStats?.totalCarbs,
+      dailyStats?.averageGlycemicIndex,
+      heartCard.fat, heartCard.sodium, heartCard.cholesterol,
+      lowCarbCard.carbs, lowCarbCard.sugar, lowCarbCard.fiber,
+      giCard.averageGI, giCard.mealCount,
+      vitFatTiles, vitBTiles, mineralTiles,
+    ],
+  );
 
   return (
     <div className="px-2 md:px-3 mb-1.5">
@@ -121,35 +132,37 @@ const NutritionCarousel = ({
         {...swipeHandlers}
         style={{ touchAction: 'pan-y' }}
       >
-        {/* Slide track */}
-        <div
-          className="flex transition-transform duration-400 ease-out"
-          style={{ transform: `translateX(-${(activeIndex * 100) / cards.length}%)`, width: `${cards.length * 100}%` }}
-        >
-          {cards.map((card, i) => (
-            <div key={i} style={{ width: `${100 / cards.length}%` }} className="min-h-[148px]">
-              {card}
-            </div>
-          ))}
+        {/* Slide track with peek effect (next card only) */}
+        <div className="overflow-hidden">
+          <div
+            className="flex gap-3 transition-transform duration-300 ease-out"
+            style={{
+              transform: `translateX(calc(-${activeIndex} * (85% + 0.75rem)))`,
+            }}
+          >
+            {cards.map((card, i) => (
+              <div
+                key={i}
+                className={`${i === cards.length - 1 ? 'w-full' : 'w-[85%]'} flex-shrink-0 min-h-[148px] px-2`}
+              >
+                {card}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Dot indicators + swipe hint */}
-        <div className="flex items-center justify-center gap-1 pb-1.5 pt-0.5">
-          <span className="text-[8px] text-gray-300 mr-0.5 select-none">‹</span>
+        {/* Dot indicators */}
+        <div className="flex items-center justify-center gap-1.5 py-0.5">
           {CARD_LABELS.map((label, i) => (
-            <button
+            <div
               key={label}
-              type="button"
-              aria-label={`Go to ${label}`}
-              onClick={() => goTo(i)}
-              className={`rounded-full transition-all duration-300 ${
+              className={`rounded-full transition-all duration-200 ${
                 i === activeIndex
-                  ? 'w-3 h-1 bg-emerald-400'
-                  : 'w-1 h-1 bg-gray-200 hover:bg-gray-300'
+                  ? 'w-2 h-1 bg-emerald-500'
+                  : 'w-1 h-1 bg-gray-300'
               }`}
             />
           ))}
-          <span className="text-[8px] text-gray-300 ml-0.5 select-none">›</span>
         </div>
       </div>
     </div>

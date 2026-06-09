@@ -218,9 +218,9 @@ function WeightSummary({ user, apiBaseUrl }) {
           globalStats={vm.globalStats}
         />
       )}
-      renderTrend={() => (
+      renderTrend={(ref) => (
         <WeightChart
-          trendRef={vm.weightTrendRef}
+          trendRef={ref}
           chartRef={vm.weightTrendChartRef}
           weightTrendSeries={vm.weightTrendSeries}
           weightTrendChartWidth={vm.weightTrendChartWidth}

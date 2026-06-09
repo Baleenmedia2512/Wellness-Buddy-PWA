@@ -129,13 +129,36 @@ export default function UnknownEntryFlow({
   };
 
   const handleWeightSave = async ({ weightValue, unit, bmr }) => {
-    await saveWeight({ userId, weightValue, unit, bmr });
-    finish();
+    try {
+      await saveWeight({
+        userId,
+        weightValue,  // Backend expects 'weightValue', not 'weight'
+        unit,
+        bmr,
+        captureId,
+        imageBase64ToSave: imageBase64,
+      });
+      finish();
+    } catch {
+      setError("Couldn't save — please try again.");
+      setStage('view');
+    }
   };
 
   const handleEducationSave = async ({ platform, topic }) => {
-    await saveLog({ userId, platform, topic });
-    finish();
+    try {
+      await saveLog({
+        userId,
+        platform,
+        topic,
+        captureId,
+        imageBase64,
+      });
+      finish();
+    } catch {
+      setError("Couldn't save — please try again.");
+      setStage('view');
+    }
   };
 
   return (

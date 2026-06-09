@@ -98,9 +98,9 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
   const exceeded = Math.max(0, consumed - target);
 
   return (
-    <div className="h-full flex items-start justify-center pt-1 px-2">
+    <div className="h-full flex items-center justify-center py-2">
       {/* Compact Card Container */}
-      <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-lg p-3 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">

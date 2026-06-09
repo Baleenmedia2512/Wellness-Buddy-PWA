@@ -23,8 +23,8 @@ const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget
   const carbsPct = hasTargets && carbsTarget > 0 ? Math.round((consumedCarbs / carbsTarget) * 100) : null;
 
   return (
-    <div className="h-full flex items-start justify-center pt-1 px-2">
-      <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
+    <div className="h-full flex items-center justify-center py-2">
+      <div className="bg-white rounded-xl shadow-lg p-3 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
