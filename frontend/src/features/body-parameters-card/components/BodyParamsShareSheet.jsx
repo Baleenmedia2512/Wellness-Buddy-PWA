@@ -5,59 +5,84 @@
  * html2canvas capture, and fires the native Capacitor Share sheet.
  * On WhatsApp tap it sends a text link (same pattern as food share).
  */
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Share as ShareIcon, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import BodyParamsCardPreview from './BodyParamsCardPreview.jsx';
-import { precaptureShareImage, shareImageWithLink } from '../../../shared/utils/shareUtils.js';
-import { buildShareText, getStoreLink } from '../domain/platform-store.rules.js';
+import { precaptureShareImage, shareImageWithLink, shareTextViaWhatsApp } from '../../../shared/utils/shareUtils.js';
+import { buildShareText } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * @param {{ isOpen, onClose, card, shareUrl }} props
  */
 const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
-  const cardRef      = useRef(null);
+  const cardRef            = useRef(null);
   const [sharing, setSharing] = useState(false);
   const [error, setError]     = useState('');
-  const preCapRef = useRef(null);
+  const preCapRef          = useRef(null);
+  const autoFiredRef       = useRef(false);   // prevent double-trigger
 
-  // Pre-capture the card image on mount (idle time).
+  // Pre-capture the card image; once done, auto-fire WhatsApp share.
   useEffect(() => {
-    if (!isOpen || !card) return;
+    if (!isOpen || !card || !shareUrl) return;
+    autoFiredRef.current = false;             // reset on each open
     let cancelled = false;
-    const t = setTimeout(async () => {
-      if (!cardRef.current || cancelled) return;
-      const dataUrl = await precaptureShareImage(cardRef.current, { scale: 2, quality: 0.9 });
-      if (!cancelled) preCapRef.current = dataUrl;
-    }, 200);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [isOpen, card]);
 
-  const handleShare = async () => {
+    const run = async () => {
+      // Give the DOM a moment to paint the card.
+      await new Promise((r) => setTimeout(r, 300));
+      if (cancelled) return;
+
+      // Capture image (best-effort — share still works without it).
+      if (cardRef.current) {
+        const dataUrl = await precaptureShareImage(cardRef.current, { scale: 2, quality: 0.9 });
+        if (!cancelled) preCapRef.current = dataUrl;
+      }
+
+      if (cancelled || autoFiredRef.current) return;
+      autoFiredRef.current = true;
+
+      // ── Auto-open WhatsApp ──────────────────────────────────────────
+      const text = buildShareText(shareUrl, card?.name);
+      try {
+        if (Capacitor.isNativePlatform() && preCapRef.current) {
+          await shareImageWithLink(preCapRef.current, shareUrl, text, `${card?.name || 'Body'} Parameters`);
+        } else {
+          await shareTextViaWhatsApp(text);
+        }
+        debugLog('✅ [BodyParamsShare] Auto-share completed');
+        if (!cancelled) onClose();
+      } catch {
+        // Share cancelled by user or WhatsApp not installed — sheet stays open.
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, card, shareUrl]);
+
+  const handleShare = useCallback(async () => {
     if (sharing) return;
+    autoFiredRef.current = true;
     setSharing(true);
     setError('');
     try {
-      const platform  = Capacitor.getPlatform();
-      const storeLink = getStoreLink(platform);
-      const text      = buildShareText(shareUrl, card?.name);
-
-      // Try to share with image first; fall back to link-only text share.
-      if (preCapRef.current) {
+      const text = buildShareText(shareUrl, card?.name);
+      if (Capacitor.isNativePlatform() && preCapRef.current) {
         await shareImageWithLink(preCapRef.current, shareUrl, text, `${card?.name || 'Body'} Parameters`);
       } else {
-        // Minimal fallback: copy to clipboard
-        await navigator.clipboard?.writeText(text).catch(() => {});
+        await shareTextViaWhatsApp(text);
       }
-      debugLog('✅ [BodyParamsShare] Share completed, storeLink:', storeLink);
+      debugLog('✅ [BodyParamsShare] Manual share completed');
       onClose();
-    } catch (err) {
-      setError('Could not open share sheet. Try copying the link below.');
+    } catch {
+      setError('Could not open WhatsApp. Try copying the link below.');
     } finally {
       setSharing(false);
     }
-  };
+  }, [sharing, shareUrl, card, onClose]);
 
   if (!isOpen || !card) return null;
 

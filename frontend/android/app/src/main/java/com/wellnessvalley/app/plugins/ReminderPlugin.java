@@ -348,6 +348,7 @@ public class ReminderPlugin extends Plugin {
     }
 
     // ── updateWaterIntake ─────────────────────────────────────────────────
+    /**
      * Cache today's water intake totals in SharedPreferences so that alarm
      * notifications can display a smart remaining-balance message without
      * needing network access at fire time.
