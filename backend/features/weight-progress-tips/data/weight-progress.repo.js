@@ -71,7 +71,7 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
     .eq('"UserID"', String(userId))
     .gte('"CreatedAt"', yesterdayStart)
     .lt('"CreatedAt"', yesterdayEnd)
-    .or('IsDeleted.is.null,IsDeleted.eq.false');
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
 
   if (error) {
     console.error('❌ [repo:getYesterdayNutrition] Supabase error:', error.message);
@@ -109,7 +109,7 @@ export async function getTodayNutrition(userId, todayStart) {
     .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
     .eq('"UserID"', String(userId))
     .gte('"CreatedAt"', todayStart)
-    .or('IsDeleted.is.null,IsDeleted.eq.false');
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
 
   if (error) {
     console.error('❌ [repo:getTodayNutrition] Supabase error:', error.message);
