@@ -10,6 +10,7 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
  */
 export async function getUserWeightGoal(userId) {
   const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getUserWeightGoal] Querying team_table for userId:', userId);
   
   try {
     const { data, error } = await supabase
@@ -18,12 +19,15 @@ export async function getUserWeightGoal(userId) {
       .eq('"UserId"', userId)
       .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [repo:getUserWeightGoal] Supabase error:', error.message);
+      throw error;
+    }
+    console.log('✅ [repo:getUserWeightGoal] Result:', data);
     return data || { WeightGoalMode: 'loss', Height: null };
   } catch (error) {
-    // If WeightGoalMode column doesn't exist, return default
     if (error.message?.includes('column') && error.message?.includes('WeightGoalMode')) {
-      console.warn('⚠️ WeightGoalMode column not found, using default "loss". Run migration: add_weight_goal_mode.sql');
+      console.warn('⚠️ [repo:getUserWeightGoal] WeightGoalMode column not found, using default "loss".');
       return { WeightGoalMode: 'loss', Height: null };
     }
     throw error;
@@ -35,15 +39,21 @@ export async function getUserWeightGoal(userId) {
  */
 export async function getRecentWeights(userId, limit = 2) {
   const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getRecentWeights] Querying weight_records_table for userId:', userId, 'limit:', limit);
+
   const { data, error } = await supabase
     .from('weight_records_table')
     .select('"ID", "Weight", "CreatedAt"')
     .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false')
+    .or('IsDeleted.is.null,IsDeleted.eq.false')
     .order('"CreatedAt"', { ascending: false })
     .limit(limit);
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [repo:getRecentWeights] Supabase error:', error.message);
+    throw error;
+  }
+  console.log('✅ [repo:getRecentWeights] Rows returned:', data?.length, JSON.stringify(data));
   return data || [];
 }
 
@@ -53,6 +63,7 @@ export async function getRecentWeights(userId, limit = 2) {
  */
 export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd) {
   const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getYesterdayNutrition] userId:', userId, 'range:', yesterdayStart, '→', yesterdayEnd);
   
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
@@ -60,16 +71,20 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
     .eq('"UserId"', userId)
     .gte('"LoggedAt"', yesterdayStart)
     .lt('"LoggedAt"', yesterdayEnd)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false');
+    .or('IsDeleted.is.null,IsDeleted.eq.false');
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [repo:getYesterdayNutrition] Supabase error:', error.message);
+    throw error;
+  }
+  console.log('✅ [repo:getYesterdayNutrition] Rows found:', data?.length);
 
-  // Aggregate totals
   if (!data || data.length === 0) {
+    console.log('⚠️ [repo:getYesterdayNutrition] No nutrition data for yesterday — returning zeros');
     return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
 
-  return data.reduce(
+  const totals = data.reduce(
     (acc, item) => ({
       calories: acc.calories + (parseFloat(item.Calories) || 0),
       protein: acc.protein + (parseFloat(item.Protein) || 0),
@@ -78,6 +93,8 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
+  console.log('📊 [repo:getYesterdayNutrition] Aggregated totals:', JSON.stringify(totals));
+  return totals;
 }
 
 /**
@@ -85,21 +102,27 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
  */
 export async function getTodayNutrition(userId, todayStart) {
   const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getTodayNutrition] userId:', userId, 'from:', todayStart);
   
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .select('"Calories", "Protein", "Carbs", "Fat"')
     .eq('"UserId"', userId)
     .gte('"LoggedAt"', todayStart)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false');
+    .or('IsDeleted.is.null,IsDeleted.eq.false');
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [repo:getTodayNutrition] Supabase error:', error.message);
+    throw error;
+  }
+  console.log('✅ [repo:getTodayNutrition] Rows found:', data?.length);
 
   if (!data || data.length === 0) {
+    console.log('⚠️ [repo:getTodayNutrition] No nutrition data for today — returning zeros');
     return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
 
-  return data.reduce(
+  const totals = data.reduce(
     (acc, item) => ({
       calories: acc.calories + (parseFloat(item.Calories) || 0),
       protein: acc.protein + (parseFloat(item.Protein) || 0),
@@ -108,6 +131,8 @@ export async function getTodayNutrition(userId, todayStart) {
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
+  console.log('📊 [repo:getTodayNutrition] Aggregated totals:', JSON.stringify(totals));
+  return totals;
 }
 
 /**
@@ -115,7 +140,8 @@ export async function getTodayNutrition(userId, todayStart) {
  * For now, returns 0 if no water table exists
  */
 export async function getYesterdayWater(userId, yesterdayStart, yesterdayEnd) {
+  console.log('🗄️ [repo:getYesterdayWater] userId:', userId, 'range:', yesterdayStart, '→', yesterdayEnd);
   // TODO: Implement when water tracking table is available
-  // For now, return 0
+  console.log('⚠️ [repo:getYesterdayWater] Water table not yet implemented — returning 0 ml');
   return 0;
 }
