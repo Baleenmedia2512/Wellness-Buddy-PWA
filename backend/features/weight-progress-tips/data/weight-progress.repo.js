@@ -67,10 +67,10 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
   
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('"Calories", "Protein", "Carbs", "Fat"')
-    .eq('"UserId"', userId)
-    .gte('"LoggedAt"', yesterdayStart)
-    .lt('"LoggedAt"', yesterdayEnd)
+    .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
+    .eq('"UserID"', String(userId))
+    .gte('"CreatedAt"', yesterdayStart)
+    .lt('"CreatedAt"', yesterdayEnd)
     .or('IsDeleted.is.null,IsDeleted.eq.false');
 
   if (error) {
@@ -86,10 +86,10 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
 
   const totals = data.reduce(
     (acc, item) => ({
-      calories: acc.calories + (parseFloat(item.Calories) || 0),
-      protein: acc.protein + (parseFloat(item.Protein) || 0),
-      carbs: acc.carbs + (parseFloat(item.Carbs) || 0),
-      fat: acc.fat + (parseFloat(item.Fat) || 0),
+      calories: acc.calories + (parseFloat(item.TotalCalories) || 0),
+      protein: acc.protein + (parseFloat(item.TotalProtein) || 0),
+      carbs: acc.carbs + (parseFloat(item.TotalCarbs) || 0),
+      fat: acc.fat + (parseFloat(item.TotalFat) || 0),
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
@@ -106,9 +106,9 @@ export async function getTodayNutrition(userId, todayStart) {
   
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('"Calories", "Protein", "Carbs", "Fat"')
-    .eq('"UserId"', userId)
-    .gte('"LoggedAt"', todayStart)
+    .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
+    .eq('"UserID"', String(userId))
+    .gte('"CreatedAt"', todayStart)
     .or('IsDeleted.is.null,IsDeleted.eq.false');
 
   if (error) {
@@ -124,10 +124,10 @@ export async function getTodayNutrition(userId, todayStart) {
 
   const totals = data.reduce(
     (acc, item) => ({
-      calories: acc.calories + (parseFloat(item.Calories) || 0),
-      protein: acc.protein + (parseFloat(item.Protein) || 0),
-      carbs: acc.carbs + (parseFloat(item.Carbs) || 0),
-      fat: acc.fat + (parseFloat(item.Fat) || 0),
+      calories: acc.calories + (parseFloat(item.TotalCalories) || 0),
+      protein: acc.protein + (parseFloat(item.TotalProtein) || 0),
+      carbs: acc.carbs + (parseFloat(item.TotalCarbs) || 0),
+      fat: acc.fat + (parseFloat(item.TotalFat) || 0),
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
