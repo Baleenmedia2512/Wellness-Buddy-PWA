@@ -375,6 +375,8 @@ export async function updateCaptureType({ id, userId, imageType }) {
   return { httpStatus: 200, body: { ok: true, data: result } };
 }
 
+// retryPromotionToFood moved to ./diary.service.js (PR-B refactor of ADR-0003).
+
 // ─── createPendingCapture ─────────────────────────────────────────────────────
 
 /**
@@ -418,67 +420,7 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   };
 }
 
-// ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
-
-/**
- * Look up the OWNER + meal date for a shared token. Used by the in-app
- * deep-link handler: the app opens Dashboard for that user/date and
- * automatically expands the specific meal card. Enforces permission — viewer
- * must be the owner OR appear in the owner's upline coach chain.
- *
- * Returns:
- *   { ok: true,  data: { mealId, ownerUserId, ownerUserName, mealDate, isSelf } }
- *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
- */
-export async function resolvePublicCapture({ token, viewerUserId }) {
-  const row = await repo.findOwnerByToken(token);
-  if (!row) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
-  }
-  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
-    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
-  }
-  const mealId = row.ID ? row.ID.toString() : null;
-  const ownerUserId = row.UserID ? row.UserID.toString() : null;
-  if (!ownerUserId) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
-  }
-
-  const viewer = viewerUserId.toString();
-  const isSelf = viewer === ownerUserId;
-  if (!isSelf) {
-    // Permission: viewer must appear in the owner's upline coach chain.
-    // Co-coach partners are NOT granted access — they are peers of the owner's
-    // coach and have no supervisory relationship with the owner.
-    const chain = await repo.getCoachChain(ownerUserId);
-    if (!chain.includes(viewer)) {
-      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
-    }
-  }
-
-  const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
-  // correct local date. Using toISOString() would shift a late-evening IST
-  // timestamp to the next UTC day, showing the wrong nutrition entries.
-  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
-
-  return {
-    httpStatus: 200,
-    body: {
-      ok: true,
-      data: {
-        mealId,
-        ownerUserId,
-        ownerUserName,
-        mealDate,
-        isSelf,
-        // imageType drives in-app deep-link tab routing.
-        // Falls back to 'food' for legacy rows that pre-date this column.
-        imageType: row.ImageType || 'food',
-      },
-    },
-  };
-}
+// resolvePublicCapture moved to ./diary.service.js (PR-B refactor of ADR-0003).
 
 // ─── getPublicCapture ─────────────────────────────────────────────────────
 

@@ -6,7 +6,8 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, save, updateCaptureType } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, save, updateCaptureType } from '../analysis.service.js';
+import { resolvePublicCapture } from '../diary.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
@@ -64,14 +65,21 @@ function expectValidationError(fn, status, msgSubstring) {
 describe('validateCreateCapture', () => {
   it('accepts valid body', () => {
     const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc' };
-    expect(validateCreateCapture(body)).toEqual(body);
+    // token defaults to null when the optional client-supplied UUID is absent
+    // (instant-share path supplies one; classic flow does not). See validator
+    // comment in analysis.validators.js :: validateCreateCapture.
+    expect(validateCreateCapture(body)).toEqual({ ...body, token: null });
   });
 
   it('ignores any imageType in the request body (type is set server-side)', () => {
     // imageType is intentionally stripped — new rows start as 'pending'
     // regardless of what the client sends.
     const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc', imageType: 'food' };
-    expect(validateCreateCapture(body)).toEqual({ userId: '42', imageBase64: 'data:image/jpeg;base64,abc' });
+    expect(validateCreateCapture(body)).toEqual({
+      userId: '42',
+      imageBase64: 'data:image/jpeg;base64,abc',
+      token: null,
+    });
   });
 
   it('rejects null body', () => {

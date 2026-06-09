@@ -46,6 +46,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [isSaving, setIsSaving] = useState(false); // Saving state
   const [memberSelectedPrograms, setMemberSelectedPrograms] = useState([]); // For editing member's programs
   const [isSavingMember, setIsSavingMember] = useState(false); // Saving state for member
+  
+  // Program expansion and hierarchy view states
+  const [expandedProgram, setExpandedProgram] = useState(null); // Currently expanded program
+  const [viewType, setViewType] = useState(null); // View type: 'self', 'direct', or 'full'
+  const [expandedNodes, setExpandedNodes] = useState(new Set()); // Expanded nodes in tree view
+  const [showNotEnrolled, setShowNotEnrolled] = useState(false); // Toggle for showing non-enrolled members
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);

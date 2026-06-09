@@ -1,5 +1,7 @@
 export { default as EducationCard } from './EducationCard';
 export { default as EducationCardModal } from './EducationCardModal';
+export { default as EducationSummaryCards } from './EducationSummaryCards';
+export { default as EducationTrendPanel } from './EducationTrendPanel';
 export { default as EducationDashboard } from './EducationDashboard';
 export { default as EducationLogCard } from './EducationLogCard';
 export { default as ManualEducationEntryModal } from './ManualEducationEntryModal';

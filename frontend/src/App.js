@@ -92,6 +92,7 @@ import { geminiService } from "./shared/services/geminiService";
 import { imageTypeDetector } from "./shared/services/imageTypeDetector";
 import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
+import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
@@ -102,9 +103,10 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
-import { UnknownCaptureModal } from "./features/captures";
+import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood } from "./features/captures";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
+import { isFlagEnabled } from "./config/featureFlags";
 import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
@@ -147,7 +149,7 @@ const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/componen
 const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalDisciplineScore"));
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
-const Dashboard = lazy(() => import("./shared/components/Dashboard"));
+const Dashboard = lazy(() => import("./shell/components/Dashboard"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
@@ -259,6 +261,19 @@ function WellnessValleyApp() {
     open: false,
     pendingSharePromise: null,
   });
+  // PR-E / ADR-0003 — share-link viewer for `unknown` captures. Opened by the
+  // deep-link handler when a resolved share has ImageType 'unknown'.
+  const [unknownShareView, setUnknownShareView] = useState({
+    open: false,
+    captureId: null,
+    imageBase64: null,
+    canMutate: false,
+    retrying: false,
+    error: null,
+  });
+  // PR-E — when the share viewer's "Edit" is tapped, this drives a dedicated
+  // SmartFoodSearchModal whose save promotes the capture unknown → food.
+  const [shareEditView, setShareEditView] = useState({ open: false, captureId: null });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
@@ -303,6 +318,8 @@ function WellnessValleyApp() {
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
+  const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
+  const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(''); // Celebration message
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -947,6 +964,29 @@ function WellnessValleyApp() {
         }
 
         const data = body.data || {};
+
+        // PR-E / ADR-0003: an `unknown` capture's share link opens the
+        // dedicated viewer (image + Retry/Edit) instead of an empty
+        // nutrition tab. Gated on ff.diary-feed so legacy behaviour is
+        // preserved while the flag is OFF.
+        if (data.imageType === "unknown" && isFlagEnabled("ff.diary-feed")) {
+          try {
+            const share = await fetchUnknownShare({ token, viewerUserId: user.id });
+            if (cancelled) return;
+            setUnknownShareView({
+              open: true,
+              captureId: share.captureId,
+              imageBase64: share.imageBase64,
+              canMutate: !!share.canMutate,
+              retrying: false,
+              error: null,
+            });
+          } catch (e) {
+            if (!cancelled) showToast("This shared photo is no longer available");
+          }
+          return;
+        }
+
         if (data.isSelf) {
           setDashboardInitialSelectedMember(null);
         } else {
@@ -2531,16 +2571,28 @@ function WellnessValleyApp() {
     cachedUserId = null,
     captureTimestamp = null,
   ) => {
+    console.log('🚀 [performWeightSave] FUNCTION CALLED with:', {
+      weightValue: weightData.weightValue,
+      unit: weightData.unit,
+      hasCachedUserId: !!cachedUserId,
+      hasCaptureTimestamp: !!captureTimestamp
+    });
+    
     try {
       // Use cached userId if provided, otherwise get it
       let userId = cachedUserId || user?.id;
+      console.log('🔍 [performWeightSave] Step 1: Getting userId...', { cachedUserId, hasUser: !!user });
+      
       if (!userId) {
         userId = await getUserId(user);
+        console.log('🔍 [performWeightSave] userId fetched:', userId);
       }
 
       if (!userId) {
         throw new Error("User not authenticated or not found in database");
       }
+      
+      console.log('🔍 [performWeightSave] Step 2: Building payload...');
 
       const payload = {
         userId,
@@ -2565,12 +2617,21 @@ function WellnessValleyApp() {
         captureId: foodCaptureIdRef.current || undefined,
       };
 
+      console.log('🔍 [performWeightSave] Step 3: Capturing GPS location...');
+      
       // Capture GPS location for every weight photo — not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Fails gracefully — weight save is never blocked by a GPS timeout.
       let attendance;
       try {
-        attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        // Add 5-second timeout to prevent hanging on web browsers
+        const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('GPS timeout after 5s')), 5000)
+        );
+        
+        attendance = await Promise.race([gpsPromise, timeoutPromise]);
+        console.log("📍 [performWeightSave] GPS location captured successfully");
         debugLog("📍 [weight] Attendance determined:", attendance);
 
         // If multiple clubs detected, show selection modal
@@ -2599,10 +2660,13 @@ function WellnessValleyApp() {
           payload.village = village;
         }
       } catch (gpsErr) {
+        console.log("⚠️ [performWeightSave] GPS failed, proceeding without location:", gpsErr.message);
         debugLog("⚠️ [weight] GPS check failed, saving without location:", gpsErr.message);
         // Fallback to remote attendance
         payload.attendanceType = 'remote';
       }
+      
+      console.log('🔍 [performWeightSave] GPS location captured, payload ready');
 
       // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
       // This allows multiple weight entries per day with different timestamps
@@ -2613,6 +2677,8 @@ function WellnessValleyApp() {
 
       // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
+      console.log('🔍 [performWeightSave] Step 4: Calling API /api/weight/save...');
+      
       const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2620,6 +2686,14 @@ function WellnessValleyApp() {
       });
 
       const data = await response.json();
+      
+      console.log('📡 [performWeightSave] API response received:', {
+        ok: response.ok,
+        status: response.status,
+        success: data.success,
+        hasData: !!data.data,
+        hasCorrection: !!data.correction
+      });
 
       if (!response.ok || !data.success) {
         debugLog('❌ Weight save failed:', { status: response.status, validation: data.validation, message: data.message });
@@ -2666,29 +2740,81 @@ function WellnessValleyApp() {
 
       debugLog("✅ Weight entry saved successfully");
 
-      // ALWAYS update weight result with final saved weight (corrected or original).
-      // Backend returns correctionInfo (not correction) — use the correct key.
-      const corrInfo = data.correctionInfo;
-      const finalSavedWeight = data.data?.weightValue || corrInfo?.correctedWeight || weightData.weightValue;
-      setWeightResult({
-        ...weightData,
+      // ? Update weight result with final saved weight (may be corrected by backend)
+      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
+      const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
+      console.log('🔍 [DEBUG] Updating weightResult with final saved weight:', {
+        finalSavedWeight,
+        wasCorrected: !!data.correction?.wasCorrected,
+      });
+      
+      // Update weightResult with final backend value (overwrites the pre-save value set earlier)
+      setWeightResult((prev) => ({
+        ...prev,
         weightValue: finalSavedWeight,
         originalWeight: corrInfo?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
-      });
+      }));
 
-      // Compute diff directly from save response — avoids EXIF timestamp ordering bug.
-      // Backend now returns previousWeightValue + previousWeightDate captured BEFORE insert.
-      if (data.previousWeightValue !== null && data.previousWeightValue !== undefined) {
-        const prevWeight = parseFloat(data.previousWeightValue);
-        const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-        setWeightDiff({
-          previous: Math.round(prevWeight * 100) / 100,
-          previousDate: data.previousWeightDate || null,
-          change: Math.round(weightChange * 100) / 100,
+      // Fetch previous weight to show "vs Previous entry" diff immediately
+      try {
+        const histRes = await fetch(
+          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`
+        );
+        const histData = await histRes.json();
+        console.log('🔍 [celebration] Weight history data:', {
+          success: histData.success,
+          hasPrevious: !!histData.stats?.previousWeight,
+          previousWeight: histData.stats?.previousWeight?.value,
+          latestWeight: histData.stats?.latestWeight?.value,
+          finalSavedWeight
         });
-      } else {
-        setWeightDiff(null);
+        
+        if (histData.success && histData.stats?.previousWeight) {
+          const prevWeight = parseFloat(histData.stats.previousWeight.value);
+          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
+          const latestDate = histData.stats.latestWeight?.date;
+          const prevDate = histData.stats.previousWeight.date;
+          const isDifferentDay = latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate);
+          
+          console.log('🔍 [celebration] Weight comparison:', {
+            prevWeight,
+            finalSavedWeight,
+            weightChange,
+            isDifferentDay,
+            latestDate,
+            prevDate
+          });
+          
+          // Safety guard: only show diff if previous entry is from a different IST calendar date
+          if (isDifferentDay) {
+            setWeightDiff({
+              previous: Math.round(prevWeight * 100) / 100,
+              previousDate: prevDate,
+              change: Math.round(weightChange * 100) / 100,
+            });
+          } else {
+            setWeightDiff(null);
+          }
+          
+          // 🎉 Trigger celebration if weight loss detected (at least 0.1 kg)
+          // CELEBRATION TRIGGERS REGARDLESS OF DATE - we celebrate ANY progress!
+          if (weightChange < -0.1) {
+            const lossAmount = Math.abs(weightChange).toFixed(1);
+            setWeightCelebrationMessage(`You lost ${lossAmount} kg! Keep it up! 💪`);
+            setShowWeightCelebration(true);
+            console.log('🎉 [celebration] TRIGGERING celebration! Weight loss:', lossAmount, 'kg');
+            debugLog('🎉 [celebration] Weight loss detected, triggering celebration:', lossAmount);
+          } else {
+            console.log('🔍 [celebration] No celebration - weight change:', weightChange, 'kg (need < -0.1)');
+          }
+        } else {
+          console.log('🔍 [celebration] No celebration - no previous weight found');
+          setWeightDiff(null);
+        }
+      } catch (histErr) {
+        console.error('❌ [celebration] Failed to fetch weight history:', histErr);
+        /* non-critical */
       }
 
       // Fetch user height → compute ideal weight for the share card
@@ -3166,6 +3292,95 @@ function WellnessValleyApp() {
       throw err;
     } finally {
       setSaveLoading(false);
+    }
+  };
+
+  // ── PR-E / ADR-0003 — Unknown share viewer Retry / Edit actions ───────────
+
+  // Convert a stored base64 image back into a File for Gemini re-analysis.
+  const base64ToImageFile = (b64, filename = "capture.jpg") => {
+    const dataUrl = b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
+    const [meta, content] = dataUrl.split(",");
+    const mime = (meta.match(/data:(.*?);/) || [, "image/jpeg"])[1];
+    const bin = atob(content);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  };
+
+  // Build the analysisResult envelope extractNutrition() understands from a
+  // SmartFoodSearchModal manual payload (single food or plate).
+  const buildAnalysisFromManualFood = (m) => {
+    const toItem = (f) => ({
+      name: f.name,
+      nutrition: {
+        calories: f.calories ?? 0,
+        protein: f.protein ?? 0,
+        carbs: f.carbs ?? 0,
+        fat: f.fat ?? 0,
+        fiber: f.fiber ?? 0,
+      },
+    });
+    if (m.isPlate && Array.isArray(m.items)) {
+      const foods = m.items.map(toItem);
+      const total = m.total || foods.reduce(
+        (a, f) => ({
+          calories: a.calories + (f.nutrition.calories || 0),
+          protein: a.protein + (f.nutrition.protein || 0),
+          carbs: a.carbs + (f.nutrition.carbs || 0),
+          fat: a.fat + (f.nutrition.fat || 0),
+          fiber: a.fiber + (f.nutrition.fiber || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      );
+      return { foods, total, confidence: "high" };
+    }
+    const item = toItem({
+      name: m.foodName,
+      calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber,
+    });
+    return { foods: [item], total: item.nutrition, confidence: "high" };
+  };
+
+  // Retry: re-run Gemini on the stored image and, if confident, promote the
+  // capture unknown → food. Still-low-confidence keeps the row as unknown.
+  const handleUnknownShareRetry = async () => {
+    const { captureId, imageBase64 } = unknownShareView;
+    if (!captureId || !imageBase64 || !user?.id) return;
+    setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
+    try {
+      const file = base64ToImageFile(imageBase64);
+      const analysis = await geminiService.analyzeImageForNutrition(file);
+      const noFood = !analysis?.foods?.length || !(Number(analysis?.total?.calories) > 0);
+      if (noFood) {
+        setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
+        return;
+      }
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult: analysis });
+      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+      showToast("Saved to your diary");
+    } catch (e) {
+      setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
+    }
+  };
+
+  // Edit: open SmartFoodSearchModal whose save promotes the capture to food.
+  const handleUnknownShareEdit = () => {
+    if (!unknownShareView.captureId) return;
+    setShareEditView({ open: true, captureId: unknownShareView.captureId });
+  };
+
+  const handleShareEditSave = async (manualData) => {
+    const { captureId } = shareEditView;
+    if (!captureId || !user?.id) return;
+    try {
+      const analysisResult = buildAnalysisFromManualFood(manualData);
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
+      setShareEditView({ open: false, captureId: null });
+      setUnknownShareView((v) => ({ ...v, open: false }));
+      showToast("Saved to your diary");
+    } catch (e) {
+      showToast("Couldn't save — please try again");
     }
   };
 
@@ -4314,7 +4529,14 @@ function WellnessValleyApp() {
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           
-          // 🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          // � FIX: Set weightResult BEFORE save so card appears even if save fails
+          console.log('🔍 [DEBUG] Setting weightResult before save:', weightToSave);
+          setWeightResult({
+            ...weightToSave,
+            loggedAt: exifTimestamp || new Date().toISOString(),
+          });
+          
+          // �🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
           try {
             const tempUserId = user?.id || (await getUserId(user));
             const prevWeightRes = await fetch(
@@ -4365,8 +4587,7 @@ function WellnessValleyApp() {
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
-            // ? Weight result is now set INSIDE performWeightSave with corrected value
-            // Don't set weightResult here - performWeightSave handles it with final weight
+            // ✅ Weight result already set before save, updated after if backend corrects it
             setWeightEntrySaved(true);
             
             // Fetch history ONLY for leaderboard inject — weightDiff is already set
@@ -4462,7 +4683,14 @@ function WellnessValleyApp() {
         // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
         // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, 'unknown');
-        setUnknownCaptureModal({ open: true, pendingSharePromise });
+        // PR-D / ADR-0003: when the Diary feed is enabled, AI detection
+        // failures must NOT prompt the user. The capture stays tagged
+        // 'unknown' and surfaces as an "Other" row in the Diary (with Retry /
+        // Edit there). Only fall back to the legacy PR-3 disambiguation modal
+        // when the flag is OFF, preserving backward-compatible behaviour.
+        if (!isFlagEnabled('ff.diary-feed')) {
+          setUnknownCaptureModal({ open: true, pendingSharePromise });
+        }
         setLoading(false);
         return;
       }
@@ -6247,6 +6475,17 @@ function WellnessValleyApp() {
             />
           )}
 
+          {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
+          {console.log('🔍 [celebration] Render check:', { showWeightCelebration, weightCelebrationMessage })}
+          <CelebrationConfetti
+            show={showWeightCelebration}
+            message={weightCelebrationMessage}
+            onComplete={() => {
+              console.log('🎉 [celebration] User dismissed celebration');
+              setShowWeightCelebration(false);
+            }}
+          />
+
           {imageType === "weight" && weightResult && (
             <>
               {/* Hidden container for sharing - includes image + card */}
@@ -6955,6 +7194,29 @@ function WellnessValleyApp() {
             setShowManualEducationModal(true);
           }
         }}
+      />
+
+      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit) */}
+      <UnknownShareViewer
+        isOpen={unknownShareView.open}
+        imageBase64={unknownShareView.imageBase64}
+        canMutate={unknownShareView.canMutate}
+        retrying={unknownShareView.retrying}
+        error={unknownShareView.error}
+        onRetry={handleUnknownShareRetry}
+        onEdit={handleUnknownShareEdit}
+        onClose={() => setUnknownShareView({ open: false, captureId: null, imageBase64: null, canMutate: false, retrying: false, error: null })}
+      />
+
+      {/* PR-E — dedicated food search modal whose save promotes unknown → food */}
+      <SmartFoodSearchModal
+        isOpen={shareEditView.open}
+        onClose={() => setShareEditView({ open: false, captureId: null })}
+        onSave={handleShareEditSave}
+        mealType={manualMealType}
+        apiBaseUrl={apiBaseUrl}
+        userId={user?.id}
+        timeLabel="What was in this photo?"
       />
 
       {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}

@@ -9,7 +9,8 @@ const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layou
     ? 'flex flex-col items-center gap-2 py-4 border-2 rounded-xl font-semibold text-sm transition-all'
     : 'flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="flex justify-center">
+      <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
       <input ref={cameraRef} type="file" accept="image/*" capture="user"
         onChange={(e) => onCameraSelect?.(e.target.files?.[0])} className="hidden" />
       <input ref={galleryRef} type="file" accept="image/*"
@@ -24,6 +25,7 @@ const CameraGalleryButtons = ({ onCameraSelect, onGallerySelect, disabled, layou
         <Upload className={layout === 'compact' ? 'w-6 h-6' : 'w-8 h-8 mb-2'} />
         <span className={layout === 'compact' ? '' : 'text-sm font-medium text-green-700'}>{layout === 'compact' ? 'From Gallery' : 'Upload Photo'}</span>
       </button>
+    </div>
     </div>
   );
 };

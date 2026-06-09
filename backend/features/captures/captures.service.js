@@ -139,3 +139,44 @@ export async function updateTypeById({ captureId, userId, toType }) {
   }
   return { changed: true, imageType: updated.ImageType };
 }
+
+/**
+ * PR-A.2 / ADR-0003 — read a capture by primary key WITHOUT enforcing
+ * ownership. Used by orchestrators (e.g. the Diary retry-promotion
+ * endpoint in background-analysis) that need to learn who the owner is
+ * BEFORE running the permission policy.
+ *
+ * SECURITY: callers MUST pair this read with `assertCanRetryCapture(...)`
+ * from `domain/permissions/retry.policy.js`. Returning the row here is
+ * NOT an access grant.
+ *
+ * Returns the row (PascalCase keys) or null when not found / soft-deleted.
+ */
+export async function findById(captureId) {
+  if (!captureId) {
+    const err = new Error('captures.findById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findById(captureId);
+}
+
+/**
+ * PR-E / ADR-0003 — look up a capture by its public share token WITHOUT an
+ * owner guard. Used by the unknown-capture share viewer
+ * (`resolveUnknownShare`): the viewer must read the row (image + owner)
+ * BEFORE the permission policy can decide whether the viewer may Retry /
+ * Edit it. Access is NOT granted here — callers MUST pair this with the
+ * `canRetryCapture(...)` policy when exposing mutate actions.
+ *
+ * Returns the full row (PascalCase keys, including ImageBase64) or null
+ * when not found.
+ */
+export async function findByToken(token) {
+  if (!token) {
+    const err = new Error('captures.findByToken: token required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findByToken(token);
+}
