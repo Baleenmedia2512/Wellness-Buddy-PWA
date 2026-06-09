@@ -141,10 +141,27 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
       };
       const card = await createBodyParamsCard(payload);
       const url = `${getApiBaseUrl()}/share/bpc/${card.publicShareToken}`;
-      setSavedCard(card);
+
+      // Merge API response with full form data so the card preview
+      // has all fields (API only returns id/token/name).
+      const fullCard = {
+        ...card,
+        age:          form.age,
+        gender:       form.gender,
+        heightCm:     form.heightCm,
+        weightKg:     form.weightKg,
+        bmi:          form.bmi,
+        fatPercent:   form.fatPercent,
+        bmr:          form.bmr,
+        bodyAge:      form.bodyAge,
+        recordedDate: form.recordedDate,
+        locationName: form.locationName,
+      };
+
+      setSavedCard(fullCard);
       setShareUrl(url);
-      debugLog('✅ [BodyParamsCard] Created:', card);
-      if (onSaveSuccess) onSaveSuccess(card, url);
+      debugLog('✅ [BodyParamsCard] Created:', fullCard);
+      if (onSaveSuccess) onSaveSuccess(fullCard, url);
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
     } finally {
