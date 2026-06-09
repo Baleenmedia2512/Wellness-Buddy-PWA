@@ -101,7 +101,7 @@ export function WeightProgressTipsModal({
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Change</p>
-                  <p className={`text-2xl font-bold ${comparison.weight.direction === 'increase' ? 'text-red-600' : 'text-green-600'}`}>
+                  <p className={`text-2xl font-bold ${comparison.weight.direction === 'increased' ? 'text-red-600' : 'text-green-600'}`}>
                     {comparison.weight.change > 0 ? '+' : ''}{comparison.weight.change} kg
                   </p>
                 </div>
@@ -366,7 +366,7 @@ export function WeightProgressTipsModal({
                         : 'bg-blue-50 border-blue-500'
                     }`}
                   >
-                    <p className="font-medium">{tip.tip}</p>
+                    <p className="font-medium">{tip.tip || tip.message}</p>
                     <p className="text-sm text-gray-600 mt-1">Priority: {tip.priority}</p>
                   </div>
                 ))}
