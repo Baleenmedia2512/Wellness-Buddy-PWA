@@ -95,21 +95,28 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
         <Mandala size={60} opacity={1} />
       </div>
 
-      {/* ── Wellness Valley Logo ── */}
+      {/* ── Dark circle with logo inside ── */}
       <div style={{
-        width: 64, height: 64, borderRadius: '50%',
-        background: '#fff',
+        width: 52, height: 52, borderRadius: '50%',
+        background: '#1a1a1a',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         margin: '0 auto 14px',
-        boxShadow: '0 3px 10px rgba(0,0,0,0.25)',
-        overflow: 'hidden',
+        boxShadow: '0 3px 12px rgba(0,0,0,0.35)',
         position: 'relative', zIndex: 2,
       }}>
-        <img
-          src="/logo.png"
-          alt="Wellness Valley"
-          style={{ width: 52, height: 52, objectFit: 'contain' }}
-        />
+        {/* White inner circle with logo */}
+        <div style={{
+          width: 36, height: 36, borderRadius: '50%',
+          background: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden',
+        }}>
+          <img
+            src="/logo.png"
+            alt="Wellness Valley"
+            style={{ width: 28, height: 28, objectFit: 'contain' }}
+          />
+        </div>
       </div>
 
       {/* ── White ticket card ── */}

@@ -30,5 +30,6 @@ export function getStoreLink(platform) {
  */
 export function buildShareText(shareUrl, memberName) {
   const name = memberName ? memberName.trim() : 'you';
-  return `👋 Hey ${name}! Your body parameters card is ready.\nTap to view → ${shareUrl}`;
+  const url  = shareUrl   ? `\nTap to view → ${shareUrl}` : '';
+  return `👋 Hey ${name}! Your body parameters card is ready.${url}`;
 }

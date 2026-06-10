@@ -27,7 +27,11 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
     const text = buildShareText(shareUrl, card?.name);
     try {
       if (Capacitor.isNativePlatform() && preCapRef.current) {
-        await shareImageWithLink(preCapRef.current, shareUrl, text, `${card?.name || 'Body'} Parameters`);
+        await shareImageWithLink(preCapRef.current, shareUrl, {
+          title:    `${card?.name || 'Body'} Parameters`,
+          text,
+          fileName: `wellness-body-params-${Date.now()}.jpg`,
+        });
       } else {
         await shareTextViaWhatsApp(text);
       }

@@ -113,7 +113,7 @@ export const shareTextViaWhatsApp = async (text) => {
     }
     // System-share fallback: user can still pick WhatsApp or another app.
     try {
-      await Share.share({ text, dialogTitle: 'Share my meal' });
+      await Share.share({ text, dialogTitle: 'Share via' });
       return true;
     } catch (shareErr) {
       const isCancelled = (shareErr?.message || '').toLowerCase().includes('cancel');
