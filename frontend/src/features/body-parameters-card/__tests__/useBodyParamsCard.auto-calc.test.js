@@ -26,27 +26,12 @@ describe('derivedIdealWeight', () => {
   });
 });
 
-describe('weight auto-fill', () => {
-  it('auto-fills weight when height is entered and weight is empty', () => {
+describe('weight auto-fill removed', () => {
+  it('does NOT auto-fill weight when height is entered', () => {
     const { result } = renderHook(() => useBodyParamsCard({}));
     act(() => result.current.setField('heightCm', '170'));
-    expect(result.current.form.weightKg).toBe('66.5');
-  });
-
-  it('does NOT auto-fill weight when user has manually typed weight', () => {
-    const { result } = renderHook(() => useBodyParamsCard({}));
-    act(() => result.current.setWeightManually('63'));
-    act(() => result.current.setField('heightCm', '170'));
-    // weight must stay at user's value
-    expect(result.current.form.weightKg).toBe('63');
-  });
-
-  it('resets auto-fill after resetForm', () => {
-    const { result } = renderHook(() => useBodyParamsCard({}));
-    act(() => result.current.setWeightManually('63'));
-    act(() => result.current.resetForm());
-    // After reset, auto-fill is re-enabled
-    expect(result.current.weightUserEdited).toBe(false);
+    // Weight must stay blank — auto-fill was intentionally removed.
+    expect(result.current.form.weightKg).toBe('');
   });
 });
 

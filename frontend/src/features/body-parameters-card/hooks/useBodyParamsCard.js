@@ -36,10 +36,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
   const [savedCard, setSavedCard]         = useState(null);
   const [shareUrl, setShareUrl]           = useState('');
 
-  // Track whether the user manually typed in each computed field.
-  // When true, auto-fill is disabled for that field.
-  const [weightUserEdited, setWeightUserEdited] = useState(false);
-  const [bmiUserEdited,    setBmiUserEdited]    = useState(false);
+  // Track whether the user manually typed in the BMI field.
+  // When true, BMI auto-fill is disabled.
+  const [bmiUserEdited, setBmiUserEdited] = useState(false);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
@@ -78,11 +77,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
 
   // ── Auto-fill effects ─────────────────────────────────────────────────────
 
-  // Auto-fill weight when height changes — only if user has not manually typed weight.
-  useEffect(() => {
-    if (weightUserEdited || derivedIdealWeight === null) return;
-    setForm((prev) => ({ ...prev, weightKg: String(derivedIdealWeight) }));
-  }, [derivedIdealWeight, weightUserEdited]);
+  // Weight auto-fill intentionally removed — ideal weight is shown as a label hint only.
+  // The user must enter their own weight value.
 
   // Auto-fill BMI whenever height or weight changes — only if user has not manually typed BMI.
   useEffect(() => {
@@ -96,9 +92,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
     setForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  /** Called when user manually types in the Weight field. Disables auto-fill for weight. */
+  /** Called when user manually types in the Weight field. */
   const setWeightManually = useCallback((value) => {
-    setWeightUserEdited(true);
     setForm((prev) => ({ ...prev, weightKg: value }));
   }, []);
 
@@ -113,7 +108,6 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
     setError('');
     setSavedCard(null);
     setShareUrl('');
-    setWeightUserEdited(false);
     setBmiUserEdited(false);
   }, []);
 
@@ -174,7 +168,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
     setWeightManually, setBmiManually,
     fatHint, fatPlaceholder,
     derivedIdealWeight, derivedBmi,
-    weightUserEdited, bmiUserEdited,
+    bmiUserEdited,
     isSaving, error,
     isValid,
     savedCard, shareUrl,
