@@ -16,7 +16,7 @@
  */
 
 import React from 'react';
-import { AppleIcon, BookOpen } from 'lucide-react';
+import { AppleIcon, HelpCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 
 // Custom weighing scale icon — was inline in Dashboard.js.
@@ -104,14 +104,16 @@ export default function DashboardTabs({ activeTab, onTabChange, diaryEnabled }) 
         <span>Education</span>
       </TouchFeedbackButton>
 
-      {/* PR-C / ADR-0003 — Diary tab. Mounted only when ff.diary-feed is ON. */}
+      {/* ADR-0003 — "Other" tab. Shown only when ff.diary-feed is ON.
+          Hosts the unrecognised ("unknown") captures feed so Food /
+          Weight / Education keep their original dashboards + behaviour. */}
       {diaryEnabled && (
         <TouchFeedbackButton
           onClick={() => onTabChange('diary')}
           className={tabClass(activeTab === 'diary')}
         >
-          <BookOpen className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-          <span>Diary</span>
+          <HelpCircle className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+          <span>Other</span>
         </TouchFeedbackButton>
       )}
     </div>

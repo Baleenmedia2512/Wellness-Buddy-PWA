@@ -2,7 +2,7 @@
  * UnknownEntryFlow.jsx — shell-hosted flow for an "Other" (unknown) diary row.
  *
  * ADR-0003: tapping an unknown row on the single Diary page opens this flow.
- *   - view:    UnknownShareViewer shows the image with Retry / Edit.
+ *   - view:    UnknownShareViewer shows the image with Retry / Edit / Delete.
  *   - Retry:   re-run Gemini on the image; if confident, promote unknown→food.
  *   - Edit:    pick a category (Food / Weight / Education) and transfer the
  *              data to that vertical:
@@ -10,6 +10,7 @@
  *                              unknown→food with the chosen nutrition.
  *                · Weight    → ManualWeightEntryModal → save a weight record.
  *                · Education → ManualEducationEntryModal → save an education log.
+ *   - Delete:  soft-delete the capture (2026-06-09).
  *
  * The shell layer is permitted to compose features/* (see shell/README).
  * On any successful change we call `onChanged()` so the feed re-fetches.
@@ -20,6 +21,7 @@ import {
   UnknownShareViewer,
   UnknownCaptureModal,
   promoteUnknownToFood,
+  deleteCapture,
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
@@ -76,9 +78,11 @@ export default function UnknownEntryFlow({
   apiBaseUrl,
   onClose,
   onChanged,
+  onDeleteWithUndo,
 }) {
   const [stage, setStage] = useState('view'); // view | pick | food | weight | education
   const [retrying, setRetrying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
 
   if (!open) return null;
@@ -86,6 +90,7 @@ export default function UnknownEntryFlow({
   const close = () => {
     setStage('view');
     setRetrying(false);
+    setDeleting(false);
     setError(null);
     onClose?.();
   };
@@ -102,18 +107,59 @@ export default function UnknownEntryFlow({
     try {
       const file = base64ToImageFile(imageBase64);
       const analysis = await geminiService.analyzeImageForNutrition(file);
-      const noFood = !analysis?.foods?.length || !(Number(analysis?.total?.calories) > 0);
+      
+      // FIX 2026-06-09: geminiService returns { nutrition, detailedItems }, not { total, foods }
+      const noFood = !analysis?.detailedItems?.length || !(Number(analysis?.nutrition?.calories) > 0);
       if (noFood) {
         setRetrying(false);
         setError("Still couldn't recognise it — try Edit instead.");
         return;
       }
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult: analysis });
+      
+      // Transform geminiService format → backend format (backend expects { foods, total })
+      const analysisResult = {
+        foods: analysis.detailedItems || [],
+        total: analysis.nutrition || {},
+        confidence: analysis.confidence || 'medium'
+      };
+      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
       setRetrying(false);
       finish();
     } catch {
       setRetrying(false);
       setError("Couldn't analyse the photo — try Edit instead.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!captureId || !userId) return;
+
+    // 2026-06-09: If onDeleteWithUndo is provided, use the undo pattern (show banner).
+    // Otherwise, fall back to immediate delete (legacy behavior).
+    if (onDeleteWithUndo) {
+      setDeleting(true);
+      setError(null);
+      try {
+        await deleteCapture({ captureId, userId });
+        setDeleting(false);
+        // Close modal and trigger undo banner
+        onDeleteWithUndo({ captureId, imageBase64 });
+      } catch {
+        setDeleting(false);
+        setError("Couldn't delete — please try again.");
+      }
+    } else {
+      // Legacy immediate delete (for share-link viewer, etc.)
+      setDeleting(true);
+      setError(null);
+      try {
+        await deleteCapture({ captureId, userId });
+        setDeleting(false);
+        finish();
+      } catch {
+        setDeleting(false);
+        setError("Couldn't delete — please try again.");
+      }
     }
   };
 
@@ -167,10 +213,11 @@ export default function UnknownEntryFlow({
         isOpen={stage === 'view'}
         imageBase64={imageBase64}
         canMutate={canMutate}
-        retrying={retrying}
+        retrying={retrying || deleting}
         error={error}
         onRetry={handleRetry}
         onEdit={() => { setError(null); setStage('pick'); }}
+        onDelete={handleDelete}
         onClose={close}
       />
 

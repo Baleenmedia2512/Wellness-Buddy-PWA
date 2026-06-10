@@ -180,3 +180,59 @@ export async function findByToken(token) {
   }
   return repo.findByToken(token);
 }
+
+/**
+ * 2026-06-09: Soft-delete a capture. Only the owner may delete. This is used
+ * when users want to remove unwanted unknown captures from their diary feed.
+ *
+ * @param {Object} input
+ * @param {string|number} input.captureId
+ * @param {string|number} input.userId
+ * @returns {Promise<{ deleted: boolean }>}
+ */
+export async function deleteById({ captureId, userId }) {
+  if (!captureId) {
+    const err = new Error('captures.deleteById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  if (!userId) {
+    const err = new Error('captures.deleteById: userId required');
+    err.status = 400;
+    throw err;
+  }
+  const result = await repo.softDeleteById({ captureId, userId: userId.toString() });
+  return {
+    httpStatus: 200,
+    body: { ok: true, data: result },
+  };
+}
+
+/**
+ * undoDeleteById — restore a soft-deleted capture (undo delete).
+ *
+ * Validates inputs and delegates to repository layer. Ownership
+ * guard is enforced at repository level (userId must match).
+ *
+ * @param {Object} input
+ * @param {string|number} input.captureId
+ * @param {string|number} input.userId
+ * @returns {Promise<{ restored: boolean }>}
+ */
+export async function undoDeleteById({ captureId, userId }) {
+  if (!captureId) {
+    const err = new Error('captures.undoDeleteById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  if (!userId) {
+    const err = new Error('captures.undoDeleteById: userId required');
+    err.status = 400;
+    throw err;
+  }
+  const result = await repo.undoSoftDeleteById({ captureId, userId: userId.toString() });
+  return {
+    httpStatus: 200,
+    body: { ok: true, data: result },
+  };
+}

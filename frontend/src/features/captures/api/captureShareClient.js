@@ -81,3 +81,68 @@ export async function promoteUnknownToFood({ captureId, viewerUserId, analysisRe
   }
   return body.data;
 }
+
+/**
+ * 2026-06-09: Soft-delete a capture. Only the owner may delete. Used when
+ * users want to remove unwanted unknown captures from their diary feed.
+ *
+ * @param {Object} params
+ * @param {string} params.captureId       captures_table.ID to delete.
+ * @param {string} params.userId          Authenticated session user (owner).
+ * @param {AbortSignal} [params.signal]   Optional cancellation signal.
+ * @returns {Promise<{ deleted: boolean }>} Whether the capture was deleted.
+ */
+export async function deleteCapture({ captureId, userId, signal } = {}) {
+  if (!captureId) throw new Error('deleteCapture: captureId required');
+  if (!userId) throw new Error('deleteCapture: userId required');
+
+  const url = `${getApiBaseUrl()}/api/captures/delete`;
+  debugLog('[captures] deleteCapture →', String(captureId));
+  const res = await axios.delete(url, {
+    data: {
+      captureId: String(captureId),
+      userId: String(userId),
+    },
+    signal,
+  });
+  const body = res?.data;
+  if (!body || body.ok !== true) {
+    const err = new Error('deleteCapture: delete failed');
+    err.body = body;
+    throw err;
+  }
+  return body.data;
+}
+
+/**
+ * 2026-06-09: Restore a soft-deleted capture (undo delete).
+ * Sets IsDeleted=0 to bring the capture back into the user's feed.
+ *
+ * @param {Object} params
+ * @param {string} params.captureId       captures_table.ID to restore.
+ * @param {string} params.userId          Authenticated session user (must be owner).
+ * @param {AbortSignal} [params.signal]   Optional cancellation signal.
+ * @returns {Promise<{ restored: boolean }>} Whether the capture was restored.
+ */
+export async function undoDeleteCapture({ captureId, userId, signal } = {}) {
+  if (!captureId) throw new Error('undoDeleteCapture: captureId required');
+  if (!userId) throw new Error('undoDeleteCapture: userId required');
+
+  const url = `${getApiBaseUrl()}/api/captures/undo`;
+  debugLog('[captures] undoDeleteCapture →', String(captureId));
+  const res = await axios.post(
+    url,
+    {
+      captureId: String(captureId),
+      userId: String(userId),
+    },
+    { signal },
+  );
+  const body = res?.data;
+  if (!body || body.ok !== true) {
+    const err = new Error('undoDeleteCapture: restore failed');
+    err.body = body;
+    throw err;
+  }
+  return body.data;
+}

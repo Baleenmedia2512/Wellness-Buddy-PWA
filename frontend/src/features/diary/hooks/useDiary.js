@@ -19,6 +19,7 @@ import { debugLog } from '../../../shared/utils/logger';
  * @param {string|null} params.ownerUserId
  * @param {string|null} params.viewerUserId
  * @param {Date|string|null} params.date  Date instance or YYYY-MM-DD string
+ * @param {number} [params.refreshKey]  bump to trigger a background re-fetch without unmounting
  * @returns {{
  *   loading: boolean,
  *   error: { status: number|null, message: string } | null,
@@ -26,14 +27,16 @@ import { debugLog } from '../../../shared/utils/logger';
  *   refresh: () => void,
  * }}
  */
-export function useDiary({ ownerUserId, viewerUserId, date }) {
+export function useDiary({ ownerUserId, viewerUserId, date, refreshKey: externalRefreshKey = 0 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   // Bump to trigger a manual refresh without changing the deps.
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [internalRefreshKey, setInternalRefreshKey] = useState(0);
+  // Combined key: either internal (from refresh()) or external (from parent prop) bump triggers re-fetch.
+  const refreshKey = internalRefreshKey + externalRefreshKey;
 
-  const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+  const refresh = useCallback(() => setInternalRefreshKey((n) => n + 1), []);
 
   useEffect(() => {
     // Guard inputs early — the parent might not have resolved the
@@ -55,6 +58,8 @@ export function useDiary({ ownerUserId, viewerUserId, date }) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    // Note: do NOT setData(null) here — keep stale data visible during
+    // background refresh so the feed never flashes a skeleton mid-session.
 
     fetchDiary({
       ownerUserId,

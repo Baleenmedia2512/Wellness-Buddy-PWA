@@ -72,7 +72,30 @@ function FeedError({ error, onRetry }) {
   );
 }
 
-function FeedEmpty({ date, isSelf }) {
+function FeedEmpty({ date, isSelf, filterKinds }) {
+  // The "Other" tab (filterKinds === ['unknown']) gets its own copy so an
+  // empty list doesn't read like the whole day is empty.
+  const isUnknownOnly =
+    Array.isArray(filterKinds) &&
+    filterKinds.length === 1 &&
+    filterKinds[0] === 'unknown';
+
+  if (isUnknownOnly) {
+    return (
+      <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
+        <p className="text-5xl mb-4" aria-hidden="true">🗂️</p>
+        <p className="text-base font-semibold text-gray-900 mb-1">
+          No unrecognised captures
+        </p>
+        <p className="text-sm text-gray-500">
+          Photos we couldn&apos;t classify as food, weight, or education show up
+          here so you can retry or edit them.
+        </p>
+        <p className="text-xs text-gray-400 mt-3">{date}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
       <p className="text-5xl mb-4" aria-hidden="true">📔</p>
@@ -94,21 +117,30 @@ function FeedEmpty({ date, isSelf }) {
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
  * @param {Date|string} props.date     selected calendar day
+ * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
+ * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
+ * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
+ *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
+ *        Empty-state copy adapts accordingly.
  */
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
   date,
+  refreshKey: externalRefreshKey = 0,
   onEntryOpen,
+  onEntryDelete,
+  filterKinds = null,
 }) {
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
+    refreshKey: externalRefreshKey,
   });
 
-  // Pre-bind onClick once per entry kind to keep child renders cheap.
+  // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
     () => (entry) => {
@@ -118,10 +150,11 @@ export default function DiaryFeed({
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
           entry={entry}
           onOpen={onEntryOpen}
+          onDelete={onEntryDelete}
         />
       );
     },
-    [onEntryOpen],
+    [onEntryOpen, onEntryDelete],
   );
 
   if (loading && !data) return <FeedSkeleton />;
@@ -130,8 +163,15 @@ export default function DiaryFeed({
 
   const { entries = [], date: dateStr, isSelf } = data;
 
-  if (entries.length === 0) {
-    return <FeedEmpty date={dateStr} isSelf={isSelf} />;
+  // Optionally restrict the feed to a subset of kinds (e.g. the "Other"
+  // tab only renders `unknown` rows). When no filter is supplied the full
+  // merged feed is shown (backward-compatible default).
+  const visibleEntries = Array.isArray(filterKinds)
+    ? entries.filter((e) => filterKinds.includes(e.kind))
+    : entries;
+
+  if (visibleEntries.length === 0) {
+    return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
   }
 
   return (
@@ -146,7 +186,7 @@ export default function DiaryFeed({
             Refreshing…
           </div>
         )}
-        {entries.map(renderRow)}
+        {visibleEntries.map(renderRow)}
       </div>
     </div>
   );

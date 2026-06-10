@@ -114,7 +114,7 @@ function SwipeableCard({ title, summaryLabel, trendLabel, renderSummary, renderT
   );
 }
 
-function NutritionSummary({ user, apiBaseUrl, selectedDate, bmrUpdateKey, watchBurnedCalories }) {
+const NutritionSummary = React.memo(function NutritionSummary({ user, apiBaseUrl, selectedDate, bmrUpdateKey, watchBurnedCalories }) {
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
   const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
   const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
@@ -199,9 +199,9 @@ function NutritionSummary({ user, apiBaseUrl, selectedDate, bmrUpdateKey, watchB
       )}
     />
   );
-}
+});
 
-function WeightSummary({ user, apiBaseUrl }) {
+const WeightSummary = React.memo(function WeightSummary({ user, apiBaseUrl }) {
   const vm = useWeightDashboard({ user, apiBaseUrl });
   const latestWeight = vm.weightHistory?.[0] || null;
   const previousWeight = vm.weightHistory?.[1]?.Weight ?? null;
@@ -230,9 +230,9 @@ function WeightSummary({ user, apiBaseUrl }) {
       )}
     />
   );
-}
+});
 
-function EducationSummary({ user, apiBaseUrl, refreshKey }) {
+const EducationSummary = React.memo(function EducationSummary({ user, apiBaseUrl, refreshKey }) {
   const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey });
   return (
     <SwipeableCard
@@ -257,7 +257,7 @@ function EducationSummary({ user, apiBaseUrl, refreshKey }) {
       )}
     />
   );
-}
+});
 
 export default function DiarySummaryCards({
   user, apiBaseUrl, selectedDate, bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0,

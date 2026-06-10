@@ -103,7 +103,8 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
-import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood } from "./features/captures";
+import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood, deleteCapture, undoDeleteCapture } from "./features/captures";
+import UnknownCaptureUndoBanner, { UNDO_SECONDS } from "./shell/components/UnknownCaptureUndoBanner";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
 import { isFlagEnabled } from "./config/featureFlags";
@@ -269,6 +270,9 @@ function WellnessValleyApp() {
     retrying: false,
     error: null,
   });
+  // 2026-06-09 — undo state for unknown capture deletion (share-link viewer)
+  const [unknownShareUndo, setUnknownShareUndo] = useState(null);
+  // { captureId, userId, imageBase64, expiresAt }
   // PR-E — when the share viewer's "Edit" is tapped, this drives a dedicated
   // SmartFoodSearchModal whose save promotes the capture unknown → food.
   const [shareEditView, setShareEditView] = useState({ open: false, captureId: null });
@@ -3278,12 +3282,21 @@ function WellnessValleyApp() {
     try {
       const file = base64ToImageFile(imageBase64);
       const analysis = await geminiService.analyzeImageForNutrition(file);
-      const noFood = !analysis?.foods?.length || !(Number(analysis?.total?.calories) > 0);
+      
+      // FIX 2026-06-09: geminiService returns { nutrition, detailedItems }, not { total, foods }
+      const noFood = !analysis?.detailedItems?.length || !(Number(analysis?.nutrition?.calories) > 0);
       if (noFood) {
         setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
         return;
       }
-      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult: analysis });
+      
+      // Transform geminiService format → backend format (backend expects { foods, total })
+      const analysisResult = {
+        foods: analysis.detailedItems || [],
+        total: analysis.nutrition || {},
+        confidence: analysis.confidence || 'medium'
+      };
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
       setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
       showToast("Saved to your diary");
     } catch (e) {
@@ -3295,6 +3308,27 @@ function WellnessValleyApp() {
   const handleUnknownShareEdit = () => {
     if (!unknownShareView.captureId) return;
     setShareEditView({ open: true, captureId: unknownShareView.captureId });
+  };
+
+  // Delete: soft-delete the unknown capture (2026-06-09).
+  // Updated to use undo pattern (shows banner for 10s).
+  const handleUnknownShareDelete = async () => {
+    const { captureId, imageBase64 } = unknownShareView;
+    if (!captureId || !user?.id) return;
+    setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
+    try {
+      await deleteCapture({ captureId, userId: user.id });
+      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+      // Show undo banner
+      setUnknownShareUndo({
+        captureId,
+        userId: user.id,
+        imageBase64,
+        expiresAt: Date.now() + UNDO_SECONDS * 1000,
+      });
+    } catch (e) {
+      setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't delete — please try again." }));
+    }
   };
 
   const handleShareEditSave = async (manualData) => {
@@ -7133,7 +7167,7 @@ function WellnessValleyApp() {
         }}
       />
 
-      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit) */}
+      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
       <UnknownShareViewer
         isOpen={unknownShareView.open}
         imageBase64={unknownShareView.imageBase64}
@@ -7142,8 +7176,27 @@ function WellnessValleyApp() {
         error={unknownShareView.error}
         onRetry={handleUnknownShareRetry}
         onEdit={handleUnknownShareEdit}
+        onDelete={handleUnknownShareDelete}
         onClose={() => setUnknownShareView({ open: false, captureId: null, imageBase64: null, canMutate: false, retrying: false, error: null })}
       />
+
+      {/* 2026-06-09 — undo banner for unknown capture deletion (share-link viewer) */}
+      {unknownShareUndo && (
+        <UnknownCaptureUndoBanner
+          captureId={unknownShareUndo.captureId}
+          userId={unknownShareUndo.userId}
+          imageBase64={unknownShareUndo.imageBase64}
+          expiresAt={unknownShareUndo.expiresAt}
+          onUndo={async ({ captureId, userId }) => {
+            await undoDeleteCapture({ captureId, userId });
+            setUnknownShareUndo(null);
+            showToast("Restored");
+          }}
+          onExpire={() => {
+            setUnknownShareUndo(null);
+          }}
+        />
+      )}
 
       {/* PR-E — dedicated food search modal whose save promotes unknown → food */}
       <SmartFoodSearchModal

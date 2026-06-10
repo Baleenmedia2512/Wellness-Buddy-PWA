@@ -7,7 +7,9 @@ export const istToLocalDate = (value) => {
   if (!value) return new Date(NaN);
   if (value instanceof Date) return new Date(value.getTime());
   if (typeof value === 'string') {
-    const normalized = value.endsWith('Z') ? value.slice(0, -1) : value;
+    // Normalise MySQL datetime strings ("YYYY-MM-DD HH:MM:SS") to ISO-8601
+    // ("YYYY-MM-DDTHH:MM:SS") so all browsers parse them correctly.
+    const normalized = value.replace(' ', 'T').replace(/Z$/, '');
     const localDate = new Date(normalized);
     if (!Number.isNaN(localDate.getTime())) return localDate;
   }
