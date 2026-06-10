@@ -7633,22 +7633,22 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="p-2 rounded-full bg-white/90 backdrop-blur-sm shadow-xl border-2 border-gray-200 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-full bg-white/60 backdrop-blur-sm shadow-lg border border-gray-300/50 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             title="Take Photo"
             aria-label="Quick camera access"
           >
-            <img src="/app.png" alt="Camera" className="w-12 h-12 pointer-events-none select-none" draggable={false} />
+            <img src="/app.png" alt="Camera" className="w-16 h-16 pointer-events-none select-none" draggable={false} />
           </button>
           
           {/* Gallery Button */}
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="p-2 rounded-full bg-white/90 backdrop-blur-sm shadow-xl border-2 border-gray-200 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-full bg-white/60 backdrop-blur-sm shadow-lg border border-gray-300/50 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
-            <img src="/gallery.png" alt="Gallery" className="w-12 h-12 pointer-events-none select-none" draggable={false} />
+            <img src="/gallery.png" alt="Gallery" className="w-16 h-16 pointer-events-none select-none" draggable={false} />
           </button>
         </div>
       )}
