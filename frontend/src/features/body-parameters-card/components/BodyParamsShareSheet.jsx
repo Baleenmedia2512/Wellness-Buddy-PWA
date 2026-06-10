@@ -42,12 +42,12 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
 
     const run = async () => {
       // Let the off-screen card render first.
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 100));
       if (cancelled) return;
 
       // Capture card image for native share.
       if (cardRef.current) {
-        const dataUrl = await precaptureShareImage(cardRef.current, { scale: 2, quality: 0.9 });
+        const dataUrl = await precaptureShareImage(cardRef.current, { scale: 1.5, quality: 0.85 });
         if (!cancelled) preCapRef.current = dataUrl;
       }
 
