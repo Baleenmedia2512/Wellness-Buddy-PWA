@@ -50,9 +50,27 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
     return str;
   };
 
-  const bmiPill  = card.bmi       != null && card.bmi       !== '' ? `${card.bmi}`       : null;
-  const fatPill  = card.fatPercent != null && card.fatPercent !== '' ? `${card.fatPercent}%` : null;
-  const fatLabel = card.gender === 'Male' ? '(10–20)' : card.gender === 'Female' ? '(20–30)' : '';
+  const bmiValue = (() => {
+    const b = card.bmi;
+    if (b === '' || b === null || b === undefined) return { pill: null, label: '(19–23)', outOfRange: false };
+    const val = parseFloat(b);
+    const outOfRange = val < 19 || val > 23;
+    return { pill: `${b}`, label: '(19–23)', outOfRange };
+  })();
+
+  const fatValue = (() => {
+    const f = card.fatPercent;
+    if (f === '' || f === null || f === undefined) return { pill: null, label: '', outOfRange: false };
+    const val = parseFloat(f);
+    const pct = `${f}%`;
+    if (card.gender === 'Male') {
+      return { pill: pct, label: '(10–20)', outOfRange: val < 10 || val > 20 };
+    }
+    if (card.gender === 'Female') {
+      return { pill: pct, label: '(20–30)', outOfRange: val < 20 || val > 30 };
+    }
+    return { pill: pct, label: '', outOfRange: false };
+  })();
 
   /* ── Mandala SVG (simple concentric-ring decoration) ── */
   const Mandala = ({ size, opacity }) => (
@@ -95,28 +113,21 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
         <Mandala size={60} opacity={1} />
       </div>
 
-      {/* ── Dark circle with logo inside ── */}
+      {/* ── Logo: plain white circle ── */}
       <div style={{
-        width: 52, height: 52, borderRadius: '50%',
-        background: '#1a1a1a',
+        width: 60, height: 60, borderRadius: '50%',
+        background: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         margin: '0 auto 14px',
-        boxShadow: '0 3px 12px rgba(0,0,0,0.35)',
+        boxShadow: '0 3px 12px rgba(0,0,0,0.2)',
+        overflow: 'hidden',
         position: 'relative', zIndex: 2,
       }}>
-        {/* White inner circle with logo */}
-        <div style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          overflow: 'hidden',
-        }}>
-          <img
-            src="/logo.png"
-            alt="Wellness Valley"
-            style={{ width: 28, height: 28, objectFit: 'contain' }}
-          />
-        </div>
+        <img
+          src="/logo.png"
+          alt="Wellness Valley"
+          style={{ width: 44, height: 44, objectFit: 'contain' }}
+        />
       </div>
 
       {/* ── White ticket card ── */}
@@ -171,46 +182,64 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
             <Field label="Gender"   value={card.gender || ''} />
             <Field label="Height"   value={fmt(card.heightCm, ' cm')} />
             <Field label="Weight"   value={fmt(card.weightKg, ' kg')} />
-            <Field label="BMI"      badge={bmiPill  ? <Pill value={bmiPill}  ref_label="(19–23)" /> : null} value="" />
+            <Field label="BMI" badge={
+              bmiValue.pill ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: bmiValue.outOfRange ? '#fff' : '#1a1a6e',
+                    background: bmiValue.outOfRange ? '#c0392b' : 'transparent',
+                    borderRadius: 20,
+                    padding: bmiValue.outOfRange ? '2px 9px' : '0',
+                  }}>{bmiValue.pill}</span>
+                  <span style={{ fontSize: 10, color: '#555' }}>{bmiValue.label}</span>
+                </span>
+              ) : null
+            } value={bmiValue.pill ? '' : '—'} />
             <Field label="BMR"      value={fmt(card.bmr, ' kcal')} />
-            <Field label="Fat%"     badge={fatPill  ? <Pill value={fatPill}  ref_label={fatLabel} /> : null} value="" />
+            <Field label="Fat%" badge={
+              fatValue.pill ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: fatValue.outOfRange ? '#fff' : '#1a1a6e',
+                    background: fatValue.outOfRange ? '#c0392b' : 'transparent',
+                    borderRadius: 20,
+                    padding: fatValue.outOfRange ? '2px 9px' : '0',
+                  }}>{fatValue.pill}</span>
+                  {fatValue.label && <span style={{ fontSize: 10, color: '#555' }}>{fatValue.label}</span>}
+                </span>
+              ) : null
+            } value={fatValue.pill ? '' : '—'} />
             <Field label="Body Age" value={fmt(card.bodyAge, ' yrs')} />
           </div>
 
-          {/* ── Dark footer strip with WELLNESS VALLEY + scalloped bottom edge ── */}
-          <div style={{ margin: '14px -18px 0' }}>
-
-            {/* Dark strip */}
-            <div style={{
-              background: '#1a1a1a',
-              padding: '8px 0 10px',
-              textAlign: 'center',
-            }}>
-              <p style={{
-                margin: 0,
-                fontSize: 10, fontWeight: 800,
-                color: '#16a34a', letterSpacing: 3, textTransform: 'uppercase',
-              }}>
-                WELLNESS VALLEY
-              </p>
-            </div>
-
-            {/* Scalloped bottom edge — white semi-circles cut from dark band */}
-            <svg
-              width="100%" height="18"
-              viewBox="0 0 320 18"
-              preserveAspectRatio="none"
-              style={{ display: 'block', borderRadius: '0 0 14px 14px' }}
-            >
-              <rect x="0" y="0" width="320" height="18" fill="#1a1a1a" />
-              {Array.from({ length: 18 }).map((_, i) => (
-                <circle key={i} cx={i * 18 + 9} cy="18" r="9" fill="#fff" />
-              ))}
-            </svg>
-
-          </div>
-
         </div>
+
+        {/* ── WELLNESS VALLEY watermark ── */}
+        <div style={{
+          background: '#fff',
+          borderRadius: '0 0 14px 14px',
+          padding: '8px 0 12px',
+          textAlign: 'center',
+          borderTop: '1px solid #e5e7eb',
+        }}>
+          <p style={{
+            margin: 0,
+            fontSize: 8, fontWeight: 600,
+            color: '#888', letterSpacing: 1, textTransform: 'uppercase',
+          }}>
+            Powered by
+          </p>
+          <p style={{
+            margin: '2px 0 0',
+            fontSize: 10, fontWeight: 800,
+            color: '#16a34a', letterSpacing: 3, textTransform: 'uppercase',
+          }}>
+            WELLNESS VALLEY
+          </p>
+        </div>
+
       </div>
     </div>
   );

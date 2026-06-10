@@ -24,16 +24,17 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
   const capturingRef = useRef(false);
 
   const doShare = useCallback(async () => {
-    const text = buildShareText(shareUrl, card?.name);
+    const textWithUrl    = buildShareText(shareUrl, card?.name);  // for web WhatsApp (URL in text)
+    const textWithoutUrl = buildShareText(null,     card?.name);  // for native (url passed separately)
     try {
       if (Capacitor.isNativePlatform() && preCapRef.current) {
         await shareImageWithLink(preCapRef.current, shareUrl, {
           title:    `${card?.name || 'Body'} Parameters`,
-          text,
+          text:     textWithoutUrl,
           fileName: `wellness-body-params-${Date.now()}.jpg`,
         });
       } else {
-        await shareTextViaWhatsApp(text);
+        await shareTextViaWhatsApp(textWithUrl);
       }
       debugLog('✅ [BodyParamsShare] Auto-share completed');
     } catch {
