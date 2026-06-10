@@ -7,7 +7,7 @@ export const STORE_LINKS = {
   android: process.env.REACT_APP_PLAY_STORE_URL  || 'https://play.google.com/store/apps/details?id=com.wellnessvalley.app',
   ios:     process.env.REACT_APP_APP_STORE_URL   || 'https://apps.apple.com/app/wellness-valley/id000000000',
   web:     process.env.REACT_APP_LANDING_URL     || 'https://wellnessvalley.app',
-};hey 
+};
 
 /**
  * Return the correct app store URL for the given platform string.
