@@ -37,10 +37,10 @@ const SelectField = ({ label, value, onChange, options }) => (
 );
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard }} props
  */
-const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess });
+const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null }) => {
+  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard });
 
   if (!isOpen) return null;
 
@@ -56,9 +56,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-600 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between z-10">
           <div>
-            <h2 className="text-base font-bold">Your Body Parameters</h2>
+            <h2 className="text-base font-bold">{vm.isEditMode ? 'Edit Body Parameters' : 'Your Body Parameters'}</h2>
             <p className="text-xs text-indigo-200 mt-0.5">
-              {selectedMember ? `For ${selectedMember.userName || 'Member'}` : (vm.form.name.trim() || 'New Card')}
+              {selectedMember ? `For ${selectedMember.userName || 'Member'}` : (vm.form.name.trim() || (vm.isEditMode ? 'Editing card' : 'New Card'))}
             </p>
           </div>
           <button onClick={handleCancel} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
@@ -138,7 +138,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }
                 type="number"
                 value={vm.form.weightKg}
                 onChange={(e) => vm.setWeightManually(e.target.value)}
-                placeholder="ideal kg"
+                placeholder="kg"
                 className="border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
               />
             </div>
@@ -178,7 +178,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }
                 );
               })()}
             </div>
-            <InputField label="9. Body Age" value={vm.form.bodyAge} onChange={(v) => vm.setField('bodyAge', v)} type="number" placeholder="yrs (card only)" />
+            <InputField label="9. Body Age" value={vm.form.bodyAge} onChange={(v) => vm.setField('bodyAge', v)} type="number" placeholder="yrs" />
           </div>
         </div>
 
@@ -195,7 +195,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }
             disabled={!vm.isValid || vm.isSaving}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-green-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
           >
-            {vm.isSaving ? 'Saving…' : 'Save & Share'}
+            {vm.isSaving ? 'Saving…' : vm.isEditMode ? 'Update & Share' : 'Save & Share'}
           </button>
         </div>
       </div>

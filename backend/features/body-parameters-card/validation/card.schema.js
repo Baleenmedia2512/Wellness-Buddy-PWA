@@ -62,6 +62,62 @@ export function validateCreateCard(body) {
 }
 
 /**
+ * Validate the payload for PATCH /api/body-parameters-card/update.
+ * Requires `id`; all body fields remain optional.
+ *
+ * @param {object} body
+ * @returns {object} clean, coerced payload
+ * @throws {ValidationError}
+ */
+export function validateUpdateCard(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { id, name, age, gender, heightCm, weightKg,
+          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName } = body;
+
+  if (!id) throw new ValidationError(400, 'id is required');
+  const idN = parseInt(id);
+  if (isNaN(idN) || idN < 1) throw new ValidationError(422, 'id must be a positive integer');
+
+  if (!name || String(name).trim() === '') throw new ValidationError(400, 'name is required');
+  if (String(name).trim().length > 100) throw new ValidationError(422, 'name must be ≤ 100 characters');
+
+  const ageN      = _optionalInt(age, 'age', 1, 120);
+  const bodyAgeN  = _optionalInt(bodyAge, 'bodyAge', 1, 120);
+  const heightN   = _optionalFloat(heightCm, 'heightCm', 50, 250);
+  const weightN   = _optionalFloat(weightKg, 'weightKg', 20, 300);
+  const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
+  const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
+  const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
+
+  if (gender != null && !VALID_GENDERS.includes(gender)) {
+    throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
+  }
+
+  let recordedDateVal = null;
+  if (recordedDate) {
+    const d = new Date(recordedDate);
+    if (isNaN(d.getTime())) throw new ValidationError(422, 'recordedDate must be a valid ISO date');
+    recordedDateVal = d.toISOString().substring(0, 10);
+  }
+
+  return {
+    id:          idN,
+    name:        String(name).trim(),
+    age:         ageN,
+    gender:      gender || null,
+    heightCm:    heightN,
+    weightKg:    weightN,
+    bmi:         bmiN,
+    fatPercent:  fatN,
+    bmr:         bmrN,
+    bodyAge:     bodyAgeN,
+    recordedDate: recordedDateVal,
+    locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
+  };
+}
+
+/**
  * Validate the token query param for
  * GET /api/body-parameters-card/public/[token].
  */

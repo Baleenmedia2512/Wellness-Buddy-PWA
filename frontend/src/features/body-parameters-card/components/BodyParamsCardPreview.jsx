@@ -2,30 +2,29 @@
  * BodyParamsCardPreview.jsx
  *
  * Off-screen styled card — "YOUR BODY PARAMETERS".
- * Uses LABEL : VALUE style (colon separator, no dotted lines).
+ * Single-column layout: LABEL (fixed width) : value
  * Rendered into a hidden div so html2canvas can paint it to a JPEG for share.
  */
 import React from 'react';
 
-/* ── Single full-width row: LABEL : value ──────────────────────────────── */
-const Row = ({ label, value }) => (
-  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
+/* ── Full-width row with fixed label column so colons align ── */
+const Row = ({ label, value, badge = null }) => (
+  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+    <span style={{
+      width: 90,
+      flexShrink: 0,
+      fontWeight: 700,
+      fontSize: 11,
+      color: '#2d2d7a',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    }}>
       {label}
     </span>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 6 }}>:</span>
-    <span style={{ fontSize: 12, color: '#1a1a6e' }}>{value || '—'}</span>
-  </div>
-);
-
-/* ── Half-width row used side-by-side ──────────────────────────────────── */
-const HalfRow = ({ label, value }) => (
-  <div style={{ flex: 1, display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>
-      {label}
-    </span>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 6 }}>:</span>
-    <span style={{ fontSize: 12, color: '#1a1a6e' }}>{value || '—'}</span>
+    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 8 }}>:</span>
+    {badge ? badge : (
+      <span style={{ fontSize: 12, color: '#1a1a6e' }}>{value || '—'}</span>
+    )}
   </div>
 );
 
@@ -45,9 +44,32 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
     return str;
   };
 
-  const fatValue = card.fatPercent !== '' && card.fatPercent !== null && card.fatPercent !== undefined
-    ? `${card.fatPercent}%${card.gender === 'Male' ? ' (10–20)' : card.gender === 'Female' ? ' (20–30)' : ''}`
-    : '';
+  const bmiValue = (() => {
+    const b = card.bmi;
+    if (b === '' || b === null || b === undefined) return { text: '', outOfRange: false };
+    const val = parseFloat(b);
+    if (val < 19) return { text: `${b} ⚠️ Below Normal (19–23)`, outOfRange: true };
+    if (val > 23) return { text: `${b} ⚠️ Above Normal (19–23)`, outOfRange: true };
+    return { text: `${b} (19–23)`, outOfRange: false };
+  })();
+
+  const fatValue = (() => {
+    const f = card.fatPercent;
+    if (f === '' || f === null || f === undefined) return { text: '', outOfRange: false };
+    const val = parseFloat(f);
+    const pct = `${f}%`;
+    if (card.gender === 'Male') {
+      if (val < 10)  return { text: `${pct} ⚠️ Below Normal (10–20)`, outOfRange: true };
+      if (val > 20)  return { text: `${pct} ⚠️ Above Normal (10–20)`, outOfRange: true };
+      return { text: `${pct} (10–20)`, outOfRange: false };
+    }
+    if (card.gender === 'Female') {
+      if (val < 20)  return { text: `${pct} ⚠️ Below Normal (20–30)`, outOfRange: true };
+      if (val > 30)  return { text: `${pct} ⚠️ Above Normal (20–30)`, outOfRange: true };
+      return { text: `${pct} (20–30)`, outOfRange: false };
+    }
+    return { text: pct, outOfRange: false };
+  })();
 
   return (
     <div
@@ -74,38 +96,43 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
       {/* Card border box */}
       <div style={{ border: '2px solid #6b6bcb', borderRadius: 10, padding: '14px 16px', background: 'rgba(255,255,255,0.65)' }}>
 
-        {/* DATE : value   LOCATION : value */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
-          <HalfRow label="Date"     value={fmtDate(card.recordedDate)} />
-          <HalfRow label="Location" value={card.locationName || ''} />
-        </div>
+        <Row label="Date"     value={fmtDate(card.recordedDate)} />
+        <Row label="Location" value={card.locationName || ''} />
+        <Row label="Name"     value={card.name} />
+        <Row label="Age"      value={fmt(card.age)} />
+        <Row label="Gender"   value={card.gender || ''} />
+        <Row label="Height"   value={fmt(card.heightCm, ' cm')} />
+        <Row label="Weight"   value={fmt(card.weightKg, ' kg')} />
 
-        {/* NAME */}
-        <Row label="Name" value={card.name} />
+        {/* BMI — red pill when out of range */}
+        <Row label="BMI" badge={
+          bmiValue.text ? (
+            bmiValue.outOfRange ? (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#c0392b', borderRadius: 20, padding: '2px 10px' }}>
+                {bmiValue.text}
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: '#1a1a6e' }}>{bmiValue.text}</span>
+            )
+          ) : <span style={{ fontSize: 12, color: '#1a1a6e' }}>—</span>
+        } />
 
-        {/* AGE + GENDER */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <HalfRow label="Age"    value={fmt(card.age)} />
-          <HalfRow label="Gender" value={card.gender || ''} />
-        </div>
+        <Row label="BMR"      value={fmt(card.bmr, ' kcal')} />
 
-        {/* HEIGHT + BMI */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <HalfRow label="Height" value={fmt(card.heightCm, 'cm')} />
-          <HalfRow label="BMI"    value={fmt(card.bmi)} />
-        </div>
+        {/* Fat% — red pill when out of range */}
+        <Row label="Fat%" badge={
+          fatValue.text ? (
+            fatValue.outOfRange ? (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#c0392b', borderRadius: 20, padding: '2px 10px' }}>
+                {fatValue.text}
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: '#1a1a6e' }}>{fatValue.text}</span>
+            )
+          ) : <span style={{ fontSize: 12, color: '#1a1a6e' }}>—</span>
+        } />
 
-        {/* WEIGHT + BMR */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <HalfRow label="Weight" value={fmt(card.weightKg, 'kg')} />
-          <HalfRow label="BMR"    value={fmt(card.bmr, 'kcal')} />
-        </div>
-
-        {/* FAT% */}
-        <Row label="Fat%" value={fatValue} />
-
-        {/* BODY AGE */}
-        <Row label="Body Age" value={fmt(card.bodyAge, 'yrs')} />
+        <Row label="Body Age" value={fmt(card.bodyAge, ' yrs')} />
 
       </div>
 

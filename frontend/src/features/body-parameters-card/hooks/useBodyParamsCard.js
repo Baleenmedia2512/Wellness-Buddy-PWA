@@ -8,7 +8,7 @@
  * Components only render — no fetch logic here.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -27,10 +27,29 @@ const EMPTY_FORM = {
 };
 
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) {
-  const [form, setForm] = useState(EMPTY_FORM);
+export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null } = {}) {
+  const isEditMode = Boolean(existingCard?.id);
+
+  const [form, setForm] = useState(() => {
+    if (existingCard) {
+      return {
+        name:         existingCard.name         ?? '',
+        age:          existingCard.age          != null ? String(existingCard.age)         : '',
+        gender:       existingCard.gender        ?? '',
+        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
+        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
+        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
+        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
+        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
+        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
+        locationName: existingCard.locationName ?? '',
+      };
+    }
+    return EMPTY_FORM;
+  });
   const [isSaving, setIsSaving]           = useState(false);
   const [error, setError]                 = useState('');
   const [savedCard, setSavedCard]         = useState(null);
@@ -133,7 +152,10 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
         recordedDate: form.recordedDate || undefined,
         locationName: form.locationName || undefined,
       };
-      const card = await createBodyParamsCard(payload);
+
+      const card = isEditMode
+        ? await updateBodyParamsCard(existingCard.id, payload)
+        : await createBodyParamsCard(payload);
       const url = `${getApiBaseUrl()}/share/bpc/${card.publicShareToken}`;
 
       // Merge API response with full form data so the card preview
@@ -171,6 +193,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess } = {}) 
     bmiUserEdited,
     isSaving, error,
     isValid,
+    isEditMode,
     savedCard, shareUrl,
     handleSave, resetForm,
   };

@@ -37,6 +37,37 @@ export async function insertCard(payload) {
 }
 
 /**
+ * Update an existing body-parameters card by id.
+ * @param {number} id
+ * @param {object} payload - validated + coerced from validateUpdateCard
+ * @returns {object} updated row
+ */
+export async function updateCard(id, payload) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      name:          payload.name,
+      age:           payload.age,
+      gender:        payload.gender,
+      height_cm:     payload.heightCm,
+      weight_kg:     payload.weightKg,
+      bmi:           payload.bmi,
+      fat_percent:   payload.fatPercent,
+      bmr:           payload.bmr,
+      body_age:      payload.bodyAge,
+      recorded_date: payload.recordedDate,
+      location_name: payload.locationName,
+    })
+    .eq('id', id)
+    .eq('is_deleted', false)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Find an unexpired card by its public share token.
  * Returns null when not found or expired.
  *
