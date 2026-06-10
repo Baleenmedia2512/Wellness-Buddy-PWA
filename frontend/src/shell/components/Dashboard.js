@@ -111,6 +111,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
 
+  // Label for the shell-level date-picker button: "Today" when the
+  // selected day is the current day, otherwise a short date (e.g. "Jun 9").
+  const dateButtonLabel =
+    selectedDate.toDateString() === new Date().toDateString()
+      ? 'Today'
+      : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
   // Save active tab to localStorage when it changes
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -212,9 +219,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </p>
             </div>
 
-            {/* Calendar button — only for the (disabled) steps/screen tabs.
-                In the single-page Diary, each stacked dashboard renders its
-                own date control (Nutrition's calendar strip drives the day). */}
+            {/* Calendar button — for the steps/screen tabs (disabled) AND the
+                single-page Diary. In the Diary, this one shell-level "Today"
+                button opens the month-grid date picker and drives the day for
+                every stacked dashboard (Nutrition's own strip is suppressed). */}
             {(activeTab === 'steps' || activeTab === 'screen') && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
@@ -224,8 +232,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
+            {diaryEnabled && (
+              <TouchFeedbackButton
+                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
+                className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
+                ariaLabel="Open date picker"
+              >
+                <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
+                <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
+              </TouchFeedbackButton>
+            )}
             {/* Empty space to keep the title centred when there's no top-right action */}
-            {(diaryEnabled || activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
+            {!diaryEnabled && (activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
@@ -246,8 +264,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         </div>
       </div>
 
-      {/* Inline Calendar — only for the (disabled) steps/screen tabs. */}
-      {(activeTab === 'steps' || activeTab === 'screen') && (
+      {/* Inline Calendar — month-grid date picker. Shown for the
+          (disabled) steps/screen tabs AND the single-page Diary. */}
+      {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
         }`}>
@@ -429,6 +448,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 apiBaseUrl={apiBaseUrl}
                 onMealDelete={onMealDelete}
                 hideHeader={true}
+                hideDateStrip={true}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}
                 bmrUpdateKey={bmrUpdateKey}
@@ -441,6 +461,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 onBack={onBack}
                 apiBaseUrl={apiBaseUrl}
                 hideHeader={true}
+                selectedDate={selectedDate}
                 initialEntryId={initialMealId}
               />
 
@@ -448,6 +469,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 user={displayUser}
                 apiBaseUrl={apiBaseUrl}
                 hideHeader={true}
+                selectedDate={selectedDate}
                 refreshKey={educationRefreshKey}
                 initialEntryId={initialMealId}
               />

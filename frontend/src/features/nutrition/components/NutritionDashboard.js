@@ -75,6 +75,7 @@ const NutritionDashboard = ({
   apiBaseUrl,
   onMealDelete,
   hideHeader,
+  hideDateStrip = false,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
@@ -536,16 +537,19 @@ const NutritionDashboard = ({
         />
       )}
 
-      {/* Date selector */}
-      <HorizontalCalendarStrip
-        selectedDate={selectedDate}
-        setSelectedDate={setSelectedDate}
-        navigateDate={navigateDate}
-        showCalendar={showCalendar}
-        setShowCalendar={setShowCalendar}
-        calendarMonth={calendarMonth}
-        setCalendarMonth={setCalendarMonth}
-      />
+      {/* Date selector — hidden when the shell provides a single
+          date picker (single-page Diary view). */}
+      {!hideDateStrip && (
+        <HorizontalCalendarStrip
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          navigateDate={navigateDate}
+          showCalendar={showCalendar}
+          setShowCalendar={setShowCalendar}
+          calendarMonth={calendarMonth}
+          setCalendarMonth={setCalendarMonth}
+        />
+      )}
       {/* Content */}
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-4 md:pb-6">
         {loading ? (

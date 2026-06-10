@@ -14,8 +14,8 @@ import EducationCameraPanel, { EducationEmptyState } from './EducationCameraPane
 import EducationDashboardSkeleton from './EducationDashboardSkeleton';
 import { useEducationDashboard } from '../hooks/useEducationDashboard';
 
-const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null }) => {
-  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey });
+const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null }) => {
+  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
