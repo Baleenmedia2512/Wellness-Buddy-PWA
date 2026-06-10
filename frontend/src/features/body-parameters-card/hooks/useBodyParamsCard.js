@@ -27,9 +27,9 @@ const EMPTY_FORM = {
 };
 
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null } = {}) {
+export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null } = {}) {
   const isEditMode = Boolean(existingCard?.id);
 
   const [form, setForm] = useState(() => {
@@ -136,6 +136,25 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (!isValid) { setError('Name is required'); return; }
     setError('');
     setIsSaving(true);
+
+    // ⚡ Notify parent immediately with form data so it can start
+    // pre-rendering + pre-capturing the card image in parallel with the API call.
+    if (onSaveStart) {
+      onSaveStart({
+        name:         form.name.trim(),
+        age:          form.age,
+        gender:       form.gender,
+        heightCm:     form.heightCm,
+        weightKg:     form.weightKg,
+        bmi:          form.bmi,
+        fatPercent:   form.fatPercent,
+        bmr:          form.bmr,
+        bodyAge:      form.bodyAge,
+        recordedDate: form.recordedDate,
+        locationName: form.locationName,
+      });
+    }
+
     try {
       const payload = {
         createdBy:   user?.id,

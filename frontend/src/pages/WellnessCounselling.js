@@ -40,6 +40,7 @@ const WellnessCounselling = ({ user, onBack }) => {
   // Body Parameters Card states
   const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null); // { card, shareUrl }
+  const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null); // form data for early pre-capture
   
   // Mock assessment data - replace with API call
   const [assessmentData, setAssessmentData] = useState({});
@@ -631,6 +632,11 @@ const WellnessCounselling = ({ user, onBack }) => {
         onClose={() => setIsBodyParamsFormOpen(false)}
         user={user}
         selectedMember={null}
+        onSaveStart={(formData) => {
+          // ⚡ Start pre-rendering & capturing the card image immediately,
+          // in parallel with the API save call.
+          setBodyParamsPreCapCard(formData);
+        }}
         onSaveSuccess={(card, shareUrl) => {
           setIsBodyParamsFormOpen(false);
           setBodyParamsShareData({ card, shareUrl });
@@ -640,9 +646,13 @@ const WellnessCounselling = ({ user, onBack }) => {
       {/* Body Parameters Share Sheet */}
       <BodyParamsShareSheet
         isOpen={!!bodyParamsShareData}
-        onClose={() => setBodyParamsShareData(null)}
+        onClose={() => {
+          setBodyParamsShareData(null);
+          setBodyParamsPreCapCard(null);
+        }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
+        preCapCard={bodyParamsPreCapCard}
       />
     </div>
   );

@@ -37,10 +37,10 @@ const SelectField = ({ label, value, onChange, options }) => (
 );
 
 /**
- * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard }} props
+ * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
  */
-const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard });
+const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
+  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart });
 
   if (!isOpen) return null;
 

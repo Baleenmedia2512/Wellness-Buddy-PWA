@@ -1,149 +1,213 @@
 /**
  * BodyParamsCardPreview.jsx
  *
- * Off-screen styled card — "YOUR BODY PARAMETERS".
- * Single-column layout: LABEL (fixed width) : value
- * Rendered into a hidden div so html2canvas can paint it to a JPEG for share.
+ * Receipt-style card modelled after a UPI payment slip.
+ * Orange gradient background · mandala corners · green tick ·
+ * white ticket card with side notches · dashed divider · watermark.
+ * Rendered off-screen so html2canvas can export it as a JPEG.
  */
 import React from 'react';
 
-/* ── Full-width row with fixed label column so colons align ── */
-const Row = ({ label, value, badge = null }) => (
-  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+/* ── Field row inside the white card ── */
+const Field = ({ label, value, badge = null }) => (
+  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
     <span style={{
-      width: 90,
-      flexShrink: 0,
-      fontWeight: 700,
-      fontSize: 11,
-      color: '#2d2d7a',
-      textTransform: 'uppercase',
-      letterSpacing: 0.4,
+      width: 88, flexShrink: 0,
+      fontSize: 10, fontWeight: 700,
+      color: '#555', textTransform: 'uppercase', letterSpacing: 0.3,
     }}>
       {label}
     </span>
-    <span style={{ fontWeight: 700, fontSize: 11, color: '#2d2d7a', marginRight: 8 }}>:</span>
-    {badge ? badge : (
-      <span style={{ fontSize: 12, color: '#1a1a6e' }}>{value || '—'}</span>
-    )}
+    <span style={{ fontSize: 10, fontWeight: 700, color: '#555', marginRight: 7 }}>:</span>
+    {badge || <span style={{ fontSize: 11, color: '#222', fontWeight: 600 }}>{value || '—'}</span>}
   </div>
+);
+
+/* ── Red pill for BMI / Fat% values ── */
+const Pill = ({ value, ref_label }) => (
+  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+    <span style={{
+      fontSize: 10, fontWeight: 700, color: '#fff',
+      background: '#c0392b', borderRadius: 20, padding: '2px 9px',
+    }}>{value}</span>
+    {ref_label && <span style={{ fontSize: 10, color: '#555' }}>{ref_label}</span>}
+  </span>
 );
 
 /**
  * @param {{ card: object }} props
  */
 const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
-  const fmt = (v, unit = '') => (v !== null && v !== undefined && v !== '') ? `${v}${unit}` : '';
+  const fmt = (v, unit = '') =>
+    v !== null && v !== undefined && v !== '' ? `${v}${unit}` : '';
 
   const fmtDate = (v) => {
     if (!v) return '';
     const str = String(v);
-    // Already YYYY-MM-DD (from HTML date input)
     if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-    // Compact YYYYMMDD (no hyphens)
-    if (/^\d{8}$/.test(str)) return `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}`;
+    if (/^\d{8}$/.test(str))
+      return `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}`;
     return str;
   };
 
-  const bmiValue = (() => {
-    const b = card.bmi;
-    if (b === '' || b === null || b === undefined) return { text: '', outOfRange: false };
-    const val = parseFloat(b);
-    if (val < 19) return { text: `${b} ⚠️ Below Normal (19–23)`, outOfRange: true };
-    if (val > 23) return { text: `${b} ⚠️ Above Normal (19–23)`, outOfRange: true };
-    return { text: `${b} (19–23)`, outOfRange: false };
-  })();
+  const bmiPill  = card.bmi       != null && card.bmi       !== '' ? `${card.bmi}`       : null;
+  const fatPill  = card.fatPercent != null && card.fatPercent !== '' ? `${card.fatPercent}%` : null;
+  const fatLabel = card.gender === 'Male' ? '(10–20)' : card.gender === 'Female' ? '(20–30)' : '';
 
-  const fatValue = (() => {
-    const f = card.fatPercent;
-    if (f === '' || f === null || f === undefined) return { text: '', outOfRange: false };
-    const val = parseFloat(f);
-    const pct = `${f}%`;
-    if (card.gender === 'Male') {
-      if (val < 10)  return { text: `${pct} ⚠️ Below Normal (10–20)`, outOfRange: true };
-      if (val > 20)  return { text: `${pct} ⚠️ Above Normal (10–20)`, outOfRange: true };
-      return { text: `${pct} (10–20)`, outOfRange: false };
-    }
-    if (card.gender === 'Female') {
-      if (val < 20)  return { text: `${pct} ⚠️ Below Normal (20–30)`, outOfRange: true };
-      if (val > 30)  return { text: `${pct} ⚠️ Above Normal (20–30)`, outOfRange: true };
-      return { text: `${pct} (20–30)`, outOfRange: false };
-    }
-    return { text: pct, outOfRange: false };
-  })();
+  /* ── Mandala SVG (simple concentric-ring decoration) ── */
+  const Mandala = ({ size, opacity }) => (
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{ opacity }}>
+      {[48,40,32,24,16,8].map((r, i) => (
+        <circle key={i} cx="50" cy="50" r={r} fill="none" stroke="#fff"
+          strokeWidth="1.2" strokeDasharray={i % 2 === 0 ? '6 4' : '3 5'} />
+      ))}
+      {[0,30,60,90,120,150,180,210,240,270,300,330].map((deg, i) => {
+        const rad = (deg * Math.PI) / 180;
+        const x1 = 50 + 10 * Math.cos(rad), y1 = 50 + 10 * Math.sin(rad);
+        const x2 = 50 + 46 * Math.cos(rad), y2 = 50 + 46 * Math.sin(rad);
+        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fff" strokeWidth="0.8" opacity="0.5" />;
+      })}
+    </svg>
+  );
 
   return (
-    <div
-      ref={ref}
-      style={{
-        width: 340,
-        background: 'linear-gradient(135deg, #e8e8ff 0%, #d4d4ff 50%, #c8c8f8 100%)',
-        borderRadius: 16,
-        padding: 20,
-        fontFamily: "'Segoe UI', Arial, sans-serif",
-        position: 'relative',
-        boxShadow: '0 4px 20px rgba(43,43,150,0.15)',
-      }}
-    >
-      {/* Decorative blobs */}
-      <div style={{ position: 'absolute', top: -8, right: -8, width: 40, height: 40, borderRadius: '50%', background: 'rgba(100,100,220,0.25)' }} />
-      <div style={{ position: 'absolute', bottom: 10, left: -6, width: 24, height: 24, borderRadius: '50%', background: 'rgba(100,100,220,0.2)' }} />
+    <div ref={ref} style={{
+      width: 320,
+      background: 'linear-gradient(160deg, #22c55e 0%, #16a34a 45%, #15803d 100%)',
+      borderRadius: 20,
+      padding: '28px 18px 20px',
+      fontFamily: "'Segoe UI', Arial, sans-serif",
+      position: 'relative',
+      overflow: 'hidden',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+    }}>
 
-      {/* Title */}
-      <h2 style={{ textAlign: 'center', color: '#2d2d7a', fontSize: 15, fontWeight: 800, letterSpacing: 1.5, margin: '0 0 14px', textTransform: 'uppercase' }}>
-        Your Body Parameters
-      </h2>
-
-      {/* Card border box */}
-      <div style={{ border: '2px solid #6b6bcb', borderRadius: 10, padding: '14px 16px', background: 'rgba(255,255,255,0.65)' }}>
-
-        <Row label="Date"     value={fmtDate(card.recordedDate)} />
-        <Row label="Location" value={card.locationName || ''} />
-        <Row label="Name"     value={card.name} />
-        <Row label="Age"      value={fmt(card.age)} />
-        <Row label="Gender"   value={card.gender || ''} />
-        <Row label="Height"   value={fmt(card.heightCm, ' cm')} />
-        <Row label="Weight"   value={fmt(card.weightKg, ' kg')} />
-
-        {/* BMI — red pill when out of range */}
-        <Row label="BMI" badge={
-          bmiValue.text ? (
-            bmiValue.outOfRange ? (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#c0392b', borderRadius: 20, padding: '2px 10px' }}>
-                {bmiValue.text}
-              </span>
-            ) : (
-              <span style={{ fontSize: 12, color: '#1a1a6e' }}>{bmiValue.text}</span>
-            )
-          ) : <span style={{ fontSize: 12, color: '#1a1a6e' }}>—</span>
-        } />
-
-        <Row label="BMR"      value={fmt(card.bmr, ' kcal')} />
-
-        {/* Fat% — red pill when out of range */}
-        <Row label="Fat%" badge={
-          fatValue.text ? (
-            fatValue.outOfRange ? (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#c0392b', borderRadius: 20, padding: '2px 10px' }}>
-                {fatValue.text}
-              </span>
-            ) : (
-              <span style={{ fontSize: 12, color: '#1a1a6e' }}>{fatValue.text}</span>
-            )
-          ) : <span style={{ fontSize: 12, color: '#1a1a6e' }}>—</span>
-        } />
-
-        <Row label="Body Age" value={fmt(card.bodyAge, ' yrs')} />
-
+      {/* Mandala — top-left */}
+      <div style={{ position: 'absolute', top: -18, left: -18, opacity: 0.35 }}>
+        <Mandala size={110} opacity={1} />
+      </div>
+      {/* Mandala — bottom-right */}
+      <div style={{ position: 'absolute', bottom: -18, right: -18, opacity: 0.28 }}>
+        <Mandala size={100} opacity={1} />
+      </div>
+      {/* Mandala — bottom-left small */}
+      <div style={{ position: 'absolute', bottom: 10, left: -10, opacity: 0.2 }}>
+        <Mandala size={60} opacity={1} />
       </div>
 
-      {/* Watermark */}
-      <p style={{ textAlign: 'center', fontSize: 8, color: '#6b6bcb', marginTop: 10, letterSpacing: 1 }}>
-        WELLNESS VALLEY
-      </p>
+      {/* ── Wellness Valley Logo ── */}
+      <div style={{
+        width: 64, height: 64, borderRadius: '50%',
+        background: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 14px',
+        boxShadow: '0 3px 10px rgba(0,0,0,0.25)',
+        overflow: 'hidden',
+        position: 'relative', zIndex: 2,
+      }}>
+        <img
+          src="/logo.png"
+          alt="Wellness Valley"
+          style={{ width: 52, height: 52, objectFit: 'contain' }}
+        />
+      </div>
+
+      {/* ── White ticket card ── */}
+      <div style={{ position: 'relative', zIndex: 2 }}>
+
+        {/* Left + Right notch (ticket tear effect) */}
+        <div style={{
+          position: 'absolute', left: -18, top: '48%',
+          width: 18, height: 18, borderRadius: '0 50% 50% 0',
+          background: 'linear-gradient(160deg, #22c55e 0%, #16a34a 100%)',
+          zIndex: 3,
+        }} />
+        <div style={{
+          position: 'absolute', right: -18, top: '48%',
+          width: 18, height: 18, borderRadius: '50% 0 0 50%',
+          background: 'linear-gradient(160deg, #16a34a 0%, #15803d 100%)',
+          zIndex: 3,
+        }} />
+
+        <div style={{
+          background: '#fff',
+          borderRadius: 14,
+          padding: '18px 18px 14px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+        }}>
+
+          {/* Title + name */}
+          <div style={{ textAlign: 'center', marginBottom: 14 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#16a34a', letterSpacing: 1, textTransform: 'uppercase' }}>
+              WELLNESS EVALUATION REPORT
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 18, fontWeight: 800, color: '#1a1a1a' }}>
+              {card.name || '—'}
+            </p>
+            {card.locationName && (
+              <p style={{ margin: '2px 0 0', fontSize: 10, color: '#888' }}>
+                {card.locationName}
+              </p>
+            )}
+          </div>
+
+          {/* ── Dashed divider ── */}
+          <div style={{
+            borderTop: '2px dashed #e5e7eb',
+            margin: '10px -18px',
+          }} />
+
+          {/* All fields */}
+          <div style={{ paddingTop: 10 }}>
+            <Field label="Date"     value={fmtDate(card.recordedDate)} />
+            <Field label="Age"      value={fmt(card.age)} />
+            <Field label="Gender"   value={card.gender || ''} />
+            <Field label="Height"   value={fmt(card.heightCm, ' cm')} />
+            <Field label="Weight"   value={fmt(card.weightKg, ' kg')} />
+            <Field label="BMI"      badge={bmiPill  ? <Pill value={bmiPill}  ref_label="(19–23)" /> : null} value="" />
+            <Field label="BMR"      value={fmt(card.bmr, ' kcal')} />
+            <Field label="Fat%"     badge={fatPill  ? <Pill value={fatPill}  ref_label={fatLabel} /> : null} value="" />
+            <Field label="Body Age" value={fmt(card.bodyAge, ' yrs')} />
+          </div>
+
+          {/* ── Dark footer strip with WELLNESS VALLEY + scalloped bottom edge ── */}
+          <div style={{ margin: '14px -18px 0' }}>
+
+            {/* Dark strip */}
+            <div style={{
+              background: '#1a1a1a',
+              padding: '8px 0 10px',
+              textAlign: 'center',
+            }}>
+              <p style={{
+                margin: 0,
+                fontSize: 10, fontWeight: 800,
+                color: '#16a34a', letterSpacing: 3, textTransform: 'uppercase',
+              }}>
+                WELLNESS VALLEY
+              </p>
+            </div>
+
+            {/* Scalloped bottom edge — white semi-circles cut from dark band */}
+            <svg
+              width="100%" height="18"
+              viewBox="0 0 320 18"
+              preserveAspectRatio="none"
+              style={{ display: 'block', borderRadius: '0 0 14px 14px' }}
+            >
+              <rect x="0" y="0" width="320" height="18" fill="#1a1a1a" />
+              {Array.from({ length: 18 }).map((_, i) => (
+                <circle key={i} cx={i * 18 + 9} cy="18" r="9" fill="#fff" />
+              ))}
+            </svg>
+
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 });
 
 BodyParamsCardPreview.displayName = 'BodyParamsCardPreview';
 export default BodyParamsCardPreview;
-
