@@ -6,7 +6,7 @@ import CircularProgress from './CircularProgress';
  * HeartHealthyCard — Card 3 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with 3 nutrients side by side.
  */
-const HeartHealthyCard = ({ fat, sodium, cholesterol }) => {
+const HeartHealthyCard = ({ fat, sodium, cholesterol, onOpenModal }) => {
   const hasFatTarget = fat.target != null;
   
   const fatPct = hasFatTarget ? Math.round((fat.consumed / fat.target) * 100) : null;
@@ -31,7 +31,14 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol }) => {
           {/* Fat */}
           <div className="text-center">
             {hasFatTarget ? (
-              <CircularProgress percentage={fatPct} color="from-yellow-400 to-amber-500" size={70} strokeWidth={6} targetLabel={fat.target != null ? `${fat.target}g` : undefined} />
+              <CircularProgress 
+                percentage={fatPct} 
+                color="from-yellow-400 to-amber-500" 
+                size={70} 
+                strokeWidth={6} 
+                targetLabel={fat.target != null ? `${fat.target}g` : undefined} 
+                onClick={() => onOpenModal && onOpenModal('fat')}
+              />
             ) : (
               <div className="w-[70px] h-[70px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <Droplet className="w-5 h-5 text-gray-400" />
@@ -50,7 +57,14 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol }) => {
 
           {/* Sodium */}
           <div className="text-center">
-            <CircularProgress percentage={sodiumPct} color="from-rose-400 to-pink-500" size={70} strokeWidth={6} targetLabel={`${sodium.target.toLocaleString()}mg`} />
+            <CircularProgress 
+              percentage={sodiumPct} 
+              color="from-rose-400 to-pink-500" 
+              size={70} 
+              strokeWidth={6} 
+              targetLabel={`${sodium.target.toLocaleString()}mg`} 
+              onClick={() => onOpenModal && onOpenModal('sodium')}
+            />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Activity className="w-3.5 h-3.5 text-rose-500" />
@@ -63,7 +77,14 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol }) => {
 
           {/* Cholesterol */}
           <div className="text-center">
-            <CircularProgress percentage={cholesterolPct} color="from-purple-400 to-violet-500" size={70} strokeWidth={6} targetLabel={`${cholesterol.target.toLocaleString()}mg`} />
+            <CircularProgress 
+              percentage={cholesterolPct} 
+              color="from-purple-400 to-violet-500" 
+              size={70} 
+              strokeWidth={6} 
+              targetLabel={`${cholesterol.target.toLocaleString()}mg`} 
+              onClick={() => onOpenModal && onOpenModal('cholesterol')}
+            />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Heart className="w-3.5 h-3.5 text-purple-500" />

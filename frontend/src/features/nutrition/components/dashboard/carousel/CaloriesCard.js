@@ -10,7 +10,7 @@ import { Flame, Utensils, User } from 'lucide-react';
  */
 
 // Compact Circular Progress for mobile (green up to 100%, solid red when over)
-const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget }) => {
+const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget, onClick }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -27,7 +27,13 @@ const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmr
   const subtitle  = bmrTarget ? `of ${bmrTarget.toLocaleString()}` : 'of BMR';
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div 
+      className={`relative ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`} 
+      style={{ width: size, height: size }}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <svg width={size} height={size} className="transform -rotate-90">
         <defs>
           {/* Green gradient */}
