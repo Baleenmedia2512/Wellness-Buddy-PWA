@@ -14,12 +14,16 @@ const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmr
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  const isExceeding = percentage > 100;
-  // When over target, fill the entire ring solid red. Otherwise green up to %.
-  const fillPct = isExceeding ? 100 : Math.max(0, percentage);
-  const fillOffset = circumference - (fillPct / 100) * circumference;
+  // Green arc: fills 0-100%, stays at 100% beyond
+  const greenPct = Math.min(100, Math.max(0, percentage));
+  const greenOffset = circumference - (greenPct / 100) * circumference;
 
-  const textColor = isExceeding ? '#dc2626' : '#065f46';
+  // Red arc: starts at 0 until 100%, fills 0-100% from 100-200%, stays at 100% beyond 200%
+  const redPct = Math.min(100, Math.max(0, percentage - 100));
+  const redOffset = circumference - (redPct / 100) * circumference;
+
+  // Text transitions from green to red as you go from 100% to 200%
+  const textColor = percentage <= 100 ? '#065f46' : '#dc2626';
   const subtitle  = bmrTarget ? `of ${bmrTarget.toLocaleString()}` : 'of BMR';
 
   return (
@@ -49,19 +53,35 @@ const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmr
           opacity="0.3"
         />
 
-        {/* Green arc (base, up to 100%) */}
+        {/* Green arc — fills 0-100%, stays at 100% */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={isExceeding ? 'url(#compactCalRed)' : 'url(#compactCalGreen)'}
+          stroke="url(#compactCalGreen)"
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          strokeDashoffset={fillOffset}
+          strokeDashoffset={greenOffset}
           strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
+
+        {/* Red arc — overlays from 100-200%, stays at 100% beyond */}
+        {percentage > 100 && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="url(#compactCalRed)"
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={redOffset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+          />
+        )}
 
       </svg>
 

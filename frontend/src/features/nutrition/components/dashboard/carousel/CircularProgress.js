@@ -23,10 +23,13 @@ const CircularProgress = ({
   const radius = (size - strokeWidth) / 2;
   const circum = 2 * Math.PI * radius;
 
-  const isExceeding = percentage > 100;
-  // When exceeding, fill the entire ring red. Otherwise fill green up to %.
-  const fillPct = isExceeding ? 100 : Math.max(0, percentage);
-  const fillOffset = circum - (fillPct / 100) * circum;
+  // Green arc: fills 0-100%, stays at 100% beyond
+  const greenPct = Math.min(100, Math.max(0, percentage));
+  const greenOffset = circum - (greenPct / 100) * circum;
+
+  // Red arc: starts at 0 until 100%, fills 0-100% from 100-200%, stays at 100% beyond 200%
+  const redPct = Math.min(100, Math.max(0, percentage - 100));
+  const redOffset = circum - (redPct / 100) * circum;
 
   // Unique gradient ids
   const greenGradId = `cpg-green-${size}-${percentage}`;
@@ -34,7 +37,8 @@ const CircularProgress = ({
 
   const pctStr = `${percentage}%`;
   const fontSize  = targetLabel ? 15 : (pctStr.length > 3 ? Math.round(size * 0.13) : Math.round(size * 0.155));
-  const textColor = isExceeding ? '#dc2626' : '#065f46';
+  // Text transitions from green to red as you go from 100% to 200%
+  const textColor = percentage <= 100 ? '#065f46' : '#dc2626';
 
   return (
     <div
@@ -65,17 +69,30 @@ const CircularProgress = ({
           fill="none" stroke="#e5e7eb" strokeWidth={strokeWidth}
           opacity="0.3"
         />
-        {/* Fill arc — green up to 100%, solid red when over */}
+        {/* Green arc — fills 0-100%, stays at 100% */}
         <circle
           cx={size / 2} cy={size / 2} r={radius}
           fill="none"
-          stroke={`url(#${isExceeding ? redGradId : greenGradId})`}
+          stroke={`url(#${greenGradId})`}
           strokeWidth={strokeWidth}
           strokeDasharray={circum}
-          strokeDashoffset={fillOffset}
+          strokeDashoffset={greenOffset}
           strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
+        {/* Red arc — overlays from 100-200%, stays at 100% beyond */}
+        {percentage > 100 && (
+          <circle
+            cx={size / 2} cy={size / 2} r={radius}
+            fill="none"
+            stroke={`url(#${redGradId})`}
+            strokeWidth={strokeWidth}
+            strokeDasharray={circum}
+            strokeDashoffset={redOffset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+          />
+        )}
       </svg>
       <div className="relative flex flex-col items-center justify-center leading-none gap-0.5">
         <span className="font-bold" style={{ fontSize, color: textColor }}>
