@@ -7615,14 +7615,14 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-      {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
+      {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered */}
       {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <>
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex gap-4">
           {/* Camera Button */}
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Take Photo"
             aria-label="Quick camera access"
           >
@@ -7633,13 +7633,13 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
             <img src="/gallery.png" alt="Gallery" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
           </button>
-        </>
+        </div>
       )}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
