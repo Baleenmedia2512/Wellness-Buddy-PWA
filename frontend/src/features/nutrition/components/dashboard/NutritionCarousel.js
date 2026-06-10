@@ -14,7 +14,7 @@
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
  * Resets to card 0 when selectedDate changes.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   computeCaloriesCard,
   computeMacroTargets,
@@ -36,6 +36,7 @@ import GICard         from './carousel/GICard';
 import VitaminsFatSolubleCard from './carousel/VitaminsFatSolubleCard';
 import VitaminsBComplexCard   from './carousel/VitaminsBComplexCard';
 import MineralsCard           from './carousel/MineralsCard';
+import FoodBreakdownModal from '../FoodBreakdownModal';
 
 const CARD_LABELS = [
   'Calories', 'Macros', 'Heart Healthy', 'Low Carb', 'Glycemic Index',
@@ -49,7 +50,19 @@ const NutritionCarousel = ({
   dailyStats,
   latestWeight,
   selectedDate,
+  analyses = [],
 }) => {
+  // Modal state for food breakdown
+  const [modalState, setModalState] = useState({ isOpen: false, nutrient: null });
+
+  const handleOpenModal = (nutrientType) => {
+    setModalState({ isOpen: true, nutrient: nutrientType });
+  };
+
+  const handleCloseModal = () => {
+    setModalState({ isOpen: false, nutrient: null });
+  };
+
   // Derive values from domain rules (pure)
   const calCard = computeCaloriesCard({
     calorieTarget,
@@ -105,6 +118,8 @@ const NutritionCarousel = ({
         fatTarget={fatTarget}
         carbsTarget={carbsTarget}
         glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+        analyses={analyses}
+        onOpenModal={handleOpenModal}
       />,
       <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} />,
       <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} />,
@@ -122,6 +137,7 @@ const NutritionCarousel = ({
       lowCarbCard.carbs, lowCarbCard.sugar, lowCarbCard.fiber,
       giCard.averageGI, giCard.mealCount,
       vitFatTiles, vitBTiles, mineralTiles,
+      analyses,
     ],
   );
 
@@ -165,8 +181,94 @@ const NutritionCarousel = ({
           ))}
         </div>
       </div>
+
+      {/* Food Breakdown Modal - rendered at carousel level for full-screen bottom sheet */}
+      <FoodBreakdownModal
+        isOpen={modalState.isOpen}
+        onClose={handleCloseModal}
+        nutrientName={
+          modalState.nutrient === 'protein' ? 'Protein' :
+          modalState.nutrient === 'fat' ? 'Fat' :
+          modalState.nutrient === 'carbs' ? 'Carbs' : ''
+        }
+        unit="g"
+        totalConsumed={
+          modalState.nutrient === 'protein' ? (dailyStats?.totalProtein || 0) :
+          modalState.nutrient === 'fat' ? (dailyStats?.totalFat || 0) :
+          modalState.nutrient === 'carbs' ? (dailyStats?.totalCarbs || 0) : 0
+        }
+        target={
+          modalState.nutrient === 'protein' ? (proteinTarget || 0) :
+          modalState.nutrient === 'fat' ? (fatTarget || 0) :
+          modalState.nutrient === 'carbs' ? (carbsTarget || 0) : 0
+        }
+        foodBreakdown={
+          modalState.isOpen ? (
+            modalState.nutrient === 'protein' ? extractFoodContributions(analyses, 'protein').breakdown :
+            modalState.nutrient === 'fat' ? extractFoodContributions(analyses, 'fat').breakdown :
+            modalState.nutrient === 'carbs' ? extractFoodContributions(analyses, 'carbs').breakdown : []
+          ) : []
+        }
+      />
     </div>
   );
+};
+
+/**
+ * Helper to parse AnalysisData from DB
+ */
+const parseAnalysisData = (raw) => {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Extract foods and their nutrient contributions from analyses
+ */
+const extractFoodContributions = (analyses, nutrientKey) => {
+  const foods = [];
+  let total = 0;
+
+  analyses.forEach((analysis) => {
+    if (analysis.isUndoPlaceholder) return;
+    const data = parseAnalysisData(analysis.AnalysisData);
+    const foodList = data.foods || [];
+
+    foodList.forEach((food) => {
+      const nutrition = food.nutrition || {};
+      let amount = 0;
+
+      if (nutrientKey === 'protein') {
+        amount = nutrition.protein || 0;
+      } else if (nutrientKey === 'fat') {
+        amount = nutrition.fat || 0;
+      } else if (nutrientKey === 'carbs') {
+        amount = nutrition.carbs || 0;
+      }
+
+      if (amount > 0) {
+        foods.push({
+          foodName: food.name || 'Unknown food',
+          amount,
+        });
+        total += amount;
+      }
+    });
+  });
+
+  const breakdown = foods
+    .map((f) => ({
+      ...f,
+      percentage: total > 0 ? (f.amount / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return { breakdown, total };
 };
 
 export default NutritionCarousel;

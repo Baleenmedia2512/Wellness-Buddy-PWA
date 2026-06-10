@@ -6,7 +6,17 @@ import CircularProgress from './CircularProgress';
  * MacrosCard — Card 2 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with 3 macros side by side.
  */
-const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget, fatTarget, carbsTarget, glycemicIndex }) => {
+const MacrosCard = ({ 
+  consumedProtein, 
+  consumedFat, 
+  consumedCarbs, 
+  proteinTarget, 
+  fatTarget, 
+  carbsTarget, 
+  glycemicIndex,
+  analyses = [],
+  onOpenModal,
+}) => {
   const hasTargets = proteinTarget != null;
 
   const giLabel = glycemicIndex == null ? null
@@ -45,7 +55,14 @@ const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget
           {/* Carbs */}
           <div className="text-center">
             {carbsPct != null ? (
-              <CircularProgress percentage={carbsPct} color="from-orange-400 to-amber-400" size={60} strokeWidth={5} targetLabel={carbsTarget != null ? `${carbsTarget}g` : undefined} />
+              <CircularProgress 
+                percentage={carbsPct} 
+                color="from-orange-400 to-amber-400" 
+                size={60} 
+                strokeWidth={5} 
+                targetLabel={carbsTarget != null ? `${carbsTarget}g` : undefined}
+                onClick={() => onOpenModal && onOpenModal('carbs')}
+              />
             ) : (
               <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <span className="text-xs text-gray-400 font-medium">?</span>
@@ -65,7 +82,14 @@ const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget
           {/* Fat */}
           <div className="text-center">
             {fatPct != null ? (
-              <CircularProgress percentage={fatPct} color="from-yellow-400 to-amber-500" size={60} strokeWidth={5} targetLabel={fatTarget != null ? `${fatTarget}g` : undefined} />
+              <CircularProgress 
+                percentage={fatPct} 
+                color="from-yellow-400 to-amber-500" 
+                size={60} 
+                strokeWidth={5} 
+                targetLabel={fatTarget != null ? `${fatTarget}g` : undefined}
+                onClick={() => onOpenModal && onOpenModal('fat')}
+              />
             ) : (
               <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <span className="text-xs text-gray-400 font-medium">?</span>
@@ -85,7 +109,14 @@ const MacrosCard = ({ consumedProtein, consumedFat, consumedCarbs, proteinTarget
           {/* Protein */}
           <div className="text-center">
             {proteinPct != null ? (
-              <CircularProgress percentage={proteinPct} color="from-blue-400 to-indigo-500" size={60} strokeWidth={5} targetLabel={proteinTarget != null ? `${proteinTarget}g` : undefined} />
+              <CircularProgress 
+                percentage={proteinPct} 
+                color="from-blue-400 to-indigo-500" 
+                size={60} 
+                strokeWidth={5} 
+                targetLabel={proteinTarget != null ? `${proteinTarget}g` : undefined}
+                onClick={() => onOpenModal && onOpenModal('protein')}
+              />
             ) : (
               <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <span className="text-xs text-gray-400 font-medium">?</span>

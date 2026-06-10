@@ -12,6 +12,7 @@ import React from 'react';
  * @param {number} percentage   Actual percentage (unclamped, may exceed 100)
  * @param {number} size         Diameter in px (default 70)
  * @param {number} strokeWidth  Ring thickness in px (default 6)
+ * @param {function} onClick    Optional click handler to show food breakdown
  */
 
 const CircularProgress = ({
@@ -19,6 +20,7 @@ const CircularProgress = ({
   size = 70,
   strokeWidth = 6,
   targetLabel,
+  onClick,
 }) => {
   const radius = (size - strokeWidth) / 2;
   const circum = 2 * Math.PI * radius;
@@ -42,8 +44,12 @@ const CircularProgress = ({
 
   return (
     <div
-      className="relative inline-flex items-center justify-center"
+      className={`relative inline-flex items-center justify-center ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
       style={{ width: size, height: size }}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyPress={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
     >
       <svg
         width={size}
