@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNutritionRefresh } from '../../../shared/context/NutritionRefreshContext';
 import {
   recalculateTotals,
   resolveFoodItemIndex,
@@ -26,6 +27,7 @@ export function useMealItemMutations({
   isAutoSaveUpdateRef,
 }) {
   const [isSaving, setIsSaving] = useState(false);
+  const { triggerRefresh } = useNutritionRefresh(); // Global refresh trigger for home cards
 
   const persistMealItems = async (newItems, newTotals, options = {}) => {
     if (!selectedMeal?.ID) return;
@@ -54,6 +56,11 @@ export function useMealItemMutations({
           isAutoSaveUpdateRef.current = true;
         },
       });
+
+      // Trigger global nutrition refresh (updates home cards)
+      if (refreshStats) {
+        triggerRefresh({ immediate: true, source: 'meal-edit' });
+      }
     } catch (error) {
       console.error('[useMealItemMutations] Failed to persist meal items:', error);
       throw error;

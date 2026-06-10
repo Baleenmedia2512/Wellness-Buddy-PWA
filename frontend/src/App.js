@@ -118,6 +118,7 @@ import { ClubSelectionModal } from "./features/nutrition-centers";
 // import { TaskNotificationPanel } from "./features/tasks"; // Commented out - Task Scheduler UI hidden
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
+import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
@@ -337,7 +338,7 @@ function WellnessValleyApp() {
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
-  const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0); // Increment to force HomeNutritionCarousel re-fetch
+  // Nutrition refresh key removed - now using NutritionRefreshContext (see hooks below)
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload ? pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
@@ -382,6 +383,9 @@ function WellnessValleyApp() {
   // can be reconstructed from a single log dump.
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
+
+  // Hook into global nutrition refresh context (replaces old nutritionRefreshKey state)
+  const { refreshKey: nutritionRefreshKey, triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -3299,6 +3303,8 @@ function WellnessValleyApp() {
       await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
       setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
       showToast("Saved to your diary");
+      // Trigger global nutrition refresh after promoting unknown to food
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
     } catch (e) {
       setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
     }
@@ -3340,6 +3346,8 @@ function WellnessValleyApp() {
       setShareEditView({ open: false, captureId: null });
       setUnknownShareView((v) => ({ ...v, open: false }));
       showToast("Saved to your diary");
+      // Trigger global nutrition refresh after editing unknown capture
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-edit' });
     } catch (e) {
       showToast("Couldn't save — please try again");
     }
@@ -3666,6 +3674,9 @@ function WellnessValleyApp() {
         // Refresh data
         handleLeaderboardRefresh();
         
+        // Trigger nutrition refresh for home screen cards
+        triggerNutritionRefresh({ immediate: true, source: 'club-modal-save' });
+        
       } catch (error) {
         console.error('❌ Error saving nutrition:', error);
         setAlertModal({
@@ -3774,7 +3785,7 @@ function WellnessValleyApp() {
       handleLeaderboardRefresh();
 
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
-      setNutritionRefreshKey((prev) => prev + 1);
+      triggerNutritionRefresh({ immediate: true, source: 'camera-save' });
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -7617,27 +7628,27 @@ function WellnessValleyApp() {
 
       {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered */}
       {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex gap-4">
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex gap-3">
           {/* Camera Button */}
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-full bg-white/90 backdrop-blur-sm shadow-xl border-2 border-gray-200 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
             title="Take Photo"
             aria-label="Quick camera access"
           >
-            <img src="/app.png" alt="Camera" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
+            <img src="/app.png" alt="Camera" className="w-12 h-12 pointer-events-none select-none" draggable={false} />
           </button>
           
           {/* Gallery Button */}
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-full bg-white/90 backdrop-blur-sm shadow-xl border-2 border-gray-200 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
-            <img src="/gallery.png" alt="Gallery" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
+            <img src="/gallery.png" alt="Gallery" className="w-12 h-12 pointer-events-none select-none" draggable={false} />
           </button>
         </div>
       )}
@@ -7928,4 +7939,11 @@ function WellnessValleyApp() {
   );
 }
 
-export default WellnessValleyApp;
+// Wrap app in NutritionRefreshProvider for global nutrition data refresh
+const AppWithProviders = () => (
+  <NutritionRefreshProvider>
+    <WellnessValleyApp />
+  </NutritionRefreshProvider>
+);
+
+export default AppWithProviders;
