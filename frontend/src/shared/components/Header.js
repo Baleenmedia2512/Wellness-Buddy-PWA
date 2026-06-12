@@ -28,6 +28,7 @@ const Header = ({
   userRole = "user",
   onSignOut,
   onShowBackgroundHistory,
+  onShowWellnessReports,
   onShowAdminDashboard,
   onShowDisciplineReport,
   onShowActivityTimeReport,
@@ -441,6 +442,22 @@ const Header = ({
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
                         </TouchFeedbackButton>
                       )} */}
+
+                      {/* Reports — summary + trends */}
+                      {onShowWellnessReports && (
+                        <TouchFeedbackButton
+                          onClick={() => { onShowWellnessReports(); closeMenu(); }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Reports"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                            <TrendingUp className="h-5 w-5 text-emerald-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Reports
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
 
                       {/* Reminders */}
                       {onShowReminders && (

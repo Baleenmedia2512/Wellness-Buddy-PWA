@@ -9,7 +9,7 @@
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, FileBarChart, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
@@ -44,7 +44,7 @@ const DiaryFeed = lazy(() =>
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null, onOpenReports = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -249,14 +249,25 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </TouchFeedbackButton>
             )}
             {diaryEnabled && (
-              <TouchFeedbackButton
-                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
-                className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
-                ariaLabel="Open date picker"
-              >
-                <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
-                <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
-              </TouchFeedbackButton>
+              <div className="flex items-center gap-1">
+                {onOpenReports && (
+                  <TouchFeedbackButton
+                    onClick={() => onOpenReports(selectedMember)}
+                    className="p-2 md:p-3 hover:bg-emerald-50 rounded-xl transition-colors"
+                    ariaLabel="Open reports"
+                  >
+                    <FileBarChart className="h-5 w-5 text-emerald-700" />
+                  </TouchFeedbackButton>
+                )}
+                <TouchFeedbackButton
+                  onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
+                  className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
+                  ariaLabel="Open date picker"
+                >
+                  <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
+                  <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
+                </TouchFeedbackButton>
+              </div>
             )}
             {/* Empty space to keep the title centred when there's no top-right action */}
             {!diaryEnabled && (activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
@@ -465,6 +476,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 onMealDelete={onMealDelete}
                 hideHeader={true}
                 hideDateStrip={true}
+                hideOverview={true}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}
                 bmrUpdateKey={bmrUpdateKey}
@@ -477,6 +489,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 onBack={onBack}
                 apiBaseUrl={apiBaseUrl}
                 hideHeader={true}
+                hideOverview={true}
                 selectedDate={selectedDate}
                 initialEntryId={initialMealId}
                 refreshKey={weightReloadKey}
@@ -486,6 +499,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 user={displayUser}
                 apiBaseUrl={apiBaseUrl}
                 hideHeader={true}
+                hideOverview={true}
                 selectedDate={selectedDate}
                 refreshKey={educationRefreshKey + diaryEducationRefreshKey}
                 initialEntryId={initialMealId}
@@ -516,6 +530,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
               hideHeader={true}
+              hideOverview={true}
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               bmrUpdateKey={bmrUpdateKey}
@@ -530,6 +545,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              hideOverview={true}
               initialEntryId={initialMealId}
             />
           )}
@@ -539,6 +555,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              hideOverview={true}
               refreshKey={educationRefreshKey}
               initialEntryId={initialMealId}
             />

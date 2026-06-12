@@ -160,6 +160,7 @@ const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalD
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
+const WellnessReportsPage = lazy(() => import("./shell/components/WellnessReportsPage"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
@@ -644,6 +645,11 @@ function WellnessValleyApp() {
 
   // Wellness University state
   const [showWellnessReport, setShowWellnessReport] = useState(false);
+
+  // Summary + trend reports (separate from Diary log UI)
+  const [showWellnessReports, setShowWellnessReports] = useState(false);
+  const wellnessReportsReturnToRef = useRef('main');
+  const [reportsInitialMember, setReportsInitialMember] = useState(null);
 
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
@@ -1417,8 +1423,26 @@ function WellnessValleyApp() {
     [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
   );
 
+  const openWellnessReportsPage = useCallback((returnTo = 'main', member = null) => {
+    wellnessReportsReturnToRef.current = returnTo;
+    setReportsInitialMember(member);
+    startTransition(() => {
+      if (returnTo === 'dashboard') setShowDashboard(false);
+      setShowWellnessReports(true);
+    });
+  }, []);
+
+  const closeWellnessReportsPage = useCallback(() => {
+    const returnTo = wellnessReportsReturnToRef.current;
+    setShowWellnessReports(false);
+    if (returnTo === 'dashboard') {
+      startTransition(() => setShowDashboard(true));
+    }
+  }, []);
+
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowWellnessReports(false);
     setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
     // setShowStepCounter(false); // feature disabled
@@ -5774,6 +5798,7 @@ function WellnessValleyApp() {
 
   // useDeferredValue for lazy pages � must be declared BEFORE any early returns (Rules of Hooks)
   const deferredShowDashboard = useDeferredValue(showDashboard);
+  const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
@@ -5885,6 +5910,24 @@ function WellnessValleyApp() {
     );
   }
 
+  // Summary + trend reports (nutrition / weight / education)
+  if (deferredShowWellnessReports) {
+    return (
+      <Suspense fallback={null}>
+        <WellnessReportsPage
+          user={user}
+          userRole={userRole}
+          onBack={closeWellnessReportsPage}
+          apiBaseUrl={apiBaseUrl}
+          bmrUpdateKey={bmrUpdateKey}
+          educationRefreshKey={educationRefreshKey}
+          watchBurnedCalories={watchBurnedCalories}
+          initialSelectedMember={reportsInitialMember}
+        />
+      </Suspense>
+    );
+  }
+
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
@@ -5901,6 +5944,7 @@ function WellnessValleyApp() {
           initialSelectedMember={dashboardInitialSelectedMember}
           initialDate={dashboardInitialDate}
           initialMealId={dashboardInitialMealId}
+          onOpenReports={(member) => openWellnessReportsPage('dashboard', member)}
         />
       </Suspense>
     );
@@ -6193,6 +6237,7 @@ function WellnessValleyApp() {
         user={user}
         userRole={userRole}
         onShowBackgroundHistory={showDashboardPage}
+        onShowWellnessReports={() => openWellnessReportsPage('main')}
         // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
         // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
         onShowReminders={showRemindersPage}

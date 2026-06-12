@@ -1,5 +1,5 @@
 /**
- * DiarySummaryCards.jsx — composed summary+trend header for the single-page Diary.
+ * DiarySummaryCards.jsx — summary + trend cards for the Reports page.
  *
  * Each feature card is a swipeable carousel identical to the original tabs:
  * swipe left (or tap Trend) to see the trend chart, swipe right (or tap
