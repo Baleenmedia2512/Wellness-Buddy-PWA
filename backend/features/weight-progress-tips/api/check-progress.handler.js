@@ -40,18 +40,7 @@ export async function checkProgressHandler(query) {
   const userGoal = await getUserWeightGoal(userId);
   console.log('📋 [Step 2] userGoal result:', userGoal);
 
-  if (!userGoal || !userGoal.WeightGoalMode) {
-    console.log('⚠️ [Step 2] No WeightGoalMode set — returning shouldShow: false');
-    return {
-      ok: true,
-      data: {
-        shouldShow: false,
-        reason: 'No weight goal mode set',
-      },
-    };
-  }
-
-  const goalMode = userGoal.WeightGoalMode.toLowerCase();
+  const goalMode = (userGoal?.WeightGoalMode || 'loss').toLowerCase();
   const bmr = parseFloat(userGoal.Bmr) || 0;
   console.log('✅ [Step 2] goalMode:', goalMode, 'BMR:', bmr);
 
@@ -71,7 +60,7 @@ export async function checkProgressHandler(query) {
   // If a specific weight ID was supplied, use it as "current"; otherwise take the latest.
   let currentWeight = weights[0];
   if (currentWeightId) {
-    const match = weights.find((w) => w.ID === currentWeightId);
+    const match = weights.find((w) => Number(w.ID) === Number(currentWeightId));
     if (match) currentWeight = match;
   }
   console.log('✅ [Step 3] currentWeight:', currentWeight.Weight, 'kg (ID:', currentWeight.ID, ')');

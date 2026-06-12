@@ -5,10 +5,16 @@
  * All business rules for detecting reverse progress and generating tips.
  */
 
-const REVERSE_PROGRESS_THRESHOLD_KG = 0.3;
+/** Ignore floating-point noise only (not a business threshold). */
+const FLOAT_EPSILON_KG = 0.001;
 
 /**
- * Check if user has reverse progress (weight moved wrong direction)
+ * Check if user has reverse progress (weight moved wrong direction).
+ *
+ * Rules (per product spec):
+ *   Loss mode — today > previous  => reverse progress
+ *   Gain mode — today < previous  => reverse progress
+ *
  * @param {{ currentWeight: number, previousWeight: number, goalMode: string }} input
  * @returns {{ hasReverseProgress: boolean, change: number, direction: string }}
  */
@@ -18,10 +24,8 @@ export function checkReverseProgress({ currentWeight, previousWeight, goalMode }
   }
 
   const change = currentWeight - previousWeight;
-  const absChange = Math.abs(change);
 
-  // Change too small - ignore (normal fluctuation)
-  if (absChange < REVERSE_PROGRESS_THRESHOLD_KG) {
+  if (Math.abs(change) < FLOAT_EPSILON_KG) {
     return { hasReverseProgress: false, change, direction: 'neutral' };
   }
 

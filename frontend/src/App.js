@@ -386,6 +386,21 @@ function WellnessValleyApp() {
   // ── Reverse-progress weight tips ─────────────────────────────────────────
   const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
   const weightProgressCheck = useWeightProgressCheck();
+
+  const triggerReverseProgressModal = useCallback(async (userId, weightId = null) => {
+    if (!userId) return;
+    try {
+      const progressResult = await weightProgressCheck.checkProgress(userId, weightId);
+      console.log('[weight-progress] check result:', progressResult);
+      if (progressResult?.shouldShow) {
+        setShowWeightProgressModal(true);
+      } else {
+        console.log('[weight-progress] modal skipped:', progressResult?.reason || 'no reverse progress');
+      }
+    } catch (progressErr) {
+      console.error('[weight-progress] check failed:', progressErr);
+    }
+  }, [weightProgressCheck]);
   
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -2922,17 +2937,8 @@ function WellnessValleyApp() {
       }, 3000);
 
       // ✅ Check for reverse weight progress and show tips modal
-      if (userId) {
-        try {
-          const savedId = savedWeightIdRef.current || (data?.id ?? null);
-          const progressResult = await weightProgressCheck.checkProgress(userId, savedId);
-          if (progressResult?.shouldShow) {
-            setShowWeightProgressModal(true);
-          }
-        } catch (progressErr) {
-          // Non-blocking — weight save already succeeded
-        }
-      }
+      const savedId = savedWeightIdRef.current || data?.id || null;
+      await triggerReverseProgressModal(userId, savedId);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -3030,15 +3036,8 @@ function WellnessValleyApp() {
       refreshIdealWeight();
 
       // ✅ Check for reverse weight progress after an edit-save too
-      try {
-        const editWeightId = savedWeightIdRef.current || (result?.id ?? null);
-        const progressResult = await weightProgressCheck.checkProgress(userId, editWeightId);
-        if (progressResult?.shouldShow) {
-          setShowWeightProgressModal(true);
-        }
-      } catch (_progressErr) {
-        // Non-blocking
-      }
+      const editWeightId = savedWeightIdRef.current || result?.id || null;
+      await triggerReverseProgressModal(userId, editWeightId);
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -3690,13 +3689,19 @@ function WellnessValleyApp() {
         }
 
         debugLog('✅ Weight entry saved successfully:', data.id);
+
+        if (data?.id) {
+          setSavedWeightId(data.id);
+          savedWeightIdRef.current = data.id;
+        }
+
         setSaveLoading(false);
         setLoadingState("idle");
         setPendingWeightData(null);
-        
-        // Refresh data
+
         handleLeaderboardRefresh();
-        
+        await triggerReverseProgressModal(userId, data?.id || null);
+
       } catch (error) {
         console.error('❌ Error saving weight:', error);
         setAlertModal({

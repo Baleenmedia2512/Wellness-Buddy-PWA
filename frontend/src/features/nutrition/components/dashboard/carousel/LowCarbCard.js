@@ -7,9 +7,9 @@ import CircularProgress from './CircularProgress';
  * Compact MyFitnessPal-style with 3 nutrients side by side.
  */
 const LowCarbCard = ({ carbs, sugar, fiber }) => {
-  const carbsPct = carbs.target != null ? Math.round((carbs.consumed / carbs.target) * 100) : null;
-  const sugarPct = Math.round((sugar.consumed / sugar.target) * 100);
-  const fiberPct = Math.round(((fiber.consumed || 0) / fiber.target) * 100);
+  const carbsPct = carbs.target != null ? carbs.pct : null;
+  const sugarPct = sugar.pct;
+  const fiberPct = fiber.pct;
 
   return (
     <div className="h-full flex items-center justify-center py-2">

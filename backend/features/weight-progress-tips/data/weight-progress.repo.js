@@ -17,7 +17,7 @@ export async function getUserWeightGoal(userId) {
     const { data, error } = await supabase
       .from('team_table')
       .select('"WeightGoalMode", "Height", "Bmr"')
-      .eq('"UserId"', userId)
+      .eq('UserId', parseInt(userId, 10))
       .maybeSingle();
 
     if (error) {
@@ -44,10 +44,10 @@ export async function getRecentWeights(userId, limit = 2) {
 
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"ID", "Weight", "CreatedAt"')
-    .eq('"UserId"', userId)
-    .or('IsDeleted.is.null,IsDeleted.eq.false')
-    .order('"CreatedAt"', { ascending: false })
+    .select('ID, Weight, CreatedAt')
+    .eq('UserId', parseInt(userId, 10))
+    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+    .order('CreatedAt', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -194,10 +194,10 @@ export async function getYesterdayActivity(userId, yesterdayStart, yesterdayEnd)
   const { data, error } = await supabase
     .from('daily_step_activity')
     .select('"Steps", "CaloriesBurned", "ActivityType"')
-    .eq('"UserId"', userId)
-    .gte('"CreatedAt"', yesterdayStart)
-    .lt('"CreatedAt"', yesterdayEnd)
-    .order('"Steps"', { ascending: false })
+    .eq('UserId', parseInt(userId, 10))
+    .gte('CreatedAt', yesterdayStart)
+    .lt('CreatedAt', yesterdayEnd)
+    .order('Steps', { ascending: false })
     .limit(1);
 
   if (error) {

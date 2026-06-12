@@ -38,9 +38,19 @@ describe('checkReverseProgress', () => {
       expect(result.direction).toBe('favorable');
     });
 
-    it('returns neutral when change is below 0.3 kg threshold', () => {
+    it('returns reverse progress for any weight increase in loss mode', () => {
       const result = checkReverseProgress({
         currentWeight: 75.2,
+        previousWeight: 75.0,
+        goalMode: 'loss',
+      });
+      expect(result.hasReverseProgress).toBe(true);
+      expect(result.direction).toBe('increased');
+    });
+
+    it('returns neutral when weight is unchanged', () => {
+      const result = checkReverseProgress({
+        currentWeight: 75.0,
         previousWeight: 75.0,
         goalMode: 'loss',
       });
