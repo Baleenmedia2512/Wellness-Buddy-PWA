@@ -9,6 +9,7 @@
 | Body Age excluded from profile | ✅ buildProfilePatch | ✅ handler output | — | — | ✅ body_age never in patch |
 | Platform store link selection | ✅ platform-store.rules | — | 🔜 | — | ✅ android/ios/web/unknown |
 | Share text generation | ✅ buildShareText | — | — | — | ✅ no name, long name |
+| Share-card visual report content | ✅ BodyParamsCardPreview | — | 🔜 | — | ✅ label:value layout, bg.png background, flower-icon.png bottom-right, BMI normal/underweight/overweight badges, fat% male(10-20)/female(20-30) healthy/low/high badges, body-age circle+badge, ideal-weight hint, dashes for empty fields |
 | Pre-fill setup wizard | — | — | 🔜 | — | ✅ user already has data |
 | Editable pre-fill fields | — | — | 🔜 | — | ✅ user changes values before save |
 | derivedIdealWeight (BMI-23) | ✅ useBodyParamsCard.auto-calc | — | — | — | ✅ empty height, height < 50 |

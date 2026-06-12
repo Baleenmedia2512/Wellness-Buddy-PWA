@@ -17,7 +17,7 @@ export async function createBodyParamsCard(payload) {
     data: payload,
   });
   const result = response.data;
-  if (!result?.success) throw new Error(result?.error?.message || 'Failed to create card');
+  if (!result?.success) throw new Error(result?.error?.message || result?.message || 'Failed to create card');
   return result.data;
 }
 
@@ -34,7 +34,7 @@ export async function updateBodyParamsCard(id, payload) {
     data: { ...payload, id },
   });
   const result = response.data;
-  if (!result?.success) throw new Error(result?.error?.message || 'Failed to update card');
+  if (!result?.success) throw new Error(result?.error?.message || result?.message || 'Failed to update card');
   return result.data;
 }
 

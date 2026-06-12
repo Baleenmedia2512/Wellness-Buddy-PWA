@@ -134,6 +134,14 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const handleSave = useCallback(async () => {
     if (!isValid) { setError('Name is required'); return; }
+    const ageNum = form.age !== '' && form.age != null ? parseInt(form.age) : null;
+    if (ageNum !== null && (isNaN(ageNum) || ageNum < 1 || ageNum > 120)) {
+      setError('Age must be between 1 and 120'); return;
+    }
+    const bodyAgeNum = form.bodyAge !== '' && form.bodyAge != null ? parseInt(form.bodyAge) : null;
+    if (bodyAgeNum !== null && (isNaN(bodyAgeNum) || bodyAgeNum < 1 || bodyAgeNum > 120)) {
+      setError('Body Age must be between 1 and 120'); return;
+    }
     setError('');
     setIsSaving(true);
 

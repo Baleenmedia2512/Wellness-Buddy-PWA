@@ -1,290 +1,436 @@
 /**
  * BodyParamsCardPreview.jsx
  *
- * Health Boarding Pass — Wellness Valley Air template.
- * Green header · 2-column white body · dark-green score stub ·
- * boarding status + QR section · barcode footer.
+ * Wellness Evaluation Report share card.
+ * bg.png canvas · green-bordered ticket · label:value stats table ·
+ * value | reference layout · circular body-age gauge.
  * Rendered off-screen so html2canvas can export it as a JPEG.
  */
 import React from 'react';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
-const MID_GREEN  = '#1a7a3c';
+// const BLUE       = '#3b82f6';
+const RED        = '#ef4444';
+const INK        = '#1a1a2e';
+const OUTER_BG   = '#f5f0e8';
+const CARD_WIDTH  = 430;
+const CANVAS_WIDTH = 520;
 
-/* ── Left column stat row ── */
-const StatRow = ({ icon, label, value }) => (
-  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
-    <div style={{
-      width: 28, height: 28, borderRadius: 6, border: '1.5px solid #e2e8f0',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 13, flexShrink: 0, background: '#f8fafc',
-    }}>
-      {icon}
-    </div>
-    <div>
-      <div style={{ fontSize: 7.5, fontWeight: 700, color: G, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#1e293b' }}>
-        {value}
-      </div>
-    </div>
-  </div>
+/* ── Custom metric icons (SVG) ── */
+const WeightScaleIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22" fill="none">
+    <rect x="2" y="4" width="24" height="21" rx="4" stroke="#16a34a" strokeWidth="2.2"/>
+    <path d="M7 16 Q14 8 21 16" stroke="#16a34a" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="14" y1="16" x2="18" y2="11" stroke="#16a34a" strokeWidth="2" strokeLinecap="round"/>
+    <circle cx="14" cy="16" r="1.6" fill="#16a34a"/>
+  </svg>
 );
 
-/* ── Right column metric row ── */
-const MetricRow = ({ icon, iconBg, label, value, status, refLabel }) => (
-  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+const HeightIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22">
+    <circle cx="9" cy="5" r="2.5" fill="#374151"/>
+    <rect x="6.5" y="8.5" width="5" height="8" rx="2" fill="#374151"/>
+    <rect x="6.5" y="16.5" width="2" height="6" rx="1" fill="#374151"/>
+    <rect x="9.5" y="16.5" width="2" height="6" rx="1" fill="#374151"/>
+    <rect x="19" y="2" width="4" height="24" rx="1.5" fill="#374151"/>
+    <rect x="19" y="6" width="4" height="1.5" fill="white"/>
+    <rect x="19" y="11" width="4" height="1.5" fill="white"/>
+    <rect x="19" y="16" width="4" height="1.5" fill="white"/>
+    <rect x="19" y="21" width="4" height="1.5" fill="white"/>
+  </svg>
+);
+
+const FatDropIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22">
+    <path d="M14 2 C13 4 6 12 6 17.5 C6 22.2 9.6 26 14 26 C18.4 26 22 22.2 22 17.5 C22 12 15 4 14 2Z" fill="#3b82f6"/>
+    <text x="9.5" y="22" fontSize="9" fill="white" fontWeight="900" fontFamily="Arial,sans-serif">%</text>
+  </svg>
+);
+
+/* ── Thin vertical | divider ── */
+const VDivider = () => (
+  <div style={{
+    width: 1, alignSelf: 'stretch',
+    background: '#c8d8d0', margin: '4px 12px', flexShrink: 0,
+  }} />
+);
+
+/* ── Single label : value  |  extra info row ── */
+const InfoRow = ({ icon, label, value, extra, extraColor }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center',
+    padding: '10px 0',
+    borderBottom: '1px dashed #e2e8f0',
+    minHeight: 42,
+  }}>
     <div style={{
-      width: 22, height: 22, borderRadius: '50%', background: iconBg,
+      width: 30, fontSize: 22, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 11, flexShrink: 0, marginRight: 6,
+      marginRight: 8,
     }}>
       {icon}
     </div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 7, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', lineHeight: 1.1 }}>
-        {value}
-      </div>
+    <div style={{
+      width: 105, fontSize: 16, fontWeight: 800, color: '#6b7280',
+      textTransform: 'uppercase', letterSpacing: 0.7, flexShrink: 0,
+    }}>
+      {label}
     </div>
-    {status && (
-      <div style={{ flexShrink: 0, textAlign: 'center', marginLeft: 3 }}>
+    <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
+      :
+    </div>
+    <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: INK, lineHeight: 1.25 }}>
+      {value}
+    </div>
+    {extra ? (
+      <>
+        <VDivider />
         <span style={{
-          display: 'inline-block', fontSize: 7.5, fontWeight: 800,
-          color: '#fff', background: status.bg,
-          borderRadius: 20, padding: '2px 6px', whiteSpace: 'nowrap',
+          fontSize: 15, fontWeight: 700,
+          color: extraColor || '#9ca3af',
+          flexShrink: 0, whiteSpace: 'nowrap',
         }}>
-          {status.label}
+          {extra}
         </span>
-        {refLabel ? (
-          <div style={{ fontSize: 7, color: '#94a3b8', marginTop: 1, textAlign: 'center' }}>{refLabel}</div>
-        ) : null}
-      </div>
-    )}
+      </>
+    ) : null}
   </div>
 );
+
+/* ── Circular gauge with value label inside ── */
+const BodyAgeCircle = ({ value, color }) => {
+  const r = 22, cx = 27, cy = 27, size = 54;
+  const circ = 2 * Math.PI * r;
+  const arc  = circ * 0.75;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={'0 0 ' + size + ' ' + size}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#dfe5ec" strokeWidth="4.5"/>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="4.5"
+          strokeDasharray={arc + ' ' + circ}
+          strokeLinecap="round"
+          transform={'rotate(-90 ' + cx + ' ' + cy + ')'}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 15, fontWeight: 900, color,
+      }}>
+        {value}
+      </div>
+    </div>
+  );
+};
+
+/* ── Circle ring for metric values: red = out-of-range, gray = in-range ── */
+const MetricCircle = ({ value, outOfRange }) => {
+  const size = 64, r = 28, cx = 32, cy = 32;
+  const stroke = outOfRange ? RED : '#b0bec5';
+  const sw     = 1.5;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0, display: 'inline-flex' }}>
+      <svg width={size} height={size} viewBox={'0 0 ' + size + ' ' + size}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={stroke} strokeWidth={sw}/>
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 17, fontWeight: 900, color: INK,
+      }}>
+        {value}
+      </div>
+    </div>
+  );
+};
+
+/* ── Metric row: icon · label : value  |  range/circle reference ── */
+const MetricRow = ({ icon, iconBg, label, value, rangeLabel, status, bodyAgeMode, bodyAgeVal, oval, rangeNote }) => {
+  const isOutOfRange = status && status.bg === RED;
+  const hasRef = rangeLabel || (bodyAgeMode && bodyAgeVal != null);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      padding: '10px 0',
+      borderBottom: '1px dashed #d1d9e0',
+      minHeight: 56,
+    }}>
+      <div style={{
+        width: 44, height: 44, borderRadius: '50%', background: iconBg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, flexShrink: 0, marginRight: 12,
+      }}>
+        {icon}
+      </div>
+      <div style={{
+        width: 92, fontSize: 15, fontWeight: 800, color: '#6b7280',
+        textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
+      }}>
+        {label}
+      </div>
+      <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
+        :
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+        {oval && isOutOfRange ? (
+          <MetricCircle value={value} outOfRange />
+        ) : (
+          <span style={{ fontSize: 20, fontWeight: 900, color: INK }}>{value}</span>
+        )}
+      </div>
+      {hasRef ? (
+        <>
+          <VDivider />
+          <div style={{ width: 120, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            {bodyAgeMode && rangeNote ? (
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#9ca3af', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                {rangeNote}
+              </span>
+            ) : (
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#9ca3af', textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.3 }}>
+                {rangeLabel}
+              </span>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+};
 
 /* ─────────────────────────────── main component ── */
 const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
-  const fmt = (v, unit = '') =>
-    v !== null && v !== undefined && v !== '' ? `${v}${unit}` : '—';
+  const fmt = (v, unit) => {
+    const u = unit || '';
+    return v !== null && v !== undefined && v !== '' ? (v + u) : '—';
+  };
 
   const fmtDate = (v) => {
     if (!v) return '—';
     const str = String(v);
     if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
     if (/^\d{8}$/.test(str))
-      return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+      return str.slice(0, 4) + '-' + str.slice(4, 6) + '-' + str.slice(6, 8);
     return str;
   };
 
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
   const bmiStatus = !isNaN(bmiVal)
-    ? bmiVal < 19 ? { label: 'UNDERWEIGHT', bg: '#f59e0b' }
-    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: '#ef4444' }
+    ? bmiVal < 19 ? { label: 'UNDERWEIGHT', bg: RED  }
+    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: RED  }
     :               { label: 'NORMAL',       bg: G }
     : null;
+  const bmiRangeColor = bmiStatus ? bmiStatus.bg : null;
 
-  const fatVal = parseFloat(card.fatPercent);
-  const isM = card.gender === 'Male', isF = card.gender === 'Female';
+  const fatVal  = parseFloat(card.fatPercent);
+  const gender  = String(card.gender || '').toLowerCase();
+  const isM = gender === 'male', isF = gender === 'female';
   const fatMin = isM ? 10 : 20, fatMax = isM ? 20 : 30;
-  const fatRangeLabel = isM ? '(10 – 20)' : isF ? '(20 – 30)' : '';
+  const fatRangeLabel = isM ? '(10 – 20 %)' : isF ? '(20 – 30 %)' : '';
   const fatStatus = !isNaN(fatVal) && (isM || isF)
-    ? fatVal < fatMin ? { label: 'LOW FAT',  bg: '#f59e0b' }
-    : fatVal > fatMax ? { label: 'HIGH FAT', bg: '#ef4444' }
+    ? fatVal < fatMin ? { label: 'LOW FAT',  bg: RED  }
+    : fatVal > fatMax ? { label: 'HIGH FAT', bg: RED  }
     :                   { label: 'HEALTHY',  bg: G }
     : null;
+  const fatRangeColor = fatStatus ? fatStatus.bg : null;
 
-  const bmrVal = parseFloat(card.bmr);
+  const bmrVal    = parseFloat(card.bmr);
   const bmrStatus = !isNaN(bmrVal) && bmrVal > 0 ? { label: 'GOOD', bg: G } : null;
 
-  const bodyAgeVal = parseFloat(card.bodyAge);
-  const ageVal     = parseFloat(card.age);
+  const bodyAgeVal    = parseFloat(card.bodyAge);
+  const ageVal        = parseFloat(card.age);
   const bodyAgeStatus = !isNaN(bodyAgeVal)
-    ? (!isNaN(ageVal) && bodyAgeVal > ageVal) ? { label: 'AGING',   bg: '#ef4444' }
-    :                                            { label: 'OPTIMAL', bg: G }
+    ? (!isNaN(ageVal) && bodyAgeVal > ageVal) ? { label: 'AGING',   bg: RED }
+    :                                           { label: 'OPTIMAL', bg: G   }
     : null;
+  const bodyAgeRangeNote = !isNaN(ageVal) ? ('\u2264 ' + card.age + ' Yrs') : null;
 
-  /* ── Health score 0-100 ── */
-  const healthScore = (() => {
-    let pts = 0, total = 0;
-    if (!isNaN(bmiVal)) {
-      total += 30;
-      pts += bmiVal >= 19 && bmiVal <= 23 ? 30 : bmiVal >= 17 && bmiVal <= 25 ? 18 : 8;
-    }
-    if (!isNaN(fatVal) && (isM || isF)) {
-      total += 30;
-      pts += fatVal >= fatMin && fatVal <= fatMax ? 30
-           : fatVal >= fatMin - 3 && fatVal <= fatMax + 3 ? 18 : 8;
-    }
-    if (!isNaN(bmrVal) && bmrVal > 0) { total += 20; pts += 20; }
-    if (!isNaN(bodyAgeVal)) {
-      total += 20;
-      pts += (!isNaN(ageVal) && bodyAgeVal > ageVal + 5) ? 8
-           : (!isNaN(ageVal) && bodyAgeVal > ageVal) ? 14 : 20;
-    }
-    return total > 0 ? Math.round((pts / total) * 100) : 0;
-  })();
-
-  const stars      = Math.min(5, Math.round(healthScore / 20));
-  const scoreClass = healthScore >= 90 ? 'EXCELLENT'
-    : healthScore >= 75 ? 'GOOD'
-    : healthScore >= 60 ? 'AVERAGE' : 'NEEDS WORK';
-
-  const genderLine = card.age || card.gender
-    ? `${card.age ? card.age + ' YRS' : ''}${card.age && card.gender ? ' / ' : ''}${card.gender ? card.gender.toUpperCase() : ''}`
-    : '—';
+  /* ── Ideal weight range from height (BMI 19–23) ── */
+  const idealWeightHint = (function () {
+    const h = parseFloat(card.heightCm);
+    if (!h || h < 100 || h > 250) return null;
+    const m = h / 100;
+    const lo = Math.round(19 * m * m * 10) / 10;
+    const hi = Math.round(23 * m * m * 10) / 10;
+    return 'ideal: ' + lo + ' \u2013 ' + hi + ' kg';
+  }());
 
   return (
-    <div ref={ref} style={{
-      width: 360,
-      fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
-      borderRadius: 18,
-      overflow: 'hidden',
-      boxShadow: '0 10px 40px rgba(0,0,0,0.30)',
-    }}>
-
-      {/* ═══ TOP GREEN HEADER STRIP ═══ */}
+    <div
+      ref={ref}
+      data-testid="body-params-share-canvas"
+      style={{
+        width: CANVAS_WIDTH,
+        fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+        background: OUTER_BG,
+        backgroundImage: 'url(/bg.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        padding: '36px 28px 52px',
+        boxSizing: 'border-box',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Subtle light overlay */}
       <div style={{
-        background: DARK_GREEN, padding: '10px 14px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="#4ade80">
-            <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2C21 9 21 13 21 13c-3 0-4.5-1-4.5-1 1 3 0 5 0 5C14 17 13 13 11 12c0 0 1 3 0 5-3-2-3-6-3-6S7 14 8 17c-3-2-4-6-3-9s5-8 12-4z"/>
-          </svg>
-          <div>
-            <div style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', lineHeight: 1.2, letterSpacing: 0.4 }}>WELLNESS</div>
-            <div style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', lineHeight: 1.2, letterSpacing: 0.4 }}>VALLEY AIR</div>
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.32) 0%, transparent 45%, rgba(0,0,0,0.04) 100%)',
+        pointerEvents: 'none',
+      }} />
+
+      {/* Green-bordered ticket card */}
+      <div
+        data-testid="body-params-share-card"
+        style={{
+          width: CARD_WIDTH,
+          margin: '0 auto',
+          border: '2px solid ' + DARK_GREEN,
+          borderRadius: 18,
+          overflow: 'hidden',
+          boxShadow: '0 14px 40px rgba(22,101,52,0.22)',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+
+        {/* ═══ TOP GREEN HEADER ═══ */}
+        <div style={{
+          background: DARK_GREEN, padding: '12px 16px',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 50, height: 50, borderRadius: '50%', flexShrink: 0,
+            background: '#fff', border: '2px solid rgba(255,255,255,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            <img src="/logo.png" alt="Wellness Valley" style={{ width: 42, height: 42, objectFit: 'contain' }} />
           </div>
+          <span style={{
+            fontSize: 19, fontWeight: 900, color: '#fff',
+            letterSpacing: 0.8, flex: 1, lineHeight: 1.25,
+            textTransform: 'uppercase',
+          }}>
+            Body Composition Metric
+          </span>
         </div>
-        <div style={{ flex: 1, borderTop: '1.5px dashed rgba(255,255,255,0.25)', margin: '0 10px' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 600, letterSpacing: 0.2 }}>YOUR JOURNEY TO A</div>
-            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 600, letterSpacing: 0.2 }}>BETTER YOU</div>
-          </div>
-          <span style={{ fontSize: 16 }}>🌿</span>
-        </div>
-      </div>
 
-      {/* ═══ WHITE MAIN SECTION ═══ */}
-      <div style={{ background: '#fff', padding: '14px 16px 12px' }}>
+        {/* ═══ PERSONAL STATS SECTION ═══ */}
+        <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
-        {/* Title */}
-        <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <div style={{ fontSize: 36, fontWeight: 900, color: '#1a1a2e', lineHeight: 1, letterSpacing: -1 }}>
-            WELLNESS
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: G, lineHeight: 1.1 }}>
-            EVALUATION REPORT
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 4 }}>
-            <div style={{ flex: 1, borderTop: '1px dashed #d1d5db', marginLeft: 16 }} />
-            <span style={{ fontSize: 11 }}>🌿</span>
-            <span style={{ fontSize: 8, color: '#94a3b8', letterSpacing: 1.5, fontWeight: 600 }}>FLY HIGH. LIVE WELL.</span>
-            <span style={{ fontSize: 11 }}>🌿</span>
-            <div style={{ flex: 1, borderTop: '1px dashed #d1d5db', marginRight: 16 }} />
-          </div>
+          <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
+          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
+          <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
+          <InfoRow icon="🚻" label="Gender"   value={card.gender ? card.gender.charAt(0).toUpperCase() + card.gender.slice(1).toLowerCase() : '—'} />
+          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
+          {card.bmr != null && card.bmr !== '' && (
+            <InfoRow icon="🔥" label="BMR" value={card.bmr + ' kcal'} />
+          )}
+
         </div>
 
-        {/* Two-column body */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        {/* ═══ TEAR LINE ═══ */}
+        <div style={{ position: 'relative', height: 26, background: '#fff', overflow: 'visible' }}>
+          <div style={{
+            position: 'absolute', left: -13, top: '50%', transform: 'translateY(-50%)',
+            width: 26, height: 26, borderRadius: '50%', background: OUTER_BG, zIndex: 3,
+          }} />
+          <div style={{
+            position: 'absolute', right: -13, top: '50%', transform: 'translateY(-50%)',
+            width: 26, height: 26, borderRadius: '50%', background: OUTER_BG, zIndex: 3,
+          }} />
+          <div style={{
+            position: 'absolute', top: '50%', left: 16, right: 16,
+            borderTop: '2px dashed #86efac',
+          }} />
+        </div>
 
-          {/* LEFT — passenger + stats */}
-          <div style={{ flex: '0 0 148px' }}>
-            <div style={{ marginBottom: 11 }}>
-              <div style={{ fontSize: 7.5, fontWeight: 700, color: G, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 2 }}>
-                Name
-              </div>
-              <div style={{ fontSize: 21, fontWeight: 900, color: '#1a1a2e', textTransform: 'uppercase', lineHeight: 1.1, letterSpacing: 0.5 }}>
-                {(card.name || '—').toUpperCase()}
-              </div>
-              {card.locationName ? (
-                <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-                  {card.locationName}
-                </div>
-              ) : null}
-            </div>
-            <StatRow icon="📅" label="Date"          value={fmtDate(card.recordedDate)} />
-            <StatRow icon="👤" label="Age / Gender"   value={genderLine} />
-            <StatRow icon="📏" label="Height"         value={fmt(card.heightCm, ' cm')} />
-            <StatRow icon="⚖️" label="Weight"         value={fmt(card.weightKg, ' kg')} />
+        {/* ═══ METRICS SECTION ═══ */}
+        <div style={{ background: '#f0fdf4', padding: '14px 22px 18px' }}>
+
+          {/* Column header — "REFERENCE" aligned to the fixed 120px reference column */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            paddingBottom: 6, marginBottom: 2,
+            borderBottom: '1.5px solid #bbf7d0',
+          }}>
+            <div style={{ flex: 1 }} />
+            {/* Phantom VDivider space (matches <VDivider /> width: 1 + margin 12px each side) */}
+            <div style={{ width: 1, margin: '0 12px', flexShrink: 0 }} />
+            <span style={{ width: 120, flexShrink: 0, fontSize: 11, fontWeight: 900, color: '#86a88e', textTransform: 'uppercase', letterSpacing: 1.5, textAlign: 'center' }}>
+              Reference
+            </span>
           </div>
 
-          {/* RIGHT — sky window only, fills full column height */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              width: '100%', height: 165, borderRadius: 16,
-              background: 'linear-gradient(170deg, #7dd3fc 0%, #0284c7 50%, #1d4ed8 100%)',
-              border: '3px solid #e2e8f0',
-              overflow: 'hidden', position: 'relative',
+          {card.weightKg != null && card.weightKg !== '' && (
+            <MetricRow
+              icon={<WeightScaleIcon />} iconBg="#f0fdf4"
+              label="Weight"
+              value={fmt(card.weightKg, ' kg')}
+              rangeLabel={idealWeightHint}
+              status={null}
+            />
+          )}
+          {card.bmi != null && card.bmi !== '' && (
+            <MetricRow
+              icon="🧍" iconBg="#dcfce7"
+              label="BMI"
+              value={String(card.bmi)}
+              rangeLabel="(19 – 23)"
+              status={bmiStatus}
+              oval
+            />
+          )}
+          {card.fatPercent != null && card.fatPercent !== '' && (
+            <MetricRow
+              icon={<FatDropIcon />} iconBg="#fef9c3"
+              label="Fat %"
+              value={card.fatPercent + '%'}
+              rangeLabel={fatRangeLabel}
+              status={fatStatus}
+              oval
+            />
+          )}
+          {card.bodyAge != null && card.bodyAge !== '' && (
+            <MetricRow
+              icon="⏱️" iconBg="#fef9c3"
+              label="Body Age"
+              value={card.bodyAge + ' Yrs'}
+              status={bodyAgeStatus}
+              bodyAgeMode
+              bodyAgeVal={isNaN(bodyAgeVal) ? null : bodyAgeVal}
+              rangeNote={bodyAgeRangeNote}
+            />
+          )}
+
+          {/* Footer brand */}
+          <div style={{
+            marginTop: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <div style={{ flex: 1, borderTop: '1px dashed #bbf7d0' }} />
+            <span style={{
+              fontSize: 13, fontWeight: 900, color: DARK_GREEN,
+              letterSpacing: 2, textTransform: 'uppercase',
             }}>
-              <div style={{ position: 'absolute', bottom: 12, left: 6, right: 6, height: 12, borderRadius: 10, background: 'rgba(255,255,255,0.45)' }} />
-              <div style={{ position: 'absolute', bottom: 26, left: 14, width: 38, height: 8, borderRadius: 6, background: 'rgba(255,255,255,0.30)' }} />
-              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 62, height: 44, background: 'linear-gradient(130deg, #166534 0%, #22c55e 100%)', borderRadius: '38px 0 0 0', opacity: 0.75 }} />
-              {/* WELLNESS APPROVED stamp */}
-              <div style={{
-                position: 'absolute', top: 5, right: 5,
-                width: 46, height: 46, borderRadius: '50%',
-                border: '2px solid rgba(255,255,255,0.9)',
-                background: 'rgba(22,101,52,0.88)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <div style={{ fontSize: 5, fontWeight: 800, color: '#fff', letterSpacing: 0.3, textTransform: 'uppercase' }}>WELLNESS</div>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="#4ade80" style={{ margin: '1px 0' }}>
-                  <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2C21 9 21 13 21 13c-3 0-4.5-1-4.5-1 1 3 0 5 0 5C14 17 13 13 11 12c0 0 1 3 0 5-3-2-3-6-3-6S7 14 8 17c-3-2-4-6-3-9s5-8 12-4z"/>
-                </svg>
-                <div style={{ fontSize: 5, fontWeight: 800, color: '#fff', letterSpacing: 0.3, textTransform: 'uppercase' }}>APPROVED</div>
-              </div>
-            </div>
+              Wellness Valley
+            </span>
+            <div style={{ flex: 1, borderTop: '1px dashed #bbf7d0' }} />
           </div>
 
         </div>
-      </div>{/* end white */}
 
-      {/* ═══ METRICS SECTION ═══ */}
-      <div style={{ background: '#f1f5f9', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-        {card.bmi != null && card.bmi !== '' && (
-          <MetricRow icon="🧍" iconBg="#dcfce7" label="BMI"       value={String(card.bmi)}            status={bmiStatus}     refLabel="(19 – 23)" />
-        )}
-        {card.fatPercent != null && card.fatPercent !== '' && (
-          <MetricRow icon="💧" iconBg="#dbeafe" label="Body Fat"  value={`${card.fatPercent}%`}       status={fatStatus}     refLabel={fatRangeLabel} />
-        )}
-        {card.bmr != null && card.bmr !== '' && (
-          <MetricRow icon="🔥" iconBg="#fee2e2" label="BMR"       value={`${card.bmr} kcal`}          status={bmrStatus}     refLabel="" />
-        )}
-        {card.bodyAge != null && card.bodyAge !== '' && (
-          <MetricRow icon="⏱️" iconBg="#fef9c3" label="Body Age"  value={`${card.bodyAge} YRS`}       status={bodyAgeStatus} refLabel="" />
-        )}
+      </div>{/* end card */}
+
+      {/* Bottom-right flower decoration */}
+      <div style={{
+        position: 'absolute', bottom: 10, right: 18, zIndex: 2, pointerEvents: 'none',
+      }}>
+        <img src="/flower-icon.png" alt="" aria-hidden="true" style={{ width: 72, height: 88, objectFit: 'contain', display: 'block' }} />
       </div>
-
-      {/* ═══ TEAR LINE ═══ */}
-      <div style={{ position: 'relative', height: 22, background: DARK_GREEN, overflow: 'visible' }}>
-        <div style={{ position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)', width: 22, height: 22, borderRadius: '50%', background: '#f1f5f9', zIndex: 2 }} />
-        <div style={{ position: 'absolute', right: -10, top: '50%', transform: 'translateY(-50%)', width: 22, height: 22, borderRadius: '50%', background: '#f1f5f9', zIndex: 2 }} />
-        <div style={{ position: 'absolute', top: '50%', left: 12, right: 12, borderTop: '2px dashed rgba(255,255,255,0.35)' }} />
-      </div>
-
-      {/* ═══ BOARDING STATUS ═══ */}
-      <div style={{ background: MID_GREEN, padding: '14px 16px' }}>
-        <div style={{ fontSize: 7.5, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 3 }}>BOARDING STATUS</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 14, fontWeight: 900, color: '#fff' }}>CLEARED FOR TAKEOFF</span>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="#fff">
-            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-          </svg>
-        </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontFamily: 'Georgia, serif', fontStyle: 'italic', marginTop: 5 }}>
-          Stay Healthy, Stay Happy!
-        </div>
-      </div>
-
     </div>
   );
 });
