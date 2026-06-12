@@ -7,11 +7,9 @@
  * Sections:
  *   1. Personalised header — goal, weight change, explanation
  *   2. Yesterday's analysis — nutrition, water, workout, sleep (data-driven)
- *   3. AI recommendations — backend-generated tips
- *   4. User accountability — "Did you follow your plan?" YES / NO
- *   5. YES path — proof-type selector + image upload
- *   6. NO path — reason radio buttons (+ free-text for "Other")
- *   7. Footer — Cancel / Submit (disabled until validation passes)
+ *   3. User accountability — "Did you follow your plan?" YES / NO
+ *   4. YES path — proof-type selector + image upload
+ *   5. Footer — Cancel / Submit (disabled until validation passes)
  */
 import React, { useState, useRef } from 'react';
 import { X, AlertCircle, CheckCircle, Upload, TrendingUp, TrendingDown } from 'lucide-react';
@@ -23,16 +21,6 @@ const PROOF_TYPES = [
   'Workout Photo',
   'Water Tracking Screenshot',
   'Progress Photo',
-  'Other',
-];
-
-const NO_REASONS = [
-  'Missed Meals',
-  'Busy Schedule',
-  'Travel',
-  'Forgot Tracking',
-  'Lack of Motivation',
-  'Medical Issue',
   'Other',
 ];
 
@@ -104,30 +92,12 @@ function AnalysisRow({ label, icon, target, consumed, unit, noDataLabel = 'No da
   );
 }
 
-/** Tip card with colour-coded priority border. */
-function TipCard({ tip }) {
-  const borderClass =
-    tip.priority === 'high'   ? 'border-red-500    bg-red-50' :
-    tip.priority === 'medium' ? 'border-orange-500 bg-orange-50' :
-                                'border-blue-400   bg-blue-50';
-
-  return (
-    <div className={`p-3 rounded-lg border-l-4 ${borderClass}`}>
-      <p className="text-sm font-medium text-gray-800">
-        {tip.icon} {tip.message}
-      </p>
-      <p className="text-xs text-gray-500 mt-0.5 capitalize">{tip.priority} priority</p>
-    </div>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function WeightProgressTipsModal({
   isOpen,
   onClose,
   comparison,
-  tips = [],
   goalMode,
   userName,
   onSubmitReview,
@@ -140,10 +110,6 @@ export function WeightProgressTipsModal({
   // YES path
   const [proofType, setProofType]         = useState('');
   const [proofFile, setProofFile]         = useState(null);   // { name, base64, preview }
-
-  // NO path
-  const [reason, setReason]               = useState('');
-  const [reasonOther, setReasonOther]     = useState('');
 
   // Submission
   const [isSubmitting, setIsSubmitting]   = useState(false);
@@ -169,18 +135,14 @@ export function WeightProgressTipsModal({
 
   // ── Submit validation ─────────────────────────────────────────────────────
   const canSubmit = !isFirstUpload && (
-    (followedPlan === true  && proofType && proofFile) ||
-    (followedPlan === false && reason && (reason !== 'Other' || reasonOther.trim().length > 0))
+    followedPlan === false ||
+    (followedPlan === true && proofType && proofFile)
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handlePlanToggle = (value) => {
     setFollowedPlan(value);
-    // Reset opposite-path fields when switching
     if (value) {
-      setReason('');
-      setReasonOther('');
-    } else {
       setProofType('');
       setProofFile(null);
     }
@@ -212,8 +174,8 @@ export function WeightProgressTipsModal({
         followedPlan,
         proofType:        followedPlan ? proofType  : null,
         proofImageBase64: followedPlan ? proofFile?.base64 : null,
-        reason:           !followedPlan ? reason    : null,
-        reasonOther:      (!followedPlan && reason === 'Other') ? reasonOther.trim() : null,
+        reason:           null,
+        reasonOther:      null,
         nutritionSnapshot: {
           calories: comparison.nutrition?.yesterday?.calories ?? null,
           protein:  comparison.nutrition?.yesterday?.protein  ?? null,
@@ -262,7 +224,7 @@ export function WeightProgressTipsModal({
             {isFirstUpload ? <CheckCircle size={32} className="shrink-0 mt-0.5" /> : <AlertCircle size={32} className="shrink-0 mt-0.5" />}
             <div>
               <h2 className="text-xl font-bold leading-tight">
-                {isFirstUpload ? '🎉 Welcome to Your Journey!' : '⚠️ Weight Progress Alert'}
+                {isFirstUpload ? '🎉 Welcome to Your Journey!' : ' Weight Progress'}
               </h2>
               <p className="text-sm opacity-90 mt-0.5">Hello, <strong>{displayName}</strong></p>
               <p className="text-sm opacity-90">
@@ -288,9 +250,9 @@ export function WeightProgressTipsModal({
                     ? <TrendingUp className="text-red-500" size={28} />
                     : <TrendingDown className="text-orange-500" size={28} />
                   }
-                  <span className={`text-lg font-bold ${weightChange > 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                  {/* <span className={`text-lg font-bold ${weightChange > 0 ? 'text-red-600' : 'text-orange-600'}`}>
                     {weightChange > 0 ? '+' : ''}{weightChange} kg
-                  </span>
+                  </span> */}
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-1">Today</p>
@@ -385,20 +347,6 @@ export function WeightProgressTipsModal({
             </section>
           )}
 
-          {/* AI Recommendations */}
-          {tips && tips.length > 0 && (
-            <section>
-              <h3 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span>💡</span> {isFirstUpload ? 'Getting Started Tips' : 'What Could Have Been Better Yesterday'}
-              </h3>
-              <div className="space-y-2">
-                {tips.map((tip, i) => (
-                  <TipCard key={i} tip={tip} />
-                ))}
-              </div>
-            </section>
-          )}
-
           {/* User Accountability — only for reverse-progress (not first upload) */}
           {!isFirstUpload && (
             <section>
@@ -487,41 +435,6 @@ export function WeightProgressTipsModal({
                 </div>
               )}
 
-              {/* ── NO path ─────────────────────────────────────────── */}
-              {followedPlan === false && (
-                <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-semibold text-gray-700">
-                    What prevented you from following your plan?
-                  </p>
-                  <div className="space-y-2">
-                    {NO_REASONS.map((r) => (
-                      <label key={r} className="flex items-center gap-3 cursor-pointer group">
-                        <input
-                          type="radio"
-                          name="no-reason"
-                          value={r}
-                          checked={reason === r}
-                          onChange={() => { setReason(r); setReasonOther(''); }}
-                          className="w-4 h-4 accent-red-500"
-                        />
-                        <span className={`text-sm transition ${reason === r ? 'text-red-700 font-medium' : 'text-gray-700 group-hover:text-red-600'}`}>
-                          {r}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-
-                  {reason === 'Other' && (
-                    <textarea
-                      rows={3}
-                      value={reasonOther}
-                      onChange={(e) => setReasonOther(e.target.value)}
-                      placeholder="Enter your reason..."
-                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:border-red-400 focus:outline-none resize-none mt-2"
-                    />
-                  )}
-                </div>
-              )}
             </section>
           )}
 

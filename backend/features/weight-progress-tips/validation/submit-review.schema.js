@@ -4,7 +4,7 @@
  *
  * Business rules:
  *   - followedPlan = true  → proofType + proofImageBase64 required
- *   - followedPlan = false → reason required; if reason = 'Other' → reasonOther required
+ *   - followedPlan = false → reason optional (no follow-up questionnaire)
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
@@ -85,10 +85,10 @@ export function validateSubmitReview(body = {}) {
 
   // ── NO path constraints ───────────────────────────────────────────────────
   if (followedPlan === false) {
-    if (!reason || !VALID_REASONS.includes(reason)) {
+    if (reason != null && reason !== '' && !VALID_REASONS.includes(reason)) {
       throw new ValidationError(
         400,
-        `reason is required when followedPlan is false. Allowed: ${VALID_REASONS.join(', ')}`,
+        `reason must be one of: ${VALID_REASONS.join(', ')}`,
       );
     }
     if (reason === 'Other' && !reasonOther?.trim()) {
@@ -104,7 +104,7 @@ export function validateSubmitReview(body = {}) {
     followedPlan,
     proofType: followedPlan ? (proofType || null) : null,
     proofImageBase64: followedPlan ? (proofImageBase64 || null) : null,
-    reason: !followedPlan ? (reason || null) : null,
+    reason: !followedPlan ? (reason?.trim() || null) : null,
     reasonOther: (!followedPlan && reason === 'Other') ? (reasonOther?.trim() || null) : null,
     nutritionSnapshot: nutritionSnapshot || null,
   };

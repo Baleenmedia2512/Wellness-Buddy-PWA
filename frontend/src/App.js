@@ -7436,7 +7436,6 @@ function WellnessValleyApp() {
           weightProgressCheck.reset();
         }}
         comparison={weightProgressCheck.comparison}
-        tips={weightProgressCheck.tips}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
         onSubmitReview={async (payload) => {

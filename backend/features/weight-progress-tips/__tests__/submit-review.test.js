@@ -110,16 +110,19 @@ describe('validateSubmitReview', () => {
   });
 
   describe('NO path — followedPlan = false', () => {
-    it('accepts a valid NO payload', () => {
+    it('accepts a valid NO payload without reason', () => {
+      const { reason: _r, ...rest } = NO_PAYLOAD;
+      const result = validateSubmitReview(rest);
+      expect(result.followedPlan).toBe(false);
+      expect(result.reason).toBeNull();
+      expect(result.proofType).toBeNull();
+    });
+
+    it('accepts a valid NO payload with reason', () => {
       const result = validateSubmitReview(NO_PAYLOAD);
       expect(result.followedPlan).toBe(false);
       expect(result.reason).toBe('Missed Meals');
       expect(result.proofType).toBeNull();
-    });
-
-    it('throws when reason is missing', () => {
-      const { reason: _r, ...rest } = NO_PAYLOAD;
-      expect(() => validateSubmitReview(rest)).toThrow('reason');
     });
 
     it('throws when reason is not in the allowed list', () => {
