@@ -40,92 +40,155 @@ export function checkReverseProgress({ currentWeight, previousWeight, goalMode }
 }
 
 /**
- * Compare today vs yesterday nutrition
- * @param {{ today: object, yesterday: object }} input
- * @returns {{ calories: object, protein: object, carbs: object, fat: object }}
+ * Compute the target daily calorie intake based on BMR and goal mode.
+ * Uses a 15 % deficit for loss and a 15 % surplus for gain.
+ * Returns 0 when BMR is unavailable so callers can skip calorie tips gracefully.
+ *
+ * @param {number|null} bmr
+ * @param {string} goalMode  'loss' | 'gain' | 'maintain'
+ * @returns {number} target kcal (0 = unknown)
  */
-export function compareNutrition({ today, yesterday }) {
-  const compareMetric = (metric) => {
-    const t = today?.[metric] || 0;
-    const y = yesterday?.[metric] || 0;
-    return { today: t, yesterday: y, diff: t - y };
-  };
-
-  return {
-    calories: compareMetric('calories'),
-    protein: compareMetric('protein'),
-    carbs: compareMetric('carbs'),
-    fat: compareMetric('fat'),
-  };
+export function computeCalorieTarget(bmr, goalMode) {
+  const b = parseFloat(bmr);
+  if (!Number.isFinite(b) || b <= 0) return 0;
+  if (goalMode === 'loss') return Math.round(b * 0.85);
+  if (goalMode === 'gain') return Math.round(b * 1.15);
+  return Math.round(b);
 }
 
 /**
- * Generate actionable tips based on comparison data
- * @param {{ nutritionDiff: object, waterYesterday: number, goalMode: string, weightChange: number }} input
+ * Compute the minimum recommended daily protein intake (g) using 1.2 g / kg body weight.
+ * Returns 0 when weight is unavailable.
+ *
+ * @param {number|null} weightKg
+ * @returns {number} target protein in grams (0 = unknown)
+ */
+export function computeProteinTarget(weightKg) {
+  const w = parseFloat(weightKg);
+  if (!Number.isFinite(w) || w <= 0) return 0;
+  return Math.round(w * 1.2);
+}
+
+/**
+ * Generate actionable, yesterday-focused tips.
+ *
+ * Each tip explains what the user could have done differently YESTERDAY based on
+ * their actual recorded values compared to their personal targets.
+ *
+ * @param {{
+ *   yesterdayNutrition: { calories: number, protein: number, carbs: number, fat: number },
+ *   waterYesterday: number,
+ *   waterTarget: number,
+ *   calorieTarget: number,
+ *   proteinTarget: number,
+ *   goalMode: string,
+ *   weightChange: number,
+ *   activityYesterday: { steps: number, caloriesBurned: number, activityType: string|null }|null,
+ * }} input
  * @returns {Array<{ priority: string, message: string, icon: string }>}
  */
-export function generateTips({ nutritionDiff, waterYesterday, goalMode, weightChange }) {
+export function generateTips({
+  yesterdayNutrition,
+  waterYesterday,
+  waterTarget,
+  calorieTarget,
+  proteinTarget,
+  goalMode,
+  weightChange,
+  activityYesterday,
+}) {
   const tips = [];
 
-  // Calorie tips
-  const calDiff = nutritionDiff?.calories?.diff || 0;
-  if (goalMode === 'loss' && calDiff > 100) {
+  const calories = yesterdayNutrition?.calories || 0;
+  const protein = yesterdayNutrition?.protein || 0;
+  const carbs = yesterdayNutrition?.carbs || 0;
+  const fat = yesterdayNutrition?.fat || 0;
+
+  // ── Calorie tips (compare yesterday vs personal target) ───────────────────
+  if (calorieTarget > 0) {
+    if (goalMode === 'loss' && calories > calorieTarget + 100) {
+      const over = Math.round(calories - calorieTarget);
+      tips.push({
+        priority: 'high',
+        message: `Yesterday you consumed ${Math.round(calories)} kcal — ${over} kcal over your target of ${calorieTarget} kcal. Reducing meal portions or swapping high-calorie foods would have helped.`,
+        icon: '🔥',
+      });
+    } else if (goalMode === 'gain' && calories < calorieTarget - 100) {
+      const under = Math.round(calorieTarget - calories);
+      tips.push({
+        priority: 'high',
+        message: `Yesterday you consumed only ${Math.round(calories)} kcal — ${under} kcal below your target of ${calorieTarget} kcal. Adding a calorie-dense snack (nuts, avocado, whole milk) would have helped.`,
+        icon: '🔥',
+      });
+    }
+  }
+
+  // ── Protein tips ──────────────────────────────────────────────────────────
+  if (proteinTarget > 0 && protein < proteinTarget * 0.8) {
+    const shortfall = Math.round(proteinTarget - protein);
     tips.push({
-      priority: 'high',
-      message: `Calorie intake increased by ${Math.round(calDiff)} kcal. Try reducing today.`,
-      icon: '🔥',
-    });
-  } else if (goalMode === 'gain' && calDiff < -100) {
-    tips.push({
-      priority: 'high',
-      message: `Calorie intake decreased by ${Math.abs(Math.round(calDiff))} kcal. Try eating more today.`,
-      icon: '🔥',
+      priority: goalMode === 'gain' ? 'high' : 'medium',
+      message: `Yesterday's protein was ${Math.round(protein)} g — ${shortfall} g below your target of ${proteinTarget} g. Including more chicken, eggs, lentils, or Greek yoghurt would have helped.`,
+      icon: '🥩',
     });
   }
 
-  // Water tips
-  const waterTarget = 2000; // ml (simplified, can be weight-based later)
-  if (waterYesterday < waterTarget) {
+  // ── Carbohydrate tips (loss mode) ─────────────────────────────────────────
+  if (goalMode === 'loss' && carbs > 200) {
     tips.push({
       priority: 'medium',
-      message: `Water intake was ${waterYesterday} ml. Target: ${waterTarget} ml. Stay hydrated today!`,
+      message: `Yesterday's carbohydrate intake was ${Math.round(carbs)} g. Swapping refined carbs (white rice, bread, sugary drinks) for vegetables or whole grains would have reduced this.`,
+      icon: '🍞',
+    });
+  }
+
+  // ── Fat tips (loss mode) ──────────────────────────────────────────────────
+  if (goalMode === 'loss' && fat > 70) {
+    tips.push({
+      priority: 'medium',
+      message: `Yesterday's fat intake was ${Math.round(fat)} g. Choosing lean proteins and reducing fried or processed foods would have made a difference.`,
+      icon: '🥑',
+    });
+  }
+
+  // ── Water tips ────────────────────────────────────────────────────────────
+  if (waterYesterday === 0) {
+    tips.push({
+      priority: 'medium',
+      message: `No water intake was recorded yesterday. Aim for at least ${Math.round(waterTarget / 1000)} L (${waterTarget} ml) daily — dehydration can slow your metabolism.`,
+      icon: '💧',
+    });
+  } else if (waterYesterday < waterTarget * 0.8) {
+    const short = waterTarget - waterYesterday;
+    tips.push({
+      priority: 'medium',
+      message: `Yesterday you drank ${waterYesterday} ml — ${short} ml below your daily target of ${waterTarget} ml. Keeping a water bottle nearby would have helped you hit your goal.`,
       icon: '💧',
     });
   }
 
-  // Macro tips
-  const carbDiff = nutritionDiff?.carbs?.diff || 0;
-  const fatDiff = nutritionDiff?.fat?.diff || 0;
-
-  if (goalMode === 'loss') {
-    if (carbDiff > 20) {
-      tips.push({
-        priority: 'medium',
-        message: `Carbs increased by ${Math.round(carbDiff)}g. Consider reducing refined carbs.`,
-        icon: '🍞',
-      });
-    }
-    if (fatDiff > 10) {
-      tips.push({
-        priority: 'medium',
-        message: `Fat increased by ${Math.round(fatDiff)}g. Opt for lean proteins today.`,
-        icon: '🥑',
-      });
-    }
+  // ── Activity tips ─────────────────────────────────────────────────────────
+  const steps = activityYesterday?.steps ?? 0;
+  if (steps < 5000) {
+    const msg =
+      steps === 0
+        ? `No physical activity was recorded yesterday. Even a 30-minute walk (≈ 4,000 steps) burns calories and supports your ${goalMode === 'loss' ? 'weight loss' : 'muscle gain'} goal.`
+        : `Yesterday's step count was ${steps.toLocaleString()} steps. Aiming for 8,000–10,000 steps boosts your metabolism and reduces fat storage.`;
+    tips.push({ priority: 'medium', message: msg, icon: '🏃' });
   }
 
-  // Generic tip if no specific issues found
+  // ── Fallback ──────────────────────────────────────────────────────────────
   if (tips.length === 0) {
     tips.push({
       priority: 'low',
-      message: 'Track your meals consistently and stay active!',
+      message: 'Keep tracking your meals and staying active — consistency is the key to reaching your goal!',
       icon: '✅',
     });
   }
 
   return tips.sort((a, b) => {
     const order = { high: 1, medium: 2, low: 3 };
-    return order[a.priority] - order[b.priority];
+    return (order[a.priority] ?? 4) - (order[b.priority] ?? 4);
   });
 }
 

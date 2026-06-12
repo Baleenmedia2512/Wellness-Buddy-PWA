@@ -2924,22 +2924,13 @@ function WellnessValleyApp() {
       // ✅ Check for reverse weight progress and show tips modal
       if (userId) {
         try {
-          console.log('🔍 [weight-progress] Calling checkProgress for userId:', userId);
-          const progressResult = await weightProgressCheck.checkProgress(userId);
-          console.log('📊 [weight-progress] API Response:', JSON.stringify(progressResult, null, 2));
-          
+          const savedId = savedWeightIdRef.current || (data?.id ?? null);
+          const progressResult = await weightProgressCheck.checkProgress(userId, savedId);
           if (progressResult?.shouldShow) {
-            console.log('🚨 [weight-progress] shouldShow=true, opening modal');
-            debugLog('🚨 [weight-progress] Reverse progress detected, showing tips modal');
             setShowWeightProgressModal(true);
-          } else {
-            console.log('ℹ️ [weight-progress] shouldShow=false, reason:', progressResult?.reason);
-            debugLog('✅ [weight-progress] No reverse progress, modal not needed');
           }
         } catch (progressErr) {
-          console.error('❌ [weight-progress] API Error:', progressErr);
-          debugLog('⚠️ [weight-progress] Failed to check progress (non-blocking):', progressErr.message);
-          // Don't block weight save on progress check failure
+          // Non-blocking — weight save already succeeded
         }
       }
 
@@ -3037,6 +3028,17 @@ function WellnessValleyApp() {
       }
       // Refresh ideal weight in case the user updated their height in profile
       refreshIdealWeight();
+
+      // ✅ Check for reverse weight progress after an edit-save too
+      try {
+        const editWeightId = savedWeightIdRef.current || (result?.id ?? null);
+        const progressResult = await weightProgressCheck.checkProgress(userId, editWeightId);
+        if (progressResult?.shouldShow) {
+          setShowWeightProgressModal(true);
+        }
+      } catch (_progressErr) {
+        // Non-blocking
+      }
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -7431,6 +7433,13 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         tips={weightProgressCheck.tips}
         goalMode={weightProgressCheck.goalMode}
+        userName={savedUserName}
+        onSubmitReview={async (payload) => {
+          const userId = user?.id || (await getUserId(user));
+          const weightRecordId = savedWeightIdRef.current || savedWeightId;
+          await weightProgressCheck.submitReview({ ...payload, userId, weightRecordId });
+          handleLeaderboardRefresh();
+        }}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}

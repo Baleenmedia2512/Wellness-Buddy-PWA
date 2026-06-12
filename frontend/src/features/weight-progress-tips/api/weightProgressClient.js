@@ -1,6 +1,10 @@
 /**
  * weightProgressClient.js
  * API client for weight progress tips endpoints.
+ *
+ * Endpoints:
+ *   GET  /api/weight-progress-tips/check          — detect reverse progress
+ *   POST /api/weight-progress-tips/submit-review  — persist accountability review
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
@@ -45,6 +49,35 @@ export async function fetchWeightProgressCheck(userId, currentWeightId = null) {
   
   if (!result.ok) {
     console.error('❌ [weightProgressClient] API returned ok=false:', result.error);
+    throw new Error(result.error?.message || 'Unknown error');
+  }
+
+  return result.data;
+}
+
+/**
+ * Submit the user's accountability review after a reverse-progress alert.
+ *
+ * @param {object} payload  Validated review payload.
+ * @returns {Promise<{ weightRecordId: number, message: string }>}
+ * @throws {Error}
+ */
+export async function submitProgressReview(payload) {
+  const API_BASE_URL = getApiBaseUrl();
+  const url = `${API_BASE_URL}/api/weight-progress-tips/submit-review`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error?.message || `HTTP ${response.status}`);
+  }
+  if (!result.ok) {
     throw new Error(result.error?.message || 'Unknown error');
   }
 

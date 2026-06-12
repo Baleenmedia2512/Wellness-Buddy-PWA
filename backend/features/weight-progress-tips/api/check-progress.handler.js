@@ -5,9 +5,10 @@
 import { validateCheckProgress } from '../validation/check-progress.schema.js';
 import {
   checkReverseProgress,
-  compareNutrition,
   generateTips,
   calculateWaterTarget,
+  computeCalorieTarget,
+  computeProteinTarget,
 } from '../domain/weight-progress-rules.js';
 import {
   getUserWeightGoal,
@@ -15,6 +16,7 @@ import {
   getYesterdayNutrition,
   getTodayNutrition,
   getYesterdayWater,
+  getYesterdayActivity,
 } from '../data/weight-progress.repo.js';
 import { convertToIST } from '../../../utils/supabaseClient.js';
 
@@ -50,9 +52,10 @@ export async function checkProgressHandler(query) {
   }
 
   const goalMode = userGoal.WeightGoalMode.toLowerCase();
-  console.log('✅ [Step 2] goalMode:', goalMode);
+  const bmr = parseFloat(userGoal.Bmr) || 0;
+  console.log('✅ [Step 2] goalMode:', goalMode, 'BMR:', bmr);
 
-  // Step 3: Fetch recent weight records (today and yesterday)
+  // Step 3: Fetch recent weight records
   console.log('🔍 [Step 3] Fetching last 2 weight records for userId:', userId);
   const weights = await getRecentWeights(userId, 2);
   console.log('📋 [Step 3] weights fetched:', weights.length, 'records:', JSON.stringify(weights));
@@ -61,51 +64,62 @@ export async function checkProgressHandler(query) {
     console.log('⚠️ [Step 3] No weight records found — returning shouldShow: false');
     return {
       ok: true,
-      data: {
-        shouldShow: false,
-        reason: 'No weight records found',
-      },
+      data: { shouldShow: false, reason: 'No weight records found' },
     };
   }
 
-  const currentWeight = weights[0];
+  // If a specific weight ID was supplied, use it as "current"; otherwise take the latest.
+  let currentWeight = weights[0];
+  if (currentWeightId) {
+    const match = weights.find((w) => w.ID === currentWeightId);
+    if (match) currentWeight = match;
+  }
   console.log('✅ [Step 3] currentWeight:', currentWeight.Weight, 'kg (ID:', currentWeight.ID, ')');
 
-  // If this is the first weight upload, show popup anyway (no comparison)
+  const currentWeightValue = parseFloat(currentWeight.Weight);
+  const waterTarget = calculateWaterTarget(currentWeightValue);
+  const calorieTarget = computeCalorieTarget(bmr, goalMode);
+  const proteinTarget = computeProteinTarget(currentWeightValue);
+  console.log('🎯 [Step 3] targets — calories:', calorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
+
+  // If this is the first weight upload, show welcome tips without reverse-progress check.
   if (weights.length === 1) {
     console.log('🎉 [Step 3] First weight upload — showing welcome tips');
-    const currentWeightValue = parseFloat(currentWeight.Weight);
-    const waterTarget = calculateWaterTarget(currentWeightValue);
-    console.log('💧 [Step 3] waterTarget for first upload:', waterTarget, 'ml');
-
     const firstTimeTips = [
-      { tip: `Start your journey! Your target: ${goalMode === 'loss' ? 'lose' : 'gain'} weight`, priority: 'high' },
-      { tip: `Drink at least ${Math.round(waterTarget / 1000)} liters of water daily`, priority: 'high' },
-      { tip: 'Track your meals every day for best results', priority: 'medium' },
-      { tip: 'Upload your weight at the same time every morning', priority: 'medium' },
+      {
+        priority: 'high',
+        message: `Start your journey! Your goal: ${goalMode === 'loss' ? 'lose weight' : 'gain weight'}. Stay consistent.`,
+        icon: '🎯',
+      },
+      {
+        priority: 'high',
+        message: `Drink at least ${Math.round(waterTarget / 1000)} L (${waterTarget} ml) of water daily.`,
+        icon: '💧',
+      },
+      {
+        priority: 'medium',
+        message: 'Track every meal for best results — even small snacks count.',
+        icon: '🍽️',
+      },
+      {
+        priority: 'medium',
+        message: 'Upload your weight at the same time each morning for accurate trends.',
+        icon: '⚖️',
+      },
     ];
-    console.log('✅ [Step 3] firstTimeTips generated:', firstTimeTips.length, 'tips');
 
     return {
       ok: true,
       data: {
         shouldShow: true,
         comparison: {
-          weight: {
-            previous: null,
-            current: currentWeightValue,
-            change: 0,
-            direction: 'first',
-          },
+          weight: { previous: null, current: currentWeightValue, change: 0, direction: 'first' },
           nutrition: {
             yesterday: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-            today: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-            diff: { calories: 0, protein: 0, carbs: 0, fat: 0 },
           },
-          water: {
-            yesterday: 0,
-            target: waterTarget,
-          },
+          water: { yesterday: 0, target: waterTarget },
+          activity: null,
+          targets: { calories: calorieTarget, protein: proteinTarget, water: waterTarget },
         },
         tips: firstTimeTips,
         goalMode,
@@ -114,14 +128,14 @@ export async function checkProgressHandler(query) {
     };
   }
 
-  // From second upload onwards - check for reverse progress
-  const previousWeight = weights[1];
-  console.log('📊 [Step 3] previousWeight:', previousWeight.Weight, 'kg | currentWeight:', currentWeight.Weight, 'kg');
+  // From second upload onwards — check for reverse progress.
+  const previousWeight = weights.find((w) => w.ID !== currentWeight.ID) || weights[1];
+  console.log('📊 [Step 3] previousWeight:', previousWeight.Weight, 'kg | currentWeight:', currentWeightValue, 'kg');
 
   // Step 4: Check for reverse progress using domain logic
   console.log('🔍 [Step 4] Running checkReverseProgress. goalMode:', goalMode);
   const reverseCheck = checkReverseProgress({
-    currentWeight: parseFloat(currentWeight.Weight),
+    currentWeight: currentWeightValue,
     previousWeight: parseFloat(previousWeight.Weight),
     goalMode,
   });
@@ -142,7 +156,7 @@ export async function checkProgressHandler(query) {
 
   console.log('🚨 [Step 4] REVERSE PROGRESS DETECTED! change:', reverseCheck.change, 'kg direction:', reverseCheck.direction);
 
-  // Step 5: Calculate date ranges for yesterday and today (IST timezone)
+  // Step 5: Calculate date ranges for yesterday (IST timezone)
   console.log('🕐 [Step 5] Calculating IST date ranges...');
   const now = new Date();
   const istResult = convertToIST(now);
@@ -152,66 +166,63 @@ export async function checkProgressHandler(query) {
   yesterdayIST.setDate(yesterdayIST.getDate() - 1);
   const yesterdayStart = new Date(yesterdayIST.toISOString().substring(0, 10) + 'T00:00:00.000Z');
   const yesterdayEnd = todayStart.toISOString();
-  console.log('✅ [Step 5] Date ranges — yesterdayStart:', yesterdayStart.toISOString(), 'yesterdayEnd:', yesterdayEnd, 'todayStart:', todayStart.toISOString());
+  console.log('✅ [Step 5] Date ranges — yesterdayStart:', yesterdayStart.toISOString(), 'yesterdayEnd:', yesterdayEnd);
 
-  // Step 6: Fetch yesterday's and today's nutrition
-  console.log('🔍 [Step 6] Fetching yesterday nutrition for userId:', userId, 'range:', yesterdayStart.toISOString(), '→', yesterdayEnd);
+  // Step 6: Fetch yesterday's nutrition
+  console.log('🔍 [Step 6] Fetching yesterday nutrition for userId:', userId);
   const yesterdayNutrition = await getYesterdayNutrition(userId, yesterdayStart.toISOString(), yesterdayEnd);
   console.log('📋 [Step 6] yesterdayNutrition:', JSON.stringify(yesterdayNutrition));
 
-  console.log('🔍 [Step 6] Fetching today nutrition for userId:', userId, 'from:', todayStart.toISOString());
-  const todayNutrition = await getTodayNutrition(userId, todayStart.toISOString());
-  console.log('📋 [Step 6] todayNutrition:', JSON.stringify(todayNutrition));
-
-  // Step 7: Compare nutrition using domain logic
-  console.log('🔍 [Step 7] Comparing nutrition...');
-  const nutritionDiff = compareNutrition({
-    today: todayNutrition,
-    yesterday: yesterdayNutrition,
-  });
-  console.log('📋 [Step 7] nutritionDiff:', JSON.stringify(nutritionDiff));
-
-  // Step 8: Fetch yesterday's water intake
-  console.log('🔍 [Step 8] Fetching yesterday water for userId:', userId);
+  // Step 7: Fetch yesterday's water intake (now implemented)
+  console.log('🔍 [Step 7] Fetching yesterday water for userId:', userId);
   const waterYesterday = await getYesterdayWater(userId, yesterdayStart.toISOString(), yesterdayEnd);
-  console.log('📋 [Step 8] waterYesterday:', waterYesterday, 'ml');
+  console.log('📋 [Step 7] waterYesterday:', waterYesterday, 'ml');
 
-  // Step 9: Calculate water target based on weight
-  const waterTarget = calculateWaterTarget(parseFloat(currentWeight.Weight));
-  console.log('💧 [Step 9] waterTarget:', waterTarget, 'ml (based on weight:', currentWeight.Weight, 'kg)');
+  // Step 8: Fetch yesterday's activity (steps, calories burned)
+  console.log('🔍 [Step 8] Fetching yesterday activity for userId:', userId);
+  const activityYesterday = await getYesterdayActivity(userId, yesterdayStart.toISOString(), yesterdayEnd);
+  console.log('📋 [Step 8] activityYesterday:', JSON.stringify(activityYesterday));
 
-  // Step 10: Generate tips using domain logic
-  console.log('🔍 [Step 10] Generating tips...');
+  // Step 9: Generate yesterday-focused tips using domain logic
+  console.log('🔍 [Step 9] Generating tips...');
   const tips = generateTips({
-    nutritionDiff,
+    yesterdayNutrition,
     waterYesterday,
+    waterTarget,
+    calorieTarget,
+    proteinTarget,
     goalMode,
     weightChange: reverseCheck.change,
+    activityYesterday,
   });
-  console.log('💡 [Step 10] tips generated:', tips.length, 'tips:', JSON.stringify(tips));
+  console.log('💡 [Step 9] tips generated:', tips.length, JSON.stringify(tips));
 
-  // Step 11: Build comparison data for UI
+  // Step 10: Build comparison data for UI (includes targets for the modal)
   const comparison = {
     weight: {
       previous: parseFloat(previousWeight.Weight),
-      current: parseFloat(currentWeight.Weight),
+      current: currentWeightValue,
       change: reverseCheck.change,
       direction: reverseCheck.direction,
     },
     nutrition: {
       yesterday: yesterdayNutrition,
-      today: todayNutrition,
-      diff: nutritionDiff,
     },
     water: {
       yesterday: waterYesterday,
       target: waterTarget,
     },
+    activity: activityYesterday,
+    targets: {
+      calories: calorieTarget,
+      protein: proteinTarget,
+      water: waterTarget,
+    },
   };
-  console.log('✅ [Step 11] comparison built:', JSON.stringify(comparison));
+  console.log('✅ [Step 10] comparison built');
 
-  // Step 12: Return full payload for UI
-  console.log('🏁 [Step 12] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode);
+  // Step 11: Return full payload for UI
+  console.log('🏁 [Step 11] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode);
   return {
     ok: true,
     data: {
