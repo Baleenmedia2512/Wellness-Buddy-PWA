@@ -3803,6 +3803,84 @@ function WellnessValleyApp() {
     }
   };
 
+  // Club/GPS lookup + DB persist after food analysis — runs in the background
+  // so the Share button is available as soon as nutritionData is set.
+  const scheduleNutritionSaveInBackground = ({
+    user: saveUser,
+    file: saveFile,
+    processedImage: saveProcessedImage,
+    analysisResult,
+    exifTimestamp: saveExifTimestamp,
+  }) => {
+    setLoadingState("saving");
+
+    void (async () => {
+      try {
+        if (!saveUser) {
+          throw new Error("Please sign in to save nutrition data");
+        }
+
+        let actualUserId = saveUser?.id;
+        if (!actualUserId) {
+          actualUserId = await getUserId(saveUser);
+        }
+        if (!actualUserId) {
+          throw new Error(
+            "Unable to resolve user account. Please try again or contact support.",
+          );
+        }
+
+        const savePayload = {
+          userId: actualUserId,
+          imagePath: saveFile.name,
+          imageBase64: saveProcessedImage,
+          analysisResult,
+          deviceInfo: window.navigator.userAgent,
+          userEmail: saveUser?.email || saveUser?.Email || "unknown",
+          captureTimestamp: saveExifTimestamp || null,
+        };
+
+        let duplicateCheck;
+        try {
+          duplicateCheck =
+            await duplicateDetectionService.checkForDuplicateFood({
+              userId: actualUserId,
+              analysisResult,
+            });
+        } catch (duplicateError) {
+          console.error(
+            "Duplicate check failed, proceeding with save:",
+            duplicateError,
+          );
+          await performNutritionSave(savePayload);
+          return;
+        }
+
+        if (!duplicateCheck || typeof duplicateCheck !== "object") {
+          console.warn(
+            "Invalid duplicate check response, proceeding with save",
+          );
+          await performNutritionSave(savePayload);
+          return;
+        }
+
+        if (false && duplicateCheck.isDuplicate) {
+          debugLog("⚠️ Duplicate food detected:", duplicateCheck);
+          setDuplicateInfo(duplicateCheck);
+          setPendingSaveData(savePayload);
+          setShowDuplicateModal(true);
+          setSaveLoading(false);
+        } else {
+          await performNutritionSave(savePayload);
+        }
+      } catch (err) {
+        console.error("❌ Save failed:", err?.message || err);
+        setSaveError(getFriendlyErrorMessage(err));
+        setSaveLoading(false);
+      }
+    })();
+  };
+
   // Handle duplicate modal confirmation
   const handleDuplicateConfirm = async () => {
     // Edge case: Prevent double-click/double-tap
@@ -5035,117 +5113,15 @@ function WellnessValleyApp() {
           loggedAt: exifTimestamp || new Date().toISOString(),
         });
 
-        // Check for duplicate food before saving
-        setLoadingState("saving"); // Switch to saving state
-        setSaveLoading(true);
-        try {
-          // Edge case: User might be null or invalid
-          if (!user) {
-            console.error("No user available for duplicate check");
-            throw new Error("Please sign in to save nutrition data");
-          }
-
-          const userIdentifier =
-            user.email || user.id || user.uid || "anonymous";
-
-          // Get actual userId for duplicate check
-          let actualUserId = user?.id;
-          if (!actualUserId) {
-            try {
-              actualUserId = await getUserId(user);
-            } catch (userIdError) {
-              console.error("Failed to get userId:", userIdError);
-              // Edge case: If userId lookup fails, cannot proceed with save
-              // because nutrition centers API requires integer userId
-              throw new Error("Unable to resolve user account. Please try again or contact support.");
-            }
-          }
-
-          // Edge case: userId still invalid after lookup
-          if (!actualUserId) {
-            throw new Error("Unable to resolve user account. Please try again or contact support.");
-          }
-
-          // Check for duplicates in current meal time slot
-          let duplicateCheck;
-          try {
-            duplicateCheck =
-              await duplicateDetectionService.checkForDuplicateFood({
-                userId: actualUserId,
-                analysisResult: result,
-              });
-          } catch (duplicateError) {
-            // Edge case: Duplicate check failed (network error, etc.)
-            console.error(
-              "Duplicate check failed, proceeding with save:",
-              duplicateError,
-            );
-            // Still use actualUserId, not userIdentifier
-            await performNutritionSave({
-              userId: actualUserId,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
-          }
-
-          // Edge case: Invalid duplicate check response
-          if (!duplicateCheck || typeof duplicateCheck !== "object") {
-            console.warn(
-              "Invalid duplicate check response, proceeding with save",
-            );
-            // Still use actualUserId, not userIdentifier
-            await performNutritionSave({
-              userId: actualUserId,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
-          }
-
-          if (false && duplicateCheck.isDuplicate) {
-            // Found duplicate - show confirmation modal
-            debugLog("⚠️ Duplicate food detected:", duplicateCheck);
-            setDuplicateInfo(duplicateCheck);
-            setPendingSaveData({
-              userId: actualUserId, // Use resolved integer ID, not email
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null, // Preserve EXIF time through duplicate flow
-            });
-            setShowDuplicateModal(true);
-            setSaveLoading(false);
-          } else {
-            // No duplicate - proceed with save
-            await performNutritionSave({
-              userId: actualUserId, // Use resolved integer ID, not email
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-          }
-        } catch (err) {
-          // Handle save errors
-          console.error("❌ Save failed:", err.message);
-
-          const friendlySaveError = getFriendlyErrorMessage(err);
-          setSaveError(friendlySaveError);
-          setSaveLoading(false);
-        }
+        // Analysis done — unlock Share immediately; club/GPS + DB save in bg.
+        setLoading(false);
+        scheduleNutritionSaveInBackground({
+          user,
+          file,
+          processedImage,
+          analysisResult: result,
+          exifTimestamp,
+        });
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
