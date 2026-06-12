@@ -11,6 +11,7 @@
 import axios from 'axios';
 import { getApiBaseUrl } from '../../../config/api.config';
 import { debugLog } from '../../../shared/utils/logger';
+import { isCaptureApiSuccess } from '../domain/unknown-promotion.helpers';
 
 /**
  * Fetch an `unknown` capture by its public share token.
@@ -74,12 +75,12 @@ export async function promoteUnknownToFood({ captureId, viewerUserId, analysisRe
     { signal },
   );
   const body = res?.data;
-  if (!body || body.ok !== true) {
+  if (!isCaptureApiSuccess(body)) {
     const err = new Error('promoteUnknownToFood: promotion failed');
     err.body = body;
     throw err;
   }
-  return body.data;
+  return body.data ?? body;
 }
 
 /**

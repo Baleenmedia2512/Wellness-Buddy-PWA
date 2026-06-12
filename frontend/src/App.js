@@ -103,7 +103,17 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
-import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood, deleteCapture, undoDeleteCapture } from "./features/captures";
+// VSA-compliant barrel imports (helpers exported via features/captures/index.js)
+import {
+  UnknownCaptureModal,
+  UnknownShareViewer,
+  fetchUnknownShare,
+  promoteUnknownToFood,
+  deleteCapture,
+  undoDeleteCapture,
+  buildAnalysisFromGeminiAnalysis,
+  hasRecognizedFood,
+} from "./features/captures";
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from "./shell/components/UnknownCaptureUndoBanner";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
@@ -3286,20 +3296,13 @@ function WellnessValleyApp() {
     try {
       const file = base64ToImageFile(imageBase64);
       const analysis = await geminiService.analyzeImageForNutrition(file);
-      
-      // FIX 2026-06-09: geminiService returns { nutrition, detailedItems }, not { total, foods }
-      const noFood = !analysis?.detailedItems?.length || !(Number(analysis?.nutrition?.calories) > 0);
-      if (noFood) {
+
+      if (!hasRecognizedFood(analysis)) {
         setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
         return;
       }
-      
-      // Transform geminiService format → backend format (backend expects { foods, total })
-      const analysisResult = {
-        foods: analysis.detailedItems || [],
-        total: analysis.nutrition || {},
-        confidence: analysis.confidence || 'medium'
-      };
+
+      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
       await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
       setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
       showToast("Saved to your diary");
@@ -7633,22 +7636,22 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="p-1.5 rounded-full bg-white/60 backdrop-blur-sm shadow-lg border border-gray-300/50 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-0 transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Take Photo"
             aria-label="Quick camera access"
           >
-            <img src="/app.png" alt="Camera" className="w-16 h-16 pointer-events-none select-none" draggable={false} />
+            <img src="/app.png" alt="Camera" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
           </button>
           
           {/* Gallery Button */}
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="p-1.5 rounded-full bg-white/60 backdrop-blur-sm shadow-lg border border-gray-300/50 transition-all duration-200 active:scale-90 hover:scale-105 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-0 transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
-            <img src="/gallery.png" alt="Gallery" className="w-16 h-16 pointer-events-none select-none" draggable={false} />
+            <img src="/gallery.png" alt="Gallery" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
           </button>
         </div>
       )}

@@ -28,6 +28,7 @@ import {
   useSwipePanelHeight,
   useMealMutations,
 } from "../hooks";
+import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -113,6 +114,7 @@ const NutritionDashboard = ({
   const [trendRangeDays, setTrendRangeDays] = useState(7);
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
+  const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
 
   // Day analyses + daily stats orchestration (auto-fetch on user/date change).
   const {
@@ -124,7 +126,7 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId });
+  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
   const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });

@@ -17,11 +17,14 @@
  */
 import React, { useState } from 'react';
 import { geminiService } from '../../shared/services/geminiService';
+// VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
   UnknownShareViewer,
   UnknownCaptureModal,
   promoteUnknownToFood,
   deleteCapture,
+  buildAnalysisFromGeminiAnalysis,
+  hasRecognizedFood,
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
@@ -95,8 +98,8 @@ export default function UnknownEntryFlow({
     onClose?.();
   };
 
-  const finish = () => {
-    onChanged?.();
+  const finish = (change = { kind: 'unknown' }) => {
+    onChanged?.(change);
     close();
   };
 
@@ -107,24 +110,17 @@ export default function UnknownEntryFlow({
     try {
       const file = base64ToImageFile(imageBase64);
       const analysis = await geminiService.analyzeImageForNutrition(file);
-      
-      // FIX 2026-06-09: geminiService returns { nutrition, detailedItems }, not { total, foods }
-      const noFood = !analysis?.detailedItems?.length || !(Number(analysis?.nutrition?.calories) > 0);
-      if (noFood) {
+
+      if (!hasRecognizedFood(analysis)) {
         setRetrying(false);
         setError("Still couldn't recognise it — try Edit instead.");
         return;
       }
-      
-      // Transform geminiService format → backend format (backend expects { foods, total })
-      const analysisResult = {
-        foods: analysis.detailedItems || [],
-        total: analysis.nutrition || {},
-        confidence: analysis.confidence || 'medium'
-      };
+
+      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
       await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
       setRetrying(false);
-      finish();
+      finish({ kind: 'food', captureId });
     } catch {
       setRetrying(false);
       setError("Couldn't analyse the photo — try Edit instead.");
@@ -167,7 +163,7 @@ export default function UnknownEntryFlow({
     try {
       const analysisResult = buildAnalysisFromManualFood(manualData);
       await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
-      finish();
+      finish({ kind: 'food', captureId });
     } catch {
       setError("Couldn't save — please try again.");
       setStage('view');
@@ -184,7 +180,7 @@ export default function UnknownEntryFlow({
         captureId,
         imageBase64ToSave: imageBase64,
       });
-      finish();
+      finish({ kind: 'weight', captureId });
     } catch {
       setError("Couldn't save — please try again.");
       setStage('view');
@@ -200,7 +196,7 @@ export default function UnknownEntryFlow({
         captureId,
         imageBase64,
       });
-      finish();
+      finish({ kind: 'education', captureId });
     } catch {
       setError("Couldn't save — please try again.");
       setStage('view');

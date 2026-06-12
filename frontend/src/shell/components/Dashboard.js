@@ -14,6 +14,7 @@ import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
+import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
 import DashboardTabs from './DashboardTabs';
 // ADR-0003 (revised) — Food / Weight / Education keep their original
 // dashboards; the shell only hosts the "Other" (unknown capture) flow.
@@ -49,6 +50,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // once per mount so toggling the flag at runtime requires a re-mount
   // (matches the other tab-visibility decisions in this component).
   const diaryEnabled = isFlagEnabled('ff.diary-feed');
+  const { triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
@@ -135,6 +137,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const ownerId = displayUser?.id || displayUser?.userId;
   const [diaryReloadKey, setDiaryReloadKey] = useState(0);
   const reloadDiary = () => setDiaryReloadKey((k) => k + 1);
+  const [weightReloadKey, setWeightReloadKey] = useState(0);
+  const [diaryEducationRefreshKey, setDiaryEducationRefreshKey] = useState(0);
   // Unknown ("Other") row flow: image viewer + Retry / Edit → respective vertical.
   const [unknownFlow, setUnknownFlow] = useState(null);
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
@@ -158,6 +162,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // undo UX (deletion happens inside UnknownEntryFlow). The "Other" feed only
   // contains unknown rows, so this is a no-op kept for the DiaryFeed contract.
   const handleEntryDelete = () => {};
+
+  const handleUnknownChanged = (change = {}) => {
+    setUnknownFlow(null);
+    reloadDiary();
+    if (change.kind === 'food') {
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-flow-food' });
+    } else if (change.kind === 'weight') {
+      setWeightReloadKey((k) => k + 1);
+    } else if (change.kind === 'education') {
+      setDiaryEducationRefreshKey((k) => k + 1);
+    }
+  };
 
   return (
     <>
@@ -463,6 +479,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 hideHeader={true}
                 selectedDate={selectedDate}
                 initialEntryId={initialMealId}
+                refreshKey={weightReloadKey}
               />
 
               <EducationDashboard
@@ -470,7 +487,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 apiBaseUrl={apiBaseUrl}
                 hideHeader={true}
                 selectedDate={selectedDate}
-                refreshKey={educationRefreshKey}
+                refreshKey={educationRefreshKey + diaryEducationRefreshKey}
                 initialEntryId={initialMealId}
               />
 
@@ -577,7 +594,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         userId={ownerId}
         apiBaseUrl={apiBaseUrl}
         onClose={() => setUnknownFlow(null)}
-        onChanged={() => { setUnknownFlow(null); reloadDiary(); }}
+        onChanged={handleUnknownChanged}
         onDeleteWithUndo={({ captureId, imageBase64 }) => {
           setUnknownUndo({
             captureId,

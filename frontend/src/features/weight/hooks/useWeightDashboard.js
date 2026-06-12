@@ -14,8 +14,8 @@ import {
   buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries, filterHistoryByDay,
 } from '../services/weightDashboardFormatter';
 
-export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null }) {
-  const data = useWeightHistoryData({ user, apiBaseUrl });
+export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
+  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');

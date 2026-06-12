@@ -125,8 +125,8 @@ const Modal = ({ vm }) => (
   </Suspense>
 );
 
-const WeightDashboard = ({ user, apiBaseUrl, hideHeader, initialEntryId = null, selectedDate = null }) => {
-  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate });
+const WeightDashboard = ({ user, apiBaseUrl, hideHeader, initialEntryId = null, selectedDate = null, refreshKey = 0 }) => {
+  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
 
   const view = vm.loading ? <LoadingSkeleton /> : <Overview {...vm} user={user} apiBaseUrl={apiBaseUrl} />;
   const body = (
