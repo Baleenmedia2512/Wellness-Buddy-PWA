@@ -2601,15 +2601,16 @@ function WellnessValleyApp() {
         console.log("📍 [performWeightSave] GPS location captured successfully");
         debugLog("📍 [weight] Attendance determined:", attendance);
 
-        // If multiple clubs detected, show selection modal
+        // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog("🏢 [weight] Multiple clubs detected, showing selection modal");
-          setNearbyCenters(attendance.nearbyCenters);
-          setPendingWeightData({ weightData, imageBase64, attendance, captureTimestamp });
-          setShowClubSelectionModal(true);
-          setSaveLoading(false);
-          setLoadingState("idle");
-          return; // Wait for user to select club
+          debugLog("🏢 [weight] Multiple clubs detected, auto-selecting closest club");
+          const closestClub = attendance.nearbyCenters[0];
+          debugLog("✅ [weight] Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+          
+          // Update attendance to use the closest club
+          attendance.nutritionCenterId = closestClub.center.id;
+          attendance.centerName = closestClub.center.center_name;
+          attendance.attendanceType = "club";
         }
 
         // Single club or remote
@@ -3421,20 +3422,20 @@ function WellnessValleyApp() {
         };
       }
 
-      // If multiple clubs detected and no club selected yet, show selection modal
+      // If multiple clubs detected, auto-select the closest one (first in array)
       if (
         attendance.nearbyCenters &&
         attendance.nearbyCenters.length > 1 &&
         !selectedClub
       ) {
-        debugLog("🏢 Multiple clubs detected, showing selection modal");
-        setNearbyCenters(attendance.nearbyCenters);
-        // Store captureTimestamp and captureId so club-selection callback can pass them through
-        setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp, captureId });
-        setShowClubSelectionModal(true);
-        setSaveLoading(false);
-        setLoadingState("idle");
-        return; // Wait for user to select club
+        debugLog("🏢 Multiple clubs detected, auto-selecting closest club");
+        const closestClub = attendance.nearbyCenters[0];
+        debugLog("✅ Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+        
+        // Update attendance to use the closest club
+        attendance.nutritionCenterId = closestClub.center.id;
+        attendance.centerName = closestClub.center.center_name;
+        attendance.attendanceType = "club";
       }
 
       // Reverse-geocode GPS coordinates into city + village via shared helper.
@@ -3730,19 +3731,16 @@ function WellnessValleyApp() {
         attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, saveData.userId);
         debugLog("📍 [nutrition] Attendance determined:", attendance);
 
-        // If multiple clubs detected, show selection modal
+        // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog("🏢 [nutrition] Multiple clubs detected, showing selection modal");
-          setNearbyCenters(attendance.nearbyCenters);
-          setPendingFoodData({ 
-            saveData, 
-            attendance,
-            captureId: foodCaptureIdRef.current || undefined 
-          });
-          setShowClubSelectionModal(true);
-          setSaveLoading(false);
-          setLoadingState("idle");
-          return; // Wait for user to select club
+          debugLog("🏢 [nutrition] Multiple clubs detected, auto-selecting closest club");
+          const closestClub = attendance.nearbyCenters[0];
+          debugLog("✅ [nutrition] Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+          
+          // Update attendance to use the closest club
+          attendance.nutritionCenterId = closestClub.center.id;
+          attendance.centerName = closestClub.center.center_name;
+          attendance.attendanceType = "club";
         }
 
         // Single club or remote
@@ -7629,14 +7627,14 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-      {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered */}
+      {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered & Fixed Position */}
       {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex gap-3">
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50 flex gap-3 pointer-events-none">
           {/* Camera Button */}
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-0 transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
             title="Take Photo"
             aria-label="Quick camera access"
           >
@@ -7647,7 +7645,7 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-0 transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >

@@ -494,7 +494,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               {/* "Other" — unrecognised ("unknown") captures only. Reuses the
                   diary read-model filtered to `unknown`, preserving the image
                   viewer + Retry / Edit / undo flow handled below. */}
-              <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-24 mt-2">
+              <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <h2 className="text-sm font-semibold text-gray-500 px-1 mb-2 mt-4">Other</h2>
                 <DiaryFeed
                   refreshKey={diaryReloadKey}
