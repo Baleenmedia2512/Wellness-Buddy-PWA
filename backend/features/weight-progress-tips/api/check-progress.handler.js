@@ -9,6 +9,10 @@ import {
   calculateWaterTarget,
   computeCalorieTarget,
   computeProteinTarget,
+  computeFatTarget,
+  computeCarbsTarget,
+  STEPS_TARGET,
+  SLEEP_TARGET_HRS,
 } from '../domain/weight-progress-rules.js';
 import {
   getUserWeightGoal,
@@ -69,6 +73,8 @@ export async function checkProgressHandler(query) {
   const waterTarget = calculateWaterTarget(currentWeightValue);
   const calorieTarget = computeCalorieTarget(bmr, goalMode);
   const proteinTarget = computeProteinTarget(currentWeightValue);
+  const fatTarget = computeFatTarget(currentWeightValue);
+  const carbsTarget = computeCarbsTarget(bmr, goalMode, currentWeightValue);
   console.log('🎯 [Step 3] targets — calories:', calorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
 
   // If this is the first weight upload, show welcome tips without reverse-progress check.
@@ -108,7 +114,15 @@ export async function checkProgressHandler(query) {
           },
           water: { yesterday: 0, target: waterTarget },
           activity: null,
-          targets: { calories: calorieTarget, protein: proteinTarget, water: waterTarget },
+          targets: {
+            calories: calorieTarget,
+            protein: proteinTarget,
+            carbs: carbsTarget,
+            fat: fatTarget,
+            water: waterTarget,
+            steps: STEPS_TARGET,
+            sleep: SLEEP_TARGET_HRS,
+          },
         },
         tips: firstTimeTips,
         goalMode,
@@ -205,7 +219,11 @@ export async function checkProgressHandler(query) {
     targets: {
       calories: calorieTarget,
       protein: proteinTarget,
+      carbs: carbsTarget,
+      fat: fatTarget,
       water: waterTarget,
+      steps: STEPS_TARGET,
+      sleep: SLEEP_TARGET_HRS,
     },
   };
   console.log('✅ [Step 10] comparison built');

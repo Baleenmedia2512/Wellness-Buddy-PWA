@@ -73,6 +73,32 @@ export function computeProteinTarget(weightKg) {
   return Math.round(w * 1.2);
 }
 
+/** Recommended daily fat intake: 0.75 g per kg body weight. */
+export function computeFatTarget(weightKg) {
+  const w = parseFloat(weightKg);
+  if (!Number.isFinite(w) || w <= 0) return 0;
+  return Math.round(w * 0.75);
+}
+
+/**
+ * Carbs target derived from calorie budget minus protein and fat calories.
+ * Clamped to ≥ 0 when protein+fat exceed the calorie target.
+ */
+export function computeCarbsTarget(bmr, goalMode, weightKg) {
+  const calorieTarget = computeCalorieTarget(bmr, goalMode);
+  const proteinTarget = computeProteinTarget(weightKg);
+  const fatTarget = computeFatTarget(weightKg);
+  if (calorieTarget <= 0) return 0;
+  const remainingCals = calorieTarget - proteinTarget * 4 - fatTarget * 9;
+  return Math.max(0, Math.round(remainingCals / 4));
+}
+
+/** Daily step goal shown in yesterday's analysis (matches tip messaging). */
+export const STEPS_TARGET = 8000;
+
+/** Recommended sleep hours shown in yesterday's analysis. */
+export const SLEEP_TARGET_HRS = 8;
+
 /**
  * Generate actionable, yesterday-focused tips.
  *

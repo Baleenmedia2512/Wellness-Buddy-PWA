@@ -10,6 +10,10 @@ import {
   calculateWaterTarget,
   computeCalorieTarget,
   computeProteinTarget,
+  computeFatTarget,
+  computeCarbsTarget,
+  STEPS_TARGET,
+  SLEEP_TARGET_HRS,
 } from '../domain/weight-progress-rules.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +153,31 @@ describe('computeProteinTarget', () => {
     expect(computeProteinTarget(null)).toBe(0);
     expect(computeProteinTarget(0)).toBe(0);
     expect(computeProteinTarget(-10)).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeFatTarget / computeCarbsTarget
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeFatTarget', () => {
+  it('computes 0.75 g per kg', () => {
+    expect(computeFatTarget(80)).toBe(60);
+  });
+
+  it('returns 0 for invalid weight', () => {
+    expect(computeFatTarget(null)).toBe(0);
+  });
+});
+
+describe('computeCarbsTarget', () => {
+  it('derives carbs from calorie budget minus protein and fat', () => {
+    // BMR 2000, loss → 1700 kcal; 80kg → protein 96g (384 kcal), fat 60g (540 kcal)
+    // remaining = 1700 - 384 - 540 = 776 → 194g carbs
+    expect(computeCarbsTarget(2000, 'loss', 80)).toBe(194);
+  });
+
+  it('returns 0 when macro calories exceed calorie target', () => {
+    expect(computeCarbsTarget(1300, 'loss', 109)).toBe(0);
   });
 });
 

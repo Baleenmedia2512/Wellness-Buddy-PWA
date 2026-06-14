@@ -28,66 +28,33 @@ const PROOF_TYPES = [
 
 /**
  * Single row in the "Yesterday's Analysis" table.
- * Shows target (when available), consumed value, and signed difference badge.
+ * Shows consumed vs target (e.g. "1340 vs 1200 kcal").
  */
-function AnalysisRow({ label, icon, target, consumed, unit, noDataLabel = 'No data recorded' }) {
-  const hasConsumed = consumed != null && consumed > 0;
-  const hasTarget   = target  != null && target  > 0;
+function AnalysisRow({ label, icon, target, consumed, unit }) {
+  const consumedNum = consumed != null && Number.isFinite(consumed) ? consumed : 0;
+  const hasTarget = target != null && Number.isFinite(target) && target > 0;
+  const consumedDisplay = Math.round(consumedNum).toLocaleString();
+  const targetDisplay = hasTarget ? Math.round(target).toLocaleString() : '—';
 
-  if (!hasConsumed && !hasTarget) {
-    return (
-      <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
-        <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          {icon && <span>{icon}</span>}
-          {label}
-        </span>
-        <span className="text-sm text-gray-400 italic">{noDataLabel}</span>
-      </div>
-    );
-  }
-
-  const diff = hasTarget && hasConsumed ? Math.round(consumed - target) : null;
-  const diffClass =
-    diff == null         ? '' :
-    diff > 0             ? 'bg-red-100 text-red-700' :
-    diff < 0             ? 'bg-orange-100 text-orange-700' :
-                           'bg-green-100 text-green-700';
+  const diff = hasTarget ? consumedNum - target : null;
+  const consumedClass =
+    diff == null ? 'text-gray-700' :
+    diff > 0     ? 'text-red-600' :
+    diff < 0     ? 'text-orange-600' :
+                   'text-green-700';
 
   return (
-    <div className="py-2.5 border-b border-gray-100 last:border-0">
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          {icon && <span>{icon}</span>}
-          {label}
-        </span>
-        {diff != null && (
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${diffClass}`}>
-            {diff > 0 ? `+${diff}` : diff} {unit}
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-4 mt-0.5 text-xs text-gray-500">
-        {hasTarget && (
-          <span>
-            Target:{' '}
-            <strong className="text-gray-700">{Math.round(target)} {unit}</strong>
-          </span>
-        )}
-        {hasConsumed && (
-          <span>
-            Yesterday:{' '}
-            <strong className={
-              diff != null
-                ? diff > 50  ? 'text-red-600'
-                : diff < -50 ? 'text-orange-600'
-                :               'text-green-700'
-                : 'text-gray-700'
-            }>
-              {Math.round(consumed)} {unit}
-            </strong>
-          </span>
-        )}
-      </div>
+    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3">
+      <span className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
+        {icon && <span>{icon}</span>}
+        {label}
+      </span>
+      <span className="text-sm text-right whitespace-nowrap">
+        <strong className={consumedClass}>{consumedDisplay}</strong>
+        <span className="text-gray-400"> vs </span>
+        <strong className="text-gray-700">{targetDisplay}</strong>
+        <span className="text-gray-500 text-xs ml-1">{unit}</span>
+      </span>
     </div>
   );
 }
@@ -197,9 +164,6 @@ export function WeightProgressTipsModal({
   const yNutrition = comparison.nutrition?.yesterday  || {};
   const targets    = comparison.targets               || {};
   const water      = comparison.water                 || {};
-  const activity   = comparison.activity;
-
-  const hasActivity = activity && (activity.steps > 0 || activity.caloriesBurned > 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -283,66 +247,52 @@ export function WeightProgressTipsModal({
                 <AnalysisRow
                   label="Calories"
                   icon="🔥"
-                  target={targets.calories || null}
-                  consumed={yNutrition.calories || null}
+                  target={targets.calories ?? null}
+                  consumed={yNutrition.calories ?? 0}
                   unit="kcal"
                 />
                 <AnalysisRow
                   label="Protein"
                   icon="🥩"
-                  target={targets.protein || null}
-                  consumed={yNutrition.protein || null}
+                  target={targets.protein ?? null}
+                  consumed={yNutrition.protein ?? 0}
                   unit="g"
                 />
                 <AnalysisRow
                   label="Carbohydrates"
                   icon="🍞"
-                  target={null}
-                  consumed={yNutrition.carbs || null}
+                  target={targets.carbs ?? null}
+                  consumed={yNutrition.carbs ?? 0}
                   unit="g"
                 />
                 <AnalysisRow
                   label="Fat"
                   icon="🥑"
-                  target={null}
-                  consumed={yNutrition.fat || null}
+                  target={targets.fat ?? null}
+                  consumed={yNutrition.fat ?? 0}
                   unit="g"
                 />
                 <AnalysisRow
                   label="Water"
                   icon="💧"
-                  target={water.target || null}
-                  consumed={water.yesterday || null}
+                  target={targets.water ?? water.target ?? null}
+                  consumed={water.yesterday ?? 0}
                   unit="ml"
                 />
-                {/* Sleep — no backend source, always show "No data recorded" */}
                 <AnalysisRow
                   label="Sleep"
                   icon="😴"
-                  target={null}
-                  consumed={null}
+                  target={targets.sleep ?? 8}
+                  consumed={0}
                   unit="hrs"
-                  noDataLabel="No data recorded"
                 />
-                {/* Workout — from daily_step_activity */}
-                <div className="py-2.5">
-                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1">
-                    <span>🏋️</span> Workout
-                  </span>
-                  {hasActivity ? (
-                    <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-                      <span>Steps: <strong className="text-gray-700">{(activity.steps || 0).toLocaleString()}</strong></span>
-                      {activity.caloriesBurned > 0 && (
-                        <span>Calories burned: <strong className="text-gray-700">{Math.round(activity.caloriesBurned)} kcal</strong></span>
-                      )}
-                      {activity.activityType && (
-                        <span>Activity: <strong className="text-gray-700 capitalize">{activity.activityType}</strong></span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">No workout logged</p>
-                  )}
-                </div>
+                <AnalysisRow
+                  label="Workout"
+                  icon="🏋️"
+                  target={targets.steps ?? 8000}
+                  consumed={comparison.activity?.steps ?? 0}
+                  unit="steps"
+                />
               </div>
             </section>
           )}
