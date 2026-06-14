@@ -6,7 +6,7 @@
  *
  * Sections:
  *   1. Personalised header — goal, weight change, explanation
- *   2. Yesterday's analysis — nutrition, water, workout, sleep (data-driven)
+ *   2. Yesterday's analysis — nutrition, water, sleep (data-driven)
  *   3. User accountability — "Did you follow your plan?" YES / NO
  *   4. YES path — proof-type selector + image upload
  *   5. Footer — Cancel / Submit (disabled until validation passes)
@@ -279,20 +279,13 @@ export function WeightProgressTipsModal({
                   consumed={water.yesterday ?? 0}
                   unit="ml"
                 />
-                <AnalysisRow
+                {/* <AnalysisRow
                   label="Sleep"
                   icon="😴"
                   target={targets.sleep ?? 8}
                   consumed={0}
                   unit="hrs"
-                />
-                <AnalysisRow
-                  label="Workout"
-                  icon="🏋️"
-                  target={targets.steps ?? 8000}
-                  consumed={comparison.activity?.steps ?? 0}
-                  unit="steps"
-                />
+                /> */}
               </div>
             </section>
           )}
