@@ -7435,15 +7435,12 @@ function WellnessValleyApp() {
           setShowWeightProgressModal(false);
           weightProgressCheck.reset();
         }}
+        onOpenGallery={() => {
+          fileInputRef.current?.openGallery?.();
+        }}
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
-        onSubmitReview={async (payload) => {
-          const userId = user?.id || (await getUserId(user));
-          const weightRecordId = savedWeightIdRef.current || savedWeightId;
-          await weightProgressCheck.submitReview({ ...payload, userId, weightRecordId });
-          handleLeaderboardRefresh();
-        }}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
@@ -7708,7 +7705,7 @@ function WellnessValleyApp() {
       )} */}
 
       {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
-      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
+      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && !showWeightProgressModal && (
         <>
           {/* Camera Button */}
           <button
