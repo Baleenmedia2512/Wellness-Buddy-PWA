@@ -330,7 +330,7 @@ describe('getTasksNeedingReminder', () => {
     const reminderRow = { task_id: 5, user_id: '339', push_token: 'tok_abc' };
     mockQuery.mockResolvedValueOnce(mysqlResult([reminderRow]));
 
-    const rows = await getTasksNeedingReminder(new Date(), '2026-06-09');
+    const rows = await getTasksNeedingReminder('2026-06-09', '13:00:00', new Date('2026-06-09T13:00:00'));
 
     expect([...rows]).toEqual([reminderRow]);
     expect(mockRelease).toHaveBeenCalledTimes(1);

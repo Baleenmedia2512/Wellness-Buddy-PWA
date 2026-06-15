@@ -30,25 +30,28 @@ async function getTasksByUserAndDate(userId, date, status = null) {
   try {
     let query = `
       SELECT 
-        "TaskId" as task_id,
-        "UserId" as user_id,
-        "TaskType" as task_type,
-        "TaskDate" as task_date,
-        "Status" as status,
-        "Priority" as priority,
-        "WindowStart" as window_start,
-        "WindowEnd" as window_end,
-        "CreatedAt" as created_at,
-        "CompletedAt" as completed_at,
-        "TaskData" as task_data,
-        "CompletionData" as completion_data,
-        "NotificationSent" as notification_sent,
-        "NotificationSentAt" as notification_sent_at,
-        "ReminderCount" as reminder_count,
-        "SnoozedUntil" as snoozed_until,
-        "ReminderDismissedToday" as reminder_dismissed_today
-      FROM tasks_table
-      WHERE "UserId" = $1 AND "TaskDate" = $2
+        t."TaskId" as task_id,
+        t."UserId" as user_id,
+        t."TaskType" as task_type,
+        t."TaskDate" as task_date,
+        t."Status" as status,
+        t."Priority" as priority,
+        tw."WindowStartTime" as window_start,
+        tw."WindowEndTime" as window_end,
+        t."CreatedAt" as created_at,
+        t."CompletedAt" as completed_at,
+        t."TaskData" as task_data,
+        t."CompletionData" as completion_data,
+        t."NotificationSent" as notification_sent,
+        t."NotificationSentAt" as notification_sent_at,
+        t."ReminderCount" as reminder_count,
+        t."SnoozedUntil" as snoozed_until,
+        t."ReminderDismissedToday" as reminder_dismissed_today
+      FROM tasks_table t
+      LEFT JOIN activity_time_windows_table tw
+        ON tw."ActivityType" = t."TaskType"
+       AND tw."EffectiveToDate" IS NULL
+      WHERE t."UserId" = $1 AND t."TaskDate" = $2
     `;
     
     const params = [userId, date];
@@ -58,7 +61,7 @@ async function getTasksByUserAndDate(userId, date, status = null) {
       params.push(status);
     }
     
-    query += ` ORDER BY "WindowStart" ASC, "Priority" DESC`;
+    query += ` ORDER BY tw."WindowStartTime" ASC NULLS LAST, t."Priority" DESC`;
     
     const result = await client.query(query, params);
     return result[0];
@@ -87,16 +90,19 @@ async function getTasksNeedingNotification(currentTime, currentDate) {
         t."UserId" as user_id,
         t."TaskType" as task_type,
         t."TaskDate" as task_date,
-        t."WindowStart" as window_start,
-        t."WindowEnd" as window_end,
+        tw."WindowStartTime" as window_start,
+        tw."WindowEndTime" as window_end,
         u."Email",
         u."UserName"
       FROM tasks_table t
       JOIN team_table u ON t."UserId" = u."UserId"::text
+      JOIN activity_time_windows_table tw
+        ON tw."ActivityType" = t."TaskType"
+       AND tw."EffectiveToDate" IS NULL
       WHERE t."TaskDate" = $1::date
         AND t."Status" = 'pending'
         AND t."NotificationSent" = false
-        AND substring(t."WindowStart"::text, 1, 5) = $2
+        AND substring(tw."WindowStartTime"::text, 1, 5) = $2
     `, [currentDate, currentTime]);
     
     return result[0];
@@ -139,7 +145,11 @@ async function createTask(taskData) {
         "TaskData",
         "Status"
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-      ON CONFLICT ("UserId", "TaskType", "TaskDate") DO NOTHING
+      ON CONFLICT ("UserId", "TaskType", "TaskDate") DO UPDATE
+        SET
+          "WindowStart" = EXCLUDED."WindowStart",
+          "WindowEnd"   = EXCLUDED."WindowEnd"
+        WHERE tasks_table."Status" = 'pending'
       RETURNING *
     `, [userId, taskType, taskDate, windowStart, windowEnd, priority, JSON.stringify(taskDataJson)]);
     
@@ -415,11 +425,12 @@ async function dismissTaskToday(taskId) {
  *
  * Used by the background scheduler to trigger second reminders.
  *
- * @param {Date}   currentDateTime - Injected clock.
- * @param {string} currentDate     - YYYY-MM-DD.
+ * @param {string} currentDate     - YYYY-MM-DD (IST)
+ * @param {string} currentTime     - HH:mm:ss (IST)
+ * @param {Date}   currentDateTime - injected clock (snooze expiry)
  * @returns {Promise<Array>}
  */
-async function getTasksNeedingReminder(currentDateTime, currentDate) {
+async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime) {
   const client = await dbPool();
   try {
     const result = await client.query(`
@@ -428,15 +439,19 @@ async function getTasksNeedingReminder(currentDateTime, currentDate) {
         t."UserId"                  as user_id,
         t."TaskType"                as task_type,
         t."TaskDate"                as task_date,
-        t."WindowStart"             as window_start,
-        t."WindowEnd"               as window_end,
+        tw."WindowStartTime"        as window_start,
+        tw."WindowEndTime"          as window_end,
         t."ReminderCount"           as reminder_count,
         t."SnoozedUntil"            as snoozed_until,
         t."ReminderDismissedToday"  as reminder_dismissed_today,
         t."NotificationSent"        as notification_sent,
+        t."Status"                  as status,
         u."PushToken"
       FROM tasks_table t
       JOIN team_table u ON t."UserId"::text = u."UserId"::text
+      JOIN activity_time_windows_table tw
+        ON tw."ActivityType" = t."TaskType"
+       AND tw."EffectiveToDate" IS NULL
       WHERE t."TaskDate"                = $1::date
         AND t."Status"                  = 'pending'
         AND t."ReminderDismissedToday"  = false
@@ -444,14 +459,51 @@ async function getTasksNeedingReminder(currentDateTime, currentDate) {
         AND t."NotificationSent"        = true
         AND (
               t."SnoozedUntil" IS NULL
-              OR t."SnoozedUntil" <= $2
+              OR t."SnoozedUntil" <= $3
             )
-        AND $2::time BETWEEN t."WindowStart" AND t."WindowEnd"
-    `, [currentDate, currentDateTime]);
+        AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
+    `, [currentDate, currentTime, currentDateTime]);
 
     return result[0];
   } catch (error) {
     logger.error('Error fetching tasks needing reminder', { currentDate, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Find today's pending task for a user and task type.
+ *
+ * @param {number} userId
+ * @param {string} taskType
+ * @param {string} taskDate  YYYY-MM-DD (IST)
+ * @returns {Promise<Object|null>}
+ */
+async function getPendingTaskForUser(userId, taskType, taskDate) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        "TaskId" as task_id,
+        "UserId" as user_id,
+        "TaskType" as task_type,
+        "TaskDate" as task_date,
+        "Status" as status
+      FROM tasks_table
+      WHERE "UserId"   = $1
+        AND "TaskType" = $2
+        AND "TaskDate" = $3::date
+        AND "Status"   = 'pending'
+      LIMIT 1
+    `, [userId, taskType, taskDate]);
+
+    return result[0][0] || null;
+  } catch (error) {
+    logger.error('Error fetching pending task for user', {
+      userId, taskType, taskDate, error: error.message,
+    });
     throw error;
   } finally {
     client.release();
@@ -527,11 +579,12 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
  *   5. ReminderCount < 2  (cap at 2 reminders per day).
  *   6. SnoozedUntil is NULL or already expired  (respect active snooze).
  *
- * @param {string} currentDate - YYYY-MM-DD
- * @param {Date}   currentDateTime - injected clock
+ * @param {string} currentDate     - YYYY-MM-DD (IST)
+ * @param {string} currentTime     - HH:mm:ss (IST wall clock)
+ * @param {Date}   currentDateTime - injected clock (for snooze expiry)
  * @returns {Promise<Array>}
  */
-async function getTasksPastAverageTime(currentDate, currentDateTime) {
+async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime) {
   const client = await dbPool();
   try {
     const result = await client.query(`
@@ -540,9 +593,12 @@ async function getTasksPastAverageTime(currentDate, currentDateTime) {
         t."UserId"                  AS user_id,
         t."TaskType"                AS task_type,
         t."TaskDate"                AS task_date,
+        tw."WindowStartTime"        AS window_start,
+        tw."WindowEndTime"          AS window_end,
         t."ReminderCount"           AS reminder_count,
         t."SnoozedUntil"            AS snoozed_until,
         t."ReminderDismissedToday"  AS reminder_dismissed_today,
+        t."Status"                  AS status,
         uta."AverageCompletionTime" AS average_completion_time,
         u."PushToken"
       FROM tasks_table t
@@ -551,20 +607,68 @@ async function getTasksPastAverageTime(currentDate, currentDateTime) {
        AND uta."TaskType" = t."TaskType"
       JOIN team_table u
         ON u."UserId"::text = t."UserId"::text
+      JOIN activity_time_windows_table tw
+        ON tw."ActivityType" = t."TaskType"
+       AND tw."EffectiveToDate" IS NULL
       WHERE t."TaskDate"               = $1::date
         AND t."Status"                 = 'pending'
         AND t."NotificationSent"       = true
         AND t."ReminderDismissedToday" = false
         AND t."ReminderCount"          < 2
-        AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $2)
-        AND $2::time BETWEEN t."WindowStart" AND t."WindowEnd"
+        AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $3)
+        AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
         AND $2::time >= uta."AverageCompletionTime"
         AND $2::time <  (uta."AverageCompletionTime"::interval + interval '2 minutes')::time
-    `, [currentDate, currentDateTime]);
+    `, [currentDate, currentTime, currentDateTime]);
 
     return result[0];
   } catch (error) {
     logger.error('Error in getTasksPastAverageTime', { currentDate, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * After admin updates activity_time_windows_table, sync today's (and future)
+ * pending tasks so stored WindowStart/WindowEnd match the active row.
+ *
+ * Reminder SQL also JOINs the live table, but this keeps tasks_table consistent.
+ *
+ * @param {string} activityType  ActivityType value (weight, breakfast, …)
+ * @param {string} fromDate      YYYY-MM-DD — usually EffectiveFromDate
+ * @returns {Promise<number>}    Rows updated
+ */
+async function syncPendingTaskWindowsForActivityType(activityType, fromDate) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      UPDATE tasks_table t
+      SET
+        "WindowStart" = tw."WindowStartTime",
+        "WindowEnd"   = tw."WindowEndTime"
+      FROM activity_time_windows_table tw
+      WHERE tw."ActivityType"    = $1
+        AND tw."EffectiveToDate" IS NULL
+        AND t."TaskType"         = tw."ActivityType"
+        AND t."Status"           = 'pending'
+        AND t."TaskDate"        >= $2::date
+    `, [activityType, fromDate]);
+
+    const count = result[0]?.affectedRows ?? 0;
+    logger.info('Synced pending task windows from activity_time_windows_table', {
+      activityType,
+      fromDate,
+      count,
+    });
+    return count;
+  } catch (error) {
+    logger.error('Error syncing pending task windows', {
+      activityType,
+      fromDate,
+      error: error.message,
+    });
     throw error;
   } finally {
     client.release();
@@ -586,5 +690,7 @@ export {
   getTasksNeedingReminder,
   upsertTaskAverage,
   incrementReminderCount,
-  getTasksPastAverageTime
+  getTasksPastAverageTime,
+  getPendingTaskForUser,
+  syncPendingTaskWindowsForActivityType,
 };

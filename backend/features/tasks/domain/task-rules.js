@@ -12,6 +12,7 @@
  */
 
 import { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
+import { getISTPartsFromDate } from './completion-learning.rules.js';
 
 /**
  * Determine if a task should be visible to user right now
@@ -26,8 +27,7 @@ import { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from 'date-
  * @returns {boolean} - True if task should be visible
  */
 function isTaskVisible(task, currentDateTime) {
-  const currentDate = format(currentDateTime, 'yyyy-MM-dd');
-  const currentTime = format(currentDateTime, 'HH:mm:ss');
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(currentDateTime);
   const taskDate = format(parseISO(task.task_date), 'yyyy-MM-dd');
   
   // Task must be for today
@@ -40,7 +40,7 @@ function isTaskVisible(task, currentDateTime) {
     return false;
   }
   
-  // Current time must be past window start
+  // Current time must be past window start (IST)
   if (currentTime < task.window_start) {
     return false;
   }
@@ -254,7 +254,7 @@ const VALID_SNOOZE_MINUTES = [15, 30, 60];
  * @returns {boolean}
  */
 function isWithinTaskWindow(task, currentDateTime) {
-  const currentTime = format(currentDateTime, 'HH:mm:ss');
+  const { time: currentTime } = getISTPartsFromDate(currentDateTime);
   return currentTime >= task.window_start && currentTime <= task.window_end;
 }
 

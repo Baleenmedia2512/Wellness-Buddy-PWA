@@ -25,6 +25,11 @@ import {
   getTasksPastAverageTime
 } from '../data/task-repo.js';
 import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
+import {
+  getISTPartsFromDate,
+  formatAverageTimeLabel,
+  buildPersonalisedReminderBody,
+} from './completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
 
@@ -34,9 +39,8 @@ import { sendPushNotification } from '../../../shared/services/pushNotificationS
  */
 async function checkAndCreateTasksForCurrentTime() {
   const now = new Date();
-  const currentTime = format(now, 'HH:mm');
-  const currentDate = format(now, 'yyyy-MM-dd');
-  
+  const { date: currentDate, timeHm: currentTime } = getISTPartsFromDate(now);
+
   logger.info('Running task creation check', { currentTime, currentDate });
   
   try {
@@ -79,7 +83,7 @@ async function checkAndCreateTasksForCurrentTime() {
  * Should run once daily at midnight
  */
 async function expirePreviousDayTasks() {
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const { date: today } = getISTPartsFromDate(new Date());
   
   logger.info('Running task expiration for previous days', { today });
   
@@ -188,13 +192,13 @@ function getNotificationBody(taskType) {
  * Should run every minute alongside checkAndCreateTasksForCurrentTime().
  */
 async function checkAndSendFollowUpReminders() {
-  const now         = new Date();
-  const currentDate = format(now, 'yyyy-MM-dd');
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
 
-  logger.info('Running follow-up reminder check', { currentDate });
+  logger.info('Running follow-up reminder check', { currentDate, currentTime });
 
   try {
-    const tasks = await getTasksNeedingReminder(now, currentDate);
+    const tasks = await getTasksNeedingReminder(currentDate, currentTime, now);
 
     logger.info(`Found ${tasks.length} tasks eligible for follow-up reminder`);
 
@@ -265,13 +269,13 @@ async function checkAndSendFollowUpReminders() {
  * Only fires when user_task_averages has a record (at least 1 past completion).
  */
 async function checkAndSendPersonalisedReminders() {
-  const now         = new Date();
-  const currentDate = format(now, 'yyyy-MM-dd');
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
 
-  logger.info('Running personalised reminder check', { currentDate });
+  logger.info('Running personalised reminder check', { currentDate, currentTime });
 
   try {
-    const tasks = await getTasksPastAverageTime(currentDate, now);
+    const tasks = await getTasksPastAverageTime(currentDate, currentTime, now);
 
     logger.info(`Found ${tasks.length} tasks past user average time`);
 
@@ -295,16 +299,11 @@ async function checkAndSendPersonalisedReminders() {
         continue;
       }
 
-      // Format the average time for the message: '06:30:00' → '6:30 AM'
-      const avgRaw  = task.average_completion_time || '';       // e.g. '06:30:00'
-      const [h, m]  = avgRaw.split(':').map(Number);
-      const period  = h >= 12 ? 'PM' : 'AM';
-      const dh      = h % 12 || 12;
-      const avgLabel = `${dh}:${String(m).padStart(2, '0')} ${period}`;
+      const avgLabel = formatAverageTimeLabel(task.average_completion_time || '');
 
       const notification = {
         title: `⏰ ${getNotificationTitle(task.task_type)}`,
-        body:  `You usually complete this around ${avgLabel} — it's still pending!`,
+        body:  buildPersonalisedReminderBody(task.task_type, avgLabel),
         data: {
           action:     'openTaskPanel',
           taskId:     task.task_id.toString(),
