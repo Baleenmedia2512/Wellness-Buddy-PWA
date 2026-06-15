@@ -4,7 +4,7 @@ import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
 import { verifyFirebaseIdToken } from './firebaseAdmin.js';
 import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
-import { MDT_OTP_EXPIRY_MINUTES } from './domain/mdt-phone.rules.js';
+import { MDT_OTP_EXPIRY_MINUTES, maskPhoneForLog, mdtApiKeyHint } from './domain/mdt-phone.rules.js';
 import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
 import { isMdtSmsConfigured, sendMdtSms } from './data/mdt-sms.client.js';
 
@@ -108,6 +108,11 @@ function otpExpiryIst(minutesFromNow) {
 }
 
 async function createAndDeliverOtp({ recipient, contactType }) {
+  logger.info('[sendOtp] creating OTP record', {
+    contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
+  });
+
   await repo.deactivateActiveOtps(recipient, contactType);
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -123,11 +128,25 @@ async function createAndDeliverOtp({ recipient, contactType }) {
     CreatedAt: getISTTimestamp(),
   });
 
+  logger.info('[sendOtp] OTP stored, dispatching', {
+    contactType,
+    expiryMinutes,
+    channel: contactType === 'phone' ? 'mdt-sms' : 'smtp',
+  });
+
   if (contactType === 'email') {
     await sendOtpEmail(recipient, otp);
+    logger.info('[sendOtp] email dispatched', { recipient });
   } else if (contactType === 'phone') {
     const message = buildMdtOtpMessage(otp);
+    logger.info('[sendOtp] calling MDT SMS', {
+      recipientHint: maskPhoneForLog(recipient),
+      messageLen: message.length,
+    });
     await sendMdtSms({ e164: recipient, message });
+    logger.info('[sendOtp] MDT SMS call completed', {
+      recipientHint: maskPhoneForLog(recipient),
+    });
   }
 }
 
@@ -196,7 +215,11 @@ export async function sendOtp({ recipient, contactType }) {
   }
 
   if (contactType === 'phone' && !isMdtSmsConfigured()) {
-    logger.warn('[sendOtp] MDT not configured on server', { route: 'send-otp' });
+    logger.warn('[sendOtp] MDT not configured on server', {
+      route: 'send-otp',
+      hasApiKey: Boolean(process.env.MDT_SMS_API_KEY),
+      hasSenderId: Boolean(process.env.MDT_SMS_SENDER_ID),
+    });
     return {
       httpStatus: 503,
       body: { success: false, message: 'SMS service not configured. Contact support.' },
@@ -205,8 +228,10 @@ export async function sendOtp({ recipient, contactType }) {
 
   logger.info('[sendOtp] starting delivery', {
     contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
     delivery: contactType === 'phone' ? 'mdt-sms' : 'smtp',
     mdtSenderId: contactType === 'phone' ? process.env.MDT_SMS_SENDER_ID : undefined,
+    mdtApiKeyHint: contactType === 'phone' ? mdtApiKeyHint(process.env.MDT_SMS_API_KEY) : undefined,
   });
 
   try {
@@ -237,7 +262,10 @@ export async function sendOtp({ recipient, contactType }) {
     };
   }
 
-  logger.info('[sendOtp] delivery succeeded', { contactType });
+  logger.info('[sendOtp] delivery succeeded', {
+    contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
+  });
   return { httpStatus: 200, body: { success: true } };
 }
 

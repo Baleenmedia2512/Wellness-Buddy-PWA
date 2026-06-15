@@ -1,5 +1,5 @@
 import logger from '../../../shared/lib/logger.js';
-import { formatMdtDialNumber } from '../domain/mdt-phone.rules.js';
+import { formatMdtDialNumber, mdtApiKeyHint } from '../domain/mdt-phone.rules.js';
 import { parseMdtSendResponse } from '../domain/mdt-api-response.rules.js';
 
 const DEFAULT_MDT_URL = 'http://app.mydreamstechnology.in/vb/apikey.php';
@@ -38,7 +38,10 @@ export async function sendMdtSms({ e164, message }) {
   logger.info('[mdt-sms] sending SMS request', {
     route: 'mdt-sms',
     senderId,
+    apiKeyHint: mdtApiKeyHint(apiKey),
+    numberHint: number.length >= 4 ? `***${number.slice(-4)}` : '****',
     numberLen: number.length,
+    messageLen: String(message || '').length,
     apiHost: (() => { try { return new URL(apiUrl).host; } catch { return 'unknown'; } })(),
   });
 
@@ -72,6 +75,10 @@ export async function sendMdtSms({ e164, message }) {
   // #endregion
 
   const parsed = parseMdtSendResponse(body);
-  logger.debug('[mdt-sms] SMS accepted by provider', { route: 'mdt-sms', senderId });
+  logger.info('[mdt-sms] SMS accepted by provider', {
+    route: 'mdt-sms',
+    senderId,
+    apiKeyHint: mdtApiKeyHint(apiKey),
+  });
   return parsed;
 }

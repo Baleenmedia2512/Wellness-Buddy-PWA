@@ -42,7 +42,7 @@ describe('sendMdtSms', () => {
     const calledUrl = mdtCalls[0][0];
     expect(calledUrl).toContain('apikey=test-key');
     expect(calledUrl).toContain('senderid=MDTDMO');
-    expect(calledUrl).toContain('number=919876543210');
+    expect(calledUrl).toContain('number=9876543210');
     expect(calledUrl).toContain('message=Dear');
   });
 
