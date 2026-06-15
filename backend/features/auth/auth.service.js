@@ -4,9 +4,9 @@ import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
 import { verifyFirebaseIdToken } from './firebaseAdmin.js';
 import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
-import { MDT_OTP_EXPIRY_MINUTES, maskPhoneForLog, mdtApiKeyHint } from './domain/mdt-phone.rules.js';
+import { MDT_OTP_EXPIRY_MINUTES, getMdtSmsConfigGaps, maskPhoneForLog, mdtApiKeyHint, mdtSenderIdHint, mdtTemplateIdHint } from './domain/mdt-phone.rules.js';
 import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
-import { isMdtSmsConfigured, sendMdtSms } from './data/mdt-sms.client.js';
+import { sendMdtSms } from './data/mdt-sms.client.js';
 
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
@@ -214,16 +214,31 @@ export async function sendOtp({ recipient, contactType }) {
     return { httpStatus: 200, body: { success: true } };
   }
 
-  if (contactType === 'phone' && !isMdtSmsConfigured()) {
-    logger.warn('[sendOtp] MDT not configured on server', {
-      route: 'send-otp',
-      hasApiKey: Boolean(process.env.MDT_SMS_API_KEY),
-      hasSenderId: Boolean(process.env.MDT_SMS_SENDER_ID),
-    });
-    return {
-      httpStatus: 503,
-      body: { success: false, message: 'SMS service not configured. Contact support.' },
-    };
+  if (contactType === 'phone') {
+    const configGaps = getMdtSmsConfigGaps();
+    if (configGaps.length > 0) {
+      logger.warn('[sendOtp] MDT not fully configured on server', {
+        route: 'send-otp',
+        missing: configGaps,
+        senderIdHint: mdtSenderIdHint(),
+        templateIdHint: mdtTemplateIdHint(),
+        apiKeyHint: mdtApiKeyHint(process.env.MDT_SMS_API_KEY),
+      });
+      // #region agent log
+      fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H4',location:'auth.service.js:sendOtp-config',message:'MDT config incomplete',data:{missing:configGaps,senderIdHint:mdtSenderIdHint(),templateIdHint:mdtTemplateIdHint(),apiKeyHint:mdtApiKeyHint(process.env.MDT_SMS_API_KEY)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return {
+        httpStatus: 503,
+        body: {
+          success: false,
+          message: `SMS service misconfigured: set ${configGaps.join(', ')} in backend env (local .env or Vercel).`,
+          missingConfig: configGaps,
+          senderIdHint: mdtSenderIdHint(),
+          templateIdHint: mdtTemplateIdHint(),
+          apiKeyHint: mdtApiKeyHint(process.env.MDT_SMS_API_KEY),
+        },
+      };
+    }
   }
 
   logger.info('[sendOtp] starting delivery', {
@@ -241,19 +256,19 @@ export async function sendOtp({ recipient, contactType }) {
     const mdtDetail = err.message?.startsWith('MDT SMS rejected:')
       ? err.message.replace('MDT SMS rejected: ', '')
       : '';
-    const senderIdRaw = process.env.MDT_SMS_SENDER_ID || '';
-    const senderIdHint = senderIdRaw.length >= 4
-      ? `${senderIdRaw.slice(0, 2)}***${senderIdRaw.slice(-2)}`
-      : (senderIdRaw ? 'set-but-short' : 'missing');
-    const templateIdRaw = process.env.MDT_SMS_TEMPLATE_ID?.trim() || '';
-    const templateIdHint = templateIdRaw
-      ? `***${templateIdRaw.slice(-4)}`
-      : 'not-set';
+    const senderIdHint = mdtSenderIdHint();
+    const templateIdHint = mdtTemplateIdHint();
+    const apiKeyHint = mdtApiKeyHint(process.env.MDT_SMS_API_KEY);
     // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200),senderIdHint,templateIdHint,hasApiKey:Boolean(process.env.MDT_SMS_API_KEY)},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200),senderIdHint,templateIdHint,apiKeyHint},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
+    const isInvalidSender = /invalid senderid/i.test(mdtDetail) || mdtDetail.includes('code 003');
     const userMessage = mdtDetail
-      ? `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
+      ? (
+        isInvalidSender
+          ? `SMS could not be sent: ${mdtDetail}. Ensure MDT_SMS_API_KEY, MDT_SMS_SENDER_ID, and MDT_SMS_TEMPLATE_ID all belong to the same Baleen/MDT account.`
+          : `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
+      )
       : 'Failed to send OTP. Please try again.';
     logger.warn('[sendOtp] returning 502 to client', {
       contactType,
@@ -261,6 +276,7 @@ export async function sendOtp({ recipient, contactType }) {
       providerError: mdtDetail || err.message?.slice(0, 120),
       senderIdHint,
       templateIdHint,
+      apiKeyHint,
     });
     return {
       httpStatus: 502,
@@ -271,6 +287,7 @@ export async function sendOtp({ recipient, contactType }) {
           providerError: mdtDetail,
           senderIdHint,
           templateIdHint,
+          apiKeyHint,
         } : {}),
       },
     };

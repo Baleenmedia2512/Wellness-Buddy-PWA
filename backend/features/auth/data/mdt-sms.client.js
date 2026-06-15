@@ -1,11 +1,11 @@
 import logger from '../../../shared/lib/logger.js';
-import { formatMdtDialNumber, mdtApiKeyHint } from '../domain/mdt-phone.rules.js';
+import { formatMdtDialNumber, getMdtSmsConfigGaps, mdtApiKeyHint } from '../domain/mdt-phone.rules.js';
 import { parseMdtSendResponse } from '../domain/mdt-api-response.rules.js';
 
 const DEFAULT_MDT_URL = 'http://app.mydreamstechnology.in/vb/apikey.php';
 
 export function isMdtSmsConfigured() {
-  return Boolean(process.env.MDT_SMS_API_KEY && process.env.MDT_SMS_SENDER_ID);
+  return getMdtSmsConfigGaps().length === 0;
 }
 
 /**

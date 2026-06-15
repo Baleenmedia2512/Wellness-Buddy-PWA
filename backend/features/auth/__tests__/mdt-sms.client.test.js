@@ -4,7 +4,8 @@ const originalFetch = global.fetch;
 
 beforeEach(() => {
   process.env.MDT_SMS_API_KEY = 'test-key';
-  process.env.MDT_SMS_SENDER_ID = 'MDTDMO';
+  process.env.MDT_SMS_SENDER_ID = 'BALEEN';
+  process.env.MDT_SMS_TEMPLATE_ID = '1234567890123456789012345';
   process.env.MDT_SMS_API_URL = 'http://example.test/send';
 });
 
@@ -19,6 +20,11 @@ afterEach(() => {
 describe('isMdtSmsConfigured', () => {
   it('returns true when key and sender are set', () => {
     expect(isMdtSmsConfigured()).toBe(true);
+  });
+
+  it('returns false when template id missing', () => {
+    delete process.env.MDT_SMS_TEMPLATE_ID;
+    expect(isMdtSmsConfigured()).toBe(false);
   });
 
   it('returns false when key missing', () => {
@@ -42,7 +48,7 @@ describe('sendMdtSms', () => {
     expect(mdtCalls).toHaveLength(1);
     const calledUrl = mdtCalls[0][0];
     expect(calledUrl).toContain('apikey=test-key');
-    expect(calledUrl).toContain('senderid=MDTDMO');
+    expect(calledUrl).toContain('senderid=BALEEN');
     expect(calledUrl).toContain('number=9876543210');
     expect(calledUrl).toContain('message=Dear');
     expect(calledUrl).toContain('format=json');

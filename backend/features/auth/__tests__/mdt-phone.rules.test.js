@@ -1,4 +1,4 @@
-import { formatMdtDialNumber, MDT_OTP_EXPIRY_MINUTES, maskPhoneForLog, mdtApiKeyHint } from '../domain/mdt-phone.rules.js';
+import { formatMdtDialNumber, getMdtSmsConfigGaps, MDT_OTP_EXPIRY_MINUTES, maskPhoneForLog, mdtApiKeyHint } from '../domain/mdt-phone.rules.js';
 import { buildMdtOtpMessage } from '../domain/otp-message.rules.js';
 
 describe('formatMdtDialNumber', () => {
@@ -32,6 +32,30 @@ describe('buildMdtOtpMessage', () => {
 describe('MDT_OTP_EXPIRY_MINUTES', () => {
   it('is 10 to match Baleen DLT template', () => {
     expect(MDT_OTP_EXPIRY_MINUTES).toBe(10);
+  });
+});
+
+describe('getMdtSmsConfigGaps', () => {
+  const saved = { ...process.env };
+
+  afterEach(() => {
+    process.env.MDT_SMS_API_KEY = saved.MDT_SMS_API_KEY;
+    process.env.MDT_SMS_SENDER_ID = saved.MDT_SMS_SENDER_ID;
+    process.env.MDT_SMS_TEMPLATE_ID = saved.MDT_SMS_TEMPLATE_ID;
+  });
+
+  it('flags missing DLT template ID', () => {
+    process.env.MDT_SMS_API_KEY = 'test-key';
+    process.env.MDT_SMS_SENDER_ID = 'BALEEN';
+    delete process.env.MDT_SMS_TEMPLATE_ID;
+    expect(getMdtSmsConfigGaps()).toEqual(['MDT_SMS_TEMPLATE_ID']);
+  });
+
+  it('returns empty when api key, sender, and template are set', () => {
+    process.env.MDT_SMS_API_KEY = 'test-key';
+    process.env.MDT_SMS_SENDER_ID = 'BALEEN';
+    process.env.MDT_SMS_TEMPLATE_ID = '1234567890123456789012345';
+    expect(getMdtSmsConfigGaps()).toEqual([]);
   });
 });
 

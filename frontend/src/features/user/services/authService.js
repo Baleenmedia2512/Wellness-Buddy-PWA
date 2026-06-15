@@ -22,6 +22,8 @@ const post = async (path, body) => {
     providerError: data?.providerError || '',
     senderIdHint: data?.senderIdHint || '',
     templateIdHint: data?.templateIdHint || '',
+    apiKeyHint: data?.apiKeyHint || '',
+    missingConfig: data?.missingConfig || [],
     contactType: body?.contactType,
   };
   debugLog('[OTP/SMS] send-otp response', logPayload);
@@ -30,7 +32,7 @@ const post = async (path, body) => {
     console.warn('[OTP/SMS] send-otp issue — check backend/MDT', logPayload);
   }
   // #region agent log
-  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H2',location:'authService.js:post',message:'send-otp response',data:{apiBase:API,path,httpStatus:res.status,success:data?.success,hasOtpField,contactType:body?.contactType,providerError:data?.providerError||'',senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||''},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H2',location:'authService.js:post',message:'send-otp response',data:{apiBase:API,path,httpStatus:res.status,success:data?.success,hasOtpField,contactType:body?.contactType,providerError:data?.providerError||'',senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||'',apiKeyHint:data?.apiKeyHint||'',missingConfig:data?.missingConfig||[]},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   return { ...data, _httpStatus: res.status };
 };

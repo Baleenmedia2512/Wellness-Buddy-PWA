@@ -66,6 +66,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           hasOtpInResponse: Object.prototype.hasOwnProperty.call(data || {}, 'otp'),
           message: data?.message || '',
           providerError: data?.providerError || '',
+          missingConfig: data?.missingConfig || [],
         };
         debugLog('[OTP/SMS] phone sendOtp result', phoneLog);
         if (!data?.success || phoneLog.hasOtpInResponse) {
@@ -73,7 +74,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
         }
         // #region agent log
-        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||'',providerError:phoneLog.providerError,senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||''},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||'',providerError:phoneLog.providerError,senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||'',apiKeyHint:data?.apiKeyHint||'',missingConfig:data?.missingConfig||[]},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (data.success) {
           phoneRecipientRef.current = e164;
@@ -81,7 +82,12 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           setOtpSent(true);
           return true;
         }
-        setErrorMessage(data.message || 'Failed to send OTP.');
+        const missing = Array.isArray(data?.missingConfig) ? data.missingConfig.filter(Boolean) : [];
+        setErrorMessage(
+          missing.length > 0
+            ? `${data.message || 'SMS not configured.'} Missing: ${missing.join(', ')}.`
+            : (data.message || 'Failed to send OTP.'),
+        );
         return false;
       }
       setErrorMessage('Enter an email address or phone number.');
