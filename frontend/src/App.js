@@ -395,8 +395,21 @@ function WellnessValleyApp() {
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
 
+  // Refs for analysis results - used by resume listener to check if results are visible
+  // without closure staleness issues (the effect is mount-only with [] deps)
+  const nutritionDataRef = useRef(null);
+  const weightResultRef = useRef(null);
+  const educationResultRef = useRef(null);
+  const watchResultRef = useRef(null);
+
   // Hook into global nutrition refresh context (replaces old nutritionRefreshKey state)
-  const { refreshKey: nutritionRefreshKey, triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
+  const { refreshKey: nutritionRefreshKey, triggerRefresh: triggerNutritionRefresh} = useNutritionRefresh();
+
+  // Keep refs in sync with state for resume listener (avoids stale closures)
+  useEffect(() => { nutritionDataRef.current = nutritionData; }, [nutritionData]);
+  useEffect(() => { weightResultRef.current = weightResult; }, [weightResult]);
+  useEffect(() => { educationResultRef.current = educationResult; }, [educationResult]);
+  useEffect(() => { watchResultRef.current = watchResult; }, [watchResult]);
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -791,7 +804,15 @@ function WellnessValleyApp() {
       if (!_homeScreenActiveRef.current) return; // not on home screen
       if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
       
+      // NEW GUARD: Don't open camera if analysis results are visible
+      // This prevents camera from opening after user returns from sharing
+      if (nutritionDataRef.current || weightResultRef.current || educationResultRef.current || watchResultRef.current) {
+        debugLog("🚫 [Resume] Skipping camera auto-open: analysis results visible");
+        return;
+      }
+      
       // All guards passed - open camera
+      debugLog("📸 [Resume] Opening camera after app resume");
       fileInputRef.current.openCamera();
     }).then((h) => {
       if (cancelled) {
@@ -7007,7 +7028,13 @@ function WellnessValleyApp() {
                 {/* Share Button at Bottom - Only show if there's an image */}
                 {imagePreview && (
                   <button
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      // Prevent event bubbling to avoid triggering parent click handlers
+                      if (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                      
                       if (isWeightSharing) return;
                       setIsWeightSharing(true);
                       // Yield so React paints the spinner before any heavy work.
