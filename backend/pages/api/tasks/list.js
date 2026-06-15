@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Debug-Session-Id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -68,14 +68,7 @@ export default async function handler(req, res) {
     
     // Fetch tasks
     const tasks = await getTasksByUserAndDate(userId, targetDate, status);
-
-    // #region agent log
-    const debugSession = req.headers['x-debug-session-id'];
-    if (debugSession === '4c8196') {
-      fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c8196'},body:JSON.stringify({sessionId:'4c8196',location:'list.js:afterQuery',message:'tasks fetched from DB',data:{userId,targetDate,taskCount:Array.isArray(tasks)?tasks.length:'not-array',taskType:typeof tasks,isArray:Array.isArray(tasks)},timestamp:Date.now(),hypothesisId:'H4-H6'})}).catch(()=>{});
-    }
-    // #endregion
-
+    
     // For pending tasks, filter by visibility (time window started)
     let filteredTasks = tasks;
     if (!status || status === 'pending') {
@@ -108,7 +101,6 @@ export default async function handler(req, res) {
     
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    const debugSession = req.headers['x-debug-session-id'];
     logger.error('Error listing tasks', {
       requestId,
       route: '/api/tasks/list',
@@ -116,19 +108,12 @@ export default async function handler(req, res) {
       error: error.message,
       stack: error.stack
     });
-
-    // #region agent log
-    if (debugSession === '4c8196') {
-      fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c8196'},body:JSON.stringify({sessionId:'4c8196',location:'list.js:catch',message:'tasks/list handler error',data:{errorMessage:error.message,errorCode:error.code,durationMs},timestamp:Date.now(),hypothesisId:'H1-H3-H6'})}).catch(()=>{});
-    }
-    // #endregion
-
+    
     return res.status(500).json({
       ok: false,
       error: {
         code: 'INTERNAL_ERROR',
         message: process.env.NODE_ENV === 'production' ? 'Failed to fetch tasks' : error.message,
-        ...(debugSession === '4c8196' && { debugError: error.message, debugCode: error.code }),
         ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
       }
     });

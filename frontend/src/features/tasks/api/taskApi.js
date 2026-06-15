@@ -26,9 +26,6 @@ export async function getTasks(userId, status = null) {
 
     const response = await fetch(`${apiBaseUrl}/api/tasks/list?${params}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
     });
 
     const data = await response.json();

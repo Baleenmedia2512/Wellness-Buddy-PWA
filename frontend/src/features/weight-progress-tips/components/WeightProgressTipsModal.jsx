@@ -199,13 +199,13 @@ export function WeightProgressTipsModal({
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-2xl flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-orange-50 border-2 border-orange-300 text-orange-800 hover:bg-orange-100 transition"
+            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-50 border-2 border-green-300 text-orange-800 hover:bg-orange-100 transition"
           >
             OK
           </button>
           <button
             onClick={handleNoOpenGallery}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition"
+            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-500 text-white hover:from-orange-600 hover:to-red-600 transition"
           >
             NO
           </button>

@@ -77,7 +77,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
           {/* Date + Location */}
           <div className="grid grid-cols-2 gap-3">
             <InputField label="Date"     value={vm.form.recordedDate}  onChange={(v) => vm.setField('recordedDate', v)}  type="date" />
-            <InputField label="Location" value={vm.form.locationName}  onChange={(v) => vm.setField('locationName', v)}  placeholder="City / Area" />
+            {/* <InputField label="Location" value={vm.form.locationName}  onChange={(v) => vm.setField('locationName', v)}  placeholder="City / Area" /> */}
           </div>
 
           {/* Name */}

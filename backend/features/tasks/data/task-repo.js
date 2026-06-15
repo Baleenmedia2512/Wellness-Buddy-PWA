@@ -18,8 +18,9 @@ import logger from '../../../shared/lib/logger.js';
 const dbPool = () => getPool().getConnection();
 
 /**
- * Get all tasks for a user on a specific date with status filter
- * 
+ * Get all tasks for a user on a specific date with status filter.
+ * Uses Supabase REST (same transport as /api/admin/time-windows).
+ *
  * @param {string} userId - User ID
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {string} status - Optional status filter ('pending', 'completed', 'missed')
@@ -98,9 +99,6 @@ async function getTasksByUserAndDate(userId, date, status = null) {
     return sortTasksByWindowAndPriority(tasks);
   } catch (error) {
     logger.error('Error fetching tasks', { userId, date, status, error: error.message });
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c8196'},body:JSON.stringify({sessionId:'4c8196',location:'task-repo.js:getTasksByUserAndDate',message:'DB query failed',data:{userId,date,status,errorMessage:error.message,errorCode:error.code},timestamp:Date.now(),hypothesisId:'H1-H2-H3',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
     throw error;
   }
 }
