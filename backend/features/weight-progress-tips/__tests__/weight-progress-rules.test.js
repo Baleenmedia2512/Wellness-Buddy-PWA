@@ -12,6 +12,8 @@ import {
   computeProteinTarget,
   computeFatTarget,
   computeCarbsTarget,
+  computeMacroTargets,
+  computeDisplayCalorieTarget,
   STEPS_TARGET,
   SLEEP_TARGET_HRS,
 } from '../domain/weight-progress-rules.js';
@@ -178,6 +180,29 @@ describe('computeCarbsTarget', () => {
 
   it('returns 0 when macro calories exceed calorie target', () => {
     expect(computeCarbsTarget(1300, 'loss', 109)).toBe(0);
+  });
+});
+
+describe('computeMacroTargets', () => {
+  it('matches nutrition carousel: protein 1.5g/kg, fat 0.75g/kg, carbs from BMR', () => {
+    const r = computeMacroTargets(2000, 70);
+    expect(r.proteinTarget).toBe(105);
+    expect(r.fatTarget).toBe(53);
+    expect(r.carbsTarget).toBe(276);
+  });
+
+  it('returns zeros for invalid weight', () => {
+    expect(computeMacroTargets(2000, null)).toEqual({ proteinTarget: 0, fatTarget: 0, carbsTarget: 0 });
+  });
+});
+
+describe('computeDisplayCalorieTarget', () => {
+  it('returns rounded BMR', () => {
+    expect(computeDisplayCalorieTarget(1759.4)).toBe(1759);
+  });
+
+  it('returns 0 when BMR unavailable', () => {
+    expect(computeDisplayCalorieTarget(0)).toBe(0);
   });
 });
 

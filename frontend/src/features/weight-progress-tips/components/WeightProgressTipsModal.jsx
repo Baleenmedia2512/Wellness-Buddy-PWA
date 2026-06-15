@@ -6,7 +6,7 @@
  *
  * Sections:
  *   1. Personalised header — goal, weight change, explanation
- *   2. Yesterday's analysis — nutrition, water, sleep (data-driven)
+ *   2. Yesterday's analysis — calories, protein, carbs, fat, water, sleep
  *   3. User accountability — "Did you follow your plan?" YES / NO
  *   4. YES path — proof-type selector + image upload
  *   5. Footer — Cancel / Submit (disabled until validation passes)

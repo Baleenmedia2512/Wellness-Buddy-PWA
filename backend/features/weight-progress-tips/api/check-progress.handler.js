@@ -9,8 +9,8 @@ import {
   calculateWaterTarget,
   computeCalorieTarget,
   computeProteinTarget,
-  computeFatTarget,
-  computeCarbsTarget,
+  computeMacroTargets,
+  computeDisplayCalorieTarget,
   STEPS_TARGET,
   SLEEP_TARGET_HRS,
 } from '../domain/weight-progress-rules.js';
@@ -72,10 +72,10 @@ export async function checkProgressHandler(query) {
   const currentWeightValue = parseFloat(currentWeight.Weight);
   const waterTarget = calculateWaterTarget(currentWeightValue);
   const calorieTarget = computeCalorieTarget(bmr, goalMode);
-  const proteinTarget = computeProteinTarget(currentWeightValue);
-  const fatTarget = computeFatTarget(currentWeightValue);
-  const carbsTarget = computeCarbsTarget(bmr, goalMode, currentWeightValue);
-  console.log('🎯 [Step 3] targets — calories:', calorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
+  const displayCalorieTarget = computeDisplayCalorieTarget(bmr);
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(bmr, currentWeightValue);
+  const proteinTargetForTips = computeProteinTarget(currentWeightValue);
+  console.log('🎯 [Step 3] targets — calories:', displayCalorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
 
   // If this is the first weight upload, show welcome tips without reverse-progress check.
   if (weights.length === 1) {
@@ -115,7 +115,7 @@ export async function checkProgressHandler(query) {
           water: { yesterday: 0, target: waterTarget },
           activity: null,
           targets: {
-            calories: calorieTarget,
+            calories: displayCalorieTarget,
             protein: proteinTarget,
             carbs: carbsTarget,
             fat: fatTarget,
@@ -193,7 +193,7 @@ export async function checkProgressHandler(query) {
     waterYesterday,
     waterTarget,
     calorieTarget,
-    proteinTarget,
+    proteinTarget: proteinTargetForTips,
     goalMode,
     weightChange: reverseCheck.change,
     activityYesterday,
@@ -217,7 +217,7 @@ export async function checkProgressHandler(query) {
     },
     activity: activityYesterday,
     targets: {
-      calories: calorieTarget,
+      calories: displayCalorieTarget,
       protein: proteinTarget,
       carbs: carbsTarget,
       fat: fatTarget,

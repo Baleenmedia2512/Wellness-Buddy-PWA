@@ -99,6 +99,46 @@ export const STEPS_TARGET = 8000;
 /** Recommended sleep hours shown in yesterday's analysis. */
 export const SLEEP_TARGET_HRS = 8;
 
+const CALORIES_PER_PROTEIN_G = 4;
+const CALORIES_PER_CARB_G = 4;
+const CALORIES_PER_FAT_G = 9;
+
+/**
+ * Macro targets aligned with the nutrition carousel (carouselRules.computeMacroTargets).
+ * Protein = weight × 1.5 g, fat = weight × 0.75 g, carbs derived from BMR budget.
+ *
+ * @param {number|null} bmr
+ * @param {number|null} weightKg
+ * @returns {{ proteinTarget: number, fatTarget: number, carbsTarget: number }}
+ */
+export function computeMacroTargets(bmr, weightKg) {
+  const w = parseFloat(weightKg);
+  if (!Number.isFinite(w) || w <= 0) {
+    return { proteinTarget: 0, fatTarget: 0, carbsTarget: 0 };
+  }
+  const proteinTarget = Math.round(w * 1.5);
+  const fatTarget = Math.round(w * 0.75);
+  const b = parseFloat(bmr);
+  const effectiveCals = Number.isFinite(b) && b > 0 ? Math.round(b) : 1500;
+  const carbsTarget = Math.max(
+    0,
+    Math.round(
+      (effectiveCals - proteinTarget * CALORIES_PER_PROTEIN_G - fatTarget * CALORIES_PER_FAT_G)
+      / CALORIES_PER_CARB_G,
+    ),
+  );
+  return { proteinTarget, fatTarget, carbsTarget };
+}
+
+/**
+ * BMR used as the calorie target in yesterday's analysis (matches Calories carousel card).
+ */
+export function computeDisplayCalorieTarget(bmr) {
+  const b = parseFloat(bmr);
+  if (!Number.isFinite(b) || b <= 0) return 0;
+  return Math.round(b);
+}
+
 /**
  * Generate actionable, yesterday-focused tips.
  *
