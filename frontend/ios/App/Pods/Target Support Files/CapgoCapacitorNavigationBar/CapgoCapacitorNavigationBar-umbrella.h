@@ -10,7 +10,6 @@
 #endif
 #endif
 
-#import "NavigationBarPlugin.h"
 
 FOUNDATION_EXPORT double CapgoCapacitorNavigationBarVersionNumber;
 FOUNDATION_EXPORT const unsigned char CapgoCapacitorNavigationBarVersionString[];
