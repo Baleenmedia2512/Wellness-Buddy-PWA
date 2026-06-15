@@ -14,20 +14,28 @@ import { precaptureShareImage, shareImageWithLink, shareTextViaWhatsApp } from '
 import { buildShareText } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
+const NEEDS_IMAGE_CAPTURE = Capacitor.isNativePlatform();
+const CAPTURE_OPTS = { scale: 1.25, quality: 0.8, immediate: true };
+
+/** Wait two animation frames so the off-screen card is painted before capture. */
+const waitForPaint = () => new Promise((resolve) => {
+  requestAnimationFrame(() => requestAnimationFrame(resolve));
+});
+
 /**
  * @param {{ isOpen, onClose, card, shareUrl, preCapCard }} props
  */
 const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) => {
-  const cardRef      = useRef(null);
-  const preCapRef    = useRef(null);
-  const firedRef     = useRef(false);
-  const capturingRef = useRef(false);
+  const cardRef           = useRef(null);
+  const preCapRef         = useRef(null);
+  const capturePromiseRef = useRef(null);
+  const firedRef          = useRef(false);
 
   const doShare = useCallback(async () => {
     const textWithUrl    = buildShareText(shareUrl, card?.name);  // for web WhatsApp (URL in text)
     const textWithoutUrl = buildShareText(null,     card?.name);  // for native (url passed separately)
     try {
-      if (Capacitor.isNativePlatform() && preCapRef.current) {
+      if (NEEDS_IMAGE_CAPTURE && preCapRef.current) {
         await shareImageWithLink(preCapRef.current, shareUrl, {
           title:    `${card?.name || 'Body'} Parameters`,
           text:     textWithoutUrl,
@@ -45,58 +53,50 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
   }, [shareUrl, card, onClose]);
 
   // ⚡ Phase 1 — pre-capture starts as soon as preCapCard arrives
-  // (runs IN PARALLEL with the API save)
+  // (runs IN PARALLEL with the API save; skipped on web — text-only share)
   useEffect(() => {
-    if (!preCapCard || capturingRef.current) return;
-    capturingRef.current = true;
-    preCapRef.current = null;
+    if (!preCapCard || !NEEDS_IMAGE_CAPTURE) return;
 
-    const run = async () => {
-      // Small tick so the hidden card renders into the DOM first.
-      await new Promise((r) => setTimeout(r, 80));
-      if (!cardRef.current) return;
-      const dataUrl = await precaptureShareImage(cardRef.current, { scale: 1.5, quality: 0.85 });
+    preCapRef.current = null;
+    capturePromiseRef.current = (async () => {
+      await waitForPaint();
+      if (!cardRef.current) return null;
+      const dataUrl = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
       preCapRef.current = dataUrl;
       debugLog('⚡ [BodyParamsShare] Pre-capture ready');
-    };
-    run();
+      return dataUrl;
+    })();
   }, [preCapCard]);
 
   // ⚡ Phase 2 — once isOpen + shareUrl arrive, share immediately
-  // (image is likely already captured from Phase 1)
   useEffect(() => {
     if (!isOpen || !card || !shareUrl) return;
     firedRef.current = false;
     let cancelled = false;
 
     const run = async () => {
-      // If pre-capture not done yet, wait briefly for it (max 1.5s)
-      if (!preCapRef.current) {
-        const deadline = Date.now() + 1500;
-        while (!preCapRef.current && Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 50));
+      if (NEEDS_IMAGE_CAPTURE) {
+        if (!preCapRef.current && capturePromiseRef.current) {
+          preCapRef.current = await capturePromiseRef.current;
+        }
+        if (!preCapRef.current && cardRef.current) {
+          preCapRef.current = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
         }
       }
+
       if (cancelled || firedRef.current) return;
       firedRef.current = true;
-
-      // Fallback: if pre-capture failed, try live capture now
-      if (!preCapRef.current && cardRef.current) {
-        preCapRef.current = await precaptureShareImage(cardRef.current, { scale: 1.5, quality: 0.85 });
-      }
-
       await doShare();
     };
 
     run();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, card, shareUrl]);
+  }, [isOpen, card, shareUrl, doShare]);
 
-  // Reset capturing flag when closed
+  // Reset capture state when closed
   useEffect(() => {
     if (!isOpen && !preCapCard) {
-      capturingRef.current = false;
+      capturePromiseRef.current = null;
       preCapRef.current = null;
     }
   }, [isOpen, preCapCard]);
@@ -104,7 +104,7 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
   const displayCard = preCapCard || card;
   if (!displayCard) return null;
 
-  // Off-screen card — needed for html2canvas only, not visible to user.
+  // Off-screen card — needed for html2canvas on native only, not visible to user.
   return (
     <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
       <BodyParamsCardPreview ref={cardRef} card={displayCard} />
@@ -113,4 +113,3 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
 };
 
 export default BodyParamsShareSheet;
-

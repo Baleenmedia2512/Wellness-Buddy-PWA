@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
 import BodyParamsForm from "../features/body-parameters-card/components/BodyParamsForm.jsx";
 import BodyParamsShareSheet from "../features/body-parameters-card/components/BodyParamsShareSheet.jsx";
+import { preloadBodyParamsShareAssets } from "../features/body-parameters-card/domain/preload-share-assets.js";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
@@ -41,6 +42,12 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null); // { card, shareUrl }
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null); // form data for early pre-capture
+
+  // Warm share-card images while the user fills the form so capture is faster on save.
+  useEffect(() => {
+    if (!isBodyParamsFormOpen) return;
+    preloadBodyParamsShareAssets();
+  }, [isBodyParamsFormOpen]);
   
   // Mock assessment data - replace with API call
   const [assessmentData, setAssessmentData] = useState({});

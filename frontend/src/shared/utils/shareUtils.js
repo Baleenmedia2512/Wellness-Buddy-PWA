@@ -25,7 +25,7 @@ const isNativePlatform = () => {
  * with user interaction.
  */
 export const precaptureShareImage = (element, options = {}) => {
-  const { scale = 1.5, quality = 0.85 } = options;
+  const { scale = 1.5, quality = 0.85, immediate = false } = options;
 
   return new Promise((resolve) => {
     if (!element) {
@@ -42,7 +42,7 @@ export const precaptureShareImage = (element, options = {}) => {
           useCORS: true,
           allowTaint: false,
           logging: false,
-          imageTimeout: 5000,
+          imageTimeout: immediate ? 1500 : 5000,
           removeContainer: true,
           scrollY: -window.scrollY,
           scrollX: -window.scrollX,
@@ -59,7 +59,13 @@ export const precaptureShareImage = (element, options = {}) => {
       }
     };
 
-    // Schedule on idle so it never competes with rendering or user input.
+    // User-initiated share flows pass immediate:true so capture starts right away.
+    if (immediate) {
+      run();
+      return;
+    }
+
+    // Background warm-up uses idle time so it never competes with user input.
     if (typeof window.requestIdleCallback === "function") {
       window.requestIdleCallback(run, { timeout: 2000 });
     } else {
