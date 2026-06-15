@@ -16,7 +16,8 @@ const LoginEmailEntry = ({
   countryDial, setCountryDial,
 }) => {
   const channel = detectContactType(email);
-  const isPhone = channel === 'phone';
+  // const isPhone = channel === 'phone'; // phone number disabled
+  const isPhone = false;
 
   return (
     <div className="space-y-4">
@@ -34,7 +35,7 @@ const LoginEmailEntry = ({
       )}
       <div>
         <label htmlFor="recipient" className="block text-sm font-medium text-gray-700 mb-2">
-          Email or Phone Number
+          Email
         </label>
         <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
           {isPhone && (
@@ -60,7 +61,7 @@ const LoginEmailEntry = ({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            placeholder="Enter your email or phone"
+            placeholder="Enter your email"
             className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
           />
         </div>
