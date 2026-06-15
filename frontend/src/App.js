@@ -98,7 +98,7 @@ import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
 import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
 import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
-import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
+import { checkExactAlarmPermission, openExactAlarmSettings, initReminders } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -1998,6 +1998,14 @@ function WellnessValleyApp() {
           // and the camera opening for Google/Firebase returning users.
           setUser(user);
           setAuthLoading(false);
+
+          // Initialise personalised native reminders with the user's learned
+          // average times. Fire-and-forget — never blocks the login flow.
+          if (user.id && Capacitor.isNativePlatform()) {
+            initReminders(user.id).catch((err) => {
+              debugLog('[App] initReminders failed (non-critical):', err?.message);
+            });
+          }
 
           // Background validation — fire and forget. All inner awaits only
           // mutate React state (setShow*, setIsUserActive, etc.) — safe to
