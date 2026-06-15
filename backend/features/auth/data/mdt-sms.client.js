@@ -32,13 +32,21 @@ export async function sendMdtSms({ e164, message }) {
     senderid: senderId,
     number,
     message: String(message || ''),
+    format: 'json',
   });
+
+  const templateId = process.env.MDT_SMS_TEMPLATE_ID?.trim();
+  if (templateId) {
+    params.set('templateid', templateId);
+  }
 
   const url = `${apiUrl}?${params.toString()}`;
   logger.info('[mdt-sms] sending SMS request', {
     route: 'mdt-sms',
     senderId,
     apiKeyHint: mdtApiKeyHint(apiKey),
+    hasTemplateId: Boolean(templateId),
+    templateIdHint: templateId ? `***${templateId.slice(-4)}` : 'not-set',
     numberHint: number.length >= 4 ? `***${number.slice(-4)}` : '****',
     numberLen: number.length,
     messageLen: String(message || '').length,

@@ -1,7 +1,10 @@
 /**
  * Parse My Dreams Technology SMS API responses (pure — no I/O).
- * MDT often returns HTTP 200 with JSON: { status: "false", description: "..." }.
+ * Official success: status "Success", code "011" (per MDT developer docs).
+ * Failures: status "false" or error codes 001–010 (and provider-specific e.g. 003 invalid sender).
  */
+
+const MDT_SUCCESS_CODE = '011';
 
 export function parseMdtSendResponse(rawBody) {
   const trimmed = String(rawBody || '').trim();
@@ -12,19 +15,27 @@ export function parseMdtSendResponse(rawBody) {
   try {
     const parsed = JSON.parse(trimmed);
     const status = String(parsed.status ?? parsed.Status ?? '').toLowerCase();
-    if (status === 'false' || status === '0' || status === 'failed' || status === 'error') {
-      const detail = parsed.description || parsed.message || parsed.error || trimmed;
-      const code = parsed.code != null && parsed.code !== '' ? ` (code ${parsed.code})` : '';
-      throw new Error(`MDT SMS rejected: ${detail}${code}`);
-    }
-    if (status === 'true' || status === 'success' || status === '1') {
+    const code = String(parsed.code ?? '').trim();
+    const detail = parsed.description || parsed.message || parsed.error || trimmed;
+
+    if (status === 'success' || code === MDT_SUCCESS_CODE) {
       return parsed;
     }
-    // Unknown JSON shape — treat non-empty body without explicit failure as OK.
+
+    if (
+      status === 'false'
+      || status === '0'
+      || status === 'failed'
+      || status === 'error'
+      || (code && code !== MDT_SUCCESS_CODE)
+    ) {
+      const codeSuffix = code ? ` (code ${code})` : '';
+      throw new Error(`MDT SMS rejected: ${detail}${codeSuffix}`);
+    }
+
     return parsed;
   } catch (err) {
     if (err.message.startsWith('MDT SMS')) throw err;
-    // Plain-text success responses from legacy gateways.
     const lower = trimmed.toLowerCase();
     if (lower.includes('invalid') || lower.includes('error') || lower.includes('fail')) {
       throw new Error(`MDT SMS rejected: ${trimmed.slice(0, 200)}`);

@@ -13,6 +13,7 @@ afterEach(() => {
   delete process.env.MDT_SMS_API_KEY;
   delete process.env.MDT_SMS_SENDER_ID;
   delete process.env.MDT_SMS_API_URL;
+  delete process.env.MDT_SMS_TEMPLATE_ID;
 });
 
 describe('isMdtSmsConfigured', () => {
@@ -44,6 +45,22 @@ describe('sendMdtSms', () => {
     expect(calledUrl).toContain('senderid=MDTDMO');
     expect(calledUrl).toContain('number=9876543210');
     expect(calledUrl).toContain('message=Dear');
+    expect(calledUrl).toContain('format=json');
+  });
+
+  it('includes templateid when MDT_SMS_TEMPLATE_ID is set', async () => {
+    process.env.MDT_SMS_TEMPLATE_ID = '1234567890123456789012345';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '{"status":"Success","code":"011","description":"Message submitted successfully"}',
+    });
+
+    await sendMdtSms({ e164: '+919876543210', message: 'Dear 123456, test' });
+
+    const mdtCalls = global.fetch.mock.calls.filter(([url]) =>
+      String(url).includes('example.test/send'),
+    );
+    expect(mdtCalls[0][0]).toContain('templateid=1234567890123456789012345');
   });
 
   it('throws when MDT JSON says status false', async () => {
