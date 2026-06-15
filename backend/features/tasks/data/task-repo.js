@@ -10,6 +10,7 @@
  */
 
 import { getPool } from '../../../utils/dbPool.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 
 // Each call acquires a dedicated connection (has .query() and .release()).
@@ -24,52 +25,83 @@ const dbPool = () => getPool().getConnection();
  * @param {string} status - Optional status filter ('pending', 'completed', 'missed')
  * @returns {Promise<Array>} - Array of task objects
  */
+function mapTaskRowWithWindows(row, windowsByType) {
+  const tw = windowsByType[row.TaskType];
+  return {
+    task_id: row.TaskId,
+    user_id: row.UserId,
+    task_type: row.TaskType,
+    task_date: row.TaskDate,
+    status: row.Status,
+    priority: row.Priority,
+    window_start: tw?.WindowStartTime ?? null,
+    window_end: tw?.WindowEndTime ?? null,
+    created_at: row.CreatedAt,
+    completed_at: row.CompletedAt,
+    task_data: row.TaskData,
+    completion_data: row.CompletionData,
+    notification_sent: row.NotificationSent,
+    notification_sent_at: row.NotificationSentAt,
+    reminder_count: row.ReminderCount,
+    snoozed_until: row.SnoozedUntil,
+    reminder_dismissed_today: row.ReminderDismissedToday,
+  };
+}
+
+function sortTasksByWindowAndPriority(tasks) {
+  const priorityRank = { high: 0, medium: 1, low: 2 };
+  return [...tasks].sort((a, b) => {
+    const wsA = a.window_start ?? '\uffff';
+    const wsB = b.window_start ?? '\uffff';
+    if (wsA !== wsB) return wsA < wsB ? -1 : 1;
+    const pA = priorityRank[a.priority] ?? 99;
+    const pB = priorityRank[b.priority] ?? 99;
+    return pA - pB;
+  });
+}
+
+/**
+ * Reads tasks via Supabase REST (same transport as /api/admin/time-windows).
+ * Direct pg pool (DATABASE_URL) is not required for this hot path.
+ */
 async function getTasksByUserAndDate(userId, date, status = null) {
-  const client = await dbPool();
-  
   try {
-    let query = `
-      SELECT 
-        t."TaskId" as task_id,
-        t."UserId" as user_id,
-        t."TaskType" as task_type,
-        t."TaskDate" as task_date,
-        t."Status" as status,
-        t."Priority" as priority,
-        tw."WindowStartTime" as window_start,
-        tw."WindowEndTime" as window_end,
-        t."CreatedAt" as created_at,
-        t."CompletedAt" as completed_at,
-        t."TaskData" as task_data,
-        t."CompletionData" as completion_data,
-        t."NotificationSent" as notification_sent,
-        t."NotificationSentAt" as notification_sent_at,
-        t."ReminderCount" as reminder_count,
-        t."SnoozedUntil" as snoozed_until,
-        t."ReminderDismissedToday" as reminder_dismissed_today
-      FROM tasks_table t
-      LEFT JOIN activity_time_windows_table tw
-        ON tw."ActivityType" = t."TaskType"
-       AND tw."EffectiveToDate" IS NULL
-      WHERE t."UserId" = $1 AND t."TaskDate" = $2
-    `;
-    
-    const params = [userId, date];
-    
+    const supabase = getSupabaseClient();
+
+    let taskQuery = supabase
+      .from('tasks_table')
+      .select(
+        'TaskId, UserId, TaskType, TaskDate, Status, Priority, CreatedAt, CompletedAt, TaskData, CompletionData, NotificationSent, NotificationSentAt, ReminderCount, SnoozedUntil, ReminderDismissedToday',
+      )
+      .eq('UserId', userId)
+      .eq('TaskDate', date);
+
     if (status) {
-      query += ` AND "Status" = $3`;
-      params.push(status);
+      taskQuery = taskQuery.eq('Status', status);
     }
-    
-    query += ` ORDER BY tw."WindowStartTime" ASC NULLS LAST, t."Priority" DESC`;
-    
-    const result = await client.query(query, params);
-    return result[0];
+
+    const { data: taskRows, error: tasksError } = await taskQuery;
+    if (tasksError) throw tasksError;
+
+    const { data: windowRows, error: windowsError } = await supabase
+      .from('activity_time_windows_table')
+      .select('ActivityType, WindowStartTime, WindowEndTime')
+      .is('EffectiveToDate', null);
+
+    if (windowsError) throw windowsError;
+
+    const windowsByType = Object.fromEntries(
+      (windowRows || []).map((w) => [w.ActivityType, w]),
+    );
+
+    const tasks = (taskRows || []).map((row) => mapTaskRowWithWindows(row, windowsByType));
+    return sortTasksByWindowAndPriority(tasks);
   } catch (error) {
     logger.error('Error fetching tasks', { userId, date, status, error: error.message });
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c8196'},body:JSON.stringify({sessionId:'4c8196',location:'task-repo.js:getTasksByUserAndDate',message:'DB query failed',data:{userId,date,status,errorMessage:error.message,errorCode:error.code},timestamp:Date.now(),hypothesisId:'H1-H2-H3',runId:'post-fix'})}).catch(()=>{});
+    // #endregion
     throw error;
-  } finally {
-    client.release();
   }
 }
 

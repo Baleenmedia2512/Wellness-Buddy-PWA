@@ -88,11 +88,7 @@ export function WeightProgressTipsModal({
       <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl flex flex-col">
 
         {/* ── Header ───────────────────────────────────────────────────── */}
-        <div className={`sticky top-0 z-10 ${
-          isFirstUpload
-            ? 'bg-gradient-to-r from-teal-500 to-cyan-500'
-            : 'bg-gradient-to-r from-orange-500 to-red-500'
-        } text-white p-6 rounded-t-2xl`}>
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500 to-teal-500 text-white p-6 rounded-t-2xl">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition"
@@ -105,7 +101,7 @@ export function WeightProgressTipsModal({
             {isFirstUpload ? <CheckCircle size={32} className="shrink-0 mt-0.5" /> : <AlertCircle size={32} className="shrink-0 mt-0.5" />}
             <div>
               <h2 className="text-xl font-bold leading-tight">
-                {isFirstUpload ? '🎉 Welcome to Your Journey!' : ' Weight Progress'}
+                {isFirstUpload ? '🎉 Welcome to Your Journey!' : 'Weight Progress'}
               </h2>
               <p className="text-sm opacity-90 mt-0.5">Hello, <strong>{displayName}</strong></p>
               <p className="text-sm opacity-90">

@@ -24,6 +24,10 @@ jest.mock('../../../utils/dbPool.js', () => ({
   getPool: jest.fn(),
 }));
 
+jest.mock('../../../utils/supabaseClient.js', () => ({
+  getSupabaseClient: jest.fn(),
+}));
+
 jest.mock('../../../shared/lib/logger.js', () => ({
   info:  jest.fn(),
   warn:  jest.fn(),
@@ -42,6 +46,7 @@ import {
 } from '../data/task-repo.js';
 
 import { getPool } from '../../../utils/dbPool.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,17 +68,66 @@ function setupMockConnection(mockQuery, mockRelease) {
   return conn;
 }
 
+function buildSupabaseTaskRows(rawRows) {
+  return rawRows.map((row) => ({
+    TaskId: row.task_id,
+    UserId: row.user_id,
+    TaskType: row.task_type,
+    TaskDate: row.task_date,
+    Status: row.status,
+    Priority: row.priority ?? 'medium',
+    CreatedAt: row.created_at ?? null,
+    CompletedAt: row.completed_at ?? null,
+    TaskData: row.task_data ?? null,
+    CompletionData: row.completion_data ?? null,
+    NotificationSent: row.notification_sent ?? false,
+    NotificationSentAt: row.notification_sent_at ?? null,
+    ReminderCount: row.reminder_count ?? 0,
+    SnoozedUntil: row.snoozed_until ?? null,
+    ReminderDismissedToday: row.reminder_dismissed_today ?? false,
+  }));
+}
+
+function setupSupabaseForTasks(taskRows = [], windowRows = [], tasksError = null, statusFilter = null) {
+  const taskResult = tasksError
+    ? Promise.resolve({ data: null, error: tasksError })
+    : Promise.resolve({ data: buildSupabaseTaskRows(taskRows), error: null });
+
+  const statusEq = jest.fn().mockReturnValue(taskResult);
+  const dateEq = statusFilter
+    ? jest.fn().mockReturnValue({ eq: statusEq })
+    : jest.fn().mockReturnValue(taskResult);
+  const userEq = jest.fn().mockReturnValue({ eq: dateEq });
+  const taskSelect = jest.fn().mockReturnValue({ eq: userEq });
+
+  const windowsIs = jest.fn().mockResolvedValue({
+    data: windowRows.length
+      ? windowRows
+      : [{ ActivityType: 'weight', WindowStartTime: '06:00:00', WindowEndTime: '07:30:00' }],
+    error: null,
+  });
+  const windowsSelect = jest.fn().mockReturnValue({ is: windowsIs });
+
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn((table) => {
+      if (table === 'tasks_table') {
+        return { select: taskSelect };
+      }
+      if (table === 'activity_time_windows_table') {
+        return { select: windowsSelect };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    }),
+  });
+
+  return { taskSelect, userEq, dateEq, statusEq };
+}
+
 // ─── getTasksByUserAndDate ────────────────────────────────────────────────────
 
 describe('getTasksByUserAndDate', () => {
-  let mockQuery;
-  let mockRelease;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
   });
 
   it('returns an array of task rows on the happy path', async () => {
@@ -86,49 +140,41 @@ describe('getTasksByUserAndDate', () => {
       window_start: '06:00:00',
       window_end:   '07:30:00',
     };
-    mockQuery.mockResolvedValueOnce(mysqlResult([fakeTask]));
+    setupSupabaseForTasks([fakeTask]);
 
     const rows = await getTasksByUserAndDate('339', '2026-06-09');
 
-    // Spread strips the `.affectedRows` named property that createMySQLResult
-    // attaches to the rows array — we only care about the element contents.
-    expect([...rows]).toEqual([fakeTask]);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject(fakeTask);
   });
 
   it('returns an empty array when no tasks exist for that date', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+    setupSupabaseForTasks([]);
 
     const rows = await getTasksByUserAndDate('339', '2026-06-09');
 
     expect([...rows]).toEqual([]);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
-  it('includes a $3 placeholder when status filter is supplied', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+  it('applies status filter when supplied', async () => {
+    const { statusEq } = setupSupabaseForTasks([], [], null, 'pending');
 
     await getTasksByUserAndDate('339', '2026-06-09', 'pending');
 
-    const sql = mockQuery.mock.calls[0][0];
-    expect(sql).toContain('$3');
+    expect(statusEq).toHaveBeenCalledWith('Status', 'pending');
   });
 
-  it('propagates a DB error and still calls release()', async () => {
-    mockQuery.mockRejectedValueOnce(new Error('connection timeout'));
+  it('propagates a DB error', async () => {
+    setupSupabaseForTasks([], [], new Error('connection timeout'));
 
     await expect(getTasksByUserAndDate('339', '2026-06-09')).rejects.toThrow(
       'connection timeout',
     );
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
-  // ─── REGRESSION: the exact bug that caused the 500 ──────────────────────────
-  it('REGRESSION: does NOT throw "client.release is not a function" (commit 0b0bdbed)', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+  it('REGRESSION: resolves without pg pool connection (Supabase REST path)', async () => {
+    setupSupabaseForTasks([]);
 
-    // Before the fix, the finally block threw TypeError because the pool
-    // wrapper has no release() method.
     await expect(getTasksByUserAndDate('339', '2026-06-09')).resolves.toBeDefined();
   });
 });
