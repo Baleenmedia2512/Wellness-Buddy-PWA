@@ -7650,7 +7650,7 @@ function WellnessValleyApp() {
 
       {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered & Fixed Position */}
       {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50 flex gap-3 pointer-events-none">
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-30 flex gap-3 pointer-events-none">
           {/* Camera Button */}
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
