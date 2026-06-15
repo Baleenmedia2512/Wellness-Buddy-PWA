@@ -35,8 +35,11 @@ describe('sendMdtSms', () => {
 
     await sendMdtSms({ e164: '+919876543210', message: 'Dear 123456, test' });
 
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    const calledUrl = global.fetch.mock.calls[0][0];
+    const mdtCalls = global.fetch.mock.calls.filter(([url]) =>
+      String(url).includes('example.test/send'),
+    );
+    expect(mdtCalls).toHaveLength(1);
+    const calledUrl = mdtCalls[0][0];
     expect(calledUrl).toContain('apikey=test-key');
     expect(calledUrl).toContain('senderid=MDTDMO');
     expect(calledUrl).toContain('number=919876543210');

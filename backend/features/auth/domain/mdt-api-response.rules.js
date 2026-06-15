@@ -14,7 +14,8 @@ export function parseMdtSendResponse(rawBody) {
     const status = String(parsed.status ?? parsed.Status ?? '').toLowerCase();
     if (status === 'false' || status === '0' || status === 'failed' || status === 'error') {
       const detail = parsed.description || parsed.message || parsed.error || trimmed;
-      throw new Error(`MDT SMS rejected: ${detail}`);
+      const code = parsed.code != null && parsed.code !== '' ? ` (code ${parsed.code})` : '';
+      throw new Error(`MDT SMS rejected: ${detail}${code}`);
     }
     if (status === 'true' || status === 'success' || status === '1') {
       return parsed;

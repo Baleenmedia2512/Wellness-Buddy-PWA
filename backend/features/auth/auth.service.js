@@ -196,22 +196,48 @@ export async function sendOtp({ recipient, contactType }) {
   }
 
   if (contactType === 'phone' && !isMdtSmsConfigured()) {
+    logger.warn('[sendOtp] MDT not configured on server', { route: 'send-otp' });
     return {
       httpStatus: 503,
       body: { success: false, message: 'SMS service not configured. Contact support.' },
     };
   }
 
+  logger.info('[sendOtp] starting delivery', {
+    contactType,
+    delivery: contactType === 'phone' ? 'mdt-sms' : 'smtp',
+    mdtSenderId: contactType === 'phone' ? process.env.MDT_SMS_SENDER_ID : undefined,
+  });
+
   try {
     await createAndDeliverOtp({ recipient, contactType });
   } catch (err) {
     logger.warn('[sendOtp] delivery failed', { contactType, message: err.message });
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    const mdtDetail = err.message?.startsWith('MDT SMS rejected:')
+      ? err.message.replace('MDT SMS rejected: ', '')
+      : '';
+    const userMessage = mdtDetail
+      ? `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
+      : 'Failed to send OTP. Please try again.';
+    logger.warn('[sendOtp] returning 502 to client', {
+      contactType,
+      userMessage,
+      providerError: mdtDetail || err.message?.slice(0, 120),
+    });
     return {
       httpStatus: 502,
-      body: { success: false, message: 'Failed to send OTP. Please try again.' },
+      body: {
+        success: false,
+        message: userMessage,
+        ...(contactType === 'phone' && mdtDetail ? { providerError: mdtDetail } : {}),
+      },
     };
   }
 
+  logger.info('[sendOtp] delivery succeeded', { contactType });
   return { httpStatus: 200, body: { success: true } };
 }
 

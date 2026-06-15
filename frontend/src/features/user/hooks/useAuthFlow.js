@@ -14,6 +14,7 @@ import {
   isValidPhoneE164,
   DEFAULT_COUNTRY,
 } from '../domain/contactIdentifier';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
   // `email` keeps its name for backward-compat with existing tests/UI; it now
@@ -59,6 +60,21 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           return false;
         }
         const data = await sendOtpApi(e164, 'phone');
+        const phoneLog = {
+          httpStatus: data?._httpStatus,
+          success: data?.success,
+          hasOtpInResponse: Object.prototype.hasOwnProperty.call(data || {}, 'otp'),
+          message: data?.message || '',
+          providerError: data?.providerError || '',
+        };
+        debugLog('[OTP/SMS] phone sendOtp result', phoneLog);
+        if (!data?.success || phoneLog.hasOtpInResponse) {
+          // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
+          console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
+        }
+        // #region agent log
+        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||''},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (data.success) {
           phoneRecipientRef.current = e164;
           setActiveChannel('phone');

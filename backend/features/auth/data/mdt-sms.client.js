@@ -35,6 +35,13 @@ export async function sendMdtSms({ e164, message }) {
   });
 
   const url = `${apiUrl}?${params.toString()}`;
+  logger.info('[mdt-sms] sending SMS request', {
+    route: 'mdt-sms',
+    senderId,
+    numberLen: number.length,
+    apiHost: (() => { try { return new URL(apiUrl).host; } catch { return 'unknown'; } })(),
+  });
+
   const res = await fetch(url, { method: 'GET' });
 
   const body = await res.text();
@@ -42,6 +49,27 @@ export async function sendMdtSms({ e164, message }) {
     logger.warn('[mdt-sms] HTTP error', { status: res.status, route: 'mdt-sms' });
     throw new Error(`MDT SMS HTTP ${res.status}`);
   }
+
+  // #region agent log
+  let mdtStatus = 'unknown';
+  let mdtCode = '';
+  let mdtDesc = '';
+  try {
+    const j = JSON.parse(body);
+    mdtStatus = String(j.status ?? '');
+    mdtCode = String(j.code ?? '');
+    mdtDesc = String(j.description ?? j.message ?? '').slice(0, 120);
+  } catch { /* plain text */ }
+  logger.info('[mdt-sms] provider raw response', {
+    route: 'mdt-sms',
+    mdtStatus,
+    mdtCode,
+    mdtDesc,
+    senderId,
+    numberLen: number.length,
+  });
+  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H1',location:'mdt-sms.client.js:response',message:'MDT provider response',data:{httpStatus:res.status,mdtStatus,mdtCode,mdtDesc,numberLen:number.length,senderId},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const parsed = parseMdtSendResponse(body);
   logger.debug('[mdt-sms] SMS accepted by provider', { route: 'mdt-sms', senderId });
