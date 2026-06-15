@@ -61,27 +61,6 @@ export async function sendMdtSms({ e164, message }) {
     throw new Error(`MDT SMS HTTP ${res.status}`);
   }
 
-  // #region agent log
-  let mdtStatus = 'unknown';
-  let mdtCode = '';
-  let mdtDesc = '';
-  try {
-    const j = JSON.parse(body);
-    mdtStatus = String(j.status ?? '');
-    mdtCode = String(j.code ?? '');
-    mdtDesc = String(j.description ?? j.message ?? '').slice(0, 120);
-  } catch { /* plain text */ }
-  logger.info('[mdt-sms] provider raw response', {
-    route: 'mdt-sms',
-    mdtStatus,
-    mdtCode,
-    mdtDesc,
-    senderId,
-    numberLen: number.length,
-  });
-  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'mdt-sms.client.js:response',message:'MDT provider response',data:{httpStatus:res.status,mdtStatus,mdtCode,mdtDesc,numberLen:number.length,senderIdHint:senderId.length>=4?`${senderId.slice(0,2)}***${senderId.slice(-2)}`:'short',hasTemplateId:Boolean(templateId),templateIdHint:templateId?`***${templateId.slice(-4)}`:'not-set'},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   const parsed = parseMdtSendResponse(body);
   logger.info('[mdt-sms] SMS accepted by provider', {
     route: 'mdt-sms',

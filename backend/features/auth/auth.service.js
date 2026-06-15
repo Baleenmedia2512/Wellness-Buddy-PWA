@@ -4,6 +4,7 @@ import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
 import { verifyFirebaseIdToken } from './firebaseAdmin.js';
 import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
+import { canonicalPhoneForStorage } from './domain/phone-identity.rules.js';
 import { MDT_OTP_EXPIRY_MINUTES, getMdtSmsConfigGaps, maskPhoneForLog, mdtApiKeyHint, mdtSenderIdHint, mdtTemplateIdHint } from './domain/mdt-phone.rules.js';
 import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
 import { sendMdtSms } from './data/mdt-sms.client.js';
@@ -157,18 +158,38 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
   if (contactType === 'phone') {
     userInfo = await repo.findUserByPhone(recipient);
     if (!userInfo) {
-      userInfo = await repo.insertUser({
-        EntryDateTime: getISTTimestamp(),
-        EntryUser: 'Wellness Valley',
-        UserName: usernameFromPhone(recipient),
-        Password: 'User@123#',
-        TargetWeightInKg: 0,
-        Status: 'Active',
-        CoachApproved: 0,
-        PhoneNumber: recipient,
+      const storedPhone = canonicalPhoneForStorage(recipient);
+      const { row, isNewUser: created } = await repo.findOrInsertUserByPhone(
+        {
+          EntryDateTime: getISTTimestamp(),
+          EntryUser: 'Wellness Valley',
+          UserName: usernameFromPhone(recipient),
+          Password: 'User@123#',
+          TargetWeightInKg: 0,
+          Status: 'Active',
+          CoachApproved: 0,
+          PhoneNumber: storedPhone,
+        },
+        recipient,
+      );
+      userInfo = row;
+      isNewUser = created;
+      if (created) {
+        logger.info('[verify-otp] new phone user created', {
+          phoneHint: maskPhoneForLog(recipient),
+          storedPhoneHint: storedPhone.length >= 4 ? `***${storedPhone.slice(-4)}` : '****',
+        });
+      } else {
+        logger.info('[verify-otp] concurrent-insert resolved: returning existing user', {
+          userId: userInfo.UserId,
+          phoneHint: maskPhoneForLog(recipient),
+        });
+      }
+    } else {
+      logger.info('[verify-otp] existing phone user authenticated', {
+        userId: userInfo.UserId,
+        phoneHint: maskPhoneForLog(recipient),
       });
-      isNewUser = true;
-      logger.debug('🆕 [verify-otp] New phone user created:', recipient);
     }
     return {
       isNewUser,
@@ -224,9 +245,6 @@ export async function sendOtp({ recipient, contactType }) {
         templateIdHint: mdtTemplateIdHint(),
         apiKeyHint: mdtApiKeyHint(process.env.MDT_SMS_API_KEY),
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H4',location:'auth.service.js:sendOtp-config',message:'MDT config incomplete',data:{missing:configGaps,senderIdHint:mdtSenderIdHint(),templateIdHint:mdtTemplateIdHint(),apiKeyHint:mdtApiKeyHint(process.env.MDT_SMS_API_KEY)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return {
         httpStatus: 503,
         body: {
@@ -259,9 +277,6 @@ export async function sendOtp({ recipient, contactType }) {
     const senderIdHint = mdtSenderIdHint();
     const templateIdHint = mdtTemplateIdHint();
     const apiKeyHint = mdtApiKeyHint(process.env.MDT_SMS_API_KEY);
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200),senderIdHint,templateIdHint,apiKeyHint},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const isInvalidSender = /invalid senderid/i.test(mdtDetail) || mdtDetail.includes('code 003');
     const userMessage = mdtDetail
       ? (
@@ -427,18 +442,32 @@ export async function firebasePhoneLogin({ idToken, name }) {
   if (!userInfo) {
     const currentTime = getISTTimestamp();
     const username = (name && name.trim()) || usernameFromPhone(phone);
-    userInfo = await repo.insertUser({
-      EntryDateTime: currentTime,
-      EntryUser: 'Wellness Valley',
-      UserName: username,
-      Password: 'User@123#',
-      TargetWeightInKg: 0,
-      Status: 'Active',
-      CoachApproved: 0,
-      PhoneNumber: phone,
-    });
-    isNewUser = true;
-    logger.debug('🆕 [firebasePhoneLogin] New phone user created:', phone);
+    const storedPhone = canonicalPhoneForStorage(phone);
+    const { row, isNewUser: created } = await repo.findOrInsertUserByPhone(
+      {
+        EntryDateTime: currentTime,
+        EntryUser: 'Wellness Valley',
+        UserName: username,
+        Password: 'User@123#',
+        TargetWeightInKg: 0,
+        Status: 'Active',
+        CoachApproved: 0,
+        PhoneNumber: storedPhone,
+      },
+      phone,
+    );
+    userInfo = row;
+    isNewUser = created;
+    if (created) {
+      logger.info('[firebasePhoneLogin] new phone user created', {
+        phoneHint: maskPhoneForLog(phone),
+      });
+    } else {
+      logger.info('[firebasePhoneLogin] concurrent-insert resolved: returning existing user', {
+        userId: userInfo.UserId,
+        phoneHint: maskPhoneForLog(phone),
+      });
+    }
   }
 
   return {

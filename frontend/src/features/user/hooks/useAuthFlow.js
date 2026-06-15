@@ -15,6 +15,7 @@ import {
   DEFAULT_COUNTRY,
 } from '../domain/contactIdentifier';
 import { debugLog } from '../../../shared/utils/logger.js';
+import storage from '../../../shared/lib/storage.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
   // `email` keeps its name for backward-compat with existing tests/UI; it now
@@ -73,9 +74,6 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
           console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||'',providerError:phoneLog.providerError,senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||'',apiKeyHint:data?.apiKeyHint||'',missingConfig:data?.missingConfig||[]},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (data.success) {
           phoneRecipientRef.current = e164;
           setActiveChannel('phone');
@@ -124,7 +122,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
       setVerified(true);
       setSuccessMessage('OTP verified successfully!');
       const userDataWithNewFlag = { ...data.user, isNewUser: data.isNewUser === true };
-      localStorage.setItem('otpUser', JSON.stringify(userDataWithNewFlag));
+      storage.set('otpUser', JSON.stringify(userDataWithNewFlag));
       setTimeout(async () => {
         setSuccessMessage('');
         if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
