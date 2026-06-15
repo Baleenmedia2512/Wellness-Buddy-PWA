@@ -50,7 +50,7 @@ describe('firebasePhoneLogin', () => {
       UserId: 42,
       UserName: 'existing_user',
       Email: 'old@example.com',
-      Phone: '+919876543210',
+      PhoneNumber: '+919876543210',
       Status: 'Active',
     });
 
@@ -78,7 +78,7 @@ describe('firebasePhoneLogin', () => {
       UserId: 99,
       UserName: 'user_919876543210',
       Email: null,
-      Phone: '+919876543210',
+      PhoneNumber: '+919876543210',
       Status: 'Active',
     });
 
@@ -88,7 +88,7 @@ describe('firebasePhoneLogin', () => {
     expect(res.body.isNewUser).toBe(true);
     expect(repo.insertUser).toHaveBeenCalledWith(
       expect.objectContaining({
-        Phone: '+919876543210',
+        PhoneNumber: '+919876543210',
         UserName: 'user_919876543210',
         Status: 'Active',
       }),
@@ -104,13 +104,13 @@ describe('firebasePhoneLogin', () => {
     });
     repo.findUserByPhone.mockResolvedValue(null);
     repo.insertUser.mockResolvedValue({
-      UserId: 100, UserName: 'Alice', Email: null, Phone: '+14155551234', Status: 'Active',
+      UserId: 100, UserName: 'Alice', Email: null, PhoneNumber: '+14155551234', Status: 'Active',
     });
 
     const res = await firebasePhoneLogin({ idToken: 'tok', name: 'Alice' });
 
     expect(repo.insertUser).toHaveBeenCalledWith(
-      expect.objectContaining({ UserName: 'Alice', Phone: '+14155551234' }),
+      expect.objectContaining({ UserName: 'Alice', PhoneNumber: '+14155551234' }),
     );
     expect(res.body.isNewUser).toBe(true);
   });

@@ -4,6 +4,9 @@ import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
 import { verifyFirebaseIdToken } from './firebaseAdmin.js';
 import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
+import { MDT_OTP_EXPIRY_MINUTES } from './domain/mdt-phone.rules.js';
+import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
+import { isMdtSmsConfigured, sendMdtSms } from './data/mdt-sms.client.js';
 
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
@@ -97,37 +100,119 @@ async function sendOtpEmail(recipient, otp) {
   });
 }
 
+function otpExpiryIst(minutesFromNow) {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const expiresAt = new Date(now.getTime() + istOffset + minutesFromNow * 60 * 1000);
+  return expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+}
+
+async function createAndDeliverOtp({ recipient, contactType }) {
+  await repo.deactivateActiveOtps(recipient, contactType);
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otpHash = await bcrypt.hash(otp, 10);
+  const expiryMinutes = contactType === 'phone' ? MDT_OTP_EXPIRY_MINUTES : 5;
+
+  await repo.insertOtpToken({
+    Recipient: recipient,
+    OTPHash: otpHash,
+    ExpiresAt: otpExpiryIst(expiryMinutes),
+    ContactType: contactType,
+    IsActive: true,
+    CreatedAt: getISTTimestamp(),
+  });
+
+  if (contactType === 'email') {
+    await sendOtpEmail(recipient, otp);
+  } else if (contactType === 'phone') {
+    const message = buildMdtOtpMessage(otp);
+    await sendMdtSms({ e164: recipient, message });
+  }
+}
+
+async function resolveUserAfterOtp({ recipient, contactType }) {
+  let userInfo;
+  let isNewUser = false;
+
+  if (contactType === 'phone') {
+    userInfo = await repo.findUserByPhone(recipient);
+    if (!userInfo) {
+      userInfo = await repo.insertUser({
+        EntryDateTime: getISTTimestamp(),
+        EntryUser: 'Wellness Valley',
+        UserName: usernameFromPhone(recipient),
+        Password: 'User@123#',
+        TargetWeightInKg: 0,
+        Status: 'Active',
+        CoachApproved: 0,
+        PhoneNumber: recipient,
+      });
+      isNewUser = true;
+      logger.debug('🆕 [verify-otp] New phone user created:', recipient);
+    }
+    return {
+      isNewUser,
+      user: {
+        id: userInfo.UserId,
+        username: userInfo.UserName,
+        email: userInfo.Email || '',
+        phone: userInfo.PhoneNumber || recipient,
+        status: userInfo.Status,
+      },
+    };
+  }
+
+  userInfo = await repo.findUserByEmail(recipient);
+  if (!userInfo) {
+    userInfo = await repo.insertUser({
+      EntryDateTime: getISTTimestamp(),
+      EntryUser: 'Wellness Valley',
+      UserName: recipient.split('@')[0],
+      Password: 'User@123#',
+      TargetWeightInKg: 0,
+      Status: 'Active',
+      CoachApproved: 0,
+      Email: recipient,
+    });
+    isNewUser = true;
+    logger.debug('🆕 [verify-otp] New user created:', recipient);
+  }
+
+  return {
+    isNewUser,
+    user: {
+      id: userInfo.UserId,
+      username: userInfo.UserName,
+      email: userInfo.Email,
+      status: userInfo.Status,
+    },
+  };
+}
+
 export async function sendOtp({ recipient, contactType }) {
   if (DEMO_ACCOUNTS.includes(recipient)) {
     return { httpStatus: 200, body: { success: true } };
   }
 
-  await repo.deactivateActiveOtps(recipient, contactType);
-
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpHash = await bcrypt.hash(otp, 10);
-
-  // Calculate expiry time in IST (5 minutes from now)
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const expiresAt = new Date(now.getTime() + istOffset + 5 * 60 * 1000);
-  const expiresAtIST = expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
-  const currentTime = getISTTimestamp();
-
-  await repo.insertOtpToken({
-    Recipient: recipient,
-    OTPHash: otpHash,
-    ExpiresAt: expiresAtIST,
-    ContactType: contactType,
-    IsActive: true,
-    CreatedAt: currentTime,
-  });
-
-  if (contactType === 'email') {
-    await sendOtpEmail(recipient, otp);
+  if (contactType === 'phone' && !isMdtSmsConfigured()) {
+    return {
+      httpStatus: 503,
+      body: { success: false, message: 'SMS service not configured. Contact support.' },
+    };
   }
 
-  return { httpStatus: 200, body: { success: true, otp } };
+  try {
+    await createAndDeliverOtp({ recipient, contactType });
+  } catch (err) {
+    logger.warn('[sendOtp] delivery failed', { contactType, message: err.message });
+    return {
+      httpStatus: 502,
+      body: { success: false, message: 'Failed to send OTP. Please try again.' },
+    };
+  }
+
+  return { httpStatus: 200, body: { success: true } };
 }
 
 async function handleDemoVerify({ recipient, otp, purpose }) {
@@ -204,25 +289,7 @@ export async function verifyOtp(input) {
 
   await repo.markOtpVerified(otpData.ID);
 
-  let userInfo = await repo.findUserByEmail(recipient);
-  let isNewUser = false;
-
-  if (!userInfo) {
-    const username = recipient.split('@')[0];
-    const currentTime = getISTTimestamp();
-    userInfo = await repo.insertUser({
-      EntryDateTime: currentTime,
-      EntryUser: 'Wellness Valley',
-      UserName: username,
-      Password: 'User@123#',
-      TargetWeightInKg: 0,
-      Status: 'Active',
-      CoachApproved: 0,
-      Email: recipient,
-    });
-    isNewUser = true;
-    logger.debug('🆕 [verify-otp] New user created:', recipient);
-  }
+  const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
 
   return {
     httpStatus: 200,
@@ -230,12 +297,7 @@ export async function verifyOtp(input) {
       success: true,
       message: 'OTP verified successfully',
       isNewUser,
-      user: {
-        id: userInfo.UserId,
-        username: userInfo.UserName,
-        email: userInfo.Email,
-        status: userInfo.Status,
-      },
+      user,
     },
   };
 }
@@ -288,7 +350,7 @@ export async function firebasePhoneLogin({ idToken, name }) {
       TargetWeightInKg: 0,
       Status: 'Active',
       CoachApproved: 0,
-      Phone: phone,
+      PhoneNumber: phone,
     });
     isNewUser = true;
     logger.debug('🆕 [firebasePhoneLogin] New phone user created:', phone);
@@ -304,7 +366,7 @@ export async function firebasePhoneLogin({ idToken, name }) {
         id: userInfo.UserId,
         username: userInfo.UserName,
         email: userInfo.Email || '',
-        phone: userInfo.Phone || phone,
+        phone: userInfo.PhoneNumber || phone,
         status: userInfo.Status,
       },
     },

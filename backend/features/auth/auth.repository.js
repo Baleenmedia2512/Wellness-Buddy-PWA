@@ -62,15 +62,13 @@ export async function findUserByEmailLite(recipient) {
   return data && data.length > 0 ? data[0] : null;
 }
 
-// Phone-based lookups — used by firebasePhoneLogin (auth.service.js).
-// Phone is stored as E.164 (`+919876543210`); we match exactly because
-// `+` and digits have no case to normalize.
+// Phone-based lookups — E.164 stored in team_table.PhoneNumber.
 export async function findUserByPhone(phone) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
     .select('*')
-    .eq('"Phone"', phone)
+    .eq('PhoneNumber', phone)
     .limit(1);
   if (error) throw error;
   return data && data.length > 0 ? data[0] : null;

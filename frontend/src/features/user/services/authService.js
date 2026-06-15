@@ -12,11 +12,11 @@ const post = async (path, body) => {
   return res.json();
 };
 
-export const sendOtp = (recipient) =>
-  post('/api/auth/send-otp', { recipient, contactType: 'email' });
+export const sendOtp = (recipient, contactType = 'email') =>
+  post('/api/auth/send-otp', { recipient, contactType });
 
-export const verifyOtp = (recipient, otp, purpose) => {
-  const body = { recipient, otp, contactType: 'email' };
+export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
+  const body = { recipient, otp, contactType };
   if (purpose) body.purpose = purpose;
   return post('/api/auth/verify-otp', body);
 };
