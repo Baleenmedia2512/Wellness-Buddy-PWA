@@ -21,6 +21,21 @@ export const toDateKey = (value) => {
 export const isSmallChartDevice = () =>
   typeof window !== 'undefined' && window.innerWidth < 380;
 
+/**
+ * Filter weight entries to a single calendar day (matches the day the
+ * entry is displayed under, i.e. its IST-local date). Returns the full
+ * list when `selectedDate` is falsy. Pure — no IO.
+ */
+export function filterHistoryByDay(weightHistory, selectedDate) {
+  if (!selectedDate) return weightHistory || [];
+  const target = toDateKey(selectedDate);
+  return (weightHistory || []).filter((entry) => {
+    if (!entry || !entry.CreatedAt) return false;
+    const d = istToLocalDate(entry.CreatedAt);
+    return d && !isNaN(d.getTime()) && toDateKey(d) === target;
+  });
+}
+
 export function buildMonthlyGroups(weightHistory) {
   const grouped = {};
   weightHistory.forEach((entry) => {

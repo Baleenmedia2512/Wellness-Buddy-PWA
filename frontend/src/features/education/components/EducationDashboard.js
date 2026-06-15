@@ -14,8 +14,8 @@ import EducationCameraPanel, { EducationEmptyState } from './EducationCameraPane
 import EducationDashboardSkeleton from './EducationDashboardSkeleton';
 import { useEducationDashboard } from '../hooks/useEducationDashboard';
 
-const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null }) => {
-  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey });
+const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null, hideOverview = false }) => {
+  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -44,6 +44,7 @@ const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId =
       `}</style>
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
         <div className="px-3 md:px-4">
+          {!hideOverview && (
           <EducationDashboardHeader
             summary={vm.summary} summaryLoading={vm.summaryLoading}
             educationLogs={vm.educationLogs}
@@ -51,6 +52,7 @@ const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId =
             trendRangeDays={vm.trendRangeDays}
             setTrendRangeDays={vm.setTrendRangeDays}
           />
+          )}
           {vm.monthlyGroups.length === 0 && <EducationCameraPanel />}
           <EducationLogList
             monthlyGroups={vm.monthlyGroups} undoState={vm.undoState}

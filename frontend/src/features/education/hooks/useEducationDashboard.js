@@ -8,13 +8,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import { fetchEducationLogsPage, fetchEducationSummary } from '../services/educationDashboardService';
-import { buildMonthlyGroups, buildTrendSeries } from '../services/educationDashboardFormatter';
+import { buildMonthlyGroups, buildTrendSeries, filterLogsByDay } from '../services/educationDashboardFormatter';
 import { useEducationUndoActions } from './useEducationUndoActions';
 
 export const UNDO_SECONDS = 10;
 const PAGE_SIZE = 10;
 
-export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0 }) {
+export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0, selectedDate = null }) {
   const [educationLogs, setEducationLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -100,7 +100,13 @@ export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0 }) {
     apiBaseUrl, user, userIdRef, setEducationLogs, setUndoState, refreshSummary,
   });
 
-  const monthlyGroups = useMemo(() => buildMonthlyGroups(educationLogs), [educationLogs]);
+  // Log list is scoped to the selected day when one is provided (the shell
+  // date picker drives this). Trend + summary keep using the full set so
+  // the summary/trend cards stay meaningful.
+  const dayFilteredLogs = useMemo(
+    () => filterLogsByDay(educationLogs, selectedDate), [educationLogs, selectedDate],
+  );
+  const monthlyGroups = useMemo(() => buildMonthlyGroups(dayFilteredLogs), [dayFilteredLogs]);
   const trendSeries = useMemo(() => buildTrendSeries(educationLogs, trendRangeDays), [educationLogs, trendRangeDays]);
 
   return {

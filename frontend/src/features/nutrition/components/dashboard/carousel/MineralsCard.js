@@ -6,7 +6,7 @@ import MicroNutrientTile from './MicroNutrientTile';
  * MineralsCard — Card 8 of the Nutrition Carousel.
  * Calcium, Iron, Magnesium, Potassium, Zinc, Phosphorus. 3-col × 2-row grid.
  */
-const MineralsCard = ({ tiles }) => {
+const MineralsCard = ({ tiles, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
@@ -30,6 +30,8 @@ const MineralsCard = ({ tiles }) => {
               target={t.target}
               pct={t.pct}
               color="from-teal-400 to-emerald-600"
+              nutrientKey={t.key}
+              onOpenModal={onOpenModal}
             />
           ))}
         </div>

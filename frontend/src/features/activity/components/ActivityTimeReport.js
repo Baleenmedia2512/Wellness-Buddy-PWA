@@ -10,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Droplets,
+  Target,
 } from "lucide-react";
 import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { motion, AnimatePresence } from "framer-motion";
@@ -162,6 +163,51 @@ function computeActivitySortKey(node, activity) {
   });
   return score;
 }
+
+/** % of all activity slots that were completed on-time (0-100) */
+function computeComplianceScore(node) {
+  let onTime = 0, total = 0;
+  (node.__timeData?.days || []).forEach((day) => {
+    ACTIVITY_KEYS.forEach((key) => {
+      const s = day.activities?.[key]?.status;
+      if (s === "on-time") onTime++;
+      total++;
+    });
+  });
+  return total > 0 ? Math.round((onTime / total) * 100) : 0;
+}
+
+/** % of completed (on-time + late) activities that were on-time (0-100) */
+function computePunctualityScore(node) {
+  let onTime = 0, completed = 0;
+  (node.__timeData?.days || []).forEach((day) => {
+    ACTIVITY_KEYS.forEach((key) => {
+      const s = day.activities?.[key]?.status;
+      if (s === "on-time") { onTime++; completed++; }
+      else if (s === "late") completed++;
+    });
+  });
+  return completed > 0 ? Math.round((onTime / completed) * 100) : 0;
+}
+
+/** Raw count of missed activity slots */
+function computeMissedCount(node) {
+  let missed = 0;
+  (node.__timeData?.days || []).forEach((day) => {
+    ACTIVITY_KEYS.forEach((key) => {
+      if (day.activities?.[key]?.status === "missed") missed++;
+    });
+  });
+  return missed;
+}
+
+/** Sort options specific to activity timing data */
+const ACTIVITY_SORT_OPTIONS = [
+  { value: "name",        label: "Sort by Name",         shortLabel: "Name",     Logo: Users,        color: "text-gray-600"  },
+  { value: "compliance",  label: "Sort by Compliance %",  shortLabel: "Comply",   Logo: Target,       color: "text-green-600" },
+  { value: "punctuality", label: "Sort by Punctuality %", shortLabel: "Punctual", Logo: Clock,        color: "text-blue-600"  },
+  { value: "missed",      label: "Fewest Missed",         shortLabel: "Missed",   Logo: TrendingDown, color: "text-red-500"   },
+];
 
 /** Build HierarchicalNode-compatible tree from flat API list enriched with scores */
 function buildHierarchyFromFlat(flatList, scoreMap, currentUserId) {
@@ -575,8 +621,22 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             const cmp = nameA.localeCompare(nameB);
             return sortOrder === "desc" ? -cmp : cmp;
           }
-          const ka = computeActivitySortKey(a, filter);
-          const kb = computeActivitySortKey(b, filter);
+          let ka, kb;
+          if (sortBy === "compliance") {
+            ka = computeComplianceScore(a);
+            kb = computeComplianceScore(b);
+          } else if (sortBy === "punctuality") {
+            ka = computePunctualityScore(a);
+            kb = computePunctualityScore(b);
+          } else if (sortBy === "missed") {
+            // asc = fewest missed first (best performers at top)
+            ka = computeMissedCount(a);
+            kb = computeMissedCount(b);
+            return sortOrder === "asc" ? ka - kb : kb - ka;
+          } else {
+            ka = computeActivitySortKey(a, filter);
+            kb = computeActivitySortKey(b, filter);
+          }
           return sortOrder === "desc" ? kb - ka : ka - kb;
         })
         .map(sortNode),
@@ -955,9 +1015,10 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       sortBy={sortBy}
       sortOrder={sortOrder}
       onSortChange={(newSortBy, newSortOrder) => {
-        setSortBy("name"); // A-Z / Z-A always sorts by name
+        setSortBy(newSortBy);
         setSortOrder(newSortOrder);
       }}
+      customSortOptions={ACTIVITY_SORT_OPTIONS}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}

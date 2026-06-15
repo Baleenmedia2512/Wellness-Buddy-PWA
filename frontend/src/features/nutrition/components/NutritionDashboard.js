@@ -28,6 +28,7 @@ import {
   useSwipePanelHeight,
   useMealMutations,
 } from "../hooks";
+import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -75,6 +76,8 @@ const NutritionDashboard = ({
   apiBaseUrl,
   onMealDelete,
   hideHeader,
+  hideDateStrip = false,
+  hideOverview = false,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
@@ -112,6 +115,7 @@ const NutritionDashboard = ({
   const [trendRangeDays, setTrendRangeDays] = useState(7);
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
+  const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
 
   // Day analyses + daily stats orchestration (auto-fetch on user/date change).
   const {
@@ -123,7 +127,7 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId });
+  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
   const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
@@ -536,41 +540,45 @@ const NutritionDashboard = ({
         />
       )}
 
-      {/* Date selector */}
-      <HorizontalCalendarStrip
-        selectedDate={selectedDate}
-        setSelectedDate={setSelectedDate}
-        navigateDate={navigateDate}
-        showCalendar={showCalendar}
-        setShowCalendar={setShowCalendar}
-        calendarMonth={calendarMonth}
-        setCalendarMonth={setCalendarMonth}
-      />
+      {/* Date selector — hidden when the shell provides a single
+          date picker (single-page Diary view). */}
+      {!hideDateStrip && (
+        <HorizontalCalendarStrip
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          navigateDate={navigateDate}
+          showCalendar={showCalendar}
+          setShowCalendar={setShowCalendar}
+          calendarMonth={calendarMonth}
+          setCalendarMonth={setCalendarMonth}
+        />
+      )}
       {/* Content */}
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-4 md:pb-6">
         {loading ? (
           <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
-            <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
-              {/* Summary Card Skeleton */}
-              <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 md:p-5">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <div className="h-3 w-24 bg-gray-200 rounded mb-2 animate-pulse"></div>
-                    <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+            {!hideOverview && (
+              <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
+                <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 md:p-5">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <div className="h-3 w-24 bg-gray-200 rounded mb-2 animate-pulse"></div>
+                      <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse"></div>
                   </div>
-                  <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse"></div>
-                </div>
-                <div className="h-2 w-full bg-gray-200 rounded-full mb-4 animate-pulse"></div>
-                <div className="flex justify-between gap-2">
-                  {[...Array(4)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 h-16 bg-gray-200 rounded-lg animate-pulse"
-                    ></div>
-                  ))}
+                  <div className="h-2 w-full bg-gray-200 rounded-full mb-4 animate-pulse"></div>
+                  <div className="flex justify-between gap-2">
+                    {[...Array(4)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 h-16 bg-gray-200 rounded-lg animate-pulse"
+                      ></div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Meal List Skeletons */}
             <div className="px-4 md:px-6 space-y-6">
@@ -621,38 +629,40 @@ const NutritionDashboard = ({
           </div>
         ) : (
           <>
-            <OverviewPanels
-              showTrendCard={showTrendCard}
-              overviewSwipeHandlers={overviewSwipeHandlers}
-              activeOverviewPanel={activeOverviewPanel}
-              setActiveOverviewPanel={setActiveOverviewPanel}
-              overviewPanelHeight={overviewPanelHeight}
-              summaryPanelRef={summaryPanelRef}
-              dailyStats={dailyStats}
-              calorieTarget={calorieTarget}
-              consumedCalories={consumedCalories}
-              caloriesProgressPercent={caloriesProgressPercent}
-              calorieStatus={calorieStatus}
-              isOverTarget={isOverTarget}
-              burnedCalories={burnedCalories}
-              extraCalories={extraCalories}
-              burnProgress={burnProgress}
-              isBalanced={isBalanced}
-              watchBurned={watchBurned}
-              stepsBurned={stepsBurned}
-              trendPanelRef={trendPanelRef}
-              trendRangeDays={trendRangeDays}
-              setTrendRangeDays={setTrendRangeDays}
-              trendLoading={trendLoading}
-              calorieTrendData={calorieTrendData}
-              calorieChartRenderData={calorieChartRenderData}
-              visibleNutritionDotIndices={visibleNutritionDotIndices}
-              visibleNutritionTickLabels={visibleNutritionTickLabels}
-              trendAverageCalories={trendAverageCalories}
-              trendBestDay={trendBestDay}
-              trendAboveTargetDays={trendAboveTargetDays}
-              renderCaloriePointLabel={renderCaloriePointLabel}
-            />
+            {!hideOverview && (
+              <OverviewPanels
+                showTrendCard={showTrendCard}
+                overviewSwipeHandlers={overviewSwipeHandlers}
+                activeOverviewPanel={activeOverviewPanel}
+                setActiveOverviewPanel={setActiveOverviewPanel}
+                overviewPanelHeight={overviewPanelHeight}
+                summaryPanelRef={summaryPanelRef}
+                dailyStats={dailyStats}
+                calorieTarget={calorieTarget}
+                consumedCalories={consumedCalories}
+                caloriesProgressPercent={caloriesProgressPercent}
+                calorieStatus={calorieStatus}
+                isOverTarget={isOverTarget}
+                burnedCalories={burnedCalories}
+                extraCalories={extraCalories}
+                burnProgress={burnProgress}
+                isBalanced={isBalanced}
+                watchBurned={watchBurned}
+                stepsBurned={stepsBurned}
+                trendPanelRef={trendPanelRef}
+                trendRangeDays={trendRangeDays}
+                setTrendRangeDays={setTrendRangeDays}
+                trendLoading={trendLoading}
+                calorieTrendData={calorieTrendData}
+                calorieChartRenderData={calorieChartRenderData}
+                visibleNutritionDotIndices={visibleNutritionDotIndices}
+                visibleNutritionTickLabels={visibleNutritionTickLabels}
+                trendAverageCalories={trendAverageCalories}
+                trendBestDay={trendBestDay}
+                trendAboveTargetDays={trendAboveTargetDays}
+                renderCaloriePointLabel={renderCaloriePointLabel}
+              />
+            )}
             {/* Meals */}
             <div className="px-3 md:px-4 space-y-3">
               <NutritionMealList

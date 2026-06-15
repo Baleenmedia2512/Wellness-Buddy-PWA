@@ -13,7 +13,7 @@ import CircularProgress from './CircularProgress';
  * Reuse criteria (claude.md §2.4): used in 3 cards (Vit fat-soluble,
  * Vit B-Complex, Minerals) → shared component.
  */
-const MicroNutrientTile = ({ label, unit, consumed, target, pct, color }) => {
+const MicroNutrientTile = ({ label, unit, consumed, target, pct, color, nutrientKey, onOpenModal }) => {
   return (
     <div className="text-center">
       <CircularProgress
@@ -21,6 +21,7 @@ const MicroNutrientTile = ({ label, unit, consumed, target, pct, color }) => {
         color={color}
         size={44}
         strokeWidth={4}
+        onClick={() => onOpenModal && nutrientKey && onOpenModal(nutrientKey)}
       />
       <p className="text-[10px] font-semibold text-gray-700 mt-0.5 leading-tight">
         {label}

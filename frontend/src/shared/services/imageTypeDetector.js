@@ -241,8 +241,11 @@ Return ONLY JSON matching ONE of the above formats.`;
       
       const parseStart = Date.now();
       const analysisData = this.parseJsonResponse(apiText);
-      debugLog(`â±ï¸ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);
-      debugLog('🤖 [DEBUG] Parsed Result:', {
+      debugLog(`â±ï¸ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);      
+      // 🔴 CRITICAL FIX: Normalize confidence to numeric value
+      // Gemini sometimes returns "high"/"medium"/"low" strings instead of 0.0-1.0 numbers
+      analysisData.confidence = this.normalizeConfidence(analysisData.confidence);
+            debugLog('🤖 [DEBUG] Parsed Result:', {
         type: analysisData.type,
         confidence: analysisData.confidence,
         hasFoods: !!analysisData.foods,
@@ -488,9 +491,13 @@ Return EXACTLY: {"type":"food|weight|education|smartwatch","confidence":0.0-1.0}
       const response = await result.response;
       const text = response.text();
       const parsed = this.parseJsonResponse(text);
+      
+      // Normalize confidence to numeric value
+      const normalizedConfidence = this.normalizeConfidence(parsed.confidence);
+      
       const out = {
         type: parsed.type || 'food',
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+        confidence: normalizedConfidence,
       };
       debugLog(`⚡ [FAST-CLASSIFY] ${Date.now() - t0}ms → ${out.type} (conf=${out.confidence})`);
 
@@ -510,6 +517,40 @@ Return EXACTLY: {"type":"food|weight|education|smartwatch","confidence":0.0-1.0}
       // Soft-fail: pretend unknown so caller falls back to full detect.
       return { type: 'unknown', confidence: 0 };
     }
+  }
+
+  /**
+   * Normalize confidence value to a number between 0 and 1.
+   * Gemini sometimes returns strings like "high", "medium", "low" instead of numeric values.
+   * 
+   * @param {string|number|undefined} confidence - Raw confidence value from Gemini
+   * @returns {number} Normalized confidence between 0 and 1
+   */
+  normalizeConfidence(confidence) {
+    // If already a valid number, return it
+    if (typeof confidence === 'number' && confidence >= 0 && confidence <= 1) {
+      return confidence;
+    }
+    
+    // Convert string confidence levels to numeric values
+    if (typeof confidence === 'string') {
+      const lower = confidence.toLowerCase().trim();
+      switch (lower) {
+        case 'high': return 0.9;
+        case 'medium': return 0.6;
+        case 'low': return 0.3;
+        default:
+          // Try parsing as number
+          const parsed = parseFloat(confidence);
+          if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+            return parsed;
+          }
+      }
+    }
+    
+    // Default to medium confidence if we can't determine
+    console.warn('⚠️ [IMAGE-DETECTOR] Invalid confidence value:', confidence, '→ defaulting to 0.6');
+    return 0.6;
   }
 
   /**

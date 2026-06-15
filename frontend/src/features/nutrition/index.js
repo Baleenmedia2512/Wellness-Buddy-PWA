@@ -10,12 +10,19 @@ export { default as EditableFoodItem } from './components/EditableFoodItem';
 export { default as FoodDetailModal } from './components/FoodDetailModal';
 export { default as NutritionSummaryCards } from './components/dashboard/NutritionSummaryCards';
 export { default as NutritionFilters } from './components/dashboard/NutritionFilters';
-export { useUserCalorieTarget, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData } from './hooks';
+export { default as MealAnalysisModal } from './components/dashboard/MealAnalysisModal';
+export { default as UndoRow } from './components/dashboard/UndoRow';
+export { useUserCalorieTarget, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData, useMealMutations } from './hooks';
 export * from './services/foodCorrectionService';
 export * from './services/foodCorrection';
 export * from './services/duplicateDetectionService';
 export * from './services/backgroundNutritionService';
 export * from './services/nutritionSaveService';
 export * from './services/nutritionFallback';
+export { deleteMealById, updateMealNutrition, undoMealDelete } from './services/nutritionDashboard';
 export { aggregateFoodTotals, FOOD_TOTAL_FIELDS } from './domain/aggregateFoodTotals';
+export { parseAnalysisData } from './services/duplicateDetection/foodNameExtractor';
+// parseMealAnalysisData — the full {name, nutrition, detailedItems} parser (analysisHelpers version).
+export { parseAnalysisData as parseMealAnalysisData } from './services/nutritionDashboard/analysisHelpers';
+export { transformDbItemToEditable } from './services/nutritionDashboard/foodItemTransform';
 

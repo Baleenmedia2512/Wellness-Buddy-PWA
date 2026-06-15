@@ -167,3 +167,57 @@ export async function updateImageTypeById({ captureId, userId, imageType }) {
   if (error) throw error;
   return data || null;
 }
+
+/**
+ * 2026-06-09: Soft-delete a capture. Sets IsDeleted=1 to hide it from all
+ * listing queries. Only the owner may delete.
+ *
+ * Returns:
+ *   { deleted: true }       on success
+ *   { deleted: false }      if the row was not found or already deleted
+ *
+ * Never throws on not-found — callers treat that as a no-op.
+ */
+export async function softDeleteById({ captureId, userId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ IsDeleted: 1, UpdatedAt: new Date().toISOString() })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 0)  // Only delete if not already deleted
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return { deleted: !!data };
+}
+
+/**
+ * undoSoftDeleteById — restore a soft-deleted capture (undo delete).
+ *
+ * Sets IsDeleted back to 0 for the given capture. Only restores if:
+ *   - The capture belongs to the given userId (ownership guard)
+ *   - The capture is currently marked IsDeleted=1
+ *
+ * Params:
+ *   { captureId: string|number, userId: string|number }
+ *
+ * Returns:
+ *   { restored: true }      on success
+ *   { restored: false }     if not found or not deleted
+ *
+ * Never throws on not-found — callers treat that as a no-op.
+ */
+export async function undoSoftDeleteById({ captureId, userId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ IsDeleted: 0, UpdatedAt: new Date().toISOString() })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 1)  // Only restore if currently deleted
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return { restored: !!data };
+}

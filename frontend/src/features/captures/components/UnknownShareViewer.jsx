@@ -5,15 +5,16 @@
  * `unknown` capture (AI could not classify the image).
  *
  * Layout mirrors an "opened" food card minus the nutrition rows: the image
- * fills the card; Retry + Edit actions sit below it. The buttons render ONLY
- * when `canMutate` is true (owner or a coach in the owner's upline — decided
- * server-side and passed in by the parent). Anonymous link recipients see the
- * image only.
+ * fills the card; Retry + Edit + Delete actions sit below it. The buttons
+ * render ONLY when `canMutate` is true (owner or a coach in the owner's
+ * upline — decided server-side and passed in by the parent). Anonymous link
+ * recipients see the image only.
  *
- * Pure presentational — owns no async. The parent (App.js) wires:
- *   - onRetry : re-run Gemini on the image, then promote unknown → food.
- *   - onEdit  : open SmartFoodSearchModal, then promote with the picked food.
- *   - onClose : dismiss the viewer.
+ * Pure presentational — owns no async. The parent (App.js / UnknownEntryFlow) wires:
+ *   - onRetry  : re-run Gemini on the image, then promote unknown → food.
+ *   - onEdit   : open SmartFoodSearchModal, then promote with the picked food.
+ *   - onDelete : soft-delete the capture (2026-06-09).
+ *   - onClose  : dismiss the viewer.
  * ---------------------------------------------------------------------------
  */
 
@@ -27,6 +28,7 @@ function UnknownShareViewer({
   error = null,
   onRetry,
   onEdit,
+  onDelete,
   onClose,
 }) {
   if (!isOpen) return null;
@@ -99,24 +101,35 @@ function UnknownShareViewer({
         ) : null}
 
         {canMutate ? (
-          <div className="flex gap-2 px-5 pb-5">
+          <div className="flex flex-col gap-2 px-5 pb-5">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                data-testid="unknown-share-retry"
+                disabled={retrying}
+                onClick={onRetry}
+                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {retrying ? 'Retrying…' : 'Retry'}
+              </button>
+              <button
+                type="button"
+                data-testid="unknown-share-edit"
+                disabled={retrying}
+                onClick={onEdit}
+                className="flex-1 rounded-lg border border-emerald-600 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-400 dark:hover:bg-gray-800"
+              >
+                Edit
+              </button>
+            </div>
             <button
               type="button"
-              data-testid="unknown-share-retry"
+              data-testid="unknown-share-delete"
               disabled={retrying}
-              onClick={onRetry}
-              className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onDelete}
+              className="w-full rounded-lg border border-red-600 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400 dark:hover:bg-gray-800"
             >
-              {retrying ? 'Retrying…' : 'Retry'}
-            </button>
-            <button
-              type="button"
-              data-testid="unknown-share-edit"
-              disabled={retrying}
-              onClick={onEdit}
-              className="flex-1 rounded-lg border border-emerald-600 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-400 dark:hover:bg-gray-800"
-            >
-              Edit
+              Delete
             </button>
           </div>
         ) : null}

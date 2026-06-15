@@ -103,7 +103,18 @@ import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
 import { ManualEducationEntryModal } from "./features/education";
-import { UnknownCaptureModal, UnknownShareViewer, fetchUnknownShare, promoteUnknownToFood } from "./features/captures";
+// VSA-compliant barrel imports (helpers exported via features/captures/index.js)
+import {
+  UnknownCaptureModal,
+  UnknownShareViewer,
+  fetchUnknownShare,
+  promoteUnknownToFood,
+  deleteCapture,
+  undoDeleteCapture,
+  buildAnalysisFromGeminiAnalysis,
+  hasRecognizedFood,
+} from "./features/captures";
+import UnknownCaptureUndoBanner, { UNDO_SECONDS } from "./shell/components/UnknownCaptureUndoBanner";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
 import { isFlagEnabled } from "./config/featureFlags";
@@ -121,6 +132,7 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 // import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 // import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { CoachScoreSummary } from "./features/leaderboard";
+import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
@@ -152,6 +164,7 @@ const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalD
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
+const WellnessReportsPage = lazy(() => import("./shell/components/WellnessReportsPage"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
@@ -273,6 +286,9 @@ function WellnessValleyApp() {
     retrying: false,
     error: null,
   });
+  // 2026-06-09 — undo state for unknown capture deletion (share-link viewer)
+  const [unknownShareUndo, setUnknownShareUndo] = useState(null);
+  // { captureId, userId, imageBase64, expiresAt }
   // PR-E — when the share viewer's "Edit" is tapped, this drives a dedicated
   // SmartFoodSearchModal whose save promotes the capture unknown → food.
   const [shareEditView, setShareEditView] = useState({ open: false, captureId: null });
@@ -337,7 +353,7 @@ function WellnessValleyApp() {
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
-  const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0); // Increment to force HomeNutritionCarousel re-fetch
+  // Nutrition refresh key removed - now using NutritionRefreshContext (see hooks below)
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload ? pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
@@ -383,25 +399,9 @@ function WellnessValleyApp() {
   const captureFlowStartRef = useRef(0);
   const foodShareImageReadyAtRef = useRef(0);
 
-  // ── Reverse-progress weight tips ─────────────────────────────────────────
-  // const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
-  // const weightProgressCheck = useWeightProgressCheck();
+  // Hook into global nutrition refresh context (replaces old nutritionRefreshKey state)
+  const { refreshKey: nutritionRefreshKey, triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
 
-  // const triggerReverseProgressModal = useCallback(async (userId, weightId = null) => {
-  //   if (!userId) return;
-  //   try {
-  //     const progressResult = await weightProgressCheck.checkProgress(userId, weightId);
-  //     console.log('[weight-progress] check result:', progressResult);
-  //     if (progressResult?.shouldShow) {
-  //       setShowWeightProgressModal(true);
-  //     } else {
-  //       console.log('[weight-progress] modal skipped:', progressResult?.reason || 'no reverse progress');
-  //     }
-  //   } catch (progressErr) {
-  //     console.error('[weight-progress] check failed:', progressErr);
-  //   }
-  // }, [weightProgressCheck]);
-  
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
   // (no html2canvas in the click handler). Re-runs whenever the underlying
@@ -649,6 +649,11 @@ function WellnessValleyApp() {
 
   // Wellness University state
   const [showWellnessReport, setShowWellnessReport] = useState(false);
+
+  // Summary + trend reports (separate from Diary log UI)
+  const [showWellnessReports, setShowWellnessReports] = useState(false);
+  const wellnessReportsReturnToRef = useRef('main');
+  const [reportsInitialMember, setReportsInitialMember] = useState(null);
 
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
@@ -1452,8 +1457,26 @@ function WellnessValleyApp() {
     [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
   );
 
+  const openWellnessReportsPage = useCallback((returnTo = 'main', member = null) => {
+    wellnessReportsReturnToRef.current = returnTo;
+    setReportsInitialMember(member);
+    startTransition(() => {
+      if (returnTo === 'dashboard') setShowDashboard(false);
+      setShowWellnessReports(true);
+    });
+  }, []);
+
+  const closeWellnessReportsPage = useCallback(() => {
+    const returnTo = wellnessReportsReturnToRef.current;
+    setShowWellnessReports(false);
+    if (returnTo === 'dashboard') {
+      startTransition(() => setShowDashboard(true));
+    }
+  }, []);
+
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowWellnessReports(false);
     setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
     // setShowStepCounter(false); // feature disabled
@@ -2695,15 +2718,16 @@ function WellnessValleyApp() {
         console.log("📍 [performWeightSave] GPS location captured successfully");
         debugLog("📍 [weight] Attendance determined:", attendance);
 
-        // If multiple clubs detected, show selection modal
+        // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog("🏢 [weight] Multiple clubs detected, showing selection modal");
-          setNearbyCenters(attendance.nearbyCenters);
-          setPendingWeightData({ weightData, imageBase64, attendance, captureTimestamp });
-          setShowClubSelectionModal(true);
-          setSaveLoading(false);
-          setLoadingState("idle");
-          return; // Wait for user to select club
+          debugLog("🏢 [weight] Multiple clubs detected, auto-selecting closest club");
+          const closestClub = attendance.nearbyCenters[0];
+          debugLog("✅ [weight] Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+          
+          // Update attendance to use the closest club
+          attendance.nutritionCenterId = closestClub.center.id;
+          attendance.centerName = closestClub.center.center_name;
+          attendance.attendanceType = "club";
         }
 
         // Single club or remote
@@ -3400,14 +3424,18 @@ function WellnessValleyApp() {
     try {
       const file = base64ToImageFile(imageBase64);
       const analysis = await geminiService.analyzeImageForNutrition(file);
-      const noFood = !analysis?.foods?.length || !(Number(analysis?.total?.calories) > 0);
-      if (noFood) {
+
+      if (!hasRecognizedFood(analysis)) {
         setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
         return;
       }
-      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult: analysis });
+
+      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
       setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
       showToast("Saved to your diary");
+      // Trigger global nutrition refresh after promoting unknown to food
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
     } catch (e) {
       setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
     }
@@ -3419,6 +3447,27 @@ function WellnessValleyApp() {
     setShareEditView({ open: true, captureId: unknownShareView.captureId });
   };
 
+  // Delete: soft-delete the unknown capture (2026-06-09).
+  // Updated to use undo pattern (shows banner for 10s).
+  const handleUnknownShareDelete = async () => {
+    const { captureId, imageBase64 } = unknownShareView;
+    if (!captureId || !user?.id) return;
+    setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
+    try {
+      await deleteCapture({ captureId, userId: user.id });
+      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+      // Show undo banner
+      setUnknownShareUndo({
+        captureId,
+        userId: user.id,
+        imageBase64,
+        expiresAt: Date.now() + UNDO_SECONDS * 1000,
+      });
+    } catch (e) {
+      setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't delete — please try again." }));
+    }
+  };
+
   const handleShareEditSave = async (manualData) => {
     const { captureId } = shareEditView;
     if (!captureId || !user?.id) return;
@@ -3428,6 +3477,8 @@ function WellnessValleyApp() {
       setShareEditView({ open: false, captureId: null });
       setUnknownShareView((v) => ({ ...v, open: false }));
       showToast("Saved to your diary");
+      // Trigger global nutrition refresh after editing unknown capture
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-edit' });
     } catch (e) {
       showToast("Couldn't save — please try again");
     }
@@ -3498,20 +3549,20 @@ function WellnessValleyApp() {
         };
       }
 
-      // If multiple clubs detected and no club selected yet, show selection modal
+      // If multiple clubs detected, auto-select the closest one (first in array)
       if (
         attendance.nearbyCenters &&
         attendance.nearbyCenters.length > 1 &&
         !selectedClub
       ) {
-        debugLog("🏢 Multiple clubs detected, showing selection modal");
-        setNearbyCenters(attendance.nearbyCenters);
-        // Store captureTimestamp and captureId so club-selection callback can pass them through
-        setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp, captureId });
-        setShowClubSelectionModal(true);
-        setSaveLoading(false);
-        setLoadingState("idle");
-        return; // Wait for user to select club
+        debugLog("🏢 Multiple clubs detected, auto-selecting closest club");
+        const closestClub = attendance.nearbyCenters[0];
+        debugLog("✅ Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+        
+        // Update attendance to use the closest club
+        attendance.nutritionCenterId = closestClub.center.id;
+        attendance.centerName = closestClub.center.center_name;
+        attendance.attendanceType = "club";
       }
 
       // Reverse-geocode GPS coordinates into city + village via shared helper.
@@ -3760,6 +3811,9 @@ function WellnessValleyApp() {
         // Refresh data
         handleLeaderboardRefresh();
         
+        // Trigger nutrition refresh for home screen cards
+        triggerNutritionRefresh({ immediate: true, source: 'club-modal-save' });
+        
       } catch (error) {
         console.error('❌ Error saving nutrition:', error);
         setAlertModal({
@@ -3810,19 +3864,16 @@ function WellnessValleyApp() {
         attendance = await locationAttendanceService.determineAttendance(apiBaseUrl, saveData.userId);
         debugLog("📍 [nutrition] Attendance determined:", attendance);
 
-        // If multiple clubs detected, show selection modal
+        // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog("🏢 [nutrition] Multiple clubs detected, showing selection modal");
-          setNearbyCenters(attendance.nearbyCenters);
-          setPendingFoodData({ 
-            saveData, 
-            attendance,
-            captureId: foodCaptureIdRef.current || undefined 
-          });
-          setShowClubSelectionModal(true);
-          setSaveLoading(false);
-          setLoadingState("idle");
-          return; // Wait for user to select club
+          debugLog("🏢 [nutrition] Multiple clubs detected, auto-selecting closest club");
+          const closestClub = attendance.nearbyCenters[0];
+          debugLog("✅ [nutrition] Auto-selected closest club:", closestClub.center.center_name, `(${Math.round(closestClub.distance)}m)`);
+          
+          // Update attendance to use the closest club
+          attendance.nutritionCenterId = closestClub.center.id;
+          attendance.centerName = closestClub.center.center_name;
+          attendance.attendanceType = "club";
         }
 
         // Single club or remote
@@ -3868,7 +3919,7 @@ function WellnessValleyApp() {
       handleLeaderboardRefresh();
 
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
-      setNutritionRefreshKey((prev) => prev + 1);
+      triggerNutritionRefresh({ immediate: true, source: 'camera-save' });
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -3883,6 +3934,84 @@ function WellnessValleyApp() {
       setSaveLoading(false);
       debugLog("? [App] Save loading finished");
     }
+  };
+
+  // Club/GPS lookup + DB persist after food analysis — runs in the background
+  // so the Share button is available as soon as nutritionData is set.
+  const scheduleNutritionSaveInBackground = ({
+    user: saveUser,
+    file: saveFile,
+    processedImage: saveProcessedImage,
+    analysisResult,
+    exifTimestamp: saveExifTimestamp,
+  }) => {
+    setLoadingState("saving");
+
+    void (async () => {
+      try {
+        if (!saveUser) {
+          throw new Error("Please sign in to save nutrition data");
+        }
+
+        let actualUserId = saveUser?.id;
+        if (!actualUserId) {
+          actualUserId = await getUserId(saveUser);
+        }
+        if (!actualUserId) {
+          throw new Error(
+            "Unable to resolve user account. Please try again or contact support.",
+          );
+        }
+
+        const savePayload = {
+          userId: actualUserId,
+          imagePath: saveFile.name,
+          imageBase64: saveProcessedImage,
+          analysisResult,
+          deviceInfo: window.navigator.userAgent,
+          userEmail: saveUser?.email || saveUser?.Email || "unknown",
+          captureTimestamp: saveExifTimestamp || null,
+        };
+
+        let duplicateCheck;
+        try {
+          duplicateCheck =
+            await duplicateDetectionService.checkForDuplicateFood({
+              userId: actualUserId,
+              analysisResult,
+            });
+        } catch (duplicateError) {
+          console.error(
+            "Duplicate check failed, proceeding with save:",
+            duplicateError,
+          );
+          await performNutritionSave(savePayload);
+          return;
+        }
+
+        if (!duplicateCheck || typeof duplicateCheck !== "object") {
+          console.warn(
+            "Invalid duplicate check response, proceeding with save",
+          );
+          await performNutritionSave(savePayload);
+          return;
+        }
+
+        if (false && duplicateCheck.isDuplicate) {
+          debugLog("⚠️ Duplicate food detected:", duplicateCheck);
+          setDuplicateInfo(duplicateCheck);
+          setPendingSaveData(savePayload);
+          setShowDuplicateModal(true);
+          setSaveLoading(false);
+        } else {
+          await performNutritionSave(savePayload);
+        }
+      } catch (err) {
+        console.error("❌ Save failed:", err?.message || err);
+        setSaveError(getFriendlyErrorMessage(err));
+        setSaveLoading(false);
+      }
+    })();
   };
 
   // Handle duplicate modal confirmation
@@ -5107,117 +5236,15 @@ function WellnessValleyApp() {
           loggedAt: exifTimestamp || new Date().toISOString(),
         });
 
-        // Check for duplicate food before saving
-        setLoadingState("saving"); // Switch to saving state
-        setSaveLoading(true);
-        try {
-          // Edge case: User might be null or invalid
-          if (!user) {
-            console.error("No user available for duplicate check");
-            throw new Error("Please sign in to save nutrition data");
-          }
-
-          const userIdentifier =
-            user.email || user.id || user.uid || "anonymous";
-
-          // Get actual userId for duplicate check
-          let actualUserId = user?.id;
-          if (!actualUserId) {
-            try {
-              actualUserId = await getUserId(user);
-            } catch (userIdError) {
-              console.error("Failed to get userId:", userIdError);
-              // Edge case: If userId lookup fails, cannot proceed with save
-              // because nutrition centers API requires integer userId
-              throw new Error("Unable to resolve user account. Please try again or contact support.");
-            }
-          }
-
-          // Edge case: userId still invalid after lookup
-          if (!actualUserId) {
-            throw new Error("Unable to resolve user account. Please try again or contact support.");
-          }
-
-          // Check for duplicates in current meal time slot
-          let duplicateCheck;
-          try {
-            duplicateCheck =
-              await duplicateDetectionService.checkForDuplicateFood({
-                userId: actualUserId,
-                analysisResult: result,
-              });
-          } catch (duplicateError) {
-            // Edge case: Duplicate check failed (network error, etc.)
-            console.error(
-              "Duplicate check failed, proceeding with save:",
-              duplicateError,
-            );
-            // Still use actualUserId, not userIdentifier
-            await performNutritionSave({
-              userId: actualUserId,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
-          }
-
-          // Edge case: Invalid duplicate check response
-          if (!duplicateCheck || typeof duplicateCheck !== "object") {
-            console.warn(
-              "Invalid duplicate check response, proceeding with save",
-            );
-            // Still use actualUserId, not userIdentifier
-            await performNutritionSave({
-              userId: actualUserId,
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-            return;
-          }
-
-          if (false && duplicateCheck.isDuplicate) {
-            // Found duplicate - show confirmation modal
-            debugLog("⚠️ Duplicate food detected:", duplicateCheck);
-            setDuplicateInfo(duplicateCheck);
-            setPendingSaveData({
-              userId: actualUserId, // Use resolved integer ID, not email
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null, // Preserve EXIF time through duplicate flow
-            });
-            setShowDuplicateModal(true);
-            setSaveLoading(false);
-          } else {
-            // No duplicate - proceed with save
-            await performNutritionSave({
-              userId: actualUserId, // Use resolved integer ID, not email
-              imagePath: file.name,
-              imageBase64: processedImage,
-              analysisResult: result,
-              deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || "unknown",
-              captureTimestamp: exifTimestamp || null,
-            });
-          }
-        } catch (err) {
-          // Handle save errors
-          console.error("❌ Save failed:", err.message);
-
-          const friendlySaveError = getFriendlyErrorMessage(err);
-          setSaveError(friendlySaveError);
-          setSaveLoading(false);
-        }
+        // Analysis done — unlock Share immediately; club/GPS + DB save in bg.
+        setLoading(false);
+        scheduleNutritionSaveInBackground({
+          user,
+          file,
+          processedImage,
+          analysisResult: result,
+          exifTimestamp,
+        });
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
@@ -5879,6 +5906,7 @@ function WellnessValleyApp() {
 
   // useDeferredValue for lazy pages � must be declared BEFORE any early returns (Rules of Hooks)
   const deferredShowDashboard = useDeferredValue(showDashboard);
+  const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
@@ -5990,6 +6018,24 @@ function WellnessValleyApp() {
     );
   }
 
+  // Summary + trend reports (nutrition / weight / education)
+  if (deferredShowWellnessReports) {
+    return (
+      <Suspense fallback={null}>
+        <WellnessReportsPage
+          user={user}
+          userRole={userRole}
+          onBack={closeWellnessReportsPage}
+          apiBaseUrl={apiBaseUrl}
+          bmrUpdateKey={bmrUpdateKey}
+          educationRefreshKey={educationRefreshKey}
+          watchBurnedCalories={watchBurnedCalories}
+          initialSelectedMember={reportsInitialMember}
+        />
+      </Suspense>
+    );
+  }
+
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
@@ -6006,6 +6052,7 @@ function WellnessValleyApp() {
           initialSelectedMember={dashboardInitialSelectedMember}
           initialDate={dashboardInitialDate}
           initialMealId={dashboardInitialMealId}
+          onOpenReports={(member) => openWellnessReportsPage('dashboard', member)}
         />
       </Suspense>
     );
@@ -6298,6 +6345,7 @@ function WellnessValleyApp() {
         user={user}
         userRole={userRole}
         onShowBackgroundHistory={showDashboardPage}
+        onShowWellnessReports={() => openWellnessReportsPage('main')}
         // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
         // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
         onShowReminders={showRemindersPage}
@@ -6364,8 +6412,8 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
-        <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1">
+      <div className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
+        <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1 flex-1 flex flex-col">
           {/* Back button toast message */}
           {toast.visible && (
             <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
@@ -6393,6 +6441,8 @@ function WellnessValleyApp() {
             educationWindow={educationWindow}
             onCameraStateChange={handleCameraStateChange}
           />
+
+          {/* No inline buttons here anymore - moved to sticky footer at bottom */}
 
           {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
           {user && user.id && (
@@ -7197,6 +7247,36 @@ function WellnessValleyApp() {
             isVisible={showTestGuide}
             onClose={() => setShowTestGuide(false)}
           />
+
+          {/* Spacer to push buttons to bottom when there's little content */}
+          <div className="flex-1 min-h-[20px]" />
+
+          {/* 📸 Sticky Footer - Camera & Gallery Buttons */}
+          {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
+            <div className="flex justify-center gap-3 py-4 mt-auto">
+              {/* Camera Button */}
+              <button
+                onClick={() => { fileInputRef.current?.openCamera?.(); }}
+                disabled={loading}
+                className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Take Photo"
+                aria-label="Camera access"
+              >
+                <img src="/app.png" alt="Camera" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
+              </button>
+              
+              {/* Gallery Button */}
+              <button
+                onClick={() => { fileInputRef.current?.openGallery?.(); }}
+                disabled={loading}
+                className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Choose from Gallery"
+                aria-label="Gallery access"
+              >
+                <img src="/gallery.png" alt="Gallery" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -7260,7 +7340,7 @@ function WellnessValleyApp() {
         }}
       />
 
-      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit) */}
+      {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
       <UnknownShareViewer
         isOpen={unknownShareView.open}
         imageBase64={unknownShareView.imageBase64}
@@ -7269,8 +7349,27 @@ function WellnessValleyApp() {
         error={unknownShareView.error}
         onRetry={handleUnknownShareRetry}
         onEdit={handleUnknownShareEdit}
+        onDelete={handleUnknownShareDelete}
         onClose={() => setUnknownShareView({ open: false, captureId: null, imageBase64: null, canMutate: false, retrying: false, error: null })}
       />
+
+      {/* 2026-06-09 — undo banner for unknown capture deletion (share-link viewer) */}
+      {unknownShareUndo && (
+        <UnknownCaptureUndoBanner
+          captureId={unknownShareUndo.captureId}
+          userId={unknownShareUndo.userId}
+          imageBase64={unknownShareUndo.imageBase64}
+          expiresAt={unknownShareUndo.expiresAt}
+          onUndo={async ({ captureId, userId }) => {
+            await undoDeleteCapture({ captureId, userId });
+            setUnknownShareUndo(null);
+            showToast("Restored");
+          }}
+          onExpire={() => {
+            setUnknownShareUndo(null);
+          }}
+        />
+      )}
 
       {/* PR-E — dedicated food search modal whose save promotes unknown → food */}
       <SmartFoodSearchModal
@@ -7704,32 +7803,7 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-      {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
-      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <>
-          {/* Camera Button */}
-          <button
-            onClick={() => { fileInputRef.current?.openCamera?.(); }}
-            disabled={loading}
-            className="fixed bottom-24 right-4 xs:right-6 md:bottom-32 md:right-8 z-50 p-2.5 rounded-full bg-green-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Take Photo"
-            aria-label="Quick camera access"
-          >
-            <img src="/app.png" alt="Camera" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
-          </button>
-          
-          {/* Gallery Button */}
-          <button
-            onClick={() => { fileInputRef.current?.openGallery?.(); }}
-            disabled={loading}
-            className="fixed bottom-24 right-20 xs:right-24 md:bottom-32 md:right-28 z-50 p-2.5 rounded-full bg-blue-500 shadow-lg transition-all duration-200 active:scale-95 hover:scale-110 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Choose from Gallery"
-            aria-label="Quick gallery access"
-          >
-            <img src="/gallery.png" alt="Gallery" className="w-10 h-10 pointer-events-none select-none" draggable={false} />
-          </button>
-        </>
-      )}
+      {/* Fixed buttons removed - now using sticky footer layout inside scrollable content */}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (
@@ -8045,4 +8119,11 @@ function WellnessValleyApp() {
   );
 }
 
-export default WellnessValleyApp;
+// Wrap app in NutritionRefreshProvider for global nutrition data refresh
+const AppWithProviders = () => (
+  <NutritionRefreshProvider>
+    <WellnessValleyApp />
+  </NutritionRefreshProvider>
+);
+
+export default AppWithProviders;

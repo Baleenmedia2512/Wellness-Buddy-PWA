@@ -9,19 +9,18 @@
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, FileBarChart, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
+import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
 import DashboardTabs from './DashboardTabs';
-// ADR-0003 — when the Diary feed is the single surface, the shell hosts the
-// per-feature detail modals. Imported via feature barrels (VSA §2.2).
-import { WeightCardModal, deleteWeight, saveWeight } from '../../features/weight';
-import { EducationCardModal, deleteEducationLog } from '../../features/education';
-import { FoodDetailModal } from '../../features/nutrition';
-import DiarySummaryCards from './DiarySummaryCards';
+// ADR-0003 (revised) — Food / Weight / Education keep their original
+// dashboards; the shell only hosts the "Other" (unknown capture) flow.
 import UnknownEntryFlow from './UnknownEntryFlow';
+import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
+import { undoDeleteCapture } from '../../features/captures';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -45,12 +44,13 @@ const DiaryFeed = lazy(() =>
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null, onOpenReports = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
   // (matches the other tab-visibility decisions in this component).
   const diaryEnabled = isFlagEnabled('ff.diary-feed');
+  const { triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
@@ -113,6 +113,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
 
+  // Label for the shell-level date-picker button: "Today" when the
+  // selected day is the current day, otherwise a short date (e.g. "Jun 9").
+  const dateButtonLabel =
+    selectedDate.toDateString() === new Date().toDateString()
+      ? 'Today'
+      : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
   // Save active tab to localStorage when it changes
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -122,57 +129,51 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
   };
 
-  // ── ADR-0003 single-page Diary: detail-modal hosting ──────────────────────
-  // When diary is the only surface, tapping a row opens the matching detail
-  // card here in the shell. `openEntry` is the normalised record + kind; the
-  // diary feed remounts (via `diaryReloadKey`) after a delete / weight edit.
+  // ── ADR-0003 (revised) — "Other" tab hosting ─────────────────────────────
+  // Food / Weight / Education now render their ORIGINAL dashboards (with their
+  // own detail modals + optimistic updates). The shell only hosts the
+  // unrecognised ("unknown") capture flow here. `diaryReloadKey` re-fetches
+  // the Other feed after a retry / delete / undo.
   const ownerId = displayUser?.id || displayUser?.userId;
-  const [openEntry, setOpenEntry] = useState(null);
   const [diaryReloadKey, setDiaryReloadKey] = useState(0);
   const reloadDiary = () => setDiaryReloadKey((k) => k + 1);
+  const [weightReloadKey, setWeightReloadKey] = useState(0);
+  const [diaryEducationRefreshKey, setDiaryEducationRefreshKey] = useState(0);
   // Unknown ("Other") row flow: image viewer + Retry / Edit → respective vertical.
   const [unknownFlow, setUnknownFlow] = useState(null);
+  // 2026-06-09 — undo state for unknown capture deletion (shell-level)
+  const [unknownUndo, setUnknownUndo] = useState(null);
+  // { captureId, userId, imageBase64, expiresAt }
   const viewingSelf = !selectedMember || selectedMember.isSelf;
 
+  // Tapping an "Other" row opens the image viewer with Retry / Edit. Food,
+  // weight and education rows never reach the feed anymore (they live in their
+  // own dashboards), so only the `unknown` kind is handled here.
   const handleEntryOpen = (entry) => {
+    if (entry.kind !== 'unknown') return;
     const p = entry.payload || {};
-    if (entry.kind === 'weight') {
-      setOpenEntry({
-        kind: 'weight',
-        record: {
-          ID: p.id, Weight: p.weight, CreatedAt: entry.capturedAt,
-          Bmi: p.bmi, BodyFat: p.bodyFat, MuscleMass: p.muscleMass, Bmr: p.bmr,
-          WeightImageBase64: p.imageBase64,
-        },
-      });
-    } else if (entry.kind === 'education' || entry.kind === 'watch') {
-      setOpenEntry({
-        kind: 'education',
-        record: {
-          Id: p.id, Topic: p.topic, Platform: p.platform, CreatedAt: entry.capturedAt,
-          Confidence: p.confidence, ImageBase64: p.imageBase64,
-        },
-      });
-    } else if (entry.kind === 'food') {
-      setOpenEntry({ kind: 'food', record: p, capturedAt: entry.capturedAt });
-    } else if (entry.kind === 'unknown') {
-      // Open the image viewer with Retry / Edit. captureId is on capture.id
-      // (or payload.id, which is the same CaptureID for unknown rows).
-      setUnknownFlow({
-        captureId: entry.capture?.id ?? p.id,
-        imageBase64: p.imageBase64,
-      });
-    }
+    setUnknownFlow({
+      captureId: entry.capture?.id ?? p.id,
+      imageBase64: p.imageBase64,
+    });
   };
 
-  // One-day-at-a-time stepper for the single Diary page (no future days).
-  const shiftDay = (delta) => {
-    const next = new Date(selectedDate);
-    next.setDate(next.getDate() + delta);
-    if (next > new Date()) return;
-    setSelectedDate(next);
+  // Swipe-to-delete is intentionally disabled for unknown rows to preserve the
+  // undo UX (deletion happens inside UnknownEntryFlow). The "Other" feed only
+  // contains unknown rows, so this is a no-op kept for the DiaryFeed contract.
+  const handleEntryDelete = () => {};
+
+  const handleUnknownChanged = (change = {}) => {
+    setUnknownFlow(null);
+    reloadDiary();
+    if (change.kind === 'food') {
+      triggerNutritionRefresh({ immediate: true, source: 'unknown-flow-food' });
+    } else if (change.kind === 'weight') {
+      setWeightReloadKey((k) => k + 1);
+    } else if (change.kind === 'education') {
+      setDiaryEducationRefreshKey((k) => k + 1);
+    }
   };
-  const isToday = selectedDate.toDateString() === new Date().toDateString();
 
   return (
     <>
@@ -234,8 +235,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </p>
             </div>
 
-            {/* Calendar button - show for steps and screen tabs, and diary (for date picking) */}
-            {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
+            {/* Calendar button — for the steps/screen tabs (disabled) AND the
+                single-page Diary. In the Diary, this one shell-level "Today"
+                button opens the month-grid date picker and drives the day for
+                every stacked dashboard (Nutrition's own strip is suppressed). */}
+            {(activeTab === 'steps' || activeTab === 'screen') && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
@@ -244,13 +248,36 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
-            {/* Empty space for tabs without top-right action */}
+            {diaryEnabled && (
+              <div className="flex items-center gap-1">
+                {onOpenReports && (
+                  <TouchFeedbackButton
+                    onClick={() => onOpenReports(selectedMember)}
+                    className="p-2 md:p-3 hover:bg-emerald-50 rounded-xl transition-colors"
+                    ariaLabel="Open reports"
+                  >
+                    <FileBarChart className="h-5 w-5 text-emerald-700" />
+                  </TouchFeedbackButton>
+                )}
+                <TouchFeedbackButton
+                  onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
+                  className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
+                  ariaLabel="Open date picker"
+                >
+                  <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
+                  <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
+                </TouchFeedbackButton>
+              </div>
+            )}
+            {/* Empty space to keep the title centred when there's no top-right action */}
             {!diaryEnabled && (activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
 
-          {/* Tab navigation */}
+          {/* Tab navigation — only when the single-page Diary is OFF. When
+              ff.diary-feed is ON, Food / Weight / Education / Other are
+              stacked on one scrollable page (no tab switching). */}
           {!diaryEnabled && (
             <DashboardTabs
               activeTab={activeTab}
@@ -258,42 +285,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               diaryEnabled={diaryEnabled}
             />
           )}
-          {/* Single-page Diary: date stepper with clickable date label opening the calendar. */}
-          {diaryEnabled && (
-            <div className="flex items-center justify-center gap-4 pb-3">
-              <TouchFeedbackButton
-                onClick={() => shiftDay(-1)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                ariaLabel="Previous day"
-              >
-                <ChevronLeft className="w-5 h-5 text-gray-700" />
-              </TouchFeedbackButton>
-              <button
-                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
-                className="text-sm font-semibold text-gray-800 min-w-[8rem] text-center hover:text-emerald-600 transition-colors"
-                title="Pick a date"
-              >
-                {isToday
-                  ? 'Today'
-                  : selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </button>
-              <TouchFeedbackButton
-                onClick={() => shiftDay(1)}
-                disabled={isToday}
-                className={`p-2 rounded-lg transition-colors ${isToday ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                ariaLabel="Next day"
-              >
-                <ChevronRight className="w-5 h-5 text-gray-700" />
-              </TouchFeedbackButton>
-            </div>
-          )}
           {/* Steps + Screen tab buttons remain DISABLED — see
               feature-disabled banners in App.js. When re-enabled,
               extend DashboardTabs.jsx, not this file. */}
         </div>
       </div>
 
-      {/* Inline Calendar - for steps/screen tabs AND diary date picker */}
+      {/* Inline Calendar — month-grid date picker. Shown for the
+          (disabled) steps/screen tabs AND the single-page Diary. */}
       {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
@@ -462,26 +461,65 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-300 border-t-emerald-600"></div>
           </div>
         }>
-          {/* ADR-0003 — when the flag is ON, the Diary feed is the single
-              surface. The legacy per-tab dashboards below are only mounted
-              when the flag is OFF (backward-compatible fallback). */}
+          {/* ADR-0003 (revised) — single-page Diary. When ff.diary-feed is
+              ON, Food / Weight / Education render their ORIGINAL dashboards
+              stacked on one scrollable page (identical behaviour + in-place
+              optimistic updates), followed by the "Other" unknown-captures
+              feed. No tab switching. When the flag is OFF the legacy
+              one-tab-at-a-time layout below is used. */}
           {diaryEnabled ? (
-            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-24 mt-2">
-              <DiarySummaryCards
+            <div className="space-y-2">
+              <NutritionDashboard
+                user={displayUser}
+                onBack={onBack}
+                apiBaseUrl={apiBaseUrl}
+                onMealDelete={onMealDelete}
+                hideHeader={true}
+                hideDateStrip={true}
+                hideOverview={true}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                bmrUpdateKey={bmrUpdateKey}
+                watchBurnedCalories={watchBurnedCalories}
+                initialMealId={initialMealId}
+              />
+
+              <WeightDashboard
+                user={displayUser}
+                onBack={onBack}
+                apiBaseUrl={apiBaseUrl}
+                hideHeader={true}
+                hideOverview={true}
+                selectedDate={selectedDate}
+                initialEntryId={initialMealId}
+                refreshKey={weightReloadKey}
+              />
+
+              <EducationDashboard
                 user={displayUser}
                 apiBaseUrl={apiBaseUrl}
+                hideHeader={true}
+                hideOverview={true}
                 selectedDate={selectedDate}
-                bmrUpdateKey={bmrUpdateKey}
-                educationRefreshKey={educationRefreshKey}
-                watchBurnedCalories={watchBurnedCalories}
+                refreshKey={educationRefreshKey + diaryEducationRefreshKey}
+                initialEntryId={initialMealId}
               />
-              <DiaryFeed
-                key={diaryReloadKey}
-                ownerUserId={ownerId}
-                viewerUserId={user?.id || user?.userId}
-                date={selectedDate}
-                onEntryOpen={handleEntryOpen}
-              />
+
+              {/* "Other" — unrecognised ("unknown") captures only. Reuses the
+                  diary read-model filtered to `unknown`, preserving the image
+                  viewer + Retry / Edit / undo flow handled below. */}
+              <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
+                <h2 className="text-sm font-semibold text-gray-500 px-1 mb-2 mt-4">Other</h2>
+                <DiaryFeed
+                  refreshKey={diaryReloadKey}
+                  ownerUserId={ownerId}
+                  viewerUserId={user?.id || user?.userId}
+                  date={selectedDate}
+                  filterKinds={['unknown']}
+                  onEntryOpen={handleEntryOpen}
+                  onEntryDelete={handleEntryDelete}
+                />
+              </div>
             </div>
           ) : (
           <>
@@ -492,6 +530,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
               hideHeader={true}
+              hideOverview={true}
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               bmrUpdateKey={bmrUpdateKey}
@@ -506,6 +545,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              hideOverview={true}
               initialEntryId={initialMealId}
             />
           )}
@@ -515,16 +555,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              hideOverview={true}
               refreshKey={educationRefreshKey}
               initialEntryId={initialMealId}
             />
           )}
           </>
           )}
-
-          {/* PR-C / ADR-0003 — Diary feed is now rendered as the single
-              surface above when `diaryEnabled`. The legacy per-tab block
-              remains for the flag-OFF fallback only. */}
 
           {/* FEATURE DISABLED: Steps tab content
           {activeTab === 'steps' && (
@@ -564,50 +601,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       />
     )}
 
-    {/* ADR-0003 single-page Diary — detail modals opened from a feed row */}
-    {openEntry?.kind === 'weight' && (
-      <Suspense fallback={null}>
-        <WeightCardModal
-          data={openEntry.record}
-          apiBaseUrl={apiBaseUrl}
-          userId={ownerId}
-          onClose={() => setOpenEntry(null)}
-          onDelete={async (entryId) => {
-            await deleteWeight({ userId: ownerId, entryId });
-            setOpenEntry(null);
-            reloadDiary();
-          }}
-          onUpdate={async (entryId, weightValue) => {
-            await saveWeight({ userId: ownerId, entryId, weightValue });
-            reloadDiary();
-          }}
-        />
-      </Suspense>
-    )}
-
-    {openEntry?.kind === 'education' && (
-      <EducationCardModal
-        log={openEntry.record}
-        apiBaseUrl={apiBaseUrl}
-        userId={ownerId}
-        isDeleting={false}
-        onClose={() => setOpenEntry(null)}
-        onDelete={async (log) => {
-          await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: log.Id });
-          setOpenEntry(null);
-          reloadDiary();
-        }}
-      />
-    )}
-
-    {openEntry?.kind === 'food' && (
-      <FoodDetailModal
-        payload={openEntry.record}
-        capturedAt={openEntry.capturedAt}
-        onClose={() => setOpenEntry(null)}
-      />
-    )}
-
     {/* ADR-0003 — "Other" (unknown) row: image viewer + Retry / Edit */}
     {unknownFlow && (
       <UnknownEntryFlow
@@ -618,7 +611,35 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         userId={ownerId}
         apiBaseUrl={apiBaseUrl}
         onClose={() => setUnknownFlow(null)}
-        onChanged={() => { setUnknownFlow(null); reloadDiary(); }}
+        onChanged={handleUnknownChanged}
+        onDeleteWithUndo={({ captureId, imageBase64 }) => {
+          setUnknownUndo({
+            captureId,
+            userId: ownerId,
+            imageBase64,
+            expiresAt: Date.now() + UNDO_SECONDS * 1000,
+          });
+          setUnknownFlow(null);
+          reloadDiary();
+        }}
+      />
+    )}
+
+    {/* 2026-06-09 — undo banner for unknown capture deletion */}
+    {unknownUndo && (
+      <UnknownCaptureUndoBanner
+        captureId={unknownUndo.captureId}
+        userId={unknownUndo.userId}
+        imageBase64={unknownUndo.imageBase64}
+        expiresAt={unknownUndo.expiresAt}
+        onUndo={async ({ captureId, userId }) => {
+          await undoDeleteCapture({ captureId, userId });
+          setUnknownUndo(null);
+          reloadDiary();
+        }}
+        onExpire={() => {
+          setUnknownUndo(null);
+        }}
       />
     )}
     </>

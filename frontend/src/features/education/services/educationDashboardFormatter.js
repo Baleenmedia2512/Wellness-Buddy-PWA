@@ -17,6 +17,21 @@ export const toDateKey = (value) => {
 export const isSmallChartDevice = () =>
   typeof window !== 'undefined' && window.innerWidth < 380;
 
+/**
+ * Filter education logs to a single calendar day (matches the day the
+ * log is displayed under, i.e. its IST-local date). Returns the full
+ * list when `selectedDate` is falsy. Pure — no IO.
+ */
+export const filterLogsByDay = (logs, selectedDate) => {
+  if (!selectedDate) return logs || [];
+  const target = toDateKey(selectedDate);
+  return (logs || []).filter((log) => {
+    if (!log || !log.CreatedAt) return false;
+    const d = istToLocalDate(log.CreatedAt);
+    return d && !isNaN(d.getTime()) && toDateKey(d) === target;
+  });
+};
+
 export const buildMonthlyGroups = (logs) => {
   const grouped = {};
   logs.forEach((log) => {

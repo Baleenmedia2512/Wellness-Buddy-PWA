@@ -1,5 +1,5 @@
 /**
- * FoodDetailModal.jsx — standalone read-only food detail view.
+ * FoodDetailModal.jsx — standalone read-only food detail view with delete option.
  *
  * Used by the unified Diary page (ADR-0003) to open a food entry's card
  * directly from a diary row. Unlike `MealAnalysisModal` (which needs the
@@ -7,12 +7,13 @@
  * modal driven entirely by the diary `payload` projection:
  *   { id, imageBase64, imagePath, analysisData, totals, ... }
  *
- * View-only: image + macro totals + per-item breakdown. Editing a food
- * entry still happens in the nutrition surface; this satisfies the
- * "card should open" requirement for the Diary feed.
+ * View-only: image + macro totals + per-item breakdown + delete action.
+ * Editing individual food items still happens in the nutrition surface;
+ * this satisfies the "card should open with delete option" requirement
+ * for the Diary feed (matching the original dashboard tab cards).
  */
 import React from 'react';
-import { X, Flame } from 'lucide-react';
+import { X, Flame, Trash2 } from 'lucide-react';
 
 function macro(n) {
   const v = Number(n);
@@ -33,7 +34,7 @@ function extractItems(analysisData) {
   }));
 }
 
-const FoodDetailModal = ({ payload, capturedAt, onClose }) => {
+const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
   if (!payload) return null;
 
   const totals = payload.totals || {};
@@ -50,6 +51,13 @@ const FoodDetailModal = ({ payload, capturedAt, onClose }) => {
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
       })
     : '';
+
+  const handleDelete = () => {
+    if (onDelete && window.confirm('Delete this food entry? This action cannot be undone.')) {
+      onDelete();
+      onClose();
+    }
+  };
 
   return (
     <div
@@ -122,6 +130,19 @@ const FoodDetailModal = ({ payload, capturedAt, onClose }) => {
             </div>
           )}
         </div>
+
+        {/* Delete button — matches original dashboard card behavior */}
+        {onDelete && (
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={handleDelete}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 className="w-5 h-5" />
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
