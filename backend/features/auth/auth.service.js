@@ -238,12 +238,20 @@ export async function sendOtp({ recipient, contactType }) {
     await createAndDeliverOtp({ recipient, contactType });
   } catch (err) {
     logger.warn('[sendOtp] delivery failed', { contactType, message: err.message });
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const mdtDetail = err.message?.startsWith('MDT SMS rejected:')
       ? err.message.replace('MDT SMS rejected: ', '')
       : '';
+    const senderIdRaw = process.env.MDT_SMS_SENDER_ID || '';
+    const senderIdHint = senderIdRaw.length >= 4
+      ? `${senderIdRaw.slice(0, 2)}***${senderIdRaw.slice(-2)}`
+      : (senderIdRaw ? 'set-but-short' : 'missing');
+    const templateIdRaw = process.env.MDT_SMS_TEMPLATE_ID?.trim() || '';
+    const templateIdHint = templateIdRaw
+      ? `***${templateIdRaw.slice(-4)}`
+      : 'not-set';
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'auth.service.js:sendOtp-catch',message:'OTP delivery failed',data:{contactType,error:err.message?.slice(0,200),senderIdHint,templateIdHint,hasApiKey:Boolean(process.env.MDT_SMS_API_KEY)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const userMessage = mdtDetail
       ? `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
       : 'Failed to send OTP. Please try again.';
@@ -251,13 +259,19 @@ export async function sendOtp({ recipient, contactType }) {
       contactType,
       userMessage,
       providerError: mdtDetail || err.message?.slice(0, 120),
+      senderIdHint,
+      templateIdHint,
     });
     return {
       httpStatus: 502,
       body: {
         success: false,
         message: userMessage,
-        ...(contactType === 'phone' && mdtDetail ? { providerError: mdtDetail } : {}),
+        ...(contactType === 'phone' && mdtDetail ? {
+          providerError: mdtDetail,
+          senderIdHint,
+          templateIdHint,
+        } : {}),
       },
     };
   }

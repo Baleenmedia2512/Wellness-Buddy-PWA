@@ -79,7 +79,7 @@ export async function sendMdtSms({ e164, message }) {
     senderId,
     numberLen: number.length,
   });
-  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H1',location:'mdt-sms.client.js:response',message:'MDT provider response',data:{httpStatus:res.status,mdtStatus,mdtCode,mdtDesc,numberLen:number.length,senderId},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H1',location:'mdt-sms.client.js:response',message:'MDT provider response',data:{httpStatus:res.status,mdtStatus,mdtCode,mdtDesc,numberLen:number.length,senderIdHint:senderId.length>=4?`${senderId.slice(0,2)}***${senderId.slice(-2)}`:'short',hasTemplateId:Boolean(templateId),templateIdHint:templateId?`***${templateId.slice(-4)}`:'not-set'},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
 
   const parsed = parseMdtSendResponse(body);

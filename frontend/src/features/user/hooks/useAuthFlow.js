@@ -73,7 +73,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
         }
         // #region agent log
-        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'450563'},body:JSON.stringify({sessionId:'450563',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||''},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fdd5ae'},body:JSON.stringify({sessionId:'fdd5ae',hypothesisId:'H5',location:'useAuthFlow.js:phone-send',message:'phone sendOtp result',data:{httpStatus:data?._httpStatus,success:data?.success,hasOtpField:phoneLog.hasOtpInResponse,message:data?.message||'',providerError:phoneLog.providerError,senderIdHint:data?.senderIdHint||'',templateIdHint:data?.templateIdHint||''},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (data.success) {
           phoneRecipientRef.current = e164;
