@@ -30,6 +30,4 @@ export function mdtApiKeyHint(apiKey) {
   return `***${key.slice(-4)}`;
 }
 
-export const MDT_OTP_EXPIRY_MINUTES = 30;
-
-export const MDT_APP_NAME = 'Wellness Valley';
+export const MDT_OTP_EXPIRY_MINUTES = 10;

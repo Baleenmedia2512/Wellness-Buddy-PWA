@@ -20,17 +20,18 @@ describe('formatMdtDialNumber', () => {
 });
 
 describe('buildMdtOtpMessage', () => {
-  it('matches MDT DLT template shape', () => {
-    const msg = buildMdtOtpMessage('482916', 'Wellness Valley');
-    expect(msg).toContain('Dear 482916');
-    expect(msg).toContain('login to Wellness Valley');
-    expect(msg).toContain('30 minutes');
+  it('matches Baleen Media DLT template shape', () => {
+    const msg = buildMdtOtpMessage('482916');
+    expect(msg).toBe(
+      'Dear Customer, Your verification code for login is 482916. '
+      + 'This code is valid for 10 minutes. Please do not share this code with anyone - Baleen Media',
+    );
   });
 });
 
 describe('MDT_OTP_EXPIRY_MINUTES', () => {
-  it('is 30 to match provider template', () => {
-    expect(MDT_OTP_EXPIRY_MINUTES).toBe(30);
+  it('is 10 to match Baleen DLT template', () => {
+    expect(MDT_OTP_EXPIRY_MINUTES).toBe(10);
   });
 });
 

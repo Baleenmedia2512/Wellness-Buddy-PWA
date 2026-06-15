@@ -1,15 +1,12 @@
 /**
  * OTP SMS message bodies — pure string builders (no I/O).
- * MDT template must match the DLT-approved wording from the provider.
+ * Must match the DLT-approved Baleen Media template exactly (incl. 10-minute expiry).
  */
 
-import { MDT_APP_NAME } from './mdt-phone.rules.js';
-
-export function buildMdtOtpMessage(otp, appName = MDT_APP_NAME) {
+export function buildMdtOtpMessage(otp) {
   const code = String(otp || '').trim();
-  const name = String(appName || MDT_APP_NAME).trim();
   return (
-    `Dear ${code}, Your OTP for login to ${name}. Valid for 30 minutes. `
-    + 'Please do not share this OTP. Regards, My Dreams Technology Team'
+    `Dear Customer, Your verification code for login is ${code}. `
+    + 'This code is valid for 10 minutes. Please do not share this code with anyone - Baleen Media'
   );
 }
