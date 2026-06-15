@@ -30,7 +30,7 @@ describe('sendMdtSms', () => {
   it('calls MDT API with encoded query params', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      text: async () => 'OK',
+      text: async () => '{"status":"true","description":"SMS sent"}',
     });
 
     await sendMdtSms({ e164: '+919876543210', message: 'Dear 123456, test' });
@@ -41,6 +41,17 @@ describe('sendMdtSms', () => {
     expect(calledUrl).toContain('senderid=MDTDMO');
     expect(calledUrl).toContain('number=919876543210');
     expect(calledUrl).toContain('message=Dear');
+  });
+
+  it('throws when MDT JSON says status false', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '{"status":"false","description":"Invalid senderid.."}',
+    });
+
+    await expect(
+      sendMdtSms({ e164: '+919876543210', message: 'test' }),
+    ).rejects.toThrow(/Invalid senderid/i);
   });
 
   it('throws when HTTP status is not ok', async () => {
