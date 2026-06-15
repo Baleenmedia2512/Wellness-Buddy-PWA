@@ -7655,7 +7655,7 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openCamera?.(); }}
             disabled={loading}
-            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
+            className="w-13 h-13 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
             title="Take Photo"
             aria-label="Quick camera access"
           >
@@ -7666,7 +7666,7 @@ function WellnessValleyApp() {
           <button
             onClick={() => { fileInputRef.current?.openGallery?.(); }}
             disabled={loading}
-            className="w-20 h-20 p-0 rounded-full overflow-hidden bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
+            className="w-13 h-13 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
             title="Choose from Gallery"
             aria-label="Quick gallery access"
           >
