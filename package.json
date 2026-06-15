@@ -1,7 +1,7 @@
 {
   "name": "wellness-buddy-pwa",
   "private": true,
-  "version": "3.2.1",
+  "version": "3.2.2",
   "scripts": {
     "vsa:check": "node scripts/vsa-diagnostic.js",
     "smoke": "node scripts/smoke-test.js",

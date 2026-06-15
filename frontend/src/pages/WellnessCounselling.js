@@ -375,14 +375,15 @@ const WellnessCounselling = ({ user, onBack }) => {
   };
 
   // Render expanded details when clicking on a node
-  const renderExpandedDetails = (node) => {
+  // COMMENTED OUT: Assessment Details view, Start Assessment button, and View Assessment Details button (images 1, 2, 3)
+  const renderExpandedDetails = (_node) => null;
+  /* const renderExpandedDetails = (node) => {
     const assessment = assessmentData[node.userId];
-    
+
     return (
       <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
         {assessment ? (
           <>
-            {/* Assessment info */}
             <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
               <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
               <span className="text-gray-400">•</span>
@@ -397,7 +398,6 @@ const WellnessCounselling = ({ user, onBack }) => {
           </>
         ) : (
           <>
-            {/* Info note when starting assessment */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
               <p className="text-xs text-blue-800">
                 💡 Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
@@ -417,7 +417,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         )}
       </div>
     );
-  };
+  }; */
 
   // Get status styling
   const getStatusStyle = (node, level, isCurrentUser) => {
@@ -589,8 +589,8 @@ const WellnessCounselling = ({ user, onBack }) => {
         )}
       </HierarchicalReportLayout>
 
-      {/* Wellness Counselling Form Modal */}
-      <WellnessCounsellingForm
+      {/* Wellness Counselling Form Modal — COMMENTED OUT (image 2) */}
+      {/* <WellnessCounsellingForm
         isOpen={isFormOpen}
         onClose={() => {
           setIsFormOpen(false);
@@ -606,16 +606,16 @@ const WellnessCounselling = ({ user, onBack }) => {
           setIsFormOpen(false);
           setSelectedMember(null);
         }}
-      />
+      /> */}
 
-      {/* Assessment View Modal */}
-      {viewingAssessment && (
+      {/* Assessment View Modal — COMMENTED OUT (image 1) */}
+      {/* {viewingAssessment && (
         <AssessmentViewModal
           assessment={viewingAssessment.assessment}
           member={viewingAssessment.node}
           onClose={() => setViewingAssessment(null)}
         />
-      )}
+      )} */}
 
       {/* Member Profile Viewer */}
       <TeamMemberProfileModal
