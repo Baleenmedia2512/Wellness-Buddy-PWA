@@ -78,10 +78,10 @@ export const APP_VERSION = {
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 41,
+  VERSION_CODE: 42,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 41,
+  IOS_BUILD_NUMBER: 42,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Bug Fixes & Improvements',
@@ -91,8 +91,8 @@ export const APP_VERSION = {
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 41, versionName: '3.2.2' },
-    IOS: { buildNumber: 41, versionName: '3.2.2' },
+    ANDROID: { versionCode: 42, versionName: '3.2.2' },
+    IOS: { buildNumber: 42, versionName: '3.2.2' },
   },
 };
 
