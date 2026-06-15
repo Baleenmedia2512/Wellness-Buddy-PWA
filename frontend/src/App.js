@@ -116,10 +116,10 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { fetchPublicCard } from "./features/body-parameters-card/services/bodyParamsCardApi.js";
 import { savePendingCard, consumePendingCard } from "./features/body-parameters-card/domain/pendingBodyParamsCard.js";
 import { ClubSelectionModal } from "./features/nutrition-centers";
-import { TaskNotificationPanel } from "./features/tasks";
+// import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
-import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
+// import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
+// import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
@@ -255,8 +255,8 @@ function WellnessValleyApp() {
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
   
   // -- Task Notification Panel (June 2026) -----------------------------------
-  const [showTaskPanel, setShowTaskPanel] = useState(false);
-  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+  // const [showTaskPanel, setShowTaskPanel] = useState(false);
+  // const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -384,23 +384,23 @@ function WellnessValleyApp() {
   const foodShareImageReadyAtRef = useRef(0);
 
   // ── Reverse-progress weight tips ─────────────────────────────────────────
-  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
-  const weightProgressCheck = useWeightProgressCheck();
+  // const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
+  // const weightProgressCheck = useWeightProgressCheck();
 
-  const triggerReverseProgressModal = useCallback(async (userId, weightId = null) => {
-    if (!userId) return;
-    try {
-      const progressResult = await weightProgressCheck.checkProgress(userId, weightId);
-      console.log('[weight-progress] check result:', progressResult);
-      if (progressResult?.shouldShow) {
-        setShowWeightProgressModal(true);
-      } else {
-        console.log('[weight-progress] modal skipped:', progressResult?.reason || 'no reverse progress');
-      }
-    } catch (progressErr) {
-      console.error('[weight-progress] check failed:', progressErr);
-    }
-  }, [weightProgressCheck]);
+  // const triggerReverseProgressModal = useCallback(async (userId, weightId = null) => {
+  //   if (!userId) return;
+  //   try {
+  //     const progressResult = await weightProgressCheck.checkProgress(userId, weightId);
+  //     console.log('[weight-progress] check result:', progressResult);
+  //     if (progressResult?.shouldShow) {
+  //       setShowWeightProgressModal(true);
+  //     } else {
+  //       console.log('[weight-progress] modal skipped:', progressResult?.reason || 'no reverse progress');
+  //     }
+  //   } catch (progressErr) {
+  //     console.error('[weight-progress] check failed:', progressErr);
+  //   }
+  // }, [weightProgressCheck]);
   
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -1656,46 +1656,46 @@ function WellnessValleyApp() {
   // Fires when user taps a push notification while app is in foreground,
   // background, or cold-start. Reads data.action to decide what to open.
   // Only registered on native (Capacitor) — no-op on web.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
+  // useEffect(() => {
+  //   if (!Capacitor.isNativePlatform()) return undefined;
 
-    let handle = null;
-    let cancelled = false;
+  //   let handle = null;
+  //   let cancelled = false;
 
-    const register = async () => {
-      try {
-        const { PushNotifications } = await import('@capacitor/push-notifications');
-        handle = await PushNotifications.addListener(
-          'pushNotificationActionPerformed',
-          (event) => {
-            const data = event?.notification?.data || {};
-            debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
+  //   const register = async () => {
+  //     try {
+  //       const { PushNotifications } = await import('@capacitor/push-notifications');
+  //       handle = await PushNotifications.addListener(
+  //         'pushNotificationActionPerformed',
+  //         (event) => {
+  //           const data = event?.notification?.data || {};
+  //           debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
 
-            if (data.action === 'openTaskPanel') {
-              startTransition(() => {
-                if (data.taskId) setHighlightedTaskId(data.taskId);
-                setShowTaskPanel(true);
-              });
-            }
-          },
-        );
-        if (cancelled) {
-          handle?.remove?.();
-          handle = null;
-        }
-      } catch (err) {
-        debugLog('[App] FCM tap listener registration failed', { err: err?.message });
-      }
-    };
+  //           if (data.action === 'openTaskPanel') {
+  //             startTransition(() => {
+  //               if (data.taskId) setHighlightedTaskId(data.taskId);
+  //               setShowTaskPanel(true);
+  //             });
+  //           }
+  //         },
+  //       );
+  //       if (cancelled) {
+  //         handle?.remove?.();
+  //         handle = null;
+  //       }
+  //     } catch (err) {
+  //       debugLog('[App] FCM tap listener registration failed', { err: err?.message });
+  //     }
+  //   };
 
-    register();
+  //   register();
 
-    return () => {
-      cancelled = true;
-      try { handle?.remove?.(); } catch { /* ignore */ }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
-  }, []);
+  //   return () => {
+  //     cancelled = true;
+  //     try { handle?.remove?.(); } catch { /* ignore */ }
+  //   };
+  // // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
+  // }, []);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -2938,7 +2938,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress and show tips modal
       const savedId = savedWeightIdRef.current || data?.id || null;
-      await triggerReverseProgressModal(userId, savedId);
+      // await triggerReverseProgressModal(userId, savedId);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -3037,7 +3037,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress after an edit-save too
       const editWeightId = savedWeightIdRef.current || result?.id || null;
-      await triggerReverseProgressModal(userId, editWeightId);
+      // await triggerReverseProgressModal(userId, editWeightId);
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -3700,7 +3700,7 @@ function WellnessValleyApp() {
         setPendingWeightData(null);
 
         handleLeaderboardRefresh();
-        await triggerReverseProgressModal(userId, data?.id || null);
+        // await triggerReverseProgressModal(userId, data?.id || null);
 
       } catch (error) {
         console.error('❌ Error saving weight:', error);
@@ -7427,9 +7427,9 @@ function WellnessValleyApp() {
         cancelText={alertModal.cancelText}
         onConfirm={alertModal.onConfirm}
       />
-
+ 
       {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
-      <WeightProgressTipsModal
+      {/* <WeightProgressTipsModal
         isOpen={showWeightProgressModal}
         onClose={() => {
           setShowWeightProgressModal(false);
@@ -7441,7 +7441,7 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
-      />
+      /> */}
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
@@ -7705,7 +7705,7 @@ function WellnessValleyApp() {
       )} */}
 
       {/* 📸 Floating Camera Button - Quick Access (Home Screen Only) */}
-      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && !showWeightProgressModal && (
+      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
         <>
           {/* Camera Button */}
           <button
@@ -7979,7 +7979,7 @@ function WellnessValleyApp() {
       )}
 
       {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
-      {user && !showTaskPanel && (
+      {/* {user && !showTaskPanel && (
         <button
           onClick={() => startTransition(() => setShowTaskPanel(true))}
           style={{
@@ -8005,10 +8005,10 @@ function WellnessValleyApp() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
         </button>
-      )}
+      )} */}
 
       {/* Task Notification Panel — opens when user taps a task/water FCM notification */}
-      {showTaskPanel && user && (
+      {/* {showTaskPanel && user && (
         <TaskNotificationPanel
           userId={user.id}
           onClose={() => {
@@ -8039,7 +8039,7 @@ function WellnessValleyApp() {
             setShowTaskPanel(false);
           }}
         />
-      )}
+      )} */}
     </div>
     </LocationGuard>
   );
