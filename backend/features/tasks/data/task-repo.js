@@ -648,7 +648,7 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
         AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $3)
         AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
         AND $2::time >= uta."AverageCompletionTime"
-        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '2 minutes')::time
+        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '5 minutes')::time
     `, [currentDate, currentTime, currentDateTime]);
 
     return result[0];
@@ -705,6 +705,34 @@ async function syncPendingTaskWindowsForActivityType(activityType, fromDate) {
   }
 }
 
+/**
+ * Fetch all learned average completion times for a user.
+ *
+ * Used by the frontend reminderService to personalise native alarm times.
+ *
+ * @param {number} userId
+ * @returns {Promise<Array<{ task_type, average_completion_time, sample_count }>>}
+ */
+async function getUserTaskAverages(userId) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        "TaskType"              AS task_type,
+        "AverageCompletionTime" AS average_completion_time,
+        "SampleCount"           AS sample_count
+      FROM user_task_averages
+      WHERE "UserId" = $1
+    `, [userId]);
+    return result[0];
+  } catch (error) {
+    logger.error('Error fetching user task averages', { userId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export {
   getTasksByUserAndDate,
   getTasksNeedingNotification,
@@ -722,5 +750,6 @@ export {
   incrementReminderCount,
   getTasksPastAverageTime,
   getPendingTaskForUser,
+  getUserTaskAverages,
   syncPendingTaskWindowsForActivityType,
 };
