@@ -6304,8 +6304,8 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
-        <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1">
+      <div className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
+        <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1 flex-1 flex flex-col">
           {/* Back button toast message */}
           {toast.visible && (
             <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
@@ -6333,6 +6333,8 @@ function WellnessValleyApp() {
             educationWindow={educationWindow}
             onCameraStateChange={handleCameraStateChange}
           />
+
+          {/* No inline buttons here anymore - moved to sticky footer at bottom */}
 
           {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
           {user && user.id && (
@@ -7137,6 +7139,36 @@ function WellnessValleyApp() {
             isVisible={showTestGuide}
             onClose={() => setShowTestGuide(false)}
           />
+
+          {/* Spacer to push buttons to bottom when there's little content */}
+          <div className="flex-1 min-h-[20px]" />
+
+          {/* 📸 Sticky Footer - Camera & Gallery Buttons */}
+          {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
+            <div className="flex justify-center gap-3 py-4 mt-auto">
+              {/* Camera Button */}
+              <button
+                onClick={() => { fileInputRef.current?.openCamera?.(); }}
+                disabled={loading}
+                className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Take Photo"
+                aria-label="Camera access"
+              >
+                <img src="/app.png" alt="Camera" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
+              </button>
+              
+              {/* Gallery Button */}
+              <button
+                onClick={() => { fileInputRef.current?.openGallery?.(); }}
+                disabled={loading}
+                className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Choose from Gallery"
+                aria-label="Gallery access"
+              >
+                <img src="/gallery.png" alt="Gallery" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -7648,32 +7680,7 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-      {/* 📸 Floating Camera & Gallery Buttons - Quick Access (Home Screen Only) - Centered & Fixed Position */}
-      {user && !authLoading && isOtpVerified && !profileChecking && !showSetupWizard && !showDashboard && !showAdminDashboard && !showRegisterCenter && !showWellnessCounselling && !showValidateOTP && !showCompleteProfile && (
-        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-30 flex gap-3 pointer-events-none">
-          {/* Camera Button */}
-          <button
-            onClick={() => { fileInputRef.current?.openCamera?.(); }}
-            disabled={loading}
-            className="w-13 h-13 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-            title="Take Photo"
-            aria-label="Quick camera access"
-          >
-            <img src="/app.png" alt="Camera" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
-          </button>
-          
-          {/* Gallery Button */}
-          <button
-            onClick={() => { fileInputRef.current?.openGallery?.(); }}
-            disabled={loading}
-            className="w-13 h-13 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-            title="Choose from Gallery"
-            aria-label="Quick gallery access"
-          >
-            <img src="/gallery.png" alt="Gallery" className="w-full h-full object-cover scale-110 pointer-events-none select-none" draggable={false} />
-          </button>
-        </div>
-      )}
+      {/* Fixed buttons removed - now using sticky footer layout inside scrollable content */}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (
