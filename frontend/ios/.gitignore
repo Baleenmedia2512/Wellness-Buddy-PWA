@@ -5,6 +5,11 @@ App/App/public
 DerivedData
 xcuserdata
 
+# IPA build artifacts — never commit these (contain bundled JS with env vars)
+IPA-*/
+*.ipa
+*.xcarchive
+
 # Cordova plugins for Capacitor
 capacitor-cordova-ios-plugins
 
