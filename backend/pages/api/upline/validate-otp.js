@@ -281,10 +281,14 @@ export default async function handler(req, res) {
     let coachTeamIdValue = coachTeamId; // For now, store the TeamId string
 
     // STEP 3: NOW update team_table
-    // Store only CoachId and CoachTeamId
+    // Store only CoachId and CoachTeamId.
+    // Also set Status = 'Active' so that inactive users reactivate when their
+    // coach approves the OTP (7-day inactivity reactivation flow). Setting
+    // 'Active' for an already-active user is a safe no-op.
     const updateData = {
       CoachId: request.UplineCoachId, // User's chosen referrer/coach
       CoachTeamId: coachTeamIdValue, // TEMPORARY: Storing TeamId string until schema migration
+      Status: 'Active',              // Reactivate user if they were Inactive
     };
     
     // NOTE: CoCoachId is NOT stored here - it's derived dynamically from coach_teams_table
