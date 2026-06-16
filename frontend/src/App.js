@@ -231,9 +231,6 @@ function WellnessValleyApp() {
     !Session.isUserSignedOut() && Session.isOtpVerified() && !!Session.getOtpUser()
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
-  // true when the OTP Verify-Request screen is shown specifically for the
-  // inactive-user reactivation flow (sent to already-selected coach).
-  const [isInactiveReactivationFlow, setIsInactiveReactivationFlow] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   // For returning users who already granted permissions, start as true so the
@@ -1370,41 +1367,8 @@ function WellnessValleyApp() {
         }
 
         if (result === "inactive") {
-          // Try to auto-send OTP to the user's already-selected coach so the
-          // user can reactivate via the Verify-Request screen (image 2) rather
-          // than seeing the "Account Restricted / Return to Login" modal.
-          // Falls back to InactiveUserModal when no coach is found or the
-          // network request fails (fail-safe, never blocking).
+          setShowInactiveModal(true);
           setIsUserActive(false);
-          const userEmail = user.email || user.Email;
-          const userId = user.id;
-          let sentOtpSuccessfully = false;
-          if (userId && userEmail) {
-            try {
-              const coachRes = await fetch(
-                `${apiBaseUrl}/api/user/get-active-coach?userId=${encodeURIComponent(userId)}`
-              );
-              const coachData = await coachRes.json();
-              const coachId = coachData?.data?.coachId;
-              if (coachId) {
-                const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: userEmail, coachId }),
-                });
-                if (otpRes.ok) {
-                  sentOtpSuccessfully = true;
-                  setIsInactiveReactivationFlow(true);
-                  setShowValidateOTP(true);
-                }
-              }
-            } catch (_err) {
-              // Network or parse error — fall through to InactiveUserModal below
-            }
-          }
-          if (!sentOtpSuccessfully) {
-            setShowInactiveModal(true);
-          }
           return false;
         }
 
@@ -1536,7 +1500,6 @@ function WellnessValleyApp() {
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
-    setIsInactiveReactivationFlow(false); // safety: clear flag on any modal close path
 
     // Add small delay to ensure modal is visible before sign out
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -1890,7 +1853,6 @@ function WellnessValleyApp() {
       showUserNotFoundModal,
       showSetupWizard,
       showValidateOTP,
-      isInactiveReactivationFlow,
       showCompleteProfile,
       showMandatoryProfilePictureModal,
       forceLoggedOut,
@@ -7705,27 +7667,11 @@ function WellnessValleyApp() {
           <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
-              if (isInactiveReactivationFlow) {
-                // User cancelled reactivation — sign them out cleanly.
-                setIsInactiveReactivationFlow(false);
-                handleSignOut();
-              } else {
-                // Normal new-user setup flow — go back to coach selection.
-                setShowSetupWizard(true);
-              }
+              setShowSetupWizard(true);
             }}
-            onSuccess={async () => {
+            onSuccess={() => {
               setShowValidateOTP(false);
-              if (isInactiveReactivationFlow) {
-                // OTP verified → backend has set Status='Active'.
-                // Re-check status so isUserActive transitions to true and
-                // the home screen becomes accessible.
-                setIsInactiveReactivationFlow(false);
-                if (user) {
-                  await checkUserStatus(user);
-                }
-              }
-              // Normal flow: setup complete, user can now access dashboard.
+              // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}
           />

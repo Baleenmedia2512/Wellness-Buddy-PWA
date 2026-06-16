@@ -175,7 +175,7 @@ export default async function handler(req, res) {
     // Get requester's UserId and details
     const { data: requesterRows, error: requesterError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, TeamId, CoachId, Status")
+      .select("UserId, UserName, Email, TeamId, CoachId")
       .eq("Email", email)
       .limit(1);
 
@@ -205,10 +205,8 @@ export default async function handler(req, res) {
     // Team ID is now optional - user can proceed without claiming it first
     // This allows flexible onboarding flow
 
-    // Check if user already has a coach.
-    // Exception: inactive users are allowed to re-request OTP to their existing
-    // coach so they can reactivate their account (7-day inactivity flow).
-    if (requester.CoachId && requester.Status !== 'Inactive') {
+    // Check if user already has a coach
+    if (requester.CoachId) {
       res.status(400).json({
         success: false,
         error: "You already have a coach",
