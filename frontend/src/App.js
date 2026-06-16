@@ -6033,7 +6033,6 @@ function WellnessValleyApp() {
           loading={loading}
           error={error}
           onOtpVerified={handleOtpVerified}
-          forceOtpVerification={true}
         />
         {showInactiveModal && (
           <InactiveUserModal
