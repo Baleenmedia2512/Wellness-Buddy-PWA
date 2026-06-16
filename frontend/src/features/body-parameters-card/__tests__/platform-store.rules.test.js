@@ -22,20 +22,26 @@ describe('getStoreLink', () => {
 });
 
 describe('buildShareText', () => {
-  it('shows clean base URL without BPC token', () => {
-    const text = buildShareText('https://example.com/share/bpc/abc', 'Ali Hassan');
-    expect(text).toContain('https://example.com/share');
-    expect(text).not.toContain('/bpc/abc');
+  it('includes full share URL with install prompt', () => {
+    const url = 'https://example.com/share/bpc/abc-token';
+    const text = buildShareText(url, 'test');
+    expect(text).toBe(`Hey test! Install Wellness Valley app. Click the link\n${url}`);
   });
 
   it('uses first name only', () => {
-    const text = buildShareText('https://x.com', 'Priya Sharma');
-    expect(text).toContain('Priya');
+    const text = buildShareText('https://x.com/share/bpc/t', 'Priya Sharma');
+    expect(text).toContain('Hey Priya!');
     expect(text).not.toContain('Sharma');
   });
 
   it('handles no name gracefully', () => {
-    const text = buildShareText('https://x.com', '');
-    expect(text).toContain('you');
+    const text = buildShareText('https://x.com/share/bpc/t', '');
+    expect(text).toContain('Hey there!');
+  });
+
+  it('omits URL when shareUrl is null (native image share adds it separately)', () => {
+    const text = buildShareText(null, 'Alex');
+    expect(text).toBe('Hey Alex! Install Wellness Valley app. Click the link.');
+    expect(text).not.toContain('http');
   });
 });
