@@ -5876,8 +5876,17 @@ function WellnessValleyApp() {
         }
 
         if (!isActive) {
+          // User is inactive — set user + mark OTP verified so the app renders
+          // past the login gate and shows the InactiveUserModal (which fires in
+          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
+          // the modal never renders and the user is stuck on the OTP screen.
+          const userEmail = parsedUser.email || parsedUser.Email;
+          if (userEmail) Session.setUserEmail(userEmail);
+          Session.clearUserSignedOut();
+          setForceLoggedOut(false);
           setUser(parsedUser);
-          setIsOtpVerified(false);
+          setIsOtpVerified(true);
+          Session.markOtpVerified();
           return;
         }
 
