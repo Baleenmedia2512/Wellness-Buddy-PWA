@@ -1,0 +1,11 @@
+# Prevent build artifacts from being committed (even if someone tries to force add)
+*.ipa binary
+*.xcarchive binary
+
+# Mark as export-ignore (won't be included in git archive)
+*.ipa export-ignore
+*.xcarchive export-ignore
+frontend/ios/IPA*/ export-ignore
+frontend/ios/App/App/public/ export-ignore
+frontend/android/app/src/main/assets/public/ export-ignore
+frontend/build/ export-ignore

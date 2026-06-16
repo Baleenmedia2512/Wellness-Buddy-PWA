@@ -1,2 +1,0 @@
-"use strict";(self.webpackChunkwellness_valley_pwa_frontend=self.webpackChunkwellness_valley_pwa_frontend||[]).push([[484],{6484:(e,s,l)=>{l.r(s),l.d(s,{SplashScreenWeb:()=>a});var n=l(5403);class a extends n.E_{async show(e){}async hide(e){}}}}]);
-//# sourceMappingURL=484.b392b21f.chunk.js.map
