@@ -18,7 +18,7 @@ export function validateCreateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName } = body;
+          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   if (!name || String(name).trim() === '') throw new ValidationError(400, 'name is required');
@@ -44,6 +44,8 @@ export function validateCreateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  const phoneVal = _optionalPhone(phoneNumber);
+
   return {
     createdBy: parseInt(createdBy),
     userId:    userId ? parseInt(userId) : null,
@@ -58,6 +60,7 @@ export function validateCreateCard(body) {
     bodyAge:   bodyAgeN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
+    phoneNumber: phoneVal,
   };
 }
 
@@ -73,7 +76,7 @@ export function validateUpdateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { id, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName } = body;
+          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -101,6 +104,8 @@ export function validateUpdateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  const phoneVal = _optionalPhone(phoneNumber);
+
   return {
     id:          idN,
     name:        String(name).trim(),
@@ -114,6 +119,7 @@ export function validateUpdateCard(body) {
     bodyAge:     bodyAgeN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
+    phoneNumber: phoneVal,
   };
 }
 
@@ -144,4 +150,13 @@ function _optionalFloat(val, field, min, max) {
   if (isNaN(n)) throw new ValidationError(422, `${field} must be a number`);
   if (n < min || n > max) throw new ValidationError(422, `${field} must be between ${min} and ${max}`);
   return n;
+}
+
+function _optionalPhone(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const cleaned = String(val).trim().replace(/[\s\-()]/g, '');
+  if (!/^\+?[0-9]{10,15}$/.test(cleaned)) {
+    throw new ValidationError(422, 'phoneNumber must be 10–15 digits (optional + prefix)');
+  }
+  return cleaned;
 }

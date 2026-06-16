@@ -14,6 +14,7 @@ import { debugLog } from '../../../shared/utils/logger.js';
 
 const EMPTY_FORM = {
   name:         '',
+  phoneNumber:  '',
   age:          '',
   gender:       '',
   heightCm:     '',
@@ -36,6 +37,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (existingCard) {
       return {
         name:         existingCard.name         ?? '',
+        phoneNumber:  '',
         age:          existingCard.age          != null ? String(existingCard.age)         : '',
         gender:       existingCard.gender        ?? '',
         heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
@@ -132,8 +134,13 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const isValid = form.name.trim().length > 0;
 
+  const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
+
   const handleSave = useCallback(async () => {
     if (!isValid) { setError('Name is required'); return; }
+    if (form.phoneNumber.trim() !== '' && !/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
+      setError('Please enter a valid phone number (10–15 digits)'); return;
+    }
     const ageNum = form.age !== '' && form.age != null ? parseInt(form.age) : null;
     if (ageNum !== null && (isNaN(ageNum) || ageNum < 1 || ageNum > 120)) {
       setError('Age must be between 1 and 120'); return;
@@ -150,6 +157,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (onSaveStart) {
       onSaveStart({
         name:         form.name.trim(),
+        phoneNumber:  form.phoneNumber.trim(),
         age:          form.age,
         gender:       form.gender,
         heightCm:     form.heightCm,
@@ -168,6 +176,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         createdBy:   user?.id,
         userId:      targetUserId,
         name:        form.name.trim(),
+        phoneNumber: form.phoneNumber.trim() || undefined,
         age:         form.age          || undefined,
         gender:      form.gender       || undefined,
         heightCm:    form.heightCm     || undefined,
@@ -190,6 +199,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const fullCard = {
         ...card,
         age:          form.age,
+        phoneNumber:  form.phoneNumber,
         gender:       form.gender,
         heightCm:     form.heightCm,
         weightKg:     form.weightKg,

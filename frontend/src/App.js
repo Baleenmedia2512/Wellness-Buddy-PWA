@@ -5877,6 +5877,19 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
 
+        // Fast-path inactive check: the verify-otp API already returns the
+        // user's current Status in the stored object. If it's already
+        // 'Inactive', show the Account Restricted modal immediately — do NOT
+        // rely on a separate network call that can time out or fail-open.
+        if (parsedUser?.status?.toLowerCase() === 'inactive') {
+          debugLog("🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal");
+          authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result: 'inactive' });
+          setShowInactiveModal(true);
+          setIsUserActive(false);
+          setUser(parsedUser);
+          return;
+        }
+
         // Check user status with timeout for iOS
         let isActive = true;
         try {
@@ -6010,14 +6023,14 @@ function WellnessValleyApp() {
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
         )}
@@ -6036,14 +6049,14 @@ function WellnessValleyApp() {
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
         )}
