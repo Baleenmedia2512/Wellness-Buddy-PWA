@@ -124,11 +124,16 @@ const BodyAgeCircle = ({ value, color }) => {
   );
 };
 
-/* ── Circle ring for metric values: red = out-of-range, gray = in-range ── */
-const MetricCircle = ({ value, outOfRange }) => {
+/* ── Circle ring for metric values ──────────────────────────────────────────
+   outOfRange (fresh user)  → RED ring, dark text
+   greenRing  (existing)    → GREEN ring, green text
+   neither                  → no ring at all (plain text)
+*/
+const MetricCircle = ({ value, outOfRange, greenRing }) => {
   const size = 64, r = 28, cx = 32, cy = 32;
-  const stroke = outOfRange ? RED : '#b0bec5';
-  const sw     = 1.5;
+  const stroke    = greenRing ? G : RED;
+  const sw        = greenRing ? 2.5 : 1.5;
+  const textColor = greenRing ? G : INK;
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0, display: 'inline-flex' }}>
       <svg width={size} height={size} viewBox={'0 0 ' + size + ' ' + size}>
@@ -137,7 +142,7 @@ const MetricCircle = ({ value, outOfRange }) => {
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 17, fontWeight: 900, color: INK,
+        fontSize: 17, fontWeight: 900, color: textColor,
       }}>
         {value}
       </div>
@@ -145,10 +150,26 @@ const MetricCircle = ({ value, outOfRange }) => {
   );
 };
 
-/* ── Metric row: icon · label : value  |  range/circle reference ── */
-const MetricRow = ({ icon, iconBg, label, value, rangeLabel, status, bodyAgeMode, bodyAgeVal, oval, rangeNote }) => {
-  const isOutOfRange = status && status.bg === RED;
-  const hasRef = rangeLabel || (bodyAgeMode && bodyAgeVal != null);
+/* ── Metric row ─────────────────────────────────────────────────────────────
+   isExistingUser = true  → 3 columns: CURRENT | PREV | REFERENCE
+                            ring is always green (tracking mode)
+   isExistingUser = false → 2 columns: CURRENT | REFERENCE
+                            red ring only when oval && out-of-range
+*/
+const MetricRow = ({
+  icon, iconBg, label, value,
+  rangeLabel, status, bodyAgeMode, bodyAgeVal, oval, rangeNote,
+  prevValue, isExistingUser,
+}) => {
+  const isOutOfRange  = status && status.bg === RED;
+  const showRedRing   = !isExistingUser && oval && isOutOfRange;
+  const showGreenRing = isExistingUser && oval;
+  const hasRef        = rangeLabel || (bodyAgeMode && bodyAgeVal != null);
+
+  // Column widths shrink slightly when PREV column is present
+  const REF_W  = isExistingUser ? 100 : 120;
+  const PREV_W = 70;
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center',
@@ -156,6 +177,7 @@ const MetricRow = ({ icon, iconBg, label, value, rangeLabel, status, bodyAgeMode
       borderBottom: '1px dashed #d1d9e0',
       minHeight: 56,
     }}>
+      {/* Icon bubble */}
       <div style={{
         width: 44, height: 44, borderRadius: '50%', background: iconBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -163,26 +185,57 @@ const MetricRow = ({ icon, iconBg, label, value, rangeLabel, status, bodyAgeMode
       }}>
         {icon}
       </div>
+
+      {/* Label */}
       <div style={{
         width: 92, fontSize: 15, fontWeight: 800, color: '#6b7280',
         textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
       }}>
         {label}
       </div>
-      <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
-        :
-      </div>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        {oval && isOutOfRange ? (
+
+      {/* Colon */}
+      <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>:</div>
+
+      {/* Current value */}
+      <div style={{
+        flex: isExistingUser ? 0 : 1,
+        width: isExistingUser ? 64 : undefined,
+        minWidth: isExistingUser ? 64 : 0,
+        display: 'flex', alignItems: 'center',
+      }}>
+        {showRedRing ? (
           <MetricCircle value={value} outOfRange />
+        ) : showGreenRing ? (
+          <MetricCircle value={value} greenRing />
         ) : (
           <span style={{ fontSize: 20, fontWeight: 900, color: INK }}>{value}</span>
         )}
       </div>
+
+      {/* PREV column — only for existing user */}
+      {isExistingUser && (
+        <>
+          <VDivider />
+          <div style={{
+            width: PREV_W, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#6b7280' }}>
+              {prevValue || '—'}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* Reference column */}
       {hasRef ? (
         <>
           <VDivider />
-          <div style={{ width: 120, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+          <div style={{
+            width: REF_W, flexShrink: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          }}>
             {bodyAgeMode && rangeNote ? (
               <span style={{ fontSize: 14, fontWeight: 800, color: '#9ca3af', textAlign: 'center', whiteSpace: 'nowrap' }}>
                 {rangeNote}
@@ -200,7 +253,8 @@ const MetricRow = ({ icon, iconBg, label, value, rangeLabel, status, bodyAgeMode
 };
 
 /* ─────────────────────────────── main component ── */
-const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
+const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, ref) => {
+  const isExistingUser = Boolean(previousCard);
   const fmt = (v, unit) => {
     const u = unit || '';
     return v !== null && v !== undefined && v !== '' ? (v + u) : '—';
@@ -228,7 +282,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
   const gender  = String(card.gender || '').toLowerCase();
   const isM = gender === 'male', isF = gender === 'female';
   const fatMin = isM ? 10 : 20, fatMax = isM ? 20 : 30;
-  const fatRangeLabel = isM ? '(10 – 20 %)' : isF ? '(20 – 30 %)' : '';
+  const fatRangeLabel = isM ? '10 to 20%' : isF ? '20 to 30%' : '';
   const fatStatus = !isNaN(fatVal) && (isM || isF)
     ? fatVal < fatMin ? { label: 'LOW FAT',  bg: RED  }
     : fatVal > fatMax ? { label: 'HIGH FAT', bg: RED  }
@@ -254,7 +308,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
     const m = h / 100;
     const lo = Math.round(19 * m * m * 10) / 10;
     const hi = Math.round(23 * m * m * 10) / 10;
-    return 'ideal: ' + lo + ' \u2013 ' + hi + ' kg';
+    return lo + ' to ' + hi + ' kg';
   }());
 
   return (
@@ -313,6 +367,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
             fontSize: 19, fontWeight: 900, color: '#fff',
             letterSpacing: 0.8, flex: 1, lineHeight: 1.25,
             textTransform: 'uppercase',
+            textAlign: 'center',
           }}>
             Body Composition Metric
           </span>
@@ -354,16 +409,25 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
         {/* ═══ METRICS SECTION ═══ */}
         <div style={{ background: '#f0fdf4', padding: '14px 22px 18px' }}>
 
-          {/* Column header — "REFERENCE" aligned to the fixed 120px reference column */}
+          {/* Column header row */}
           <div style={{
             display: 'flex', alignItems: 'center',
             paddingBottom: 6, marginBottom: 2,
             borderBottom: '1.5px solid #bbf7d0',
           }}>
             <div style={{ flex: 1 }} />
-            {/* Phantom VDivider space (matches <VDivider /> width: 1 + margin 12px each side) */}
+            {/* PREV header — only when existing user */}
+            {isExistingUser && (
+              <>
+                <div style={{ width: 1, margin: '0 12px', flexShrink: 0 }} />
+                <span style={{ width: 70, flexShrink: 0, fontSize: 11, fontWeight: 900, color: '#86a88e', textTransform: 'uppercase', letterSpacing: 1.5, textAlign: 'center' }}>
+                  Prev
+                </span>
+              </>
+            )}
+            {/* Phantom VDivider space */}
             <div style={{ width: 1, margin: '0 12px', flexShrink: 0 }} />
-            <span style={{ width: 120, flexShrink: 0, fontSize: 11, fontWeight: 900, color: '#86a88e', textTransform: 'uppercase', letterSpacing: 1.5, textAlign: 'center' }}>
+            <span style={{ width: isExistingUser ? 100 : 120, flexShrink: 0, fontSize: 11, fontWeight: 900, color: '#86a88e', textTransform: 'uppercase', letterSpacing: 1.5, textAlign: 'center' }}>
               Reference
             </span>
           </div>
@@ -375,6 +439,8 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
               value={fmt(card.weightKg, ' kg')}
               rangeLabel={idealWeightHint}
               status={null}
+              prevValue={previousCard?.weightKg != null ? previousCard.weightKg + ' kg' : '—'}
+              isExistingUser={isExistingUser}
             />
           )}
           {card.bmi != null && card.bmi !== '' && (
@@ -382,9 +448,11 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
               icon="🧍" iconBg="#dcfce7"
               label="BMI"
               value={String(card.bmi)}
-              rangeLabel="(19 – 23)"
+              rangeLabel="19 to 23"
               status={bmiStatus}
               oval
+              prevValue={previousCard?.bmi != null ? String(previousCard.bmi) : '—'}
+              isExistingUser={isExistingUser}
             />
           )}
           {card.fatPercent != null && card.fatPercent !== '' && (
@@ -395,6 +463,8 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
               rangeLabel={fatRangeLabel}
               status={fatStatus}
               oval
+              prevValue={previousCard?.fatPercent != null ? previousCard.fatPercent + '%' : '—'}
+              isExistingUser={isExistingUser}
             />
           )}
           {card.bodyAge != null && card.bodyAge !== '' && (
@@ -406,6 +476,8 @@ const BodyParamsCardPreview = React.forwardRef(({ card }, ref) => {
               bodyAgeMode
               bodyAgeVal={isNaN(bodyAgeVal) ? null : bodyAgeVal}
               rangeNote={bodyAgeRangeNote}
+              prevValue={previousCard?.bodyAge != null ? previousCard.bodyAge + ' Yrs' : '—'}
+              isExistingUser={isExistingUser}
             />
           )}
 

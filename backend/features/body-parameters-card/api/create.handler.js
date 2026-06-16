@@ -4,7 +4,7 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard, createTeamMemberFromPhone } from '../data/card.repo.js';
+import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -38,6 +38,12 @@ export async function handleCreateCard(body) {
 
   const card = await insertCard({ ...payload, userId });
 
+  // Fetch the previous card for this user so the frontend can show the
+  // CURRENT vs PREV vs REFERENCE 3-column layout on the share card.
+  const previousCard = userId
+    ? await findPreviousCardByUserId(userId, card.id)
+    : null;
+
   return {
     httpStatus: 201,
     body: {
@@ -47,6 +53,7 @@ export async function handleCreateCard(body) {
         publicShareToken: card.public_share_token,
         shareExpiresAt:   card.share_expires_at,
         name:             card.name,
+        previousCard,
       },
     },
   };

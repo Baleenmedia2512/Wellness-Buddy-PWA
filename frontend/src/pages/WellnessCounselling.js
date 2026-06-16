@@ -646,9 +646,9 @@ const WellnessCounselling = ({ user, onBack }) => {
           // in parallel with the API save call.
           setBodyParamsPreCapCard(formData);
         }}
-        onSaveSuccess={(card, shareUrl) => {
+        onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
-          setBodyParamsShareData({ card, shareUrl });
+          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
         }}
       />
 
@@ -662,6 +662,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
+        previousCard={bodyParamsShareData?.previousCard ?? null}
       />
     </div>
   );

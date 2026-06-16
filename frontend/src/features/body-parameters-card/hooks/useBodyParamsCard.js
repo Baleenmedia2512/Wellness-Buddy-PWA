@@ -275,12 +275,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const card = isEditMode
         ? await updateBodyParamsCard(existingCard.id, payload)
         : await createBodyParamsCard(payload);
-      const url = `${getApiBaseUrl()}/share/bpc/${card.publicShareToken}`;
+
+      // Extract previousCard from API response (null for fresh users).
+      const { previousCard: prevCard = null, ...cardCore } = card;
+
+      const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
 
       // Merge API response with full form data so the card preview
       // has all fields (API only returns id/token/name).
       const fullCard = {
-        ...card,
+        ...cardCore,
         age:          form.age,
         phoneNumber:  form.phoneNumber,
         gender:       form.gender,
@@ -297,7 +301,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       setSavedCard(fullCard);
       setShareUrl(url);
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
-      if (onSaveSuccess) onSaveSuccess(fullCard, url);
+      if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
     } finally {

@@ -211,8 +211,7 @@ export async function linkCardToUser(cardId, userId) {
 }
 
 /**
- * Search team_table rows by phone number prefix, scoped to a specific coach.
- * Returns up to 10 matches ordered by UserId ascending.
+ * Search team_table rows by phone number prefix, scoped to a specific coach. * Returns up to 10 matches ordered by UserId ascending.
  *
  * @param {{ prefix: string, coachId: number }} opts
  * @returns {Promise<Array<{ userId: number, userName: string, phoneNumber: string, heightCm: number|null, bmr: number|null }>>}
@@ -247,4 +246,38 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
     });
   }
   return results;
+}
+
+/**
+ * Find the most recent previous card for a given user, excluding the current card.
+ * Returns null when no prior card exists (fresh user).
+ *
+ * @param {number} userId
+ * @param {number} excludeCardId - the card just created/updated (exclude it)
+ * @returns {Promise<object|null>}
+ */
+export async function findPreviousCardByUserId(userId, excludeCardId) {
+  if (!userId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('id, weight_kg, bmi, fat_percent, body_age, recorded_date')
+    .eq('user_id', userId)
+    .neq('id', excludeCardId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const row = data[0];
+  return {
+    id:           row.id,
+    weightKg:     row.weight_kg     ?? null,
+    bmi:          row.bmi           ?? null,
+    fatPercent:   row.fat_percent   ?? null,
+    bodyAge:      row.body_age      ?? null,
+    recordedDate: row.recorded_date ?? null,
+  };
 }
