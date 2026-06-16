@@ -65,9 +65,16 @@ class SecureImageTypeDetector {
       }
 
       const data = response.data.data;
-      
+
+      // Normalize backend type values to the frontend's canonical types:
+      //   'weight_scale' → 'weight'   (detect-image-type returns 'weight_scale')
+      //   'meeting'      → 'education'
+      const TYPE_MAP = { weight_scale: 'weight', meeting: 'education' };
+      const rawType = data.type || 'food';
+      const normalizedType = TYPE_MAP[rawType] || rawType;
+
       return {
-        type: data.type || 'food', // food, weight, education, other
+        type: normalizedType,
         confidence: data.confidence || 0,
         details: data.details || {},
       };
@@ -112,11 +119,17 @@ class SecureImageTypeDetector {
       if (classification.type === 'weight') {
         debugLog('⚖️ [IMAGE-DETECTOR] Routing to weight detection service...');
         const weightData = await weightDetectionService.detectWeight(imgFile);
-        
+
+        // App.js reads detectedType.details.weightValue (not .weight)
+        // weightDetectionService returns { weight, unit, confidence, isWeightScale }
+        // so we normalise the field name here.
         result = {
           type: 'weight',
           confidence: weightData.confidence || classification.confidence,
-          details: weightData, // ← Use "details" to match App.js expectations
+          details: {
+            ...weightData,
+            weightValue: weightData.weightValue ?? weightData.weight ?? null,
+          },
           duration: Date.now() - startTime,
         };
 
