@@ -74,30 +74,33 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.2.2',
+  VERSION: '3.2.3',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 42,
+  VERSION_CODE: 43,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 42,
+  IOS_BUILD_NUMBER: 43,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Bug Fixes & Improvements',
   
   // Build date
-  BUILD_DATE: '2026-06-15',
+  BUILD_DATE: '2026-06-16',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 42, versionName: '3.2.2' },
-    IOS: { buildNumber: 42, versionName: '3.2.2' },
+    ANDROID: { versionCode: 43, versionName: '3.2.3' },
+    IOS: { buildNumber: 43, versionName: '3.2.3' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 3.2.3 (Code 43) - 2026-06-16 [ANDROID + iOS RELEASE]
+ *   🐛 Bug Fixes & Stability - Patch release with minor fixes and improvements
  * 
  * Version 3.2.2 (Code 41) - 2026-06-15 [ANDROID + iOS RELEASE]
  *   🧠 Counselling Assessment Card (NEW) - Full wellness counselling assessment feature introduced:
