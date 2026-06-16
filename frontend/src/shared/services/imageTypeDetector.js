@@ -67,8 +67,9 @@ class SecureImageTypeDetector {
       const data = response.data.data;
 
       // Normalize backend type values to the frontend's canonical types:
-      //   'weight_scale' → 'weight'   (detect-image-type returns 'weight_scale')
+      //   'weight_scale' → 'weight'      (detect-image-type returns 'weight_scale')
       //   'meeting'      → 'education'
+      //   'smartwatch'   → 'smartwatch'  (already matches App.js expectation)
       const TYPE_MAP = { weight_scale: 'weight', meeting: 'education' };
       const rawType = data.type || 'food';
       const normalizedType = TYPE_MAP[rawType] || rawType;
@@ -140,7 +141,17 @@ class SecureImageTypeDetector {
         result = {
           type: 'education',
           confidence: classification.confidence,
-          details: classification.details, // ← Use "details"
+          details: classification.details,
+          duration: Date.now() - startTime,
+        };
+
+      } else if (classification.type === 'smartwatch') {
+        debugLog('⌚ [IMAGE-DETECTOR] Smartwatch detected — using classification details directly...');
+        // No second API call needed — classification already returns caloriesBurned/source
+        result = {
+          type: 'smartwatch',
+          confidence: classification.confidence,
+          details: classification.details,
           duration: Date.now() - startTime,
         };
 

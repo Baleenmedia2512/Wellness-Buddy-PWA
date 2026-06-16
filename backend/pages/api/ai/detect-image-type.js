@@ -70,12 +70,13 @@ export default async function handler(req, res) {
     const prompt = `Analyze this image and determine its type. Return JSON:
 
 {
-  "type": "food" | "weight_scale" | "meeting" | "other",
+  "type": "food" | "weight_scale" | "meeting" | "smartwatch" | "other",
   "confidence": 0.0-1.0,
   "details": {
     // For food: { "hasFood": true }
     // For weight_scale: { "isWeightScale": true, "reason": "..." }
     // For meeting: { "isMeeting": true, "platform": "Google Meet|Zoom|Teams|Other" }
+    // For smartwatch: { "isSmartwatch": true, "source": "Apple Watch|Garmin|Fitbit|Samsung|Other", "caloriesBurned": number|null }
     // For other: { "reason": "..." }
   }
 }
@@ -84,6 +85,7 @@ Criteria:
 - "food": Contains edible food, drinks, meals, snacks
 - "weight_scale": Shows a weighing scale with visible numbers
 - "meeting": Virtual meeting screenshot (Google Meet, Zoom, Teams UI visible)
+- "smartwatch": Shows a smartwatch or fitness tracker screen/app (Apple Watch, Garmin, Fitbit, Samsung Health, fitness activity summary with steps/calories/heart rate)
 - "other": None of the above`;
 
     // Call Gemini
