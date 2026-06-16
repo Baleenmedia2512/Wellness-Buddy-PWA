@@ -96,7 +96,7 @@ import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp, resolveShareDisplayName } from "./shared/utils/shareUtils";
 import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings, initReminders } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
@@ -4027,8 +4027,7 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
-    const shareDisplayName =
-      user?.displayName || user?.name || user?.email?.split('@')[0] || 'Wellness Valley';
+    const shareDisplayName = resolveShareDisplayName(savedUserName, user);
     // ?n= embeds the display name so the WhatsApp OG card shows the user name
     // even when WhatsApp crawls the page before the capture POST completes.
     const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
@@ -4670,7 +4669,7 @@ function WellnessValleyApp() {
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                   leaderboardRef.current.injectEntry({
                     userId: diffUserId,
-                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                    userName: resolveShareDisplayName(savedUserName, user, "You"),
                     email: user?.email || "",
                     weightLoss: Math.abs(weightChange),
                     profileImage: user?.photoURL || user?.ProfileImage || null,

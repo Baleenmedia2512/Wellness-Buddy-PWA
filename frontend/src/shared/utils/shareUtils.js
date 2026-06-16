@@ -7,6 +7,36 @@ import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 
 /**
+ * Resolve the best display name for a user in share text / cards.
+ *
+ * Priority order:
+ *   1. savedUserName — the username the user explicitly set in the app profile
+ *      (loaded from /api/user/profile → data.userName).
+ *   2. user.displayName — Firebase Auth display name (rarely populated for
+ *      email+password accounts).
+ *   3. user.name — generic name field on the session object.
+ *   4. Email prefix (user.email split at '@') — last resort only; this is
+ *      a technical identifier, NOT a display name.
+ *   5. fallback string (default: 'Wellness Valley').
+ *
+ * Pure function — no side-effects, no I/O.
+ *
+ * @param {string|null}  savedUserName   App-profile username from state.
+ * @param {object|null}  user            Session user object.
+ * @param {string}       [fallback]      Used when every field is falsy.
+ * @returns {string}
+ */
+export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness Valley') {
+  return (
+    (savedUserName && savedUserName.trim()) ||
+    user?.displayName ||
+    user?.name ||
+    (user?.email ? user.email.split('@')[0] : null) ||
+    fallback
+  );
+}
+
+/**
  * Reliably check if running on native platform (not web browser)
  * Uses Capacitor.isNativePlatform() which is more accurate than isPlatform()
  */
