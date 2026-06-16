@@ -5,6 +5,7 @@
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import { buildTeamMemberInsert } from '../domain/card.rules.js';
+import logger from '../../../shared/lib/logger.js';
 
 const TABLE = 'body_parameters_cards';
 
@@ -110,26 +111,15 @@ export async function findTeamPhoneByUserId(userId) {
 }
 
 /**
- * Find an existing team member by phone, or create a new team_table row.
- * Used when a coach enters a phone number on a body-parameters card.
+ * Create a new team_table row from the phone the coach entered.
+ * Inserts first; if PhoneNumber already exists (unique index), returns that user.
  *
  * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
- * @returns {Promise<number>} UserId
+ * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
-export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heightCm, bmr }) {
+export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, heightCm, bmr }) {
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
-
-  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
-    const { data, error } = await supabase
-      .from('team_table')
-      .select('UserId')
-      .eq('PhoneNumber', variant)
-      .order('UserId', { ascending: true })
-      .limit(1);
-    if (error) throw error;
-    if (data?.[0]?.UserId) return data[0].UserId;
-  }
 
   const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr });
   const now = getISTTimestamp();
@@ -144,6 +134,7 @@ export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heigh
     CoachApproved: 0,
     PhoneNumber: storedPhone,
     CoachId: memberFields.CoachId,
+    Role: 'user',
     ...(memberFields.Height != null ? { Height: memberFields.Height } : {}),
     ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
   };
@@ -154,7 +145,10 @@ export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heigh
     .select('UserId')
     .single();
 
-  if (!error) return data.UserId;
+  if (!error) {
+    logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
+    return { userId: data.UserId, isNew: true };
+  }
 
   if (error.code === '23505') {
     for (const variant of buildPhoneLookupVariants(phoneNumber)) {
@@ -165,12 +159,23 @@ export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heigh
         .order('UserId', { ascending: true })
         .limit(1);
       if (lookupErr) throw lookupErr;
-      if (existing?.[0]?.UserId) return existing[0].UserId;
+      if (existing?.[0]?.UserId) {
+        logger.info('[body-params-card] phone already in team_table, reusing user', {
+          userId: existing[0].UserId,
+        });
+        return { userId: existing[0].UserId, isNew: false };
+      }
     }
   }
 
   throw error;
 }
+
+/** @deprecated Use createTeamMemberFromPhone */
+export const findOrCreateTeamMember = async (input) => {
+  const { userId } = await createTeamMemberFromPhone(input);
+  return userId;
+};
 
 /**
  * Link a card to a team member after phone resolution.

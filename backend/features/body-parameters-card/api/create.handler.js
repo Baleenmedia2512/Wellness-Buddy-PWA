@@ -4,8 +4,9 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard, findOrCreateTeamMember, linkCardToUser } from '../data/card.repo.js';
+import { insertCard, createTeamMemberFromPhone } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * @param {object} body - raw request body
@@ -20,14 +21,19 @@ export async function handleCreateCard(body) {
 
   let userId = payload.userId;
 
-  if (payload.phoneNumber && !userId) {
-    userId = await findOrCreateTeamMember({
+  if (payload.phoneNumber) {
+    logger.info('[body-params-card] creating team_table member from phone', {
+      coachId: payload.createdBy,
+    });
+    const { userId: memberId, isNew } = await createTeamMemberFromPhone({
       name:        payload.name,
       phoneNumber: payload.phoneNumber,
       coachId:     payload.createdBy,
       heightCm:    payload.heightCm,
       bmr:         payload.bmr,
     });
+    userId = memberId;
+    logger.info('[body-params-card] team_table member ready', { userId, isNew });
   }
 
   const card = await insertCard({ ...payload, userId });

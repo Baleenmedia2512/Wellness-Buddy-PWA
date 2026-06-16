@@ -21,6 +21,10 @@ export function validateCreateCard(body) {
           bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
+  const createdByN = parseInt(createdBy, 10);
+  if (isNaN(createdByN) || createdByN < 1) {
+    throw new ValidationError(400, 'createdBy must be a valid UserId');
+  }
   if (!name || String(name).trim() === '') throw new ValidationError(400, 'name is required');
   if (String(name).trim().length > 100) throw new ValidationError(422, 'name must be ≤ 100 characters');
 
@@ -47,7 +51,7 @@ export function validateCreateCard(body) {
   const phoneVal = _optionalPhone(phoneNumber);
 
   return {
-    createdBy: parseInt(createdBy),
+    createdBy: createdByN,
     userId:    userId ? parseInt(userId) : null,
     name:      String(name).trim(),
     age:       ageN,

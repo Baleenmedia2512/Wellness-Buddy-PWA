@@ -3,7 +3,7 @@
  * Calls validation → data. No HTTP concerns here.
  */
 import { validateUpdateCard } from '../validation/card.schema.js';
-import { updateCard, findOrCreateTeamMember, linkCardToUser } from '../data/card.repo.js';
+import { updateCard, createTeamMemberFromPhone, linkCardToUser } from '../data/card.repo.js';
 
 /**
  * @param {object} body - raw request body (must include `id`)
@@ -15,7 +15,7 @@ export async function handleUpdateCard(body) {
   const card = await updateCard(payload.id, payload);
 
   if (payload.phoneNumber && !card.user_id) {
-    const userId = await findOrCreateTeamMember({
+    const { userId } = await createTeamMemberFromPhone({
       name:        payload.name,
       phoneNumber: payload.phoneNumber,
       coachId:     card.created_by,

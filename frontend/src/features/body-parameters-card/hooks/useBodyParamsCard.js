@@ -8,6 +8,7 @@
  * Components only render — no fetch logic here.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CapacitorHttp } from '@capacitor/core';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
@@ -60,8 +61,29 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Track whether the user manually typed in the BMI field.
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
+  const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
+
+  // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
+  useEffect(() => {
+    if (coachUserId || !user?.email) return undefined;
+
+    let cancelled = false;
+    CapacitorHttp.get({
+      url: `${getApiBaseUrl()}/api/user/lookup?email=${encodeURIComponent(user.email)}`,
+      headers: { 'Cache-Control': 'no-cache' },
+    })
+      .then((response) => {
+        const data = response.data;
+        if (!cancelled && data?.success && data.userId) {
+          setCoachUserId(data.userId);
+        }
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [user?.email, coachUserId]);
 
   // ── Derived calculations ──────────────────────────────────────────────────
 
@@ -132,14 +154,21 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setBmiUserEdited(false);
   }, []);
 
-  const isValid = form.name.trim().length > 0;
-
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
+  const isValid =
+    form.name.trim().length > 0 &&
+    form.phoneNumber.trim().length > 0 &&
+    /^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber));
+
   const handleSave = useCallback(async () => {
-    if (!isValid) { setError('Name is required'); return; }
-    if (form.phoneNumber.trim() !== '' && !/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
+    if (!form.name.trim()) { setError('Name is required'); return; }
+    if (!form.phoneNumber.trim()) { setError('Phone number is required'); return; }
+    if (!/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
       setError('Please enter a valid phone number (10–15 digits)'); return;
+    }
+    if (!coachUserId) {
+      setError('Could not resolve your coach account. Please refresh and try again.'); return;
     }
     const ageNum = form.age !== '' && form.age != null ? parseInt(form.age) : null;
     if (ageNum !== null && (isNaN(ageNum) || ageNum < 1 || ageNum > 120)) {
@@ -173,10 +202,10 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
     try {
       const payload = {
-        createdBy:   user?.id,
+        createdBy:   coachUserId,
         userId:      targetUserId,
         name:        form.name.trim(),
-        phoneNumber: form.phoneNumber.trim() || undefined,
+        phoneNumber: cleanPhone(form.phoneNumber),
         age:         form.age          || undefined,
         gender:      form.gender       || undefined,
         heightCm:    form.heightCm     || undefined,
@@ -220,7 +249,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, user, targetUserId, onSaveSuccess]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user]);
 
   return {
     form, setField,
