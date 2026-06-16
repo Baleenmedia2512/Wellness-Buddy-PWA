@@ -24,12 +24,18 @@ export function getStoreLink(platform) {
 /**
  * Build the WhatsApp share text for a body-parameters card.
  *
+ * Shows a clean base URL (no UUID) in the message so recipients don't
+ * see an internal token. The real shareUrl with token is used for
+ * deep-link routing inside the app.
+ *
  * @param {string} shareUrl  - e.g. https://host/share/bpc/<token>
  * @param {string} memberName
  * @returns {string}
  */
 export function buildShareText(shareUrl, memberName) {
   const name = memberName ? memberName.trim() : 'you';
-  const url  = shareUrl   ? `\nTap to view → ${shareUrl}` : '';
-  return `👋 Hey ${name}! Your body parameters card is ready.${url}`;
+  // Strip the token so the message shows https://host/share instead of the full UUID URL.
+  const cleanUrl = shareUrl ? shareUrl.replace(/\/share\/bpc\/[^?#]+.*$/, '/share').replace(/\/share\/[^?#]+.*$/, '/share') : '';
+  const urlLine  = cleanUrl ? `\nTap to view → ${cleanUrl}` : '';
+  return `👋 Hey ${name}! Your body parameters card is ready.${urlLine}`;
 }

@@ -22,9 +22,10 @@ describe('getStoreLink', () => {
 });
 
 describe('buildShareText', () => {
-  it('includes the share URL', () => {
+  it('shows clean base URL without BPC token', () => {
     const text = buildShareText('https://example.com/share/bpc/abc', 'Ali Hassan');
-    expect(text).toContain('https://example.com/share/bpc/abc');
+    expect(text).toContain('https://example.com/share');
+    expect(text).not.toContain('/bpc/abc');
   });
 
   it('uses first name only', () => {

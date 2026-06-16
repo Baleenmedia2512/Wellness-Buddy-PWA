@@ -541,12 +541,12 @@ function WellnessValleyApp() {
         `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      // Share the URL as a WhatsApp text message so the recipient sees a
-      // rich link-preview card (title + thumbnail from the page's OG tags)
-      // instead of a raw URL � identical to how Swiggy / Redbus share links.
-      // whatsapp://send?text=<url> opens WhatsApp pre-filled with the link;
-      // WhatsApp's OG crawler fetches the page and renders the branded card.
-      const ok = await shareTextViaWhatsApp(foodShareUrl);
+      // Share a clean generic URL to WhatsApp so the message shows
+      // https://app/share instead of the full UUID + query params.
+      // The OG preview is still generated from the real URL server-side.
+      // foodShareUrl (full URL with token) stays intact for deep-link routing.
+      const baseShareUrl = foodShareUrl.replace(/\/share\/[^?#]+.*$/, '/share');
+      const ok = await shareTextViaWhatsApp(baseShareUrl);
       if (cancelled) return;
 
       debugLog(
@@ -4173,7 +4173,9 @@ function WellnessValleyApp() {
     // ?n= embeds the display name so the WhatsApp OG card shows the user name
     // even when WhatsApp crawls the page before the capture POST completes.
     const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
+    // Clean URL shown in WhatsApp message — no UUID or query params visible.
+    const cleanShareUrl = `${apiBaseUrl}/share`;
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${cleanShareUrl}`;
 
     // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
