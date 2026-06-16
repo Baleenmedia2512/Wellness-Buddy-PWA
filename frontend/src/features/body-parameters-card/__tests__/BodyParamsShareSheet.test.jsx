@@ -57,6 +57,9 @@ describe('BodyParamsShareSheet', () => {
     expect(mockPrecaptureShareImage).not.toHaveBeenCalled();
     expect(mockShareImageWithLink).not.toHaveBeenCalled();
     expect(mockShareTextViaWhatsApp).toHaveBeenCalledWith(
+      expect.stringMatching(/Hey Alex! Install Wellness Valley app\. Click the link/),
+    );
+    expect(mockShareTextViaWhatsApp).toHaveBeenCalledWith(
       expect.stringContaining('https://example.com/share/bpc/token'),
     );
     expect(onClose).toHaveBeenCalled();
