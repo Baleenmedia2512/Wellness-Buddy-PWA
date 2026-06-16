@@ -103,6 +103,15 @@ export default function UnknownEntryFlow({
     close();
   };
 
+  const retagCapture = async (imageType) => {
+    if (!captureId || !userId || !apiBaseUrl) return;
+    await fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: captureId, userId, imageType }),
+    });
+  };
+
   const handleRetry = async () => {
     if (!captureId || !imageBase64 || !userId) return;
     setRetrying(true);
@@ -127,14 +136,41 @@ export default function UnknownEntryFlow({
         finish({ kind: 'food', captureId });
 
       } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        // Save weight entry to DB, then retag capture
+        await saveWeight({
+          userId,
+          weightValue: detectedType.details.weightValue,
+          unit: detectedType.details.unit || 'kg',
+          captureId,
+          imageBase64ToSave: imageBase64,
+        });
+        await retagCapture('weight');
         setRetrying(false);
         finish({ kind: 'weight', captureId });
 
       } else if (detectedType.type === 'education') {
+        // Save education log to DB, then retag capture
+        await saveLog({
+          userId,
+          platform: detectedType.details.platform || 'Online Meeting',
+          topic: 'Education Meeting',
+          captureId,
+          imageBase64,
+        });
+        await retagCapture('education');
         setRetrying(false);
         finish({ kind: 'education', captureId });
 
       } else if (detectedType.type === 'smartwatch') {
+        // Save watch activity via education log (same table), then retag capture
+        await saveLog({
+          userId,
+          platform: detectedType.details.source || 'Smartwatch',
+          topic: `Calories Burned: ${detectedType.details.caloriesBurned || 0} kcal`,
+          captureId,
+          imageBase64,
+        });
+        await retagCapture('smartwatch');
         setRetrying(false);
         finish({ kind: 'smartwatch', captureId });
 
