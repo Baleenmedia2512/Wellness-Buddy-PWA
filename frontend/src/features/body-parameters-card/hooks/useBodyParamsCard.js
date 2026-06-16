@@ -67,7 +67,10 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // ── Phone autocomplete state ──────────────────────────────────────────────
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
   const [phoneSearchLoading, setPhoneSearchLoading] = useState(false);
-  const phoneDebounceRef = useRef(null);
+  const phoneDebounceRef    = useRef(null);
+  // Stores the last prefix typed while coachUserId was still null, so we can
+  // fire the search as soon as the coach ID resolves.
+  const pendingPhonePrefixRef = useRef(null);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
@@ -90,6 +93,18 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
     return () => { cancelled = true; };
   }, [user?.email, coachUserId]);
+
+  // ── Fire any pending phone search once coachUserId resolves ────────────
+  useEffect(() => {
+    if (!coachUserId || !pendingPhonePrefixRef.current) return;
+    const prefix = pendingPhonePrefixRef.current;
+    pendingPhonePrefixRef.current = null;
+    setPhoneSearchLoading(true);
+    searchPhonesByPrefix({ prefix, coachId: coachUserId })
+      .then((results) => setPhoneSuggestions(results))
+      .catch(() => setPhoneSuggestions([]))
+      .finally(() => setPhoneSearchLoading(false));
+  }, [coachUserId]);
 
   // ── Derived calculations ──────────────────────────────────────────────────
 
@@ -148,23 +163,29 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   const setPhoneField = useCallback((value) => {
     setForm((prev) => ({ ...prev, phoneNumber: value }));
 
-    // Clear stale suggestions when the user edits the phone manually after a selection.
     const digits = value.replace(/\D/g, '');
     if (digits.length < 2) {
       setPhoneSuggestions([]);
+      pendingPhonePrefixRef.current = null;
       if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
       return;
     }
 
     if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+
+    // coachUserId not yet resolved — park the prefix; the resolve useEffect will fire it.
+    if (!coachUserId) {
+      pendingPhonePrefixRef.current = digits;
+      return;
+    }
+
+    pendingPhonePrefixRef.current = null;
     phoneDebounceRef.current = setTimeout(async () => {
-      if (!coachUserId) return;
       setPhoneSearchLoading(true);
       try {
         const results = await searchPhonesByPrefix({ prefix: digits, coachId: coachUserId });
         setPhoneSuggestions(results);
       } catch (_err) {
-        // Fail silently — the form is still usable without suggestions.
         setPhoneSuggestions([]);
       } finally {
         setPhoneSearchLoading(false);
