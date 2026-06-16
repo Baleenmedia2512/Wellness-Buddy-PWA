@@ -124,8 +124,7 @@ import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
-import { fetchPublicCard } from "./features/body-parameters-card/services/bodyParamsCardApi.js";
-import { savePendingCard, consumePendingCard } from "./features/body-parameters-card/domain/pendingBodyParamsCard.js";
+import { fetchPublicCard, savePendingCard, consumePendingCard } from "./features/body-parameters-card";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 // import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
@@ -160,7 +159,7 @@ import LocationGuard from "./shared/components/LocationGuard";
 // ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() => import("./features/weight/components/WeightLossLeaderboard"));
 const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/components/DisciplineLeaderboard"));
-const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalDisciplineScore"));
+const PersonalDisciplineScore = lazy(() => import("./shared/components/PersonalDisciplineScore.js"));
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
@@ -999,7 +998,7 @@ function WellnessValleyApp() {
           if (user?.id) {
             // Already logged in: save to profile inline, no pending storage needed.
             const { saveCardToProfile } = await import(
-              './features/body-parameters-card/services/bodyParamsCardApi.js'
+              './features/body-parameters-card'
             );
             await saveCardToProfile(bpcToken, user.id).catch(() => {});
           } else {
@@ -2056,7 +2055,7 @@ function WellnessValleyApp() {
             const bpcPending = consumePendingCard();
             if (bpcPending?._token && user?.id) {
               const { saveCardToProfile } = await import(
-                './features/body-parameters-card/services/bodyParamsCardApi.js'
+                './features/body-parameters-card'
               );
               saveCardToProfile(bpcPending._token, user.id).catch((err) => {
                 debugLog('[BPC] post-login pending card save failed:', err?.message);
@@ -5504,7 +5503,7 @@ function WellnessValleyApp() {
             // ── Consume any BPC card stored pre-login (new user from deep link) ──
             const bpcPendingSignIn = consumePendingCard();
             if (bpcPendingSignIn?._token && user?.id) {
-              import('./features/body-parameters-card/services/bodyParamsCardApi.js')
+              import('./features/body-parameters-card')
                 .then(({ saveCardToProfile }) => {
                   saveCardToProfile(bpcPendingSignIn._token, user.id).catch(() => {});
                 });
