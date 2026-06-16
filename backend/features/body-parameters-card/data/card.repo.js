@@ -5,6 +5,7 @@
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import { buildTeamMemberInsert } from '../domain/card.rules.js';
+import logger from '../../../shared/lib/logger.js';
 
 const TABLE = 'body_parameters_cards';
 
@@ -154,7 +155,10 @@ export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heigh
     .select('UserId')
     .single();
 
-  if (!error) return data.UserId;
+  if (!error) {
+    logger.info('[body-params-card] created team_table member', { userId: data.UserId });
+    return data.UserId;
+  }
 
   if (error.code === '23505') {
     for (const variant of buildPhoneLookupVariants(phoneNumber)) {
