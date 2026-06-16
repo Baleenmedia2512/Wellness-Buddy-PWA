@@ -3504,19 +3504,57 @@ function WellnessValleyApp() {
     setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
     try {
       const file = base64ToImageFile(imageBase64);
-      const analysis = await geminiService.analyzeImageForNutrition(file);
 
-      if (!hasRecognizedFood(analysis)) {
+      // Use full image type detection — not just food — so weight, education,
+      // and smartwatch captures are also correctly re-classified on retry.
+      const detectedType = await imageTypeDetector.detectImageType(file);
+
+      if (detectedType.type === 'food') {
+        // Food path: promote the unknown capture to a food entry
+        const analysis = detectedType.details;
+        if (!hasRecognizedFood(analysis)) {
+          setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
+          return;
+        }
+        const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+        await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Saved to your diary");
+        triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
+
+      } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        // Weight path: save weight entry
+        const weightValue = detectedType.details.weightValue;
+        const unit = detectedType.details.unit || 'kg';
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'weight'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast(`Weight ${weightValue} ${unit} saved`);
+
+      } else if (detectedType.type === 'education') {
+        // Education path: re-tag the capture
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'education'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Education session saved");
+
+      } else if (detectedType.type === 'smartwatch') {
+        // Smartwatch path: re-tag the capture
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'smartwatch'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Activity saved");
+
+      } else {
+        // Still unrecognised
         setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
-        return;
       }
-
-      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
-      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
-      showToast("Saved to your diary");
-      // Trigger global nutrition refresh after promoting unknown to food
-      triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
     } catch (e) {
       setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
     }
@@ -4939,7 +4977,8 @@ function WellnessValleyApp() {
       // wall) and on Gemini errors (details.defaulted === true). Treating
       // those as food pollutes the nutrition feed with 0-kcal rows and
       // generates broken share links — the root bug PR 3 fixes.
-      if (isLowConfidenceFood(detectedType)) {
+      // Also handle explicit 'other' type returned when AI fails entirely.
+      if (detectedType.type === 'other' || isLowConfidenceFood(detectedType)) {
         debugLog("❓ [Image Detection] Low-confidence food — opening unknown picker", {
           confidence: detectedType?.confidence,
           defaulted: detectedType?.details?.defaulted,

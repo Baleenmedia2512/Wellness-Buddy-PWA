@@ -175,7 +175,12 @@ If unsure about a specific nutrient, estimate conservatively rather than returni
     });
 
   } catch (error) {
-    console.error('Gemini API error:', error);
+    // Log full Gemini error details for debugging
+    console.error('=== Gemini API Error ===');
+    console.error('Message:', error.message);
+    console.error('Status:', error.status);
+    console.error('Error details:', JSON.stringify(error.errorDetails || error.cause || {}, null, 2));
+    console.error('Full error:', error);
     
     return res.status(500).json({
       ok: false,
@@ -183,6 +188,7 @@ If unsure about a specific nutrient, estimate conservatively rather than returni
         code: 'AI_ANALYSIS_FAILED',
         message: 'Failed to analyze image',
         details: error.message,
+        geminiStatus: error.status,
       },
     });
   }

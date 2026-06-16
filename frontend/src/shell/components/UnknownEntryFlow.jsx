@@ -16,7 +16,7 @@
  * On any successful change we call `onChanged()` so the feed re-fetches.
  */
 import React, { useState } from 'react';
-import { geminiService } from '../../shared/services/geminiService';
+import { imageTypeDetector } from '../../shared/services/imageTypeDetector';
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
   UnknownShareViewer,
@@ -109,18 +109,39 @@ export default function UnknownEntryFlow({
     setError(null);
     try {
       const file = base64ToImageFile(imageBase64);
-      const analysis = await geminiService.analyzeImageForNutrition(file);
 
-      if (!hasRecognizedFood(analysis)) {
+      // Use full image type detection so weight, education, and smartwatch
+      // captures are also correctly re-classified — not just food.
+      const detectedType = await imageTypeDetector.detectImageType(file);
+
+      if (detectedType.type === 'food') {
+        const analysis = detectedType.details;
+        if (!hasRecognizedFood(analysis)) {
+          setRetrying(false);
+          setError("Still couldn't recognise it — try Edit instead.");
+          return;
+        }
+        const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+        await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
+        setRetrying(false);
+        finish({ kind: 'food', captureId });
+
+      } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        setRetrying(false);
+        finish({ kind: 'weight', captureId });
+
+      } else if (detectedType.type === 'education') {
+        setRetrying(false);
+        finish({ kind: 'education', captureId });
+
+      } else if (detectedType.type === 'smartwatch') {
+        setRetrying(false);
+        finish({ kind: 'smartwatch', captureId });
+
+      } else {
         setRetrying(false);
         setError("Still couldn't recognise it — try Edit instead.");
-        return;
       }
-
-      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
-      setRetrying(false);
-      finish({ kind: 'food', captureId });
     } catch {
       setRetrying(false);
       setError("Couldn't analyse the photo — try Edit instead.");

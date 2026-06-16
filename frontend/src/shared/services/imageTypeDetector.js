@@ -82,11 +82,12 @@ class SecureImageTypeDetector {
 
     } catch (error) {
       console.error('❌ Image classification failed:', error);
-      // Default to food on error
+      // Default to 'other' on error — NOT 'food', which would trigger
+      // an unnecessary nutrition analysis call.
       return {
-        type: 'food',
-        confidence: 0.5,
-        details: {},
+        type: 'other',
+        confidence: 0,
+        details: { defaulted: true },
       };
     }
   }
@@ -155,20 +156,42 @@ class SecureImageTypeDetector {
           duration: Date.now() - startTime,
         };
 
-      } else {
-        // Default to food
+      } else if (classification.type === 'food') {
+        // Confirmed food — run full nutrition analysis
         debugLog('🍽️ [IMAGE-DETECTOR] Routing to nutrition analysis service...');
-        const nutritionData = await geminiService.analyzeImageForNutrition(
-          imgFile,
-          this.userId,
-          null
-        );
+        try {
+          const nutritionData = await geminiService.analyzeImageForNutrition(
+            imgFile,
+            this.userId,
+            null
+          );
+          // geminiService now returns numeric confidence (0-1) directly
+          result = {
+            type: 'food',
+            confidence: nutritionData.confidence || 0.9,
+            details: nutritionData,
+            duration: Date.now() - startTime,
+          };
+        } catch (nutritionError) {
+          // AI analysis failed — return a defaulted food result so
+          // isLowConfidenceFood() routes it to the unknown picker instead of crashing.
+          console.warn('⚠️ [IMAGE-DETECTOR] Nutrition analysis failed, defaulting:', nutritionError.message);
+          result = {
+            type: 'food',
+            confidence: 0,
+            details: { defaulted: true, foods: [], total: { calories: 0 }, error: nutritionError.message },
+            duration: Date.now() - startTime,
+          };
+        }
 
-        // geminiService now returns numeric confidence (0-1) directly
+      } else {
+        // 'other', unknown types, or classification fallback — skip nutrition analysis
+        // and route directly to the unknown picker.
+        debugLog(`❓ [IMAGE-DETECTOR] Unhandled type '${classification.type}' — routing to unknown picker`);
         result = {
-          type: 'food',
-          confidence: nutritionData.confidence || 0.9,
-          details: nutritionData,
+          type: 'other',
+          confidence: classification.confidence,
+          details: { ...classification.details, defaulted: true },
           duration: Date.now() - startTime,
         };
       }
@@ -183,10 +206,15 @@ class SecureImageTypeDetector {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.error(`❌ [IMAGE-DETECTOR] FAILED after ${duration} ms`);
       console.error(`❌ [IMAGE-DETECTOR] Error:`, error.message);
-      console.error(`❌ [IMAGE-DETECTOR] Error type:`, error.constructor.name);
-      console.error(`❌ [IMAGE-DETECTOR] Stack:`, error.stack);
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      throw error;
+      // Fail gracefully — return 'other' so App.js routes to the unknown picker
+      // instead of crashing the entire capture flow.
+      return {
+        type: 'other',
+        confidence: 0,
+        details: { defaulted: true, error: error.message },
+        duration,
+      };
     }
   }
 
