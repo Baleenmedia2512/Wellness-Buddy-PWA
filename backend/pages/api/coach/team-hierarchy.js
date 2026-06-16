@@ -513,6 +513,9 @@ export default async function handler(req, res) {
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
           Status: node.status,
+          phoneNumber: node.phoneNumber || null,
+          height: node.height != null ? node.height : null,
+          bmr: node.bmr != null ? node.bmr : null,
         };
         if (node.isCoCoach) entry.isCoCoach = true;
         result.set(node.userId, entry);
@@ -539,7 +542,10 @@ export default async function handler(req, res) {
         CoachId: hierarchy.coCoachInfo.coachId,
         CoCoachId: hierarchy.coCoachInfo.coCoachId,
         Status: hierarchy.coCoachInfo.status,
-        isCoCoach: true  // Flag to identify them in search results
+        phoneNumber: hierarchy.coCoachInfo.phoneNumber || null,
+        height: hierarchy.coCoachInfo.height != null ? hierarchy.coCoachInfo.height : null,
+        bmr: hierarchy.coCoachInfo.bmr != null ? hierarchy.coCoachInfo.bmr : null,
+        isCoCoach: true
       });
     }
     
