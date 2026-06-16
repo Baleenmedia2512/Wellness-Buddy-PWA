@@ -116,7 +116,7 @@ class SecureImageTypeDetector {
         result = {
           type: 'weight',
           confidence: weightData.confidence || classification.confidence,
-          details: weightData, // ← Use "details" to match App.js expectations
+          data: weightData,
           duration: Date.now() - startTime,
         };
 
@@ -127,7 +127,7 @@ class SecureImageTypeDetector {
         result = {
           type: 'education',
           confidence: classification.confidence,
-          details: classification.details, // ← Use "details"
+          data: classification.details,
           duration: Date.now() - startTime,
         };
 
@@ -140,18 +140,10 @@ class SecureImageTypeDetector {
           null
         );
 
-        // Convert string confidence ('high'/'medium'/'low') to number
-        // isLowConfidenceFood() requires a numeric confidence >= 0.4
-        const confidenceMap = { high: 0.9, medium: 0.7, low: 0.4 };
-        const rawConf = nutritionData.confidence;
-        const numericConfidence = typeof rawConf === 'number'
-          ? rawConf
-          : (confidenceMap[String(rawConf).toLowerCase()] ?? 0.9);
-
         result = {
           type: 'food',
-          confidence: numericConfidence,
-          details: nutritionData,
+          confidence: nutritionData.confidence || 0.9,
+          data: nutritionData,
           duration: Date.now() - startTime,
         };
       }
