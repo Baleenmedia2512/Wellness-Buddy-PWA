@@ -73,3 +73,20 @@ export async function saveCardToProfile(token, requestingUserId) {
   if (!result?.success) throw new Error(result?.error?.message || 'Failed to save card');
   return { saved: result.saved, data: result.data };
 }
+
+/**
+ * Search team members by phone number prefix (autocomplete).
+ * Returns up to 10 matches scoped to the coach's team.
+ *
+ * @param {{ prefix: string, coachId: number }} opts
+ * @returns {Promise<Array<{ userId: number, userName: string, phoneNumber: string, heightCm: number|null, bmr: number|null }>>}
+ */
+export async function searchPhonesByPrefix({ prefix, coachId }) {
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/phone-search?prefix=${encodeURIComponent(prefix)}&coachId=${encodeURIComponent(coachId)}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  if (!result?.ok) throw new Error(result?.error?.message || 'Phone search failed');
+  return Array.isArray(result.data) ? result.data : [];
+}

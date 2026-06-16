@@ -542,12 +542,9 @@ function WellnessValleyApp() {
         `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      // Share a clean generic URL to WhatsApp so the message shows
-      // https://app/share instead of the full UUID + query params.
-      // The OG preview is still generated from the real URL server-side.
-      // foodShareUrl (full URL with token) stays intact for deep-link routing.
-      const baseShareUrl = foodShareUrl.replace(/\/share\/[^?#]+.*$/, '/share');
-      const ok = await shareTextViaWhatsApp(baseShareUrl);
+      const shareDisplayName = resolveShareDisplayName(savedUserName, user);
+      const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${foodShareUrl}`;
+      const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
       debugLog(
@@ -567,7 +564,7 @@ function WellnessValleyApp() {
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType, resetCaptureUiOnly]);
+  }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -4271,9 +4268,7 @@ function WellnessValleyApp() {
     // ?n= embeds the display name so the WhatsApp OG card shows the user name
     // even when WhatsApp crawls the page before the capture POST completes.
     const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
-    // Clean URL shown in WhatsApp message — no UUID or query params visible.
-    const cleanShareUrl = `${apiBaseUrl}/share`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${cleanShareUrl}`;
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
 
     // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
@@ -4549,7 +4544,7 @@ function WellnessValleyApp() {
             );
             return {
               id: capData.data.id,
-              url: `${apiBaseUrl}/share/${capData.data.token}`,
+              url: `${apiBaseUrl}/share/${capData.data.token}?n=${encodeURIComponent(shareDisplayName)}`,
             };
           }
           debugLog(

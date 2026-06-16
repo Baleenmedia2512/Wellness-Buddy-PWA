@@ -8,6 +8,7 @@
 import React from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
+import PhoneAutocomplete from './PhoneAutocomplete.jsx';
 
 const InputField = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
   <div className="flex flex-col gap-1">
@@ -77,7 +78,13 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
           {/* Date + Phone */}
           <div className="grid grid-cols-2 gap-3">
             <InputField label="Date" value={vm.form.recordedDate} onChange={(v) => vm.setField('recordedDate', v)} type="date" />
-            <InputField label="Phone Number" value={vm.form.phoneNumber} onChange={(v) => vm.setField('phoneNumber', v)} type="tel" placeholder="Client phone — creates team member" />
+            <PhoneAutocomplete
+              value={vm.form.phoneNumber}
+              onChange={vm.setPhoneField}
+              suggestions={vm.phoneSuggestions}
+              onSelect={vm.fillFromMember}
+              isLoading={vm.phoneSearchLoading}
+            />
           </div>
 
           {/* Name */}

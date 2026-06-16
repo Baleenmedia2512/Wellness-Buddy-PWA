@@ -1,7 +1,7 @@
 /**
  * card.schema.test.js — Validation schema unit tests.
  */
-import { validateCreateCard, validateToken } from '../validation/card.schema.js';
+import { validateCreateCard, validateToken, validatePhoneSearchQuery } from '../validation/card.schema.js';
 
 describe('validateCreateCard', () => {
   const base = { createdBy: 1, name: 'Ali Hassan' };
@@ -94,5 +94,38 @@ describe('validateToken', () => {
 
   it('throws 400 for empty string', () => {
     expect(() => validateToken('')).toThrow('Invalid token format');
+  });
+});
+
+describe('validatePhoneSearchQuery', () => {
+  it('passes with valid prefix and coachId', () => {
+    const out = validatePhoneSearchQuery({ prefix: '93', coachId: '5' });
+    expect(out.prefix).toBe('93');
+    expect(out.coachId).toBe(5);
+  });
+
+  it('throws 400 when prefix is missing', () => {
+    expect(() => validatePhoneSearchQuery({ coachId: '5' })).toThrow('prefix is required');
+  });
+
+  it('throws 422 when prefix is only 1 digit', () => {
+    expect(() => validatePhoneSearchQuery({ prefix: '9', coachId: '5' })).toThrow('prefix must be 2–15 digits');
+  });
+
+  it('throws 422 when prefix contains letters', () => {
+    expect(() => validatePhoneSearchQuery({ prefix: '9A', coachId: '5' })).toThrow('prefix must be 2–15 digits');
+  });
+
+  it('throws 400 when coachId is missing', () => {
+    expect(() => validatePhoneSearchQuery({ prefix: '93' })).toThrow('coachId is required');
+  });
+
+  it('throws 400 when coachId is zero', () => {
+    expect(() => validatePhoneSearchQuery({ prefix: '93', coachId: '0' })).toThrow('coachId must be a valid UserId');
+  });
+
+  it('strips spaces from prefix', () => {
+    const out = validatePhoneSearchQuery({ prefix: '93 ', coachId: '5' });
+    expect(out.prefix).toBe('93');
   });
 });

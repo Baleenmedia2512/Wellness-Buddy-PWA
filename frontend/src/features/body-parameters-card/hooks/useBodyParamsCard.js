@@ -5,11 +5,12 @@
  *   1. Height → ideal weight  (BMI 23 × heightM²)
  *   2. Height + Weight → BMI  (weight ÷ heightM²)
  *   3. Gender → fat% hint label
+ * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CapacitorHttp } from '@capacitor/core';
-import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { createBodyParamsCard, updateBodyParamsCard, searchPhonesByPrefix } from '../services/bodyParamsCardApi.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -62,6 +63,11 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+
+  // ── Phone autocomplete state ──────────────────────────────────────────────
+  const [phoneSuggestions, setPhoneSuggestions] = useState([]);
+  const [phoneSearchLoading, setPhoneSearchLoading] = useState(false);
+  const phoneDebounceRef = useRef(null);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
@@ -133,6 +139,54 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const setField = useCallback((field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  /**
+   * Called when the phone input changes. Updates form + triggers debounced prefix search.
+   * Clears suggestions immediately when input is too short.
+   */
+  const setPhoneField = useCallback((value) => {
+    setForm((prev) => ({ ...prev, phoneNumber: value }));
+
+    // Clear stale suggestions when the user edits the phone manually after a selection.
+    const digits = value.replace(/\D/g, '');
+    if (digits.length < 2) {
+      setPhoneSuggestions([]);
+      if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+      return;
+    }
+
+    if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+    phoneDebounceRef.current = setTimeout(async () => {
+      if (!coachUserId) return;
+      setPhoneSearchLoading(true);
+      try {
+        const results = await searchPhonesByPrefix({ prefix: digits, coachId: coachUserId });
+        setPhoneSuggestions(results);
+      } catch (_err) {
+        // Fail silently — the form is still usable without suggestions.
+        setPhoneSuggestions([]);
+      } finally {
+        setPhoneSearchLoading(false);
+      }
+    }, 300);
+  }, [coachUserId]);
+
+  /**
+   * Called when the user selects a suggestion from the phone autocomplete.
+   * Pre-fills Name, Height, BMR from the member's stored profile.
+   * BMI auto-fill is NOT reset here — height will trigger it naturally.
+   */
+  const fillFromMember = useCallback((member) => {
+    setForm((prev) => ({
+      ...prev,
+      phoneNumber: member.phoneNumber,
+      ...(member.userName && String(member.userName).trim() ? { name: String(member.userName).trim() } : {}),
+      ...(member.heightCm != null ? { heightCm: String(member.heightCm) } : {}),
+      ...(member.bmr != null ? { bmr: String(member.bmr) } : {}),
+    }));
+    setPhoneSuggestions([]);
+    debugLog('✅ [BodyParamsCard] pre-filled from member', member);
   }, []);
 
   /** Called when user manually types in the Weight field. */
@@ -253,6 +307,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   return {
     form, setField,
+    setPhoneField, fillFromMember,
+    phoneSuggestions, phoneSearchLoading,
     setWeightManually, setBmiManually,
     fatHint, fatPlaceholder,
     derivedIdealWeight, derivedBmi,

@@ -164,3 +164,31 @@ function _optionalPhone(val) {
   }
   return cleaned;
 }
+
+/**
+ * Validate the query params for GET /api/body-parameters-card/phone-search.
+ *
+ * @param {{ prefix: string, coachId: string }} query
+ * @returns {{ prefix: string, coachId: number }}
+ * @throws {ValidationError}
+ */
+export function validatePhoneSearchQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query params missing');
+  const { prefix, coachId } = query;
+
+  if (!prefix || String(prefix).trim() === '') {
+    throw new ValidationError(400, 'prefix is required');
+  }
+  const cleanPrefix = String(prefix).trim().replace(/[\s\-()]/g, '');
+  if (!/^[0-9]{2,15}$/.test(cleanPrefix)) {
+    throw new ValidationError(422, 'prefix must be 2–15 digits');
+  }
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { prefix: cleanPrefix, coachId: coachIdN };
+}

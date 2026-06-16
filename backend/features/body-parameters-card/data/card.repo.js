@@ -112,7 +112,8 @@ export async function findTeamPhoneByUserId(userId) {
 
 /**
  * Create a new team_table row from the phone the coach entered.
- * Inserts first; if PhoneNumber already exists (unique index), returns that user.
+ * Inserts first; if PhoneNumber already exists (unique index), finds that user
+ * and UPDATES their Name/Height/Bmr if the coach provided updated values.
  *
  * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
@@ -160,10 +161,27 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
         .limit(1);
       if (lookupErr) throw lookupErr;
       if (existing?.[0]?.UserId) {
-        logger.info('[body-params-card] phone already in team_table, reusing user', {
-          userId: existing[0].UserId,
+        const existingUserId = existing[0].UserId;
+        // Update the existing member's profile fields with the coach's new values.
+        const updatePatch = {};
+        if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
+        if (heightCm != null) updatePatch.Height = heightCm;
+        if (bmr != null) updatePatch.Bmr = bmr;
+        if (Object.keys(updatePatch).length > 0) {
+          const { error: updateErr } = await supabase
+            .from('team_table')
+            .update(updatePatch)
+            .eq('UserId', existingUserId);
+          if (updateErr) {
+            logger.warn('[body-params-card] failed to update existing member profile', {
+              userId: existingUserId, updateErr,
+            });
+          }
+        }
+        logger.info('[body-params-card] phone already in team_table, updated and reusing user', {
+          userId: existingUserId,
         });
-        return { userId: existing[0].UserId, isNew: false };
+        return { userId: existingUserId, isNew: false };
       }
     }
   }
@@ -190,4 +208,43 @@ export async function linkCardToUser(cardId, userId) {
     .eq('id', cardId)
     .eq('is_deleted', false);
   if (error) throw error;
+}
+
+/**
+ * Search team_table rows by phone number prefix, scoped to a specific coach.
+ * Returns up to 10 matches ordered by UserId ascending.
+ *
+ * @param {{ prefix: string, coachId: number }} opts
+ * @returns {Promise<Array<{ userId: number, userName: string, phoneNumber: string, heightCm: number|null, bmr: number|null }>>}
+ */
+export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('UserId, UserName, PhoneNumber, Height, Bmr')
+    .eq('CoachId', coachId)
+    .like('PhoneNumber', `${prefix}%`)
+    .eq('Status', 'Active')
+    .order('UserId', { ascending: true })
+    .limit(10);
+
+  if (error) throw error;
+  if (!data) return [];
+
+  // Deduplicate by PhoneNumber (keep lowest UserId)
+  const seen = new Set();
+  const results = [];
+  for (const row of data) {
+    const phone = String(row.PhoneNumber || '').trim();
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    results.push({
+      userId:      row.UserId,
+      userName:    row.UserName || '',
+      phoneNumber: phone,
+      heightCm:    row.Height ?? null,
+      bmr:         row.Bmr    ?? null,
+    });
+  }
+  return results;
 }
