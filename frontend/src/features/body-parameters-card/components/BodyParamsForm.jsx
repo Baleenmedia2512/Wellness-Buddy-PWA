@@ -3,7 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Location, Name, Age, Gender, Height, BMI, Fat%, Weight, BMR, Body Age.
+ * Fields: Date, Location, Name, Phone, Age, Gender, Height, Weight, BMI, Fat%, BMR, Body Age.
  */
 import React from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -74,10 +74,10 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             </div>
           )}
 
-          {/* Date + Location */}
+          {/* Date + Phone */}
           <div className="grid grid-cols-2 gap-3">
-            <InputField label="Date"     value={vm.form.recordedDate}  onChange={(v) => vm.setField('recordedDate', v)}  type="date" />
-            {/* <InputField label="Location" value={vm.form.locationName}  onChange={(v) => vm.setField('locationName', v)}  placeholder="City / Area" /> */}
+            <InputField label="Date" value={vm.form.recordedDate} onChange={(v) => vm.setField('recordedDate', v)} type="date" />
+            <InputField label="Phone Number" value={vm.form.phoneNumber} onChange={(v) => vm.setField('phoneNumber', v)} type="tel" placeholder="e.g. +919876543210" />
           </div>
 
           {/* Name */}
@@ -92,12 +92,28 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
           {/* Divider */}
           <hr className="border-green-100" />
 
-          {/* Height + BMI */}
+          {/* Height + Weight */}
           <div className="grid grid-cols-2 gap-3">
             <InputField label="4. Height (cm)" value={vm.form.heightCm}   onChange={(v) => vm.setField('heightCm', v)}   type="number" placeholder="cm" />
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-                5. BMI (19–23)
+                5. Weight {vm.derivedIdealWeight ? `(${vm.derivedIdealWeight} kg)` : '(kg)'}
+              </label>
+              <input
+                type="number"
+                value={vm.form.weightKg}
+                onChange={(e) => vm.setWeightManually(e.target.value)}
+                placeholder="kg"
+                className="border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+              />
+            </div>
+          </div>
+
+          {/* BMI + BMR */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
+                6. BMI (19–23)
               </label>
               {(() => {
                 const bmiVal = parseFloat(vm.form.bmi);
@@ -126,21 +142,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                   </>
                 );
               })()}
-            </div>
-          </div>
-
-          {/* Weight + BMR */}          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-                6. Weight {vm.derivedIdealWeight ? `(${vm.derivedIdealWeight} kg)` : '(kg)'}
-              </label>
-              <input
-                type="number"
-                value={vm.form.weightKg}
-                onChange={(e) => vm.setWeightManually(e.target.value)}
-                placeholder="kg"
-                className="border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-              />
             </div>
             <InputField label="7. BMR (kcal)"  value={vm.form.bmr}        onChange={(v) => vm.setField('bmr', v)}        type="number" placeholder="kcal" />
           </div>

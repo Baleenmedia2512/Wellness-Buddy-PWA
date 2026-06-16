@@ -438,7 +438,8 @@ const ReminderSettingsPage = ({ onBack, lastWeight: lastWeightProp }) => {
     if (!prefs) return;
     setSaving(true);
     try {
-      await updateReminders(prefs);
+      const userId = localStorage.getItem('dbUserId') || localStorage.getItem('userId') || null;
+      await updateReminders(prefs, userId);
       showToast('success', isNative
         ? 'Reminders saved and scheduled!'
         : 'Reminder preferences saved!');

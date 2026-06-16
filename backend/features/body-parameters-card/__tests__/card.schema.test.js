@@ -57,10 +57,21 @@ describe('validateCreateCard', () => {
       createdBy: 2, userId: 5, name: 'Priya S', age: 30, gender: 'Female',
       heightCm: 165, weightKg: 58, bmi: 21.3, fatPercent: 24, bmr: 1450,
       bodyAge: 28, recordedDate: '2026-06-09', locationName: 'Chennai',
+      phoneNumber: '+919876543210',
     });
     expect(out.gender).toBe('Female');
     expect(out.bmi).toBeCloseTo(21.3);
     expect(out.userId).toBe(5);
+    expect(out.phoneNumber).toBe('+919876543210');
+  });
+
+  it('throws 422 for invalid phoneNumber', () => {
+    expect(() => validateCreateCard({ ...base, phoneNumber: 'abc' })).toThrow('phoneNumber must be');
+  });
+
+  it('allows empty phoneNumber', () => {
+    const out = validateCreateCard({ ...base, phoneNumber: '' });
+    expect(out.phoneNumber).toBeNull();
   });
 
   it('coerces numeric strings', () => {

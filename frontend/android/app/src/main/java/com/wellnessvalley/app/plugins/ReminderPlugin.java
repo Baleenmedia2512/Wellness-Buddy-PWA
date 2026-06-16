@@ -178,8 +178,14 @@ public class ReminderPlugin extends Plugin {
                     continue;
                 }
 
+                // Optional personalised body built by reminderService.js when learned average exists
+                String personalizedBody = item.optString("personalizedBody", null);
+                if (personalizedBody != null && personalizedBody.isEmpty()) {
+                    personalizedBody = null; // treat empty string as absent
+                }
+
                 if (masterEnabled && enabled) {
-                    ReminderAlarmReceiver.scheduleReminder(ctx, activityType, label, hour, minute);
+                    ReminderAlarmReceiver.scheduleReminder(ctx, activityType, label, hour, minute, personalizedBody);
                     scheduledCount++;
                 } else {
                     ReminderAlarmReceiver.cancelReminder(ctx, activityType);

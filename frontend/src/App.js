@@ -96,9 +96,9 @@ import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp, resolveShareDisplayName } from "./shared/utils/shareUtils";
 import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
-import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
+import { checkExactAlarmPermission, openExactAlarmSettings, initReminders } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -244,6 +244,7 @@ function WellnessValleyApp() {
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
+  const [isInactiveReactivationFlow, setIsInactiveReactivationFlow] = useState(false); // true while inactive user is going through coach-OTP reactivation
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   // For returning users who already granted permissions, start as true so the
   // camera opens immediately (Snapchat-like). Fresh installs start as false
@@ -1543,11 +1544,56 @@ function WellnessValleyApp() {
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
+    setIsInactiveReactivationFlow(false);
 
     // Add small delay to ensure modal is visible before sign out
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     await handleSignOut();
+  };
+
+  // Called when user clicks "Contact Your Coach" inside the inactive modal.
+  // Closes the modal, sends the coach OTP, then shows the ValidateOTP screen.
+  const handleContactCoach = async () => {
+    setShowInactiveModal(false);
+    try {
+      const storedUserRaw = Session.getOtpUserRaw();
+      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : user;
+      const userId = storedUser?.id || storedUser?.UserId || user?.id || user?.UserId;
+      const userEmail =
+        storedUser?.email || storedUser?.Email ||
+        user?.email || user?.Email ||
+        Session.getUserEmail();
+
+      const coachRes = await fetch(
+        `${apiBaseUrl}/api/user/get-active-coach?userId=${userId}`
+      );
+      const coachJson = await coachRes.json();
+      // API returns { ok: true, data: { coachId, ... } }
+      const coachId = coachJson?.data?.coachId || coachJson?.coachId;
+
+      if (coachId) {
+        const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail, coachId }),
+        });
+        const otpJson = await otpRes.json();
+
+        if (otpRes.ok && otpJson.success !== false) {
+          // OTP emailed to coach — show ValidateOTP as overlay in the !isOtpVerified branch.
+          // Do NOT change isOtpVerified here — that triggers background effects which
+          // call checkUserStatus again, see "Inactive", and re-show the modal.
+          setIsInactiveReactivationFlow(true);
+          setShowValidateOTP(true);
+          return;
+        }
+      }
+    } catch (_err) {
+      // swallow network/parse errors — fall through to fallback
+    }
+    // Fallback: re-show modal if OTP could not be sent
+    setShowInactiveModal(true);
   };
 
   const handleUserNotFoundModalClose = async () => {
@@ -1893,6 +1939,7 @@ function WellnessValleyApp() {
       user: !!user,
       isUserActive,
       showInactiveModal,
+      isInactiveReactivationFlow,
       showUserNotFoundModal,
       showSetupWizard,
       showValidateOTP,
@@ -2041,6 +2088,14 @@ function WellnessValleyApp() {
           // and the camera opening for Google/Firebase returning users.
           setUser(user);
           setAuthLoading(false);
+
+          // Initialise personalised native reminders with the user's learned
+          // average times. Fire-and-forget — never blocks the login flow.
+          if (user.id && Capacitor.isNativePlatform()) {
+            initReminders(user.id).catch((err) => {
+              debugLog('[App] initReminders failed (non-critical):', err?.message);
+            });
+          }
 
           // Background validation — fire and forget. All inner awaits only
           // mutate React state (setShow*, setIsUserActive, etc.) — safe to
@@ -2226,6 +2281,12 @@ function WellnessValleyApp() {
   // Handle OTP user restoration
   useEffect(() => {
     const restoreOtpUser = async () => {
+      // Skip restoration when the inactive-reactivation flow is in progress.
+      // In that flow isOtpVerified is temporarily forced to true so ValidateOTP
+      // can render; running restoreOtpUser here would call checkUserStatus,
+      // see "Inactive", and show the modal again on top of the OTP screen.
+      if (isInactiveReactivationFlow) return;
+
       if (isOtpVerified && !user) {
         const otpUserRaw = Session.getOtpUserRaw();
 
@@ -2301,7 +2362,7 @@ function WellnessValleyApp() {
     };
 
     restoreOtpUser();
-  }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+  }, [isOtpVerified, user, isInactiveReactivationFlow, checkUserStatus, checkProfileCompletion]);
 
   // Background validation for cache-restored OTP sessions.
   // When user was pre-loaded synchronously (no loading screen), the standard
@@ -4168,8 +4229,7 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
-    const shareDisplayName =
-      user?.displayName || user?.name || user?.email?.split('@')[0] || 'Wellness Valley';
+    const shareDisplayName = resolveShareDisplayName(savedUserName, user);
     // ?n= embeds the display name so the WhatsApp OG card shows the user name
     // even when WhatsApp crawls the page before the capture POST completes.
     const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
@@ -4813,7 +4873,7 @@ function WellnessValleyApp() {
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                   leaderboardRef.current.injectEntry({
                     userId: diffUserId,
-                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                    userName: resolveShareDisplayName(savedUserName, user, "You"),
                     email: user?.email || "",
                     weightLoss: Math.abs(weightChange),
                     profileImage: user?.photoURL || user?.ProfileImage || null,
@@ -5866,6 +5926,19 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
 
+        // Fast-path inactive check: the verify-otp API already returns the
+        // user's current Status in the stored object. If it's already
+        // 'Inactive', show the Account Restricted modal immediately — do NOT
+        // rely on a separate network call that can time out or fail-open.
+        if (parsedUser?.status?.toLowerCase() === 'inactive') {
+          debugLog("🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal");
+          authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result: 'inactive' });
+          setShowInactiveModal(true);
+          setIsUserActive(false);
+          setUser(parsedUser);
+          return;
+        }
+
         // Check user status with timeout for iOS
         let isActive = true;
         try {
@@ -6009,13 +6082,14 @@ function WellnessValleyApp() {
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
+            onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
         )}
@@ -6031,19 +6105,41 @@ function WellnessValleyApp() {
           loading={loading}
           error={error}
           onOtpVerified={handleOtpVerified}
-          forceOtpVerification={true}
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
+            onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
+        )}
+        {/* Inactive-reactivation coach OTP screen — rendered here so isOtpVerified
+            stays false and no background checkUserStatus effects re-trigger */}
+        {showValidateOTP && isInactiveReactivationFlow && (
+          <Suspense fallback={null}>
+            <ValidateOTP
+              onClose={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                handleSignOut();
+              }}
+              onSuccess={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                // Coach approved → DB now has Status='Active' (validate-otp sets it)
+                // Now it's safe to mark OTP verified and enter the app
+                setIsOtpVerified(true);
+                Session.markOtpVerified();
+              }}
+              onLogout={handleSignOut}
+            />
+          </Suspense>
         )}
       </>
     );
@@ -7329,6 +7425,7 @@ function WellnessValleyApp() {
         <InactiveUserModal
           userEmail={user?.email || user?.Email || "your account"}
           onClose={handleInactiveModalClose}
+          onContactCoach={handleContactCoach}
         />
       )}
 
@@ -7796,10 +7893,24 @@ function WellnessValleyApp() {
           <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
-              setShowSetupWizard(true);
+              if (isInactiveReactivationFlow) {
+                // User cancelled reactivation — sign them out cleanly
+                setIsInactiveReactivationFlow(false);
+                handleSignOut();
+              } else {
+                setShowSetupWizard(true);
+              }
             }}
             onSuccess={() => {
               setShowValidateOTP(false);
+              if (isInactiveReactivationFlow) {
+                // Reactivation complete — re-run status check to enter app
+                setIsInactiveReactivationFlow(false);
+                const storedUser = Session.getOtpUser();
+                if (storedUser) {
+                  try { checkUserStatus(JSON.parse(storedUser)); } catch (_e) { /* ignore */ }
+                }
+              }
               // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}

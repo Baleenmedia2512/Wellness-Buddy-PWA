@@ -5,7 +5,7 @@
 import { validateToken } from '../validation/card.schema.js';
 import { isCardShareValid, buildProfilePatch, buildWeightRecord } from '../domain/card.rules.js';
 import { canSaveCardToProfile } from '../domain/permissions/card.policy.js';
-import { findCardByToken } from '../data/card.repo.js';
+import { findCardByToken, findTeamPhoneByUserId } from '../data/card.repo.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
@@ -28,7 +28,7 @@ export async function handleGetPublicCard(token) {
 
   return {
     httpStatus: 200,
-    body: { success: true, data: _safeCard(card) },
+    body: { success: true, data: await _safeCard(card) },
   };
 }
 
@@ -56,7 +56,7 @@ export async function handleSaveCardToProfile(token, requestingUserId) {
     // Card belongs to a different user — show card read-only, no save.
     return {
       httpStatus: 200,
-      body: { success: true, data: _safeCard(card), saved: false,
+      body: { success: true, data: await _safeCard(card), saved: false,
               message: 'Card viewed as read-only (belongs to a different account)' },
     };
   }
@@ -88,13 +88,17 @@ export async function handleSaveCardToProfile(token, requestingUserId) {
 
   return {
     httpStatus: 200,
-    body: { success: true, data: _safeCard(card), saved: true },
+    body: { success: true, data: await _safeCard(card), saved: true },
   };
 }
 
 // ── private ───────────────────────────────────────────────────────────────────
 
-function _safeCard(card) {
+async function _safeCard(card) {
+  const phoneNumber = card.user_id
+    ? await findTeamPhoneByUserId(card.user_id)
+    : null;
+
   return {
     id:           card.id,
     name:         card.name,
@@ -108,6 +112,7 @@ function _safeCard(card) {
     bodyAge:      card.body_age,
     recordedDate: card.recorded_date,
     locationName: card.location_name,
+    phoneNumber,
     userId:       card.user_id,
     createdAt:    card.created_at,
   };

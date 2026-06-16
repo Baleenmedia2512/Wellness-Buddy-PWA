@@ -11,9 +11,9 @@ function expectValidationError(fn, status, messageSubstring) {
 }
 
 describe('auth.validators · validateSendOtp', () => {
-  it('lowercases + trims recipient and defaults contactType to "phone"', () => {
-    const out = validateSendOtp({ recipient: '  USER@Example.COM  ' });
-    expect(out).toEqual({ recipient: 'user@example.com', contactType: 'phone' });
+  it('lowercases + trims email recipient when contactType is email', () => {
+    const out = validateSendOtp({ recipient: '  USER@Example.COM  ', contactType: 'email' });
+    expect(out).toEqual({ recipient: 'user@example.com', contactType: 'email' });
   });
 
   it('passes through explicit contactType', () => {
@@ -31,6 +31,19 @@ describe('auth.validators · validateSendOtp', () => {
   ])('rejects when %s', (_label, body) => {
     expectValidationError(() => validateSendOtp(body), 400, 'Recipient is required');
   });
+
+  it('rejects invalid phone when contactType is phone', () => {
+    expectValidationError(
+      () => validateSendOtp({ recipient: '123', contactType: 'phone' }),
+      400,
+      'Invalid phone number',
+    );
+  });
+
+  it('accepts valid E.164 phone', () => {
+    const out = validateSendOtp({ recipient: '+919876543210', contactType: 'phone' });
+    expect(out).toEqual({ recipient: '+919876543210', contactType: 'phone' });
+  });
 });
 
 describe('auth.validators · validateVerifyOtp', () => {
@@ -46,10 +59,11 @@ describe('auth.validators · validateVerifyOtp', () => {
 
   it('passes through explicit contactType + purpose', () => {
     const out = validateVerifyOtp({
-      recipient: 'a@b.com', otp: '0000', contactType: 'phone', purpose: 'login',
+      recipient: '+919876543210', otp: '0000', contactType: 'phone', purpose: 'login',
     });
     expect(out.contactType).toBe('phone');
     expect(out.purpose).toBe('login');
+    expect(out.recipient).toBe('+919876543210');
   });
 
   it.each([

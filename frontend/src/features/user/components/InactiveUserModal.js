@@ -3,7 +3,7 @@ import { AlertTriangle, X, Mail } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 
-const InactiveUserModal = ({ userEmail, onClose }) => {
+const InactiveUserModal = ({ userEmail, onClose, onContactCoach }) => {
   const supportEmail = 'easy2work.india@gmail.com';
 
   const handleSendEmail = async () => {
@@ -95,12 +95,21 @@ const InactiveUserModal = ({ userEmail, onClose }) => {
               <span>Request Access via Email</span>
             </button>
             
-            <button
-              onClick={handleClose}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-200"
-            >
-              Return to Login
-            </button>
+            {onContactCoach ? (
+              <button
+                onClick={onContactCoach}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200"
+              >
+                Contact Your Coach
+              </button>
+            ) : (
+              <button
+                onClick={handleClose}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-200"
+              >
+                Return to Login
+              </button>
+            )}
           </div>
 
           {/* Info note */}

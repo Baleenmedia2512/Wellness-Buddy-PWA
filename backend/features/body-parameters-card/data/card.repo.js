@@ -2,7 +2,9 @@
  * card.repo.js — Data layer for body_parameters_cards.
  * The ONLY place in this feature that talks to Supabase.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
+import { buildTeamMemberInsert } from '../domain/card.rules.js';
 
 const TABLE = 'body_parameters_cards';
 
@@ -88,4 +90,99 @@ export async function findCardByToken(token) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/**
+ * Read PhoneNumber from team_table for a linked member.
+ * @param {number} userId
+ * @returns {Promise<string|null>}
+ */
+export async function findTeamPhoneByUserId(userId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('PhoneNumber')
+    .eq('UserId', userId)
+    .maybeSingle();
+  if (error) throw error;
+  const phone = data?.PhoneNumber;
+  return phone && String(phone).trim() ? String(phone).trim() : null;
+}
+
+/**
+ * Find an existing team member by phone, or create a new team_table row.
+ * Used when a coach enters a phone number on a body-parameters card.
+ *
+ * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
+ * @returns {Promise<number>} UserId
+ */
+export async function findOrCreateTeamMember({ name, phoneNumber, coachId, heightCm, bmr }) {
+  const supabase = getSupabaseClient();
+  const storedPhone = canonicalPhoneForStorage(phoneNumber);
+
+  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .eq('PhoneNumber', variant)
+      .order('UserId', { ascending: true })
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]?.UserId) return data[0].UserId;
+  }
+
+  const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr });
+  const now = getISTTimestamp();
+  const insertPayload = {
+    EntryDateTime: now,
+    LastActiveAt: now,
+    EntryUser: 'Body Parameters Card',
+    UserName: memberFields.UserName,
+    Password: 'User@123#',
+    TargetWeightInKg: 0,
+    Status: 'Active',
+    CoachApproved: 0,
+    PhoneNumber: storedPhone,
+    CoachId: memberFields.CoachId,
+    ...(memberFields.Height != null ? { Height: memberFields.Height } : {}),
+    ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
+  };
+
+  const { data, error } = await supabase
+    .from('team_table')
+    .insert(insertPayload)
+    .select('UserId')
+    .single();
+
+  if (!error) return data.UserId;
+
+  if (error.code === '23505') {
+    for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+      const { data: existing, error: lookupErr } = await supabase
+        .from('team_table')
+        .select('UserId')
+        .eq('PhoneNumber', variant)
+        .order('UserId', { ascending: true })
+        .limit(1);
+      if (lookupErr) throw lookupErr;
+      if (existing?.[0]?.UserId) return existing[0].UserId;
+    }
+  }
+
+  throw error;
+}
+
+/**
+ * Link a card to a team member after phone resolution.
+ * @param {number} cardId
+ * @param {number} userId
+ */
+export async function linkCardToUser(cardId, userId) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ user_id: userId })
+    .eq('id', cardId)
+    .eq('is_deleted', false);
+  if (error) throw error;
 }
