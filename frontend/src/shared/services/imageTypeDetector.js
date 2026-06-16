@@ -140,17 +140,10 @@ class SecureImageTypeDetector {
           null
         );
 
-        // Convert string confidence ('high'/'medium'/'low') to number
-        // isLowConfidenceFood() requires a numeric confidence >= 0.4
-        const confidenceMap = { high: 0.9, medium: 0.7, low: 0.4 };
-        const rawConf = nutritionData.confidence;
-        const numericConfidence = typeof rawConf === 'number'
-          ? rawConf
-          : (confidenceMap[String(rawConf).toLowerCase()] ?? 0.9);
-
+        // geminiService now returns numeric confidence (0-1) directly
         result = {
           type: 'food',
-          confidence: numericConfidence,
+          confidence: nutritionData.confidence || 0.9,
           details: nutritionData,
           duration: Date.now() - startTime,
         };

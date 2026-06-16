@@ -96,11 +96,25 @@ class SecureGeminiService {
 
       debugLog(`✅ Backend analysis completed in ${processingTime}ms`);
 
-      // Return in the same format as the old service
+      // Map backend response to the OLD geminiService format that all
+      // downstream consumers (hasRecognizedFood, buildAnalysisFromGeminiAnalysis,
+      // resolveGeminiCalories, isLowConfidenceFood) expect:
+      //   detailedItems  ← foods
+      //   nutrition      ← total  (top-level totals)
+      //   confidence     ← numeric (0-1), converted from string 'high'/'medium'/'low'
+      const confidenceMap = { high: 0.9, medium: 0.7, low: 0.4 };
+      const rawConf = nutritionData.confidence;
+      const numericConfidence = typeof rawConf === 'number'
+        ? rawConf
+        : (confidenceMap[String(rawConf).toLowerCase()] ?? 0.7);
+
       return {
+        detailedItems: nutritionData.foods || [],
+        nutrition: nutritionData.total || {},
+        confidence: numericConfidence,
+        // Keep new-style aliases so imageTypeDetector (details.foods / details.total) still works
         foods: nutritionData.foods || [],
         total: nutritionData.total || {},
-        confidence: nutritionData.confidence || 'medium',
         source: 'gemini-backend',
         processingTime,
       };
