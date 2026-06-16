@@ -10,7 +10,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CapacitorHttp } from '@capacitor/core';
-import { createBodyParamsCard, updateBodyParamsCard, searchPhonesByPrefix } from '../services/bodyParamsCardApi.js';
+import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -66,11 +67,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   // ── Phone autocomplete state ──────────────────────────────────────────────
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
-  const [phoneSearchLoading, setPhoneSearchLoading] = useState(false);
+  // Filtering is now synchronous (client-side); always false. Kept for API compatibility.
+  const phoneSearchLoading = false;
   const phoneDebounceRef    = useRef(null);
   // Stores the last prefix typed while coachUserId was still null, so we can
   // fire the search as soon as the coach ID resolves.
   const pendingPhonePrefixRef = useRef(null);
+
+  // Flat list of all team members — loaded once when coachUserId is available.
+  // Used for client-side phone prefix filtering (no backend round-trip needed).
+  const [allTeamMembers, setAllTeamMembers] = useState([]);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
@@ -94,16 +100,37 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     return () => { cancelled = true; };
   }, [user?.email, coachUserId]);
 
-  // ── Fire any pending phone search once coachUserId resolves ────────────
+  // ── Load team members once coachUserId resolves, then fire any pending search ──
   useEffect(() => {
-    if (!coachUserId || !pendingPhonePrefixRef.current) return;
-    const prefix = pendingPhonePrefixRef.current;
-    pendingPhonePrefixRef.current = null;
-    setPhoneSearchLoading(true);
-    searchPhonesByPrefix({ prefix, coachId: coachUserId })
-      .then((results) => setPhoneSuggestions(results))
-      .catch(() => setPhoneSuggestions([]))
-      .finally(() => setPhoneSearchLoading(false));
+    if (!coachUserId) return;
+    let cancelled = false;
+    teamHierarchyService.getFlatTeamList(coachUserId)
+      .then((members) => {
+        if (cancelled) return;
+        setAllTeamMembers(members);
+        // Fire pending search now that we have both coachUserId and members.
+        const prefix = pendingPhonePrefixRef.current;
+        if (!prefix) return;
+        pendingPhonePrefixRef.current = null;
+        const digits = prefix.replace(/\D/g, '');
+        if (digits.length < 2) return;
+        const results = members
+          .filter((m) => {
+            if (!m.phoneNumber) return false;
+            return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
+          })
+          .slice(0, 10)
+          .map((m) => ({
+            userId:      m.userId,
+            userName:    m.userName,
+            phoneNumber: m.phoneNumber,
+            heightCm:    m.heightCm != null ? m.heightCm : null,
+            bmr:         m.bmr      != null ? m.bmr      : null,
+          }));
+        setPhoneSuggestions(results);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [coachUserId]);
 
   // ── Derived calculations ──────────────────────────────────────────────────
@@ -180,18 +207,31 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     }
 
     pendingPhonePrefixRef.current = null;
-    phoneDebounceRef.current = setTimeout(async () => {
-      setPhoneSearchLoading(true);
-      try {
-        const results = await searchPhonesByPrefix({ prefix: digits, coachId: coachUserId });
-        setPhoneSuggestions(results);
-      } catch (_err) {
-        setPhoneSuggestions([]);
-      } finally {
-        setPhoneSearchLoading(false);
-      }
-    }, 300);
-  }, [coachUserId]);
+
+    // allTeamMembers not yet loaded — park the prefix; load effect will fire it.
+    if (allTeamMembers.length === 0) {
+      pendingPhonePrefixRef.current = digits;
+      return;
+    }
+
+    // Client-side filtering — instant, no network round-trip.
+    phoneDebounceRef.current = setTimeout(() => {
+      const results = allTeamMembers
+        .filter((m) => {
+          if (!m.phoneNumber) return false;
+          return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
+        })
+        .slice(0, 10)
+        .map((m) => ({
+          userId:      m.userId,
+          userName:    m.userName,
+          phoneNumber: m.phoneNumber,
+          heightCm:    m.heightCm != null ? m.heightCm : null,
+          bmr:         m.bmr      != null ? m.bmr      : null,
+        }));
+      setPhoneSuggestions(results);
+    }, 150);
+  }, [coachUserId, allTeamMembers]);
 
   /**
    * Called when the user selects a suggestion from the phone autocomplete.
