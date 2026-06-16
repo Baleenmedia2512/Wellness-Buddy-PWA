@@ -1526,7 +1526,8 @@ function WellnessValleyApp() {
         `${apiBaseUrl}/api/user/get-active-coach?userId=${userId}`
       );
       const coachJson = await coachRes.json();
-      const coachId = coachJson?.coachId;
+      // API returns { ok: true, data: { coachId, ... } }
+      const coachId = coachJson?.data?.coachId || coachJson?.coachId;
 
       if (coachId) {
         const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
@@ -1537,10 +1538,10 @@ function WellnessValleyApp() {
         const otpJson = await otpRes.json();
 
         if (otpRes.ok && otpJson.success !== false) {
-          // OTP emailed to coach — enter authenticated section so ValidateOTP renders
+          // OTP emailed to coach — show ValidateOTP as overlay in the !isOtpVerified branch.
+          // Do NOT change isOtpVerified here — that triggers background effects which
+          // call checkUserStatus again, see "Inactive", and re-show the modal.
           setIsInactiveReactivationFlow(true);
-          setIsOtpVerified(true);
-          Session.markOtpVerified();
           setShowValidateOTP(true);
           return;
         }
@@ -2237,6 +2238,12 @@ function WellnessValleyApp() {
   // Handle OTP user restoration
   useEffect(() => {
     const restoreOtpUser = async () => {
+      // Skip restoration when the inactive-reactivation flow is in progress.
+      // In that flow isOtpVerified is temporarily forced to true so ValidateOTP
+      // can render; running restoreOtpUser here would call checkUserStatus,
+      // see "Inactive", and show the modal again on top of the OTP screen.
+      if (isInactiveReactivationFlow) return;
+
       if (isOtpVerified && !user) {
         const otpUserRaw = Session.getOtpUserRaw();
 
@@ -2312,7 +2319,7 @@ function WellnessValleyApp() {
     };
 
     restoreOtpUser();
-  }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+  }, [isOtpVerified, user, isInactiveReactivationFlow, checkUserStatus, checkProfileCompletion]);
 
   // Background validation for cache-restored OTP sessions.
   // When user was pre-loaded synchronously (no loading screen), the standard
@@ -6040,6 +6047,28 @@ function WellnessValleyApp() {
             userEmail={user?.email}
             onClose={handleUserNotFoundModalClose}
           />
+        )}
+        {/* Inactive-reactivation coach OTP screen — rendered here so isOtpVerified
+            stays false and no background checkUserStatus effects re-trigger */}
+        {showValidateOTP && isInactiveReactivationFlow && (
+          <Suspense fallback={null}>
+            <ValidateOTP
+              onClose={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                handleSignOut();
+              }}
+              onSuccess={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                // Coach approved → DB now has Status='Active' (validate-otp sets it)
+                // Now it's safe to mark OTP verified and enter the app
+                setIsOtpVerified(true);
+                Session.markOtpVerified();
+              }}
+              onLogout={handleSignOut}
+            />
+          </Suspense>
         )}
       </>
     );
