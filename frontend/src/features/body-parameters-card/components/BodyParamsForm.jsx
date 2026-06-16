@@ -77,7 +77,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
           {/* Date + Phone */}
           <div className="grid grid-cols-2 gap-3">
             <InputField label="Date" value={vm.form.recordedDate} onChange={(v) => vm.setField('recordedDate', v)} type="date" />
-            <InputField label="Phone Number" value={vm.form.phoneNumber} onChange={(v) => vm.setField('phoneNumber', v)} type="tel" placeholder="e.g. +919876543210" />
+            <InputField label="Phone Number" value={vm.form.phoneNumber} onChange={(v) => vm.setField('phoneNumber', v)} type="tel" placeholder="Client phone — creates team member" />
           </div>
 
           {/* Name */}

@@ -6,13 +6,13 @@ import * as cardRepo from '../data/card.repo.js';
 
 jest.mock('../data/card.repo.js', () => ({
   insertCard: jest.fn(),
-  findOrCreateTeamMember: jest.fn(),
+  createTeamMemberFromPhone: jest.fn(),
 }));
 
 describe('handleCreateCard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    cardRepo.findOrCreateTeamMember.mockResolvedValue(99);
+    cardRepo.createTeamMemberFromPhone.mockResolvedValue({ userId: 99, isNew: true });
     cardRepo.insertCard.mockResolvedValue({
       id: 1,
       public_share_token: '550e8400-e29b-41d4-a716-446655440000',
@@ -30,7 +30,7 @@ describe('handleCreateCard', () => {
       bmr: 1400,
     });
 
-    expect(cardRepo.findOrCreateTeamMember).toHaveBeenCalledWith({
+    expect(cardRepo.createTeamMemberFromPhone).toHaveBeenCalledWith({
       name: 'Priya',
       phoneNumber: '9876543210',
       coachId: 12,
@@ -45,7 +45,7 @@ describe('handleCreateCard', () => {
   it('skips team member creation when phoneNumber is omitted', async () => {
     await handleCreateCard({ createdBy: 12, name: 'Priya' });
 
-    expect(cardRepo.findOrCreateTeamMember).not.toHaveBeenCalled();
+    expect(cardRepo.createTeamMemberFromPhone).not.toHaveBeenCalled();
     expect(cardRepo.insertCard).toHaveBeenCalledWith(
       expect.objectContaining({ userId: null, phoneNumber: null }),
     );
