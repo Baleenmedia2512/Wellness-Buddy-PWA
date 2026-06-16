@@ -22,7 +22,8 @@ import {
   expireOldTasks,
   getTasksNeedingReminder,
   incrementReminderCount,
-  getTasksPastAverageTime
+  getTasksPastAverageTime,
+  getWindowsAlreadyOpenedToday,
 } from '../data/task-repo.js';
 import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
 import {
@@ -339,10 +340,67 @@ async function checkAndSendPersonalisedReminders() {
   }
 }
 
+// ─── Catch-up: create tasks missed by cron ───────────────────────────────────
+
+/**
+ * Create tasks for ALL time windows that opened today before now but whose
+ * task rows are missing (cron was down, cold-start missed, Vercel free-tier
+ * gap, etc.).
+ *
+ * Does NOT send a push notification — the task simply becomes visible in the
+ * UI so the user can complete it manually. Safe to call multiple times
+ * (createTask uses ON CONFLICT DO NOTHING for existing rows).
+ *
+ * @returns {Promise<number>}  Number of tasks created.
+ */
+async function createMissingTasksForToday() {
+  const now = new Date();
+  const { date: currentDate, timeHm: currentTime } = getISTPartsFromDate(now);
+
+  logger.info('Running catch-up task creation', { currentDate, currentTime });
+
+  try {
+    const windows = await getWindowsAlreadyOpenedToday(currentTime, currentDate);
+
+    logger.info(`Catch-up: ${windows.length} missing task(s) found`);
+
+    let created = 0;
+    for (const window of windows) {
+      const task = await createTask({
+        userId:      window.user_id,
+        taskType:    window.activity_type,
+        taskDate:    currentDate,
+        windowStart: window.start_time,
+        windowEnd:   window.end_time,
+        priority:    window.activity_type === 'weight' ? 'high' : 'medium',
+      });
+
+      if (task) {
+        created++;
+        logger.info('Catch-up task created', {
+          taskId:   task.TaskId ?? task.task_id,
+          userId:   window.user_id,
+          taskType: window.activity_type,
+        });
+      }
+    }
+
+    logger.info(`Catch-up complete — created ${created} task(s)`);
+    return created;
+  } catch (error) {
+    logger.error('Error in catch-up task creation', {
+      error: error.message,
+      stack: error.stack,
+    });
+    return 0;
+  }
+}
+
 export {
   checkAndCreateTasksForCurrentTime,
   expirePreviousDayTasks,
   sendTaskNotification,
   checkAndSendFollowUpReminders,
-  checkAndSendPersonalisedReminders
+  checkAndSendPersonalisedReminders,
+  createMissingTasksForToday,
 };

@@ -54,6 +54,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
     public static final String EXTRA_HOUR          = "hour";
     public static final String EXTRA_MINUTE        = "minute";
     public static final String EXTRA_LABEL         = "label";
+    /** Optional personalised notification body built by reminderService.js */
+    public static final String EXTRA_BODY          = "body";
 
     // Notification channel
     private static final String CHANNEL_ID   = "WellnessReminders";
@@ -96,6 +98,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int    hour         = intent.getIntExtra(EXTRA_HOUR,   -1);
         int    minute       = intent.getIntExtra(EXTRA_MINUTE, -1);
         String label        = intent.getStringExtra(EXTRA_LABEL);
+        String body         = intent.getStringExtra(EXTRA_BODY);  // may be null
 
         if (activityType == null || hour < 0 || minute < 0) {
             Log.e(TAG, "❌ Invalid intent extras — activityType=" + activityType
@@ -107,12 +110,12 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 + " at " + formatTime(hour, minute));
 
         // 1. Start AlarmSoundService → plays alarm ringtone + shows foreground notification
-        startAlarmSound(context, activityType, label, hour, minute);
+        startAlarmSound(context, activityType, label, hour, minute, body);
 
         // 2. Reschedule for the SAME time tomorrow — only for daily alarms (not one-shot snooze)
         boolean isOneShot = intent.getBooleanExtra("oneShot", false);
         if (!isOneShot && hour >= 0 && minute >= 0) {
-            scheduleNextDay(context, activityType, label, hour, minute);
+            scheduleNextDay(context, activityType, label, hour, minute, body);
         }
     }
 
@@ -124,14 +127,21 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  String activityType,
                                  String label,
                                  int hour,
-                                 int minute) {
+                                 int minute,
+                                 String body) {
         try {
             String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
-            // Add 15 minutes (the reminder offset) to get the actual activity start time
-            int totalMinutes = hour * 60 + minute + 15;
-            int activityHour   = (totalMinutes / 60) % 24;
-            int activityMinute = totalMinutes % 60;
-            String message = getActivityMessage(context, activityType, activityHour, activityMinute);
+            String message;
+            if (body != null && !body.isEmpty()) {
+                // Use the personalised body passed from reminderService.js
+                message = body;
+            } else {
+                // Fallback: generic activity-window message
+                int totalMinutes   = hour * 60 + minute + 15;
+                int activityHour   = (totalMinutes / 60) % 24;
+                int activityMinute = totalMinutes % 60;
+                message = getActivityMessage(context, activityType, activityHour, activityMinute);
+            }
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
@@ -219,7 +229,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  String activityType,
                                  String label,
                                  int hour,
-                                 int minute) {
+                                 int minute,
+                                 String body) {
         try {
             Calendar nextDay = Calendar.getInstance();
             nextDay.add(Calendar.DAY_OF_YEAR, 1);
@@ -236,6 +247,10 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             intent.putExtra(EXTRA_HOUR,   hour);
             intent.putExtra(EXTRA_MINUTE, minute);
             intent.putExtra(EXTRA_LABEL,  label);
+            // Carry personalised body forward so the next day also shows the right message
+            if (body != null && !body.isEmpty()) {
+                intent.putExtra(EXTRA_BODY, body);
+            }
 
             int requestCode = getRequestCode(activityType);
             PendingIntent pi = PendingIntent.getBroadcast(
@@ -267,14 +282,29 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
 
     /**
      * Schedule (or reschedule) a daily reminder for an activity.
-     * If the computed time for today has already passed, the first fire
-     * will be tomorrow; otherwise it fires today.
+     * Backward-compatible overload — no personalised body.
      */
     public static void scheduleReminder(Context context,
                                         String activityType,
                                         String label,
                                         int hour,
                                         int minute) {
+        scheduleReminder(context, activityType, label, hour, minute, null);
+    }
+
+    /**
+     * Schedule (or reschedule) a daily reminder for an activity.
+     *
+     * @param body  Optional personalised notification body from reminderService.js.
+     *              When non-null/non-empty, used as the notification text instead of
+     *              the generic getActivityMessage() output.
+     */
+    public static void scheduleReminder(Context context,
+                                        String activityType,
+                                        String label,
+                                        int hour,
+                                        int minute,
+                                        String body) {
         try {
             Calendar trigger = Calendar.getInstance();
             trigger.set(Calendar.HOUR_OF_DAY, hour);
@@ -294,6 +324,9 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             intent.putExtra(EXTRA_HOUR,   hour);
             intent.putExtra(EXTRA_MINUTE, minute);
             intent.putExtra(EXTRA_LABEL,  label);
+            if (body != null && !body.isEmpty()) {
+                intent.putExtra(EXTRA_BODY, body);
+            }
 
             int requestCode = getRequestCode(activityType);
             PendingIntent pi = PendingIntent.getBroadcast(
@@ -317,7 +350,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
                         trigger.getTimeInMillis(), pi);
             }
-            Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime());
+            Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime()
+                    + (body != null ? " [personalised]" : " [generic]"));
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to schedule reminder for " + activityType, e);

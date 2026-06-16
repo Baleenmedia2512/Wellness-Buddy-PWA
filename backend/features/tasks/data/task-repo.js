@@ -319,6 +319,52 @@ async function getTimeWindowsByUser(userId) {
 }
 
 /**
+ * Get all time windows that have already opened today (start_time <= currentTime)
+ * but whose tasks do NOT yet exist for the given user+date.
+ *
+ * Used by the catch-up scheduler when the normal per-minute cron was missed.
+ *
+ * @param {string} currentTime  HH:mm (IST)
+ * @param {string} currentDate  YYYY-MM-DD (IST)
+ * @returns {Promise<Array>}    Rows: { activity_type, start_time, end_time, user_id, PushToken, ... }
+ */
+async function getWindowsAlreadyOpenedToday(currentTime, currentDate) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        tw."ActivityType"    AS activity_type,
+        tw."WindowStartTime" AS start_time,
+        tw."WindowEndTime"   AS end_time,
+        u."UserId"           AS user_id,
+        u."Email",
+        u."UserName",
+        u."Status",
+        u."PushToken"
+      FROM activity_time_windows_table tw
+      CROSS JOIN team_table u
+      WHERE tw."EffectiveToDate" IS NULL
+        AND u."Status" = 'Active'
+        AND substring(tw."WindowStartTime"::text, 1, 5) <= $1
+      AND NOT EXISTS (
+        SELECT 1 FROM tasks_table t
+        WHERE t."UserId"   = u."UserId"::text
+          AND t."TaskType" = tw."ActivityType"
+          AND t."TaskDate" = $2::date
+      )
+    `, [currentTime, currentDate]);
+    return result[0];
+  } catch (error) {
+    logger.error('Error fetching opened windows without tasks', {
+      currentTime, currentDate, error: error.message,
+    });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Get all active time windows starting at a specific time
  * 
  * @param {string} startTime - Start time in HH:mm format
@@ -648,7 +694,7 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
         AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $3)
         AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
         AND $2::time >= uta."AverageCompletionTime"
-        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '2 minutes')::time
+        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '5 minutes')::time
     `, [currentDate, currentTime, currentDateTime]);
 
     return result[0];
@@ -705,6 +751,34 @@ async function syncPendingTaskWindowsForActivityType(activityType, fromDate) {
   }
 }
 
+/**
+ * Fetch all learned average completion times for a user.
+ *
+ * Used by the frontend reminderService to personalise native alarm times.
+ *
+ * @param {number} userId
+ * @returns {Promise<Array<{ task_type, average_completion_time, sample_count }>>}
+ */
+async function getUserTaskAverages(userId) {
+  const client = await dbPool();
+  try {
+    const result = await client.query(`
+      SELECT
+        "TaskType"              AS task_type,
+        "AverageCompletionTime" AS average_completion_time,
+        "SampleCount"           AS sample_count
+      FROM user_task_averages
+      WHERE "UserId" = $1
+    `, [userId]);
+    return result[0];
+  } catch (error) {
+    logger.error('Error fetching user task averages', { userId, error: error.message });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export {
   getTasksByUserAndDate,
   getTasksNeedingNotification,
@@ -714,6 +788,7 @@ export {
   expireOldTasks,
   getTimeWindowsByUser,
   getTimeWindowsByStartTime,
+  getWindowsAlreadyOpenedToday,
   // reminder helpers
   snoozeTask,
   dismissTaskToday,
@@ -722,5 +797,6 @@ export {
   incrementReminderCount,
   getTasksPastAverageTime,
   getPendingTaskForUser,
+  getUserTaskAverages,
   syncPendingTaskWindowsForActivityType,
 };

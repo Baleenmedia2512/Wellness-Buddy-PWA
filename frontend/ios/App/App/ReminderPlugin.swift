@@ -78,7 +78,15 @@ public class ReminderPlugin: CAPPlugin {
             center.removePendingNotificationRequests(withIdentifiers: [idPrefix + activityType])
 
             if masterEnabled && enabled {
-                scheduleDaily(activityType: activityType, label: label, hour: hour, minute: minute)
+                // Use personalised body from reminderService.js if available (learned average)
+                let personalizedBody = reminder["personalizedBody"] as? String
+                if let pb = personalizedBody, !pb.isEmpty {
+                    scheduleDailyWithMessage(activityType: activityType, label: label,
+                                             hour: hour, minute: minute, body: pb)
+                } else {
+                    scheduleDaily(activityType: activityType, label: label,
+                                  hour: hour, minute: minute)
+                }
                 scheduledCount += 1
             }
 

@@ -10,6 +10,7 @@ jest.mock('../firebaseAdmin.js', () => ({
 jest.mock('../auth.repository.js', () => ({
   findUserByPhone: jest.fn(),
   insertUser: jest.fn(),
+  findOrInsertUserByPhone: jest.fn(),
   getISTTimestamp: jest.fn(() => '2026-06-04 12:00:00'),
   // unused but imported elsewhere in service:
   deactivateActiveOtps: jest.fn(),
@@ -50,7 +51,7 @@ describe('firebasePhoneLogin', () => {
       UserId: 42,
       UserName: 'existing_user',
       Email: 'old@example.com',
-      Phone: '+919876543210',
+      PhoneNumber: '+919876543210',
       Status: 'Active',
     });
 
@@ -74,27 +75,32 @@ describe('firebasePhoneLogin', () => {
       phone_number: '+919876543210',
     });
     repo.findUserByPhone.mockResolvedValue(null);
-    repo.insertUser.mockResolvedValue({
-      UserId: 99,
-      UserName: 'user_919876543210',
-      Email: null,
-      Phone: '+919876543210',
-      Status: 'Active',
+    repo.findOrInsertUserByPhone.mockResolvedValue({
+      row: {
+        UserId: 99,
+        UserName: 'user_919876543210',
+        Email: null,
+        PhoneNumber: '9876543210',
+        Status: 'Active',
+      },
+      isNewUser: true,
     });
 
     const res = await firebasePhoneLogin({ idToken: 'tok', name: '' });
 
     expect(res.httpStatus).toBe(200);
     expect(res.body.isNewUser).toBe(true);
-    expect(repo.insertUser).toHaveBeenCalledWith(
+    expect(repo.findOrInsertUserByPhone).toHaveBeenCalledWith(
       expect.objectContaining({
-        Phone: '+919876543210',
+        PhoneNumber: '9876543210',
         UserName: 'user_919876543210',
         Status: 'Active',
       }),
+      '+919876543210',
     );
+    expect(repo.insertUser).not.toHaveBeenCalled();
     expect(res.body.user.email).toBe('');
-    expect(res.body.user.phone).toBe('+919876543210');
+    expect(res.body.user.phone).toBe('9876543210');
   });
 
   it('uses provided name for new user when supplied', async () => {
@@ -103,15 +109,36 @@ describe('firebasePhoneLogin', () => {
       phone_number: '+14155551234',
     });
     repo.findUserByPhone.mockResolvedValue(null);
-    repo.insertUser.mockResolvedValue({
-      UserId: 100, UserName: 'Alice', Email: null, Phone: '+14155551234', Status: 'Active',
+    repo.findOrInsertUserByPhone.mockResolvedValue({
+      row: { UserId: 100, UserName: 'Alice', Email: null, PhoneNumber: '+14155551234', Status: 'Active' },
+      isNewUser: true,
     });
 
     const res = await firebasePhoneLogin({ idToken: 'tok', name: 'Alice' });
 
-    expect(repo.insertUser).toHaveBeenCalledWith(
-      expect.objectContaining({ UserName: 'Alice', Phone: '+14155551234' }),
+    expect(repo.findOrInsertUserByPhone).toHaveBeenCalledWith(
+      expect.objectContaining({ UserName: 'Alice', PhoneNumber: '+14155551234' }),
+      '+14155551234',
     );
     expect(res.body.isNewUser).toBe(true);
+  });
+
+  it('handles race condition (23505): returns isNewUser=false when concurrent insert wins', async () => {
+    verifyFirebaseIdToken.mockResolvedValue({
+      uid: 'firebase-uid',
+      phone_number: '+919876543210',
+    });
+    repo.findUserByPhone.mockResolvedValue(null);
+    repo.findOrInsertUserByPhone.mockResolvedValue({
+      row: { UserId: 77, UserName: 'user_919876543210', Email: null, PhoneNumber: '9876543210', Status: 'Active' },
+      isNewUser: false,
+    });
+
+    const res = await firebasePhoneLogin({ idToken: 'tok', name: '' });
+
+    expect(res.httpStatus).toBe(200);
+    expect(res.body.isNewUser).toBe(false);
+    expect(res.body.user.id).toBe(77);
+    expect(repo.insertUser).not.toHaveBeenCalled();
   });
 });

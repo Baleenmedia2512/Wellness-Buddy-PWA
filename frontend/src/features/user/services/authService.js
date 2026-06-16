@@ -1,5 +1,6 @@
 // Auth REST helpers — OTP send/verify, account deletion.
 import * as Session from '../../../shared/services/sessionStorage';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
@@ -9,14 +10,35 @@ const post = async (path, body) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return res.json();
+  const data = await res.json();
+  const hasOtpField = Object.prototype.hasOwnProperty.call(data || {}, 'otp');
+  const logPayload = {
+    apiBase: API,
+    path,
+    httpStatus: res.status,
+    success: data?.success,
+    hasOtpInResponse: hasOtpField,
+    message: data?.message || '',
+    providerError: data?.providerError || '',
+    senderIdHint: data?.senderIdHint || '',
+    templateIdHint: data?.templateIdHint || '',
+    apiKeyHint: data?.apiKeyHint || '',
+    missingConfig: data?.missingConfig || [],
+    contactType: body?.contactType,
+  };
+  debugLog('[OTP/SMS] send-otp response', logPayload);
+  if (!data?.success || hasOtpField) {
+    // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
+    console.warn('[OTP/SMS] send-otp issue — check backend/MDT', logPayload);
+  }
+  return { ...data, _httpStatus: res.status };
 };
 
-export const sendOtp = (recipient) =>
-  post('/api/auth/send-otp', { recipient, contactType: 'email' });
+export const sendOtp = (recipient, contactType = 'email') =>
+  post('/api/auth/send-otp', { recipient, contactType });
 
-export const verifyOtp = (recipient, otp, purpose) => {
-  const body = { recipient, otp, contactType: 'email' };
+export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
+  const body = { recipient, otp, contactType };
   if (purpose) body.purpose = purpose;
   return post('/api/auth/verify-otp', body);
 };

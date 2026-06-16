@@ -5,6 +5,7 @@
 import {
   isCardShareValid,
   buildProfilePatch,
+  buildTeamMemberInsert,
   buildWeightRecord,
   classifyBmi,
   classifyFatPercent,
@@ -30,6 +31,18 @@ describe('isCardShareValid', () => {
     const fixedNow = new Date('2026-06-01T00:00:00Z');
     expect(isCardShareValid('2026-06-02T00:00:00Z', fixedNow)).toBe(true);
     expect(isCardShareValid('2026-05-31T00:00:00Z', fixedNow)).toBe(false);
+  });
+});
+
+describe('buildTeamMemberInsert', () => {
+  it('maps name, coach, height and bmr for team_table', () => {
+    expect(buildTeamMemberInsert({ name: 'Priya S', coachId: 12, heightCm: 165, bmr: 1400 }))
+      .toEqual({ UserName: 'Priya S', CoachId: 12, Height: 165, Bmr: 1400 });
+  });
+
+  it('allows null height and bmr', () => {
+    expect(buildTeamMemberInsert({ name: 'Ali', coachId: 3 }))
+      .toEqual({ UserName: 'Ali', CoachId: 3, Height: null, Bmr: null });
   });
 });
 

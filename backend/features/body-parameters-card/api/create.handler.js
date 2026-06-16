@@ -4,7 +4,7 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard } from '../data/card.repo.js';
+import { insertCard, findOrCreateTeamMember, linkCardToUser } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
 /**
@@ -18,7 +18,19 @@ export async function handleCreateCard(body) {
     throw new ValidationError(403, 'Not authorised to create a body-parameters card');
   }
 
-  const card = await insertCard(payload);
+  let userId = payload.userId;
+
+  if (payload.phoneNumber && !userId) {
+    userId = await findOrCreateTeamMember({
+      name:        payload.name,
+      phoneNumber: payload.phoneNumber,
+      coachId:     payload.createdBy,
+      heightCm:    payload.heightCm,
+      bmr:         payload.bmr,
+    });
+  }
+
+  const card = await insertCard({ ...payload, userId });
 
   return {
     httpStatus: 201,

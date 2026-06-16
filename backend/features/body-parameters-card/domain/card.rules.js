@@ -6,6 +6,22 @@
 export const SHARE_TTL_DAYS = 30;
 
 /**
+ * Build team_table insert fields for a new lead captured via body-parameters card.
+ * Phone canonicalization happens in the data layer before insert.
+ *
+ * @param {{ name: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
+ * @returns {object}
+ */
+export function buildTeamMemberInsert({ name, coachId, heightCm = null, bmr = null }) {
+  return {
+    UserName: String(name).trim(),
+    CoachId: coachId ? parseInt(coachId) : null,
+    Height: heightCm ?? null,
+    Bmr: bmr ?? null,
+  };
+}
+
+/**
  * Determine whether a card's share link is still valid.
  *
  * @param {string|Date} shareExpiresAt - timestamptz from DB
