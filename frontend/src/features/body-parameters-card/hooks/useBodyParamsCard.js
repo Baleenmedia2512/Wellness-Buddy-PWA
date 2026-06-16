@@ -117,6 +117,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         const results = members
           .filter((m) => {
             if (!m.phoneNumber) return false;
+            if (m.userId === coachUserId) return false; // never suggest the coach themselves
             return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
           })
           .slice(0, 10)
@@ -219,6 +220,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const results = allTeamMembers
         .filter((m) => {
           if (!m.phoneNumber) return false;
+          if (m.userId === coachUserId) return false; // never suggest the coach themselves
           return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
         })
         .slice(0, 10)
