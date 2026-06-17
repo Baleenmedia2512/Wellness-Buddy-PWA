@@ -181,7 +181,7 @@ const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
 const WellnessCounselling = lazy(() =>
-  import("./pages/WellnessCounselling"),
+  import("./pages/WellnessCounsellingCards"),
 );
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
