@@ -112,37 +112,16 @@
             </intent-filter>
 
             <!-- Android App Links: open https://<host>/share/<token> directly in the app.
-                 Requires /.well-known/assetlinks.json to be served from each host.
-                 Each host has its own intent-filter so one failing verification
-                 does not block the others. -->
-
-            <!-- Production domain (primary — all share links target this) -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https"
-                      android:host="wellness-valley.vercel.app"
-                      android:pathPrefix="/share/" />
-            </intent-filter>
-
-            <!-- Test / staging backend domain -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https"
-                      android:host="wellness-buddy-pwa-backend-test.vercel.app"
-                      android:pathPrefix="/share/" />
-            </intent-filter>
-
-            <!-- Legacy frontend domain (kept for backward compat) -->
+                 Requires /.well-known/assetlinks.json to be served from both hosts. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
                       android:host="wellness-buddy-pwa-eta.vercel.app"
+                      android:pathPrefix="/share/" />
+                <data android:scheme="https"
+                      android:host="wellness-buddy-pwa-backend-test.vercel.app"
                       android:pathPrefix="/share/" />
             </intent-filter>
 

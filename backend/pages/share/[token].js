@@ -173,13 +173,6 @@ export default function ShareLanding({ shareId, baseUrl, userName, userPhotoUrl,
         <meta property="og:image:width" content="512" />
         <meta property="og:image:height" content="512" />
         <meta property="og:site_name" content="Wellness Valley" />
-        {/* Android App Links fallback: fires immediately in <head> BEFORE the page
-            body renders, so the intent resolves and the app opens before the user
-            sees any web content. On devices where App Links verification is complete
-            (production builds) this script never runs — Android intercepts the HTTPS
-            URL directly. This only fires for debug builds / first-install / OEM ROMs
-            that skip verification. */}
-        {bootstrap && <script dangerouslySetInnerHTML={{ __html: bootstrap }} />}
       </Head>
       <div style={pageBg}>
         <div style={card}>
@@ -218,6 +211,7 @@ export default function ShareLanding({ shareId, baseUrl, userName, userPhotoUrl,
           </div>
         </div>
       </div>
+      {bootstrap ? <script dangerouslySetInnerHTML={{ __html: bootstrap }} /> : null}
     </>
   );
 }
