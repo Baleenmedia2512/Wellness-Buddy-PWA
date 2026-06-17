@@ -4,7 +4,7 @@
 import Joi from 'joi';
 
 const listCardsSchema = Joi.object({
-  coachId: Joi.string().uuid().required().label('Coach ID')
+  coachId: Joi.number().integer().positive().required().label('Coach ID')
 });
 
 export function validateListCards(payload) {

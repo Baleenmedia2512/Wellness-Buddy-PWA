@@ -7,7 +7,10 @@ import { listCardsForCoach } from '../data/card.repo.js';
 import logger from '../../../shared/lib/logger.js';
 
 export async function handleListCards(req, res) {
-  const { value, error: valError } = validateListCards({ coachId: req.query.coachId });
+  // Parse coachId as a number since it comes from query string
+  const coachId = parseInt(req.query.coachId, 10);
+  
+  const { value, error: valError } = validateListCards({ coachId });
   if (valError) {
     logger.warn('[list.handler] Validation failed:', valError.details);
     return res.status(422).json({ ok: false, error: { code: 'VALIDATION_ERROR', message: valError.message } });
