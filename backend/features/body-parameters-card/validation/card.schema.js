@@ -35,7 +35,7 @@ export function validateCreateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 1, 59);
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99); // No strict validation - allow any reasonable value
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
@@ -98,7 +98,7 @@ export function validateUpdateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 1, 59);
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999); // No strict validation - allow any reasonable value
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
