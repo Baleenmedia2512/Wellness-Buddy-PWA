@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
 import React, { useState, useEffect } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
+import { Search, Plus, RefreshCw, FileHeart, Edit2, ChevronLeft } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -117,7 +117,7 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
               onClick={onBack}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              ←
+              <ChevronLeft size={24} className="text-gray-700" />
             </button>
             <div>
               <h1 className="text-lg font-bold text-gray-900">Body Parameters</h1>
