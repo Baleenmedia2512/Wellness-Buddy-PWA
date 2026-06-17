@@ -43,6 +43,9 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
   }),
 });
 
+// ── Platform helper ─────────────────────────────────────────────────────────
+const isNative = () => Capacitor.isNativePlatform();
+
 // ── Constants ───────────────────────────────────────────────────────────────
 const STORAGE_KEY         = 'wellnessReminders';
 const REMINDER_OFFSET     = 15;  // minutes before activity start
