@@ -264,11 +264,23 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           setSelectedCard(null);
-          // Refresh the list FIRST (immediate update)
-          fetchData(true).then(() => {
-            // Then show share sheet
-            setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          
+          // Instantly add/update card in the list (optimistic update)
+          setBodyParamsCards(prevCards => {
+            if (previousCard) {
+              // Update existing card
+              return prevCards.map(c => c.id === card.id ? card : c);
+            } else {
+              // Add new card at the beginning
+              return [card, ...prevCards];
+            }
           });
+          
+          // Show share sheet immediately
+          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          
+          // Refresh in background to sync with server
+          fetchData(true);
         }}
       />
 

@@ -50,7 +50,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (existingCard) {
       return {
         name:         existingCard.name         ?? '',
-        phoneNumber:  '',
+        phoneNumber:  existingCard.phoneNumber  ?? '',
         age:          existingCard.age          != null ? String(existingCard.age)         : '',
         gender:       existingCard.gender        ?? '',
         heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
@@ -89,6 +89,27 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   const [allTeamMembers, setAllTeamMembers] = useState([]);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
+
+  // Update form when existingCard changes (for edit mode)
+  useEffect(() => {
+    if (existingCard) {
+      setForm({
+        name:         existingCard.name         ?? '',
+        phoneNumber:  existingCard.phoneNumber  ?? '',
+        age:          existingCard.age          != null ? String(existingCard.age)         : '',
+        gender:       existingCard.gender        ?? '',
+        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
+        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
+        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
+        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
+        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
+        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
+        locationName: existingCard.locationName ?? '',
+      });
+      setBmiUserEdited(false); // Reset BMI edit flag for new card
+    }
+  }, [existingCard?.id]); // Only update when card ID changes
 
   // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
   useEffect(() => {
