@@ -5,13 +5,12 @@
  * Pure presentational — all logic in useBodyParamsCard hook.
  * Fields: Date, Location, Name, Phone, Age, Gender, Height, Weight, BMI, Fat%, BMR, Body Age.
  */
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
-import InlineNumericKeypad from '../../user/components/InlineNumericKeypad.js';
 
-const InputField = ({ label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter, maxLength, inputMode: customInputMode, onFocus, onBlur, readOnly }) => {
+const InputField = ({ label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter, maxLength, inputMode: customInputMode }) => {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && onEnter) {
       e.preventDefault();
@@ -21,6 +20,9 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '', i
 
   // Use inputMode for better mobile keyboard control
   const inputMode = customInputMode || (type === 'number' ? 'decimal' : type === 'tel' ? 'tel' : 'text');
+  
+  // For Capacitor/native apps: use pattern to force numeric keyboard
+  const pattern = type === 'number' ? '[0-9]*' : undefined;
 
   return (
     <div className="flex flex-col gap-1">
@@ -29,14 +31,12 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '', i
         ref={inputRef}
         type={type}
         inputMode={inputMode}
+        pattern={pattern}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={onFocus}
-        onBlur={onBlur}
         placeholder={placeholder}
         maxLength={maxLength}
-        readOnly={readOnly}
         autoComplete="off"
         className="border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
       />
@@ -75,17 +75,6 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
 const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
   const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart });
 
-  // State for custom keypad
-  const [focusedField, setFocusedField] = useState(null);
-  const [isAndroid, setIsAndroid] = useState(false);
-
-  // Detect Android on mount
-  useEffect(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroidDevice = ua.indexOf('android') > -1;
-    setIsAndroid(isAndroidDevice);
-  }, []);
-
   // Refs for all input fields
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
@@ -97,75 +86,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
   const bmrRef = useRef(null);
   const fatRef = useRef(null);
   const bodyAgeRef = useRef(null);
-
-  // Handle keypad digit input
-  const handleKeypadDigit = (digit) => {
-    if (!focusedField) return;
-    
-    const currentValue = vm.form[focusedField] || '';
-    
-    // Handle decimal point - only one allowed
-    if (digit === '.') {
-      if (currentValue.includes('.')) return; // Already has decimal
-      if (currentValue === '') {
-        // Start with "0."
-        const newValue = '0.';
-        if (focusedField === 'weightKg') {
-          vm.setWeightManually(newValue);
-        } else if (focusedField === 'bmi') {
-          vm.setBmiManually(newValue);
-        } else {
-          vm.setField(focusedField, newValue);
-        }
-        return;
-      }
-    }
-    
-    const newValue = currentValue + digit;
-    
-    // Apply maxLength restrictions (for non-decimal fields)
-    if (focusedField === 'phoneNumber' && newValue.length > 10) return;
-    if (focusedField === 'age' && newValue.length > 2) return;
-    
-    // Use special setter for weight and BMI
-    if (focusedField === 'weightKg') {
-      vm.setWeightManually(newValue);
-    } else if (focusedField === 'bmi') {
-      vm.setBmiManually(newValue);
-    } else {
-      vm.setField(focusedField, newValue);
-    }
-  };
-
-  // Handle keypad backspace
-  const handleKeypadBackspace = () => {
-    if (!focusedField) return;
-    
-    const currentValue = vm.form[focusedField] || '';
-    const newValue = currentValue.slice(0, -1);
-    
-    // Use special setter for weight and BMI
-    if (focusedField === 'weightKg') {
-      vm.setWeightManually(newValue);
-    } else if (focusedField === 'bmi') {
-      vm.setBmiManually(newValue);
-    } else {
-      vm.setField(focusedField, newValue);
-    }
-  };
-
-  // Handle field focus
-  const handleFieldFocus = (fieldName) => {
-    if (isAndroid) {
-      setFocusedField(fieldName);
-    }
-  };
-
-  // Handle field blur
-  const handleFieldBlur = () => {
-    // Delay to allow keypad clicks to register
-    setTimeout(() => setFocusedField(null), 150);
-  };
 
   // Focus next field with smooth scroll
   const focusNextField = (ref) => {
@@ -255,9 +175,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             isLoading={vm.phoneSearchLoading}
             inputRef={phoneRef}
             onEnter={() => focusNextField(nameRef)}
-            onFocus={() => handleFieldFocus('phoneNumber')}
-            onBlur={handleFieldBlur}
-            readOnly={isAndroid}
           />
 
           {/* Name */}
@@ -281,9 +198,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               maxLength={2}
               inputRef={ageRef}
               onEnter={() => focusNextField(genderRef)}
-              onFocus={() => handleFieldFocus('age')}
-              onBlur={handleFieldBlur}
-              readOnly={isAndroid}
             />
             <SelectField 
               label="Gender" 
@@ -308,9 +222,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               placeholder="cm"
               inputRef={heightRef}
               onEnter={() => focusNextField(weightRef)}
-              onFocus={() => handleFieldFocus('heightCm')}
-              onBlur={handleFieldBlur}
-              readOnly={isAndroid}
             />
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -332,8 +243,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     focusNextField(bmiRef);
                   }
                 };
-
-                const handleFocus = () => handleFieldFocus('weightKg');
                 
                 return (
                   <>
@@ -341,12 +250,10 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                       ref={weightRef}
                       type="number"
                       inputMode="decimal"
+                      pattern="[0-9]*"
                       value={vm.form.weightKg}
                       onChange={(e) => vm.setWeightManually(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      onFocus={handleFocus}
-                      onBlur={handleFieldBlur}
-                      readOnly={isAndroid}
                       placeholder="kg"
                       className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
                         isUnderweight
@@ -388,8 +295,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     focusNextField(fatRef);
                   }
                 };
-
-                const handleFocus = () => handleFieldFocus('bmi');
                 
                 return (
                   <>
@@ -397,12 +302,10 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                       ref={bmiRef}
                       type="number"
                       inputMode="decimal"
+                      pattern="[0-9]*"
                       value={vm.form.bmi}
                       onChange={(e) => vm.setBmiManually(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      onFocus={handleFocus}
-                      onBlur={handleFieldBlur}
-                      readOnly={isAndroid}
                       placeholder="e.g. 21"
                       className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
                         isOutOfRange
@@ -438,8 +341,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     focusNextField(bmrRef);
                   }
                 };
-
-                const handleFocus = () => handleFieldFocus('fatPercent');
                 
                 return (
                   <>
@@ -447,12 +348,10 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                       ref={fatRef}
                       type="number"
                       inputMode="decimal"
+                      pattern="[0-9]*"
                       value={vm.form.fatPercent}
                       onChange={(e) => vm.setField('fatPercent', e.target.value)}
                       onKeyDown={handleKeyDown}
-                      onFocus={handleFocus}
-                      onBlur={handleFieldBlur}
-                      readOnly={isAndroid}
                       placeholder="%"
                       className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
                         isOutOfRange
@@ -481,9 +380,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               placeholder="kcal"
               inputRef={bmrRef}
               onEnter={() => focusNextField(bodyAgeRef)}
-              onFocus={() => handleFieldFocus('bmr')}
-              onBlur={handleFieldBlur}
-              readOnly={isAndroid}
             />
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -500,8 +396,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     // Last field - could trigger save or just blur
                   }
                 };
-
-                const handleFocus = () => handleFieldFocus('bodyAge');
                 
                 return (
                   <>
@@ -509,12 +403,10 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                       ref={bodyAgeRef}
                       type="number"
                       inputMode="decimal"
+                      pattern="[0-9]*"
                       value={vm.form.bodyAge}
                       onChange={(e) => vm.setField('bodyAge', e.target.value)}
                       onKeyDown={handleKeyDown}
-                      onFocus={handleFocus}
-                      onBlur={handleFieldBlur}
-                      readOnly={isAndroid}
                       placeholder="yrs"
                       className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white border ${
                         isOlderThanActual
@@ -532,17 +424,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               })()}
             </div>
           </div>
-
-          {/* Custom Numeric Keypad for Android */}
-          {isAndroid && focusedField && (
-            <div className="mt-6 pb-2">
-              <InlineNumericKeypad
-                onDigit={handleKeypadDigit}
-                onBackspace={handleKeypadBackspace}
-                showDecimal={['heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'bodyAge'].includes(focusedField)}
-              />
-            </div>
-          )}
         </div>
 
         {/* Actions */}

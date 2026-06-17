@@ -15,9 +15,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter, onFocus, onBlur, readOnly }} props
+ * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter }} props
  */
-const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false, inputRef, onEnter, onFocus, onBlur, readOnly }) => {
+const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false, inputRef, onEnter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -54,9 +54,8 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
     }
   };
 
-  const handleFocus = (e) => {
+  const handleFocus = () => {
     if (suggestions.length > 0) setIsOpen(true);
-    if (onFocus) onFocus(e);
   };
 
   return (
@@ -69,12 +68,11 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
           ref={inputRef}
           type="tel"
           inputMode="tel"
+          pattern="[0-9]*"
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          onBlur={onBlur}
-          readOnly={readOnly}
           placeholder="Client phone — creates team member"
           maxLength={10}
           className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white pr-8"
