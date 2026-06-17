@@ -284,8 +284,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           // Show share sheet immediately
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
           
-          // Refresh in background to sync with server (after database has settled)
-          setTimeout(() => fetchData(true), 1500);
+          // Immediate background refresh to confirm save (no delay)
+          fetchData(true);
         }}
       />
 
