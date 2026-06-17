@@ -36,6 +36,7 @@ import {
 export async function recordPending({
   userId,
   publicShareToken,
+  shareCode = null,
   shareExpiresAt = null,
   imageBase64 = null,
   imagePath = null,
@@ -48,13 +49,14 @@ export async function recordPending({
   const row = await repo.insertPending({
     userId,
     publicShareToken,
+    shareCode,
     shareExpiresAt,
     imageBase64,
     imagePath,
     deviceInfo,
     processedBy,
   });
-  return { id: row.ID, publicShareToken: row.PublicShareToken };
+  return { id: row.ID, publicShareToken: row.PublicShareToken, shareCode: row.ShareCode || null };
 }
 
 /**
@@ -179,6 +181,18 @@ export async function findByToken(token) {
     throw err;
   }
   return repo.findByToken(token);
+}
+
+/**
+ * Look up a capture by either legacy UUID token or short ShareCode.
+ */
+export async function findByShareIdentifier(identifier) {
+  if (!identifier) {
+    const err = new Error('captures.findByShareIdentifier: identifier required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findByShareIdentifier(identifier);
 }
 
 /**

@@ -11,7 +11,7 @@
  * to point everyone else at the store.
  */
 import Head from 'next/head';
-import { findByToken } from '../../features/captures/data/captures.repository.js';
+import { findByShareIdentifier } from '../../features/captures/data/captures.repository.js';
 import { findPublicProfileById } from '../../features/user/user.repository.js';
 
 const APP_PACKAGE = 'com.wellnessvalley.app';
@@ -19,10 +19,10 @@ const APP_STORE_ID = '6764327692';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
 const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
-export async function getServerSideProps({ params, req, query }) {
-  const token = (params?.token || '').toString();
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const valid = UUID_RE.test(token);
+export async function getServerSideProps({ params, req }) {
+  const shareId = (params?.token || '').toString().trim();
+  const SHARE_IDENTIFIER_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{6,10})$/i;
+  const valid = SHARE_IDENTIFIER_RE.test(shareId);
   // Construct the absolute base URL so OG image tags use a full URL.
   // x-forwarded-proto / x-forwarded-host are set by Vercel and most proxies.
   const proto = req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
@@ -31,13 +31,11 @@ export async function getServerSideProps({ params, req, query }) {
 
   let userName = null;
   let userPhotoUrl = null;
-  let hasPhoto = false;
 
   if (valid) {
     try {
-      const capture = await findByToken(token);
+      const capture = await findByShareIdentifier(shareId);
       if (capture) {
-        hasPhoto = !!capture.ImageBase64;
         if (capture.UserID) {
           const user = await findPublicProfileById(capture.UserID);
           if (user) {
@@ -48,13 +46,6 @@ export async function getServerSideProps({ params, req, query }) {
       }
     } catch {
       // non-fatal — fall back to generic Wellness Valley branding
-    }
-
-    // Instant-share race: the capture row may not exist yet when WhatsApp
-    // crawls this page. Use the ?n= query param (embedded by the client) as
-    // a fallback so the OG title always shows the sharer's name.
-    if (!userName && query?.n) {
-      userName = String(query.n).slice(0, 80) || null;
     }
   }
 
@@ -70,10 +61,10 @@ export async function getServerSideProps({ params, req, query }) {
   // already in WhatsApp, so `hasPhoto` is often false at crawl time even
   // though the image will be available by the time the og-image endpoint is hit.
   const ogImageUrl = valid
-    ? `${baseUrl}/api/share/og-image/${token}`
+    ? `${baseUrl}/api/share/og-image/${shareId}`
     : (userPhotoUrl || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null));
 
-  return { props: { token: valid ? token : null, baseUrl, userName, userPhotoUrl, ogImageUrl } };
+  return { props: { shareId: valid ? shareId : null, baseUrl, userName, userPhotoUrl, ogImageUrl } };
 }
 
 const pageBg = {
@@ -148,16 +139,16 @@ const secondaryBtn = {
 };
 const footer = { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 16 };
 
-export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, ogImageUrl }) {
+export default function ShareLanding({ shareId, baseUrl, userName, userPhotoUrl, ogImageUrl }) {
   // Client-side: try to hand off to the app via Android intent:// for users
   // whose Android App Links haven't auto-verified yet (debug builds, first
   // launch). Verified production builds intercept the https URL directly
   // and never see this script. Desktop / iOS users get the install CTAs.
-  const bootstrap = token
+  const bootstrap = shareId
     ? `(function(){try{
         var ua = navigator.userAgent || '';
         if (!/Android/i.test(ua)) return;
-        var intentUrl = 'intent://share/${token}#Intent;scheme=wellnessvalley;package=${APP_PACKAGE};end';
+        var intentUrl = 'intent://share/${shareId}#Intent;scheme=wellnessvalley;package=${APP_PACKAGE};end';
         var fallbackTimer = setTimeout(function(){
           window.location.href = '${PLAY_STORE_URL}';
         }, 1500);
@@ -178,7 +169,7 @@ export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, o
         <meta property="og:title" content={userName ? `${userName} — Analysis Info` : 'Click here for Analysis Info'} />
         <meta property="og:description" content={userName ? `${userName} shared a meal analysis on Wellness Valley` : ''} />
         {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
-        {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/${token}`} />}
+        {baseUrl && shareId && <meta property="og:url" content={`${baseUrl}/share/${shareId}`} />}
         <meta property="og:image:width" content="512" />
         <meta property="og:image:height" content="512" />
         <meta property="og:site_name" content="Wellness Valley" />
@@ -194,7 +185,7 @@ export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, o
             <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>A meal was shared with you</div>
           </div>
           <div style={body}>
-            {!token ? (
+            {!shareId ? (
               <>
                 <h1 style={title}>Invalid share link</h1>
                 <p style={sub}>The link you opened is not valid. Ask the sender to share again.</p>
@@ -209,7 +200,7 @@ export default function ShareLanding({ token, baseUrl, userName, userPhotoUrl, o
                 <a href={PLAY_STORE_URL} style={primaryBtn}>Get the app on Google Play</a>
                 <a href={APP_STORE_URL} style={secondaryBtn}>Available on the App Store</a>
                 <a
-                  href={`wellnessvalley://share/${token}`}
+                  href={`wellnessvalley://share/${shareId}`}
                   style={{ ...secondaryBtn, background: '#ecfdf5', color: '#065f46' }}
                 >
                   I already have the app — open it

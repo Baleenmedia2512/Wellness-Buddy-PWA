@@ -14,9 +14,9 @@
  *    once written).
  */
 
-import { findByToken } from '../../../../features/captures/data/captures.repository.js';
+import { findByShareIdentifier } from '../../../../features/captures/data/captures.repository.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHARE_IDENTIFIER_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{6,10})$/i;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   const token = (req.query.token || '').toString().trim();
-  if (!UUID_RE.test(token)) {
+  if (!SHARE_IDENTIFIER_RE.test(token)) {
     return res.status(400).end();
   }
 
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
   let capture = null;
   for (let attempt = 0; attempt < RETRIES; attempt++) {
     try {
-      capture = await findByToken(token);
+      capture = await findByShareIdentifier(token);
     } catch {
       return res.status(500).end();
     }

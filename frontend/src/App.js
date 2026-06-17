@@ -958,8 +958,8 @@ function WellnessValleyApp() {
   }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
-  // (https://<host>/share/<uuid>) or the custom scheme
-  // (wellnessvalley://share/<uuid>) ? resolve the share token against the
+  // (https://<host>/share/<id>) or the custom scheme
+  // (wellnessvalley://share/<id>) → resolve the share identifier against the
   // backend, then jump straight to Dashboard ? Nutrition for that owner /
   // date. Permission errors and missing/expired shares surface as toasts.
   useEffect(() => {
@@ -969,15 +969,16 @@ function WellnessValleyApp() {
     let handle = null;
     const seenTokens = new Set(); // guard against duplicate fires
 
-    const SHARE_PATH_RE = /\/share\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const SHARE_ID_RE = '([A-Za-z0-9]{6,10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+    const SHARE_PATH_RE = new RegExp(`/share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i');
     const BPC_PATH_RE   = /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
-      // Custom scheme: wellnessvalley://share/<uuid>
-      const customMatch = rawUrl.match(/^wellnessvalley:\/\/share\/([0-9a-f-]{36})/i);
+      // Custom scheme: wellnessvalley://share/<id>
+      const customMatch = rawUrl.match(new RegExp(`^wellnessvalley://share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i'));
       if (customMatch) return customMatch[1];
-      // https path: /share/<uuid>
+      // https path: /share/<id>
       const httpsMatch = rawUrl.match(SHARE_PATH_RE);
       return httpsMatch ? httpsMatch[1] : null;
     };
@@ -4267,13 +4268,18 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
+    const generateInstantShareCode = (length = 8) => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let out = '';
+      for (let i = 0; i < length; i += 1) {
+        out += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return out;
+    };
+    const instantShareCode = generateInstantShareCode();
     const shareDisplayName = resolveShareDisplayName(savedUserName, user);
-    // ?n= embeds the display name so the WhatsApp OG card shows the user name
-    // even when WhatsApp crawls the page before the capture POST completes.
-    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
-    // Clean URL shown in WhatsApp message — no UUID or query params visible.
-    const cleanShareUrl = `${apiBaseUrl}/share`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${cleanShareUrl}`;
+    const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
 
     // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
@@ -4532,7 +4538,12 @@ function WellnessValleyApp() {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage, token: instantToken }),
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+              }),
             },
           );
           if (!capRes.ok) {
@@ -4549,7 +4560,7 @@ function WellnessValleyApp() {
             );
             return {
               id: capData.data.id,
-              url: `${apiBaseUrl}/share/${capData.data.token}`,
+              url: `${apiBaseUrl}/share/${capData.data.shareCode || capData.data.token}`,
             };
           }
           debugLog(
