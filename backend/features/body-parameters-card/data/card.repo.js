@@ -323,32 +323,39 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
 export async function listCardsForCoach(coachId) {
   const supabase = getSupabaseClient();
   
-  // First get all team members for this coach (including inactive)
-  const { data: teamMembers, error: teamError } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, PhoneNumber')
-    .eq('CoachId', coachId);
-    // Removed .eq('Status', 'Active') to show all cards
-
-  if (teamError) throw teamError;
-  if (!teamMembers || teamMembers.length === 0) return [];
-
-  const userIds = teamMembers.map(m => m.UserId);
-
-  // Then get all cards for these users
+  // Directly query cards created by this coach
   const { data: cards, error: cardsError } = await supabase
     .from(TABLE)
     .select('*')
-    .in('user_id', userIds)
+    .eq('created_by', coachId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false });
 
   if (cardsError) throw cardsError;
   if (!cards) return [];
+  
+  logger.info('[listCardsForCoach] Found cards', { coachId, cardCount: cards.length });
 
-  // Map team member info to cards
+  // Get team member info for phone numbers (optional - card has name already)
+  const userIds = cards.map(c => c.user_id).filter(Boolean);
+  let teamMembersMap = {};
+  
+  if (userIds.length > 0) {
+    const { data: teamMembers } = await supabase
+      .from('team_table')
+      .select('UserId, PhoneNumber')
+      .in('UserId', userIds);
+    
+    if (teamMembers) {
+      teamMembersMap = Object.fromEntries(
+        teamMembers.map(m => [m.UserId, m])
+      );
+    }
+  }
+
+  // Map cards with optional phone number from team_table
   return cards.map(card => {
-    const member = teamMembers.find(m => m.UserId === card.user_id);
+    const member = teamMembersMap[card.user_id];
     return {
       id:           card.id,
       userId:       card.user_id,
