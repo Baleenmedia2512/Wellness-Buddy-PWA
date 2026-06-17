@@ -154,7 +154,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         const results = members
           .filter((m) => {
             if (!m.phoneNumber) return false;
-            if (m.userId === coachUserId) return false;
+            // Allow coaches to create cards for themselves (removed coach exclusion)yes
             return toNationalDigits(m.phoneNumber).startsWith(toNationalDigits(digits));
           })
           .slice(0, 10)
@@ -258,7 +258,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const results = allTeamMembers
         .filter((m) => {
           if (!m.phoneNumber) return false;
-          if (m.userId === coachUserId) return false;
+          // Allow coaches to create cards for themselves (removed coach exclusion)
           const normalizedMemberPhone = toNationalDigits(m.phoneNumber);
           const normalizedSearchDigits = toNationalDigits(digits);
           const matches = normalizedMemberPhone.startsWith(normalizedSearchDigits);

@@ -114,8 +114,8 @@ export async function findTeamPhoneByUserId(userId) {
 
 /**
  * Create a new team_table row from the phone the coach entered.
- * Inserts first; if PhoneNumber already exists (unique index), finds that user
- * and UPDATES their Name/Height/Bmr if the coach provided updated values.
+ * Checks if phone exists first; if yes, UPDATES the member.
+ * If no, creates a new member. This avoids duplicate key errors.
  *
  * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
@@ -124,6 +124,51 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
+  // STEP 1: Check if phone number already exists (search all variants)
+  let existingUserId = null;
+  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+    const { data: existing, error: lookupErr } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .eq('PhoneNumber', variant)
+      .order('UserId', { ascending: true })
+      .limit(1);
+    
+    if (lookupErr) throw lookupErr;
+    
+    if (existing?.[0]?.UserId) {
+      existingUserId = existing[0].UserId;
+      break; // Found existing member
+    }
+  }
+
+  // STEP 2: If phone exists, UPDATE existing member
+  if (existingUserId) {
+    const updatePatch = {};
+    if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
+    if (heightCm != null) updatePatch.Height = heightCm;
+    if (bmr != null) updatePatch.Bmr = bmr;
+    
+    if (Object.keys(updatePatch).length > 0) {
+      const { error: updateErr } = await supabase
+        .from('team_table')
+        .update(updatePatch)
+        .eq('UserId', existingUserId);
+      
+      if (updateErr) {
+        logger.warn('[body-params-card] failed to update existing member profile', {
+          userId: existingUserId, updateErr,
+        });
+      }
+    }
+    
+    logger.info('[body-params-card] phone exists in team_table, updated and reusing', {
+      userId: existingUserId, updated: Object.keys(updatePatch).length > 0
+    });
+    return { userId: existingUserId, isNew: false };
+  }
+
+  // STEP 3: Phone doesn't exist, CREATE new member
   const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr });
   const now = getISTTimestamp();
   const insertPayload = {
@@ -148,47 +193,10 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
     .select('UserId')
     .single();
 
-  if (!error) {
-    logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
-    return { userId: data.UserId, isNew: true };
-  }
+  if (error) throw error;
 
-  if (error.code === '23505') {
-    for (const variant of buildPhoneLookupVariants(phoneNumber)) {
-      const { data: existing, error: lookupErr } = await supabase
-        .from('team_table')
-        .select('UserId')
-        .eq('PhoneNumber', variant)
-        .order('UserId', { ascending: true })
-        .limit(1);
-      if (lookupErr) throw lookupErr;
-      if (existing?.[0]?.UserId) {
-        const existingUserId = existing[0].UserId;
-        // Update the existing member's profile fields with the coach's new values.
-        const updatePatch = {};
-        if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
-        if (heightCm != null) updatePatch.Height = heightCm;
-        if (bmr != null) updatePatch.Bmr = bmr;
-        if (Object.keys(updatePatch).length > 0) {
-          const { error: updateErr } = await supabase
-            .from('team_table')
-            .update(updatePatch)
-            .eq('UserId', existingUserId);
-          if (updateErr) {
-            logger.warn('[body-params-card] failed to update existing member profile', {
-              userId: existingUserId, updateErr,
-            });
-          }
-        }
-        logger.info('[body-params-card] phone already in team_table, updated and reusing user', {
-          userId: existingUserId,
-        });
-        return { userId: existingUserId, isNew: false };
-      }
-    }
-  }
-
-  throw error;
+  logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
+  return { userId: data.UserId, isNew: true };
 }
 
 /** @deprecated Use createTeamMemberFromPhone */
