@@ -934,18 +934,20 @@ function WellnessValleyApp() {
   }, [user, permissionsReady, isUserActive, showCompleteProfile, _launchUrlCheckedRef]);
 
   // Dismiss launch overlay on non-camera paths (signed out, fresh-sign-in
-  // setup wizard, profile-completion gate). The camera path dismisses the
-  // overlay via handleCameraStateChange('opened').
+  // setup wizard, profile-completion gate, deep-link to dashboard).
+  // The camera path dismisses the overlay via handleCameraStateChange('closed').
   useEffect(() => {
     if (!showLaunchOverlay) return;
     if (!Capacitor.isNativePlatform()) { setShowLaunchOverlay(false); return; }
     if (authLoading) return; // still settling — wait
     if (!user) { setShowLaunchOverlay(false); return; }     // signed out
+    // Deep-link navigation already routed to Dashboard — nothing to wait for.
+    if (showDashboard) { setShowLaunchOverlay(false); return; }
     if (showCompleteProfile) { setShowLaunchOverlay(false); return; } // profile gate
     if (!isUserActive) { setShowLaunchOverlay(false); return; }       // inactive account
     const freshSignIn = sessionStorage.getItem("freshGoogleSignIn") === "true";
     if (freshSignIn) { setShowLaunchOverlay(false); return; }         // setup wizard
-  }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
+  }, [showLaunchOverlay, authLoading, user, showDashboard, showCompleteProfile, isUserActive]);
 
   // On Android, request exact alarm permission once per login session.
   // Fires after permissionsReady so it doesn't collide with camera/push/location dialogs.
@@ -1108,6 +1110,9 @@ function WellnessValleyApp() {
         // correctly. See PR 3 README in features/captures.
         const resolvedTab = tabForImageType(data.imageType);
         setDashboardInitialTab(resolvedTab);
+        // Dismiss launch overlay immediately — the deep-link handler is the
+        // authoritative navigator for this session, no camera should open.
+        setShowLaunchOverlay(false);
         startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");

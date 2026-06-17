@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.wellnessvalley.app",
+      "sha256_cert_fingerprints": [
+        "68:C1:61:92:03:90:3E:34:42:45:C1:46:DF:9F:F6:71:C8:29:BC:B3:B8:E1:4E:ED:BF:E5:81:F9:D9:7B:D3:A4",
+        "0C:5B:CE:80:57:A8:D1:10:E2:1D:EC:99:B6:F5:03:18:11:F2:B5:90:6F:E1:68:D4:A3:BA:0D:70:8A:2D:11:8F"
+      ]
+    }
+  }
+]
