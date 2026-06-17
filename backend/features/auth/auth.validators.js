@@ -35,17 +35,4 @@ export function validateVerifyOtp(body) {
   };
 }
 
-// Phone login via Firebase. We DO NOT generate/verify the OTP ourselves — the
-// Firebase SDK does that client-side and hands us a signed ID token, which we
-// re-verify server-side in auth.service.js → firebasePhoneLogin().
-export function validateFirebasePhoneLogin(body) {
-  if (!body) throw new ValidationError(400, 'idToken is required');
-  const { idToken, name } = body;
-  if (!idToken || typeof idToken !== 'string' || idToken.length < 20) {
-    throw new ValidationError(400, 'idToken is required');
-  }
-  return {
-    idToken,
-    name: name ? String(name).trim().slice(0, 60) : '',
-  };
-}
+// Firebase Phone Auth validator removed (no Firebase integration configured)
