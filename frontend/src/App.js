@@ -1060,10 +1060,51 @@ function WellnessValleyApp() {
 
         const data = body.data || {};
 
-        // PR-E / ADR-0003: an `unknown` capture's share link opens the
-        // dedicated viewer (image + Retry/Edit) instead of an empty
-        // nutrition tab. Gated on ff.diary-feed so legacy behaviour is
-        // preserved while the flag is OFF.
+        // Open the Dashboard (Diary) and seed the owner / date / tab context.
+        // Used for EVERY resolved capture — food, weight, education,
+        // smartwatch, unknown, and pending — so a deep link ALWAYS lands on
+        // the diary with the relevant card instead of the home screen.
+        const applyDashboardContext = (d, { seedMealId = true } = {}) => {
+          if (d.isSelf) {
+            setDashboardInitialSelectedMember(null);
+          } else {
+            // Shape MUST match team/services/teamSearchService.toSelectedUser —
+            // hooks like resolveDashboardUserId read `id` (not `userId`).
+            const memberName = d.ownerUserName || "Member";
+            setDashboardInitialSelectedMember({
+              id: d.ownerUserId,
+              userId: d.ownerUserId,
+              name: memberName,
+              userName: memberName,
+              email: "",
+              role: "user",
+              isSelf: false,
+            });
+          }
+          setDashboardInitialDate(d.mealDate || null);
+          // While `pending`, no domain row exists yet — resolve returns the
+          // captureId as a placeholder that no feed can match. Seed null so the
+          // per-feed deep-link opener doesn't latch onto a bogus id; the real
+          // id is seeded once the capture is classified (see pollPending).
+          setDashboardInitialMealId(seedMealId ? (d.mealId || null) : null);
+          // Route to the tab that matches the shared image type. When the
+          // single-page Diary flag is ON the tab is cosmetic (all feeds render
+          // stacked); when OFF it selects the correct legacy tab.
+          setDashboardInitialTab(tabForImageType(d.imageType));
+          startTransition(() => setShowDashboard(true));
+        };
+
+        // `pending` = capture row exists but AI classification has not finished.
+        // Legacy rows with no ImageType are treated as already-terminal ('food').
+        const isPending = data.imageType === "pending";
+
+        // Open the diary immediately. While pending the feeds show their own
+        // loading / empty state; the correct card appears once classified.
+        applyDashboardContext(data, { seedMealId: !isPending });
+
+        // PR-E / ADR-0003: an `unknown` capture also opens the dedicated image
+        // viewer (Retry / Edit) on top of the diary. Gated on ff.diary-feed so
+        // legacy behaviour is preserved while the flag is OFF.
         if (data.imageType === "unknown" && isFlagEnabled("ff.diary-feed")) {
           try {
             const share = await fetchUnknownShare({ token, viewerUserId: user.id });
@@ -1082,33 +1123,39 @@ function WellnessValleyApp() {
           return;
         }
 
-        if (data.isSelf) {
-          setDashboardInitialSelectedMember(null);
-        } else {
-          // Shape MUST match team/services/teamSearchService.toSelectedUser
-          // � hooks like resolveDashboardUserId look at `id` (not `userId`).
-          const memberName = data.ownerUserName || "Member";
-          setDashboardInitialSelectedMember({
-            id: data.ownerUserId,
-            userId: data.ownerUserId,
-            name: memberName,
-            userName: memberName,
-            email: "",
-            role: "user",
-            isSelf: false,
-          });
+        // Pending capture: poll the resolve endpoint until the capture is
+        // classified, then re-route to the exact card and refresh the feeds so
+        // it appears WITHOUT the user reloading the page.
+        if (isPending) {
+          let attempts = 0;
+          const MAX_ATTEMPTS = 15;   // ~37s at 2.5s spacing
+          const INTERVAL_MS = 2500;
+          const pollPending = async () => {
+            if (cancelled) return;
+            attempts += 1;
+            try {
+              const pr = await fetch(
+                `${apiBaseUrl}/api/background-analysis/captures/resolve?token=${encodeURIComponent(token)}&viewerUserId=${encodeURIComponent(user.id)}`,
+                { method: "GET", headers: { "Content-Type": "application/json" } },
+              );
+              const pb = await pr.json().catch(() => ({}));
+              if (cancelled) return;
+              const pd = pb?.data;
+              if (pr.ok && pb?.ok && pd && pd.imageType && pd.imageType !== "pending") {
+                // Classified — route to the real card and refresh the feeds.
+                applyDashboardContext(pd);
+                triggerNutritionRefresh({ immediate: true, source: "deep-link-pending" });
+                return;
+              }
+            } catch {
+              // Transient network error — keep polling until the cap is hit.
+            }
+            if (!cancelled && attempts < MAX_ATTEMPTS) {
+              setTimeout(pollPending, INTERVAL_MS);
+            }
+          };
+          setTimeout(pollPending, INTERVAL_MS);
         }
-        setDashboardInitialDate(data.mealDate || null);
-        setDashboardInitialMealId(data.mealId || null);
-        // Route to the tab that matches the shared image type.
-        // imageType is returned by the resolve endpoint when the capture row
-        // has been classified (may be null for legacy rows — helper falls
-        // back to the default 'nutrition' tab). Map lives in
-        // shared/lib/tab-by-image-type so smartwatch / unknown also route
-        // correctly. See PR 3 README in features/captures.
-        const resolvedTab = tabForImageType(data.imageType);
-        setDashboardInitialTab(resolvedTab);
-        startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");
       }

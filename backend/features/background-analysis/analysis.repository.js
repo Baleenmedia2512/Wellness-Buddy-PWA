@@ -174,6 +174,7 @@ export async function updateWithAnalysisResult(id, userId, analysisFields) {
  * migrations/drop_legacy_share_columns_from_food.sql.
  */
 export async function findPublicByToken(token) {
+  const supabase = getSupabaseClient();
   const cap = await findCaptureByShareIdentifier(
     token,
     '"ID", "UserID", "ShareExpiresAt", "ImageType", "ImageBase64", "CreatedAt"',
