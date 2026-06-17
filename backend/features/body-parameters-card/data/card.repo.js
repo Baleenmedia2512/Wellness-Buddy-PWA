@@ -292,12 +292,12 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
 export async function listCardsForCoach(coachId) {
   const supabase = getSupabaseClient();
   
-  // First get all team members for this coach
+  // First get all team members for this coach (including inactive)
   const { data: teamMembers, error: teamError } = await supabase
     .from('team_table')
     .select('UserId, UserName, PhoneNumber')
-    .eq('CoachId', coachId)
-    .eq('Status', 'Active');
+    .eq('CoachId', coachId);
+    // Removed .eq('Status', 'Active') to show all cards
 
   if (teamError) throw teamError;
   if (!teamMembers || teamMembers.length === 0) return [];
