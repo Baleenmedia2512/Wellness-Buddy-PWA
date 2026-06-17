@@ -284,8 +284,9 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           // Show share sheet immediately
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
           
-          // Immediate background refresh to confirm save (no delay)
-          fetchData(true);
+          // DO NOT auto-refresh - keep the optimistic card visible
+          // Card persists through sharing and app lifecycle
+          // User can manually refresh if needed using the refresh button
         }}
       />
 

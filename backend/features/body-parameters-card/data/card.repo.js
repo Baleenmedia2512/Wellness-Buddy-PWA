@@ -30,6 +30,7 @@ export async function insertCard(payload) {
       fat_percent:  payload.fatPercent,
       bmr:          payload.bmr,
       body_age:     payload.bodyAge,
+      visceral_fat: payload.visceralFat,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -59,6 +60,7 @@ export async function updateCard(id, payload) {
       fat_percent:   payload.fatPercent,
       bmr:           payload.bmr,
       body_age:      payload.bodyAge,
+      visceral_fat:  payload.visceralFat,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -84,7 +86,7 @@ export async function findCardByToken(token) {
     .select(
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, recorded_date, location_name, created_at'
+      'body_age, visceral_fat, recorded_date, location_name, created_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
@@ -331,6 +333,7 @@ export async function listCardsForCoach(coachId) {
       fatPercent:   card.fat_percent,
       bmr:          card.bmr,
       bodyAge:      card.body_age,
+      visceralFat:  card.visceral_fat,
       recordedDate: card.recorded_date,
       locationName: card.location_name,
       createdAt:    card.created_at,
