@@ -482,6 +482,18 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               isExistingUser={isExistingUser}
             />
           )}
+          {card.visceralFat != null && card.visceralFat !== '' && (
+            <MetricRow
+              icon="🫀" iconBg="#fef9c3"
+              label="V-Fat"
+              value={String(card.visceralFat)}
+              rangeLabel="≤ 9"
+              status={parseFloat(card.visceralFat) > 9 ? { isOutOfRange: true } : null}
+              oval
+              prevValue={previousCard?.visceralFat != null ? String(previousCard.visceralFat) : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
           {card.bodyAge != null && card.bodyAge !== '' && (
             <MetricRow
               icon="⏱️" iconBg="#fef9c3"
