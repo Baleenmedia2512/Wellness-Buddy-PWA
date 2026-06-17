@@ -264,9 +264,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           setSelectedCard(null);
-          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
-          // Refresh the list
-          fetchData(true);
+          // Refresh the list FIRST (immediate update)
+          fetchData(true).then(() => {
+            // Then show share sheet
+            setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          });
         }}
       />
 
@@ -276,6 +278,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
+          // Refresh the list immediately when share sheet closes
+          fetchData(true);
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
