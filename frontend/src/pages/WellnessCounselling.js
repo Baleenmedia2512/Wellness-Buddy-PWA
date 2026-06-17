@@ -1,10 +1,11 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { FileHeart, CheckCircle, Clock, Users, Plus, Search } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
-  preloadBodyParamsShareAssets
+  preloadBodyParamsShareAssets,
+  listBodyParamsCards
 } from "../features/body-parameters-card";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
@@ -646,9 +647,9 @@ const WellnessCounselling = ({ user, onBack }) => {
           // in parallel with the API save call.
           setBodyParamsPreCapCard(formData);
         }}
-        onSaveSuccess={(card, shareUrl) => {
+        onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
-          setBodyParamsShareData({ card, shareUrl });
+          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
         }}
       />
 
@@ -662,6 +663,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
+        previousCard={bodyParamsShareData?.previousCard ?? null}
       />
     </div>
   );

@@ -3,7 +3,7 @@
  * Calls validation → data. No HTTP concerns here.
  */
 import { validateUpdateCard } from '../validation/card.schema.js';
-import { updateCard, createTeamMemberFromPhone, linkCardToUser } from '../data/card.repo.js';
+import { updateCard, createTeamMemberFromPhone, linkCardToUser, findPreviousCardByUserId } from '../data/card.repo.js';
 
 /**
  * @param {object} body - raw request body (must include `id`)
@@ -26,6 +26,10 @@ export async function handleUpdateCard(body) {
     card.user_id = userId;
   }
 
+  const previousCard = card.user_id
+    ? await findPreviousCardByUserId(card.user_id, card.id)
+    : null;
+
   return {
     httpStatus: 200,
     body: {
@@ -35,6 +39,7 @@ export async function handleUpdateCard(body) {
         publicShareToken: card.public_share_token,
         shareExpiresAt:   card.share_expires_at,
         name:             card.name,
+        previousCard,
       },
     },
   };

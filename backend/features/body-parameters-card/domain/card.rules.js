@@ -98,3 +98,26 @@ export function classifyFatPercent(fatPercent, gender) {
   if (fatPercent <= hi) return 'normal';
   return 'high';
 }
+
+/**
+ * Build the form pre-fill object from a team_table member row returned by the
+ * phone-search endpoint. Only populates fields that are present and non-null.
+ * Caller must merge this onto the existing form state (do not replace).
+ *
+ * @param {{ userId: number, userName: string, heightCm: number|null, bmr: number|null }} member
+ * @returns {{ name: string, heightCm: string, bmr: string }}
+ */
+export function buildFormPrefillFromMember(member) {
+  if (!member) return {};
+  const patch = {};
+  if (member.userName && String(member.userName).trim()) {
+    patch.name = String(member.userName).trim();
+  }
+  if (member.heightCm != null && !isNaN(Number(member.heightCm))) {
+    patch.heightCm = String(member.heightCm);
+  }
+  if (member.bmr != null && !isNaN(Number(member.bmr))) {
+    patch.bmr = String(member.bmr);
+  }
+  return patch;
+}

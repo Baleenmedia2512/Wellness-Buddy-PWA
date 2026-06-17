@@ -181,7 +181,7 @@ const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
 const WellnessCounselling = lazy(() =>
-  import("./pages/WellnessCounselling"),
+  import("./pages/WellnessCounsellingCards"),
 );
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
@@ -542,12 +542,9 @@ function WellnessValleyApp() {
         `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      // Share a clean generic URL to WhatsApp so the message shows
-      // https://app/share instead of the full UUID + query params.
-      // The OG preview is still generated from the real URL server-side.
-      // foodShareUrl (full URL with token) stays intact for deep-link routing.
-      const baseShareUrl = foodShareUrl.replace(/\/share\/[^?#]+.*$/, '/share');
-      const ok = await shareTextViaWhatsApp(baseShareUrl);
+      const shareDisplayName = resolveShareDisplayName(savedUserName, user);
+      const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${foodShareUrl}`;
+      const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
       debugLog(
@@ -567,7 +564,7 @@ function WellnessValleyApp() {
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType, resetCaptureUiOnly]);
+  }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =

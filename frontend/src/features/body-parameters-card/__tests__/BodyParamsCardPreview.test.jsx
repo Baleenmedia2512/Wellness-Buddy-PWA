@@ -128,6 +128,26 @@ describe('BodyParamsCardPreview', () => {
     expect(screen.queryByText('GOOD')).not.toBeInTheDocument();
   });
 
+  it('renders red rings for weight, BMI, and body age when all are out of range', () => {
+    const { container } = render(<BodyParamsCardPreview card={{
+      name: 'Test',
+      recordedDate: '2026-06-17',
+      age: '22',
+      gender: 'male',
+      heightCm: '176',
+      weightKg: '88',
+      bmi: '28.4',
+      fatPercent: '15',
+      bodyAge: '30',
+    }} />);
+
+    const redRings = container.querySelectorAll('circle[stroke="#ef4444"]');
+    expect(redRings.length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText('88 kg')).toBeInTheDocument();
+    expect(screen.getByText('28.4')).toBeInTheDocument();
+    expect(screen.getByText('30 Yrs')).toBeInTheDocument();
+  });
+
   it('renders Body Age value and ≤ age reference text, no badge text', () => {
     render(<BodyParamsCardPreview card={SAMPLE_CARD} />);
 

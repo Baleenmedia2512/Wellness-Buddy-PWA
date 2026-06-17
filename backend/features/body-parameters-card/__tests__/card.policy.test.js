@@ -5,6 +5,7 @@ import {
   canCreateCard,
   canSaveCardToProfile,
   canViewPublicCard,
+  canSearchTeamPhones,
 } from '../domain/permissions/card.policy.js';
 
 describe('canCreateCard', () => {
@@ -43,5 +44,27 @@ describe('canSaveCardToProfile', () => {
 describe('canViewPublicCard', () => {
   it('always returns true', () => {
     expect(canViewPublicCard()).toBe(true);
+  });
+});
+
+describe('canSearchTeamPhones', () => {
+  it('returns true for a valid numeric coachId', () => {
+    expect(canSearchTeamPhones({ coachId: 5 })).toBe(true);
+  });
+
+  it('returns true for a string coachId', () => {
+    expect(canSearchTeamPhones({ coachId: '12' })).toBe(true);
+  });
+
+  it('returns false when coachId is null', () => {
+    expect(canSearchTeamPhones({ coachId: null })).toBe(false);
+  });
+
+  it('returns false when coachId is 0', () => {
+    expect(canSearchTeamPhones({ coachId: 0 })).toBe(false);
+  });
+
+  it('returns false when called with no args', () => {
+    expect(canSearchTeamPhones()).toBe(false);
   });
 });
