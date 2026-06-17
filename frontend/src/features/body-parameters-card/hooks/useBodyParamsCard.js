@@ -277,6 +277,24 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         }));
       debugLog('📱 [PhoneSearch] Results:', results.length, 'matches');
       setPhoneSuggestions(results);
+      
+      // AUTO-FILL: If exact match found (phone numbers are identical), auto-fill immediately
+      if (results.length === 1) {
+        const exactMatch = results[0];
+        const normalizedMatch = toNationalDigits(exactMatch.phoneNumber);
+        const normalizedSearch = toNationalDigits(digits);
+        if (normalizedMatch === normalizedSearch) {
+          debugLog('🎯 [PhoneSearch] EXACT MATCH - Auto-filling:', exactMatch);
+          setForm((prev) => ({
+            ...prev,
+            phoneNumber: exactMatch.phoneNumber,
+            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: String(exactMatch.userName).trim() } : {}),
+            ...(exactMatch.heightCm != null ? { heightCm: String(exactMatch.heightCm) } : {}),
+            ...(exactMatch.bmr != null ? { bmr: String(exactMatch.bmr) } : {}),
+          }));
+          setPhoneSuggestions([]); // Clear suggestions after auto-fill
+        }
+      }
     }, 150);
   }, [coachUserId, allTeamMembers]);
 

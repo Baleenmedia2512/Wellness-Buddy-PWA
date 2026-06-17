@@ -4,7 +4,7 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId } from '../data/card.repo.js';
+import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -36,7 +36,22 @@ export async function handleCreateCard(body) {
     logger.info('[body-params-card] team_table member ready', { userId, isNew });
   }
 
-  const card = await insertCard({ ...payload, userId });
+  // Check if user already has a card
+  const existingCard = userId ? await findLatestCardByUserId(userId) : null;
+
+  let card;
+  if (existingCard) {
+    // UPDATE existing card (override)
+    logger.info('[body-params-card] updating existing card', { cardId: existingCard.id, userId });
+    card = await updateCard(existingCard.id, {
+      id: existingCard.id,
+      ...payload,
+    });
+  } else {
+    // CREATE new card
+    logger.info('[body-params-card] creating new card', { userId });
+    card = await insertCard({ ...payload, userId });
+  }
 
   // Fetch the previous card for this user so the frontend can show the
   // CURRENT vs PREV vs REFERENCE 3-column layout on the share card.
@@ -45,7 +60,7 @@ export async function handleCreateCard(body) {
     : null;
 
   return {
-    httpStatus: 201,
+    httpStatus: existingCard ? 200 : 201,
     body: {
       success: true,
       data: {

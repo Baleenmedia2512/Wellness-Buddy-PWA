@@ -251,6 +251,27 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
+ * Find the latest card for a user (to check if card already exists).
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestCardByUserId(userId) {
+  if (!userId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error} = await supabase
+    .from(TABLE)
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+  return data[0];
+}
+
+/**
  * Find the most recent previous card for a given user, excluding the current card.
  * Returns null when no prior card exists (fresh user).
  *
