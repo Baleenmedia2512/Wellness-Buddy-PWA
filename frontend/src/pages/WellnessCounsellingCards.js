@@ -262,25 +262,30 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           setBodyParamsPreCapCard(formData);
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
+          const isEditMode = Boolean(selectedCard?.id);
+          
           setIsBodyParamsFormOpen(false);
-          setSelectedCard(null);
           
           // Instantly add/update card in the list (optimistic update)
           setBodyParamsCards(prevCards => {
-            if (previousCard) {
-              // Update existing card
-              return prevCards.map(c => c.id === card.id ? card : c);
+            if (isEditMode && selectedCard?.id) {
+              // Update mode: Replace the existing card with same ID
+              return prevCards.map(c => 
+                c.id === selectedCard.id ? { ...c, ...card, id: selectedCard.id } : c
+              );
             } else {
-              // Add new card at the beginning
+              // Create mode: Add new card at the beginning
               return [card, ...prevCards];
             }
           });
           
+          setSelectedCard(null);
+          
           // Show share sheet immediately
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
           
-          // Refresh in background to sync with server
-          fetchData(true);
+          // Refresh in background to sync with server (after database has settled)
+          setTimeout(() => fetchData(true), 1500);
         }}
       />
 
@@ -290,8 +295,7 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Refresh the list immediately when share sheet closes
-          fetchData(true);
+          // Don't refresh here - already refreshing in background after save
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
