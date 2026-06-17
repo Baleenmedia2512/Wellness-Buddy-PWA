@@ -15,9 +15,19 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
+/**
+ * Normalise any phone string to a 10-digit Indian national number for prefix
+ * matching. Handles: "9876543210", "+919876543210", "919876543210", "09876543210".
+ */
+function toNationalDigits(phone) {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+  if (d.length === 11 && d.startsWith('0'))  return d.slice(1);
+  return d;
+}
+
 const EMPTY_FORM = {
-  name:         '',
-  phoneNumber:  '',
+  name:         '',  phoneNumber:  '',
   age:          '',
   gender:       '',
   heightCm:     '',
@@ -107,18 +117,21 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     teamHierarchyService.getFlatTeamList(coachUserId)
       .then((members) => {
         if (cancelled) return;
+        debugLog('📱 [PhoneSearch] loaded members:', members.length,
+          members.slice(0, 5).map(m => ({ id: m.userId, phone: m.phoneNumber }))
+        );
         setAllTeamMembers(members);
         // Fire pending search now that we have both coachUserId and members.
         const prefix = pendingPhonePrefixRef.current;
         if (!prefix) return;
         pendingPhonePrefixRef.current = null;
         const digits = prefix.replace(/\D/g, '');
-        if (digits.length < 2) return;
+        if (digits.length < 1) return;
         const results = members
           .filter((m) => {
             if (!m.phoneNumber) return false;
-            if (m.userId === coachUserId) return false; // never suggest the coach themselves
-            return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
+            if (m.userId === coachUserId) return false;
+            return toNationalDigits(m.phoneNumber).startsWith(toNationalDigits(digits));
           })
           .slice(0, 10)
           .map((m) => ({
@@ -192,7 +205,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, phoneNumber: value }));
 
     const digits = value.replace(/\D/g, '');
-    if (digits.length < 2) {
+    if (digits.length < 1) {
       setPhoneSuggestions([]);
       pendingPhonePrefixRef.current = null;
       if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
@@ -217,11 +230,18 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
     // Client-side filtering — instant, no network round-trip.
     phoneDebounceRef.current = setTimeout(() => {
+      debugLog('📱 [PhoneSearch] Searching for:', digits, 'in', allTeamMembers.length, 'members');
       const results = allTeamMembers
         .filter((m) => {
           if (!m.phoneNumber) return false;
-          if (m.userId === coachUserId) return false; // never suggest the coach themselves
-          return String(m.phoneNumber).replace(/\D/g, '').startsWith(digits);
+          if (m.userId === coachUserId) return false;
+          const normalizedMemberPhone = toNationalDigits(m.phoneNumber);
+          const normalizedSearchDigits = toNationalDigits(digits);
+          const matches = normalizedMemberPhone.startsWith(normalizedSearchDigits);
+          if (matches) {
+            debugLog('📱 [PhoneSearch] Match found:', m.phoneNumber, 'normalized:', normalizedMemberPhone, 'search:', normalizedSearchDigits);
+          }
+          return matches;
         })
         .slice(0, 10)
         .map((m) => ({
@@ -231,6 +251,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
           heightCm:    m.heightCm != null ? m.heightCm : null,
           bmr:         m.bmr      != null ? m.bmr      : null,
         }));
+      debugLog('📱 [PhoneSearch] Results:', results.length, 'matches');
       setPhoneSuggestions(results);
     }, 150);
   }, [coachUserId, allTeamMembers]);

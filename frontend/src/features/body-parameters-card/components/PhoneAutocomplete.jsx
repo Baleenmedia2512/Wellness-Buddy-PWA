@@ -15,9 +15,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * @param {{ value, onChange, suggestions, onSelect, isLoading }} props
+ * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter, onFocus, onBlur, readOnly }} props
  */
-const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false }) => {
+const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false, inputRef, onEnter, onFocus, onBlur, readOnly }) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -47,6 +47,18 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
     setIsOpen(false);
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && onEnter && !isOpen) {
+      e.preventDefault();
+      onEnter();
+    }
+  };
+
+  const handleFocus = (e) => {
+    if (suggestions.length > 0) setIsOpen(true);
+    if (onFocus) onFocus(e);
+  };
+
   return (
     <div ref={wrapperRef} className="relative flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
@@ -54,11 +66,17 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
       </label>
       <div className="relative">
         <input
+          ref={inputRef}
           type="tel"
+          inputMode="tel"
           value={value}
           onChange={handleInputChange}
-          onFocus={() => { if (suggestions.length > 0) setIsOpen(true); }}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onBlur={onBlur}
+          readOnly={readOnly}
           placeholder="Client phone — creates team member"
+          maxLength={10}
           className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white pr-8"
           autoComplete="off"
         />

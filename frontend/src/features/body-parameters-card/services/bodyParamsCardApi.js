@@ -90,3 +90,18 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
   if (!result?.ok) throw new Error(result?.error?.message || 'Phone search failed');
   return Array.isArray(result.data) ? result.data : [];
 }
+
+/**
+ * List all body parameter cards for a coach's team
+ * @param {string} coachId - UUID of the coach
+ * @returns {Promise<Array>} Array of body parameter cards
+ */
+export async function listBodyParamsCards(coachId) {
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/list?coachId=${encodeURIComponent(coachId)}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  if (!result?.ok) throw new Error(result?.error?.message || 'Failed to list cards');
+  return Array.isArray(result.data) ? result.data : [];
+}

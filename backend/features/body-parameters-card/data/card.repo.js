@@ -281,3 +281,60 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
     recordedDate: row.recorded_date ?? null,
   };
 }
+
+/**
+ * List all body parameter cards for a coach's team members
+ * Returns cards sorted by created_at DESC (latest first)
+ *
+ * @param {string} coachId - UUID of the coach
+ * @returns {Promise<Array>}
+ */
+export async function listCardsForCoach(coachId) {
+  const supabase = getSupabaseClient();
+  
+  // First get all team members for this coach
+  const { data: teamMembers, error: teamError } = await supabase
+    .from('team_table')
+    .select('UserId, UserName, PhoneNumber')
+    .eq('CoachId', coachId)
+    .eq('Status', 'Active');
+
+  if (teamError) throw teamError;
+  if (!teamMembers || teamMembers.length === 0) return [];
+
+  const userIds = teamMembers.map(m => m.UserId);
+
+  // Then get all cards for these users
+  const { data: cards, error: cardsError } = await supabase
+    .from(TABLE)
+    .select('*')
+    .in('user_id', userIds)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false });
+
+  if (cardsError) throw cardsError;
+  if (!cards) return [];
+
+  // Map team member info to cards
+  return cards.map(card => {
+    const member = teamMembers.find(m => m.UserId === card.user_id);
+    return {
+      id:           card.id,
+      userId:       card.user_id,
+      name:         card.name,
+      phoneNumber:  member?.PhoneNumber || null,
+      age:          card.age,
+      gender:       card.gender,
+      heightCm:     card.height_cm,
+      weightKg:     card.weight_kg,
+      bmi:          card.bmi,
+      fatPercent:   card.fat_percent,
+      bmr:          card.bmr,
+      bodyAge:      card.body_age,
+      recordedDate: card.recorded_date,
+      locationName: card.location_name,
+      createdAt:    card.created_at,
+      createdBy:    card.created_by,
+    };
+  });
+}

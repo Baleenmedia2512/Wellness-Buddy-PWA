@@ -10,7 +10,7 @@ import React from 'react';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
-// const BLUE       = '#3b82f6';
+const BLUE       = '#3b82f6';
 const RED        = '#ef4444';
 const INK        = '#1a1a2e';
 const OUTER_BG   = '#f5f0e8';
@@ -125,13 +125,13 @@ const BodyAgeCircle = ({ value, color }) => {
 };
 
 /* ── Circle ring for metric values ──────────────────────────────────────────
-   outOfRange (fresh user)  → RED ring, dark text
+   outOfRange (fresh user)  → RED ring (overweight/high) or BLUE ring (underweight/low), dark text
    greenRing  (existing)    → GREEN ring, green text
    neither                  → no ring at all (plain text)
 */
-const MetricCircle = ({ value, outOfRange, greenRing }) => {
+const MetricCircle = ({ value, outOfRange, greenRing, isUnderweight }) => {
   const size = 64, r = 28, cx = 32, cy = 32;
-  const stroke    = greenRing ? G : RED;
+  const stroke    = greenRing ? G : (isUnderweight ? BLUE : RED);
   const sw        = greenRing ? 2.5 : 1.5;
   const textColor = greenRing ? G : INK;
   return (
@@ -154,15 +154,16 @@ const MetricCircle = ({ value, outOfRange, greenRing }) => {
    isExistingUser = true  → 3 columns: CURRENT | PREV | REFERENCE
                             ring is always green (tracking mode)
    isExistingUser = false → 2 columns: CURRENT | REFERENCE
-                            red ring only when oval && out-of-range
+                            red ring for overweight/high, blue ring for underweight/low
 */
 const MetricRow = ({
   icon, iconBg, label, value,
   rangeLabel, status, bodyAgeMode, bodyAgeVal, oval, rangeNote,
-  prevValue, isExistingUser,
+  prevValue, isExistingUser, isUnderweight,
 }) => {
   const isOutOfRange  = status && status.bg === RED;
-  const showRedRing   = !isExistingUser && oval && isOutOfRange;
+  const showRedRing   = !isExistingUser && oval && isOutOfRange && !isUnderweight;
+  const showBlueRing  = !isExistingUser && oval && isUnderweight;
   const showGreenRing = isExistingUser && oval;
   const hasRef        = rangeLabel || (bodyAgeMode && bodyAgeVal != null);
 
@@ -206,6 +207,8 @@ const MetricRow = ({
       }}>
         {showRedRing ? (
           <MetricCircle value={value} outOfRange />
+        ) : showBlueRing ? (
+          <MetricCircle value={value} outOfRange isUnderweight />
         ) : showGreenRing ? (
           <MetricCircle value={value} greenRing />
         ) : (
@@ -272,9 +275,9 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
   const bmiStatus = !isNaN(bmiVal)
-    ? bmiVal < 19 ? { label: 'UNDERWEIGHT', bg: RED  }
-    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: RED  }
-    :               { label: 'NORMAL',       bg: G }
+    ? bmiVal < 18.5 ? { label: 'UNDERWEIGHT', bg: RED, isUnderweight: true  }
+    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: RED, isUnderweight: false }
+    :               { label: 'NORMAL',       bg: G, isUnderweight: false }
     : null;
   const bmiRangeColor = bmiStatus ? bmiStatus.bg : null;
 
@@ -301,15 +304,24 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
     : null;
   const bodyAgeRangeNote = !isNaN(ageVal) ? ('\u2264 ' + card.age + ' Yrs') : null;
 
-  /* ── Ideal weight range from height (BMI 19–23) ── */
-  const idealWeightHint = (function () {
+  const weightVal = parseFloat(card.weightKg);
+  const idealWeightRange = (function () {
     const h = parseFloat(card.heightCm);
     if (!h || h < 100 || h > 250) return null;
     const m = h / 100;
-    const lo = Math.round(19 * m * m * 10) / 10;
-    const hi = Math.round(23 * m * m * 10) / 10;
-    return lo + ' to ' + hi + ' kg';
+    return {
+      lo: Math.round(18.5 * m * m * 10) / 10,
+      hi: Math.round(23 * m * m * 10) / 10,
+    };
   }());
+  const weightStatus = idealWeightRange && !isNaN(weightVal)
+    ? (weightVal < idealWeightRange.lo || weightVal > idealWeightRange.hi)
+      ? { label: weightVal < idealWeightRange.lo ? 'UNDERWEIGHT' : 'OVERWEIGHT', bg: RED, isUnderweight: weightVal < idealWeightRange.lo }
+      : { label: 'NORMAL', bg: G, isUnderweight: false }
+    : null;
+  const idealWeightHint = idealWeightRange
+    ? idealWeightRange.lo + ' to ' + idealWeightRange.hi + ' kg'
+    : null;
 
   return (
     <div
@@ -438,9 +450,11 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               label="Weight"
               value={fmt(card.weightKg, ' kg')}
               rangeLabel={idealWeightHint}
-              status={null}
+              status={weightStatus}
+              oval
               prevValue={previousCard?.weightKg != null ? previousCard.weightKg + ' kg' : '—'}
               isExistingUser={isExistingUser}
+              isUnderweight={weightStatus?.isUnderweight}
             />
           )}
           {card.bmi != null && card.bmi !== '' && (
@@ -448,11 +462,12 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               icon="🧍" iconBg="#dcfce7"
               label="BMI"
               value={String(card.bmi)}
-              rangeLabel="19 to 23"
+              rangeLabel="18.5 to 23"
               status={bmiStatus}
               oval
               prevValue={previousCard?.bmi != null ? String(previousCard.bmi) : '—'}
               isExistingUser={isExistingUser}
+              isUnderweight={bmiStatus?.isUnderweight}
             />
           )}
           {card.fatPercent != null && card.fatPercent !== '' && (
@@ -476,6 +491,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               bodyAgeMode
               bodyAgeVal={isNaN(bodyAgeVal) ? null : bodyAgeVal}
               rangeNote={bodyAgeRangeNote}
+              oval
               prevValue={previousCard?.bodyAge != null ? previousCard.bodyAge + ' Yrs' : '—'}
               isExistingUser={isExistingUser}
             />
