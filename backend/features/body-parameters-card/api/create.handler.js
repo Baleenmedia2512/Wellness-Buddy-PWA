@@ -44,8 +44,18 @@ export async function handleCreateCard(body) {
     // UPDATE existing card (override)
     logger.info('[body-params-card] updating existing card', { cardId: existingCard.id, userId });
     card = await updateCard(existingCard.id, {
-      id: existingCard.id,
-      ...payload,
+      name:         payload.name,
+      age:          payload.age,
+      gender:       payload.gender,
+      heightCm:     payload.heightCm,
+      weightKg:     payload.weightKg,
+      bmi:          payload.bmi,
+      fatPercent:   payload.fatPercent,
+      bmr:          payload.bmr,
+      bodyAge:      payload.bodyAge,
+      visceralFat:  payload.visceralFat,
+      recordedDate: payload.recordedDate,
+      locationName: payload.locationName,
     });
   } else {
     // CREATE new card
