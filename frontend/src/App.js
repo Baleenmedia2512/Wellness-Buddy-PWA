@@ -756,6 +756,15 @@ function WellnessValleyApp() {
   // so the login-camera effect never fires twice.
   const _hasFiredCameraOnLoginRef = useRef(false);
 
+  // Deep-link guard: once a /share URL opens the app, suppress automatic
+  // camera opening for this session so shared-card routing wins deterministically.
+  const _suppressAutoCameraOnDeepLinkRef = useRef(false);
+
+  // Early app-link events can arrive before the full deep-link resolver effect
+  // is mounted (it waits for user/apiBaseUrl). Buffer the URL so it can be
+  // replayed once the resolver is ready.
+  const _pendingDeepLinkUrlRef = useRef(null);
+
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
   const handleCameraStateChange = useCallback((state /*, meta */) => {
@@ -807,6 +816,7 @@ function WellnessValleyApp() {
       if (!_launchUrlCheckedRef.current) return; // share link check pending
       if (!_homeScreenActiveRef.current) return; // not on home screen
       if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
+      if (_suppressAutoCameraOnDeepLinkRef.current) return; // opened from /share deep link
       
       // NEW GUARD: Don't open camera if analysis results are visible
       // This prevents camera from opening after user returns from sharing
@@ -848,14 +858,21 @@ function WellnessValleyApp() {
   const _launchUrlCheckedRef = useRef(!Capacitor.isNativePlatform()); // web = already done
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const SHARE_RE = /\/share\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-    const isShareUrl = (url) => url && (SHARE_RE.test(url) || /^wellnessvalley:\/\/share\//i.test(url));
+    const isShareUrl = (url) => {
+      if (!url || typeof url !== 'string') return false;
+      // Accept both legacy UUID links and new short-code links.
+      return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
+    };
 
     // Part B — early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle.addAppUrlOpenListener((event) => {
-      if (isShareUrl(event?.url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(event?.url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = event?.url || null;
+      }
       _launchUrlCheckedRef.current = true;
     }).then((h) => { earlyHandle = h; }).catch(() => {});
 
@@ -865,7 +882,11 @@ function WellnessValleyApp() {
     // getLaunchUrl() is the primary check for cold-start intent URLs.
     nativeLifecycle.getLaunchUrl().then((url) => {
       clearTimeout(fallbackTimer);
-      if (isShareUrl(url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = url;
+      }
       _launchUrlCheckedRef.current = true;
     }).catch(() => {
       clearTimeout(fallbackTimer);
@@ -890,6 +911,7 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return;
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
+    if (_suppressAutoCameraOnDeepLinkRef.current) return;
     if (showCompleteProfile) return; // wait until profile gate clears
 
     let cancelled = false;
@@ -993,6 +1015,7 @@ function WellnessValleyApp() {
       // ── Body Parameters Card deep link ───────────────────────────────────
       const bpcToken = extractBpcToken(rawUrl);
       if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
+        _suppressAutoCameraOnDeepLinkRef.current = true;
         seenTokens.add(`bpc:${bpcToken}`);
         try {
           const card = await fetchPublicCard(bpcToken);
@@ -1015,6 +1038,7 @@ function WellnessValleyApp() {
 
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
+      _suppressAutoCameraOnDeepLinkRef.current = true;
       seenTokens.add(token);
 
       try {
@@ -1096,6 +1120,7 @@ function WellnessValleyApp() {
     // Register listener for foreground deep-links
     nativeLifecycle
       .addAppUrlOpenListener((event) => {
+        if (event?.url) _pendingDeepLinkUrlRef.current = event.url;
         handleUrl(event?.url);
       })
       .then((h) => {
@@ -1109,6 +1134,13 @@ function WellnessValleyApp() {
     nativeLifecycle.getLaunchUrl().then((url) => {
       if (!cancelled && url) handleUrl(url);
     });
+
+    // Replay any share URL captured by the early cold-start guard.
+    const pendingUrl = _pendingDeepLinkUrlRef.current;
+    if (!cancelled && pendingUrl) {
+      _pendingDeepLinkUrlRef.current = null;
+      handleUrl(pendingUrl);
+    }
 
     return () => {
       cancelled = true;
