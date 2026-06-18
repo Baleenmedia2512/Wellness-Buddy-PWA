@@ -8,7 +8,7 @@
 // (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, FileBarChart, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
@@ -56,7 +56,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // entry kinds (food, weight, education, watch, unknown) for the selected IST day.
   // Set REACT_APP_FF_DIARY_TIMELINE=false to revert to the stacked layout.
   const timelineEnabled = diaryEnabled && isFlagEnabled('ff.diary-timeline');
-  const { triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
+  const { triggerRefresh: triggerNutritionRefresh, refreshKey: nutritionContextRefreshKey } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
@@ -152,12 +152,44 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // { captureId, userId, imageBase64, expiresAt }
   const viewingSelf = !selectedMember || selectedMember.isSelf;
 
-  // Tapping an "Other" row opens the image viewer with Retry / Edit. In the
-  // timeline mode (ff.diary-timeline), food / weight / education rows are
-  // informational — their cards already surface key metrics (kcal, kg, topic).
-  // Detail modals for those kinds are a follow-up tracked in ADR-0003 §next.
-  // Unknown entries continue to use the full UnknownEntryFlow.
+  // ── Timeline imperative handles (ff.diary-timeline) ──────────────────────
+  // Each ref is written by the corresponding hidden dashboard on every render.
+  // When a timeline row is tapped, the shell calls the matching ref to open
+  // the existing modal inside the relevant dashboard component.
+  const nutritionOpenRef = useRef(null);
+  const weightOpenRef    = useRef(null);
+  const educationOpenRef = useRef(null);
+
+  // Reload the diary feed whenever a nutrition mutation fires the shared context.
+  // This keeps the timeline timestamp/calorie values fresh after an edit or delete
+  // without requiring a manual refresh.
+  const prevNutritionContextKeyRef = useRef(0);
+  useEffect(() => {
+    if (
+      nutritionContextRefreshKey > 0 &&
+      nutritionContextRefreshKey !== prevNutritionContextKeyRef.current
+    ) {
+      prevNutritionContextKeyRef.current = nutritionContextRefreshKey;
+      reloadDiary();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable (closure over setState)
+  }, [nutritionContextRefreshKey]);
+
+  // Tap handler for timeline entries: dispatches to the matching imperative
+  // handle (food/weight/education) or opens the unknown capture flow.
   const handleEntryOpen = (entry) => {
+    if (entry.kind === 'food') {
+      nutritionOpenRef.current?.(entry.payload?.id);
+      return;
+    }
+    if (entry.kind === 'weight') {
+      weightOpenRef.current?.(entry.payload?.id);
+      return;
+    }
+    if (entry.kind === 'education') {
+      educationOpenRef.current?.(entry.payload?.id);
+      return;
+    }
     if (entry.kind === 'unknown') {
       const p = entry.payload || {};
       setUnknownFlow({
@@ -165,8 +197,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         imageBase64: p.imageBase64,
       });
     }
-    // food / weight / education / watch: no-op in the timeline view.
-    // The row cards already display the primary metric (kcal / kg / topic).
+    // watch: informational only (kcal already visible on card), no detail modal.
   };
 
   // Swipe-to-delete is intentionally disabled for unknown rows to preserve the
@@ -482,17 +513,70 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               Unknown entries retain the full UnknownEntryFlow (Retry / Edit /
               undo) via onEntryOpen → handleEntryOpen. */}
           {timelineEnabled ? (
-            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
-              <DiaryFeed
-                showTimeline
-                refreshKey={diaryReloadKey}
-                ownerUserId={ownerId}
-                viewerUserId={user?.id || user?.userId}
-                date={selectedDate}
-                onEntryOpen={handleEntryOpen}
-                onEntryDelete={handleEntryDelete}
-              />
-            </div>
+            <>
+              <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
+                <DiaryFeed
+                  showTimeline
+                  refreshKey={diaryReloadKey}
+                  ownerUserId={ownerId}
+                  viewerUserId={user?.id || user?.userId}
+                  date={selectedDate}
+                  onEntryOpen={handleEntryOpen}
+                  onEntryDelete={handleEntryDelete}
+                />
+              </div>
+
+              {/* Hidden dashboards — mounted so their existing modals (position:fixed)
+                  remain available when the user taps a timeline entry. The container
+                  has height:0 + overflow:hidden which clips the visual content but
+                  does NOT affect position:fixed descendants (modals use fixed inset-0
+                  and are anchored to the viewport, not this box). The openRef handles
+                  receive the matching open-by-id function on every render. The
+                  onAfterModalClose callbacks keep the timeline feed in sync after an
+                  edit or delete. */}
+              <div
+                aria-hidden="true"
+                style={{ position: 'absolute', height: 0, overflow: 'hidden', width: '100%' }}
+              >
+                <NutritionDashboard
+                  user={displayUser}
+                  onBack={onBack}
+                  apiBaseUrl={apiBaseUrl}
+                  onMealDelete={onMealDelete}
+                  hideHeader
+                  hideDateStrip
+                  hideOverview
+                  selectedDate={selectedDate}
+                  setSelectedDate={setSelectedDate}
+                  bmrUpdateKey={bmrUpdateKey}
+                  watchBurnedCalories={watchBurnedCalories}
+                  initialMealId={initialMealId}
+                  openRef={nutritionOpenRef}
+                />
+                <WeightDashboard
+                  user={displayUser}
+                  apiBaseUrl={apiBaseUrl}
+                  hideHeader
+                  hideOverview
+                  selectedDate={selectedDate}
+                  refreshKey={weightReloadKey}
+                  initialEntryId={initialMealId}
+                  openRef={weightOpenRef}
+                  onAfterModalClose={reloadDiary}
+                />
+                <EducationDashboard
+                  user={displayUser}
+                  apiBaseUrl={apiBaseUrl}
+                  hideHeader
+                  hideOverview
+                  selectedDate={selectedDate}
+                  refreshKey={educationRefreshKey + diaryEducationRefreshKey}
+                  initialEntryId={initialMealId}
+                  openRef={educationOpenRef}
+                  onAfterModalClose={reloadDiary}
+                />
+              </div>
+            </>
 
           ) : diaryEnabled ? (
             /* ff.diary-feed ON + ff.diary-timeline OFF — legacy stacked layout

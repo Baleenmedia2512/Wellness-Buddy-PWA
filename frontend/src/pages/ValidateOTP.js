@@ -1,14 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { Capacitor } from '@capacitor/core';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
-import { InlineNumericKeypad } from '../features/user';
-
-
-// Use the inline custom keypad only on native (Capacitor) builds.
-// On web/PWA, use the device's native keyboard.
-const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
@@ -267,37 +260,24 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
               <input
                 key={index}
                 ref={el => inputRefs.current[index] = el}
-                type={USE_CUSTOM_KEYPAD ? 'text' : 'tel'}
-                inputMode={USE_CUSTOM_KEYPAD ? 'none' : 'numeric'}
+                type="tel"
+                inputMode="numeric"
                 pattern="[0-9]*"
                 autoComplete={index === 0 ? 'one-time-code' : 'off'}
-                readOnly={USE_CUSTOM_KEYPAD}
                 maxLength={1}
-                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${USE_CUSTOM_KEYPAD ? 'caret-transparent' : ''} ${
+                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${
                   error ? 'border-red-200 bg-red-50 text-red-600' :
                   success ? 'border-green-500 bg-green-50 text-green-600' :
                   digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
                 }`}
                 value={digit}
-                onChange={(e) => !USE_CUSTOM_KEYPAD && handleOtpChange(index, e.target.value)}
-                onKeyDown={(e) => !USE_CUSTOM_KEYPAD && handleKeyDown(index, e)}
-                onPaste={(e) => !USE_CUSTOM_KEYPAD && handlePaste(e)}
-                onFocus={USE_CUSTOM_KEYPAD ? (e) => e.target.blur() : undefined}
-                onContextMenu={USE_CUSTOM_KEYPAD ? (e) => e.preventDefault() : undefined}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                onPaste={handlePaste}
                 disabled={validating}
               />
             ))}
           </div>
-
-          {/* Inline numeric keypad (native apps only) */}
-          {USE_CUSTOM_KEYPAD && (
-            <div className="mb-6">
-              <InlineNumericKeypad
-                onDigit={handleKeypadDigit}
-                onBackspace={handleKeypadBackspace}
-              />
-            </div>
-          )}
 
           <div className="text-center mb-8 min-h-[24px]">
             {error ? (
