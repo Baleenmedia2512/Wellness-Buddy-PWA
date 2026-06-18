@@ -46,10 +46,22 @@ export async function handleCreateMarathon(body) {
   });
 
   // ── Insert participants with roles ───────────────────────────────────────
-  await insertParticipantsWithRoles(marathon.id, payload.participants);
+  // Always ensure the creating coach is captain, even if not sent by the client.
+  // De-duplicate: if the coach is already in the list, upgrade their role to captain.
+  const participantsWithCoach = (() => {
+    const filtered = payload.participants.filter(p => p.userId !== payload.coachId);
+    const existingCaptains = filtered.filter(p => p.role === 'captain');
+    // If someone else was marked captain, demote them to member (coach is always captain)
+    const normalised = existingCaptains.length
+      ? filtered.map(p => p.role === 'captain' ? { ...p, role: 'member' } : p)
+      : filtered;
+    return [{ userId: payload.coachId, role: 'captain' }, ...normalised];
+  })();
+
+  await insertParticipantsWithRoles(marathon.id, participantsWithCoach);
 
   // ── Lock baseline weights (non-fatal if weights unavailable) ────────────
-  const userIds = payload.participants.map(p => p.userId);
+  const userIds = [...new Set([payload.coachId, ...payload.participants.map(p => p.userId)])];
   try {
     await lockBaselineWeights(marathon.id, userIds);
   } catch (err) {
@@ -77,7 +89,7 @@ export async function handleCreateMarathon(body) {
         totalLaps:    marathon.total_laps,
         daysPerLap:   marathon.days_per_lap,
         startedAt:    marathon.started_at,
-        participants: payload.participants.length,
+        participants: participantsWithCoach.length,
       },
     },
   };

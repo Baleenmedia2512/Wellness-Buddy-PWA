@@ -24,7 +24,7 @@ const CARD_TYPES = [
 const ROLE_OPTIONS = [
   { value: 'member',            label: 'Member' },
   { value: 'assistant_captain', label: 'Asst. Captain' },
-  { value: 'captain',           label: 'Captain' },
+  // Captain is always the creating coach — not assignable here
 ];
 
 // ── Styles ─────────────────────────────────────────────────────────────────
@@ -347,8 +347,7 @@ const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
         background: '#f0fdf4', borderRadius: 8, padding: '8px 10px',
         border: '1px solid #d1fae5',
       }}>
-        Tap a member to select. Change their role with the dropdown.
-        Max 1 Captain · Max 1 Asst. Captain.
+        You are automatically added as <strong>Captain</strong>. Select members and optionally assign one as Asst. Captain.
       </div>
 
       {/* Member list */}
