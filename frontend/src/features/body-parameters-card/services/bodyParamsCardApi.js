@@ -97,11 +97,25 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
  * @returns {Promise<Array>} Array of body parameter cards
  */
 export async function listBodyParamsCards(coachId) {
+  const url = `${getApiBaseUrl()}/api/body-parameters-card/list?coachId=${encodeURIComponent(coachId)}`;
+  console.log('🌐 [API] listBodyParamsCards - Request URL:', url);
+  console.log('🌐 [API] listBodyParamsCards - CoachId:', coachId, 'Type:', typeof coachId);
+  
   const response = await CapacitorHttp.get({
-    url: `${getApiBaseUrl()}/api/body-parameters-card/list?coachId=${encodeURIComponent(coachId)}`,
+    url,
     headers: { 'Cache-Control': 'no-cache' },
   });
+  
+  console.log('🌐 [API] listBodyParamsCards - Response status:', response.status);
+  console.log('🌐 [API] listBodyParamsCards - Response data:', JSON.stringify(response.data, null, 2));
+  
   const result = response.data;
-  if (!result?.ok) throw new Error(result?.error?.message || 'Failed to list cards');
-  return Array.isArray(result.data) ? result.data : [];
+  if (!result?.ok) {
+    console.error('❌ [API] listBodyParamsCards - API returned error:', result?.error);
+    throw new Error(result?.error?.message || 'Failed to list cards');
+  }
+  
+  const cards = Array.isArray(result.data) ? result.data : [];
+  console.log('✅ [API] listBodyParamsCards - Returning', cards.length, 'cards');
+  return cards;
 }

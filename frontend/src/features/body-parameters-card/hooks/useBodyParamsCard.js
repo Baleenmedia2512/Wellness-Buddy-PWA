@@ -35,6 +35,7 @@ const EMPTY_FORM = {
   bmi:          '',
   fatPercent:   '',
   bmr:          '',
+  visceralFat:  '',
   bodyAge:      '',
   recordedDate: new Date().toISOString().substring(0, 10),
   locationName: '',
@@ -58,6 +59,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
         fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
+        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
@@ -103,6 +105,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
         fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
+        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
@@ -151,7 +154,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         const results = members
           .filter((m) => {
             if (!m.phoneNumber) return false;
-            if (m.userId === coachUserId) return false;
+            // Allow coaches to create cards for themselves (removed coach exclusion)yes
             return toNationalDigits(m.phoneNumber).startsWith(toNationalDigits(digits));
           })
           .slice(0, 10)
@@ -255,7 +258,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const results = allTeamMembers
         .filter((m) => {
           if (!m.phoneNumber) return false;
-          if (m.userId === coachUserId) return false;
+          // Allow coaches to create cards for themselves (removed coach exclusion)
           const normalizedMemberPhone = toNationalDigits(m.phoneNumber);
           const normalizedSearchDigits = toNationalDigits(digits);
           const matches = normalizedMemberPhone.startsWith(normalizedSearchDigits);
@@ -274,6 +277,24 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         }));
       debugLog('📱 [PhoneSearch] Results:', results.length, 'matches');
       setPhoneSuggestions(results);
+      
+      // AUTO-FILL: If exact match found (phone numbers are identical), auto-fill immediately
+      if (results.length === 1) {
+        const exactMatch = results[0];
+        const normalizedMatch = toNationalDigits(exactMatch.phoneNumber);
+        const normalizedSearch = toNationalDigits(digits);
+        if (normalizedMatch === normalizedSearch) {
+          debugLog('🎯 [PhoneSearch] EXACT MATCH - Auto-filling:', exactMatch);
+          setForm((prev) => ({
+            ...prev,
+            phoneNumber: exactMatch.phoneNumber,
+            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: String(exactMatch.userName).trim() } : {}),
+            ...(exactMatch.heightCm != null ? { heightCm: String(exactMatch.heightCm) } : {}),
+            ...(exactMatch.bmr != null ? { bmr: String(exactMatch.bmr) } : {}),
+          }));
+          setPhoneSuggestions([]); // Clear suggestions after auto-fill
+        }
+      }
     }, 150);
   }, [coachUserId, allTeamMembers]);
 
@@ -353,6 +374,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:          form.bmi,
         fatPercent:   form.fatPercent,
         bmr:          form.bmr,
+        visceralFat:  form.visceralFat,
         bodyAge:      form.bodyAge,
         recordedDate: form.recordedDate,
         locationName: form.locationName,
@@ -372,6 +394,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:         form.bmi          || undefined,
         fatPercent:  form.fatPercent   || undefined,
         bmr:         form.bmr          || undefined,
+        visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
         recordedDate: form.recordedDate || undefined,
         locationName: form.locationName || undefined,
@@ -398,6 +421,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:          form.bmi,
         fatPercent:   form.fatPercent,
         bmr:          form.bmr,
+        visceralFat:  form.visceralFat,
         bodyAge:      form.bodyAge,
         recordedDate: form.recordedDate,
         locationName: form.locationName,

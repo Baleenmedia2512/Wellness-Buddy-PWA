@@ -30,6 +30,7 @@ export async function insertCard(payload) {
       fat_percent:  payload.fatPercent,
       bmr:          payload.bmr,
       body_age:     payload.bodyAge,
+      visceral_fat: payload.visceralFat,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -59,6 +60,7 @@ export async function updateCard(id, payload) {
       fat_percent:   payload.fatPercent,
       bmr:           payload.bmr,
       body_age:      payload.bodyAge,
+      visceral_fat:  payload.visceralFat,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -84,7 +86,7 @@ export async function findCardByToken(token) {
     .select(
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, recorded_date, location_name, created_at'
+      'body_age, visceral_fat, recorded_date, location_name, created_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
@@ -112,8 +114,8 @@ export async function findTeamPhoneByUserId(userId) {
 
 /**
  * Create a new team_table row from the phone the coach entered.
- * Inserts first; if PhoneNumber already exists (unique index), finds that user
- * and UPDATES their Name/Height/Bmr if the coach provided updated values.
+ * Checks if phone exists first; if yes, UPDATES the member.
+ * If no, creates a new member. This avoids duplicate key errors.
  *
  * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
@@ -122,6 +124,51 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
+  // STEP 1: Check if phone number already exists (search all variants)
+  let existingUserId = null;
+  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+    const { data: existing, error: lookupErr } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .eq('PhoneNumber', variant)
+      .order('UserId', { ascending: true })
+      .limit(1);
+    
+    if (lookupErr) throw lookupErr;
+    
+    if (existing?.[0]?.UserId) {
+      existingUserId = existing[0].UserId;
+      break; // Found existing member
+    }
+  }
+
+  // STEP 2: If phone exists, UPDATE existing member
+  if (existingUserId) {
+    const updatePatch = {};
+    if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
+    if (heightCm != null) updatePatch.Height = heightCm;
+    if (bmr != null) updatePatch.Bmr = bmr;
+    
+    if (Object.keys(updatePatch).length > 0) {
+      const { error: updateErr } = await supabase
+        .from('team_table')
+        .update(updatePatch)
+        .eq('UserId', existingUserId);
+      
+      if (updateErr) {
+        logger.warn('[body-params-card] failed to update existing member profile', {
+          userId: existingUserId, updateErr,
+        });
+      }
+    }
+    
+    logger.info('[body-params-card] phone exists in team_table, updated and reusing', {
+      userId: existingUserId, updated: Object.keys(updatePatch).length > 0
+    });
+    return { userId: existingUserId, isNew: false };
+  }
+
+  // STEP 3: Phone doesn't exist, CREATE new member
   const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr });
   const now = getISTTimestamp();
   const insertPayload = {
@@ -146,47 +193,10 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
     .select('UserId')
     .single();
 
-  if (!error) {
-    logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
-    return { userId: data.UserId, isNew: true };
-  }
+  if (error) throw error;
 
-  if (error.code === '23505') {
-    for (const variant of buildPhoneLookupVariants(phoneNumber)) {
-      const { data: existing, error: lookupErr } = await supabase
-        .from('team_table')
-        .select('UserId')
-        .eq('PhoneNumber', variant)
-        .order('UserId', { ascending: true })
-        .limit(1);
-      if (lookupErr) throw lookupErr;
-      if (existing?.[0]?.UserId) {
-        const existingUserId = existing[0].UserId;
-        // Update the existing member's profile fields with the coach's new values.
-        const updatePatch = {};
-        if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
-        if (heightCm != null) updatePatch.Height = heightCm;
-        if (bmr != null) updatePatch.Bmr = bmr;
-        if (Object.keys(updatePatch).length > 0) {
-          const { error: updateErr } = await supabase
-            .from('team_table')
-            .update(updatePatch)
-            .eq('UserId', existingUserId);
-          if (updateErr) {
-            logger.warn('[body-params-card] failed to update existing member profile', {
-              userId: existingUserId, updateErr,
-            });
-          }
-        }
-        logger.info('[body-params-card] phone already in team_table, updated and reusing user', {
-          userId: existingUserId,
-        });
-        return { userId: existingUserId, isNew: false };
-      }
-    }
-  }
-
-  throw error;
+  logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
+  return { userId: data.UserId, isNew: true };
 }
 
 /** @deprecated Use createTeamMemberFromPhone */
@@ -249,6 +259,27 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
+ * Find the latest card for a user (to check if card already exists).
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestCardByUserId(userId) {
+  if (!userId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error} = await supabase
+    .from(TABLE)
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+  return data[0];
+}
+
+/**
  * Find the most recent previous card for a given user, excluding the current card.
  * Returns null when no prior card exists (fresh user).
  *
@@ -292,32 +323,59 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
 export async function listCardsForCoach(coachId) {
   const supabase = getSupabaseClient();
   
-  // First get all team members for this coach (including inactive)
-  const { data: teamMembers, error: teamError } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, PhoneNumber')
-    .eq('CoachId', coachId);
-    // Removed .eq('Status', 'Active') to show all cards
-
-  if (teamError) throw teamError;
-  if (!teamMembers || teamMembers.length === 0) return [];
-
-  const userIds = teamMembers.map(m => m.UserId);
-
-  // Then get all cards for these users
+  logger.info('[listCardsForCoach] 🔍 QUERYING DATABASE', { coachId, type: typeof coachId });
+  
+  // Directly query cards created by this coach
   const { data: cards, error: cardsError } = await supabase
     .from(TABLE)
     .select('*')
-    .in('user_id', userIds)
+    .eq('created_by', coachId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false });
 
-  if (cardsError) throw cardsError;
-  if (!cards) return [];
+  if (cardsError) {
+    logger.error('[listCardsForCoach] 💥 DATABASE ERROR:', cardsError);
+    throw cardsError;
+  }
+  if (!cards) {
+    logger.warn('[listCardsForCoach] ⚠️ No cards returned (null/undefined)');
+    return [];
+  }
+  
+  logger.info('[listCardsForCoach] 🎯 RAW QUERY RESULT', { 
+    coachId, 
+    cardCount: cards.length,
+    cards: cards.map(c => ({ 
+      id: c.id, 
+      name: c.name, 
+      created_by: c.created_by,
+      user_id: c.user_id,
+      visceral_fat: c.visceral_fat
+    }))
+  });
 
-  // Map team member info to cards
-  return cards.map(card => {
-    const member = teamMembers.find(m => m.UserId === card.user_id);
+  // Get team member info for phone numbers (optional - card has name already)
+  const userIds = cards.map(c => c.user_id).filter(Boolean);
+  let teamMembersMap = {};
+  
+  if (userIds.length > 0) {
+    logger.info('[listCardsForCoach] 📞 Fetching phone numbers for userIds:', userIds);
+    const { data: teamMembers } = await supabase
+      .from('team_table')
+      .select('UserId, PhoneNumber')
+      .in('UserId', userIds);
+    
+    if (teamMembers) {
+      teamMembersMap = Object.fromEntries(
+        teamMembers.map(m => [m.UserId, m])
+      );
+      logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
+    }
+  }
+
+  // Map cards with optional phone number from team_table
+  const mappedCards = cards.map(card => {
+    const member = teamMembersMap[card.user_id];
     return {
       id:           card.id,
       userId:       card.user_id,
@@ -331,10 +389,18 @@ export async function listCardsForCoach(coachId) {
       fatPercent:   card.fat_percent,
       bmr:          card.bmr,
       bodyAge:      card.body_age,
+      visceralFat:  card.visceral_fat,
       recordedDate: card.recorded_date,
       locationName: card.location_name,
       createdAt:    card.created_at,
       createdBy:    card.created_by,
     };
   });
+  
+  logger.info('[listCardsForCoach] 📦 RETURNING MAPPED CARDS', { 
+    count: mappedCards.length,
+    sample: mappedCards[0] 
+  });
+  
+  return mappedCards;
 }

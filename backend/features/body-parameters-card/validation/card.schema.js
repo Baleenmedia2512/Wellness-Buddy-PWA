@@ -18,7 +18,7 @@ export function validateCreateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
+          bmi, fatPercent, bmr, bodyAge, visceralFat, recordedDate, locationName, phoneNumber } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   const createdByN = parseInt(createdBy, 10);
@@ -35,6 +35,7 @@ export function validateCreateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99); // No strict validation - allow any reasonable value
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
@@ -62,6 +63,7 @@ export function validateCreateCard(body) {
     fatPercent: fatN,
     bmr:       bmrN,
     bodyAge:   bodyAgeN,
+    visceralFat: visceralN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
@@ -80,7 +82,7 @@ export function validateUpdateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { id, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
+          bmi, fatPercent, bmr, bodyAge, visceralFat, recordedDate, locationName, phoneNumber } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -96,6 +98,7 @@ export function validateUpdateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999); // No strict validation - allow any reasonable value
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
@@ -121,6 +124,7 @@ export function validateUpdateCard(body) {
     fatPercent:  fatN,
     bmr:         bmrN,
     bodyAge:     bodyAgeN,
+    visceralFat: visceralN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,

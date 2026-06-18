@@ -59,15 +59,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     setError(null);
 
     try {
+      console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
       const userId = await getUserId(user.email);
-      debugLog('📋 [WellnessCounselling] Fetching body params cards for coach:', userId);
+      console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
+      
+      debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
+      console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
       
       const cards = await listBodyParamsCards(userId);
+      console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
+      console.log('📦 [WellnessCounselling] Cards data:', JSON.stringify(cards, null, 2));
+      
       debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
       
       setBodyParamsCards(cards || []);
+      console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
     } catch (err) {
-      console.error("Error fetching cards:", err);
+      console.error("💥 [WellnessCounselling] Error fetching cards:", err);
+      console.error("💥 Error details:", err.message, err.stack);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
       if (!isBackground) setLoading(false);
@@ -262,25 +271,31 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           setBodyParamsPreCapCard(formData);
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
+          const isEditMode = Boolean(selectedCard?.id);
+          
           setIsBodyParamsFormOpen(false);
-          setSelectedCard(null);
           
           // Instantly add/update card in the list (optimistic update)
           setBodyParamsCards(prevCards => {
-            if (previousCard) {
-              // Update existing card
-              return prevCards.map(c => c.id === card.id ? card : c);
+            if (isEditMode && selectedCard?.id) {
+              // Update mode: Replace the existing card with same ID
+              return prevCards.map(c => 
+                c.id === selectedCard.id ? { ...c, ...card, id: selectedCard.id } : c
+              );
             } else {
-              // Add new card at the beginning
+              // Create mode: Add new card at the beginning
               return [card, ...prevCards];
             }
           });
           
+          setSelectedCard(null);
+          
           // Show share sheet immediately
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
           
-          // Refresh in background to sync with server
-          fetchData(true);
+          // DO NOT auto-refresh - keep the optimistic card visible
+          // Card persists through sharing and app lifecycle
+          // User can manually refresh if needed using the refresh button
         }}
       />
 
@@ -290,8 +305,7 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Refresh the list immediately when share sheet closes
-          fetchData(true);
+          // Don't refresh here - already refreshing in background after save
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
