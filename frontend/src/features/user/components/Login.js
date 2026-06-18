@@ -1,6 +1,8 @@
 // src/features/user/components/Login.js
 // Orchestrator — wires useAuthFlow + useOtpInput + useResendCountdown.
-// OTP and Google sign-in (injected via onSignIn) are kept as separate paths.
+// Entry step goes directly to the unified Mobile / Email input (no intro panel).
+// OTP screen auto-verifies via WebOTP (Android) / iOS autofill / paste — no
+// manual Verify button required.
 import React, { useEffect, useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
@@ -9,7 +11,6 @@ import useAuthFlow from '../hooks/useAuthFlow';
 import useOtpInput from '../hooks/useOtpInput';
 import useResendCountdown from '../hooks/useResendCountdown';
 import LoginBlobs from './login/LoginBlobs';
-import LoginIntroPanel from './login/LoginIntroPanel';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
 
@@ -17,12 +18,12 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
   const auth = useAuthFlow({ onOtpVerified });
   const otpCtl = useOtpInput(6);
   const resend = useResendCountdown(60, auth.otpSent);
-  const [showEmailForm, setShowEmailForm] = useState(false);
+  // Always start on the email/phone entry — no intro panel step.
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   useEffect(() => {
-    if (forceOtpVerification) { setShowEmailForm(true); auth.setOtpSent(true); }
+    if (forceOtpVerification) { auth.setOtpSent(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [forceOtpVerification]);
 
@@ -61,14 +62,10 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             <p className="text-sm xs:text-base text-gray-500">
               {auth.otpSent
                 ? `We've sent a verification code to ${auth.activeChannel === 'phone' ? 'your phone' : auth.email}`
-                : 'Sign in to continue your wellness journey'}
+                : 'Enter your mobile number or email to continue'}
             </p>
           </div>
-          {!showEmailForm ? (
-            <LoginIntroPanel
-              onChooseEmail={() => setShowEmailForm(true)}
-            />
-          ) : !auth.otpSent ? (
+          {!auth.otpSent ? (
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
               countryDial={auth.countryDial} setCountryDial={auth.setCountryDial}
               onSubmit={handleSendOtp} loading={auth.loading} />
