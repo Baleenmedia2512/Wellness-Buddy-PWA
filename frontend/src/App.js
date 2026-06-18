@@ -183,6 +183,9 @@ const WellnessUniversityReport = lazy(() =>
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounsellingCards"),
 );
+const MarathonDashboard = lazy(() =>
+  import("./features/marathon/components/MarathonDashboard"),
+);
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
 const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
@@ -641,6 +644,9 @@ function WellnessValleyApp() {
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
 
+  // Marathon dashboard state (for coaches)
+  const [showMarathon, setShowMarathon] = useState(false);
+
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
 
@@ -718,8 +724,8 @@ function WellnessValleyApp() {
   useEffect(() => {
     _homeScreenActiveRef.current =
       !!user && !authLoading && !showDashboard && !showCompleteProfile &&
-      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
-  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+      !showActivityTimeReport && !showDisciplineReport && !showMarathon && !showScreenTime;
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showMarathon, showScreenTime]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -1365,6 +1371,10 @@ function WellnessValleyApp() {
         showMainPage();
         return true;
       }
+      if (showMarathon) {
+        showMainPage();
+        return true;
+      }
       if (showDashboard) {
         showMainPage();
         return true;
@@ -1388,6 +1398,7 @@ function WellnessValleyApp() {
       !showDashboard &&
         !showActivityTimeReport &&
         !showDisciplineReport &&
+        !showMarathon &&
         !showStepCounter &&
         !showScreenTime,
     );
@@ -1397,6 +1408,7 @@ function WellnessValleyApp() {
     showDashboard,
     showActivityTimeReport,
     showDisciplineReport,
+    showMarathon,
     showStepCounter,
     showScreenTime,
   ]);
@@ -1577,6 +1589,7 @@ function WellnessValleyApp() {
     setShowWellnessReports(false);
     setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
+    setShowMarathon(false);
     // setShowStepCounter(false); // feature disabled
     setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
@@ -6154,6 +6167,7 @@ function WellnessValleyApp() {
   const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
+  const deferredShowMarathon = useDeferredValue(showMarathon);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
 
   // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
@@ -6443,6 +6457,30 @@ function WellnessValleyApp() {
     );
   }
 
+  // Marathon Dashboard - Coach-facing marathon recognition engine
+  if (deferredShowMarathon) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading Marathon..." />}>
+        <div className="h-screen w-screen bg-white flex flex-col overflow-auto">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-10">
+            <button
+              onClick={() => { setShowMarathon(false); Session.setCurrentPage("main"); }}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="Back"
+            >
+              ← Back
+            </button>
+            <span className="font-semibold text-gray-800">Marathon</span>
+          </div>
+          <MarathonDashboard
+            coachId={user?.id}
+            teamMemberIds={[]}
+          />
+        </div>
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <LocationGuard>
@@ -6680,6 +6718,11 @@ function WellnessValleyApp() {
         }
         onShowWellnessCounselling={() => startTransition(() => setShowWellnessCounselling(true))}
         onShowAttendanceReport={() => startTransition(() => setShowAttendanceReport(true))}
+        onShowMarathon={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => { startTransition(() => setShowMarathon(true)); Session.setCurrentPage("marathon"); }
+            : null
+        }
         onShowNutritionCentersMap={() => startTransition(() => setShowNutritionCentersMap(true))}
         onShowRegisterCenter={null}
         onSignOut={handleSignOut}
