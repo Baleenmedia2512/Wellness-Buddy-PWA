@@ -145,16 +145,18 @@ const MemberCell = ({ member, isLeader }) => {
         )}
       </div>
 
-      {/* Name */}
+      {/* Name — allows 2 lines for longer names */}
       <div style={{
-        fontSize: 10, fontWeight: 700, color: '#1f2937',
+        fontSize: 11, fontWeight: 700, color: '#1f2937',
         textAlign: 'center',
         padding: '5px 4px 0',
-        lineHeight: 1.2,
+        lineHeight: 1.25,
         maxWidth: CELL_SIZE - 8,
         overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        wordBreak: 'break-word',
       }}>
         {name}
       </div>
@@ -234,14 +236,18 @@ const MarathonTeamCard = ({ card }) => {
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8 }}>
           <span style={{
-            background: 'rgba(255,255,255,0.18)', color: '#fff',
-            fontSize: 12, fontWeight: 700, borderRadius: 100, padding: '3px 12px',
+            background: 'rgba(255,255,255,0.92)', color: '#0f766e',
+            fontSize: 12, fontWeight: 800, borderRadius: 100, padding: '4px 14px',
+            maxWidth: CARD_W - 80, overflow: 'hidden', textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap', display: 'inline-block',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
           }}>
             {marathonName || 'Team Card'}
           </span>
           <span style={{
-            background: 'rgba(255,255,255,0.18)', color: '#fff',
-            fontSize: 12, fontWeight: 700, borderRadius: 100, padding: '3px 12px',
+            background: 'rgba(0,0,0,0.35)', color: '#fff',
+            fontSize: 12, fontWeight: 700, borderRadius: 100, padding: '4px 12px',
+            whiteSpace: 'nowrap',
           }}>
             Lap {lapNumber}  ·  Day {dayNumber}
           </span>
@@ -276,7 +282,7 @@ const MarathonTeamCard = ({ card }) => {
         backdropFilter: 'blur(4px)',
       }}>
         <div style={{
-          fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.75)',
+          fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.95)',
           marginBottom: 2,
         }}>
           {marathonName || 'Team'}  ·  Lap {lapNumber}, Day {dayNumber}

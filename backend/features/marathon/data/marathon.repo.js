@@ -171,6 +171,23 @@ export async function countLapSequenceForTeam(coachId, teamName) {
   return count || 0;
 }
 
+/**
+ * Mark all currently-active LAPs for the same coach+team as completed.
+ * Called when a new LAP is created for an existing team so that only one
+ * LAP per team is active at any time.
+ */
+export async function completePreviousActiveLaps(coachId, teamName) {
+  const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('marathon_table')
+    .update({ status: 'completed', completed_at: now })
+    .eq('coach_id', coachId)
+    .eq('team_name', teamName)
+    .eq('status', 'active');
+  if (error) throw error;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Baseline weight locking
 // ─────────────────────────────────────────────────────────────────────────────

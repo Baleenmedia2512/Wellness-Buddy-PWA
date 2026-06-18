@@ -3,13 +3,15 @@
  *
  * Fixes applied:
  *  1. Team name not re-asked on 2nd LAP (pre-filled from existing team names)
- *  2. Delete option per LAP
- *  3. After create: immediately shows LAP list
+ *  2. Delete option per LAP — custom confirm modal (no window.confirm)
+ *  3. After create: immediately shows LAP list with new lap auto-selected
  *  4. After save: list reloads with newest LAP at top
  *  5. Exactly 9 participants enforced (captain=coach auto + 8 members)
  *  6. Back button uses app theme (Tailwind, matches other screens in App.js)
- *  7. Mobile-responsive padding using Tailwind tokens
- *  (8. Theme: app green #16a34a / green-600, bg-white, text-gray-800)
+ *  7. Mobile-responsive padding with safe-area insets
+ *  8. Lap search / filter
+ *  9. LapListItem aligned labels (LAP badge + formatted date)
+ * 10. Previous active laps auto-completed on new lap creation (backend)
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { useMarathon }      from '../hooks/useMarathon.js';
@@ -30,6 +32,14 @@ const ROLE_OPTIONS = [
 ];
 
 const LAP_SIZE = 8; // members selected by coach (+ 1 auto-captain = 9 total)
+
+// ── Date formatter ────────────────────────────────────────────────────────────
+function formatLapDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr).substring(0, 10);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 // ── App theme tokens (matches App.js / Tailwind palette) ──────────────────
 const T = {
@@ -184,8 +194,9 @@ const CreateMarathonWizard = ({ coachId, existingTeamNames = [], onCreated, onCa
     setBusy(true); setErr(null);
     try {
       const tn = teamName.trim();
-      await createMarathon({ coachId, name: tn, teamName: tn, totalLaps: 10, daysPerLap: 10, startedAt, participants, role: 'coach' });
-      onCreated();
+      const result = await createMarathon({ coachId, name: tn, teamName: tn, totalLaps: 10, daysPerLap: 10, startedAt, participants, role: 'coach' });
+      // Pass new marathon ID so the dashboard can auto-select it
+      onCreated(result?.data?.marathonId || result?.data?.id || null);
     } catch (e) {
       setErr(e.message || 'Failed to create LAP');
     } finally {
@@ -364,7 +375,7 @@ const CreateMarathonWizard = ({ coachId, existingTeamNames = [], onCreated, onCa
 // ── LAP list item ────────────────────────────────────────────────────────────
 const LapListItem = ({ marathon, isSelected, onSelect, onDelete, deleting }) => (
   <div style={{
-    display: 'flex', alignItems: 'center', gap: 10,
+    display: 'flex', alignItems: 'flex-start', gap: 10,
     padding: '12px 14px',
     background: isSelected ? T.greenBg : T.white,
     border: `1.5px solid ${isSelected ? T.green : T.gray200}`,
@@ -377,7 +388,7 @@ const LapListItem = ({ marathon, isSelected, onSelect, onDelete, deleting }) => 
       width: 36, height: 36, borderRadius: 10, flexShrink: 0,
       background: isSelected ? T.green : T.gray100,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 16,
+      fontSize: 16, marginTop: 2,
     }}>
       🏃
     </div>
@@ -385,31 +396,84 @@ const LapListItem = ({ marathon, isSelected, onSelect, onDelete, deleting }) => 
       <div style={{
         fontSize: 14, fontWeight: 700, color: T.gray800,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        lineHeight: 1.3,
       }}>
         {marathon.name}
       </div>
-      <div style={{ fontSize: 11, color: T.gray400, marginTop: 1 }}>
-        {marathon.days_per_lap} days/lap · Started {marathon.started_at}
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+        {marathon.lap_sequence && (
+          <span style={{
+            fontSize: 10, fontWeight: 800,
+            color: isSelected ? T.green : T.gray600,
+            background: isSelected ? T.greenLight : T.gray100,
+            borderRadius: 4, padding: '1px 6px', lineHeight: 1.5,
+          }}>LAP {marathon.lap_sequence}</span>
+        )}
+        <span style={{ fontSize: 11, color: T.gray400, lineHeight: 1.3 }}>
+          {marathon.days_per_lap} days · {formatLapDate(marathon.started_at)}
+        </span>
       </div>
     </div>
-    {isSelected && (
-      <span style={{
-        fontSize: 11, fontWeight: 700, color: T.green,
-        background: T.greenLight, borderRadius: 100, padding: '3px 8px',
-      }}>Active</span>
-    )}
-    <button
-      onClick={e => { e.stopPropagation(); onDelete(marathon.id); }}
-      disabled={deleting}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
+      {isSelected && (
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: T.green,
+          background: T.greenLight, borderRadius: 100, padding: '2px 8px',
+          whiteSpace: 'nowrap',
+        }}>Active</span>
+      )}
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(marathon.id); }}
+        disabled={deleting}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: deleting ? T.gray400 : T.red, fontSize: 16, padding: '4px 6px',
+          borderRadius: 6, lineHeight: 1,
+        }}
+        title="Delete LAP"
+      >
+        {deleting ? '…' : '🗑'}
+      </button>
+    </div>
+  </div>
+);
+
+// ── Delete confirmation modal ─────────────────────────────────────────────────
+const DeleteConfirmModal = ({ onConfirm, onCancel }) => (
+  <div style={{
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    zIndex: 1000, padding: '0 0 env(safe-area-inset-bottom, 0)',
+  }}
+    onClick={onCancel}
+  >
+    <div
+      onClick={e => e.stopPropagation()}
       style={{
-        background: 'none', border: 'none', cursor: 'pointer',
-        color: T.gray400, fontSize: 18, padding: '4px 6px', borderRadius: 6,
-        flexShrink: 0,
+        background: '#fff', borderRadius: '20px 20px 0 0',
+        padding: '20px 20px calc(20px + env(safe-area-inset-bottom, 0))',
+        width: '100%', maxWidth: 480, boxSizing: 'border-box',
       }}
-      title="Delete LAP"
     >
-      {deleting ? '…' : '🗑'}
-    </button>
+      <div style={{ fontSize: 16, fontWeight: 800, color: '#1f2937', marginBottom: 6 }}>
+        Delete this LAP?
+      </div>
+      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>
+        This will cancel the marathon permanently and cannot be undone.
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={onCancel} style={{
+          flex: 1, padding: '12px', borderRadius: 10,
+          border: '1.5px solid #e5e7eb', background: '#fff',
+          fontSize: 14, fontWeight: 600, color: '#6b7280', cursor: 'pointer',
+        }}>Cancel</button>
+        <button onClick={onConfirm} style={{
+          flex: 1, padding: '12px', borderRadius: 10,
+          border: 'none', background: '#dc2626',
+          fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer',
+        }}>Delete LAP</button>
+      </div>
+    </div>
   </div>
 );
 
@@ -421,10 +485,13 @@ const MarathonDashboard = ({ coachId }) => {
     generateCard, closeShare,
   } = useMarathon({ coachId });
 
-  const [selectedId,     setSelectedId]     = useState('');
-  const [activeCardType, setActiveCardType] = useState(null);
-  const [showCreate,     setShowCreate]     = useState(false);
-  const [deletingId,     setDeletingId]     = useState(null);
+  const [selectedId,      setSelectedId]      = useState('');
+  const [activeCardType,  setActiveCardType]  = useState(null);
+  const [showCreate,      setShowCreate]      = useState(false);
+  const [deletingId,      setDeletingId]      = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deleteError,     setDeleteError]     = useState(null);
+  const [lapSearch,       setLapSearch]       = useState('');
 
   useEffect(() => { fetchMarathons('active'); }, [fetchMarathons]);
 
@@ -434,21 +501,24 @@ const MarathonDashboard = ({ coachId }) => {
     }
   }, [marathons, selectedId]);
 
-  const handleCreated = () => {
+  // After wizard creates a lap, pre-select the new lap's ID then reload list
+  const handleCreated = (newMarathonId) => {
     setShowCreate(false);
-    // Reload immediately — newest LAP will appear at top (ordered by created_at desc)
+    if (newMarathonId) setSelectedId(String(newMarathonId));
     fetchMarathons('active');
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this LAP? This cannot be undone.')) return;
+  const handleDeleteConfirmed = async () => {
+    const id = confirmDeleteId;
+    setConfirmDeleteId(null);
     setDeletingId(id);
+    setDeleteError(null);
     try {
       await deleteMarathon({ marathonId: id, coachId });
       if (String(selectedId) === String(id)) setSelectedId('');
       await fetchMarathons('active');
     } catch (e) {
-      alert(e.message || 'Failed to delete');
+      setDeleteError(e.message || 'Failed to delete LAP. Please try again.');
     } finally {
       setDeletingId(null);
     }
@@ -463,15 +533,20 @@ const MarathonDashboard = ({ coachId }) => {
   // All unique existing team_names (for datalist suggestions in wizard)
   const existingTeamNames = marathons.map(m => m.team_name).filter(Boolean);
 
+  // Filtered lap list for search
+  const filteredMarathons = lapSearch.trim()
+    ? marathons.filter(m => m.name.toLowerCase().includes(lapSearch.toLowerCase().trim()))
+    : marathons;
+
   return (
     <div style={{
-      padding: '12px 16px 40px',
-      maxWidth: 480, margin: '0 auto',
+      padding: 'max(12px, env(safe-area-inset-top, 12px)) max(16px, env(safe-area-inset-right, 16px)) calc(40px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 16px))',
+      maxWidth: 480, margin: '0 auto', boxSizing: 'border-box',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     }}>
 
       {/* Page title */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: T.gray800, margin: 0 }}>
           Marathon LAPs
         </h1>
@@ -479,6 +554,21 @@ const MarathonDashboard = ({ coachId }) => {
           Select a LAP to generate &amp; share recognition cards
         </p>
       </div>
+
+      {/* Delete error banner */}
+      {deleteError && (
+        <div style={{
+          background: T.redBg, border: `1px solid ${T.redBorder}`,
+          borderRadius: 8, padding: '8px 12px', fontSize: 13, color: T.red, marginBottom: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>{deleteError}</span>
+          <button onClick={() => setDeleteError(null)} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: T.red, fontSize: 16, fontWeight: 700, lineHeight: 1, padding: 0,
+          }}>✕</button>
+        </div>
+      )}
 
       {listError && (
         <div style={{ background: T.redBg, border: `1px solid ${T.redBorder}`,
@@ -497,17 +587,58 @@ const MarathonDashboard = ({ coachId }) => {
       {/* LAP list */}
       {!loadingList && marathons.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.gray400,
-            textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            Your LAPs
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 8,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.gray400,
+              textTransform: 'uppercase', letterSpacing: 1 }}>
+              Your LAPs ({marathons.length})
+            </div>
           </div>
-          {marathons.map(m => (
+
+          {/* Search — shown only when there are enough laps to be useful */}
+          {marathons.length > 3 && (
+            <div style={{ position: 'relative', marginBottom: 10 }}>
+              <span style={{
+                position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                fontSize: 14, color: T.gray400, pointerEvents: 'none',
+              }}>🔍</span>
+              <input
+                value={lapSearch}
+                onChange={e => setLapSearch(e.target.value)}
+                placeholder="Search LAPs…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '9px 32px 9px 32px', borderRadius: 10,
+                  border: `1.5px solid ${lapSearch ? T.green : T.gray200}`,
+                  fontSize: 13, outline: 'none', fontFamily: 'inherit',
+                  background: T.white,
+                }}
+              />
+              {lapSearch && (
+                <button onClick={() => setLapSearch('')} style={{
+                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: T.gray400, fontSize: 14, padding: '2px 4px',
+                }}>✕</button>
+              )}
+            </div>
+          )}
+
+          {filteredMarathons.length === 0 && lapSearch && (
+            <div style={{ textAlign: 'center', color: T.gray400, fontSize: 13, padding: '12px 0' }}>
+              No LAPs matching "{lapSearch}"
+            </div>
+          )}
+
+          {filteredMarathons.map(m => (
             <LapListItem
               key={m.id}
               marathon={m}
               isSelected={String(selectedId) === String(m.id)}
               onSelect={id => setSelectedId(String(id))}
-              onDelete={handleDelete}
+              onDelete={id => setConfirmDeleteId(id)}
               deleting={deletingId === m.id}
             />
           ))}
@@ -605,6 +736,14 @@ const MarathonDashboard = ({ coachId }) => {
       )}
 
       <MarathonShareSheet isOpen={shareOpen} onClose={closeShare} card={cardData} shareUrl={shareUrl} />
+
+      {/* Delete confirmation bottom sheet */}
+      {confirmDeleteId && (
+        <DeleteConfirmModal
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ import {
   insertParticipantsWithRoles,
   lockBaselineWeights,
   countLapSequenceForTeam,
+  completePreviousActiveLaps,
 }                                                                          from '../data/marathon.repo.js';
 import { buildMarathonDisplayName }                                        from '../domain/marathon.rules.js';
 import { ValidationError }                                                 from '../../../shared/lib/ValidationError.js';
@@ -28,6 +29,16 @@ export async function handleCreateMarathon(body) {
   if (payload.teamName) {
     const existingCount = await countLapSequenceForTeam(payload.coachId, payload.teamName);
     lapSequence = existingCount + 1;
+
+    // Auto-complete any previous active LAPs for this team so only one is
+    // active at a time. Non-fatal — new LAP is still created even if this fails.
+    if (existingCount > 0) {
+      try {
+        await completePreviousActiveLaps(payload.coachId, payload.teamName);
+      } catch (err) {
+        logger.warn('[handleCreateMarathon] Failed to complete previous active laps (non-fatal)', { error: err.message });
+      }
+    }
   }
 
   const displayName = payload.teamName
