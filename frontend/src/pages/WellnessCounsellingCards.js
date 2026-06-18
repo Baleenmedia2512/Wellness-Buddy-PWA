@@ -59,15 +59,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     setError(null);
 
     try {
+      console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
       const userId = await getUserId(user.email);
-      debugLog('📋 [WellnessCounselling] Fetching body params cards for coach:', userId);
+      console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
+      
+      debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
+      console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
       
       const cards = await listBodyParamsCards(userId);
+      console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
+      console.log('📦 [WellnessCounselling] Cards data:', JSON.stringify(cards, null, 2));
+      
       debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
       
       setBodyParamsCards(cards || []);
+      console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
     } catch (err) {
-      console.error("Error fetching cards:", err);
+      console.error("💥 [WellnessCounselling] Error fetching cards:", err);
+      console.error("💥 Error details:", err.message, err.stack);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
       if (!isBackground) setLoading(false);

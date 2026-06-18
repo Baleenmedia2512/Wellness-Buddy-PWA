@@ -323,6 +323,8 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
 export async function listCardsForCoach(coachId) {
   const supabase = getSupabaseClient();
   
+  logger.info('[listCardsForCoach] 🔍 QUERYING DATABASE', { coachId, type: typeof coachId });
+  
   // Directly query cards created by this coach
   const { data: cards, error: cardsError } = await supabase
     .from(TABLE)
@@ -331,16 +333,33 @@ export async function listCardsForCoach(coachId) {
     .eq('is_deleted', false)
     .order('created_at', { ascending: false });
 
-  if (cardsError) throw cardsError;
-  if (!cards) return [];
+  if (cardsError) {
+    logger.error('[listCardsForCoach] 💥 DATABASE ERROR:', cardsError);
+    throw cardsError;
+  }
+  if (!cards) {
+    logger.warn('[listCardsForCoach] ⚠️ No cards returned (null/undefined)');
+    return [];
+  }
   
-  logger.info('[listCardsForCoach] Found cards', { coachId, cardCount: cards.length });
+  logger.info('[listCardsForCoach] 🎯 RAW QUERY RESULT', { 
+    coachId, 
+    cardCount: cards.length,
+    cards: cards.map(c => ({ 
+      id: c.id, 
+      name: c.name, 
+      created_by: c.created_by,
+      user_id: c.user_id,
+      visceral_fat: c.visceral_fat
+    }))
+  });
 
   // Get team member info for phone numbers (optional - card has name already)
   const userIds = cards.map(c => c.user_id).filter(Boolean);
   let teamMembersMap = {};
   
   if (userIds.length > 0) {
+    logger.info('[listCardsForCoach] 📞 Fetching phone numbers for userIds:', userIds);
     const { data: teamMembers } = await supabase
       .from('team_table')
       .select('UserId, PhoneNumber')
@@ -350,11 +369,12 @@ export async function listCardsForCoach(coachId) {
       teamMembersMap = Object.fromEntries(
         teamMembers.map(m => [m.UserId, m])
       );
+      logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
     }
   }
 
   // Map cards with optional phone number from team_table
-  return cards.map(card => {
+  const mappedCards = cards.map(card => {
     const member = teamMembersMap[card.user_id];
     return {
       id:           card.id,
@@ -376,4 +396,11 @@ export async function listCardsForCoach(coachId) {
       createdBy:    card.created_by,
     };
   });
+  
+  logger.info('[listCardsForCoach] 📦 RETURNING MAPPED CARDS', { 
+    count: mappedCards.length,
+    sample: mappedCards[0] 
+  });
+  
+  return mappedCards;
 }

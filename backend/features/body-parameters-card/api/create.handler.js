@@ -13,7 +13,14 @@ import logger from '../../../shared/lib/logger.js';
  * @returns {{ httpStatus: number, body: object }}
  */
 export async function handleCreateCard(body) {
+  logger.info('[handleCreateCard] 🔍 REQUEST RECEIVED', { body });
+  
   const payload = validateCreateCard(body);
+  logger.info('[handleCreateCard] ✅ Validation passed', { 
+    createdBy: payload.createdBy, 
+    phoneNumber: payload.phoneNumber,
+    name: payload.name 
+  });
 
   if (!canCreateCard({ isCoach: true })) {
     throw new ValidationError(403, 'Not authorised to create a body-parameters card');
@@ -22,8 +29,10 @@ export async function handleCreateCard(body) {
   let userId = payload.userId;
 
   if (payload.phoneNumber) {
-    logger.info('[body-params-card] creating team_table member from phone', {
+    logger.info('[body-params-card] 📞 Creating team_table member from phone', {
       coachId: payload.createdBy,
+      phoneNumber: payload.phoneNumber,
+      name: payload.name
     });
     const { userId: memberId, isNew } = await createTeamMemberFromPhone({
       name:        payload.name,
@@ -33,16 +42,20 @@ export async function handleCreateCard(body) {
       bmr:         payload.bmr,
     });
     userId = memberId;
-    logger.info('[body-params-card] team_table member ready', { userId, isNew });
+    logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
   }
 
   // Check if user already has a card
   const existingCard = userId ? await findLatestCardByUserId(userId) : null;
+  logger.info('[handleCreateCard] 🔍 Checking for existing card', { 
+    userId, 
+    existingCardId: existingCard?.id || 'none' 
+  });
 
   let card;
   if (existingCard) {
     // UPDATE existing card (override)
-    logger.info('[body-params-card] updating existing card', { cardId: existingCard.id, userId });
+    logger.info('[body-params-card] 🔄 UPDATING existing card', { cardId: existingCard.id, userId });
     card = await updateCard(existingCard.id, {
       name:         payload.name,
       age:          payload.age,
@@ -57,10 +70,17 @@ export async function handleCreateCard(body) {
       recordedDate: payload.recordedDate,
       locationName: payload.locationName,
     });
+    logger.info('[body-params-card] ✅ Card updated', { cardId: card.id, created_by: card.created_by });
   } else {
     // CREATE new card
-    logger.info('[body-params-card] creating new card', { userId });
+    logger.info('[body-params-card] 🆕 CREATING new card', { userId, createdBy: payload.createdBy });
     card = await insertCard({ ...payload, userId });
+    logger.info('[body-params-card] ✅ Card created', { 
+      cardId: card.id, 
+      created_by: card.created_by,
+      user_id: card.user_id,
+      type_created_by: typeof card.created_by
+    });
   }
 
   // Fetch the previous card for this user so the frontend can show the

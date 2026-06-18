@@ -5960,16 +5960,31 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
 
+        // DEBUG: Log the parsed user object to see what status value we're getting
+        console.log("🔍 [handleOtpVerified] Parsed user object:", parsedUser);
+        console.log("🔍 [handleOtpVerified] Status field:", parsedUser?.status);
+        console.log("🔍 [handleOtpVerified] Status (capital):", parsedUser?.Status);
+
         // Fast-path inactive check: the verify-otp API already returns the
         // user's current Status in the stored object. If it's already
         // 'Inactive', show the Account Restricted modal immediately — do NOT
         // rely on a separate network call that can time out or fail-open.
-        if (parsedUser?.status?.toLowerCase() === 'inactive') {
+        // Check both lowercase 'status' and capital 'Status' for compatibility
+        const userStatus = (parsedUser?.status || parsedUser?.Status || '').toLowerCase();
+        console.log("🔍 [handleOtpVerified] Normalized status:", userStatus);
+        
+        if (userStatus === 'inactive') {
+          console.log("🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal");
           debugLog("🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal");
           authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result: 'inactive' });
-          setShowInactiveModal(true);
-          setIsUserActive(false);
+          
+          // CRITICAL: Set all state synchronously so React batches them and triggers ONE re-render
+          // with all the correct state. The modal will render because user is set but isOtpVerified is false.
           setUser(parsedUser);
+          setIsUserActive(false);
+          setShowInactiveModal(true);
+          
+          console.log("🔍 [handleOtpVerified] State set - user:", parsedUser.email, "showInactiveModal: true");
           return;
         }
 
@@ -6054,58 +6069,95 @@ function WellnessValleyApp() {
   // Capacitor splash already covers app cold-start; once React mounts we go
   // directly to the correct route. Background auth/profile checks continue
   // silently — they just don't show a UI spinner.
+  
+  // DEBUG: Log render state at the very top
+  console.log("🔍 [RENDER START]", { 
+    authLoading, 
+    profileChecking, 
+    user: !!user, 
+    isOtpVerified, 
+    showInactiveModal,
+    forceLoggedOut 
+  });
+  
+  // CRITICAL: Render Inactive User Modal at the TOP, before any early returns
+  // This ensures it shows even if we're stuck in a loading state
+  const inactiveModalPortal = showInactiveModal ? (
+    <InactiveUserModal
+      userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
+      onClose={handleInactiveModalClose}
+      onContactCoach={handleContactCoach}
+    />
+  ) : null;
+  
   if (authLoading) {
     // On native, show the logo overlay instead of a blank screen — the native
     // splash may have already faded, so returning null would show white.
+    console.log("🔍 [RENDER] Blocked by authLoading");
     if (Capacitor.isNativePlatform()) {
       return (
-        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
-        </div>
+        <>
+          {inactiveModalPortal}
+          <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+          </div>
+        </>
       );
     }
-    return null;
+    return inactiveModalPortal;
   }
 
   // ? OTP user restore in progress — stay invisible until restored.
   if (isOtpVerified && !user) {
+    console.log("🔍 [RENDER] Blocked by OTP restore (isOtpVerified && !user)");
     if (Capacitor.isNativePlatform()) {
       return (
-        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
-        </div>
+        <>
+          {inactiveModalPortal}
+          <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+          </div>
+        </>
       );
     }
-    return null;
+    return inactiveModalPortal;
   }
 
   // ? Profile check in progress — stay invisible until check is done.
   if (profileChecking) {
+    console.log("🔍 [RENDER] Blocked by profileChecking");
     if (Capacitor.isNativePlatform()) {
       return (
-        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
-        </div>
+        <>
+          {inactiveModalPortal}
+          <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
+          </div>
+        </>
       );
     }
-    return null;
+    return inactiveModalPortal;
   }
 
   // ? iOS Sign-out gate: user explicitly signed out � always show Login
   // This prevents Firebase silent re-auth from bypassing the logout
   if (forceLoggedOut) {
     return (
-      <Login
-        onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-        loading={loading}
-        error={error}
-        onOtpVerified={handleOtpVerified}
-      />
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
     );
   }
 
   // Authentication flow
   if (!user && !isOtpVerified) {
+    console.log("🔍 [Render] Condition 1: !user && !isOtpVerified", { user, isOtpVerified, showInactiveModal });
     return (
       <>
         <Login
@@ -6131,7 +6183,10 @@ function WellnessValleyApp() {
     );
   }
   const isGoogleUserCheck = user && isGoogleUser(user);
+  console.log("🔍 [Render] Checking Google user", { user: !!user, isOtpVerified, isGoogleUserCheck, showInactiveModal });
+  
   if (!isOtpVerified && !isGoogleUserCheck) {
+    console.log("🔍 [Render] Condition 2: !isOtpVerified && !isGoogleUserCheck");
     return (
       <>
         <Login
