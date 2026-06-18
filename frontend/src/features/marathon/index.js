@@ -12,6 +12,7 @@ export { default as MarathonRecognitionSplash } from './components/MarathonRecog
 export { useMarathon }                          from './hooks/useMarathon.js';
 export {
   createMarathon,
+  deleteMarathon,
   listMarathons,
   getCardData,
   getMyLaps,

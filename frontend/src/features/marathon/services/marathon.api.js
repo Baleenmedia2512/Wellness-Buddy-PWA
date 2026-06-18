@@ -32,6 +32,10 @@ export async function createMarathon(payload) {
   return post('/api/marathon/create', payload);
 }
 
+export async function deleteMarathon({ marathonId, coachId }) {
+  return post('/api/marathon/delete', { marathonId, coachId });
+}
+
 export async function listMarathons({ coachId, status } = {}) {
   const qs = new URLSearchParams({ coachId });
   if (status) qs.append('status', status);

@@ -6462,15 +6462,15 @@ function WellnessValleyApp() {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading Marathon..." />}>
         <div className="h-screen w-screen bg-white flex flex-col overflow-auto">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-10">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-10">
             <button
               onClick={() => { setShowMarathon(false); Session.setCurrentPage("main"); }}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-green-50 text-green-700 hover:bg-green-100 transition-colors font-bold text-base"
               aria-label="Back"
             >
-              ← Back
+              ←
             </button>
-            <span className="font-semibold text-gray-800">Marathon</span>
+            <span className="font-bold text-gray-800 text-base">Marathon</span>
           </div>
           <MarathonDashboard
             coachId={user?.id}
