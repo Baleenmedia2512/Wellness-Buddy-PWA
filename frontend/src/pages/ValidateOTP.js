@@ -12,7 +12,7 @@ const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
+const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -23,10 +23,30 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
 
   const inputRefs = useRef([]);
 
+  // Component mount/unmount logging
+  useEffect(() => {
+    console.log("🟦 [ValidateOTP] Component MOUNTED", { isReactivationFlow });
+    const mountTime = Date.now();
+    
+    return () => {
+      const unmountTime = Date.now();
+      const duration = ((unmountTime - mountTime) / 1000).toFixed(2);
+      console.log(`🟦 [ValidateOTP] Component UNMOUNTED (was visible for ${duration}s)`);
+    };
+  }, [isReactivationFlow]);
+
   // Fetch request info on load
   useEffect(() => {
+    console.log("🟦 [ValidateOTP] Fetching request info...", { isReactivationFlow });
+    
+    // For reactivation flow, clear any pre-filled OTP and fetch fresh request
+    if (isReactivationFlow) {
+      console.log("🟦 [ValidateOTP] Reactivation flow - clearing OTP and fetching latest request");
+      setOtp(['', '', '', '', '', '']);
+    }
+    
     fetchRequestInfo();
-  }, []);
+  }, [isReactivationFlow]);
 
   // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   useEffect(() => {
@@ -56,11 +76,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
 
       if (response.data.pendingRequest) {
         setRequestInfo(response.data.pendingRequest);
+        console.log("🟦 [ValidateOTP] Request info loaded:", response.data.pendingRequest);
       } else {
+        console.log("🟦 [ValidateOTP] No pending request, closing modal");
         if (onClose) onClose();
       }
     } catch (err) {
-      console.error("Error fetching request info:", err);
+      console.error("🔴 [ValidateOTP] Error fetching request info:", err);
     }
   };
 
@@ -122,9 +144,11 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
   // Validate OTP
   const validateOtp = async () => {
     const otpCode = otp.join('');
+    console.log("🟦 [ValidateOTP] Validating OTP:", otpCode);
     
     if (otpCode.length !== 6) {
       setError('Please enter all 6 digits');
+      console.log("🔴 [ValidateOTP] Validation failed: incomplete OTP");
       return;
     }
 
@@ -135,30 +159,36 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
       const userEmail = localStorage.getItem('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
+        console.log("🔴 [ValidateOTP] Validation failed: no user email");
         return;
       }
 
       // Demo bypass for App Review - works for any user with OTP 000000
       const DEMO_OTP = '000000';
       if (otpCode === DEMO_OTP) {
+        console.log("🟦 [ValidateOTP] Demo OTP used, auto-verifying");
         setSuccess('Verified!');
         localStorage.setItem('coachOtpVerified', 'true');
         setTimeout(() => {
+          console.log("🟦 [ValidateOTP] Demo verification complete, calling onSuccess/onClose");
           if (onSuccess) onSuccess();
           else if (onClose) onClose();
         }, 1500);
         return;
       }
 
+      console.log("🟦 [ValidateOTP] Sending validation request to API...");
       await axios.post(
         `${API_BASE}/api/upline/validate-otp`,
         { otp: otpCode, email: userEmail }
       );
 
+      console.log("✅ [ValidateOTP] OTP verified successfully!");
       setSuccess('Verified!');
       localStorage.setItem('coachOtpVerified', 'true');
       
       setTimeout(() => {
+        console.log("🟦 [ValidateOTP] Verification complete, calling onSuccess/onClose");
         if (onSuccess) {
           onSuccess();
         } else if (onClose) {
@@ -166,14 +196,18 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         }
       }, 1500);
     } catch (err) {
+      console.error("🔴 [ValidateOTP] Validation error:", err);
       const errorData = err.response?.data;
       
       if (errorData?.expired) {
+        console.log("🔴 [ValidateOTP] OTP expired");
         setError('Code expired. Please request a new one.');
       } else if (errorData?.attemptsLeft !== undefined) {
+        console.log(`🔴 [ValidateOTP] Incorrect OTP, ${errorData.attemptsLeft} attempts left`);
         setAttemptsLeft(errorData.attemptsLeft);
         setError(`Incorrect code. ${errorData.attemptsLeft} attempts left.`);
       } else {
+        console.log("🔴 [ValidateOTP] Validation failed:", errorData?.error);
         setError(errorData?.error || 'Verification failed');
       }
       
@@ -207,12 +241,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         { email: userEmail }
       );
 
+      console.log("🟦 [ValidateOTP] User clicked Cancel, closing modal");
       // Close modal and refresh setup status
       if (onClose) {
         onClose();
       }
     } catch (err) {
-      console.error('Cancel error:', err);
+      console.error('🔴 [ValidateOTP] Cancel error:', err);
       setError('Failed to cancel request');
     } finally {
       setCancelling(false);
