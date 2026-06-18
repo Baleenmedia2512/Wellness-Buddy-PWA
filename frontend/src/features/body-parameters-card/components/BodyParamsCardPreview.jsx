@@ -488,7 +488,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               label="V-Fat"
               value={String(card.visceralFat)}
               rangeLabel="≤ 9"
-              status={parseFloat(card.visceralFat) > 9 ? { isOutOfRange: true } : null}
+              status={parseFloat(card.visceralFat) > 9 ? { isOutOfRange: true, bg: RED } : null}
               oval
               prevValue={previousCard?.visceralFat != null ? String(previousCard.visceralFat) : '—'}
               isExistingUser={isExistingUser}
