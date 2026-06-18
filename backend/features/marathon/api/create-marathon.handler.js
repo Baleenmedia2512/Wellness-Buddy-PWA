@@ -14,7 +14,43 @@ import {
 }                                                                          from '../data/marathon.repo.js';
 import { buildMarathonDisplayName }                                        from '../domain/marathon.rules.js';
 import { ValidationError }                                                 from '../../../shared/lib/ValidationError.js';
+import { getSupabaseClient }                                               from '../../../utils/supabaseClient.js';
 import logger                                                              from '../../../shared/lib/logger.js';
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * Validate each participant has at least 1 weight record in [startedAt, today IST].
+ * Only enforced when the marathon starts on or before today (active or backdated).
+ * Returns array of missing userIds.
+ */
+async function findParticipantsWithoutWeight(participantIds, startedAtDateStr) {
+  const supabase = getSupabaseClient();
+  const nowIST   = new Date(Date.now() + IST_OFFSET_MS);
+  const startIST = new Date(startedAtDateStr + 'T00:00:00');
+
+  // Skip validation for future marathons — period hasn't started yet
+  if (startIST > nowIST) return [];
+
+  const endStr   = nowIST.toISOString().replace('T', ' ').substring(0, 23);
+  const startStr = startIST.toISOString().replace('T', ' ').substring(0, 23);
+
+  const { data: weights, error } = await supabase
+    .from('weight_records_table')
+    .select('"UserId"')
+    .in('"UserId"', participantIds)
+    .gte('"CreatedAt"', startStr)
+    .lte('"CreatedAt"', endStr)
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0');
+
+  if (error) {
+    logger.warn('[handleCreateMarathon] Weight eligibility check failed (non-fatal)', { error: error.message });
+    return []; // non-fatal: if DB query fails, don't block creation
+  }
+
+  const withWeight = new Set((weights || []).map(w => w.UserId));
+  return participantIds.filter(id => !withWeight.has(id));
+}
 
 export async function handleCreateMarathon(body) {
   const payload = validateCreateMarathon(body);
@@ -22,6 +58,18 @@ export async function handleCreateMarathon(body) {
   const role = (body.role || 'coach').toLowerCase();
   if (!canManageMarathon({ role })) {
     throw new ValidationError(403, 'Only coaches may create marathons');
+  }
+
+  // ── Participant weight eligibility validation ────────────────────────────
+  // Every participant must have at least one weight record in [startedAt, today IST].
+  // Skipped for future-dated marathons (period not yet started).
+  const memberIds = payload.participants.map(p => p.userId);
+  const missingWeightIds = await findParticipantsWithoutWeight(memberIds, payload.startedAt);
+  if (missingWeightIds.length > 0) {
+    throw new ValidationError(
+      422,
+      `${missingWeightIds.length} participant(s) have no weight record for the current marathon period (${payload.startedAt} to today). Remove them or ask them to log their weight first.`,
+    );
   }
 
   // ── Team name auto-sequencing ────────────────────────────────────────────

@@ -101,6 +101,7 @@ export async function insertParticipantsWithRoles(marathonId, participants) {
     marathon_id: marathonId,
     user_id:     typeof p === 'object' ? p.userId : p,
     lap_role:    typeof p === 'object' ? (p.role || 'member') : 'member',
+    is_active:   true, // ← critical: all inserted participants must be active
   }));
   const { error } = await supabase.from('marathon_participants').insert(rows);
   if (error) throw error;
@@ -324,10 +325,10 @@ export async function computeCardData(marathonId, cardType) {
     roleMap[r.user_id]     = r.lap_role || 'member';
   });
 
-  // Profiles
+  // Profiles (include system Role for badge rendering on the card)
   const { data: profiles, error: profErr } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "ProfileImage"')
+    .select('"UserId", "UserName", "ProfileImage", "Role"')
     .in('"UserId"', userIds);
   if (profErr) throw profErr;
   const profileMap = {};
@@ -384,6 +385,7 @@ export async function computeCardData(marathonId, cardType) {
       name:             profileMap[uid]?.UserName    || 'Member',
       profileImage:     profileMap[uid]?.ProfileImage || null,
       role:             roleMap[uid],
+      systemRole:       (profileMap[uid]?.Role || '').toLowerCase() || null,
       disciplineStatus,
       dayChange,
       lapChange,
@@ -399,9 +401,15 @@ export async function computeCardData(marathonId, cardType) {
     };
   });
 
-  const dayLeader      = findDayLeaderV2(participants);
-  const lapLeader      = findLapLeaderV2(participants);
-  const teamDailyTotal = computeTeamDailyTotal(participants);
+  // Sort: captain first (pos 1), members middle (pos 2-8), assistant_captain last (pos 9)
+  const LAP_ROLE_ORDER = { captain: 0, member: 1, assistant_captain: 9 };
+  const sortedParticipants = [...participants].sort((a, b) =>
+    (LAP_ROLE_ORDER[a.role] ?? 1) - (LAP_ROLE_ORDER[b.role] ?? 1),
+  );
+
+  const dayLeader      = findDayLeaderV2(sortedParticipants);
+  const lapLeader      = findLapLeaderV2(sortedParticipants);
+  const teamDailyTotal = computeTeamDailyTotal(sortedParticipants);
 
   // Community leader: cross-marathon
   let communityLeader = null;
@@ -411,8 +419,8 @@ export async function computeCardData(marathonId, cardType) {
 
   logger.info('[marathon.repo] computeCardData v2', {
     marathonId, cardType, lapNumber, dayNumber,
-    participants: participants.length,
-    eligible: participants.filter(p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE).length,
+    participants: sortedParticipants.length,
+    eligible: sortedParticipants.filter(p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE).length,
     dayLeaderId: dayLeader?.userId,
     lapLeaderId: lapLeader?.userId,
   });
@@ -425,10 +433,12 @@ export async function computeCardData(marathonId, cardType) {
     marathonId,
     cardType,
     marathonName: marathonDisplayName,
+    teamName:     marathon.team_name    || null,
+    lapSequence:  marathon.lap_sequence || 1,
     coachId:      marathon.coach_id,
     lapNumber,
     dayNumber,
-    participants,
+    participants: sortedParticipants,
     dayLeader,
     lapLeader,
     communityLeader,

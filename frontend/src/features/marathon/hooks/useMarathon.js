@@ -58,6 +58,12 @@ export function useMarathon({ coachId, userId } = {}) {
     }
   }, [coachId]);
 
+  // Optimistic remove — immediately removes the lap from local state before
+  // the delete API call returns, so the UI updates without waiting for a refetch.
+  const removeMarathon = useCallback((id) => {
+    setMarathons(prev => prev.filter(m => m.id !== id));
+  }, []);
+
   const generateCard = useCallback(async ({ marathonId, cardType }) => {
     if (!coachId || !marathonId || !cardType) return;
     setLoadingCard(true); setCardError(null); setCardData(null); setShareUrl(null); setShareOpen(false);
@@ -127,7 +133,7 @@ export function useMarathon({ coachId, userId } = {}) {
 
   return {
     // Coach
-    marathons, loadingList, listError, fetchMarathons,
+    marathons, loadingList, listError, fetchMarathons, removeMarathon,
     cardData, shareUrl, loadingCard, cardError, shareOpen, generateCard, closeShare,
     // Member
     myLaps, loadingLaps, lapsError, fetchMyLaps,

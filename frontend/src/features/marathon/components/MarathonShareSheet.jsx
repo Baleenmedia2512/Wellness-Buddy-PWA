@@ -20,7 +20,7 @@ import MarathonLeaderCard      from './MarathonLeaderCard.jsx';
 import MarathonTeamCard        from './MarathonTeamCard.jsx';
 import {
   precaptureShareImage,
-  shareImageWithLink,
+  shareViaCapacitorAPI,
   shareTextViaWhatsApp,
 }                              from '../../../shared/utils/shareUtils.js';
 import { debugLog }            from '../../../shared/utils/logger.js';
@@ -30,7 +30,7 @@ const CAPTURE_OPTS        = { scale: 1.5, quality: 0.85, immediate: true };
 
 const waitForPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-function buildShareText(shareUrl, card) {
+function buildShareText(card) {
   const { cardType, marathonName, lapNumber, dayNumber } = card || {};
   const label = cardType === 'day_leader'  ? 'Marathon Day Leader'
               : cardType === 'lap_leader'  ? 'Marathon Lap Leader'
@@ -39,8 +39,7 @@ function buildShareText(shareUrl, card) {
 
   const context = marathonName ? ` · ${marathonName}` : '';
   const period  = lapNumber && dayNumber ? ` — Lap ${lapNumber}, Day ${dayNumber}` : '';
-  const base    = `🏃 ${label}${context}${period}\n\nWellness Valley`;
-  return shareUrl ? `${base}\n${shareUrl}` : base;
+  return `🏃 ${label}${context}${period}\n\nWellness Valley`;
 }
 
 const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
@@ -50,17 +49,19 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
   const firedRef          = useRef(false);
 
   const doShare = useCallback(async () => {
-    const textWithUrl    = buildShareText(shareUrl, card);
-    const textWithoutUrl = buildShareText(null,     card);
+    // Image only — no share URL appended to text
+    const text = buildShareText(card);
     try {
       if (NEEDS_IMAGE_CAPTURE && preCapRef.current) {
-        await shareImageWithLink(preCapRef.current, shareUrl, {
+        // Native: share image file only via system share sheet
+        await shareViaCapacitorAPI(preCapRef.current, {
           title:    `Wellness Valley — ${card?.cardType || 'Marathon Card'}`,
-          text:     textWithoutUrl,
+          text,
           fileName: `wv-marathon-${card?.cardType || 'card'}-${Date.now()}.jpg`,
         });
       } else {
-        await shareTextViaWhatsApp(textWithUrl);
+        // Web fallback: text message without link
+        await shareTextViaWhatsApp(text);
       }
       debugLog('✅ [MarathonShare] Share completed');
     } catch {
@@ -68,7 +69,7 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
     } finally {
       onClose();
     }
-  }, [shareUrl, card, onClose]);
+  }, [card, onClose]);
 
   // Phase 1: pre-capture as soon as card data arrives (native only)
   useEffect(() => {
@@ -85,9 +86,9 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
     })();
   }, [card]);
 
-  // Phase 2: share once isOpen + shareUrl are ready
+  // Phase 2: share once isOpen + card are ready (shareUrl no longer gating)
   useEffect(() => {
-    if (!isOpen || !card || !shareUrl) return;
+    if (!isOpen || !card) return;
     firedRef.current = false;
     let cancelled    = false;
 
@@ -107,7 +108,7 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
 
     run();
     return () => { cancelled = true; };
-  }, [isOpen, card, shareUrl, doShare]);
+  }, [isOpen, card, doShare]);
 
   // Reset on close
   useEffect(() => {
@@ -128,15 +129,18 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
     <div
       aria-hidden="true"
       style={{
-        position:   'fixed',
-        left:       '-9999px',
-        top:        0,
-        width:      400,
+        position:      'fixed',
+        left:          '-9999px',
+        top:           0,
+        /* Exact card width — html2canvas measures this container */
+        width:         400,
+        height:        'auto',
+        overflow:      'visible',
         pointerEvents: 'none',
-        zIndex:     -1,
+        zIndex:        -1,
       }}
     >
-      <div ref={cardRef}>
+      <div ref={cardRef} style={{ width: 400, display: 'inline-block' }}>
         {isLeaderCard
           ? <MarathonLeaderCard card={card} />
           : <MarathonTeamCard   card={card} />

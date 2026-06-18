@@ -68,7 +68,13 @@ async function fetchCoachMembers(coachId) {
   const flat = Array.isArray(json.allMembers) ? json.allMembers : [];
   return flat
     .filter(m => m.UserId && String(m.Role || '').toLowerCase() !== 'coach')
-    .map(m => ({ userId: m.UserId, name: m.UserName || 'Member', photo: m.ProfileImage || null }));
+    .map(m => ({
+      userId:  m.UserId,
+      name:    m.UserName    || 'Member',
+      photo:   m.ProfileImage || null,
+      phone:   m.PhoneNumber  || '',  // for search
+      teamId:  m.TeamId       || '',  // for search
+    }));
 }
 
 // ── Role validation ─────────────────────────────────────────────────────────
@@ -144,15 +150,16 @@ const ParticipantRow = ({ member, selected, lapRole, onToggle, onRoleChange, dis
 
 // ── Create wizard ────────────────────────────────────────────────────────────
 const CreateMarathonWizard = ({ coachId, existingTeamNames = [], onCreated, onCancel }) => {
-  const [step,        setStep]        = useState(1);
-  const [teamName,    setTeamName]    = useState('');
-  const [startedAt,   setStartedAt]   = useState(new Date().toISOString().substring(0, 10));
-  const [members,     setMembers]     = useState([]);
-  const [loadingMbrs, setLoadingMbrs] = useState(false);
-  const [membersErr,  setMembersErr]  = useState(null);
-  const [roleMap,     setRoleMap]     = useState({});
-  const [busy,        setBusy]        = useState(false);
-  const [err,         setErr]         = useState(null);
+  const [step,         setStep]         = useState(1);
+  const [teamName,     setTeamName]     = useState('');
+  const [startedAt,    setStartedAt]    = useState(new Date().toISOString().substring(0, 10));
+  const [members,      setMembers]      = useState([]);
+  const [loadingMbrs,  setLoadingMbrs]  = useState(false);
+  const [membersErr,   setMembersErr]   = useState(null);
+  const [roleMap,      setRoleMap]      = useState({});
+  const [busy,         setBusy]         = useState(false);
+  const [err,          setErr]          = useState(null);
+  const [memberSearch, setMemberSearch] = useState('');
 
   const selectedIds  = Object.keys(roleMap).map(Number);
   const participants = selectedIds.map(uid => ({ userId: uid, role: roleMap[uid] || 'member' }));
@@ -291,7 +298,16 @@ const CreateMarathonWizard = ({ coachId, existingTeamNames = [], onCreated, onCa
   );
 
   // ── Step 2 ──
-  const remaining = LAP_SIZE - selectedIds.length;
+  const remaining      = LAP_SIZE - selectedIds.length;
+  const searchLower    = memberSearch.toLowerCase().trim();
+  const filteredMembers = searchLower
+    ? members.filter(m =>
+        m.name.toLowerCase().includes(searchLower) ||
+        String(m.teamId  || '').includes(searchLower) ||
+        String(m.phone   || '').includes(searchLower)
+      )
+    : members;
+
   return (
     <div style={{ textAlign: 'left' }}>
       {/* Step 2 header */}
@@ -333,19 +349,53 @@ const CreateMarathonWizard = ({ coachId, existingTeamNames = [], onCreated, onCa
           No team members found. Add members to your team first.
         </div>
       ) : (
-        <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
-          {members.map(m => (
-            <ParticipantRow
-              key={m.userId}
-              member={m}
-              selected={roleMap[m.userId] !== undefined}
-              lapRole={roleMap[m.userId] || 'member'}
-              onToggle={toggleMember}
-              onRoleChange={changeRole}
-              disabled={atMax && roleMap[m.userId] === undefined}
+        <>
+          {/* Participant search */}
+          <div style={{ position: 'relative', marginBottom: 8 }}>
+            <span style={{
+              position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 13, color: T.gray400, pointerEvents: 'none',
+            }}>🔍</span>
+            <input
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              placeholder="Search by name, mobile or team ID…"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '8px 28px 8px 28px', borderRadius: 8,
+                border: `1.5px solid ${memberSearch ? T.green : T.gray200}`,
+                fontSize: 12, outline: 'none', fontFamily: 'inherit',
+              }}
             />
-          ))}
-        </div>
+            {memberSearch && (
+              <button onClick={() => setMemberSearch('')} style={{
+                position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: T.gray400, fontSize: 12, padding: '2px 3px',
+              }}>✕</button>
+            )}
+          </div>
+
+          {filteredMembers.length === 0 && memberSearch && (
+            <div style={{ textAlign: 'center', color: T.gray400, fontSize: 12, padding: '8px 0' }}>
+              No members matching "{memberSearch}"
+            </div>
+          )}
+
+          <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+            {filteredMembers.map(m => (
+              <ParticipantRow
+                key={m.userId}
+                member={m}
+                selected={roleMap[m.userId] !== undefined}
+                lapRole={roleMap[m.userId] || 'member'}
+                onToggle={toggleMember}
+                onRoleChange={changeRole}
+                disabled={atMax && roleMap[m.userId] === undefined}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {err && (
@@ -480,7 +530,7 @@ const DeleteConfirmModal = ({ onConfirm, onCancel }) => (
 // ── Main dashboard ────────────────────────────────────────────────────────────
 const MarathonDashboard = ({ coachId }) => {
   const {
-    marathons, loadingList, listError, fetchMarathons,
+    marathons, loadingList, listError, fetchMarathons, removeMarathon,
     cardData, shareUrl, loadingCard, cardError, shareOpen,
     generateCard, closeShare,
   } = useMarathon({ coachId });
@@ -493,6 +543,7 @@ const MarathonDashboard = ({ coachId }) => {
   const [deleteError,     setDeleteError]     = useState(null);
   const [lapSearch,       setLapSearch]       = useState('');
 
+  // Fetch active marathons on mount; pass explicit 'active' to avoid stale entries
   useEffect(() => { fetchMarathons('active'); }, [fetchMarathons]);
 
   useEffect(() => {
@@ -511,14 +562,19 @@ const MarathonDashboard = ({ coachId }) => {
   const handleDeleteConfirmed = async () => {
     const id = confirmDeleteId;
     setConfirmDeleteId(null);
-    setDeletingId(id);
     setDeleteError(null);
+    // Optimistic: remove from UI immediately
+    removeMarathon(id);
+    if (String(selectedId) === String(id)) setSelectedId('');
+    setDeletingId(id);
     try {
       await deleteMarathon({ marathonId: id, coachId });
-      if (String(selectedId) === String(id)) setSelectedId('');
-      await fetchMarathons('active');
+      // Silent background refresh to sync any server-side state
+      fetchMarathons('active');
     } catch (e) {
       setDeleteError(e.message || 'Failed to delete LAP. Please try again.');
+      // On error, reload to restore the removed item
+      fetchMarathons('active');
     } finally {
       setDeletingId(null);
     }
