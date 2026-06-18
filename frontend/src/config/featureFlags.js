@@ -33,6 +33,19 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Mount the Diary tab in Dashboard.js (ADR-0003 PR-C).',
   },
+
+  // Unified activity timeline layout. When ON (requires ff.diary-feed=ON),
+  // Dashboard.js shows a single chronological DiaryFeed (all entry kinds)
+  // instead of the stacked NutritionDashboard / WeightDashboard /
+  // EducationDashboard + DiaryFeed(unknown) layout. Set
+  // REACT_APP_FF_DIARY_TIMELINE=false or
+  // localStorage 'ff.diary-timeline'='false' to revert to the stacked layout.
+  'ff.diary-timeline': {
+    envKey:         'REACT_APP_FF_DIARY_TIMELINE',
+    storageKey:     'ff.diary-timeline',
+    defaultEnabled: true,
+    description:    'Unified activity timeline layout in Diary (replaces stacked section-dashboards).',
+  },
 });
 
 function readStorage(key) {

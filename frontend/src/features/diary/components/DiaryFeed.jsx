@@ -15,6 +15,12 @@
  * Date + member selection are passed in as props so this component
  * can be mounted under any shell (the current `Dashboard.js`, a future
  * embedded coach-view modal, an admin overview, etc.).
+ *
+ * `showTimeline` (ff.diary-timeline) — when true the entries are
+ * rendered inside a vertical timeline layout with a date-group header
+ * and left-side time labels instead of the default flat card list.
+ * The existing row components (FoodRow, WeightRow, etc.) are
+ * unchanged — the timeline is a presentation wrapper only.
  */
 
 import React, { useMemo } from 'react';
@@ -23,6 +29,93 @@ import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 
 const SKELETON_ROWS = 6;
+
+// ─── Timeline helpers ────────────────────────────────────────────────────────
+
+/**
+ * Formats `capturedAt` (ISO string) to a short time label for the
+ * left-hand column of the timeline (e.g. "08:15 AM").
+ * Uses IST locale string so the time matches the business day the
+ * backend already scoped the query to.
+ */
+function formatTimelineTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', {
+    hour:   'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+/**
+ * Returns a human-readable date header for the timeline:
+ *   today     → "Today · Jun 18, 2026"
+ *   yesterday → "Yesterday · Jun 17, 2026"
+ *   other     → "Jun 16, 2026"
+ *
+ * `dateStr` is `YYYY-MM-DD` in IST (the value the backend echoes back).
+ */
+function formatTimelineDate(dateStr) {
+  if (!dateStr) return '';
+  // Parse as a local-midnight date (no timezone shift) so the header
+  // matches the IST business-date used throughout the diary feature.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target   = new Date(y, m - 1, d);
+  const today    = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const isToday =
+    target.getFullYear() === today.getFullYear() &&
+    target.getMonth()    === today.getMonth() &&
+    target.getDate()     === today.getDate();
+  const isYesterday =
+    target.getFullYear() === yesterday.getFullYear() &&
+    target.getMonth()    === yesterday.getMonth() &&
+    target.getDate()     === yesterday.getDate();
+
+  const long = target.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+  if (isToday)     return `Today \u00b7 ${long}`;
+  if (isYesterday) return `Yesterday \u00b7 ${long}`;
+  return long;
+}
+
+/**
+ * Wraps a single diary row inside a timeline entry: left-side time
+ * label + vertical connector to the next entry.
+ *
+ * @param {{ entry: object, isLast: boolean, children: React.ReactNode }} props
+ */
+function TimelineEntryWrapper({ entry, isLast, children }) {
+  return (
+    <div className="flex gap-3 items-start">
+      {/* Left column: time + vertical connector */}
+      <div className="flex flex-col items-end" style={{ minWidth: '4.5rem' }}>
+        <span
+          className="text-xs font-medium text-emerald-700 whitespace-nowrap leading-relaxed"
+          aria-hidden="true"
+        >
+          {formatTimelineTime(entry.capturedAt)}
+        </span>
+        {!isLast && (
+          <div
+            className="flex-1 mt-1 w-px bg-gray-200"
+            style={{ minHeight: '1.25rem' }}
+            aria-hidden="true"
+          />
+        )}
+      </div>
+      {/* Entry card */}
+      <div className="flex-1 pb-3 min-w-0">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function FeedSkeleton() {
   return (
@@ -123,6 +216,9 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
  *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
  *        Empty-state copy adapts accordingly.
+ * @param {boolean} [props.showTimeline]  when true the feed is rendered as a
+ *        vertical activity timeline with a date-group header and left-side
+ *        time labels (ff.diary-timeline). Default false (flat card list).
  */
 export default function DiaryFeed({
   ownerUserId,
@@ -132,6 +228,7 @@ export default function DiaryFeed({
   onEntryOpen,
   onEntryDelete,
   filterKinds = null,
+  showTimeline = false,
 }) {
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
@@ -174,6 +271,46 @@ export default function DiaryFeed({
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
   }
 
+  // ── Timeline mode (ff.diary-timeline) ───────────────────────────────────
+  if (showTimeline) {
+    return (
+      <div data-testid="diary-timeline">
+        {/* Refreshing indicator */}
+        {loading && (
+          <div
+            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1 mb-2"
+            aria-live="polite"
+          >
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            Refreshing…
+          </div>
+        )}
+
+        {/* Date group header */}
+        <div className="flex items-center gap-2 px-1 mb-4">
+          <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
+            {formatTimelineDate(dateStr)}
+          </span>
+          <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
+        </div>
+
+        {/* Timeline entries */}
+        <div className="pl-1">
+          {visibleEntries.map((entry, idx) => (
+            <TimelineEntryWrapper
+              key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
+              entry={entry}
+              isLast={idx === visibleEntries.length - 1}
+            >
+              {renderRow(entry)}
+            </TimelineEntryWrapper>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default flat-card mode ───────────────────────────────────────────────
   return (
     <div data-testid="diary-feed">
       <div className="space-y-3">

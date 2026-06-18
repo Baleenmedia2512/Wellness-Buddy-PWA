@@ -50,6 +50,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // once per mount so toggling the flag at runtime requires a re-mount
   // (matches the other tab-visibility decisions in this component).
   const diaryEnabled = isFlagEnabled('ff.diary-feed');
+  // ff.diary-timeline — when ON (requires diaryEnabled), the stacked
+  // NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)
+  // layout is replaced with a single chronological DiaryFeed that shows all
+  // entry kinds (food, weight, education, watch, unknown) for the selected IST day.
+  // Set REACT_APP_FF_DIARY_TIMELINE=false to revert to the stacked layout.
+  const timelineEnabled = diaryEnabled && isFlagEnabled('ff.diary-timeline');
   const { triggerRefresh: triggerNutritionRefresh } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -146,16 +152,21 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // { captureId, userId, imageBase64, expiresAt }
   const viewingSelf = !selectedMember || selectedMember.isSelf;
 
-  // Tapping an "Other" row opens the image viewer with Retry / Edit. Food,
-  // weight and education rows never reach the feed anymore (they live in their
-  // own dashboards), so only the `unknown` kind is handled here.
+  // Tapping an "Other" row opens the image viewer with Retry / Edit. In the
+  // timeline mode (ff.diary-timeline), food / weight / education rows are
+  // informational — their cards already surface key metrics (kcal, kg, topic).
+  // Detail modals for those kinds are a follow-up tracked in ADR-0003 §next.
+  // Unknown entries continue to use the full UnknownEntryFlow.
   const handleEntryOpen = (entry) => {
-    if (entry.kind !== 'unknown') return;
-    const p = entry.payload || {};
-    setUnknownFlow({
-      captureId: entry.capture?.id ?? p.id,
-      imageBase64: p.imageBase64,
-    });
+    if (entry.kind === 'unknown') {
+      const p = entry.payload || {};
+      setUnknownFlow({
+        captureId: entry.capture?.id ?? p.id,
+        imageBase64: p.imageBase64,
+      });
+    }
+    // food / weight / education / watch: no-op in the timeline view.
+    // The row cards already display the primary metric (kcal / kg / topic).
   };
 
   // Swipe-to-delete is intentionally disabled for unknown rows to preserve the
@@ -461,13 +472,33 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-300 border-t-emerald-600"></div>
           </div>
         }>
-          {/* ADR-0003 (revised) — single-page Diary. When ff.diary-feed is
-              ON, Food / Weight / Education render their ORIGINAL dashboards
-              stacked on one scrollable page (identical behaviour + in-place
-              optimistic updates), followed by the "Other" unknown-captures
-              feed. No tab switching. When the flag is OFF the legacy
-              one-tab-at-a-time layout below is used. */}
-          {diaryEnabled ? (
+          {/* ff.diary-timeline ON — unified chronological activity timeline.
+              DiaryFeed fetches all entry kinds (food / weight / education /
+              watch / unknown) from GET /api/diary/list and renders them as a
+              vertical timeline for the selected IST day. The stacked section-
+              dashboards are intentionally absent: Diary is presentation-layer
+              aggregation only (claude.md §3.3). Adding new entries is handled
+              by the existing camera / add flows outside this component.
+              Unknown entries retain the full UnknownEntryFlow (Retry / Edit /
+              undo) via onEntryOpen → handleEntryOpen. */}
+          {timelineEnabled ? (
+            <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
+              <DiaryFeed
+                showTimeline
+                refreshKey={diaryReloadKey}
+                ownerUserId={ownerId}
+                viewerUserId={user?.id || user?.userId}
+                date={selectedDate}
+                onEntryOpen={handleEntryOpen}
+                onEntryDelete={handleEntryDelete}
+              />
+            </div>
+
+          ) : diaryEnabled ? (
+            /* ff.diary-feed ON + ff.diary-timeline OFF — legacy stacked layout
+               (NutritionDashboard / WeightDashboard / EducationDashboard +
+               DiaryFeed(unknown)). Preserved as the fallback so the flag can be
+               toggled without a redeploy. */
             <div className="space-y-2">
               <NutritionDashboard
                 user={displayUser}
