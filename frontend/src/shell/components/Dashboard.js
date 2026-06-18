@@ -550,6 +550,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   setSelectedDate={setSelectedDate}
                   bmrUpdateKey={bmrUpdateKey}
                   watchBurnedCalories={watchBurnedCalories}
+                  initialMealId={initialMealId}
                   openRef={nutritionOpenRef}
                 />
                 <WeightDashboard
@@ -559,6 +560,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideOverview
                   selectedDate={selectedDate}
                   refreshKey={weightReloadKey}
+                  initialEntryId={initialMealId}
                   openRef={weightOpenRef}
                   onAfterModalClose={reloadDiary}
                 />
@@ -569,6 +571,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideOverview
                   selectedDate={selectedDate}
                   refreshKey={educationRefreshKey + diaryEducationRefreshKey}
+                  initialEntryId={initialMealId}
                   openRef={educationOpenRef}
                   onAfterModalClose={reloadDiary}
                 />
