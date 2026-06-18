@@ -5,14 +5,16 @@
  * Renders in normal page flow (NOT a popup), so it never overlaps the OTP boxes.
  *
  * Props:
- *   onDigit(d: string): void   // called with "0".."9"
+ *   onDigit(d: string): void   // called with "0".."9" or "."
  *   onBackspace(): void
  *   className?: string         // optional wrapper className
+ *   showDecimal?: boolean      // show decimal point button (default: false)
  */
 const InlineNumericKeypad = ({
   onDigit,
   onBackspace,
   className = '',
+  showDecimal = false,
 }) => {
   const [pressed, setPressed] = useState(null);
   // Guard against a single tap producing both pointerdown AND a synthetic
@@ -64,8 +66,22 @@ const InlineNumericKeypad = ({
           </button>
         ))}
 
-        {/* Empty placeholder (left) */}
-        <div aria-hidden="true" />
+        {/* Decimal point or empty placeholder (left) */}
+        {showDecimal ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            onPointerDown={(e) => handlePointerDown(e, () => onDigit('.'), '.')}
+            style={{ touchAction: 'manipulation' }}
+            className={`${btnBase} ${
+              pressed === '.' ? 'bg-gray-200 scale-95' : 'active:bg-gray-100'
+            }`}
+          >
+            .
+          </button>
+        ) : (
+          <div aria-hidden="true" />
+        )}
 
         {/* 0 */}
         <button

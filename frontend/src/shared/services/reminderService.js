@@ -43,6 +43,9 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
   }),
 });
 
+// ── Platform helper ─────────────────────────────────────────────────────────
+const isNative = () => Capacitor.isNativePlatform();
+
 // ── Constants ───────────────────────────────────────────────────────────────
 const STORAGE_KEY         = 'wellnessReminders';
 const REMINDER_OFFSET     = 15;  // minutes before activity start
@@ -321,6 +324,7 @@ function ensureWaterSleepDefaults(prefs) {
  * Returns a normalised map:  { weight: { start, end }, education: { start, end }, ... }
  */
 export async function fetchTimeWindows() {
+
   const apiBase = process.env.REACT_APP_API_BASE_URL;
   try {
     const response = await axios.get(`${apiBase}/api/admin/time-windows`);
@@ -347,16 +351,101 @@ export async function fetchTimeWindows() {
   }
 }
 
-// ── Native scheduling ─────────────────────────────────────────────────────────
+// ── Personalised alarm helpers ────────────────────────────────────────────────
 
-const isNative = () => Capacitor.isNativePlatform();
+/**
+ * Fetch the user's learned average completion times from the backend.
+ *
+ * Returns a plain map: { weight: '04:30:00', breakfast: '08:10:00', ... }
+ * Returns {} on any error — callers fall back to fixed window-offset times.
+ *
+ * @param {string|number|null} userId
+ * @returns {Promise<Object>}
+ */
+export async function fetchUserAverages(userId) {
+  if (!userId) return {};
+  const apiBase = process.env.REACT_APP_API_BASE_URL;
+  try {
+    const response = await axios.get(`${apiBase}/api/tasks/averages`, {
+      params: { userId },
+    });
+    if (!response.data?.ok) return {};
+    const map = {};
+    (response.data.data?.averages || []).forEach(({ task_type, average_completion_time }) => {
+      if (task_type && average_completion_time) {
+        map[task_type] = String(average_completion_time);
+      }
+    });
+    debugLog('[ReminderService] fetchUserAverages:', map);
+    return map;
+  } catch (err) {
+    // Non-critical — native alarm falls back to fixed window offset
+    debugLog('[ReminderService] fetchUserAverages failed (non-critical):', err.message);
+    return {};
+  }
+}
+
+/**
+ * Parse a Postgres TIME string "HH:MM:SS" into { hour, minute }.
+ * Returns null if unparseable.
+ */
+function parsePgTime(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).split(':');
+  if (parts.length < 2) return null;
+  const hour   = parseInt(parts[0], 10);
+  const minute = parseInt(parts[1], 10);
+  if (isNaN(hour) || isNaN(minute)) return null;
+  return { hour, minute };
+}
+
+/**
+ * Return the native alarm trigger time for a task type.
+ *
+ * If a learned average exists → fire at average + 1 min.
+ * Otherwise       → fall back to the user's saved preference time.
+ *
+ * @param {string} taskType
+ * @param {Object} averagesMap   { weight: '04:30:00', breakfast: '08:10:00', ... }
+ * @param {number} fallbackHour
+ * @param {number} fallbackMinute
+ * @returns {{ hour: number, minute: number }}
+ */
+function computePersonalizedAlarmTime(taskType, averagesMap, fallbackHour, fallbackMinute) {
+  const avgTimeStr = averagesMap[taskType];
+  if (!avgTimeStr) return { hour: fallbackHour, minute: fallbackMinute };
+  const parsed = parsePgTime(avgTimeStr);
+  if (!parsed) return { hour: fallbackHour, minute: fallbackMinute };
+  // Fire 1 minute after average so task is likely still pending
+  const totalMin = parsed.hour * 60 + parsed.minute + 1;
+  return { hour: Math.floor(totalMin / 60) % 24, minute: totalMin % 60 };
+}
+
+/**
+ * Build the personalised notification body for a native alarm.
+ * Mirrors buildPersonalisedReminderBody() from completion-learning.rules.js (backend).
+ */
+function buildPersonalizedNativeBody(taskType, avgLabel) {
+  const bodies = {
+    weight:    (t) => `You usually upload your weight around ${t}. Today's weight is still pending.`,
+    breakfast: (t) => `You usually log breakfast around ${t}. Today's breakfast is still pending.`,
+    lunch:     (t) => `You usually log lunch around ${t}. Today's lunch is still pending.`,
+    dinner:    (t) => `You usually log dinner around ${t}. Today's dinner is still pending.`,
+    education: (t) => `You usually complete education around ${t}. It's still pending today.`,
+    water:     (t) => `You usually log water around ${t}. Today's water intake is still pending.`,
+  };
+  const builder = bodies[taskType];
+  return builder ? builder(avgLabel) : `You usually complete this around ${avgLabel}.`;
+}
+
+// ── Native scheduling ─────────────────────────────────────────────────────────
 
 /**
  * Apply the given preferences to the native AlarmManager.
  * Uses scheduleAll() so preferences are also persisted to SharedPreferences
  * for automatic re-scheduling after device reboot.
  */
-export async function applyRemindersToNative(prefsRaw) {
+export async function applyRemindersToNative(prefsRaw, averagesMap = {}) {
   if (!isNative()) {
     debugLog('[ReminderService] Not on native platform — skipping alarm scheduling');
     return;
@@ -366,13 +455,31 @@ export async function applyRemindersToNative(prefsRaw) {
 
   // ── 1. Standard activity reminders (weight / education / meals) ──────
   const reminders = ACTIVITY_TYPES.map((type) => {
-    const activity = prefs.activities[type] || {};
+    const activity  = prefs.activities[type] || {};
+    const fallbackH = activity.hour   ?? 7;
+    const fallbackM = activity.minute ?? 0;
+
+    // Use the user's personal average + 1 min if we have history; else fixed offset
+    const alarmTime = computePersonalizedAlarmTime(type, averagesMap, fallbackH, fallbackM);
+
+    // Build personalised body only when a learned average exists
+    const avgStr = averagesMap[type];
+    let personalizedBody = undefined;
+    if (avgStr) {
+      const avg = parsePgTime(avgStr);
+      if (avg) {
+        const avgLabel = formatReminderTime(avg.hour, avg.minute);
+        personalizedBody = buildPersonalizedNativeBody(type, avgLabel);
+      }
+    }
+
     return {
       activityType: type,
       label:        ACTIVITY_LABELS[type],
-      hour:         activity.hour   ?? 7,
-      minute:       activity.minute ?? 0,
+      hour:         alarmTime.hour,
+      minute:       alarmTime.minute,
       enabled:      activity.enabled ?? false,
+      ...(personalizedBody !== undefined && { personalizedBody }),
     };
   });
 
@@ -491,10 +598,14 @@ export async function updateWaterIntakeCache(drunkMl, goalMl) {
  *
  * @returns {Object} the current preferences
  */
-export async function initReminders() {
+export async function initReminders(userId = null) {
   try {
-    const windowMap   = await fetchTimeWindows();
-    const savedPrefs  = loadReminderPreferences();
+    const [windowMap, averagesMap] = await Promise.all([
+      fetchTimeWindows(),
+      fetchUserAverages(userId),
+    ]);
+
+    const savedPrefs = loadReminderPreferences();
 
     let prefs;
     if (!savedPrefs) {
@@ -504,7 +615,7 @@ export async function initReminders() {
     }
 
     saveReminderPreferences(prefs);
-    await applyRemindersToNative(prefs);
+    await applyRemindersToNative(prefs, averagesMap);
 
     return prefs;
   } catch (err) {
@@ -518,9 +629,10 @@ export async function initReminders() {
  *
  * @param {Object} newPrefs  The full updated preferences object
  */
-export async function updateReminders(newPrefs) {
+export async function updateReminders(newPrefs, userId = null) {
   saveReminderPreferences(newPrefs);
-  await applyRemindersToNative(newPrefs);
+  const averagesMap = await fetchUserAverages(userId);
+  await applyRemindersToNative(newPrefs, averagesMap);
 }
 
 /**

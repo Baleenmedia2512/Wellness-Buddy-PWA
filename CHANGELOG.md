@@ -5,6 +5,12 @@ All notable changes are recorded here. Each entry corresponds to a squash-merged
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semver](https://semver.org/).
 
 ## [Unreleased]
+
+## [3.2.3] - 2026-06-16
+### Fixed
+- Bug fixes and stability improvements (patch release).
+
+## [Unreleased] (previous)
 ### Added
 - feat(diary): add trend charts + a working "Other" (unknown) card flow to the single Diary page. (1) `shell/components/DiarySummaryCards.jsx` now renders each feature's real **trend** component under its summary — calorie trend (`NutritionFilters` via `useCalorieTrend`+`useCalorieChartData`), weight trend (`WeightChart` via `useWeightDashboard`), education trend (`EducationTrendPanel`). (2) New `shell/components/UnknownEntryFlow.jsx`: tapping an Other row opens the image with **Retry** (re-runs Gemini → promotes capture `unknown→food`) and **Edit** (pick Food / Weight / Education → transfers the data to that vertical: food promotes the capture, weight saves a weight record, education saves a log). Trend components + their hooks exposed via the feature barrels (VSA §2.2). [ai-assisted: Copilot (Claude Opus 4.8)]
 - feat(diary): show the real per-feature summary cards on the single Diary page. New `shell/components/DiarySummaryCards.jsx` re-mounts the actual `NutritionSummaryCards`, `WeightSummaryCards`, and `EducationSummaryCards` components — fed by their existing feature hooks (`useDayAnalyses` + `useUserCalorieTarget` + `useBurnedCalories`, `useWeightHistoryData`, `useEducationDashboard`) — stacked above the diary feed, so the consolidated page keeps the same nutrition (calories + burn-to-balance), weight (current/previous/low/high), and education (streak/week) summaries as the old tabs. Replaces the earlier generic derived strip. Summary cards + their hooks are now exposed via the weight / education / nutrition feature barrels (VSA §2.2). [ai-assisted: Copilot (Claude Opus 4.8)]

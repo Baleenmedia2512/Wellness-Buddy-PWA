@@ -24,12 +24,13 @@ export function getStoreLink(platform) {
 /**
  * Build the WhatsApp share text for a body-parameters card.
  *
- * @param {string} shareUrl  - e.g. https://host/share/bpc/<token>
+ * @param {string|null} shareUrl  - full share URL with token (appended when present)
  * @param {string} memberName
  * @returns {string}
  */
 export function buildShareText(shareUrl, memberName) {
-  const name = memberName ? memberName.trim() : 'you';
-  const url  = shareUrl   ? `\nTap to view → ${shareUrl}` : '';
-  return `👋 Hey ${name}! Your body parameters card is ready.${url}`;
+  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
+  const intro = `Hey ${firstName}! Install Wellness Valley app. Click the link`;
+  if (shareUrl) return `${intro}\n${shareUrl}`;
+  return `${intro}.`;
 }

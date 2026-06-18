@@ -23,9 +23,9 @@ const waitForPaint = () => new Promise((resolve) => {
 });
 
 /**
- * @param {{ isOpen, onClose, card, shareUrl, preCapCard }} props
+ * @param {{ isOpen, onClose, card, shareUrl, preCapCard, previousCard }} props
  */
-const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) => {
+const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, previousCard = null }) => {
   const cardRef           = useRef(null);
   const preCapRef         = useRef(null);
   const capturePromiseRef = useRef(null);
@@ -107,7 +107,7 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard }) =
   // Off-screen card — needed for html2canvas on native only, not visible to user.
   return (
     <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
-      <BodyParamsCardPreview ref={cardRef} card={displayCard} />
+      <BodyParamsCardPreview ref={cardRef} card={displayCard} previousCard={previousCard} />
     </div>
   );
 };

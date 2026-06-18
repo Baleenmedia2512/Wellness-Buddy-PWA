@@ -18,9 +18,13 @@ export function validateCreateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName } = body;
+          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
+  const createdByN = parseInt(createdBy, 10);
+  if (isNaN(createdByN) || createdByN < 1) {
+    throw new ValidationError(400, 'createdBy must be a valid UserId');
+  }
   if (!name || String(name).trim() === '') throw new ValidationError(400, 'name is required');
   if (String(name).trim().length > 100) throw new ValidationError(422, 'name must be ≤ 100 characters');
 
@@ -44,8 +48,10 @@ export function validateCreateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  const phoneVal = _optionalPhone(phoneNumber);
+
   return {
-    createdBy: parseInt(createdBy),
+    createdBy: createdByN,
     userId:    userId ? parseInt(userId) : null,
     name:      String(name).trim(),
     age:       ageN,
@@ -58,6 +64,7 @@ export function validateCreateCard(body) {
     bodyAge:   bodyAgeN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
+    phoneNumber: phoneVal,
   };
 }
 
@@ -73,7 +80,7 @@ export function validateUpdateCard(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
   const { id, name, age, gender, heightCm, weightKg,
-          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName } = body;
+          bmi, fatPercent, bmr, bodyAge, recordedDate, locationName, phoneNumber } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -101,6 +108,8 @@ export function validateUpdateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  const phoneVal = _optionalPhone(phoneNumber);
+
   return {
     id:          idN,
     name:        String(name).trim(),
@@ -114,6 +123,7 @@ export function validateUpdateCard(body) {
     bodyAge:     bodyAgeN,
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
+    phoneNumber: phoneVal,
   };
 }
 
@@ -144,4 +154,41 @@ function _optionalFloat(val, field, min, max) {
   if (isNaN(n)) throw new ValidationError(422, `${field} must be a number`);
   if (n < min || n > max) throw new ValidationError(422, `${field} must be between ${min} and ${max}`);
   return n;
+}
+
+function _optionalPhone(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const cleaned = String(val).trim().replace(/[\s\-()]/g, '');
+  if (!/^\+?[0-9]{10,15}$/.test(cleaned)) {
+    throw new ValidationError(422, 'phoneNumber must be 10–15 digits (optional + prefix)');
+  }
+  return cleaned;
+}
+
+/**
+ * Validate the query params for GET /api/body-parameters-card/phone-search.
+ *
+ * @param {{ prefix: string, coachId: string }} query
+ * @returns {{ prefix: string, coachId: number }}
+ * @throws {ValidationError}
+ */
+export function validatePhoneSearchQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query params missing');
+  const { prefix, coachId } = query;
+
+  if (!prefix || String(prefix).trim() === '') {
+    throw new ValidationError(400, 'prefix is required');
+  }
+  const cleanPrefix = String(prefix).trim().replace(/[\s\-()]/g, '');
+  if (!/^[0-9]{2,15}$/.test(cleanPrefix)) {
+    throw new ValidationError(422, 'prefix must be 2–15 digits');
+  }
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { prefix: cleanPrefix, coachId: coachIdN };
 }

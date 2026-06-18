@@ -5,9 +5,11 @@
 import {
   isCardShareValid,
   buildProfilePatch,
+  buildTeamMemberInsert,
   buildWeightRecord,
   classifyBmi,
   classifyFatPercent,
+  buildFormPrefillFromMember,
 } from '../domain/card.rules.js';
 
 describe('isCardShareValid', () => {
@@ -30,6 +32,18 @@ describe('isCardShareValid', () => {
     const fixedNow = new Date('2026-06-01T00:00:00Z');
     expect(isCardShareValid('2026-06-02T00:00:00Z', fixedNow)).toBe(true);
     expect(isCardShareValid('2026-05-31T00:00:00Z', fixedNow)).toBe(false);
+  });
+});
+
+describe('buildTeamMemberInsert', () => {
+  it('maps name, coach, height and bmr for team_table', () => {
+    expect(buildTeamMemberInsert({ name: 'Priya S', coachId: 12, heightCm: 165, bmr: 1400 }))
+      .toEqual({ UserName: 'Priya S', CoachId: 12, Height: 165, Bmr: 1400 });
+  });
+
+  it('allows null height and bmr', () => {
+    expect(buildTeamMemberInsert({ name: 'Ali', coachId: 3 }))
+      .toEqual({ UserName: 'Ali', CoachId: 3, Height: null, Bmr: null });
   });
 });
 
@@ -86,4 +100,37 @@ describe('classifyFatPercent', () => {
   it('female: high above 30',() => expect(classifyFatPercent(32, 'Female')).toBe('high'));
 
   it('Other: uses male ranges', () => expect(classifyFatPercent(15, 'Other')).toBe('normal'));
+});
+
+describe('buildFormPrefillFromMember', () => {
+  it('returns empty object for null input', () => {
+    expect(buildFormPrefillFromMember(null)).toEqual({});
+  });
+
+  it('populates name, heightCm and bmr when all present', () => {
+    const result = buildFormPrefillFromMember({ userName: 'Priya', heightCm: 162, bmr: 1450 });
+    expect(result).toEqual({ name: 'Priya', heightCm: '162', bmr: '1450' });
+  });
+
+  it('omits heightCm when null', () => {
+    const result = buildFormPrefillFromMember({ userName: 'Ali', heightCm: null, bmr: 1300 });
+    expect(result.heightCm).toBeUndefined();
+    expect(result.bmr).toBe('1300');
+  });
+
+  it('omits bmr when null', () => {
+    const result = buildFormPrefillFromMember({ userName: 'Ali', heightCm: 170, bmr: null });
+    expect(result.bmr).toBeUndefined();
+    expect(result.heightCm).toBe('170');
+  });
+
+  it('omits name when blank string', () => {
+    const result = buildFormPrefillFromMember({ userName: '  ', heightCm: 170, bmr: 1200 });
+    expect(result.name).toBeUndefined();
+  });
+
+  it('trims whitespace from name', () => {
+    const result = buildFormPrefillFromMember({ userName: '  Ananya  ', heightCm: 155, bmr: 1100 });
+    expect(result.name).toBe('Ananya');
+  });
 });

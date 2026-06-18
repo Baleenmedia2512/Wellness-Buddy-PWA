@@ -62,6 +62,9 @@ export const teamHierarchyService = {
           parentCoachId: null,
           isCoachRelationship: true,
           level: 0,
+          phoneNumber: member.phoneNumber || member.PhoneNumber || null,
+          heightCm: member.height != null ? member.height : (member.heightCm != null ? member.heightCm : null),
+          bmr: member.bmr != null ? member.bmr : null,
         }));
       }
 
@@ -80,6 +83,9 @@ export const teamHierarchyService = {
           parentCoachId: node.parentCoachId,
           isCoachRelationship: node.isCoachRelationship,
           level: 0,
+          phoneNumber: node.phoneNumber || null,
+          heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
+          bmr: node.bmr != null ? node.bmr : null,
         });
         if (node.teamMembers && node.teamMembers.length > 0) {
           node.teamMembers.forEach((member) => flatten(member));

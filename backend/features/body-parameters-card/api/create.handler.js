@@ -4,8 +4,9 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard } from '../data/card.repo.js';
+import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * @param {object} body - raw request body
@@ -18,7 +19,30 @@ export async function handleCreateCard(body) {
     throw new ValidationError(403, 'Not authorised to create a body-parameters card');
   }
 
-  const card = await insertCard(payload);
+  let userId = payload.userId;
+
+  if (payload.phoneNumber) {
+    logger.info('[body-params-card] creating team_table member from phone', {
+      coachId: payload.createdBy,
+    });
+    const { userId: memberId, isNew } = await createTeamMemberFromPhone({
+      name:        payload.name,
+      phoneNumber: payload.phoneNumber,
+      coachId:     payload.createdBy,
+      heightCm:    payload.heightCm,
+      bmr:         payload.bmr,
+    });
+    userId = memberId;
+    logger.info('[body-params-card] team_table member ready', { userId, isNew });
+  }
+
+  const card = await insertCard({ ...payload, userId });
+
+  // Fetch the previous card for this user so the frontend can show the
+  // CURRENT vs PREV vs REFERENCE 3-column layout on the share card.
+  const previousCard = userId
+    ? await findPreviousCardByUserId(userId, card.id)
+    : null;
 
   return {
     httpStatus: 201,
@@ -29,6 +53,7 @@ export async function handleCreateCard(body) {
         publicShareToken: card.public_share_token,
         shareExpiresAt:   card.share_expires_at,
         name:             card.name,
+        previousCard,
       },
     },
   };

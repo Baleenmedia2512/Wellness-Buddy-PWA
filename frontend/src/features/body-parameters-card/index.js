@@ -1,28 +1,15 @@
 /**
- * body-parameters-card — Feature barrel export.
- * Public API for the body-parameters-card slice per VSA (claude.md §2).
+ * Body Parameters Card Feature - Public API
+ * Exports public functions for use by other parts of the app
  */
 
+// Components
+export { default as BodyParamsForm } from './components/BodyParamsForm';
+export { default as BodyParamsShareSheet } from './components/BodyParamsShareSheet';
+
 // API services
-export {
-  createBodyParamsCard,
-  updateBodyParamsCard,
-  fetchPublicCard,
-  saveCardToProfile,
-} from './services/bodyParamsCardApi.js';
+export { fetchPublicCard, listBodyParamsCards } from './services/bodyParamsCardApi';
 
 // Domain logic
-export {
-  savePendingCard,
-  consumePendingCard,
-  peekPendingCard,
-} from './domain/pendingBodyParamsCard.js';
-
-export {
-  preloadBodyParamsShareAssets,
-} from './domain/preload-share-assets.js';
-
-// Components
-export { default as BodyParamsCardPreview } from './components/BodyParamsCardPreview.jsx';
-export { default as BodyParamsForm } from './components/BodyParamsForm.jsx';
-export { default as BodyParamsShareSheet } from './components/BodyParamsShareSheet.jsx';
+export { savePendingCard, consumePendingCard } from './domain/pendingBodyParamsCard';
+export { preloadBodyParamsShareAssets } from './domain/preload-share-assets';

@@ -1,20 +1,12 @@
 // Authentication flow controller — OTP send + verify.
 // Supports TWO recipient channels through a single state machine:
-//   - email   → backend OTP (existing) via /api/auth/send-otp + verify-otp
-//   - phone   → Firebase Phone Auth (signInWithPhoneNumber → confirm),
-//               then exchange the Firebase ID token for our session via
-//               /api/auth/firebase-phone-login.
+//   - email   → backend OTP via /api/auth/send-otp + verify-otp (SMTP)
+//   - phone   → backend OTP via /api/auth/send-otp + verify-otp (MDT SMS)
 //
 // Owns loading/error/success state. Google sign-in stays in caller because it
 // is an injected `onSignIn` prop (Firebase). Returns helpers a UI consumes.
 import { useRef, useState } from 'react';
 import { sendOtp as sendOtpApi, verifyOtp as verifyOtpApi } from '../services/authService';
-import {
-  sendPhoneOtp,
-  confirmPhoneOtp,
-  exchangeFirebaseIdToken,
-  resetPhoneAuth,
-} from '../services/phoneAuthService';
 import {
   detectContactType,
   normalizePhone,
@@ -22,6 +14,8 @@ import {
   isValidPhoneE164,
   DEFAULT_COUNTRY,
 } from '../domain/contactIdentifier';
+import { debugLog } from '../../../shared/utils/logger.js';
+import storage from '../../../shared/lib/storage.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
   // `email` keeps its name for backward-compat with existing tests/UI; it now
@@ -37,9 +31,8 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
   // a half-typed change to the input doesn't switch flows mid-verification.
   const [activeChannel, setActiveChannel] = useState(null); // 'email' | 'phone' | null
 
-  // Firebase confirmationResult for the in-progress phone flow. A ref (not
-  // state) because it carries non-serializable closures.
-  const phoneConfirmationRef = useRef(null);
+  // E.164 phone frozen for the verify step (phone channel only).
+  const phoneRecipientRef = useRef(null);
 
   const sendOtp = async () => {
     setSuccessMessage('');
@@ -52,7 +45,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           setErrorMessage('Please enter a valid email address.');
           return false;
         }
-        const data = await sendOtpApi(email);
+        const data = await sendOtpApi(email, 'email');
         if (data.success) {
           setActiveChannel('email');
           setOtpSent(true);
@@ -67,16 +60,33 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           setErrorMessage('Please enter a valid phone number.');
           return false;
         }
-        try {
-          phoneConfirmationRef.current = await sendPhoneOtp(e164);
+        const data = await sendOtpApi(e164, 'phone');
+        const phoneLog = {
+          httpStatus: data?._httpStatus,
+          success: data?.success,
+          hasOtpInResponse: Object.prototype.hasOwnProperty.call(data || {}, 'otp'),
+          message: data?.message || '',
+          providerError: data?.providerError || '',
+          missingConfig: data?.missingConfig || [],
+        };
+        debugLog('[OTP/SMS] phone sendOtp result', phoneLog);
+        if (!data?.success || phoneLog.hasOtpInResponse) {
+          // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
+          console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
+        }
+        if (data.success) {
+          phoneRecipientRef.current = e164;
           setActiveChannel('phone');
           setOtpSent(true);
           return true;
-        } catch (err) {
-          resetPhoneAuth();
-          setErrorMessage(mapFirebaseError(err) || 'Failed to send OTP.');
-          return false;
         }
+        const missing = Array.isArray(data?.missingConfig) ? data.missingConfig.filter(Boolean) : [];
+        setErrorMessage(
+          missing.length > 0
+            ? `${data.message || 'SMS not configured.'} Missing: ${missing.join(', ')}.`
+            : (data.message || 'Failed to send OTP.'),
+        );
+        return false;
       }
       setErrorMessage('Enter an email address or phone number.');
       return false;
@@ -96,19 +106,14 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
     try {
       let data;
       if (activeChannel === 'phone') {
-        if (!phoneConfirmationRef.current) {
+        const phoneRecipient = phoneRecipientRef.current;
+        if (!phoneRecipient) {
           setErrorMessage('Session expired. Please resend the OTP.');
           return false;
         }
-        try {
-          const { idToken } = await confirmPhoneOtp(phoneConfirmationRef.current, otpValue);
-          data = await exchangeFirebaseIdToken(idToken);
-        } catch (err) {
-          setErrorMessage(mapFirebaseError(err) || 'Invalid OTP.');
-          return false;
-        }
+        data = await verifyOtpApi(phoneRecipient, otpValue, undefined, 'phone');
       } else {
-        data = await verifyOtpApi(email, otpValue);
+        data = await verifyOtpApi(email, otpValue, undefined, 'email');
       }
       if (!data.success) {
         setErrorMessage(data.message || 'Invalid OTP.');
@@ -117,7 +122,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
       setVerified(true);
       setSuccessMessage('OTP verified successfully!');
       const userDataWithNewFlag = { ...data.user, isNewUser: data.isNewUser === true };
-      localStorage.setItem('otpUser', JSON.stringify(userDataWithNewFlag));
+      storage.set('otpUser', JSON.stringify(userDataWithNewFlag));
       setTimeout(async () => {
         setSuccessMessage('');
         if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
@@ -135,10 +140,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
   const resetOtpScreen = () => {
     setOtpSent(false);
     setErrorMessage('');
-    if (activeChannel === 'phone') {
-      resetPhoneAuth();
-      phoneConfirmationRef.current = null;
-    }
+    phoneRecipientRef.current = null;
     setActiveChannel(null);
   };
 
@@ -151,20 +153,4 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
     activeChannel,
     sendOtp, verifyOtp, resetOtpScreen,
   };
-}
-
-// Map Firebase auth error codes → human-friendly messages. Defined at module
-// scope so it stays pure and unit-testable from the same file later.
-function mapFirebaseError(err) {
-  const code = err && err.code;
-  switch (code) {
-    case 'auth/invalid-phone-number':       return 'Please enter a valid phone number.';
-    case 'auth/missing-phone-number':       return 'Please enter your phone number.';
-    case 'auth/quota-exceeded':             return 'SMS quota exceeded. Try again later.';
-    case 'auth/too-many-requests':          return 'Too many attempts. Please wait a few minutes.';
-    case 'auth/invalid-verification-code':  return 'Invalid OTP. Please try again.';
-    case 'auth/code-expired':               return 'OTP expired. Please request a new one.';
-    case 'auth/captcha-check-failed':       return 'Security check failed. Please try again.';
-    default:                                return '';
-  }
 }

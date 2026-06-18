@@ -16,7 +16,7 @@
  * On any successful change we call `onChanged()` so the feed re-fetches.
  */
 import React, { useState } from 'react';
-import { geminiService } from '../../shared/services/geminiService';
+import { imageTypeDetector } from '../../shared/services/imageTypeDetector';
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
   UnknownShareViewer,
@@ -103,24 +103,81 @@ export default function UnknownEntryFlow({
     close();
   };
 
+  const retagCapture = async (imageType) => {
+    if (!captureId || !userId || !apiBaseUrl) return;
+    await fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: captureId, userId, imageType }),
+    });
+  };
+
   const handleRetry = async () => {
     if (!captureId || !imageBase64 || !userId) return;
     setRetrying(true);
     setError(null);
     try {
       const file = base64ToImageFile(imageBase64);
-      const analysis = await geminiService.analyzeImageForNutrition(file);
 
-      if (!hasRecognizedFood(analysis)) {
+      // Use full image type detection so weight, education, and smartwatch
+      // captures are also correctly re-classified — not just food.
+      const detectedType = await imageTypeDetector.detectImageType(file);
+
+      if (detectedType.type === 'food') {
+        const analysis = detectedType.details;
+        if (!hasRecognizedFood(analysis)) {
+          setRetrying(false);
+          setError("Still couldn't recognise it — try Edit instead.");
+          return;
+        }
+        const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+        await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
+        setRetrying(false);
+        finish({ kind: 'food', captureId });
+
+      } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        // Save weight entry to DB, then retag capture
+        await saveWeight({
+          userId,
+          weightValue: detectedType.details.weightValue,
+          unit: detectedType.details.unit || 'kg',
+          captureId,
+          imageBase64ToSave: imageBase64,
+        });
+        await retagCapture('weight');
+        setRetrying(false);
+        finish({ kind: 'weight', captureId });
+
+      } else if (detectedType.type === 'education') {
+        // Save education log to DB, then retag capture
+        await saveLog({
+          userId,
+          platform: detectedType.details.platform || 'Online Meeting',
+          topic: 'Education Meeting',
+          captureId,
+          imageBase64,
+        });
+        await retagCapture('education');
+        setRetrying(false);
+        finish({ kind: 'education', captureId });
+
+      } else if (detectedType.type === 'smartwatch') {
+        // Save watch activity via education log (same table), then retag capture
+        await saveLog({
+          userId,
+          platform: detectedType.details.source || 'Smartwatch',
+          topic: `Calories Burned: ${detectedType.details.caloriesBurned || 0} kcal`,
+          captureId,
+          imageBase64,
+        });
+        await retagCapture('smartwatch');
+        setRetrying(false);
+        finish({ kind: 'smartwatch', captureId });
+
+      } else {
         setRetrying(false);
         setError("Still couldn't recognise it — try Edit instead.");
-        return;
       }
-
-      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
-      setRetrying(false);
-      finish({ kind: 'food', captureId });
     } catch {
       setRetrying(false);
       setError("Couldn't analyse the photo — try Edit instead.");

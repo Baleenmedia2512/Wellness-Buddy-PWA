@@ -5,26 +5,26 @@ PODS:
   - AppAuth/Core (1.7.6)
   - AppAuth/ExternalUserAgent (1.7.6):
     - AppAuth/Core
-  - Capacitor (8.3.0):
+  - Capacitor (8.3.4):
     - CapacitorCordova
-  - CapacitorApp (7.1.0):
+  - CapacitorApp (7.1.2):
     - Capacitor
-  - CapacitorCamera (7.0.1):
+  - CapacitorCamera (7.0.5):
     - Capacitor
-  - CapacitorCordova (8.3.0)
-  - CapacitorFilesystem (6.0.0):
+  - CapacitorCordova (8.3.4)
+  - CapacitorFilesystem (6.0.4):
     - Capacitor
   - CapacitorGeolocation (5.0.8):
     - Capacitor
-  - CapacitorPushNotifications (7.0.1):
+  - CapacitorPushNotifications (7.0.6):
     - Capacitor
   - CapacitorShare (8.0.1):
     - Capacitor
-  - CapacitorSplashScreen (8.0.0):
+  - CapacitorSplashScreen (8.0.1):
     - Capacitor
-  - CapacitorStatusBar (7.0.3):
+  - CapacitorStatusBar (7.0.6):
     - Capacitor
-  - CapgoCapacitorNavigationBar (7.1.33):
+  - CapgoCapacitorNavigationBar (7.3.18):
     - Capacitor
   - GoogleSignIn (6.2.4):
     - AppAuth (~> 1.5)
@@ -87,17 +87,17 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
-  Capacitor: 22e541237135648c9aa736232bb4d2eec35fddcb
-  CapacitorApp: 26587c2ce485d88ddb39adb21cac64f8e481afe3
-  CapacitorCamera: 6e73f1fc6c629a672658705a02409b60854bc0f1
-  CapacitorCordova: 2e1e2bb93b2f365309dc4ff18b72b9a69a7814a9
-  CapacitorFilesystem: 9c2cc1e89d3b8b91503b316e9f6c2915c9bf9419
+  Capacitor: d13cad5fa09155679672808cc4ca9fbc2997e1b4
+  CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
+  CapacitorCamera: 9e952270be355797f769aa835bb7643a96c871fe
+  CapacitorCordova: c07921bdcfec6f691bae22274446b4d606ebf6a4
+  CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
   CapacitorGeolocation: 6beed87d5d2b80745f03a84db4ab2269bc872c9c
-  CapacitorPushNotifications: 6a2794788c583dd89215f1805ca4bced1b13dbdf
+  CapacitorPushNotifications: b8e30637549ce91468b8c4dddbef2657be831f4c
   CapacitorShare: 0c58305114538568059bfc07111f22dcb9cb2a82
-  CapacitorSplashScreen: 422880d7117605c30699eb4b21644b62db42e86c
-  CapacitorStatusBar: 0659ddc7b1713764a05831463d215b177a15d054
-  CapgoCapacitorNavigationBar: 7044cfb60cc46dc0891f8745a22a166039734e1e
+  CapacitorSplashScreen: 4b46c72298db552b3c57ce021ef028b6dc7f1fa7
+  CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
+  CapgoCapacitorNavigationBar: 3c59704af4b6774bebb36beaab82643c141dfa83
   GoogleSignIn: 5651ce3a61e56ca864160e79b484cd9ed3f49b7a
   GTMAppAuth: 0ff230db599948a9ad7470ca667337803b3fc4dd
   GTMSessionFetcher: 3a63d75eecd6aa32c2fc79f578064e1214dfdec2

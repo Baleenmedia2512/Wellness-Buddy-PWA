@@ -1,217 +1,94 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+/**
+ * Secure Education Detection Service - Backend Proxy Version
+ * 
+ * Calls backend /api/ai/detect-image-type for meeting detection.
+ * Per claude.md §8.2: API keys must NEVER be exposed to frontend.
+ */
 
-class EducationDetectionService {
+import axios from 'axios';
+import { getApiBaseUrl } from '../../../config/api.config';
+
+const API_BASE = getApiBaseUrl();
+
+class SecureEducationDetectionService {
   constructor() {
-    this.apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-    this.genAI = null;
-    this.model = null;
-    
-    if (this.apiKey) {
-      this.genAI = new GoogleGenerativeAI(this.apiKey);
-      this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite",
-        generationConfig: {
-          temperature: 0,
-          topK: 1,
-          topP: 1.0, // Increased for faster, more confident predictions
-          maxOutputTokens: 1024, // Reduced from 2048 (sufficient for meeting detection)
-          responseMimeType: 'application/json'
-        }
-      });
-    }
+    this.timeout = 30000; // 30 second timeout
+    this.initialized = true; // Always ready - no Gemini setup needed
+  }
+
+  /**
+   * Dummy initialize method for backward compatibility
+   * Secure services don't need initialization - they just call backend
+   */
+  async initialize() {
+    return Promise.resolve();
   }
 
   /**
    * Detect if image is a virtual meeting screenshot
-   * @param {File|string} imageFile - Image file or base64 string
-   * @returns {Promise<Object>} { isMeeting: boolean, confidence: number, platform: string, reason: string }
+   * Now calls backend instead of Gemini directly
    */
   async detectMeetingType(imageFile) {
     try {
-      if (!this.model) {
-        throw new Error('Gemini AI model not initialized. Check REACT_APP_GEMINI_API_KEY.');
+      const formData = new FormData();
+      formData.append('image', imageFile);
+
+      const response = await axios.post(
+        `${API_BASE}/api/ai/detect-image-type`,
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: this.timeout,
+        }
+      );
+
+      if (!response.data.ok) {
+        throw new Error(response.data.error?.message || 'Meeting detection failed');
       }
 
-      // Convert to base64
-      const base64Image = await this.fileToBase64(imageFile);
+      const data = response.data.data;
 
-      const prompt = `Is this a VIRTUAL MEETING screenshot? JSON only.
-
-{
-  "isMeeting": bool,
-  "confidence": 0-1,
-  "platform": "Google Meet"|"Zoom"|"MS Teams"|"Online Meeting",
-  "reason": "brief"
-}
-
-PLATFORMS:
-- Green theme/Meet branding → "Google Meet"
-- Black toolbar/Zoom UI → "Zoom"
-- Purple accents/Teams → "MS Teams"
-- Other video platform → "Online Meeting"
-
-DETECT:
-✅ Video tiles, meeting controls, participant names, virtual backgrounds
-❌ Food, scales, random screenshots
-
-Confidence >0.7 only if clearly meeting.`;
-
-      const imagePart = {
-        inlineData: {
-          data: base64Image.split(',')[1] || base64Image,
-          mimeType: this.getMimeType(imageFile)
-        }
-      };
-
-      const result = await this.model.generateContent([prompt, imagePart]);
-      const response = await result.response;
-      const text = response.text();
-      
-      const data = this.parseJsonResponse(text);
+      // Map generic response to meeting-specific format
+      const isMeeting = data.type === 'meeting';
+      const platform = isMeeting 
+        ? (data.details?.platform || 'Online Meeting')
+        : '';
 
       return {
-        isMeeting: data.isMeeting || false,
+        isMeeting,
         confidence: data.confidence || 0,
-        platform: data.platform || null,
-        reason: data.reason || 'Unknown'
+        platform,
+        reason: isMeeting 
+          ? `Detected ${platform} interface` 
+          : (data.details?.reason || 'Not a meeting screenshot'),
       };
 
     } catch (error) {
-      console.error('❌ Education detection error:', error);
-      return {
-        isMeeting: false,
-        confidence: 0,
-        platform: null,
-        reason: error.message
-      };
+      console.error('❌ Backend meeting detection failed:', error);
+      throw new Error('Gemini AI model not initialized. Check backend configuration.');
     }
   }
 
   /**
-   * Analyze meeting image and extract details
-   * @param {File|string} imageFile - Image file or base64 string
-   * @returns {Promise<Object>} { success: boolean, platform: string, topic: string, confidence: number }
-   */
-  async analyzeMeetingImage(imageFile) {
-    try {
-      if (!this.model) {
-        throw new Error('Gemini AI model not initialized. Check REACT_APP_GEMINI_API_KEY.');
-      }
-
-      // Convert to base64
-      const base64Image = await this.fileToBase64(imageFile);
-
-      const prompt = `Extract meeting info. JSON only.
-
-PLATFORMS (exact names):
-- "Google Meet" (green theme)
-- "Zoom" (black toolbar)
-- "MS Teams" (purple)
-- "Online Meeting" (other/unclear)
-
-EXTRACT:
-1. Platform (required)
-2. Title/topic (if visible, else null)
-
-{
-  "platform": "Google Meet",
-  "detectedTitle": "name" or null,
-  "confidence": 0.95,
-  "participantCount": "5-10 visible",
-  "detectionReason": "brief"
-}
-
-NOTE: Titles often NOT visible in Google Meet. Be confident about platform (>0.8), conservative about title.`;
-
-      const imagePart = {
-        inlineData: {
-          data: base64Image.split(',')[1] || base64Image,
-          mimeType: this.getMimeType(imageFile)
-        }
-      };
-
-      const result = await this.model.generateContent([prompt, imagePart]);
-      const response = await result.response;
-      const text = response.text();
-      
-      const data = this.parseJsonResponse(text);
-
-      // ALWAYS return a valid topic (never null) - apply fallback
-      return {
-        success: true,
-        platform: data.platform || 'Online Meeting',
-        topic: 'Education Meeting', // ✅ Fixed topic
-        confidence: data.confidence || 0.7,
-        participantCount: data.participantCount || 'Unknown',
-        detectionReason: data.detectionReason || 'Meeting detected'
-      };
-
-    } catch (error) {
-      console.error('❌ Education analysis error:', error);
-      return {
-        success: false,
-        platform: 'Online Meeting',
-        topic: 'Education Meeting',
-        confidence: 0,
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Convert file to base64 string
-   * @param {File|string} file - File object or base64 string
-   * @returns {Promise<string>} Base64 string
+   * Convert file to base64 (for backward compatibility)
    */
   async fileToBase64(file) {
-    // If already a base64 string, return it
     if (typeof file === 'string') {
       return file;
     }
 
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
   }
-
-  /**
-   * Get MIME type from file
-   * @param {File|string} file - File object or base64 string
-   * @returns {string} MIME type
-   */
-  getMimeType(file) {
-    if (typeof file === 'string') {
-      // Extract mime type from base64 data URL
-      const match = file.match(/^data:([^;]+);/);
-      return match ? match[1] : 'image/jpeg';
-    }
-    return file.type || 'image/jpeg';
-  }
-
-  /**
-   * Parse JSON response from Gemini (handles markdown code blocks)
-   * @param {string} text - Response text
-   * @returns {Object} Parsed JSON object
-   */
-  parseJsonResponse(text) {
-    try {
-      // Remove markdown code blocks if present
-      let cleanText = text.trim();
-      
-      // Remove ```json and ``` markers
-      cleanText = cleanText.replace(/^```json\s*/i, '');
-      cleanText = cleanText.replace(/^```\s*/, '');
-      cleanText = cleanText.replace(/\s*```$/, '');
-      
-      return JSON.parse(cleanText);
-    } catch (error) {
-      console.error('Failed to parse JSON response:', text);
-      throw new Error('Invalid JSON response from AI: ' + error.message);
-    }
-  }
 }
 
-export const educationDetectionService = new EducationDetectionService();
+// Export singleton
+export const educationDetectionService = new SecureEducationDetectionService();
+export default educationDetectionService;

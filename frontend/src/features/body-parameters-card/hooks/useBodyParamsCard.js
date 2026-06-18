@@ -5,15 +5,29 @@
  *   1. Height → ideal weight  (BMI 23 × heightM²)
  *   2. Height + Weight → BMI  (weight ÷ heightM²)
  *   3. Gender → fat% hint label
+ * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CapacitorHttp } from '@capacitor/core';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
+import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
+/**
+ * Normalise any phone string to a 10-digit Indian national number for prefix
+ * matching. Handles: "9876543210", "+919876543210", "919876543210", "09876543210".
+ */
+function toNationalDigits(phone) {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+  if (d.length === 11 && d.startsWith('0'))  return d.slice(1);
+  return d;
+}
+
 const EMPTY_FORM = {
-  name:         '',
+  name:         '',  phoneNumber:  '',
   age:          '',
   gender:       '',
   heightCm:     '',
@@ -36,6 +50,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (existingCard) {
       return {
         name:         existingCard.name         ?? '',
+        phoneNumber:  existingCard.phoneNumber  ?? '',
         age:          existingCard.age          != null ? String(existingCard.age)         : '',
         gender:       existingCard.gender        ?? '',
         heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
@@ -58,8 +73,100 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Track whether the user manually typed in the BMI field.
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
+  const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
+
+  // ── Phone autocomplete state ──────────────────────────────────────────────
+  const [phoneSuggestions, setPhoneSuggestions] = useState([]);
+  // Filtering is now synchronous (client-side); always false. Kept for API compatibility.
+  const phoneSearchLoading = false;
+  const phoneDebounceRef    = useRef(null);
+  // Stores the last prefix typed while coachUserId was still null, so we can
+  // fire the search as soon as the coach ID resolves.
+  const pendingPhonePrefixRef = useRef(null);
+
+  // Flat list of all team members — loaded once when coachUserId is available.
+  // Used for client-side phone prefix filtering (no backend round-trip needed).
+  const [allTeamMembers, setAllTeamMembers] = useState([]);
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
+
+  // Update form when existingCard changes (for edit mode)
+  useEffect(() => {
+    if (existingCard) {
+      setForm({
+        name:         existingCard.name         ?? '',
+        phoneNumber:  existingCard.phoneNumber  ?? '',
+        age:          existingCard.age          != null ? String(existingCard.age)         : '',
+        gender:       existingCard.gender        ?? '',
+        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
+        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
+        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
+        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
+        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
+        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
+        locationName: existingCard.locationName ?? '',
+      });
+      setBmiUserEdited(false); // Reset BMI edit flag for new card
+    }
+  }, [existingCard?.id]); // Only update when card ID changes
+
+  // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
+  useEffect(() => {
+    if (coachUserId || !user?.email) return undefined;
+
+    let cancelled = false;
+    CapacitorHttp.get({
+      url: `${getApiBaseUrl()}/api/user/lookup?email=${encodeURIComponent(user.email)}`,
+      headers: { 'Cache-Control': 'no-cache' },
+    })
+      .then((response) => {
+        const data = response.data;
+        if (!cancelled && data?.success && data.userId) {
+          setCoachUserId(data.userId);
+        }
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [user?.email, coachUserId]);
+
+  // ── Load team members once coachUserId resolves, then fire any pending search ──
+  useEffect(() => {
+    if (!coachUserId) return;
+    let cancelled = false;
+    teamHierarchyService.getFlatTeamList(coachUserId)
+      .then((members) => {
+        if (cancelled) return;
+        debugLog('📱 [PhoneSearch] loaded members:', members.length,
+          members.slice(0, 5).map(m => ({ id: m.userId, phone: m.phoneNumber }))
+        );
+        setAllTeamMembers(members);
+        // Fire pending search now that we have both coachUserId and members.
+        const prefix = pendingPhonePrefixRef.current;
+        if (!prefix) return;
+        pendingPhonePrefixRef.current = null;
+        const digits = prefix.replace(/\D/g, '');
+        if (digits.length < 1) return;
+        const results = members
+          .filter((m) => {
+            if (!m.phoneNumber) return false;
+            if (m.userId === coachUserId) return false;
+            return toNationalDigits(m.phoneNumber).startsWith(toNationalDigits(digits));
+          })
+          .slice(0, 10)
+          .map((m) => ({
+            userId:      m.userId,
+            userName:    m.userName,
+            phoneNumber: m.phoneNumber,
+            heightCm:    m.heightCm != null ? m.heightCm : null,
+            bmr:         m.bmr      != null ? m.bmr      : null,
+          }));
+        setPhoneSuggestions(results);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [coachUserId]);
 
   // ── Derived calculations ──────────────────────────────────────────────────
 
@@ -111,6 +218,82 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  /**
+   * Called when the phone input changes. Updates form + triggers debounced prefix search.
+   * Clears suggestions immediately when input is too short.
+   */
+  const setPhoneField = useCallback((value) => {
+    setForm((prev) => ({ ...prev, phoneNumber: value }));
+
+    const digits = value.replace(/\D/g, '');
+    if (digits.length < 1) {
+      setPhoneSuggestions([]);
+      pendingPhonePrefixRef.current = null;
+      if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+      return;
+    }
+
+    if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+
+    // coachUserId not yet resolved — park the prefix; the resolve useEffect will fire it.
+    if (!coachUserId) {
+      pendingPhonePrefixRef.current = digits;
+      return;
+    }
+
+    pendingPhonePrefixRef.current = null;
+
+    // allTeamMembers not yet loaded — park the prefix; load effect will fire it.
+    if (allTeamMembers.length === 0) {
+      pendingPhonePrefixRef.current = digits;
+      return;
+    }
+
+    // Client-side filtering — instant, no network round-trip.
+    phoneDebounceRef.current = setTimeout(() => {
+      debugLog('📱 [PhoneSearch] Searching for:', digits, 'in', allTeamMembers.length, 'members');
+      const results = allTeamMembers
+        .filter((m) => {
+          if (!m.phoneNumber) return false;
+          if (m.userId === coachUserId) return false;
+          const normalizedMemberPhone = toNationalDigits(m.phoneNumber);
+          const normalizedSearchDigits = toNationalDigits(digits);
+          const matches = normalizedMemberPhone.startsWith(normalizedSearchDigits);
+          if (matches) {
+            debugLog('📱 [PhoneSearch] Match found:', m.phoneNumber, 'normalized:', normalizedMemberPhone, 'search:', normalizedSearchDigits);
+          }
+          return matches;
+        })
+        .slice(0, 10)
+        .map((m) => ({
+          userId:      m.userId,
+          userName:    m.userName,
+          phoneNumber: m.phoneNumber,
+          heightCm:    m.heightCm != null ? m.heightCm : null,
+          bmr:         m.bmr      != null ? m.bmr      : null,
+        }));
+      debugLog('📱 [PhoneSearch] Results:', results.length, 'matches');
+      setPhoneSuggestions(results);
+    }, 150);
+  }, [coachUserId, allTeamMembers]);
+
+  /**
+   * Called when the user selects a suggestion from the phone autocomplete.
+   * Pre-fills Name, Height, BMR from the member's stored profile.
+   * BMI auto-fill is NOT reset here — height will trigger it naturally.
+   */
+  const fillFromMember = useCallback((member) => {
+    setForm((prev) => ({
+      ...prev,
+      phoneNumber: member.phoneNumber,
+      ...(member.userName && String(member.userName).trim() ? { name: String(member.userName).trim() } : {}),
+      ...(member.heightCm != null ? { heightCm: String(member.heightCm) } : {}),
+      ...(member.bmr != null ? { bmr: String(member.bmr) } : {}),
+    }));
+    setPhoneSuggestions([]);
+    debugLog('✅ [BodyParamsCard] pre-filled from member', member);
+  }, []);
+
   /** Called when user manually types in the Weight field. */
   const setWeightManually = useCallback((value) => {
     setForm((prev) => ({ ...prev, weightKg: value }));
@@ -130,10 +313,22 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setBmiUserEdited(false);
   }, []);
 
-  const isValid = form.name.trim().length > 0;
+  const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
+
+  const isValid =
+    form.name.trim().length > 0 &&
+    form.phoneNumber.trim().length > 0 &&
+    /^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber));
 
   const handleSave = useCallback(async () => {
-    if (!isValid) { setError('Name is required'); return; }
+    if (!form.name.trim()) { setError('Name is required'); return; }
+    if (!form.phoneNumber.trim()) { setError('Phone number is required'); return; }
+    if (!/^\+?[0-9]{10,15}$/.test(cleanPhone(form.phoneNumber))) {
+      setError('Please enter a valid phone number (10–15 digits)'); return;
+    }
+    if (!coachUserId) {
+      setError('Could not resolve your coach account. Please refresh and try again.'); return;
+    }
     const ageNum = form.age !== '' && form.age != null ? parseInt(form.age) : null;
     if (ageNum !== null && (isNaN(ageNum) || ageNum < 1 || ageNum > 120)) {
       setError('Age must be between 1 and 120'); return;
@@ -150,6 +345,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (onSaveStart) {
       onSaveStart({
         name:         form.name.trim(),
+        phoneNumber:  form.phoneNumber.trim(),
         age:          form.age,
         gender:       form.gender,
         heightCm:     form.heightCm,
@@ -165,9 +361,10 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
     try {
       const payload = {
-        createdBy:   user?.id,
+        createdBy:   coachUserId,
         userId:      targetUserId,
         name:        form.name.trim(),
+        phoneNumber: cleanPhone(form.phoneNumber),
         age:         form.age          || undefined,
         gender:      form.gender       || undefined,
         heightCm:    form.heightCm     || undefined,
@@ -183,13 +380,18 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       const card = isEditMode
         ? await updateBodyParamsCard(existingCard.id, payload)
         : await createBodyParamsCard(payload);
-      const url = `${getApiBaseUrl()}/share/bpc/${card.publicShareToken}`;
+
+      // Extract previousCard from API response (null for fresh users).
+      const { previousCard: prevCard = null, ...cardCore } = card;
+
+      const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
 
       // Merge API response with full form data so the card preview
       // has all fields (API only returns id/token/name).
       const fullCard = {
-        ...card,
+        ...cardCore,
         age:          form.age,
+        phoneNumber:  form.phoneNumber,
         gender:       form.gender,
         heightCm:     form.heightCm,
         weightKg:     form.weightKg,
@@ -204,16 +406,18 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       setSavedCard(fullCard);
       setShareUrl(url);
       debugLog('✅ [BodyParamsCard] Created:', fullCard);
-      if (onSaveSuccess) onSaveSuccess(fullCard, url);
+      if (onSaveSuccess) onSaveSuccess(fullCard, url, prevCard);
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, user, targetUserId, onSaveSuccess]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user]);
 
   return {
     form, setField,
+    setPhoneField, fillFromMember,
+    phoneSuggestions, phoneSearchLoading,
     setWeightManually, setBmiManually,
     fatHint, fatPlaceholder,
     derivedIdealWeight, derivedBmi,

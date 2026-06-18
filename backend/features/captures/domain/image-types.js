@@ -15,10 +15,13 @@
  *           ──▶ smartwatch
  *           ──▶ unknown
  *   unknown ──▶ food                             (added in PR-A, ADR-0003)
+ *   - unknown ──▶ weight                           (ADR-0003 Diary Edit flow)
+ *   - unknown ──▶ education                        (ADR-0003 Diary Edit flow)
+ *   - unknown ──▶ smartwatch                       (ADR-0003 Diary Retry flow)
  *
  *   Rules:
- *   - Terminal states are IMMUTABLE *except* for the single `unknown → food`
- *     transition. This is the ONLY way a misclassification is corrected
+ *   - Terminal states are IMMUTABLE *except* for the `unknown → <terminal>`
+ *     transitions. These are the only way a misclassification is corrected
  *     in-place; every other terminal can only be replaced by creating a
  *     new capture.
  *   - The `unknown → food` exit is the integration point for the Diary
@@ -26,10 +29,9 @@
  *     on the user's behalf) supplies nutrition for a capture the detector
  *     could not classify, the food row is inserted and the capture is
  *     promoted in place so the share link starts resolving as food.
- *   - `unknown` does NOT exit to `weight`, `education`, or `smartwatch` —
- *     those verticals have no Retry/Edit flow yet, and silently routing an
- *     unknown to one of them would re-introduce the "Unknown 0-kcal" feed
- *     pollution that PR 3 fixed.
+ *   - `unknown` exits to `food`, `weight`, `education`, or `smartwatch`
+ *     when the user taps Retry in the Diary and the detector re-classifies
+ *     the capture correctly.
  * ---------------------------------------------------------------------------
  */
 
@@ -83,6 +85,7 @@ export function canTransition(from, to) {
   if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_FOOD) return true;
   if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_WEIGHT) return true;
   if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_EDUCATION) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_SMARTWATCH) return true;
   return false;
 }
 
@@ -96,7 +99,7 @@ export function assertCanTransition(from, to) {
     const err = new Error(
       `Illegal capture state transition: ${from} → ${to}. ` +
       `Allowed: 'pending' → any terminal (${TERMINAL_IMAGE_TYPES.join(', ')}), ` +
-      `or 'unknown' → 'food' / 'weight' / 'education'.`,
+      `or 'unknown' → 'food' / 'weight' / 'education' / 'smartwatch'.`,
     );
     err.status = 409;
     err.code = 'INVALID_STATE_TRANSITION';

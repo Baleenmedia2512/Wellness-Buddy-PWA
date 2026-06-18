@@ -96,9 +96,9 @@ import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
 import { aggregateFoodTotals } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI, shareTextViaWhatsApp, resolveShareDisplayName } from "./shared/utils/shareUtils";
 import { locationAttendanceService, getClubLocationIfNearby } from "./features/nutrition-centers";
-import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
+import { checkExactAlarmPermission, openExactAlarmSettings, initReminders } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -181,7 +181,7 @@ const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
 const WellnessCounselling = lazy(() =>
-  import("./pages/WellnessCounselling"),
+  import("./pages/WellnessCounsellingCards"),
 );
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
@@ -244,6 +244,7 @@ function WellnessValleyApp() {
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
+  const [isInactiveReactivationFlow, setIsInactiveReactivationFlow] = useState(false); // true while inactive user is going through coach-OTP reactivation
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   // For returning users who already granted permissions, start as true so the
   // camera opens immediately (Snapchat-like). Fresh installs start as false
@@ -541,12 +542,9 @@ function WellnessValleyApp() {
         `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)}ms from capture start)`,
       );
 
-      // Share the URL as a WhatsApp text message so the recipient sees a
-      // rich link-preview card (title + thumbnail from the page's OG tags)
-      // instead of a raw URL � identical to how Swiggy / Redbus share links.
-      // whatsapp://send?text=<url> opens WhatsApp pre-filled with the link;
-      // WhatsApp's OG crawler fetches the page and renders the branded card.
-      const ok = await shareTextViaWhatsApp(foodShareUrl);
+      const shareDisplayName = resolveShareDisplayName(savedUserName, user);
+      const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${foodShareUrl}`;
+      const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
       debugLog(
@@ -566,7 +564,7 @@ function WellnessValleyApp() {
     return () => {
       cancelled = true;
     };
-  }, [foodShareUrl, imageType, resetCaptureUiOnly]);
+  }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -755,6 +753,15 @@ function WellnessValleyApp() {
   // so the login-camera effect never fires twice.
   const _hasFiredCameraOnLoginRef = useRef(false);
 
+  // Deep-link guard: once a /share URL opens the app, suppress automatic
+  // camera opening for this session so shared-card routing wins deterministically.
+  const _suppressAutoCameraOnDeepLinkRef = useRef(false);
+
+  // Early app-link events can arrive before the full deep-link resolver effect
+  // is mounted (it waits for user/apiBaseUrl). Buffer the URL so it can be
+  // replayed once the resolver is ready.
+  const _pendingDeepLinkUrlRef = useRef(null);
+
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
   const handleCameraStateChange = useCallback((state /*, meta */) => {
@@ -806,6 +813,7 @@ function WellnessValleyApp() {
       if (!_launchUrlCheckedRef.current) return; // share link check pending
       if (!_homeScreenActiveRef.current) return; // not on home screen
       if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
+      if (_suppressAutoCameraOnDeepLinkRef.current) return; // opened from /share deep link
       
       // NEW GUARD: Don't open camera if analysis results are visible
       // This prevents camera from opening after user returns from sharing
@@ -847,14 +855,21 @@ function WellnessValleyApp() {
   const _launchUrlCheckedRef = useRef(!Capacitor.isNativePlatform()); // web = already done
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const SHARE_RE = /\/share\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-    const isShareUrl = (url) => url && (SHARE_RE.test(url) || /^wellnessvalley:\/\/share\//i.test(url));
+    const isShareUrl = (url) => {
+      if (!url || typeof url !== 'string') return false;
+      // Accept both legacy UUID links and new short-code links.
+      return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
+    };
 
     // Part B — early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle.addAppUrlOpenListener((event) => {
-      if (isShareUrl(event?.url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(event?.url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = event?.url || null;
+      }
       _launchUrlCheckedRef.current = true;
     }).then((h) => { earlyHandle = h; }).catch(() => {});
 
@@ -864,7 +879,11 @@ function WellnessValleyApp() {
     // getLaunchUrl() is the primary check for cold-start intent URLs.
     nativeLifecycle.getLaunchUrl().then((url) => {
       clearTimeout(fallbackTimer);
-      if (isShareUrl(url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = url;
+      }
       _launchUrlCheckedRef.current = true;
     }).catch(() => {
       clearTimeout(fallbackTimer);
@@ -889,6 +908,7 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return;
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
+    if (_suppressAutoCameraOnDeepLinkRef.current) return;
     if (showCompleteProfile) return; // wait until profile gate clears
 
     let cancelled = false;
@@ -957,8 +977,8 @@ function WellnessValleyApp() {
   }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
-  // (https://<host>/share/<uuid>) or the custom scheme
-  // (wellnessvalley://share/<uuid>) ? resolve the share token against the
+  // (https://<host>/share/<id>) or the custom scheme
+  // (wellnessvalley://share/<id>) → resolve the share identifier against the
   // backend, then jump straight to Dashboard ? Nutrition for that owner /
   // date. Permission errors and missing/expired shares surface as toasts.
   useEffect(() => {
@@ -968,15 +988,16 @@ function WellnessValleyApp() {
     let handle = null;
     const seenTokens = new Set(); // guard against duplicate fires
 
-    const SHARE_PATH_RE = /\/share\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const SHARE_ID_RE = '([A-Za-z0-9]{6,10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+    const SHARE_PATH_RE = new RegExp(`/share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i');
     const BPC_PATH_RE   = /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
-      // Custom scheme: wellnessvalley://share/<uuid>
-      const customMatch = rawUrl.match(/^wellnessvalley:\/\/share\/([0-9a-f-]{36})/i);
+      // Custom scheme: wellnessvalley://share/<id>
+      const customMatch = rawUrl.match(new RegExp(`^wellnessvalley://share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i'));
       if (customMatch) return customMatch[1];
-      // https path: /share/<uuid>
+      // https path: /share/<id>
       const httpsMatch = rawUrl.match(SHARE_PATH_RE);
       return httpsMatch ? httpsMatch[1] : null;
     };
@@ -991,6 +1012,7 @@ function WellnessValleyApp() {
       // ── Body Parameters Card deep link ───────────────────────────────────
       const bpcToken = extractBpcToken(rawUrl);
       if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
+        _suppressAutoCameraOnDeepLinkRef.current = true;
         seenTokens.add(`bpc:${bpcToken}`);
         try {
           const card = await fetchPublicCard(bpcToken);
@@ -1013,6 +1035,7 @@ function WellnessValleyApp() {
 
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
+      _suppressAutoCameraOnDeepLinkRef.current = true;
       seenTokens.add(token);
 
       try {
@@ -1037,10 +1060,51 @@ function WellnessValleyApp() {
 
         const data = body.data || {};
 
-        // PR-E / ADR-0003: an `unknown` capture's share link opens the
-        // dedicated viewer (image + Retry/Edit) instead of an empty
-        // nutrition tab. Gated on ff.diary-feed so legacy behaviour is
-        // preserved while the flag is OFF.
+        // Open the Dashboard (Diary) and seed the owner / date / tab context.
+        // Used for EVERY resolved capture — food, weight, education,
+        // smartwatch, unknown, and pending — so a deep link ALWAYS lands on
+        // the diary with the relevant card instead of the home screen.
+        const applyDashboardContext = (d, { seedMealId = true } = {}) => {
+          if (d.isSelf) {
+            setDashboardInitialSelectedMember(null);
+          } else {
+            // Shape MUST match team/services/teamSearchService.toSelectedUser —
+            // hooks like resolveDashboardUserId read `id` (not `userId`).
+            const memberName = d.ownerUserName || "Member";
+            setDashboardInitialSelectedMember({
+              id: d.ownerUserId,
+              userId: d.ownerUserId,
+              name: memberName,
+              userName: memberName,
+              email: "",
+              role: "user",
+              isSelf: false,
+            });
+          }
+          setDashboardInitialDate(d.mealDate || null);
+          // While `pending`, no domain row exists yet — resolve returns the
+          // captureId as a placeholder that no feed can match. Seed null so the
+          // per-feed deep-link opener doesn't latch onto a bogus id; the real
+          // id is seeded once the capture is classified (see pollPending).
+          setDashboardInitialMealId(seedMealId ? (d.mealId || null) : null);
+          // Route to the tab that matches the shared image type. When the
+          // single-page Diary flag is ON the tab is cosmetic (all feeds render
+          // stacked); when OFF it selects the correct legacy tab.
+          setDashboardInitialTab(tabForImageType(d.imageType));
+          startTransition(() => setShowDashboard(true));
+        };
+
+        // `pending` = capture row exists but AI classification has not finished.
+        // Legacy rows with no ImageType are treated as already-terminal ('food').
+        const isPending = data.imageType === "pending";
+
+        // Open the diary immediately. While pending the feeds show their own
+        // loading / empty state; the correct card appears once classified.
+        applyDashboardContext(data, { seedMealId: !isPending });
+
+        // PR-E / ADR-0003: an `unknown` capture also opens the dedicated image
+        // viewer (Retry / Edit) on top of the diary. Gated on ff.diary-feed so
+        // legacy behaviour is preserved while the flag is OFF.
         if (data.imageType === "unknown" && isFlagEnabled("ff.diary-feed")) {
           try {
             const share = await fetchUnknownShare({ token, viewerUserId: user.id });
@@ -1059,33 +1123,39 @@ function WellnessValleyApp() {
           return;
         }
 
-        if (data.isSelf) {
-          setDashboardInitialSelectedMember(null);
-        } else {
-          // Shape MUST match team/services/teamSearchService.toSelectedUser
-          // � hooks like resolveDashboardUserId look at `id` (not `userId`).
-          const memberName = data.ownerUserName || "Member";
-          setDashboardInitialSelectedMember({
-            id: data.ownerUserId,
-            userId: data.ownerUserId,
-            name: memberName,
-            userName: memberName,
-            email: "",
-            role: "user",
-            isSelf: false,
-          });
+        // Pending capture: poll the resolve endpoint until the capture is
+        // classified, then re-route to the exact card and refresh the feeds so
+        // it appears WITHOUT the user reloading the page.
+        if (isPending) {
+          let attempts = 0;
+          const MAX_ATTEMPTS = 15;   // ~37s at 2.5s spacing
+          const INTERVAL_MS = 2500;
+          const pollPending = async () => {
+            if (cancelled) return;
+            attempts += 1;
+            try {
+              const pr = await fetch(
+                `${apiBaseUrl}/api/background-analysis/captures/resolve?token=${encodeURIComponent(token)}&viewerUserId=${encodeURIComponent(user.id)}`,
+                { method: "GET", headers: { "Content-Type": "application/json" } },
+              );
+              const pb = await pr.json().catch(() => ({}));
+              if (cancelled) return;
+              const pd = pb?.data;
+              if (pr.ok && pb?.ok && pd && pd.imageType && pd.imageType !== "pending") {
+                // Classified — route to the real card and refresh the feeds.
+                applyDashboardContext(pd);
+                triggerNutritionRefresh({ immediate: true, source: "deep-link-pending" });
+                return;
+              }
+            } catch {
+              // Transient network error — keep polling until the cap is hit.
+            }
+            if (!cancelled && attempts < MAX_ATTEMPTS) {
+              setTimeout(pollPending, INTERVAL_MS);
+            }
+          };
+          setTimeout(pollPending, INTERVAL_MS);
         }
-        setDashboardInitialDate(data.mealDate || null);
-        setDashboardInitialMealId(data.mealId || null);
-        // Route to the tab that matches the shared image type.
-        // imageType is returned by the resolve endpoint when the capture row
-        // has been classified (may be null for legacy rows — helper falls
-        // back to the default 'nutrition' tab). Map lives in
-        // shared/lib/tab-by-image-type so smartwatch / unknown also route
-        // correctly. See PR 3 README in features/captures.
-        const resolvedTab = tabForImageType(data.imageType);
-        setDashboardInitialTab(resolvedTab);
-        startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");
       }
@@ -1094,6 +1164,7 @@ function WellnessValleyApp() {
     // Register listener for foreground deep-links
     nativeLifecycle
       .addAppUrlOpenListener((event) => {
+        if (event?.url) _pendingDeepLinkUrlRef.current = event.url;
         handleUrl(event?.url);
       })
       .then((h) => {
@@ -1107,6 +1178,13 @@ function WellnessValleyApp() {
     nativeLifecycle.getLaunchUrl().then((url) => {
       if (!cancelled && url) handleUrl(url);
     });
+
+    // Replay any share URL captured by the early cold-start guard.
+    const pendingUrl = _pendingDeepLinkUrlRef.current;
+    if (!cancelled && pendingUrl) {
+      _pendingDeepLinkUrlRef.current = null;
+      handleUrl(pendingUrl);
+    }
 
     return () => {
       cancelled = true;
@@ -1543,11 +1621,56 @@ function WellnessValleyApp() {
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
+    setIsInactiveReactivationFlow(false);
 
     // Add small delay to ensure modal is visible before sign out
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     await handleSignOut();
+  };
+
+  // Called when user clicks "Contact Your Coach" inside the inactive modal.
+  // Closes the modal, sends the coach OTP, then shows the ValidateOTP screen.
+  const handleContactCoach = async () => {
+    setShowInactiveModal(false);
+    try {
+      const storedUserRaw = Session.getOtpUserRaw();
+      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : user;
+      const userId = storedUser?.id || storedUser?.UserId || user?.id || user?.UserId;
+      const userEmail =
+        storedUser?.email || storedUser?.Email ||
+        user?.email || user?.Email ||
+        Session.getUserEmail();
+
+      const coachRes = await fetch(
+        `${apiBaseUrl}/api/user/get-active-coach?userId=${userId}`
+      );
+      const coachJson = await coachRes.json();
+      // API returns { ok: true, data: { coachId, ... } }
+      const coachId = coachJson?.data?.coachId || coachJson?.coachId;
+
+      if (coachId) {
+        const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail, coachId }),
+        });
+        const otpJson = await otpRes.json();
+
+        if (otpRes.ok && otpJson.success !== false) {
+          // OTP emailed to coach — show ValidateOTP as overlay in the !isOtpVerified branch.
+          // Do NOT change isOtpVerified here — that triggers background effects which
+          // call checkUserStatus again, see "Inactive", and re-show the modal.
+          setIsInactiveReactivationFlow(true);
+          setShowValidateOTP(true);
+          return;
+        }
+      }
+    } catch (_err) {
+      // swallow network/parse errors — fall through to fallback
+    }
+    // Fallback: re-show modal if OTP could not be sent
+    setShowInactiveModal(true);
   };
 
   const handleUserNotFoundModalClose = async () => {
@@ -1893,6 +2016,7 @@ function WellnessValleyApp() {
       user: !!user,
       isUserActive,
       showInactiveModal,
+      isInactiveReactivationFlow,
       showUserNotFoundModal,
       showSetupWizard,
       showValidateOTP,
@@ -2041,6 +2165,14 @@ function WellnessValleyApp() {
           // and the camera opening for Google/Firebase returning users.
           setUser(user);
           setAuthLoading(false);
+
+          // Initialise personalised native reminders with the user's learned
+          // average times. Fire-and-forget — never blocks the login flow.
+          if (user.id && Capacitor.isNativePlatform()) {
+            initReminders(user.id).catch((err) => {
+              debugLog('[App] initReminders failed (non-critical):', err?.message);
+            });
+          }
 
           // Background validation — fire and forget. All inner awaits only
           // mutate React state (setShow*, setIsUserActive, etc.) — safe to
@@ -2226,6 +2358,12 @@ function WellnessValleyApp() {
   // Handle OTP user restoration
   useEffect(() => {
     const restoreOtpUser = async () => {
+      // Skip restoration when the inactive-reactivation flow is in progress.
+      // In that flow isOtpVerified is temporarily forced to true so ValidateOTP
+      // can render; running restoreOtpUser here would call checkUserStatus,
+      // see "Inactive", and show the modal again on top of the OTP screen.
+      if (isInactiveReactivationFlow) return;
+
       if (isOtpVerified && !user) {
         const otpUserRaw = Session.getOtpUserRaw();
 
@@ -2301,7 +2439,7 @@ function WellnessValleyApp() {
     };
 
     restoreOtpUser();
-  }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+  }, [isOtpVerified, user, isInactiveReactivationFlow, checkUserStatus, checkProfileCompletion]);
 
   // Background validation for cache-restored OTP sessions.
   // When user was pre-loaded synchronously (no loading screen), the standard
@@ -3443,19 +3581,57 @@ function WellnessValleyApp() {
     setUnknownShareView((v) => ({ ...v, retrying: true, error: null }));
     try {
       const file = base64ToImageFile(imageBase64);
-      const analysis = await geminiService.analyzeImageForNutrition(file);
 
-      if (!hasRecognizedFood(analysis)) {
+      // Use full image type detection — not just food — so weight, education,
+      // and smartwatch captures are also correctly re-classified on retry.
+      const detectedType = await imageTypeDetector.detectImageType(file);
+
+      if (detectedType.type === 'food') {
+        // Food path: promote the unknown capture to a food entry
+        const analysis = detectedType.details;
+        if (!hasRecognizedFood(analysis)) {
+          setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
+          return;
+        }
+        const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
+        await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Saved to your diary");
+        triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
+
+      } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        // Weight path: save weight entry
+        const weightValue = detectedType.details.weightValue;
+        const unit = detectedType.details.unit || 'kg';
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'weight'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast(`Weight ${weightValue} ${unit} saved`);
+
+      } else if (detectedType.type === 'education') {
+        // Education path: re-tag the capture
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'education'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Education session saved");
+
+      } else if (detectedType.type === 'smartwatch') {
+        // Smartwatch path: re-tag the capture
+        await updatePendingCaptureType(
+          Promise.resolve({ id: captureId }),
+          'smartwatch'
+        );
+        setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
+        showToast("Activity saved");
+
+      } else {
+        // Still unrecognised
         setUnknownShareView((v) => ({ ...v, retrying: false, error: "Still couldn't recognise it — try Edit instead." }));
-        return;
       }
-
-      const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
-      await promoteUnknownToFood({ captureId, viewerUserId: user.id, analysisResult });
-      setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
-      showToast("Saved to your diary");
-      // Trigger global nutrition refresh after promoting unknown to food
-      triggerNutritionRefresh({ immediate: true, source: 'unknown-retry' });
     } catch (e) {
       setUnknownShareView((v) => ({ ...v, retrying: false, error: "Couldn't analyse the photo — try Edit instead." }));
     }
@@ -4168,11 +4344,17 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
-    const shareDisplayName =
-      user?.displayName || user?.name || user?.email?.split('@')[0] || 'Wellness Valley';
-    // ?n= embeds the display name so the WhatsApp OG card shows the user name
-    // even when WhatsApp crawls the page before the capture POST completes.
-    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
+    const generateInstantShareCode = (length = 8) => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let out = '';
+      for (let i = 0; i < length; i += 1) {
+        out += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return out;
+    };
+    const instantShareCode = generateInstantShareCode();
+    const shareDisplayName = resolveShareDisplayName(savedUserName, user);
+    const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
     const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
 
     // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
@@ -4432,7 +4614,12 @@ function WellnessValleyApp() {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage, token: instantToken }),
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+              }),
             },
           );
           if (!capRes.ok) {
@@ -4449,7 +4636,7 @@ function WellnessValleyApp() {
             );
             return {
               id: capData.data.id,
-              url: `${apiBaseUrl}/share/${capData.data.token}`,
+              url: `${apiBaseUrl}/share/${capData.data.shareCode || capData.data.token}`,
             };
           }
           debugLog(
@@ -4811,7 +4998,7 @@ function WellnessValleyApp() {
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                   leaderboardRef.current.injectEntry({
                     userId: diffUserId,
-                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                    userName: resolveShareDisplayName(savedUserName, user, "You"),
                     email: user?.email || "",
                     weightLoss: Math.abs(weightChange),
                     profileImage: user?.photoURL || user?.ProfileImage || null,
@@ -4877,7 +5064,8 @@ function WellnessValleyApp() {
       // wall) and on Gemini errors (details.defaulted === true). Treating
       // those as food pollutes the nutrition feed with 0-kcal rows and
       // generates broken share links — the root bug PR 3 fixes.
-      if (isLowConfidenceFood(detectedType)) {
+      // Also handle explicit 'other' type returned when AI fails entirely.
+      if (detectedType.type === 'other' || isLowConfidenceFood(detectedType)) {
         debugLog("❓ [Image Detection] Low-confidence food — opening unknown picker", {
           confidence: detectedType?.confidence,
           defaulted: detectedType?.details?.defaulted,
@@ -5864,6 +6052,19 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
 
+        // Fast-path inactive check: the verify-otp API already returns the
+        // user's current Status in the stored object. If it's already
+        // 'Inactive', show the Account Restricted modal immediately — do NOT
+        // rely on a separate network call that can time out or fail-open.
+        if (parsedUser?.status?.toLowerCase() === 'inactive') {
+          debugLog("🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal");
+          authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result: 'inactive' });
+          setShowInactiveModal(true);
+          setIsUserActive(false);
+          setUser(parsedUser);
+          return;
+        }
+
         // Check user status with timeout for iOS
         let isActive = true;
         try {
@@ -5876,8 +6077,17 @@ function WellnessValleyApp() {
         }
 
         if (!isActive) {
+          // User is inactive — set user + mark OTP verified so the app renders
+          // past the login gate and shows the InactiveUserModal (which fires in
+          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
+          // the modal never renders and the user is stuck on the OTP screen.
+          const userEmail = parsedUser.email || parsedUser.Email;
+          if (userEmail) Session.setUserEmail(userEmail);
+          Session.clearUserSignedOut();
+          setForceLoggedOut(false);
           setUser(parsedUser);
-          setIsOtpVerified(false);
+          setIsOtpVerified(true);
+          Session.markOtpVerified();
           return;
         }
 
@@ -5998,13 +6208,14 @@ function WellnessValleyApp() {
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
+            onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
         )}
@@ -6020,19 +6231,41 @@ function WellnessValleyApp() {
           loading={loading}
           error={error}
           onOtpVerified={handleOtpVerified}
-          forceOtpVerification={true}
         />
         {showInactiveModal && (
           <InactiveUserModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || Session.getUserEmail() || "your account"}
             onClose={handleInactiveModalClose}
+            onContactCoach={handleContactCoach}
           />
         )}
         {showUserNotFoundModal && (
           <UserNotFoundModal
-            userEmail={user?.email}
+            userEmail={user?.email || user?.Email || "your account"}
             onClose={handleUserNotFoundModalClose}
           />
+        )}
+        {/* Inactive-reactivation coach OTP screen — rendered here so isOtpVerified
+            stays false and no background checkUserStatus effects re-trigger */}
+        {showValidateOTP && isInactiveReactivationFlow && (
+          <Suspense fallback={null}>
+            <ValidateOTP
+              onClose={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                handleSignOut();
+              }}
+              onSuccess={() => {
+                setShowValidateOTP(false);
+                setIsInactiveReactivationFlow(false);
+                // Coach approved → DB now has Status='Active' (validate-otp sets it)
+                // Now it's safe to mark OTP verified and enter the app
+                setIsOtpVerified(true);
+                Session.markOtpVerified();
+              }}
+              onLogout={handleSignOut}
+            />
+          </Suspense>
         )}
       </>
     );
@@ -7318,6 +7551,7 @@ function WellnessValleyApp() {
         <InactiveUserModal
           userEmail={user?.email || user?.Email || "your account"}
           onClose={handleInactiveModalClose}
+          onContactCoach={handleContactCoach}
         />
       )}
 
@@ -7785,10 +8019,24 @@ function WellnessValleyApp() {
           <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
-              setShowSetupWizard(true);
+              if (isInactiveReactivationFlow) {
+                // User cancelled reactivation — sign them out cleanly
+                setIsInactiveReactivationFlow(false);
+                handleSignOut();
+              } else {
+                setShowSetupWizard(true);
+              }
             }}
             onSuccess={() => {
               setShowValidateOTP(false);
+              if (isInactiveReactivationFlow) {
+                // Reactivation complete — re-run status check to enter app
+                setIsInactiveReactivationFlow(false);
+                const storedUser = Session.getOtpUser();
+                if (storedUser) {
+                  try { checkUserStatus(JSON.parse(storedUser)); } catch (_e) { /* ignore */ }
+                }
+              }
               // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}

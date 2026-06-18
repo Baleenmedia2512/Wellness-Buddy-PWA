@@ -37,3 +37,14 @@ export function canSaveCardToProfile(cardUserId, requestingId) {
 export function canViewPublicCard() {
   return true;
 }
+
+/**
+ * Can this coach search team-member phone numbers by prefix?
+ * Requires a valid numeric coachId.
+ *
+ * @param {{ coachId: number|null }} ctx
+ * @returns {boolean}
+ */
+export function canSearchTeamPhones({ coachId } = {}) {
+  return Boolean(coachId && Number.isInteger(Number(coachId)) && Number(coachId) > 0);
+}
