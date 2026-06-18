@@ -1,55 +1,83 @@
 /**
  * marathon.api.js — Network layer for the Marathon Recognition Engine.
  *
- * All requests go through getApiBaseUrl() (per frontend.md §4).
- * No direct axios or fetch — uses the shared apiClient for retry/timeout.
+ * All URLs are built from getApiBaseUrl() per frontend.md §4.
+ * Raw fetch — consistent with the existing pattern in this slice.
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
 const base = () => getApiBaseUrl();
 
-/**
- * Create a new marathon.
- *
- * @param {{ coachId, name, totalLaps, daysPerLap, startedAt, participantUserIds, role? }} payload
- * @returns {Promise<{ ok: boolean, data: object }>}
- */
-export async function createMarathon(payload) {
-  const res = await fetch(`${base()}/api/marathon/create`, {
+async function get(path) {
+  const res  = await fetch(`${base()}${path}`, { method: 'GET' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || `GET ${path} failed`);
+  return json;
+}
+
+async function post(path, payload) {
+  const res  = await fetch(`${base()}${path}`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(payload),
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to create marathon');
+  if (!res.ok) throw new Error(json.message || `POST ${path} failed`);
   return json;
 }
 
-/**
- * List marathons for a coach.
- *
- * @param {{ coachId: number, status?: string }} params
- * @returns {Promise<{ ok: boolean, data: Array }>}
- */
+// ─── Marathon management ───────────────────────────────────────────────────
+
+export async function createMarathon(payload) {
+  return post('/api/marathon/create', payload);
+}
+
 export async function listMarathons({ coachId, status } = {}) {
-  const qs  = new URLSearchParams({ coachId });
+  const qs = new URLSearchParams({ coachId });
   if (status) qs.append('status', status);
-  const res  = await fetch(`${base()}/api/marathon/list?${qs}`, { method: 'GET' });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to list marathons');
-  return json;
+  return get(`/api/marathon/list?${qs}`);
 }
 
-/**
- * Fetch live card data + receive a fresh share token.
- *
- * @param {{ marathonId: number, cardType: string, coachId: number }} params
- * @returns {Promise<{ ok: boolean, data: object }>}
- */
 export async function getCardData({ marathonId, cardType, coachId }) {
-  const qs  = new URLSearchParams({ marathonId, cardType, coachId });
-  const res  = await fetch(`${base()}/api/marathon/get-card-data?${qs}`, { method: 'GET' });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to load card data');
-  return json;
+  const qs = new URLSearchParams({ marathonId, cardType, coachId });
+  return get(`/api/marathon/get-card-data?${qs}`);
+}
+
+// ─── Member lap dashboard ───────────────────────────────────────────────────
+
+export async function getMyLaps(userId) {
+  return get(`/api/marathon/my-laps?userId=${userId}`);
+}
+
+// ─── Leaderboard ────────────────────────────────────────────────────────────
+
+export async function getLeaderboard({ marathonId, type = 'day', topN = 10 }) {
+  const qs = new URLSearchParams({ marathonId, type, topN });
+  return get(`/api/marathon/leaderboard?${qs}`);
+}
+
+// ─── Recognition ────────────────────────────────────────────────────────────
+
+export async function getPendingRecognition(userId) {
+  return get(`/api/marathon/recognition?userId=${userId}`);
+}
+
+export async function markRecognitionViewed({ userId, marathonId, resultDate }) {
+  return post('/api/marathon/recognition', { userId, marathonId, resultDate });
+}
+
+// ─── Admin config ────────────────────────────────────────────────────────────
+
+export async function getAdminConfig(marathonId) {
+  return get(`/api/marathon/admin-config?marathonId=${marathonId}`);
+}
+
+export async function saveAdminConfig(payload) {
+  return post('/api/marathon/admin-config', payload);
+}
+
+// ─── Finalize day ─────────────────────────────────────────────────────────────
+
+export async function finalizeDay({ marathonId, coachId }) {
+  return post('/api/marathon/finalize-day', { marathonId, coachId });
 }

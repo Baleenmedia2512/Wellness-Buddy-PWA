@@ -1,8 +1,5 @@
 /**
  * marathon.rules.test.js — Unit tests for marathon domain logic.
- *
- * Pure functions only — no mocks, no I/O.
- * Coverage targets match the Pattern-A requirement: ≥95% line coverage on domain/.
  */
 import {
   computeLapAndDay,
@@ -16,6 +13,18 @@ import {
   buildCardSnapshot,
   computeTeamDailyTotal,
   CARD_TYPES,
+  // v2
+  LAP_ROLES,
+  DISCIPLINE_STATUS,
+  isWithinDisciplineWindow,
+  classifyDisciplineStatus,
+  computeDayChange,
+  computeLapChange,
+  findDayLeaderV2,
+  findLapLeaderV2,
+  findCommunityLeader,
+  buildMarathonDisplayName,
+  filterEligible,
 } from '../domain/marathon.rules.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,5 +282,194 @@ describe('CARD_TYPES', () => {
 
   it('is frozen (immutable)', () => {
     expect(Object.isFrozen(CARD_TYPES)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2 — LAP_ROLES / DISCIPLINE_STATUS constants
+// ─────────────────────────────────────────────────────────────────────────────
+describe('LAP_ROLES', () => {
+  it('has captain, assistant_captain, member', () => {
+    expect(Object.values(LAP_ROLES)).toEqual(
+      expect.arrayContaining(['captain', 'assistant_captain', 'member']),
+    );
+  });
+  it('is frozen', () => expect(Object.isFrozen(LAP_ROLES)).toBe(true));
+});
+
+describe('DISCIPLINE_STATUS', () => {
+  it('has eligible, missed, no_upload', () => {
+    expect(Object.values(DISCIPLINE_STATUS)).toEqual(
+      expect.arrayContaining(['eligible', 'missed', 'no_upload']),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isWithinDisciplineWindow
+// ─────────────────────────────────────────────────────────────────────────────
+describe('isWithinDisciplineWindow', () => {
+  const start = '03:00';
+  const end   = '07:30';
+
+  it('returns true for a timestamp inside the window', () => {
+    expect(isWithinDisciplineWindow('2026-06-18 05:30:00', start, end)).toBe(true);
+  });
+  it('returns true at the window start boundary', () => {
+    expect(isWithinDisciplineWindow('05:00:00', '05:00', '07:30')).toBe(true);
+  });
+  it('returns true at the window end boundary', () => {
+    expect(isWithinDisciplineWindow('07:30:00', start, end)).toBe(true);
+  });
+  it('returns false before the window', () => {
+    expect(isWithinDisciplineWindow('02:59:00', start, end)).toBe(false);
+  });
+  it('returns false after the window', () => {
+    expect(isWithinDisciplineWindow('07:31:00', start, end)).toBe(false);
+  });
+  it('handles full datetime string "YYYY-MM-DD HH:MM:SS"', () => {
+    expect(isWithinDisciplineWindow('2026-06-18 06:00:00', start, end)).toBe(true);
+  });
+  it('returns false for null input', () => {
+    expect(isWithinDisciplineWindow(null, start, end)).toBe(false);
+  });
+  it('returns false for null start time', () => {
+    expect(isWithinDisciplineWindow('05:00:00', null, end)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// classifyDisciplineStatus
+// ─────────────────────────────────────────────────────────────────────────────
+describe('classifyDisciplineStatus', () => {
+  it('returns eligible when discipline weight exists', () => {
+    expect(classifyDisciplineStatus(74.5, 74.8)).toBe(DISCIPLINE_STATUS.ELIGIBLE);
+  });
+  it('returns missed when no discipline weight but has any upload', () => {
+    expect(classifyDisciplineStatus(null, 74.8)).toBe(DISCIPLINE_STATUS.MISSED);
+  });
+  it('returns no_upload when both are null', () => {
+    expect(classifyDisciplineStatus(null, null)).toBe(DISCIPLINE_STATUS.NO_UPLOAD);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeDayChange (v2 formula)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeDayChange', () => {
+  it('returns negative for loss (today lower than yesterday)', () => {
+    expect(computeDayChange(74.2, 74.8)).toBeCloseTo(-0.6, 2);
+  });
+  it('returns positive for gain', () => {
+    expect(computeDayChange(75.1, 74.8)).toBeCloseTo(0.3, 2);
+  });
+  it('returns null when either value is null', () => {
+    expect(computeDayChange(null, 74.8)).toBeNull();
+    expect(computeDayChange(74.2, null)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeLapChange (v2 formula)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeLapChange', () => {
+  it('returns negative for loss vs baseline', () => {
+    expect(computeLapChange(72.0, 75.2)).toBeCloseTo(-3.2, 2);
+  });
+  it('returns null when either is null', () => {
+    expect(computeLapChange(null, 75.2)).toBeNull();
+    expect(computeLapChange(72.0, null)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findDayLeaderV2
+// ─────────────────────────────────────────────────────────────────────────────
+describe('findDayLeaderV2', () => {
+  const ep = (uid, dayChange) => ({
+    userId: uid, dayChange, disciplineStatus: DISCIPLINE_STATUS.ELIGIBLE,
+  });
+  const mp = (uid, dayChange) => ({
+    userId: uid, dayChange, disciplineStatus: DISCIPLINE_STATUS.MISSED,
+  });
+
+  it('returns the eligible participant with most negative dayChange', () => {
+    const p = [ep(1, -0.3), ep(2, -0.7), ep(3, -0.5)];
+    expect(findDayLeaderV2(p).userId).toBe(2);
+  });
+  it('ignores missed participants', () => {
+    const p = [mp(1, -1.0), ep(2, -0.5)];
+    expect(findDayLeaderV2(p).userId).toBe(2);
+  });
+  it('returns null when no eligible participant has a loss', () => {
+    const p = [ep(1, 0.3), ep(2, null)];
+    expect(findDayLeaderV2(p)).toBeNull();
+  });
+  it('breaks ties by lower userId', () => {
+    const p = [ep(9, -0.5), ep(3, -0.5)];
+    expect(findDayLeaderV2(p).userId).toBe(3);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findLapLeaderV2
+// ─────────────────────────────────────────────────────────────────────────────
+describe('findLapLeaderV2', () => {
+  const ep = (uid, lapChange) => ({
+    userId: uid, lapChange, disciplineStatus: DISCIPLINE_STATUS.ELIGIBLE,
+  });
+  it('finds correct lap leader', () => {
+    const p = [ep(1, -2.5), ep(2, -3.2), ep(3, -1.0)];
+    expect(findLapLeaderV2(p).userId).toBe(2);
+  });
+  it('returns null for empty eligible list', () => {
+    expect(findLapLeaderV2([])).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findCommunityLeader
+// ─────────────────────────────────────────────────────────────────────────────
+describe('findCommunityLeader', () => {
+  const ep = (uid, cumulativeChange) => ({
+    userId: uid, cumulativeChange, disciplineStatus: DISCIPLINE_STATUS.ELIGIBLE,
+  });
+  it('finds the participant with the highest cumulative loss', () => {
+    const p = [ep(1, -3.5), ep(2, -5.1), ep(3, -4.2)];
+    expect(findCommunityLeader(p).userId).toBe(2);
+  });
+  it('returns null when no one is eligible', () => {
+    const p = [{ userId: 1, cumulativeChange: -2, disciplineStatus: DISCIPLINE_STATUS.MISSED }];
+    expect(findCommunityLeader(p)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildMarathonDisplayName
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildMarathonDisplayName', () => {
+  it('builds "Power Burners - LAP 3" for sequence 3', () => {
+    expect(buildMarathonDisplayName('Power Burners', 3, 'fallback')).toBe('Power Burners - LAP 3');
+  });
+  it('returns fallbackName when teamName is null', () => {
+    expect(buildMarathonDisplayName(null, 1, 'My Marathon')).toBe('My Marathon');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// filterEligible
+// ─────────────────────────────────────────────────────────────────────────────
+describe('filterEligible', () => {
+  it('returns only eligible participants', () => {
+    const p = [
+      { disciplineStatus: DISCIPLINE_STATUS.ELIGIBLE },
+      { disciplineStatus: DISCIPLINE_STATUS.MISSED },
+      { disciplineStatus: DISCIPLINE_STATUS.NO_UPLOAD },
+      { disciplineStatus: DISCIPLINE_STATUS.ELIGIBLE },
+    ];
+    expect(filterEligible(p)).toHaveLength(2);
+  });
+  it('returns empty for empty input', () => {
+    expect(filterEligible([])).toHaveLength(0);
   });
 });

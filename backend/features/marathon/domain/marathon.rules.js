@@ -187,3 +187,185 @@ export function computeTeamDailyTotal(participants) {
   const total = participants.reduce((sum, p) => sum + (p.dailyChange ?? 0), 0);
   return parseFloat(total.toFixed(2));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAP roles (v2 — discipline engine)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const LAP_ROLES = Object.freeze({
+  CAPTAIN:            'captain',
+  ASSISTANT_CAPTAIN:  'assistant_captain',
+  MEMBER:             'member',
+});
+
+export const DISCIPLINE_STATUS = Object.freeze({
+  ELIGIBLE:  'eligible',   // uploaded within discipline window today
+  MISSED:    'missed',     // did not upload within window (may have uploaded outside)
+  NO_UPLOAD: 'no_upload',  // no weight record at all today
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Discipline window helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Determine whether a weight upload falls within the admin-configured discipline window.
+ *
+ * Both times are in IST (UTC+5:30).  The DB stores CreatedAt as a plain IST string
+ * "YYYY-MM-DD HH:MM:SS" so we only need to compare the time component.
+ *
+ * @param {string} istCreatedAt  — "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
+ * @param {string} startHHMM     — "03:00"
+ * @param {string} endHHMM       — "07:30"
+ * @returns {boolean}
+ */
+export function isWithinDisciplineWindow(istCreatedAt, startHHMM, endHHMM) {
+  if (!istCreatedAt || !startHHMM || !endHHMM) return false;
+  // Extract time part (handles both "HH:MM:SS" and "YYYY-MM-DD HH:MM:SS")
+  const timePart = istCreatedAt.includes(' ') ? istCreatedAt.split(' ')[1] : istCreatedAt;
+  const [th, tm]  = timePart.split(':').map(Number);
+  const [sh, sm]  = startHHMM.split(':').map(Number);
+  const [eh, em]  = endHHMM.split(':').map(Number);
+  const t = th * 60 + tm;
+  const s = sh * 60 + sm;
+  const e = eh * 60 + em;
+  return t >= s && t <= e;
+}
+
+/**
+ * Classify a participant's discipline status for the day.
+ *
+ * @param {string|null} disciplineWindowWeight — non-null means they uploaded within the window
+ * @param {string|null} anyTodayWeight         — non-null means they uploaded today at all
+ * @returns {'eligible'|'missed'|'no_upload'}
+ */
+export function classifyDisciplineStatus(disciplineWindowWeight, anyTodayWeight) {
+  if (disciplineWindowWeight != null) return DISCIPLINE_STATUS.ELIGIBLE;
+  if (anyTodayWeight != null)         return DISCIPLINE_STATUS.MISSED;
+  return DISCIPLINE_STATUS.NO_UPLOAD;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Corrected leader formulas (v2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute Day Leader change (v2 formula):
+ *   prevDayClosingWeight − todayDisciplineWeight
+ * Negative = loss (wins).  Returns null if either value missing.
+ *
+ * @param {number|null} todayDisciplineWeight
+ * @param {number|null} prevDayClosingWeight
+ * @returns {number|null}
+ */
+export function computeDayChange(todayDisciplineWeight, prevDayClosingWeight) {
+  if (todayDisciplineWeight == null || prevDayClosingWeight == null) return null;
+  return parseFloat((todayDisciplineWeight - prevDayClosingWeight).toFixed(2));
+}
+
+/**
+ * Compute Lap / Community Leader change (v2 formula):
+ *   todayDisciplineWeight − baselineWeight
+ * Negative = loss (wins).  Returns null if either value missing.
+ *
+ * @param {number|null} todayDisciplineWeight
+ * @param {number|null} baselineWeight
+ * @returns {number|null}
+ */
+export function computeLapChange(todayDisciplineWeight, baselineWeight) {
+  if (todayDisciplineWeight == null || baselineWeight == null) return null;
+  return parseFloat((todayDisciplineWeight - baselineWeight).toFixed(2));
+}
+
+/**
+ * Find the Day Leader from eligible participants.
+ * Only participants with disciplineStatus === 'eligible' are considered.
+ * Largest loss (most negative dayChange) wins.  Tie-break: lower userId.
+ *
+ * @param {Array<{ userId, dayChange, disciplineStatus }>} participants
+ * @returns {object|null}
+ */
+export function findDayLeaderV2(participants) {
+  const eligible = participants.filter(
+    p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE && p.dayChange != null && p.dayChange < 0,
+  );
+  if (eligible.length === 0) return null;
+  return eligible.reduce((best, p) => {
+    if (p.dayChange < best.dayChange) return p;
+    if (p.dayChange === best.dayChange && p.userId < best.userId) return p;
+    return best;
+  });
+}
+
+/**
+ * Find the Lap Leader from eligible participants.
+ * Uses lapChange (baseline → today discipline weight).
+ *
+ * @param {Array<{ userId, lapChange, disciplineStatus }>} participants
+ * @returns {object|null}
+ */
+export function findLapLeaderV2(participants) {
+  const eligible = participants.filter(
+    p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE && p.lapChange != null && p.lapChange < 0,
+  );
+  if (eligible.length === 0) return null;
+  return eligible.reduce((best, p) => {
+    if (p.lapChange < best.lapChange) return p;
+    if (p.lapChange === best.lapChange && p.userId < best.userId) return p;
+    return best;
+  });
+}
+
+/**
+ * Find the Community Leader across all eligible participants (may span multiple LAPs/marathons).
+ * Uses cumulativeChange (baseline → today discipline weight) — same formula as lap.
+ *
+ * @param {Array<{ userId, cumulativeChange, disciplineStatus, marathonId? }>} allParticipants
+ * @returns {object|null}
+ */
+export function findCommunityLeader(allParticipants) {
+  const eligible = allParticipants.filter(
+    p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE
+      && p.cumulativeChange != null
+      && p.cumulativeChange < 0,
+  );
+  if (eligible.length === 0) return null;
+  return eligible.reduce((best, p) => {
+    if (p.cumulativeChange < best.cumulativeChange) return p;
+    if (p.cumulativeChange === best.cumulativeChange && p.userId < best.userId) return p;
+    return best;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Team name sequencing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build the display name for a marathon given its base team name and lap sequence.
+ * "Power Burners" + lapSequence 3 → "Power Burners - LAP 3"
+ * If no teamName, falls back to the stored marathon name.
+ *
+ * @param {string|null} teamName
+ * @param {number}      lapSequence — 1-indexed
+ * @param {string}      fallbackName
+ * @returns {string}
+ */
+export function buildMarathonDisplayName(teamName, lapSequence, fallbackName) {
+  if (!teamName) return fallbackName;
+  return `${teamName} - LAP ${lapSequence}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Eligible participant filter
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Filter participants to only those with ELIGIBLE discipline status.
+ *
+ * @param {Array<{ disciplineStatus: string }>} participants
+ * @returns {Array}
+ */
+export function filterEligible(participants) {
+  return participants.filter(p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE);
+}
