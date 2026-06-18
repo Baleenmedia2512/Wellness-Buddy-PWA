@@ -30,6 +30,24 @@ const convertConfidenceToNumeric = (confidence) => {
   return null;
 };
 
+const SHARE_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const DEFAULT_SHARE_CODE_LENGTH = 8;
+
+function generateShareCode(length = DEFAULT_SHARE_CODE_LENGTH) {
+  const size = Math.max(6, Math.min(10, Number(length) || DEFAULT_SHARE_CODE_LENGTH));
+  let out = '';
+  for (let i = 0; i < size; i += 1) {
+    const idx = Math.floor(Math.random() * SHARE_CODE_CHARS.length);
+    out += SHARE_CODE_CHARS[idx];
+  }
+  return out;
+}
+
+function isDuplicateShareCodeError(err) {
+  const msg = `${err?.message || ''} ${err?.details || ''} ${err?.hint || ''}`;
+  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '23505');
+}
+
 function extractNutrition(analysisResult, deviceInfo) {
   let totalCalories = null, totalProtein = null, totalCarbs = null,
       totalFat = null, totalFiber = null, confidenceScore = null;
@@ -384,8 +402,9 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64, token: clientToken }) {
+export async function createPendingCapture({ userId, imageBase64, token: clientToken, shareCode: clientShareCode }) {
   const token = clientToken || randomUUID();
+  let shareCode = clientShareCode || generateShareCode();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   // PR 6 — captures_table is the ONLY at-capture-time write. No speculative
@@ -395,15 +414,28 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   // analysis.save, weight via weight.saveWeight, etc.) is responsible for
   // inserting its own row with CaptureID = id and promoting the capture via
   // captures.updateTypeById.
-  const capture = await captures.recordPending({
-    userId: userId.toString(),
-    publicShareToken: token,
-    shareExpiresAt,
-    imageBase64: imageBase64 || null,
-    imagePath: 'instant-share',
-    deviceInfo: 'Wellness Valley Web App',
-    processedBy: 'manual_app',
-  });
+  const MAX_SHARE_CODE_ATTEMPTS = 6;
+  let capture = null;
+  for (let attempt = 0; attempt < MAX_SHARE_CODE_ATTEMPTS; attempt += 1) {
+    try {
+      capture = await captures.recordPending({
+        userId: userId.toString(),
+        publicShareToken: token,
+        shareCode,
+        shareExpiresAt,
+        imageBase64: imageBase64 || null,
+        imagePath: 'instant-share',
+        deviceInfo: 'Wellness Valley Web App',
+        processedBy: 'manual_app',
+      });
+      break;
+    } catch (err) {
+      if (!isDuplicateShareCodeError(err) || attempt === MAX_SHARE_CODE_ATTEMPTS - 1) {
+        throw err;
+      }
+      shareCode = generateShareCode();
+    }
+  }
 
   // The `id` returned here is the captures_table primary key. The FE round-
   // trips it as both the `captureId` payload field on the save endpoints and
@@ -415,6 +447,7 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
       data: {
         id: capture.id,
         token,
+        shareCode: capture.shareCode || shareCode,
       },
     },
   };

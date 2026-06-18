@@ -1,6 +1,6 @@
 // Login entry step — single input accepts either an email OR a phone number.
-// The country-code picker appears only when the input is detected as a phone
-// number. Email path is byte-identical to the previous behaviour.
+// Phone path is fully enabled: when a phone number is detected a country-code
+// picker appears and the input switches to `type="tel"`.
 import React from 'react';
 import { detectContactType, COUNTRY_CODES } from '../../domain/contactIdentifier';
 
@@ -16,8 +16,7 @@ const LoginEmailEntry = ({
   countryDial, setCountryDial,
 }) => {
   const channel = detectContactType(email);
-  // const isPhone = channel === 'phone'; // phone number disabled
-  const isPhone = false;
+  const isPhone = channel === 'phone';
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -40,7 +39,7 @@ const LoginEmailEntry = ({
       )}
       <div>
         <label htmlFor="recipient" className="block text-sm font-medium text-gray-700 mb-2">
-          Email or Phone
+          Mobile Number or Email
         </label>
         {isPhone ? (
           <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
@@ -81,7 +80,7 @@ const LoginEmailEntry = ({
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
-            placeholder="Enter your email or phone"
+            placeholder="Enter mobile number or email"
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-300 text-base"
           />
         )}

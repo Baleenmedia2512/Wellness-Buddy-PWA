@@ -770,6 +770,15 @@ function WellnessValleyApp() {
   // so the login-camera effect never fires twice.
   const _hasFiredCameraOnLoginRef = useRef(false);
 
+  // Deep-link guard: once a /share URL opens the app, suppress automatic
+  // camera opening for this session so shared-card routing wins deterministically.
+  const _suppressAutoCameraOnDeepLinkRef = useRef(false);
+
+  // Early app-link events can arrive before the full deep-link resolver effect
+  // is mounted (it waits for user/apiBaseUrl). Buffer the URL so it can be
+  // replayed once the resolver is ready.
+  const _pendingDeepLinkUrlRef = useRef(null);
+
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
   const handleCameraStateChange = useCallback((state /*, meta */) => {
@@ -821,6 +830,7 @@ function WellnessValleyApp() {
       if (!_launchUrlCheckedRef.current) return; // share link check pending
       if (!_homeScreenActiveRef.current) return; // not on home screen
       if (!fileInputRef.current?.openCamera) return; // ImageUpload not mounted
+      if (_suppressAutoCameraOnDeepLinkRef.current) return; // opened from /share deep link
       
       // NEW GUARD: Don't open camera if analysis results are visible
       // This prevents camera from opening after user returns from sharing
@@ -862,14 +872,21 @@ function WellnessValleyApp() {
   const _launchUrlCheckedRef = useRef(!Capacitor.isNativePlatform()); // web = already done
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const SHARE_RE = /\/share\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-    const isShareUrl = (url) => url && (SHARE_RE.test(url) || /^wellnessvalley:\/\/share\//i.test(url));
+    const isShareUrl = (url) => {
+      if (!url || typeof url !== 'string') return false;
+      // Accept both legacy UUID links and new short-code links.
+      return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
+    };
 
     // Part B — early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle.addAppUrlOpenListener((event) => {
-      if (isShareUrl(event?.url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(event?.url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = event?.url || null;
+      }
       _launchUrlCheckedRef.current = true;
     }).then((h) => { earlyHandle = h; }).catch(() => {});
 
@@ -879,7 +896,11 @@ function WellnessValleyApp() {
     // getLaunchUrl() is the primary check for cold-start intent URLs.
     nativeLifecycle.getLaunchUrl().then((url) => {
       clearTimeout(fallbackTimer);
-      if (isShareUrl(url)) _hasFiredCameraOnLoginRef.current = true;
+      if (isShareUrl(url)) {
+        _hasFiredCameraOnLoginRef.current = true;
+        _suppressAutoCameraOnDeepLinkRef.current = true;
+        _pendingDeepLinkUrlRef.current = url;
+      }
       _launchUrlCheckedRef.current = true;
     }).catch(() => {
       clearTimeout(fallbackTimer);
@@ -904,6 +925,7 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return;
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
+    if (_suppressAutoCameraOnDeepLinkRef.current) return;
     if (showCompleteProfile) return; // wait until profile gate clears
 
     let cancelled = false;
@@ -972,8 +994,8 @@ function WellnessValleyApp() {
   }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
-  // (https://<host>/share/<uuid>) or the custom scheme
-  // (wellnessvalley://share/<uuid>) ? resolve the share token against the
+  // (https://<host>/share/<id>) or the custom scheme
+  // (wellnessvalley://share/<id>) → resolve the share identifier against the
   // backend, then jump straight to Dashboard ? Nutrition for that owner /
   // date. Permission errors and missing/expired shares surface as toasts.
   useEffect(() => {
@@ -983,15 +1005,16 @@ function WellnessValleyApp() {
     let handle = null;
     const seenTokens = new Set(); // guard against duplicate fires
 
-    const SHARE_PATH_RE = /\/share\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const SHARE_ID_RE = '([A-Za-z0-9]{6,10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+    const SHARE_PATH_RE = new RegExp(`/share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i');
     const BPC_PATH_RE   = /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
-      // Custom scheme: wellnessvalley://share/<uuid>
-      const customMatch = rawUrl.match(/^wellnessvalley:\/\/share\/([0-9a-f-]{36})/i);
+      // Custom scheme: wellnessvalley://share/<id>
+      const customMatch = rawUrl.match(new RegExp(`^wellnessvalley://share/${SHARE_ID_RE}(?:[/?#]|$)`, 'i'));
       if (customMatch) return customMatch[1];
-      // https path: /share/<uuid>
+      // https path: /share/<id>
       const httpsMatch = rawUrl.match(SHARE_PATH_RE);
       return httpsMatch ? httpsMatch[1] : null;
     };
@@ -1006,6 +1029,7 @@ function WellnessValleyApp() {
       // ── Body Parameters Card deep link ───────────────────────────────────
       const bpcToken = extractBpcToken(rawUrl);
       if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
+        _suppressAutoCameraOnDeepLinkRef.current = true;
         seenTokens.add(`bpc:${bpcToken}`);
         try {
           const card = await fetchPublicCard(bpcToken);
@@ -1028,6 +1052,7 @@ function WellnessValleyApp() {
 
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
+      _suppressAutoCameraOnDeepLinkRef.current = true;
       seenTokens.add(token);
 
       try {
@@ -1052,10 +1077,51 @@ function WellnessValleyApp() {
 
         const data = body.data || {};
 
-        // PR-E / ADR-0003: an `unknown` capture's share link opens the
-        // dedicated viewer (image + Retry/Edit) instead of an empty
-        // nutrition tab. Gated on ff.diary-feed so legacy behaviour is
-        // preserved while the flag is OFF.
+        // Open the Dashboard (Diary) and seed the owner / date / tab context.
+        // Used for EVERY resolved capture — food, weight, education,
+        // smartwatch, unknown, and pending — so a deep link ALWAYS lands on
+        // the diary with the relevant card instead of the home screen.
+        const applyDashboardContext = (d, { seedMealId = true } = {}) => {
+          if (d.isSelf) {
+            setDashboardInitialSelectedMember(null);
+          } else {
+            // Shape MUST match team/services/teamSearchService.toSelectedUser —
+            // hooks like resolveDashboardUserId read `id` (not `userId`).
+            const memberName = d.ownerUserName || "Member";
+            setDashboardInitialSelectedMember({
+              id: d.ownerUserId,
+              userId: d.ownerUserId,
+              name: memberName,
+              userName: memberName,
+              email: "",
+              role: "user",
+              isSelf: false,
+            });
+          }
+          setDashboardInitialDate(d.mealDate || null);
+          // While `pending`, no domain row exists yet — resolve returns the
+          // captureId as a placeholder that no feed can match. Seed null so the
+          // per-feed deep-link opener doesn't latch onto a bogus id; the real
+          // id is seeded once the capture is classified (see pollPending).
+          setDashboardInitialMealId(seedMealId ? (d.mealId || null) : null);
+          // Route to the tab that matches the shared image type. When the
+          // single-page Diary flag is ON the tab is cosmetic (all feeds render
+          // stacked); when OFF it selects the correct legacy tab.
+          setDashboardInitialTab(tabForImageType(d.imageType));
+          startTransition(() => setShowDashboard(true));
+        };
+
+        // `pending` = capture row exists but AI classification has not finished.
+        // Legacy rows with no ImageType are treated as already-terminal ('food').
+        const isPending = data.imageType === "pending";
+
+        // Open the diary immediately. While pending the feeds show their own
+        // loading / empty state; the correct card appears once classified.
+        applyDashboardContext(data, { seedMealId: !isPending });
+
+        // PR-E / ADR-0003: an `unknown` capture also opens the dedicated image
+        // viewer (Retry / Edit) on top of the diary. Gated on ff.diary-feed so
+        // legacy behaviour is preserved while the flag is OFF.
         if (data.imageType === "unknown" && isFlagEnabled("ff.diary-feed")) {
           try {
             const share = await fetchUnknownShare({ token, viewerUserId: user.id });
@@ -1074,33 +1140,39 @@ function WellnessValleyApp() {
           return;
         }
 
-        if (data.isSelf) {
-          setDashboardInitialSelectedMember(null);
-        } else {
-          // Shape MUST match team/services/teamSearchService.toSelectedUser
-          // � hooks like resolveDashboardUserId look at `id` (not `userId`).
-          const memberName = data.ownerUserName || "Member";
-          setDashboardInitialSelectedMember({
-            id: data.ownerUserId,
-            userId: data.ownerUserId,
-            name: memberName,
-            userName: memberName,
-            email: "",
-            role: "user",
-            isSelf: false,
-          });
+        // Pending capture: poll the resolve endpoint until the capture is
+        // classified, then re-route to the exact card and refresh the feeds so
+        // it appears WITHOUT the user reloading the page.
+        if (isPending) {
+          let attempts = 0;
+          const MAX_ATTEMPTS = 15;   // ~37s at 2.5s spacing
+          const INTERVAL_MS = 2500;
+          const pollPending = async () => {
+            if (cancelled) return;
+            attempts += 1;
+            try {
+              const pr = await fetch(
+                `${apiBaseUrl}/api/background-analysis/captures/resolve?token=${encodeURIComponent(token)}&viewerUserId=${encodeURIComponent(user.id)}`,
+                { method: "GET", headers: { "Content-Type": "application/json" } },
+              );
+              const pb = await pr.json().catch(() => ({}));
+              if (cancelled) return;
+              const pd = pb?.data;
+              if (pr.ok && pb?.ok && pd && pd.imageType && pd.imageType !== "pending") {
+                // Classified — route to the real card and refresh the feeds.
+                applyDashboardContext(pd);
+                triggerNutritionRefresh({ immediate: true, source: "deep-link-pending" });
+                return;
+              }
+            } catch {
+              // Transient network error — keep polling until the cap is hit.
+            }
+            if (!cancelled && attempts < MAX_ATTEMPTS) {
+              setTimeout(pollPending, INTERVAL_MS);
+            }
+          };
+          setTimeout(pollPending, INTERVAL_MS);
         }
-        setDashboardInitialDate(data.mealDate || null);
-        setDashboardInitialMealId(data.mealId || null);
-        // Route to the tab that matches the shared image type.
-        // imageType is returned by the resolve endpoint when the capture row
-        // has been classified (may be null for legacy rows — helper falls
-        // back to the default 'nutrition' tab). Map lives in
-        // shared/lib/tab-by-image-type so smartwatch / unknown also route
-        // correctly. See PR 3 README in features/captures.
-        const resolvedTab = tabForImageType(data.imageType);
-        setDashboardInitialTab(resolvedTab);
-        startTransition(() => setShowDashboard(true));
       } catch (err) {
         if (!cancelled) showToast("Could not open shared meal");
       }
@@ -1109,6 +1181,7 @@ function WellnessValleyApp() {
     // Register listener for foreground deep-links
     nativeLifecycle
       .addAppUrlOpenListener((event) => {
+        if (event?.url) _pendingDeepLinkUrlRef.current = event.url;
         handleUrl(event?.url);
       })
       .then((h) => {
@@ -1122,6 +1195,13 @@ function WellnessValleyApp() {
     nativeLifecycle.getLaunchUrl().then((url) => {
       if (!cancelled && url) handleUrl(url);
     });
+
+    // Replay any share URL captured by the early cold-start guard.
+    const pendingUrl = _pendingDeepLinkUrlRef.current;
+    if (!cancelled && pendingUrl) {
+      _pendingDeepLinkUrlRef.current = null;
+      handleUrl(pendingUrl);
+    }
 
     return () => {
       cancelled = true;
@@ -3246,11 +3326,11 @@ function WellnessValleyApp() {
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
-      // Weight validation errors are already shown via alertModal � don't show the red error card
+      // Weight validation errors are already shown via alertModal – don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
         const rawMsg = err.message || "";
         const isNetworkErr = rawMsg.toLowerCase().includes("load failed") || rawMsg.includes("Failed to fetch") || rawMsg.includes("network") || rawMsg.includes("connection");
-        setError(isNetworkErr ? "?? Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
+        setError(isNetworkErr ? "📶 Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
       }
       throw err;
     }
@@ -4315,10 +4395,17 @@ function WellnessValleyApp() {
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
     // that used to add 2–4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
+    const generateInstantShareCode = (length = 8) => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let out = '';
+      for (let i = 0; i < length; i += 1) {
+        out += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return out;
+    };
+    const instantShareCode = generateInstantShareCode();
     const shareDisplayName = resolveShareDisplayName(savedUserName, user);
-    // ?n= embeds the display name so the WhatsApp OG card shows the user name
-    // even when WhatsApp crawls the page before the capture POST completes.
-    const instantShareUrl = `${apiBaseUrl}/share/${instantToken}?n=${encodeURIComponent(shareDisplayName)}`;
+    const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
     const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
 
     // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
@@ -4440,7 +4527,7 @@ function WellnessValleyApp() {
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError(
-        "?? Image file is too large. Please choose a smaller image (max 10MB).",
+        "📸 Image file is too large. Please choose a smaller image (max 10MB).",
       );
       imageProcessingInProgress.current = false;
       return;
@@ -4578,7 +4665,12 @@ function WellnessValleyApp() {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage, token: instantToken }),
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+              }),
             },
           );
           if (!capRes.ok) {
@@ -4595,7 +4687,7 @@ function WellnessValleyApp() {
             );
             return {
               id: capData.data.id,
-              url: `${apiBaseUrl}/share/${capData.data.token}?n=${encodeURIComponent(shareDisplayName)}`,
+              url: `${apiBaseUrl}/share/${capData.data.shareCode || capData.data.token}`,
             };
           }
           debugLog(
@@ -4839,11 +4931,11 @@ function WellnessValleyApp() {
         } else {
           // Fallback: Weight value not extracted � prompt user to retake
           debugLog(
-            "?? Weight value not detected in unified call, prompting retake",
+            "⚠️ Weight value not detected in unified call, prompting retake",
           );
           setAlertModal({
             isOpen: true,
-            title: "?? Image Not Clear Enough",
+            title: "📸 Image Not Clear Enough",
             message:
               "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
             type: "error",
@@ -4981,13 +5073,13 @@ function WellnessValleyApp() {
           if (detectedWeight.lowConfidence) {
             debugLog(`?? Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            debugLog("?? Weight detection failed, prompting retake");
+            debugLog("⚠️ Weight detection failed, prompting retake");
           }
           setAlertModal({
             isOpen: true,
-            title: "?? Please Take a Clearer Photo",
+            title: "📸 Please Take a Clearer Photo",
             message:
-              "We couldn't read the weight from your image. Please ensure:\n� The scale display is fully visible\n� Good lighting (avoid shadows or glare)\n� Hold the camera steady directly above the scale",
+              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
             type: "error",
           });
           setCurrentWeightImage(null);
@@ -5373,17 +5465,17 @@ function WellnessValleyApp() {
           // Set appropriate error message
           if (isApiError) {
             errorMessage =
-              "?? The AI model is temporarily unavailable. Please try again later.";
+              "🤖 The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {            errorMessage =
-              "?? Please check your internet connection (WiFi or mobile data) and try again.";
+              "📶 Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isQualityIssue) {
-            errorMessage = "?? Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
+            errorMessage = "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
-              "?? Please take a photo of food, weight scale, or educational content.";
+              "📷 Please take a photo of food, weight scale, or educational content.";
           } else {
             errorMessage =
-              "?? Could not detect the image. Please take a clear photo and try again.";
+              "❌ Could not detect the image. Please take a clear photo and try again.";
           }
 
           setError(errorMessage);
@@ -5441,7 +5533,7 @@ function WellnessValleyApp() {
 
       // Handle iOS "Load failed" network error
       if (errorMessage.toLowerCase() === "load failed" || errorMessage.includes("Failed to fetch")) {
-        setError("?? Please check your internet connection (WiFi or mobile data) and try again.");
+        setError("📶 Please check your internet connection (WiFi or mobile data) and try again.");
       } else {
         // Don't show error box for weight validation failures (already showing custom modal)
         setError("Failed to process image: " + errorMessage);
@@ -5514,21 +5606,21 @@ function WellnessValleyApp() {
     } else if (
       rawMessage.includes("Server returned an unexpected response format")
     ) {
-      return "?? Unable to save your analysis right now. Your food data is still displayed above.";
+      return "⚠️ Unable to save your analysis right now. Your food data is still displayed above.";
     }
 
     // Image and analysis errors
     else if (rawMessage.includes("Image file is too large")) {
-      return "?? Image file is too large. Please use a smaller photo (max 10MB).";
+      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
     } else if (rawMessage.includes("No food items detected")) {
       return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "?? The AI model is temporarily unavailable. Please try again later.";
+      return "🤖 The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "?? Unable to save your analysis. The nutrition data is still shown above.";
+      return "⚠️ Unable to save your analysis. The nutrition data is still shown above.";
     }
 
     return "❌ Something went wrong. Please try again.";

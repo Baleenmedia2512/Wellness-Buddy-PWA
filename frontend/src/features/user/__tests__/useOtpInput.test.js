@@ -196,3 +196,57 @@ describe('reset', () => {
     expect(result.current.isComplete).toBe(false);
   });
 });
+
+// ─── fillAll ─────────────────────────────────────────────────────────────────
+// Used by WebOTP API auto-read and iOS autoComplete="one-time-code" autofill.
+
+describe('fillAll', () => {
+  it('fills all 6 cells and returns the complete OTP string', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    let returnValue;
+    act(() => { returnValue = result.current.fillAll('123456'); });
+    expect(result.current.otp).toEqual(['1','2','3','4','5','6']);
+    expect(result.current.isComplete).toBe(true);
+    expect(returnValue).toBe('123456');
+  });
+
+  it('strips non-digit characters before filling', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    let returnValue;
+    act(() => { returnValue = result.current.fillAll('1 2-3 4 5 6'); });
+    expect(result.current.otp).toEqual(['1','2','3','4','5','6']);
+    expect(returnValue).toBe('123456');
+  });
+
+  it('truncates input longer than length', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    let returnValue;
+    act(() => { returnValue = result.current.fillAll('12345678'); });
+    expect(result.current.otp).toEqual(['1','2','3','4','5','6']);
+    expect(returnValue).toBe('123456');
+  });
+
+  it('returns null when fewer than length digits are provided (partial fill)', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    let returnValue;
+    act(() => { returnValue = result.current.fillAll('123'); });
+    expect(result.current.otp[0]).toBe('1');
+    expect(result.current.otp[3]).toBe('');
+    expect(returnValue).toBeNull();
+  });
+
+  it('returns null and does not mutate state for empty input', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    let returnValue;
+    act(() => { returnValue = result.current.fillAll(''); });
+    expect(returnValue).toBeNull();
+    expect(result.current.otp.every((d) => d === '')).toBe(true);
+  });
+
+  it('is idempotent when called twice with same value', () => {
+    const { result } = renderHook(() => useOtpInput(6));
+    act(() => { result.current.fillAll('123456'); });
+    act(() => { result.current.fillAll('123456'); });
+    expect(result.current.otp).toEqual(['1','2','3','4','5','6']);
+  });
+});

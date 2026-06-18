@@ -35,10 +35,12 @@ export function validateUndo(body) {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
+const SHARE_IDENTIFIER_RE = new RegExp(`(?:${UUID_RE.source})|(?:${SHARE_CODE_RE.source})`, 'i');
 
 export function validateCreateCapture(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const { userId, imageBase64, token } = body;
+  const { userId, imageBase64, token, shareCode } = body;
   if (!userId) throw new ValidationError(400, 'userId is required');
   if (!imageBase64) throw new ValidationError(400, 'imageBase64 is required');
   // token is optional. When supplied by the frontend (instant-share path),
@@ -47,10 +49,18 @@ export function validateCreateCapture(body) {
   if (token !== undefined && !UUID_RE.test(token)) {
     throw new ValidationError(400, 'token must be a valid UUID v4');
   }
+  if (shareCode !== undefined && !SHARE_CODE_RE.test(String(shareCode))) {
+    throw new ValidationError(400, 'shareCode must be 6-10 alphanumeric characters');
+  }
   // imageType is intentionally NOT accepted here. All pending captures start
   // as ImageType='pending' (set in the repository). The type is resolved via
   // PATCH /captures after AI analysis determines the correct category.
-  return { userId, imageBase64, token: token || null };
+  return {
+    userId,
+    imageBase64,
+    token: token || null,
+    shareCode: shareCode ? String(shareCode) : null,
+  };
 }
 
 export function validateUpdateCapture(body) {
@@ -76,19 +86,20 @@ export function validateUpdateCapture(body) {
 export function validatePublicCapture(query) {
   const { token } = query || {};
   if (!token) throw new ValidationError(400, 'token is required');
-  // Validate UUID format to prevent injection via query string.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
-  return { token };
+  if (!SHARE_IDENTIFIER_RE.test(String(token))) {
+    throw new ValidationError(400, 'Invalid token format');
+  }
+  return { token: String(token) };
 }
 
 export function validateResolveCapture(query) {
   const { token, viewerUserId } = query || {};
   if (!token) throw new ValidationError(400, 'token is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
-  return { token, viewerUserId: viewerUserId.toString() };
+  if (!SHARE_IDENTIFIER_RE.test(String(token))) {
+    throw new ValidationError(400, 'Invalid token format');
+  }
+  return { token: String(token), viewerUserId: viewerUserId.toString() };
 }
 
 /**
@@ -103,10 +114,11 @@ export function validateResolveCapture(query) {
 export function validateResolveUnknownShare(query) {
   const { token, viewerUserId } = query || {};
   if (!token) throw new ValidationError(400, 'token is required');
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
+  if (!SHARE_IDENTIFIER_RE.test(String(token))) {
+    throw new ValidationError(400, 'Invalid token format');
+  }
   return {
-    token,
+    token: String(token),
     viewerUserId:
       viewerUserId != null && viewerUserId !== ''
         ? viewerUserId.toString()

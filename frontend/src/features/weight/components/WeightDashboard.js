@@ -127,15 +127,36 @@ const Modal = ({ vm }) => (
   </Suspense>
 );
 
-const WeightDashboard = ({ user, apiBaseUrl, hideHeader, hideOverview = false, initialEntryId = null, selectedDate = null, refreshKey = 0 }) => {
+const WeightDashboard = ({
+  user, apiBaseUrl, hideHeader, hideOverview = false,
+  initialEntryId = null, selectedDate = null, refreshKey = 0,
+  // Imperative handle: parent passes a React ref; we write `openRef.current =
+  // (entryId) => ...` each render so the timeline shell can open an entry.
+  openRef = null,
+  // Called after the detail modal is closed so the timeline can refresh.
+  onAfterModalClose = null,
+}) => {
   const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
+
+  // Imperative open handle for the timeline shell (ff.diary-timeline).
+  if (openRef) {
+    openRef.current = (entryId) => {
+      const entry = (vm.weightHistory || []).find((e) => String(e.ID) === String(entryId));
+      if (entry) vm.handleViewEntry(entry);
+    };
+  }
+
+  // Wrap closeModal to fire the optional post-close callback.
+  const closeModal = onAfterModalClose
+    ? () => { vm.closeModal(); onAfterModalClose(); }
+    : vm.closeModal;
 
   const view = vm.loading ? <LoadingSkeleton /> : <Overview vm={vm} hideOverview={hideOverview} user={user} apiBaseUrl={apiBaseUrl} />;
   const body = (
     <>
       <style>{KEYFRAMES}</style>
       {view}
-      {vm.showModal && vm.selectedEntry && <Modal vm={{ ...vm, apiBaseUrl }} />}
+      {vm.showModal && vm.selectedEntry && <Modal vm={{ ...vm, apiBaseUrl, closeModal }} />}
     </>
   );
   if (!hideHeader) return <div className="min-h-screen bg-gray-50">{body}</div>;

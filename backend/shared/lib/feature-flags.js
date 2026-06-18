@@ -132,3 +132,14 @@ registerFlag({
   description:    'ADR-0004 — Body Parameters Card share feature. Coach creates a styled card in Wellness Counselling, shares via WhatsApp. New members use the link to pre-fill setup wizard; existing members get silent profile override.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.diary-timeline',
+  owner:          '@diary-team',
+  createdAt:      '2026-06-18',
+  // 90 days after full rollout per claude.md §3.5. Adjust on
+  // promotion-to-prod; never extend without an ADR amendment.
+  removeBy:       '2026-12-31',
+  description:    'Unified activity timeline layout in Diary: replaces stacked section-dashboards (NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)) with a single chronological DiaryFeed covering all entry kinds (food, weight, education, watch, unknown) for the selected IST day. Requires ff.diary-feed=ON. Toggle FF_DIARY_TIMELINE=false to revert to the stacked layout.',
+  defaultEnabled: true,
+});

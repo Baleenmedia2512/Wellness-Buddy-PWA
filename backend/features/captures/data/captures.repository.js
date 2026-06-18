@@ -36,6 +36,7 @@ const TABLE = 'captures_table';
 export async function insertPending({
   userId,
   publicShareToken,
+  shareCode = null,
   shareExpiresAt = null,
   imageBase64 = null,
   imagePath = null,
@@ -48,6 +49,7 @@ export async function insertPending({
     .insert({
       UserID: userId.toString(),
       PublicShareToken: publicShareToken,
+      ShareCode: shareCode,
       ShareExpiresAt: shareExpiresAt,
       ImageBase64: imageBase64,
       ImagePath: imagePath,
@@ -76,6 +78,40 @@ export async function findByToken(token) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/**
+ * Look up a capture by short ShareCode. Returns null when not found.
+ */
+export async function findByShareCode(shareCode) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('"ShareCode"', shareCode)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * Resolve either a legacy UUID token or a short ShareCode.
+ */
+export async function findByShareIdentifier(identifier) {
+  const value = (identifier || '').toString().trim();
+  if (!value) return null;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
+
+  if (UUID_RE.test(value)) {
+    return findByToken(value);
+  }
+  if (SHARE_CODE_RE.test(value)) {
+    return findByShareCode(value);
+  }
+  return null;
 }
 
 /**
