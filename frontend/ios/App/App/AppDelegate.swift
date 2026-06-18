@@ -41,6 +41,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             webView.scrollView.bounces = false
             webView.scrollView.alwaysBounceVertical = false
         }
+        
+        // ═══════════════════════════════════════════════════════════════
+        // ✅ ENABLE AUTOFILL FOR iOS WKWebView
+        // ═══════════════════════════════════════════════════════════════
+        // iOS AutoFill works automatically with properly configured HTML forms
+        // WKWebView supports Password AutoFill, Contact AutoFill, and OTP AutoFill
+        // when HTML inputs have correct autocomplete attributes
+        
+        // Enable autofill debugging (remove in production)
+        if #available(iOS 13.0, *) {
+            print("✅ iOS AutoFill enabled for WKWebView")
+            print("✅ Supports: Password AutoFill, Contact AutoFill, OTP AutoFill")
+            print("⚠️ User must have iCloud Keychain enabled for password autofill")
+        }
 
         return true
     }
