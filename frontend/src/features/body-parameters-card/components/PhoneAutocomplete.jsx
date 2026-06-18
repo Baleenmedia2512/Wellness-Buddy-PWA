@@ -67,7 +67,7 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
         <input
           ref={inputRef}
           type="tel"
-          inputMode="tel"
+          inputMode="numeric"
           pattern="[0-9]*"
           value={value}
           onChange={handleInputChange}

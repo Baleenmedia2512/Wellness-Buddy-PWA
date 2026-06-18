@@ -19,17 +19,21 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '', i
   };
 
   // Use inputMode for better mobile keyboard control
-  const inputMode = customInputMode || (type === 'number' ? 'decimal' : type === 'tel' ? 'tel' : 'text');
+  // For Capacitor APK: use type="text" with inputMode for numeric fields to force numeric keypad
+  const inputMode = customInputMode || (type === 'number' ? 'numeric' : type === 'tel' ? 'tel' : 'text');
   
   // For Capacitor/native apps: use pattern to force numeric keyboard
-  const pattern = type === 'number' ? '[0-9]*' : undefined;
+  const pattern = type === 'number' ? '[0-9.]*' : undefined;
+  
+  // Convert type="number" to type="text" with inputMode for better mobile support
+  const inputType = type === 'number' ? 'text' : type;
 
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">{label}</label>
       <input
         ref={inputRef}
-        type={type}
+        type={inputType}
         inputMode={inputMode}
         pattern={pattern}
         value={value}
@@ -250,9 +254,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                 <>
                   <input
                     ref={weightRef}
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    pattern="[0-9]*"
+                    pattern="[0-9.]*"
                     value={vm.form.weightKg}
                     onChange={(e) => vm.setWeightManually(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -302,9 +306,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                 <>
                   <input
                     ref={fatRef}
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    pattern="[0-9]*"
+                    pattern="[0-9.]*"
                     value={vm.form.fatPercent}
                     onChange={(e) => vm.setField('fatPercent', e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -367,9 +371,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                 <>
                   <input
                     ref={bmiRef}
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    pattern="[0-9]*"
+                    pattern="[0-9.]*"
                     value={vm.form.bmi}
                     onChange={(e) => vm.setBmiManually(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -413,8 +417,8 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                 <>
                   <input
                     ref={bodyAgeRef}
-                    type="number"
-                    inputMode="decimal"
+                    type="text"
+                    inputMode="numeric"
                     pattern="[0-9]*"
                     value={vm.form.bodyAge}
                     onChange={(e) => vm.setField('bodyAge', e.target.value)}
