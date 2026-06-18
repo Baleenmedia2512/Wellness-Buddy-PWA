@@ -193,28 +193,26 @@ function validateRoles(participants) {
 
 // ── Multi-step create form ─────────────────────────────────────────────────
 const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
-  const [step,         setStep]         = useState(1); // 1=details, 2=members
-  const [name,         setName]         = useState('');
-  const [teamName,     setTeamName]     = useState('');
-  const [startedAt,    setStartedAt]    = useState(new Date().toISOString().substring(0, 10));
-  const [members,      setMembers]      = useState([]);
-  const [loadingMbrs,  setLoadingMbrs]  = useState(false);
-  const [membersErr,   setMembersErr]   = useState(null);
-  // Map of userId → lap role for selected members
-  const [roleMap,      setRoleMap]      = useState({});
-  const [busy,         setBusy]         = useState(false);
-  const [err,          setErr]          = useState(null);
+  const [step,        setStep]        = useState(1); // 1=details, 2=members
+  const [teamName,    setTeamName]    = useState('');
+  const [startedAt,   setStartedAt]   = useState(new Date().toISOString().substring(0, 10));
+  const [members,     setMembers]     = useState([]);
+  const [loadingMbrs, setLoadingMbrs] = useState(false);
+  const [membersErr,  setMembersErr]  = useState(null);
+  const [roleMap,     setRoleMap]     = useState({});
+  const [busy,        setBusy]        = useState(false);
+  const [err,         setErr]         = useState(null);
+
+  // LAP name is fully auto-derived: shown as preview, never typed by user
+  // The actual sequence number comes from the backend (countLapSequenceForTeam)
+  const lapPreview = teamName.trim() ? `${teamName.trim()} - LAP 1*` : '';
 
   const selectedIds  = Object.keys(roleMap).map(Number);
-  const participants = selectedIds.map(uid => ({
-    userId: uid,
-    role:   roleMap[uid] || 'member',
-  }));
-  const roleError = validateRoles(participants);
+  const participants = selectedIds.map(uid => ({ userId: uid, role: roleMap[uid] || 'member' }));
+  const roleError    = validateRoles(participants);
 
-  // ── Step 1 → 2: load members ──────────────────────────────────────────────
+  // ── Step 1 → 2 ────────────────────────────────────────────────────────────
   const goToStep2 = useCallback(async () => {
-    if (!name.trim())     return setErr('Enter a LAP name');
     if (!teamName.trim()) return setErr('Enter a Team Name');
     setErr(null);
     setLoadingMbrs(true);
@@ -228,33 +226,34 @@ const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
     } finally {
       setLoadingMbrs(false);
     }
-  }, [coachId, name]);
+  }, [coachId, teamName]);
 
   const toggleMember = (uid) => {
     setRoleMap(prev => {
       const next = { ...prev };
-      if (next[uid] !== undefined) { delete next[uid]; }
-      else { next[uid] = 'member'; }
+      if (next[uid] !== undefined) delete next[uid];
+      else next[uid] = 'member';
       return next;
     });
   };
 
-  const changeRole = (uid, role) => {
+  const changeRole = (uid, role) =>
     setRoleMap(prev => ({ ...prev, [uid]: role }));
-  };
 
-  // ── Step 2 → submit ──────────────────────────────────────────────────────
+  // ── Step 2 → submit ────────────────────────────────────────────────────────
   const handleCreate = async () => {
     if (!participants.length) return setErr('Select at least one participant');
     if (roleError) return setErr(roleError);
     setBusy(true); setErr(null);
     try {
+      const tn = teamName.trim();
       await createMarathon({
         coachId,
-        name:         name.trim(),
-        teamName:     teamName.trim() || null,
-        totalLaps:    10,
-        daysPerLap:   10,
+        // name = teamName (backend appends " - LAP N" via buildMarathonDisplayName)
+        name:      tn,
+        teamName:  tn,
+        totalLaps: 10,
+        daysPerLap: 10,
         startedAt,
         participants,
         role: 'coach',
@@ -267,40 +266,29 @@ const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
     }
   };
 
-  // ── Render step 1 ─────────────────────────────────────────────────────────
+  // ── Render step 1 ──────────────────────────────────────────────────────────
   if (step === 1) return (
     <div style={{ marginTop: 16, textAlign: 'left' }}>
       <div style={{ fontSize: 15, fontWeight: 800, color: '#111827', marginBottom: 14 }}>
         New Marathon LAP
       </div>
 
-      {/* LAP name */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={s.label}>LAP Name *</div>
-        <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="e.g. Power Burners - LAP 1"
-          style={s.input}
-        />
-      </div>
-
-      {/* Base team name — drives multi-LAP auto-sequencing */}
+      {/* Team Name — only field user enters */}
       <div style={{ marginBottom: 12 }}>
         <div style={s.label}>Team Name *</div>
         <input
           value={teamName}
-          onChange={e => setTeamName(e.target.value)}
-          placeholder="e.g. Power Burners"
+          onChange={e => { setTeamName(e.target.value); setErr(null); }}
+          placeholder="e.g. Fruit, Power Burners, Team Rajini…"
           style={s.input}
+          autoFocus
         />
         <div style={{
           fontSize: 11, color: '#059669', marginTop: 6,
           background: '#f0fdf4', borderRadius: 6, padding: '6px 8px',
           border: '1px solid #d1fae5',
         }}>
-          Enter once — next LAP for this team auto-becomes "Power Burners - LAP 2",
-          "LAP 3", etc. Same coach can run unlimited LAPs for the same team name.
+          LAP name is auto-assigned.{lapPreview ? ` First LAP → "${lapPreview.replace('*', '')}". Next will be LAP 2, LAP 3…` : ' e.g. "Fruit - LAP 1", "Fruit - LAP 2"…'}
         </div>
       </div>
 
