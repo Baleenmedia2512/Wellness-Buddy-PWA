@@ -93,31 +93,25 @@ const s = {
   },
 };
 
-// ── Fetch coach's direct team members from the existing hierarchy API ──────
+// ── Fetch coach's team members from the existing hierarchy API ─────────────
+// Response shape: { allMembers: [{UserId, UserName, ProfileImage, Role, ...}] }
 async function fetchCoachMembers(coachId) {
-  const url = `${getApiBaseUrl()}/api/coach/team-hierarchy?coachId=${coachId}`;
+  const url  = `${getApiBaseUrl()}/api/coach/team-hierarchy?coachId=${coachId}`;
   const res  = await fetch(url);
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || 'Failed to load team members');
 
-  // Flatten the hierarchy to get direct members of this coach
-  const members = [];
-  const walk = (nodes) => {
-    (nodes || []).forEach(node => {
-      if (node.userId && node.role !== 'coach') {
-        members.push({
-          userId:   node.userId,
-          name:     node.name || node.UserName || 'Member',
-          photo:    node.ProfileImage || null,
-          role:     node.role || 'user',
-        });
-      }
-      if (node.members) walk(node.members);
-      if (node.subCoaches) walk(node.subCoaches);
-    });
-  };
-  walk(json.hierarchy || json.members || []);
-  return members;
+  // allMembers is the flat array of all unique team members (excluding the coach root)
+  const flat = Array.isArray(json.allMembers) ? json.allMembers : [];
+
+  return flat
+    .filter(m => m.UserId && String(m.Role || '').toLowerCase() !== 'coach')
+    .map(m => ({
+      userId: m.UserId,
+      name:   m.UserName || 'Member',
+      photo:  m.ProfileImage || null,
+      role:   m.Role || 'user',
+    }));
 }
 
 // ── Participant row in the picker ──────────────────────────────────────────
@@ -220,7 +214,8 @@ const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
 
   // ── Step 1 → 2: load members ──────────────────────────────────────────────
   const goToStep2 = useCallback(async () => {
-    if (!name.trim()) return setErr('Enter a LAP name');
+    if (!name.trim())     return setErr('Enter a LAP name');
+    if (!teamName.trim()) return setErr('Enter a Team Name');
     setErr(null);
     setLoadingMbrs(true);
     setMembersErr(null);
@@ -285,22 +280,27 @@ const CreateMarathonWizard = ({ coachId, onCreated, onCancel }) => {
         <input
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="e.g. Team BalajiLeenah 12 - LAP 1"
+          placeholder="e.g. Power Burners - LAP 1"
           style={s.input}
         />
       </div>
 
-      {/* Base team name (for auto-sequencing) */}
+      {/* Base team name — drives multi-LAP auto-sequencing */}
       <div style={{ marginBottom: 12 }}>
-        <div style={s.label}>Base Team Name (optional)</div>
+        <div style={s.label}>Team Name *</div>
         <input
           value={teamName}
           onChange={e => setTeamName(e.target.value)}
-          placeholder="e.g. Team BalajiLeenah  →  auto-numbered"
+          placeholder="e.g. Power Burners"
           style={s.input}
         />
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
-          If set, future LAPs auto-become "Team Name - LAP 2", "LAP 3", etc.
+        <div style={{
+          fontSize: 11, color: '#059669', marginTop: 6,
+          background: '#f0fdf4', borderRadius: 6, padding: '6px 8px',
+          border: '1px solid #d1fae5',
+        }}>
+          Enter once — next LAP for this team auto-becomes "Power Burners - LAP 2",
+          "LAP 3", etc. Same coach can run unlimited LAPs for the same team name.
         </div>
       </div>
 
