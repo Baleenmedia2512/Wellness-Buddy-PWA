@@ -6474,7 +6474,6 @@ function WellnessValleyApp() {
           </div>
           <MarathonDashboard
             coachId={user?.id}
-            teamMemberIds={[]}
           />
         </div>
       </Suspense>
