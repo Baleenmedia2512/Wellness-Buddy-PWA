@@ -22,7 +22,7 @@ export async function handleDeleteMarathon(body) {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from('marathon_table')
-    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .update({ status: 'cancelled' })
     .eq('id', Number(marathonId));
   if (error) throw error;
 

@@ -58,10 +58,10 @@ export function useMarathon({ coachId, userId } = {}) {
     }
   }, [coachId]);
 
-  // Optimistic remove — immediately removes the lap from local state before
-  // the delete API call returns, so the UI updates without waiting for a refetch.
+  // Optimistic remove — immediately removes the lap from local state.
+  // Uses Number() coercion so string/int ID mismatches don't silently fail.
   const removeMarathon = useCallback((id) => {
-    setMarathons(prev => prev.filter(m => m.id !== id));
+    setMarathons(prev => prev.filter(m => Number(m.id) !== Number(id)));
   }, []);
 
   const generateCard = useCallback(async ({ marathonId, cardType }) => {

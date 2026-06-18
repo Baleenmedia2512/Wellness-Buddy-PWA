@@ -563,18 +563,20 @@ const MarathonDashboard = ({ coachId }) => {
     const id = confirmDeleteId;
     setConfirmDeleteId(null);
     setDeleteError(null);
-    // Optimistic: remove from UI immediately
-    removeMarathon(id);
-    if (String(selectedId) === String(id)) setSelectedId('');
     setDeletingId(id);
+
+    // Optimistic: remove from list immediately for instant feedback
+    removeMarathon(Number(id));
+    if (String(selectedId) === String(id)) setSelectedId('');
+
     try {
       await deleteMarathon({ marathonId: id, coachId });
-      // Silent background refresh to sync any server-side state
-      fetchMarathons('active');
+      // Await the refresh so we're certain the list is in sync
+      await fetchMarathons('active');
     } catch (e) {
       setDeleteError(e.message || 'Failed to delete LAP. Please try again.');
-      // On error, reload to restore the removed item
-      fetchMarathons('active');
+      // Restore list on failure so the user can see the lap is still there
+      await fetchMarathons('active');
     } finally {
       setDeletingId(null);
     }
