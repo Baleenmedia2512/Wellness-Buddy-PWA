@@ -3275,11 +3275,11 @@ function WellnessValleyApp() {
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
-      // Weight validation errors are already shown via alertModal � don't show the red error card
+      // Weight validation errors are already shown via alertModal – don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
         const rawMsg = err.message || "";
         const isNetworkErr = rawMsg.toLowerCase().includes("load failed") || rawMsg.includes("Failed to fetch") || rawMsg.includes("network") || rawMsg.includes("connection");
-        setError(isNetworkErr ? "?? Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
+        setError(isNetworkErr ? "📶 Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
       }
       throw err;
     }
@@ -4476,7 +4476,7 @@ function WellnessValleyApp() {
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError(
-        "?? Image file is too large. Please choose a smaller image (max 10MB).",
+        "📸 Image file is too large. Please choose a smaller image (max 10MB).",
       );
       imageProcessingInProgress.current = false;
       return;
@@ -4880,11 +4880,11 @@ function WellnessValleyApp() {
         } else {
           // Fallback: Weight value not extracted � prompt user to retake
           debugLog(
-            "?? Weight value not detected in unified call, prompting retake",
+            "⚠️ Weight value not detected in unified call, prompting retake",
           );
           setAlertModal({
             isOpen: true,
-            title: "?? Image Not Clear Enough",
+            title: "📸 Image Not Clear Enough",
             message:
               "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
             type: "error",
@@ -5022,13 +5022,13 @@ function WellnessValleyApp() {
           if (detectedWeight.lowConfidence) {
             debugLog(`?? Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            debugLog("?? Weight detection failed, prompting retake");
+            debugLog("⚠️ Weight detection failed, prompting retake");
           }
           setAlertModal({
             isOpen: true,
-            title: "?? Please Take a Clearer Photo",
+            title: "📸 Please Take a Clearer Photo",
             message:
-              "We couldn't read the weight from your image. Please ensure:\n� The scale display is fully visible\n� Good lighting (avoid shadows or glare)\n� Hold the camera steady directly above the scale",
+              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
             type: "error",
           });
           setCurrentWeightImage(null);
@@ -5414,17 +5414,17 @@ function WellnessValleyApp() {
           // Set appropriate error message
           if (isApiError) {
             errorMessage =
-              "?? The AI model is temporarily unavailable. Please try again later.";
+              "🤖 The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {            errorMessage =
-              "?? Please check your internet connection (WiFi or mobile data) and try again.";
+              "📶 Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isQualityIssue) {
-            errorMessage = "?? Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
+            errorMessage = "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
-              "?? Please take a photo of food, weight scale, or educational content.";
+              "📷 Please take a photo of food, weight scale, or educational content.";
           } else {
             errorMessage =
-              "?? Could not detect the image. Please take a clear photo and try again.";
+              "❌ Could not detect the image. Please take a clear photo and try again.";
           }
 
           setError(errorMessage);
@@ -5482,7 +5482,7 @@ function WellnessValleyApp() {
 
       // Handle iOS "Load failed" network error
       if (errorMessage.toLowerCase() === "load failed" || errorMessage.includes("Failed to fetch")) {
-        setError("?? Please check your internet connection (WiFi or mobile data) and try again.");
+        setError("📶 Please check your internet connection (WiFi or mobile data) and try again.");
       } else {
         // Don't show error box for weight validation failures (already showing custom modal)
         setError("Failed to process image: " + errorMessage);
@@ -5555,21 +5555,21 @@ function WellnessValleyApp() {
     } else if (
       rawMessage.includes("Server returned an unexpected response format")
     ) {
-      return "?? Unable to save your analysis right now. Your food data is still displayed above.";
+      return "⚠️ Unable to save your analysis right now. Your food data is still displayed above.";
     }
 
     // Image and analysis errors
     else if (rawMessage.includes("Image file is too large")) {
-      return "?? Image file is too large. Please use a smaller photo (max 10MB).";
+      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
     } else if (rawMessage.includes("No food items detected")) {
       return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "?? The AI model is temporarily unavailable. Please try again later.";
+      return "🤖 The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "?? Unable to save your analysis. The nutrition data is still shown above.";
+      return "⚠️ Unable to save your analysis. The nutrition data is still shown above.";
     }
 
     return "❌ Something went wrong. Please try again.";
