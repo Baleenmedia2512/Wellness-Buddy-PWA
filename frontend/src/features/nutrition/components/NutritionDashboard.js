@@ -83,6 +83,11 @@ const NutritionDashboard = ({
   bmrUpdateKey = 0,
   watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
   initialMealId = null, // meal ID to auto-open (from deep link)
+  // Imperative handle used by the timeline shell (Dashboard.js) to open a specific
+  // meal by ID without routing through the one-shot `initialMealId` deep-link path.
+  // The parent passes a React ref; we write to `.current` each render so the
+  // closure always has the latest `analyses` snapshot.
+  openRef = null,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -330,6 +335,16 @@ const NutritionDashboard = ({
       debugLog('⚠️ [NutritionDashboard] Meal not found for deep link ID:', initialMealId);
     }
   }, [initialMealId, analyses, loading]);
+
+  // Imperative open handle for the timeline shell (ff.diary-timeline).
+  // Written on every render so the closure captures the current `analyses` list.
+  // Consumers call `openRef.current(mealId)` to open a meal by ID.
+  if (openRef) {
+    openRef.current = (mealId) => {
+      const meal = analyses.find((m) => m.ID && String(m.ID) === String(mealId));
+      if (meal) setSelectedMeal(meal);
+    };
+  }
 
   // fetchDayAnalyses + auto-refresh effect moved to useDayAnalyses hook.
 
