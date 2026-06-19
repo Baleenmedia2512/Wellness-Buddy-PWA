@@ -59,7 +59,7 @@ const LoginEmailEntry = ({
             <input
               id="recipient"
               type="tel"
-              inputMode="tel"
+              inputMode="numeric"
               autoComplete="tel"
               name="tel"
               value={email}
@@ -72,10 +72,10 @@ const LoginEmailEntry = ({
         ) : (
           <input
             id="recipient"
-            type="text"
-            inputMode="email"
-            autoComplete="email username tel"
-            name="email"
+            type={channel === 'email' ? 'email' : 'tel'}
+            inputMode={channel === 'email' ? 'email' : 'numeric'}
+            autoComplete={channel === 'email' ? 'email username' : 'tel'}
+            name={channel === 'email' ? 'email' : 'tel'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

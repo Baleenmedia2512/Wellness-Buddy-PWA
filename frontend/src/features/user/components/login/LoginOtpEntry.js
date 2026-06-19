@@ -10,7 +10,7 @@
 // inputMode="numeric". The custom InlineNumericKeypad is NOT used here because
 // it sets readOnly + onFocus→blur() which prevents the OS from recognising OTP
 // fields for autofill.
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
 
 const LoginOtpEntry = ({
@@ -19,6 +19,15 @@ const LoginOtpEntry = ({
 }) => {
   const { otp, refs, handleChange, handleKeyDown, handlePaste, fillAll } = otpCtl;
   const isComplete = otp.every((d) => d !== '');
+
+  // Auto-focus the first cell when the OTP screen mounts so the numeric
+  // keyboard appears immediately and iOS QuickType can surface the OTP
+  // suggestion without requiring an extra tap.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs.current is a stable ref object; mount-only focus is intentional
+  useEffect(() => {
+    const t = setTimeout(() => refs.current[0]?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebOTP API: Android Chrome auto-reads the OTP from the SMS and populates
   // all cells + triggers verify without any user interaction.
