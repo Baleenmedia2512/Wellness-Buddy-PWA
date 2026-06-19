@@ -62,15 +62,13 @@ const T = {
 async function loadParticipantCandidates(coachId) {
   const res  = await getMarathonParticipants({ coachId, role: 'coach' });
   const list = Array.isArray(res.data) ? res.data : [];
-  return list;
-}
-    .map(m => ({
-      userId:  m.UserId,
-      name:    m.UserName    || 'Member',
-      photo:   m.ProfileImage || null,
-      phone:   m.PhoneNumber  || '',  // for search
-      teamId:  m.TeamId       || '',  // for search
-    }));
+  return list.map(m => ({
+    userId:  m.UserId,
+    name:    m.UserName    || 'Member',
+    photo:   m.ProfileImage || null,
+    phone:   m.PhoneNumber  || '',  // for search
+    teamId:  m.TeamId       || '',  // for search
+  }));
 }
 
 // ── Role validation ─────────────────────────────────────────────────────────
