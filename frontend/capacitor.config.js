@@ -25,7 +25,7 @@ const config = {
   // Vercel) — set REACT_APP_API_BASE_URL in .env.production before `npm run build`.
   server: {
     androidScheme: 'https',
-    hostname: 'localhost',
+    hostname: 'wellness-valley.vercel.app',
     allowNavigation: [
       'wellness-valley-pwa-backend-test.vercel.app',
       'wellness-buddy-pwa-backend-test.vercel.app',

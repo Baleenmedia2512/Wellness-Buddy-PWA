@@ -16,6 +16,7 @@ import {
   X,
   Trash2,
   Share2,
+  Trophy,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -41,6 +42,7 @@ const Header = ({
   onShowAttendanceReport,
   onShowNutritionCentersMap,
   onShowRegisterCenter,
+  onShowMarathon,
   onLeaderboardRefresh,
   onProfileSaved,
   manualModeActive = false,
@@ -602,6 +604,22 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Physical Club
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Marathon */}
+                      {onShowMarathon && (
+                        <TouchFeedbackButton
+                          onClick={() => { onShowMarathon(); closeMenu(); }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Marathon"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-yellow-100 flex items-center justify-center">
+                            <Trophy className="h-5 w-5 text-yellow-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Marathon
                           </span>
                         </TouchFeedbackButton>
                       )}
