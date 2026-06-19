@@ -539,6 +539,73 @@ export async function getDailyResults(marathonId, date) {
   return data;
 }
 
+/**
+ * Fetch stored leader data from marathon_daily_results for a given date,
+ * enriched with profile names and images.
+ *
+ * Used as a fallback in card generation when live computation finds no
+ * eligible (discipline-window) leader — e.g. coach generates the card
+ * mid-day before the window closes, or after the cron has run.
+ *
+ * @param {number} marathonId
+ * @param {string} resultDate — YYYY-MM-DD in IST
+ * @returns {Promise<{lapNumber, dayNumber, dayLeader, lapLeader, communityLeader}|null>}
+ */
+export async function getStoredLeaderData(marathonId, resultDate) {
+  const supabase = getSupabaseClient();
+  const { data: result, error } = await supabase
+    .from('marathon_daily_results')
+    .select('*')
+    .eq('marathon_id', marathonId)
+    .eq('result_date', resultDate)
+    .maybeSingle();
+  if (error || !result) return null;
+
+  // Batch-fetch profiles for all stored leader user IDs
+  const ids = [
+    result.day_leader_user_id,
+    result.lap_leader_user_id,
+    result.community_leader_user_id,
+  ].filter(Boolean);
+
+  const profileMap = {};
+  if (ids.length) {
+    const { data: profs } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "ProfileImage"')
+      .in('"UserId"', ids);
+    (profs || []).forEach(p => { profileMap[p.UserId] = p; });
+  }
+
+  const mkLeader = (userId, reductionKg) => {
+    if (!userId) return null;
+    // stored reduction_kg is always positive (Math.abs was applied on save)
+    // negate it back so the existing formatWeightChange renders it as "-X.XX KG"
+    const changeKg = reductionKg != null ? -Math.abs(reductionKg) : null;
+    return {
+      userId,
+      name:               profileMap[userId]?.UserName    || 'Member',
+      profileImage:       profileMap[userId]?.ProfileImage || null,
+      dayChange:          changeKg,
+      dailyChange:        changeKg,
+      lapChange:          changeKg,
+      cumulativeChange:   changeKg,
+      dailyChangeDisplay: formatWeightChange(changeKg),
+      lapChangeDisplay:   formatWeightChange(changeKg),
+      reductionKg,
+      fromStoredResult:   true,
+    };
+  };
+
+  return {
+    lapNumber:       result.lap_number,
+    dayNumber:       result.day_number,
+    dayLeader:       mkLeader(result.day_leader_user_id,       result.day_leader_reduction_kg),
+    lapLeader:       mkLeader(result.lap_leader_user_id,       result.lap_leader_reduction_kg),
+    communityLeader: mkLeader(result.community_leader_user_id, result.community_leader_reduction_kg),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Leaderboard
 // ─────────────────────────────────────────────────────────────────────────────

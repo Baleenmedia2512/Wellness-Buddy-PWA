@@ -171,7 +171,58 @@ const MarathonLeaderCard = ({ card }) => {
 
   const isCrown  = cardType === 'lap_leader' || cardType === 'community_leader';
   const BadgeIcon = isCrown ? CrownSvg : MedalSvg;
-  const reductionVal = theme.reductionValue(leader || {});
+  const reductionVal = leader ? (theme.reductionValue(leader) || '—') : null;
+
+  // ── No-leader state: results not yet available ──────────────────────────
+  if (!leader) {
+    return (
+      <div style={{
+        width: CARD_W,
+        minHeight: 580,
+        background: theme.bgGradient,
+        borderRadius: 28,
+        overflow: 'hidden',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif',
+        position: 'relative',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        padding: '40px 24px',
+      }}>
+        <div style={{ fontSize: 48 }}>⏳</div>
+        <div style={{
+          fontSize: 22, fontWeight: 900, color: '#fff',
+          textAlign: 'center', letterSpacing: 1,
+        }}>
+          Results Pending
+        </div>
+        <div style={{
+          fontSize: 14, color: 'rgba(255,255,255,0.75)',
+          textAlign: 'center', lineHeight: 1.5, maxWidth: 280,
+        }}>
+          {card.marathonName || 'Wellness Valley Marathon'}
+        </div>
+        {card.lapNumber && card.dayNumber && (
+          <div style={{
+            background: 'rgba(255,255,255,0.2)',
+            borderRadius: 100, padding: '6px 18px',
+            fontSize: 13, fontWeight: 700, color: '#fff',
+          }}>
+            Lap {card.lapNumber} · Day {card.dayNumber}
+          </div>
+        )}
+        <div style={{
+          fontSize: 12, color: 'rgba(255,255,255,0.55)',
+          textAlign: 'center', marginTop: 8,
+        }}>
+          Results are available after the discipline window closes
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
