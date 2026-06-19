@@ -24,7 +24,7 @@ const PHOTO_SIZE = 56;  // slightly smaller than share card for mobile comfort
 const DS = {
   eligible:  { icon: '🟢', label: 'Submitted', color: '#059669' },
   missed:    { icon: '🔴', label: 'Missed',    color: '#dc2626' },
-  no_upload: { icon: '⚪', label: 'No upload', color: '#9ca3af' },
+  no_upload: { icon: '🟡', label: 'Pending',   color: '#ca8a04' },
 };
 
 // ── Crown badge (day leader) ────────────────────────────────────────────────
