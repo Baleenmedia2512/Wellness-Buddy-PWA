@@ -60,6 +60,7 @@ import React, {
   startTransition,
   useDeferredValue,
 } from "react";
+import ReactDOM from "react-dom";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
@@ -128,8 +129,8 @@ import { fetchPublicCard, savePendingCard, consumePendingCard } from "./features
 import { ClubSelectionModal } from "./features/nutrition-centers";
 // import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
-// import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-// import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
+import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
+import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { CoachScoreSummary } from "./features/leaderboard";
 import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -251,6 +252,18 @@ function WellnessValleyApp() {
   // Debug logging for waiting state
   useEffect(() => {
     console.log("🟣 [isWaitingForCoachOTP state changed]:", isWaitingForCoachOTP);
+    if (isWaitingForCoachOTP) {
+      console.log("🟣 [WAITING MODAL SHOULD RENDER NOW]");
+      // Force a check after a brief delay
+      setTimeout(() => {
+        const modal = document.querySelector('[data-waiting-modal="true"]');
+        if (modal) {
+          console.log("✅ [WAITING MODAL FOUND IN DOM]", modal);
+        } else {
+          console.error("❌ [WAITING MODAL NOT FOUND IN DOM - NOT RENDERING!]");
+        }
+      }, 100);
+    }
   }, [isWaitingForCoachOTP]);
   
   // For returning users who already granted permissions, start as true so the
@@ -345,6 +358,10 @@ function WellnessValleyApp() {
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
   const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(''); // Celebration message
+
+  // Weight Progress Tips feature (reverse progress detection)
+  const weightProgressCheck = useWeightProgressCheck();
+  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -2856,6 +2873,26 @@ function WellnessValleyApp() {
   };
 
   /**
+   * Trigger reverse progress modal after weight save
+   * Checks if user's weight moved in wrong direction (reverse progress)
+   * and shows personalized tips if needed
+   */
+  const triggerReverseProgressModal = async (userId, weightId) => {
+    if (!userId || !weightId) return;
+    try {
+      console.log('🔍 [triggerReverseProgressModal] Checking progress for userId:', userId, 'weightId:', weightId);
+      const result = await weightProgressCheck.checkProgress(userId, weightId);
+      console.log('📋 [triggerReverseProgressModal] Result:', result);
+      if (result?.shouldShow) {
+        console.log('✅ [triggerReverseProgressModal] Showing modal');
+        setShowWeightProgressModal(true);
+      }
+    } catch (err) {
+      console.error('❌ Error checking weight progress:', err);
+    }
+  };
+
+  /**
    * Perform actual weight save to database (called after duplicate check)
    */
   const performWeightSave = async (
@@ -3171,7 +3208,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress and show tips modal
       const savedId = savedWeightIdRef.current || data?.id || null;
-      // await triggerReverseProgressModal(userId, savedId);
+      await triggerReverseProgressModal(userId, savedId);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -3270,7 +3307,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress after an edit-save too
       const editWeightId = savedWeightIdRef.current || result?.id || null;
-      // await triggerReverseProgressModal(userId, editWeightId);
+      await triggerReverseProgressModal(userId, editWeightId);
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -3998,7 +4035,7 @@ function WellnessValleyApp() {
         setPendingWeightData(null);
 
         handleLeaderboardRefresh();
-        // await triggerReverseProgressModal(userId, data?.id || null);
+        await triggerReverseProgressModal(userId, data?.id || null);
 
       } catch (error) {
         console.error('❌ Error saving weight:', error);
@@ -6222,6 +6259,47 @@ function WellnessValleyApp() {
     showInactiveModal,
     forceLoggedOut 
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HIGHEST PRIORITY: Show waiting modal if contacting coach
+  // This MUST be before ALL other render branches so nothing can block it
+  // ─────────────────────────────────────────────────────────────────────────
+  if (isWaitingForCoachOTP) {
+    console.log("⚪ [RENDER] Showing waiting modal (highest priority)");
+    return (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 999999,
+          background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '16px',
+        }}
+        ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] RENDERED AS TOP-LEVEL ⚪⚪⚪"); }}
+      >
+        <div style={{
+          background: 'white', borderRadius: '20px', padding: '40px',
+          maxWidth: '400px', width: '100%', textAlign: 'center',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '28px' }}>
+            <div style={{
+              width: '72px', height: '72px',
+              border: '5px solid #22c55e', borderTopColor: 'transparent',
+              borderRadius: '50%', animation: 'wv-spin 1s linear infinite',
+            }}></div>
+          </div>
+          <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: '#111827', marginBottom: '14px' }}>
+            Contacting Your Coach...
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: '16px', lineHeight: '1.7', margin: 0 }}>
+            We've sent a request to your coach. Please wait while we prepare the verification screen.
+          </p>
+        </div>
+        <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
   
   // CRITICAL: Render Inactive User Modal at the TOP, before any early returns
   // This ensures it shows even if we're stuck in a loading state
@@ -6233,28 +6311,6 @@ function WellnessValleyApp() {
     />
   ) : null;
   
-  // Waiting modal portal - must render in early returns too
-  const waitingModalPortal = isWaitingForCoachOTP ? (
-    <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4"
-      ref={(el) => {
-        if (el) console.log("⚪ [Waiting Modal] DOM element MOUNTED");
-      }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
-        <div className="flex justify-center mb-6">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-500"></div>
-        </div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-3">
-          Contacting Your Coach
-        </h2>
-        <p className="text-gray-600 leading-relaxed">
-          We've sent a request to your coach. Please wait while we prepare the verification screen...
-        </p>
-      </div>
-    </div>
-  ) : null;
-  
   if (authLoading) {
     // On native, show the logo overlay instead of a blank screen — the native
     // splash may have already faded, so returning null would show white.
@@ -6263,19 +6319,13 @@ function WellnessValleyApp() {
       return (
         <>
           {inactiveModalPortal}
-          {waitingModalPortal}
           <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
           </div>
         </>
       );
     }
-    return (
-      <>
-        {inactiveModalPortal}
-        {waitingModalPortal}
-      </>
-    );
+    return inactiveModalPortal;
   }
 
   // ? OTP user restore in progress — stay invisible until restored.
@@ -6285,19 +6335,13 @@ function WellnessValleyApp() {
       return (
         <>
           {inactiveModalPortal}
-          {waitingModalPortal}
           <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
           </div>
         </>
       );
     }
-    return (
-      <>
-        {inactiveModalPortal}
-        {waitingModalPortal}
-      </>
-    );
+    return inactiveModalPortal;
   }
 
   // ? Profile check in progress — stay invisible until check is done.
@@ -6307,19 +6351,13 @@ function WellnessValleyApp() {
       return (
         <>
           {inactiveModalPortal}
-          {waitingModalPortal}
           <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src="/logo.png" alt="" style={{ width: 120, height: 120, objectFit: 'contain' }} />
           </div>
         </>
       );
     }
-    return (
-      <>
-        {inactiveModalPortal}
-        {waitingModalPortal}
-      </>
-    );
+    return inactiveModalPortal;
   }
 
   // ? iOS Sign-out gate: user explicitly signed out � always show Login
@@ -6362,6 +6400,40 @@ function WellnessValleyApp() {
             onClose={handleUserNotFoundModalClose}
           />
         )}
+        {isWaitingForCoachOTP && ReactDOM.createPortal(
+          <div
+            data-waiting-modal="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 999999,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '16px', backdropFilter: 'blur(8px)',
+            }}
+            ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED (branch1) ⚪⚪⚪"); }}
+          >
+            <div style={{
+              background: 'white', borderRadius: '16px', padding: '32px',
+              maxWidth: '400px', width: '100%', textAlign: 'center',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                <div style={{
+                  width: '64px', height: '64px', border: '4px solid #22c55e',
+                  borderTopColor: 'transparent', borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                }}></div>
+              </div>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111', marginBottom: '12px' }}>
+                Contacting Your Coach...
+              </h2>
+              <p style={{ color: '#666', fontSize: '16px', lineHeight: '1.6' }}>
+                We've sent a request to your coach. Please wait while we prepare the verification screen.
+              </p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>,
+          document.body
+        )}
       </>
     );
   }
@@ -6396,6 +6468,8 @@ function WellnessValleyApp() {
         {showValidateOTP && isInactiveReactivationFlow && (
           <Suspense fallback={null}>
             <ValidateOTP
+              key="reactivation"
+              isReactivationFlow={true}
               onClose={() => {
                 setShowValidateOTP(false);
                 setIsInactiveReactivationFlow(false);
@@ -6412,6 +6486,43 @@ function WellnessValleyApp() {
               onLogout={handleSignOut}
             />
           </Suspense>
+        )}
+
+        {/* Waiting for Coach OTP - Portal renders to document.body */}
+        {isWaitingForCoachOTP && ReactDOM.createPortal(
+          <div
+            data-waiting-modal="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 999999,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '16px',
+              backdropFilter: 'blur(8px)',
+            }}
+            ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪"); }}
+          >
+            <div style={{
+              background: 'white', borderRadius: '16px',
+              padding: '32px', maxWidth: '400px', width: '100%', textAlign: 'center',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                <div style={{
+                  width: '64px', height: '64px', border: '4px solid #22c55e',
+                  borderTopColor: 'transparent', borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                }}></div>
+              </div>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111', marginBottom: '12px' }}>
+                Contacting Your Coach...
+              </h2>
+              <p style={{ color: '#666', fontSize: '16px', lineHeight: '1.6' }}>
+                We've sent a request to your coach. Please wait while we prepare the verification screen.
+              </p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>,
+          document.body
         )}
       </>
     );
@@ -7701,9 +7812,6 @@ function WellnessValleyApp() {
         />
       )}
 
-      {/* Waiting for Coach OTP Modal - Rendered via portal at top of component */}
-      {waitingModalPortal}
-
       {/* Manual Mode Toast */}
       {manualModeToast && (
         <div
@@ -7937,7 +8045,7 @@ function WellnessValleyApp() {
       />
  
       {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
-      {/* <WeightProgressTipsModal
+      <WeightProgressTipsModal
         isOpen={showWeightProgressModal}
         onClose={() => {
           setShowWeightProgressModal(false);
@@ -7949,7 +8057,7 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
-      /> */}
+      />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
@@ -8166,18 +8274,26 @@ function WellnessValleyApp() {
       {showValidateOTP && (
         <Suspense fallback={null}>
           <ValidateOTP
+            key={isInactiveReactivationFlow ? 'reactivation' : 'setup'}
             isReactivationFlow={isInactiveReactivationFlow}
             onClose={() => {
+              console.log("🔴 [ValidateOTP onClose] User closed modal", { isInactiveReactivationFlow });
               setShowValidateOTP(false);
               if (isInactiveReactivationFlow) {
                 // User cancelled reactivation — sign them out cleanly
                 setIsInactiveReactivationFlow(false);
                 handleSignOut();
               } else {
-                setShowSetupWizard(true);
+                // Regular login flow - go back to setup wizard only if not inactive
+                if (isUserActive) {
+                  setShowSetupWizard(true);
+                } else {
+                  console.log("🔴 [ValidateOTP onClose] User is inactive, not showing setup wizard");
+                }
               }
             }}
             onSuccess={() => {
+              console.log("🟢 [ValidateOTP onSuccess] OTP verified, closing modal", { isInactiveReactivationFlow, isUserActive });
               setShowValidateOTP(false);
               if (isInactiveReactivationFlow) {
                 // Reactivation complete — re-run status check to enter app
@@ -8186,6 +8302,10 @@ function WellnessValleyApp() {
                 if (storedUser) {
                   try { checkUserStatus(JSON.parse(storedUser)); } catch (_e) { /* ignore */ }
                 }
+              } else {
+                // Regular login flow - only show setup wizard if user is active
+                // If inactive, the checkUserStatus will show the inactive modal
+                console.log("🟢 [ValidateOTP onSuccess] Regular login flow, checking user status before showing setup wizard");
               }
               // Setup complete, user can now access dashboard
             }}
@@ -8538,6 +8658,31 @@ function WellnessValleyApp() {
           }}
         />
       )} */}
+      
+      {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
+      {isWaitingForCoachOTP && ReactDOM.createPortal(
+        <div 
+          data-waiting-modal="true"
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+          style={{ zIndex: 999999 }}
+          ref={(el) => {
+            if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪");
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-fadeIn">
+            <div className="flex justify-center mb-6">
+              <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-green-500"></div>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Contacting Your Coach...
+            </h2>
+            <p className="text-gray-600 text-lg leading-relaxed">
+              We've sent a request to your coach. Please wait while we prepare the verification screen.
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
     </LocationGuard>
   );

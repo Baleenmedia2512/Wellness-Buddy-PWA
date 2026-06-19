@@ -32,27 +32,36 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
   useEffect(() => {
     console.log("🟦 [ValidateOTP] Fetching request info...", { isReactivationFlow });
     
-    // For reactivation flow, clear any pre-filled OTP and fetch fresh request
+    // For reactivation flow, ensure OTP is completely clear
     if (isReactivationFlow) {
-      console.log("🟦 [ValidateOTP] Reactivation flow - clearing OTP and fetching latest request");
+      console.log("🟦 [ValidateOTP] Reactivation flow - clearing OTP");
       setOtp(['', '', '', '', '', '']);
+      setError('');
+      setSuccess('');
     }
     
     fetchRequestInfo();
   }, [isReactivationFlow]);
 
-  // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit - DISABLED for reactivation flow ΓöÇΓöÇ
   useEffect(() => {
+    // Skip auto-fill for reactivation flow
+    if (isReactivationFlow) {
+      console.log("🟦 [ValidateOTP] Skipping demo auto-fill for reactivation flow");
+      return;
+    }
+    
     const userEmail = localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
 
     // Small delay so the screen renders first
     const timer = setTimeout(() => {
+      console.log("🟦 [ValidateOTP] Demo account - auto-filling OTP");
       setOtp(['0', '0', '0', '0', '0', '0']);
     }, 800);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isReactivationFlow]);
   // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const fetchRequestInfo = async () => {
@@ -63,19 +72,33 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
         return;
       }
 
+      console.log("🟦 [ValidateOTP] Fetching user status from API...");
       const response = await axios.get(
         `${API_BASE}/api/user/status?email=${encodeURIComponent(userEmail)}`
       );
 
+      console.log("🟦 [ValidateOTP] API Response:", response.data);
+
       if (response.data.pendingRequest) {
-        setRequestInfo(response.data.pendingRequest);
-        console.log("🟦 [ValidateOTP] Request info loaded:", response.data.pendingRequest);
+        const request = response.data.pendingRequest;
+        console.log("🟦 [ValidateOTP] Request info loaded:", request);
+        setRequestInfo(request);
+      } else if (isReactivationFlow) {
+        // In reactivation flow, the API may not return a pendingRequest
+        // because the request type is different (reactivation vs initial setup).
+        // Do NOT close the modal — just show it without requestInfo.
+        // The coach will provide the OTP directly.
+        console.log("🟦 [ValidateOTP] Reactivation flow — no pendingRequest returned, staying open");
       } else {
-        console.log("🟦 [ValidateOTP] No pending request, closing modal");
+        console.log("🟦 [ValidateOTP] No pending request found, closing modal");
         if (onClose) onClose();
       }
     } catch (err) {
       console.error("🔴 [ValidateOTP] Error fetching request info:", err);
+      if (isReactivationFlow) {
+        // Don't close on error in reactivation flow
+        console.log("🟦 [ValidateOTP] Reactivation flow — ignoring fetch error, staying open");
+      }
     }
   };
 
@@ -211,12 +234,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
     }
   };
 
-  // Auto-submit
+  // Auto-submit — disabled for reactivation flow (coach OTP must be manually entered)
   useEffect(() => {
+    if (isReactivationFlow) return; // Never auto-submit in reactivation flow
     if (otp.every(digit => digit !== '')) {
       validateOtp();
     }
-  }, [otp]);
+  }, [otp, isReactivationFlow]);
 
   // Cancel verification
   const handleCancel = async () => {
@@ -370,25 +394,28 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
             </button>
           )}
           
-          <div className="mt-6 text-center">
-            <button 
-              onClick={handleCancel} 
-              disabled={validating || cancelling}
-              className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto transition-all"
-            >
-              {cancelling ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
-                  <span>Cancelling...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                  <span>Go Back To Select Different Coach</span>
-                </>
-              )}
-            </button>
-          </div>
+          {/* Hide "Go Back" button in reactivation flow - user already has a coach */}
+          {!isReactivationFlow && (
+            <div className="mt-6 text-center">
+              <button 
+                onClick={handleCancel} 
+                disabled={validating || cancelling}
+                className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto transition-all"
+              >
+                {cancelling ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    <span>Go Back To Select Different Coach</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
