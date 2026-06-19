@@ -656,3 +656,99 @@ export async function markRecognitionViewed(userId, marathonId, resultDate) {
     );
   if (error) throw error;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Automated daily finalization (used by cron job)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FINALIZE_GRACE_MINUTES = 15;
+
+/**
+ * Called by the /api/cron/marathon-finalize cron every minute.
+ *
+ * For each ACTIVE marathon:
+ *  1. Checks if the discipline window end + grace period has passed in IST.
+ *  2. Skips if a result for today already exists (idempotent).
+ *  3. Computes Day Leader, Lap Leader, and Community Leader via the existing
+ *     computeCardData engine and persists them to marathon_daily_results.
+ *
+ * @returns {{ processed: number, skipped: number }}
+ */
+export async function autoFinalizeActiveMarathons() {
+  const supabase = getSupabaseClient();
+  const now      = currentISTMoment();
+  const todayDate = now.toISOString().substring(0, 10);
+
+  // Current IST minutes-of-day for window comparison
+  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  const { data: marathons, error: mErr } = await supabase
+    .from('marathon_table')
+    .select('id, name, team_name, lap_sequence, started_at, days_per_lap')
+    .eq('status', 'active');
+  if (mErr) throw mErr;
+  if (!marathons?.length) return { processed: 0, skipped: 0 };
+
+  let processed = 0;
+  let skipped   = 0;
+
+  for (const marathon of marathons) {
+    try {
+      // 1. Load per-marathon discipline config
+      const config = await getMarathonConfig(marathon.id);
+      const [eh, em] = config.disciplineEndTime.split(':').map(Number);
+      const windowEndMinutes = eh * 60 + em + FINALIZE_GRACE_MINUTES;
+
+      if (currentMinutes < windowEndMinutes) {
+        skipped++;
+        continue; // Discipline window not yet closed for this marathon
+      }
+
+      // 2. Idempotency guard — skip if result already recorded today
+      const existing = await getDailyResults(marathon.id, todayDate);
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // 3. Compute leaders using the authoritative discipline engine
+      const liveData = await computeCardData(marathon.id, CARD_TYPES.DAY_LEADER);
+      const { lapNumber, dayNumber } = computeLapAndDay(marathon.started_at, marathon.days_per_lap, now);
+      const eligible = (liveData.participants || []).filter(
+        p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE,
+      );
+
+      await saveDailyResults(marathon.id, {
+        resultDate:        todayDate,
+        lapNumber,
+        dayNumber,
+        dayLeader:         liveData.dayLeader,
+        lapLeader:         liveData.lapLeader,
+        communityLeader:   liveData.communityLeader,
+        eligibleCount:     eligible.length,
+        totalParticipants: (liveData.participants || []).length,
+      });
+
+      logger.info('[autoFinalizeActiveMarathons] Marathon finalized', {
+        marathonId:  marathon.id,
+        todayDate,
+        lapNumber,
+        dayNumber,
+        eligible:    eligible.length,
+        dayLeaderId: liveData.dayLeader?.userId ?? null,
+        lapLeaderId: liveData.lapLeader?.userId ?? null,
+      });
+
+      processed++;
+    } catch (err) {
+      // Log and continue — one failed marathon must not block the others
+      logger.error('[autoFinalizeActiveMarathons] Failed to finalize marathon', {
+        marathonId: marathon.id,
+        error:      err.message,
+        stack:      err.stack,
+      });
+    }
+  }
+
+  return { processed, skipped };
+}

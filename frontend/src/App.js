@@ -186,6 +186,10 @@ const WellnessCounselling = lazy(() =>
 const MarathonDashboard = lazy(() =>
   import("./features/marathon/components/MarathonDashboard"),
 );
+const MarathonRecognitionSplash = lazy(() =>
+  import("./features/marathon/components/MarathonRecognitionSplash"),
+);
+import { useMarathon } from "./features/marathon";
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
 const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
@@ -647,6 +651,13 @@ function WellnessValleyApp() {
   // Marathon dashboard state (for coaches)
   const [showMarathon, setShowMarathon] = useState(false);
 
+  // ── Marathon Recognition splash (member-facing, runs globally) ────────────
+  const {
+    pendingRecognition,
+    fetchPendingRecognition,
+    dismissRecognition,
+  } = useMarathon({ userId: user?.id });
+
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
 
@@ -713,6 +724,55 @@ function WellnessValleyApp() {
   // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
   // correctly ignores its own camera-driven state transitions.
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Marathon Recognition: fetch on startup when user is ready ─────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchPendingRecognition();
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- userId dep is stable
+
+  // ── Marathon Recognition: 5-minute polling — native (start/stop with AppState) ─
+  useEffect(() => {
+    if (!user?.id || !Capacitor.isNativePlatform()) return;
+    let handle    = null;
+    let cancelled = false;
+    let pollTimer = null;
+
+    const startPoll = () => {
+      if (!pollTimer) pollTimer = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
+    };
+    const stopPoll = () => {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    };
+
+    startPoll();
+
+    nativeLifecycle.addAppStateListener(({ isActive }) => {
+      if (cancelled) return;
+      if (isActive) {
+        fetchPendingRecognition(); // immediate fetch on resume
+        startPoll();
+      } else {
+        stopPoll();
+      }
+    }).then(h => {
+      if (cancelled) { h?.remove?.(); stopPoll(); }
+      else handle = h;
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      stopPoll();
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
+
+  // ── Marathon Recognition: 5-minute polling — web ─────────────────────────
+  useEffect(() => {
+    if (!user?.id || Capacitor.isNativePlatform()) return;
+    const id = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
 
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
@@ -6484,6 +6544,21 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+
+      {/* ── Marathon Recognition Splash — full-screen overlay, position:fixed, zIndex:9999 ── */}
+      {pendingRecognition.length > 0 && (
+        <Suspense fallback={null}>
+          <MarathonRecognitionSplash
+            recognitions={pendingRecognition}
+            onComplete={dismissRecognition}
+            onDismiss={() =>
+              dismissRecognition(
+                pendingRecognition.map(r => ({ marathonId: r.marathonId, resultDate: r.resultDate })),
+              )
+            }
+          />
+        </Suspense>
+      )}
       {/* Launch overlay — covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
           (white + centred logo) so the transition is seamless: native splash

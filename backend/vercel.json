@@ -105,6 +105,10 @@
     {
       "path": "/api/cron/water",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/marathon-finalize",
+      "schedule": "* * * * *"
     }
   ],
   "env": {
