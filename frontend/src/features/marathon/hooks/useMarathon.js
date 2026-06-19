@@ -125,11 +125,28 @@ export function useMarathon({ coachId, userId } = {}) {
   }, [userId]);
 
   const dismissRecognition = useCallback(async (viewedList) => {
-    setPendingRecognition([]);
-    if (!userId || !viewedList?.length) return;
-    await Promise.allSettled(
+    if (!userId || !viewedList?.length) {
+      setPendingRecognition([]);
+      return;
+    }
+    // Mark as viewed in DB FIRST — before clearing state.
+    // This ensures the API call completes even if the user closes the app
+    // immediately after tapping Continue or Skip.
+    const results = await Promise.allSettled(
       viewedList.map(v => apiMarkViewed({ userId, marathonId: v.marathonId, resultDate: v.resultDate })),
     );
+    // Log any failures so they are visible in Supabase / console
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error('[Marathon] markRecognitionViewed failed', {
+          marathonId:  viewedList[i]?.marathonId,
+          resultDate:  viewedList[i]?.resultDate,
+          error:       r.reason?.message || r.reason,
+        });
+      }
+    });
+    // Clear splash state AFTER the DB writes have settled
+    setPendingRecognition([]);
   }, [userId]);
 
   return {
