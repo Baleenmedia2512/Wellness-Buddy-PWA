@@ -1,38 +1,47 @@
 /**
- * MarathonTeamCard.jsx — Premium 3x3 team recognition card.
- * v5: 480px, auto-height cells, overflow:visible, inline weight result,
- *     role badges (C/AC/🔗/⭐), leader badges (👑/👕), enforced slot order.
+ * MarathonTeamCard.jsx — Premium fitness-challenge recognition poster.
+ * v6: Recognition-first redesign.
+ *     - No legend (badges on photos are self-explanatory)
+ *     - Weight result is the dominant per-member element (more visible than name)
+ *     - Day Leader = gold ring/glow/pill + 👑; Lap Leader = blue ring/glow/pill + 👕
+ *     - Role badges only: C / AC / 🔗 (direct) / ⭐ (deep downline)
+ *     - Big "TEAM DAILY RESULT" hero footer
+ *     - Compact, photo-forward cells (less white space, larger photos)
  * Pure render — no hooks, no API calls.
  */
 import React from 'react';
 
 const CARD_W     = 480;
-const PHOTO_SIZE = 68;
-const TEAM_BG    = 'linear-gradient(160deg, #0f766e 0%, #0d9488 40%, #0891b2 100%)';
+const PHOTO_SIZE = 78;
+const TEAM_BG    = 'linear-gradient(160deg, #064e3b 0%, #0f766e 38%, #0e7490 72%, #0891b2 100%)';
 
-// Crown badge (day leader)
-const CrownBadge = () => (
+// ── Leader theming tokens ──────────────────────────────────────────────────
+const GOLD = {
+  ring:   '#f59e0b',
+  glow:   '0 0 0 3px #fbbf24, 0 6px 20px rgba(245,158,11,0.55)',
+  pillBg: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+  pillSh: '0 3px 10px rgba(245,158,11,0.6)',
+};
+const BLUE = {
+  ring:   '#2563eb',
+  glow:   '0 0 0 3px #3b82f6, 0 6px 20px rgba(37,99,235,0.50)',
+  pillBg: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+  pillSh: '0 3px 10px rgba(37,99,235,0.5)',
+};
+
+// Corner emoji badge (👑 day leader / 👕 lap leader)
+const LeaderBadge = ({ emoji, bg, shadow }) => (
   <div style={{
-    position: 'absolute', top: 4, right: 4, zIndex: 10,
-    background: '#f59e0b', borderRadius: '50%',
-    width: 22, height: 22,
+    position: 'absolute', top: -7, right: -7, zIndex: 12,
+    background: bg, borderRadius: '50%',
+    width: 26, height: 26,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 2px 6px rgba(245,158,11,0.7)', fontSize: 13, lineHeight: 1,
-  }}>👑</div>
+    boxShadow: shadow, fontSize: 15, lineHeight: 1,
+    border: '2px solid #fff',
+  }}>{emoji}</div>
 );
 
-// Shirt badge (lap leader)
-const ShirtBadge = () => (
-  <div style={{
-    position: 'absolute', top: 4, right: 4, zIndex: 10,
-    background: '#2563eb', borderRadius: '50%',
-    width: 22, height: 22,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 2px 6px rgba(37,99,235,0.7)', fontSize: 13, lineHeight: 1,
-  }}>👕</div>
-);
-
-// Role badge — top-left; every participant gets one
+// Role badge — top-left; every participant gets one. Small + elegant.
 const RoleBadge = ({ lapRole, systemRole }) => {
   let label, bg;
   if      (lapRole === 'captain')           { label = 'C';  bg = '#059669'; }
@@ -41,32 +50,46 @@ const RoleBadge = ({ lapRole, systemRole }) => {
   else                                      { label = '🔗'; bg = '#d97706'; }
   return (
     <div style={{
-      position: 'absolute', top: 4, left: 4, zIndex: 10,
+      position: 'absolute', top: -6, left: -6, zIndex: 12,
       background: bg, color: '#fff',
-      fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '2px 4px',
-      lineHeight: 1.4, boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+      minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 10, fontWeight: 900, borderRadius: 6,
+      lineHeight: 1, boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff',
     }}>{label}</div>
   );
 };
 
-// Weight result pill — inline, below name
-const ResultPill = ({ dailyGrams, dailyChange }) => {
+// Weight result pill — the dominant per-member element.
+// variant: 'day' (gold) | 'lap' (blue) | null (computed from grams)
+const ResultPill = ({ dailyGrams, dailyChange, variant }) => {
   const grams = dailyGrams != null
     ? dailyGrams
     : (dailyChange != null ? Math.round(dailyChange * 1000) : null);
 
-  if (grams == null) {
-    return <div style={{ marginTop: 4, fontSize: 10, color: '#9ca3af', fontWeight: 700 }}>—</div>;
+  const display = grams == null
+    ? '—'
+    : grams > 0 ? `+${grams}g` : grams === 0 ? '0g' : `${grams}g`;
+
+  let style;
+  if (variant === 'day') {
+    style = { background: GOLD.pillBg, color: '#fff', boxShadow: GOLD.pillSh };
+  } else if (variant === 'lap') {
+    style = { background: BLUE.pillBg, color: '#fff', boxShadow: BLUE.pillSh };
+  } else if (grams == null) {
+    style = { background: '#f3f4f6', color: '#9ca3af' };
+  } else if (grams < 0) {
+    style = { background: '#dcfce7', color: '#15803d' };          // reduced → green
+  } else if (grams > 0) {
+    style = { background: '#ffedd5', color: '#c2410c' };          // increased → orange
+  } else {
+    style = { background: '#f3f4f6', color: '#6b7280' };          // no change → gray
   }
-  const isLoss  = grams < 0;
-  const isGain  = grams > 0;
-  const color   = isLoss ? '#059669' : isGain ? '#d97706' : '#6b7280';
-  const bg      = isLoss ? '#dcfce7' : isGain ? '#fef3c7' : '#f3f4f6';
-  const display = isGain ? `+${grams}g` : grams === 0 ? '0g' : `${grams}g`;
+
   return (
     <div style={{
-      marginTop: 4, fontSize: 10, fontWeight: 800,
-      color, background: bg, borderRadius: 20, padding: '2px 7px', lineHeight: 1.4,
+      marginTop: 7, fontSize: 14, fontWeight: 900, letterSpacing: -0.3,
+      borderRadius: 20, padding: '3px 11px', lineHeight: 1.25, ...style,
     }}>{display}</div>
   );
 };
@@ -77,51 +100,62 @@ const InitialAvatar = ({ name, size }) => (
     width: size, height: size, borderRadius: '50%',
     background: 'linear-gradient(135deg, #0d9488, #0891b2)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: size * 0.38, fontWeight: 900, color: '#fff', flexShrink: 0,
+    fontSize: size * 0.4, fontWeight: 900, color: '#fff', flexShrink: 0,
   }}>
     {String(name || '?').trim().charAt(0).toUpperCase()}
   </div>
 );
 
-// Single member cell
+// Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
   const { name, profileImage, role, systemRole, dailyGrams, dailyChange } = member;
-  const ringColor = isDayLeader ? '#f59e0b' : isLapLeader ? '#2563eb' : '#e5e7eb';
-  const ringWidth = isDayLeader || isLapLeader ? 3 : 1.5;
-  const shadow = isDayLeader
-    ? '0 0 0 2px #f59e0b, 0 4px 16px rgba(245,158,11,0.35)'
-    : isLapLeader
-      ? '0 0 0 2px #2563eb, 0 4px 16px rgba(37,99,235,0.30)'
-      : '0 2px 8px rgba(0,0,0,0.13)';
+  const theme     = isDayLeader ? GOLD : isLapLeader ? BLUE : null;
+  const ringColor = theme ? theme.ring : '#e5e7eb';
+  const ringWidth = theme ? 3 : 2;
+  const photoGlow = theme
+    ? theme.glow
+    : '0 3px 8px rgba(0,0,0,0.18)';
+  const variant   = isDayLeader ? 'day' : isLapLeader ? 'lap' : null;
 
   return (
     <div style={{
-      flex: '1 1 0', background: 'rgba(255,255,255,0.97)', borderRadius: 14,
+      flex: '1 1 0', background: 'rgba(255,255,255,0.98)', borderRadius: 14,
       position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '28px 4px 10px', boxSizing: 'border-box', boxShadow: shadow, overflow: 'visible',
+      padding: '14px 4px 11px', boxSizing: 'border-box', overflow: 'visible',
+      boxShadow: theme
+        ? (isDayLeader
+            ? '0 6px 18px rgba(245,158,11,0.30)'
+            : '0 6px 18px rgba(37,99,235,0.26)')
+        : '0 2px 8px rgba(0,0,0,0.14)',
+      border: theme ? `1.5px solid ${theme.ring}` : '1px solid rgba(0,0,0,0.04)',
     }}>
-      <RoleBadge lapRole={role} systemRole={systemRole} />
-      {isDayLeader && <CrownBadge />}
-      {isLapLeader && !isDayLeader && <ShirtBadge />}
+      {/* Photo with badges anchored to it */}
+      <div style={{ position: 'relative', width: PHOTO_SIZE, height: PHOTO_SIZE }}>
+        <RoleBadge lapRole={role} systemRole={systemRole} />
+        {isDayLeader && <LeaderBadge emoji="👑" bg="#f59e0b" shadow="0 2px 8px rgba(245,158,11,0.8)" />}
+        {isLapLeader && !isDayLeader && <LeaderBadge emoji="👕" bg="#2563eb" shadow="0 2px 8px rgba(37,99,235,0.8)" />}
 
-      <div style={{
-        width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: '50%', overflow: 'hidden',
-        border: `${ringWidth}px solid ${ringColor}`, background: '#e5e7eb', flexShrink: 0,
-      }}>
-        {profileImage
-          ? <img src={profileImage} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />
-          : <InitialAvatar name={name} size={PHOTO_SIZE} />
-        }
+        <div style={{
+          width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: '50%', overflow: 'hidden',
+          border: `${ringWidth}px solid ${ringColor}`, background: '#e5e7eb',
+          boxShadow: photoGlow, boxSizing: 'border-box',
+        }}>
+          {profileImage
+            ? <img src={profileImage} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />
+            : <InitialAvatar name={name} size={PHOTO_SIZE} />
+          }
+        </div>
       </div>
 
-      <div style={{
-        marginTop: 5, fontSize: 10, fontWeight: 700, color: '#111827', textAlign: 'center',
-        lineHeight: 1.35, width: '100%', padding: '0 4px', boxSizing: 'border-box',
-        wordBreak: 'break-word', display: '-webkit-box',
-        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>{name}</div>
+      {/* Weight result — dominant element */}
+      <ResultPill dailyGrams={dailyGrams} dailyChange={dailyChange} variant={variant} />
 
-      <ResultPill dailyGrams={dailyGrams} dailyChange={dailyChange} />
+      {/* Name — secondary, single line */}
+      <div style={{
+        marginTop: 4, fontSize: 10, fontWeight: 600, color: '#4b5563', textAlign: 'center',
+        lineHeight: 1.2, width: '100%', padding: '0 4px', boxSizing: 'border-box',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{name}</div>
     </div>
   );
 };
@@ -129,8 +163,8 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
 // Empty slot placeholder
 const EmptyCell = () => (
   <div style={{
-    flex: '1 1 0', borderRadius: 14, minHeight: 120,
-    background: 'rgba(255,255,255,0.08)', border: '1px dashed rgba(255,255,255,0.22)',
+    flex: '1 1 0', borderRadius: 14, minHeight: 132,
+    background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.20)',
   }} />
 );
 
@@ -138,8 +172,8 @@ const EmptyCell = () => (
 const MarathonTeamCard = ({ card }) => {
   if (!card) return null;
   const {
-    marathonName, teamName, lapSequence, lapNumber, dayNumber,
-    participants = [], dayLeader, lapLeader, teamDailyTotalDisplay,
+    marathonName, teamName, lapNumber, dayNumber,
+    participants = [], dayLeader, lapLeader, teamDailyTotalDisplay, teamDailyTotal,
   } = card;
 
   const displayName = teamName || marathonName || 'Team';
@@ -155,44 +189,49 @@ const MarathonTeamCard = ({ card }) => {
   const dayLeaderId = dayLeader?.userId;
   const lapLeaderId = lapLeader?.userId;
 
+  const isTeamLoss = teamDailyTotal != null && teamDailyTotal <= 0;
+
   return (
     <div style={{
-      width: CARD_W, background: TEAM_BG, borderRadius: 24,
+      width: CARD_W, background: TEAM_BG, borderRadius: 26,
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      boxShadow: '0 20px 60px rgba(0,0,0,0.35)', boxSizing: 'border-box', overflow: 'hidden',
+      boxShadow: '0 24px 70px rgba(0,0,0,0.40)', boxSizing: 'border-box', overflow: 'hidden',
+      position: 'relative',
     }}>
+      {/* Soft top highlight for depth */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 180,
+        background: 'radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.18), rgba(255,255,255,0) 60%)',
+        pointerEvents: 'none',
+      }} />
 
-      {/* Header */}
-      <div style={{ padding: '18px 20px 12px', textAlign: 'center' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.60)', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 2 }}>
+      {/* ── Header ── */}
+      <div style={{ position: 'relative', padding: '20px 22px 14px', textAlign: 'center' }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.66)', letterSpacing: 5, textTransform: 'uppercase' }}>
           Wellness Valley
         </div>
-        <div style={{ fontSize: 28, fontWeight: 900, color: '#fff', letterSpacing: 3, textTransform: 'uppercase', textShadow: '0 2px 10px rgba(0,0,0,0.25)', lineHeight: 1.05, marginBottom: 8 }}>
+        <div style={{ fontSize: 34, fontWeight: 900, color: '#fff', letterSpacing: 5, textTransform: 'uppercase', textShadow: '0 3px 14px rgba(0,0,0,0.35)', lineHeight: 1.05, marginTop: 2 }}>
           MARATHON
         </div>
-        <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.94)', color: '#0f766e', fontSize: 13, fontWeight: 800, borderRadius: 100, padding: '4px 18px', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', marginBottom: 6 }}>
+        <div style={{
+          display: 'inline-block', marginTop: 10,
+          background: 'rgba(255,255,255,0.96)', color: '#0f766e',
+          fontSize: 15, fontWeight: 900, letterSpacing: 0.3,
+          borderRadius: 100, padding: '6px 22px', maxWidth: '92%',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.22)',
+        }}>
           {displayName}
         </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.88)' }}>
-          LAP {lapNumber} · DAY {dayNumber}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          {[
-            { text: 'C = Captain',     bg: '#059669' },
-            { text: 'AC = Asst. Cap.', bg: '#0891b2' },
-            { text: '👑 Day Leader',   bg: 'rgba(245,158,11,0.80)' },
-            { text: '👕 Lap Leader',   bg: 'rgba(37,99,235,0.80)' },
-            { text: '🔗 Member',       bg: 'rgba(217,119,6,0.75)' },
-          ].map(({ text, bg }) => (
-            <span key={text} style={{ fontSize: 8, fontWeight: 600, color: '#fff', background: bg, borderRadius: 5, padding: '2px 6px' }}>{text}</span>
-          ))}
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: 'rgba(255,255,255,0.82)', letterSpacing: 1 }}>
+          LAP {lapNumber} <span style={{ opacity: 0.5 }}>•</span> DAY {dayNumber}
         </div>
       </div>
 
-      {/* 3x3 grid */}
-      <div style={{ padding: '0 14px 10px', overflow: 'visible' }}>
+      {/* ── 3x3 grid ── */}
+      <div style={{ position: 'relative', padding: '4px 16px 12px', overflow: 'visible' }}>
         {grid.map((row, ri) => (
-          <div key={ri} style={{ display: 'flex', gap: 7, marginBottom: ri < 2 ? 7 : 0, alignItems: 'stretch' }}>
+          <div key={ri} style={{ display: 'flex', gap: 9, marginBottom: ri < 2 ? 13 : 0, alignItems: 'stretch' }}>
             {row.map((member, ci) =>
               member
                 ? <MemberCell key={member.userId ?? `m-${ri}-${ci}`} member={member} isDayLeader={member.userId === dayLeaderId} isLapLeader={member.userId === lapLeaderId} />
@@ -202,16 +241,21 @@ const MarathonTeamCard = ({ card }) => {
         ))}
       </div>
 
-      {/* Footer */}
-      <div style={{ background: 'rgba(0,0,0,0.32)', padding: '12px 20px 16px', textAlign: 'center' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.75)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName} · Lap {lapSequence ?? lapNumber}, Day {dayNumber}
+      {/* ── Hero footer: TEAM DAILY RESULT ── */}
+      <div style={{
+        position: 'relative',
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.20), rgba(0,0,0,0.45))',
+        padding: '16px 20px 20px', textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: 'rgba(255,255,255,0.70)', letterSpacing: 4, textTransform: 'uppercase' }}>
+          Team Daily Result
         </div>
-        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: -0.5 }}>
-          Daily Result{' '}
-          <span style={{ color: card.teamDailyTotal != null && card.teamDailyTotal <= 0 ? '#34d399' : '#fbbf24' }}>
-            {teamDailyTotalDisplay || '—'}
-          </span>
+        <div style={{
+          marginTop: 4, fontSize: 46, fontWeight: 900, lineHeight: 1,
+          letterSpacing: -1, color: isTeamLoss ? '#34d399' : '#fbbf24',
+          textShadow: '0 3px 16px rgba(0,0,0,0.4)',
+        }}>
+          {teamDailyTotalDisplay || '—'}
         </div>
       </div>
     </div>

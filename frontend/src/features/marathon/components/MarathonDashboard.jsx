@@ -663,44 +663,91 @@ const DeleteConfirmModal = ({ onConfirm, onCancel }) => (
 
 // ── LAP Details Modal ─────────────────────────────────────────────────────────
 const DISCIPLINE_STATUS_MAP = {
-  eligible:  { icon: '🟢', label: 'Disciplined', color: '#059669' },
-  missed:    { icon: '🔴', label: 'Missed',       color: '#dc2626' },
-  no_upload: { icon: '⚪', label: 'No upload',    color: '#9ca3af' },
+  eligible:  { icon: '🟢', label: 'Submitted', color: '#059669' },
+  missed:    { icon: '🔴', label: 'Missed',    color: '#dc2626' },
+  no_upload: { icon: '🟡', label: 'Pending',   color: '#ca8a04' },
 };
 
 const ROLE_BADGE_MAP = {
   captain:           { label: 'C',  bg: '#059669', color: '#fff' },
   assistant_captain: { label: 'AC', bg: '#0891b2', color: '#fff' },
-  member:            { label: null, bg: 'transparent', color: 'transparent' },
+};
+
+// Hierarchy badge — direct downline (🔗) vs co-coach branch (⭐)
+const HIERARCHY_BADGE_MAP = {
+  direct:   { label: '🔗', bg: '#d97706' },
+  co_coach: { label: '⭐', bg: '#7c3aed' },
 };
 
 const DetailCell = ({ member }) => {
-  const { name, profileImage, role, dailyGrams, disciplineStatus } = member;
+  const {
+    name, profileImage, role, hierarchyRole,
+    dailyGrams, dailyWeightChange, disciplineStatus,
+    isDayLeader, isLapLeader,
+  } = member;
   const ds = DISCIPLINE_STATUS_MAP[disciplineStatus] || DISCIPLINE_STATUS_MAP.no_upload;
-  const rb = ROLE_BADGE_MAP[role]                    || ROLE_BADGE_MAP.member;
-  const isLoss = dailyGrams != null && dailyGrams < 0;
-  const isGain = dailyGrams != null && dailyGrams > 0;
-  const gramsDisplay = dailyGrams == null ? '—'
-    : isLoss ? `${(dailyGrams / 1000).toFixed(2)} kg`
-    : isGain ? `+${(dailyGrams / 1000).toFixed(2)} kg`
+  const rb = ROLE_BADGE_MAP[role] || null;
+  const hb = !rb ? (HIERARCHY_BADGE_MAP[hierarchyRole] || HIERARCHY_BADGE_MAP.direct) : null;
+
+  // Prefer grams; fall back to kg change. Never show "—" when any data exists.
+  const grams = dailyGrams != null
+    ? dailyGrams
+    : (dailyWeightChange != null ? Math.round(dailyWeightChange * 1000) : null);
+  const isLoss = grams != null && grams < 0;
+  const isGain = grams != null && grams > 0;
+  const gramsDisplay = grams == null ? '—'
+    : isLoss ? `${(grams / 1000).toFixed(2)} kg`
+    : isGain ? `+${(grams / 1000).toFixed(2)} kg`
     : '0 kg';
+
+  const ringColor = isDayLeader ? '#f59e0b' : isLapLeader ? '#2563eb' : '#e5e7eb';
+  const ringWidth = isDayLeader || isLapLeader ? 2.5 : 2;
 
   return (
     <div style={{
       background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14,
       padding: '8px 6px 10px', display: 'flex', flexDirection: 'column',
       alignItems: 'center', gap: 4, position: 'relative',
+      boxShadow: isDayLeader
+        ? '0 0 0 2px rgba(245,158,11,0.35)'
+        : isLapLeader ? '0 0 0 2px rgba(37,99,235,0.30)' : 'none',
     }}>
-      {rb.label && (
+      {/* Top-left: role OR hierarchy badge */}
+      {rb ? (
         <div style={{
-          position: 'absolute', top: 4, left: 4,
+          position: 'absolute', top: 4, left: 4, zIndex: 5,
           background: rb.bg, color: rb.color,
           fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
         }}>{rb.label}</div>
+      ) : hb ? (
+        <div style={{
+          position: 'absolute', top: 4, left: 4, zIndex: 5,
+          background: hb.bg, color: '#fff',
+          fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '1px 4px', lineHeight: 1.4,
+        }}>{hb.label}</div>
+      ) : null}
+
+      {/* Top-right: leader badge */}
+      {isDayLeader && (
+        <div style={{
+          position: 'absolute', top: 4, right: 4, zIndex: 5,
+          background: '#f59e0b', borderRadius: '50%', width: 20, height: 20,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 2px 6px rgba(245,158,11,0.7)', fontSize: 11, lineHeight: 1,
+        }}>👑</div>
       )}
+      {isLapLeader && !isDayLeader && (
+        <div style={{
+          position: 'absolute', top: 4, right: 4, zIndex: 5,
+          background: '#2563eb', borderRadius: '50%', width: 20, height: 20,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 2px 6px rgba(37,99,235,0.7)', fontSize: 11, lineHeight: 1,
+        }}>👕</div>
+      )}
+
       <div style={{
         width: 52, height: 52, borderRadius: '50%',
-        overflow: 'hidden', border: '2px solid #e5e7eb',
+        overflow: 'hidden', border: `${ringWidth}px solid ${ringColor}`,
         background: '#f3f4f6', flexShrink: 0,
       }}>
         {profileImage ? (

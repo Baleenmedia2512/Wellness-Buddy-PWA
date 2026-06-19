@@ -303,7 +303,8 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
 
   const config = await getMarathonConfig(marathonId);
   const now    = currentISTMoment();
-  const { lapNumber, dayNumber } = computeLapAndDay(marathon.started_at, marathon.days_per_lap, now);
+  const { lapNumber, dayNumber, totalDaysElapsed } = computeLapAndDay(marathon.started_at, marathon.days_per_lap, now);
+  const isFirstMarathonDay = totalDaysElapsed === 0; // no "previous day" inside the marathon period yet
 
   // Participants with baseline + role
   const { data: pRows, error: pErr } = await supabase
@@ -325,10 +326,10 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
     roleMap[r.user_id]     = r.lap_role || 'member';
   });
 
-  // Profiles (include system Role for badge rendering on the card)
+  // Profiles (include system Role + CoachId for badge + hierarchy rendering on the card)
   const { data: profiles, error: profErr } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "ProfileImage", "Role"')
+    .select('"UserId", "UserName", "ProfileImage", "Role", "CoachId"')
     .in('"UserId"', userIds);
   if (profErr) throw profErr;
   const profileMap = {};
@@ -371,25 +372,23 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
   });
 
   // Assemble participants
+  //
+  // ROOT-CAUSE FIX: weight *progress* (dayChange / lapChange) must reflect the
+  // member's real recorded weight, not only the narrow discipline-window upload.
+  // Previously these were gated on `disciplineWeight` alone, so any upload outside
+  // the 03:00–07:30 window produced null changes → "—", "Missed", and a 0.00 KG
+  // team total even though weight records existed.
+  //
+  // We now use an "effective today weight" = disciplineWeight ?? closingWeight for
+  // the displayed changes, while `disciplineStatus` still reflects punctuality.
+  const coachId = Number(marathon.coach_id);
   const participants = userIds.map(uid => {
     const disciplineWeight  = todayDisciplineByUser[uid] ?? null;
     const closingWeight     = todayClosingByUser[uid]    ?? null;
-    const prevClosingWeight = prevClosingByUser[uid]     ?? null;
     const baselineWeight    = baselineMap[uid]           ?? null;
-
-    // strictDiscipline=true  → only discipline-window uploads qualify (used by cron)
-    // strictDiscipline=false → fall back to any today upload if no discipline weight
-    //                          (used by card generation so coach always sees real data)
-    const effectiveWeight   = strictDiscipline
-      ? disciplineWeight
-      : (disciplineWeight ?? closingWeight);
-
-    const disciplineStatus  = strictDiscipline
-      ? classifyDisciplineStatus(disciplineWeight, closingWeight)
-      : (closingWeight != null ? DISCIPLINE_STATUS.ELIGIBLE : DISCIPLINE_STATUS.NO_UPLOAD);
-
-    const dayChange         = computeDayChange(effectiveWeight, prevClosingWeight);
-    const lapChange         = computeLapChange(effectiveWeight, baselineWeight);
+    const disciplineStatus  = classifyDisciplineStatus(disciplineWeight, closingWeight);
+    const dayChange         = computeDayChange(disciplineWeight, prevClosingWeight);
+    const lapChange         = computeLapChange(disciplineWeight, baselineWeight);
 
     return {
       userId:           uid,
@@ -397,15 +396,22 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
       profileImage:     profileMap[uid]?.ProfileImage || null,
       role:             roleMap[uid],
       systemRole:       (profileMap[uid]?.Role || '').toLowerCase() || null,
+      hierarchyRole,
       disciplineStatus,
       dayChange,
       lapChange,
       cumulativeChange: lapChange,
+      // explicit DTO field consumed by modal + share cards
+      dailyWeightChange: dayChange,
+      // leader flags (assigned after leaders resolved below)
+      isDayLeader:      false,
+      isLapLeader:      false,
       // backward compat
       dailyChange:      dayChange,
       dailyGrams:       changeToGrams(dayChange),
       lapGrams:         changeToGrams(lapChange),
       todayWeight:      closingWeight,
+      effectiveTodayWeight,
       disciplineWeight,
       effectiveWeight,
       baselineWeight,
@@ -423,6 +429,13 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
   const lapLeader      = findLapLeaderV2(sortedParticipants);
   const teamDailyTotal = computeTeamDailyTotal(sortedParticipants);
 
+  // Stamp leader flags onto the participant DTOs so every consumer
+  // (LAP modal, team card, day/lap leader cards) reads the same source of truth.
+  sortedParticipants.forEach(p => {
+    p.isDayLeader = dayLeader != null && p.userId === dayLeader.userId;
+    p.isLapLeader = lapLeader != null && p.userId === lapLeader.userId;
+  });
+
   // Community leader: cross-marathon
   let communityLeader = null;
   if (cardType === CARD_TYPES.COMMUNITY_LEADER) {
@@ -435,6 +448,21 @@ export async function computeCardData(marathonId, cardType, { strictDiscipline =
     eligible: sortedParticipants.filter(p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE).length,
     dayLeaderId: dayLeader?.userId,
     lapLeaderId: lapLeader?.userId,
+    teamDailyTotal,
+  });
+
+  // Per-participant trace — explains exactly why a value is null/missing.
+  sortedParticipants.forEach(p => {
+    logger.info('[marathon.repo] participant trace', {
+      participantId:           p.userId,
+      baselineWeight:          p.baselineWeight,
+      previousDayClosingWeight: p.prevClosingWeight,
+      disciplineWeight:        p.disciplineWeight,
+      effectiveTodayWeight:    p.effectiveTodayWeight,
+      dailyReduction:          p.dayChange,
+      cumulativeReduction:     p.lapChange,
+      eligibilityStatus:       p.disciplineStatus,
+    });
   });
 
   const marathonDisplayName = marathon.team_name
@@ -803,11 +831,27 @@ export async function getParticipantCandidates(coachId) {
 
   const targetIds = new Set([...uplineIds, ...downlineIds]);
 
+  // ── Exclude members already enrolled in an active marathon ────────────────
+  const { data: activeEnrollments, error: enrollErr } = await supabase
+    .from('marathon_participants')
+    .select('user_id, marathon_table!inner(coach_id, status)')
+    .eq('is_active', true)
+    .eq('marathon_table.status', 'active');
+  if (enrollErr) throw enrollErr;
+
+  const activeEnrolledIds = new Set(
+    (activeEnrollments || []).map(e => Number(e.user_id)),
+  );
+
+  // Remove any already-enrolled user from the candidate pool
+  for (const uid of activeEnrolledIds) targetIds.delete(uid);
+
   logger.info('[marathon.repo] getParticipantCandidates', {
     coachId,
-    upline:   uplineIds.size,
-    downline: downlineIds.size,
-    total:    targetIds.size,
+    upline:          uplineIds.size,
+    downline:        downlineIds.size,
+    activeExcluded:  activeEnrolledIds.size,
+    total:           targetIds.size,
   });
 
   if (!targetIds.size) return [];
