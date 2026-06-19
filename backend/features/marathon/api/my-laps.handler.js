@@ -18,13 +18,18 @@ export async function handleGetMyLaps(query) {
       try {
         const cardData = await computeCardData(marathon.id, 'team');
         return {
-          marathonId:    marathon.id,
-          marathonName:  cardData.marathonName,
-          lapRole:       marathon.lapRole,
-          lapNumber:     cardData.lapNumber,
-          dayNumber:     cardData.dayNumber,
-          participants:  cardData.participants,
-          teamDailyTotal: cardData.teamDailyTotal,
+          marathonId:       marathon.id,
+          marathonName:     cardData.marathonName,
+          teamName:         cardData.teamName         || null,
+          lapSequence:      cardData.lapSequence      || marathon.lap_sequence || 1,
+          lapRole:          marathon.lapRole,
+          lapNumber:        cardData.lapNumber,
+          dayNumber:        cardData.dayNumber,
+          participants:     cardData.participants,
+          dayLeader:        cardData.dayLeader        || null,
+          lapLeader:        cardData.lapLeader        || null,
+          teamDailyTotal:   cardData.teamDailyTotal,
+          teamDailyTotalDisplay: cardData.teamDailyTotalDisplay || null,
           disciplineConfig: cardData.disciplineConfig,
         };
       } catch {
