@@ -133,14 +133,14 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
         left:          '-9999px',
         top:           0,
         /* Exact card width — html2canvas measures this container */
-        width:         400,
+        width:         480,
         height:        'auto',
         overflow:      'visible',
         pointerEvents: 'none',
         zIndex:        -1,
       }}
     >
-      <div ref={cardRef} style={{ width: 400, display: 'inline-block' }}>
+      <div ref={cardRef} style={{ width: 480, display: 'inline-block' }}>
         {isLeaderCard
           ? <MarathonLeaderCard card={card} />
           : <MarathonTeamCard   card={card} />
