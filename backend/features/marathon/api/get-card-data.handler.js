@@ -30,7 +30,10 @@ export async function handleGetCardData(query) {
   }
 
   // ── Compute live card payload ─────────────────────────────────────────────
-  const liveData   = await computeCardData(marathonId, cardType);
+  // strictDiscipline=false: card generation shows best performer who uploaded
+  // any weight today, not only those within the discipline window.
+  // The cron (autoFinalizeActiveMarathons) uses strict=true for official scoring.
+  const liveData   = await computeCardData(marathonId, cardType, { strictDiscipline: false });
   const todayDate  = new Date(Date.now() + IST_OFFSET_MS).toISOString().substring(0, 10);
 
   // ── Fallback: if live found no leader for the requested type, use stored

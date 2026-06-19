@@ -295,7 +295,7 @@ export async function findShareCard(token) {
 // Card data computation v2 — discipline engine
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function computeCardData(marathonId, cardType) {
+export async function computeCardData(marathonId, cardType, { strictDiscipline = true } = {}) {
   const supabase = getSupabaseClient();
 
   const marathon = await findMarathonById(marathonId);
@@ -376,9 +376,20 @@ export async function computeCardData(marathonId, cardType) {
     const closingWeight     = todayClosingByUser[uid]    ?? null;
     const prevClosingWeight = prevClosingByUser[uid]     ?? null;
     const baselineWeight    = baselineMap[uid]           ?? null;
-    const disciplineStatus  = classifyDisciplineStatus(disciplineWeight, closingWeight);
-    const dayChange         = computeDayChange(disciplineWeight, prevClosingWeight);
-    const lapChange         = computeLapChange(disciplineWeight, baselineWeight);
+
+    // strictDiscipline=true  → only discipline-window uploads qualify (used by cron)
+    // strictDiscipline=false → fall back to any today upload if no discipline weight
+    //                          (used by card generation so coach always sees real data)
+    const effectiveWeight   = strictDiscipline
+      ? disciplineWeight
+      : (disciplineWeight ?? closingWeight);
+
+    const disciplineStatus  = strictDiscipline
+      ? classifyDisciplineStatus(disciplineWeight, closingWeight)
+      : (closingWeight != null ? DISCIPLINE_STATUS.ELIGIBLE : DISCIPLINE_STATUS.NO_UPLOAD);
+
+    const dayChange         = computeDayChange(effectiveWeight, prevClosingWeight);
+    const lapChange         = computeLapChange(effectiveWeight, baselineWeight);
 
     return {
       userId:           uid,
@@ -396,6 +407,7 @@ export async function computeCardData(marathonId, cardType) {
       lapGrams:         changeToGrams(lapChange),
       todayWeight:      closingWeight,
       disciplineWeight,
+      effectiveWeight,
       baselineWeight,
       prevClosingWeight,
     };
