@@ -81,10 +81,16 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
   const endStr = formatDate(endDate);
   
   // Get downline members
+  // admin/developer → all active members
+  // coach          → their full downline hierarchy
+  // member         → only themselves
   let downlineMembers = [];
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'developer') {
     downlineMembers = await repo.fetchAllActiveMembers();
+  } else if (role === 'member') {
+    downlineMembers = [{ UserId: userId }];
   } else {
+    // coach
     const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
     downlineMembers = hierarchy || [];
   }
@@ -156,10 +162,16 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
   const endStr = formatDate(endDate);
   
   // Get downline members
+  // admin/developer → all active members
+  // coach          → their full downline hierarchy
+  // member         → only themselves
   let downlineMembers = [];
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'developer') {
     downlineMembers = await repo.fetchAllActiveMembers();
+  } else if (role === 'member') {
+    downlineMembers = [{ UserId: userId }];
   } else {
+    // coach
     const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
     downlineMembers = hierarchy || [];
   }
