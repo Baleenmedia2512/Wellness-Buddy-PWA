@@ -47,6 +47,15 @@ export async function getCardData({ marathonId, cardType, coachId }) {
   return get(`/api/marathon/get-card-data?${qs}`);
 }
 
+/**
+ * Fetch eligible participant candidates for LAP creation.
+ * Returns downline + upline chain — faster than full team-hierarchy.
+ */
+export async function getMarathonParticipants({ coachId, role = 'coach' }) {
+  const qs = new URLSearchParams({ coachId, role });
+  return get(`/api/marathon/participants?${qs}`);
+}
+
 // ─── Member lap dashboard ───────────────────────────────────────────────────
 
 export async function getMyLaps(userId) {

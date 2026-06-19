@@ -187,3 +187,12 @@ export function validateGetMyLaps(query) {
   if (!userId || isNaN(Number(userId))) throw new ValidationError(400, 'userId is required');
   return { userId: Number(userId) };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Participant candidates
+// ─────────────────────────────────────────────────────────────────────────────
+export function validateGetParticipants(query) {
+  const { coachId } = query || {};
+  if (!coachId || isNaN(Number(coachId))) throw new ValidationError(400, 'coachId is required and must be a number');
+  return { coachId: Number(coachId) };
+}
