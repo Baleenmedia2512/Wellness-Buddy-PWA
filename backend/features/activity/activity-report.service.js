@@ -153,6 +153,106 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
 }
 
 /**
+ * Get per-member education attendance summary for all downline members.
+ * Includes members with 0 attendance so coaches can spot who hasn't attended.
+ */
+export async function getActivityMemberSummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
+  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
+  const startStr = formatDate(startDate);
+  const endStr = formatDate(endDate);
+
+  // Get downline members
+  let downlineMembers = [];
+  if (role === 'admin' || role === 'developer') {
+    downlineMembers = await repo.fetchAllActiveMembers();
+  } else if (role === 'member') {
+    downlineMembers = [{ UserId: userId }];
+  } else {
+    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
+    downlineMembers = hierarchy || [];
+  }
+
+  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+
+  if (userIds.length === 0) {
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        members: [],
+        stats: { totalMembers: 0, attended: 0, notAttended: 0, topMember: null, avgAttendance: 0 },
+      },
+    };
+  }
+
+  // Fetch member details and coach names
+  const members = await repo.fetchMemberDetails(userIds);
+  const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
+  const coachNames = await repo.fetchCoachNames(coachIds);
+
+  // Build member info map (keyed by both numeric and string UserId)
+  const memberMap = {};
+  members.forEach(member => {
+    const info = {
+      name: member.UserName || 'N/A',
+      phone: member.PhoneNumber || 'N/A',
+      coachName: coachNames[member.CoachId] || 'N/A',
+    };
+    memberMap[member.UserId] = info;
+    memberMap[String(member.UserId)] = info;
+  });
+
+  // Fetch education records and count per member
+  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr);
+  const countMap = {};
+  educationRecords.forEach(record => {
+    const key = String(record.UserId);
+    countMap[key] = (countMap[key] || 0) + 1;
+  });
+
+  // Build member list with counts — include ALL downline members (even 0 attendance)
+  const memberList = userIds.map(uid => {
+    const info = memberMap[uid] || memberMap[String(uid)] || {};
+    return {
+      userId: uid,
+      memberName: info.name || 'N/A',
+      coachName: info.coachName || 'N/A',
+      educationCount: countMap[String(uid)] || 0,
+    };
+  }).sort((a, b) => b.educationCount - a.educationCount);
+
+  // Compute summary stats
+  const attended = memberList.filter(m => m.educationCount > 0).length;
+  const notAttended = memberList.length - attended;
+  const totalCount = memberList.reduce((sum, m) => sum + m.educationCount, 0);
+  const topMember = memberList[0]?.educationCount > 0 ? memberList[0] : null;
+  const avgAttendance = memberList.length > 0
+    ? Math.round((totalCount / memberList.length) * 10) / 10
+    : 0;
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      dateRange,
+      startDate: startStr,
+      endDate: endStr,
+      members: memberList,
+      stats: {
+        totalMembers: memberList.length,
+        attended,
+        notAttended,
+        topMember: topMember ? { name: topMember.memberName, count: topMember.educationCount } : null,
+        avgAttendance,
+      },
+    },
+  };
+}
+
+/**
  * Get detailed activity records for a specific activity type
  */
 export async function getActivityDetails({ userId, role, activityType, dateRange, startDate: customStart, endDate: customEnd }) {

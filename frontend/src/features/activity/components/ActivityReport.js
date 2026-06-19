@@ -218,13 +218,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
-  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  // Member summary (education attendance per member — shown on mount)
+  const [memberSummaries, setMemberSummaries] = useState([]);
+  const [memberStats, setMemberStats] = useState(null);
+  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -308,28 +314,71 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
 
+  const fetchMemberSummary = useCallback(async () => {
+    if (!user?.id || !apiBaseUrl) return;
+
+    setMemberSummaryLoading(true);
+    try {
+      const params = new URLSearchParams({
+        userId: String(user.id),
+        activityType: 'member-summary',
+        dateRange,
+        role: userRole || 'member',
+      });
+
+      if (dateRange === 'custom' && customStartDate && customEndDate) {
+        params.set('startDate', formatDateForApi(customStartDate));
+        params.set('endDate', formatDateForApi(customEndDate));
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
+        cache: 'no-store',
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch member summaries');
+      }
+
+      setMemberSummaries(data.members || []);
+      setMemberStats(data.stats || null);
+    } catch (err) {
+      // Non-critical: silently log; summary tiles remain visible
+      console.warn('Member summary fetch failed:', err.message);
+    } finally {
+      setMemberSummaryLoading(false);
+    }
+  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+
   useEffect(() => {
     fetchSummary();
-  }, [fetchSummary]);
+    fetchMemberSummary();
+    fetchDetails('education');
+  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
   const handleActivityClick = (activityId) => {
-    if (selectedActivity === activityId) {
-      setSelectedActivity(null);
+    if (selectedActivity === activityId && activityId !== 'education') {
+      // Clicking active non-education badge goes back to education default
+      setSelectedActivity('education');
       setDetailRecords([]);
+      fetchDetails('education');
     } else {
       setSelectedActivity(activityId);
+      setSearchQuery('');
       fetchDetails(activityId);
     }
   };
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
+    setSelectedActivity('education');
+    setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
     if (range === 'custom') {
       setShowDatePicker(true);
     } else {
       setShowDatePicker(false);
-      setSelectedActivity(null);
-      setDetailRecords([]);
     }
   };
 
@@ -337,9 +386,21 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
     setShowDatePicker(false);
-    setSelectedActivity(null);
+    setSelectedActivity('education');
     setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
   };
+
+  // Filter member summaries by search query
+  const filteredMemberSummaries = useMemo(() => {
+    if (!memberSearchQuery) return memberSummaries;
+    const q = memberSearchQuery.toLowerCase();
+    return memberSummaries.filter(m =>
+      (m.memberName || '').toLowerCase().includes(q) ||
+      (m.coachName || '').toLowerCase().includes(q)
+    );
+  }, [memberSummaries, memberSearchQuery]);
 
   // Filter and sort records
   const filteredRecords = useMemo(() => {
@@ -514,11 +575,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={fetchSummary}
+              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading}
+              disabled={loading || memberSummaryLoading}
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
@@ -564,33 +625,167 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           </div>
         )}
 
-        {/* Activity Badges — single horizontal scrollable row */}
-        {!selectedActivity && summary && (
-          <div className="flex gap-3 overflow-x-auto pb-3 hide-scrollbar mb-6">
+        {/* Activity Badges — compact pill badges */}
+        {summary && (
+          <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar mb-5">
             {ACTIVITY_TYPES.map((activity) => {
               const Icon = activity.icon;
+              const isActive = selectedActivity === activity.id;
               return (
                 <TouchFeedbackButton
                   key={activity.id}
                   onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 p-4 rounded-2xl border-2 transition-all w-36 ${
-                    activity.bgColor
-                  } ${activity.borderColor} shadow-sm active:scale-95`}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all active:scale-95 ${
+                    isActive
+                      ? `${activity.bgColor} ${activity.borderColor} shadow-md ring-1 ${activity.borderColor}`
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
                 >
-                  <div className="flex flex-col items-center gap-2">
-                    <div className={`p-2.5 rounded-full bg-white bg-opacity-70`}>
-                      <Icon className={`w-6 h-6 ${activity.textColor}`} />
-                    </div>
-                    <p className={`text-2xl font-bold ${activity.textColor}`}>
-                      {summary[activity.id] || 0}
-                    </p>
-                    <p className="text-xs font-semibold text-gray-600 text-center leading-tight">
-                      {activity.label}
-                    </p>
-                  </div>
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-600'}`}>
+                    {summary[activity.id] || 0}
+                  </span>
+                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {activity.label}
+                  </span>
                 </TouchFeedbackButton>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Member Education Attendance Cards (shown on mount) ── */}
+        {!selectedActivity && (
+          <div>
+            {/* Summary stats bar — like Discipline Report's AVG / TOP STAR / AT RISK */}
+            {memberStats && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+                <div className="grid grid-cols-3 divide-x divide-gray-200">
+                  <div className="text-center pr-4">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Avg Attendance</p>
+                    <p className="text-2xl font-bold text-gray-900">{memberStats.avgAttendance}</p>
+                    <p className="text-xs text-gray-500">{memberStats.totalMembers} Members</p>
+                  </div>
+                  <div className="text-center px-4">
+                    <p className="text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-1">Top Member</p>
+                    <p className="text-lg font-bold text-gray-900 truncate">
+                      {memberStats.topMember ? memberStats.topMember.name.split(' ')[0] : '—'}
+                    </p>
+                    {memberStats.topMember && (
+                      <p className="text-xs text-green-600">{memberStats.topMember.count} sessions</p>
+                    )}
+                  </div>
+                  <div className="text-center pl-4">
+                    <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wide mb-1">Not Attended</p>
+                    <p className="text-2xl font-bold text-red-500">{memberStats.notAttended}</p>
+                    <p className="text-xs text-gray-500">of {memberStats.totalMembers}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Info banner */}
+            {memberStats && memberStats.totalMembers > 0 && (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+                <BookOpen className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                <p className="text-xs text-blue-700 font-medium">
+                  Tap any member tile to see their full education attendance records.
+                </p>
+              </div>
+            )}
+
+            {/* Search bar */}
+            {memberSummaries.length > 0 && (
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search members..."
+                  value={memberSearchQuery}
+                  onChange={(e) => setMemberSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                />
+              </div>
+            )}
+
+            {/* Member loading skeleton */}
+            {memberSummaryLoading && memberSummaries.length === 0 && (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-200" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-200 rounded w-32" />
+                        <div className="h-3 bg-gray-200 rounded w-24" />
+                      </div>
+                      <div className="w-12 h-8 bg-gray-200 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Member tiles */}
+            {filteredMemberSummaries.length > 0 && (
+              <div className="space-y-3">
+                {filteredMemberSummaries.map((member) => (
+                  <TouchFeedbackButton
+                    key={member.userId}
+                    onClick={() => {
+                      setSelectedActivity('education');
+                      setSearchQuery(member.memberName);
+                      fetchDetails('education');
+                    }}
+                    className="w-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:border-green-300 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* Avatar */}
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        member.educationCount > 0 ? 'bg-indigo-100' : 'bg-gray-100'
+                      }`}>
+                        <span className={`font-bold text-sm ${
+                          member.educationCount > 0 ? 'text-indigo-700' : 'text-gray-500'
+                        }`}>
+                          {(member.memberName || '?').charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      {/* Name & coach */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{member.memberName}</p>
+                        <p className="text-xs text-gray-500 truncate">Coach: {member.coachName}</p>
+                      </div>
+                      {/* Attendance badge */}
+                      <div className={`px-3 py-1.5 rounded-full border flex-shrink-0 ${
+                        member.educationCount > 0
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-red-50 border-red-200 text-red-600'
+                      }`}>
+                        <span className="text-sm font-bold">{member.educationCount}</span>
+                      </div>
+                    </div>
+                  </TouchFeedbackButton>
+                ))}
+              </div>
+            )}
+
+            {/* Empty state when data is loaded but list is empty */}
+            {!memberSummaryLoading && memberSummaries.length === 0 && summary && (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                  <BookOpen className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No members found</h3>
+                <p className="text-sm text-gray-500">No downline member data available for the selected period.</p>
+              </div>
+            )}
+
+            {/* Search no-results */}
+            {!memberSummaryLoading && memberSummaries.length > 0 && filteredMemberSummaries.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500 text-sm">No members match &ldquo;{memberSearchQuery}&rdquo;</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -603,12 +798,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
-                  <TouchFeedbackButton
-                    onClick={() => setSelectedActivity(null)}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                  >
-                    Back to Overview
-                  </TouchFeedbackButton>
                   {filteredRecords.length > 0 && (
                     <TouchFeedbackButton
                       onClick={handleDownload}

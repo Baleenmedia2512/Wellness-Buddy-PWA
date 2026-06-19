@@ -6256,6 +6256,7 @@ function WellnessValleyApp() {
   const deferredShowDashboard = useDeferredValue(showDashboard);
   const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
+  const deferredShowActivityReport = useDeferredValue(showActivityReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowMarathon = useDeferredValue(showMarathon);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
@@ -6625,6 +6626,23 @@ function WellnessValleyApp() {
           }}
           apiBaseUrl={apiBaseUrl}
           userRole={userRole}
+        />
+      </Suspense>
+    );
+  }
+
+  // Activity Report (Education Attendance) — full-page module
+  if (deferredShowActivityReport) {
+    return (
+      <Suspense fallback={null}>
+        <ActivityReport
+          user={user}
+          userRole={userRole}
+          apiBaseUrl={apiBaseUrl}
+          onBack={() => {
+            setShowActivityReport(false);
+            Session.setCurrentPage("main");
+          }}
         />
       </Suspense>
     );
@@ -8256,18 +8274,6 @@ function WellnessValleyApp() {
           <AttendanceReport
             user={user}
             onBack={() => setShowAttendanceReport(false)}
-          />
-        </Suspense>
-      )}
-
-      {/* Activity Report */}
-      {showActivityReport && (
-        <Suspense fallback={<LoadingSpinner message="Loading Activity Report..." />}>
-          <ActivityReport
-            user={user}
-            userRole={userRole}
-            apiBaseUrl={apiBaseUrl}
-            onBack={() => setShowActivityReport(false)}
           />
         </Suspense>
       )}
