@@ -9,7 +9,7 @@ import { getApiBaseUrl } from '../../../config/api.config.js';
 const base = () => getApiBaseUrl();
 
 async function get(path) {
-  const res  = await fetch(`${base()}${path}`, { method: 'GET' });
+  const res  = await fetch(`${base()}${path}`, { method: 'GET', cache: 'no-store' });
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || `GET ${path} failed`);
   return json;
@@ -36,15 +36,25 @@ export async function deleteMarathon({ marathonId, coachId }) {
   return post('/api/marathon/delete', { marathonId, coachId });
 }
 
-export async function listMarathons({ coachId, status } = {}) {
+export async function listMarathons({ coachId, status, _t } = {}) {
   const qs = new URLSearchParams({ coachId });
   if (status) qs.append('status', status);
+  if (_t)     qs.append('_t', _t);   // cache-buster
   return get(`/api/marathon/list?${qs}`);
 }
 
 export async function getCardData({ marathonId, cardType, coachId }) {
   const qs = new URLSearchParams({ marathonId, cardType, coachId });
   return get(`/api/marathon/get-card-data?${qs}`);
+}
+
+/**
+ * Fetch eligible participant candidates for LAP creation.
+ * Returns downline + upline chain — faster than full team-hierarchy.
+ */
+export async function getMarathonParticipants({ coachId, role = 'coach' }) {
+  const qs = new URLSearchParams({ coachId, role });
+  return get(`/api/marathon/participants?${qs}`);
 }
 
 // ─── Member lap dashboard ───────────────────────────────────────────────────

@@ -658,6 +658,107 @@ export async function markRecognitionViewed(userId, marathonId, resultDate) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Participant candidates for LAP creation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns eligible participant candidates for a coach creating a marathon LAP.
+ *
+ * Allowed:
+ *   1. All recursive downline of the coach (BFS, up to 5 levels)
+ *   2. The coach's direct upline (their CoachId)
+ *   3. The coach's upline's upline (one more level up)
+ *
+ * Not allowed: the coach's upline siblings (other people under the upline).
+ * The coach themselves is excluded.
+ *
+ * Uses targeted queries instead of full team scan for performance.
+ *
+ * @param {number} coachId
+ * @returns {Promise<Array<{userId, name, photo, role, teamId, phone, isUpline}>>}
+ */
+export async function getParticipantCandidates(coachId) {
+  const supabase  = getSupabaseClient();
+  const numCoachId = Number(coachId);
+
+  // Use UNQUOTED column names — matches the pattern used in team-hierarchy.js
+  // where .select("UserId, UserName, CoachId, ...") works correctly.
+
+  // 1. Coach's own row to find upline chain
+  const { data: coachRow } = await supabase
+    .from('team_table')
+    .select('UserId, CoachId')
+    .eq('UserId', numCoachId)
+    .maybeSingle();
+
+  // 2. Upline IDs: direct coach + coach's coach (max 2 levels up)
+  const uplineIds = [];
+  if (coachRow?.CoachId && Number(coachRow.CoachId) !== numCoachId) {
+    uplineIds.push(Number(coachRow.CoachId));
+    const { data: uplineRow } = await supabase
+      .from('team_table')
+      .select('UserId, CoachId')
+      .eq('UserId', Number(coachRow.CoachId))
+      .maybeSingle();
+    if (
+      uplineRow?.CoachId &&
+      Number(uplineRow.CoachId) !== numCoachId &&
+      Number(uplineRow.CoachId) !== Number(coachRow.CoachId)
+    ) {
+      uplineIds.push(Number(uplineRow.CoachId));
+    }
+  }
+
+  // 3. BFS downline traversal (max 5 levels deep)
+  const downlineIds = [];
+  let frontier = [numCoachId];
+  for (let depth = 0; depth < 5 && frontier.length > 0; depth++) {
+    const { data: children, error: childErr } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .in('CoachId', frontier);  // unquoted — matches team-hierarchy.js access pattern
+    if (childErr) {
+      logger.warn('[marathon.repo] getParticipantCandidates BFS error', { depth, msg: childErr.message });
+      break;
+    }
+    if (!children?.length) break;
+    const childIds = children
+      .map(c => Number(c.UserId))
+      .filter(id => id !== numCoachId && !downlineIds.includes(id));
+    if (!childIds.length) break;
+    downlineIds.push(...childIds);
+    frontier = childIds;
+  }
+
+  // 4. Fetch full profiles
+  const allIds = [...new Set([...uplineIds, ...downlineIds])];
+  if (!allIds.length) return [];
+
+  const { data: profiles, error: profErr } = await supabase
+    .from('team_table')
+    .select('UserId, UserName, ProfileImage, Role, CoachTeamId, PhoneNumber')  // unquoted
+    .in('UserId', allIds);  // unquoted
+  if (profErr) throw profErr;
+
+  logger.info('[marathon.repo] getParticipantCandidates', {
+    coachId,
+    upline: uplineIds.length,
+    downline: downlineIds.length,
+    total: allIds.length,
+  });
+
+  return (profiles || []).map(p => ({
+    userId:   Number(p.UserId),
+    name:     p.UserName     || p.username     || 'Member',
+    photo:    p.ProfileImage || p.profileimage || null,
+    role:     (p.Role || p.role || 'user').toLowerCase(),
+    teamId:   p.CoachTeamId || p.coachteamid  || '',
+    phone:    p.PhoneNumber  || p.phonenumber  || '',
+    isUpline: uplineIds.includes(Number(p.UserId)),
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Automated daily finalization (used by cron job)
 // ─────────────────────────────────────────────────────────────────────────────
 

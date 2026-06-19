@@ -49,7 +49,8 @@ export function useMarathon({ coachId, userId } = {}) {
     if (!coachId) return;
     setLoadingList(true); setListError(null);
     try {
-      const res = await listMarathons({ coachId, status });
+      // Append _t to bust any browser-level GET cache
+      const res = await listMarathons({ coachId, status, _t: Date.now() });
       setMarathons(res.data || []);
     } catch (err) {
       setListError(err.message || 'Failed to load marathons');
