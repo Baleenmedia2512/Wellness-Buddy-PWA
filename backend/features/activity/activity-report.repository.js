@@ -12,7 +12,7 @@ export async function fetchAllActiveMembers() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Email, CoachId, City, Village, Role')
+    .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
     .eq('Status', 'Active');
   if (error) throw error;
   return data || [];
@@ -27,7 +27,7 @@ export async function fetchMemberDetails(userIds) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Email, CoachId, City, Village, Role')
+    .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
     .in('UserId', userIds)
     .eq('Status', 'Active');
   

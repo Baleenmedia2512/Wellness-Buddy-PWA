@@ -168,6 +168,7 @@ const WellnessReportsPage = lazy(() => import("./shell/components/WellnessReport
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
+const ActivityReport = lazy(() => import("./features/activity/components/ActivityReport"));
 const AttendanceReport = lazy(() => import("./features/team/components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>
   import("./features/nutrition-centers/components/NutritionCentersMap"),
@@ -652,6 +653,7 @@ function WellnessValleyApp() {
   // Discipline report state (for coaches) - with localStorage persistence
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
+  const [showActivityReport, setShowActivityReport] = useState(false);
 
   // Step Counter state � FEATURE DISABLED
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
@@ -6909,6 +6911,14 @@ function WellnessValleyApp() {
           startTransition(() => setShowActivityTimeReport(true));
           Session.setCurrentPage("activity-time-report");
         }}
+        onShowActivityReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => {
+                startTransition(() => setShowActivityReport(true));
+                Session.setCurrentPage("activity-report");
+              }
+            : null
+        }
         onShowWellnessEnrollment={() => startTransition(() => setShowWellnessReport(true))}
         onShowWellnessReport={
           userRole === "admin" ||
@@ -8246,6 +8256,18 @@ function WellnessValleyApp() {
           <AttendanceReport
             user={user}
             onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Activity Report */}
+      {showActivityReport && (
+        <Suspense fallback={<LoadingSpinner message="Loading Activity Report..." />}>
+          <ActivityReport
+            user={user}
+            userRole={userRole}
+            apiBaseUrl={apiBaseUrl}
+            onBack={() => setShowActivityReport(false)}
           />
         </Suspense>
       )}

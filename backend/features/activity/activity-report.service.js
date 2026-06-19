@@ -199,14 +199,16 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
   
   // Build member info map — keyed by both numeric and string UserId
   // because education_logs_table stores UserId as string while others are numeric
+  // NOTE: team_table does NOT have City/Village columns — education records
+  // carry their own City/Village from education_logs_table directly.
   const memberMap = {};
   members.forEach(member => {
     const info = {
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
       email: member.Email || '',
-      city: member.City || 'N/A',
-      village: member.Village || 'N/A',
+      city: 'N/A',
+      village: 'N/A',
       role: member.Role || 'member',
       coachName: coachNames[member.CoachId] || 'N/A',
     };
