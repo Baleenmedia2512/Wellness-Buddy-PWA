@@ -33,6 +33,7 @@ const Header = ({
   onShowAdminDashboard,
   onShowDisciplineReport,
   onShowActivityTimeReport,
+  onShowActivityReport,
   onShowStepCounter,
   onShowScreenTime,
   onShowReminders,
@@ -513,21 +514,21 @@ const Header = ({
                         </TouchFeedbackButton>
                       )}
 
-                      {/* Activity Time Report */}
-                      {onShowActivityTimeReport && (
+                      {/* Education Attendance — opens the merged badge-based Activity Report */}
+                      {onShowActivityReport && (
                         <TouchFeedbackButton
                           onClick={() => {
-                            onShowActivityTimeReport();
+                            onShowActivityReport();
                             closeMenu();
                           }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Activity Time Report"
+                          ariaLabel="Education Attendance"
                         >
-                          <div className="h-10 w-10 rounded-2xl bg-amber-100 flex items-center justify-center">
-                            <Clock3 className="h-5 w-5 text-amber-700" />
+                          <div className="h-10 w-10 rounded-2xl bg-indigo-100 flex items-center justify-center">
+                            <TrendingUp className="h-5 w-5 text-indigo-700" />
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Activity Report
+                            Education{'\n'}Attendance
                           </span>
                         </TouchFeedbackButton>
                       )}
@@ -566,25 +567,6 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Counselling
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* My Attendance */}
-                      {onShowAttendanceReport && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowAttendanceReport();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="My Attendance"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-indigo-100 flex items-center justify-center">
-                            <TrendingUp className="h-5 w-5 text-indigo-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Education Attendance
                           </span>
                         </TouchFeedbackButton>
                       )}

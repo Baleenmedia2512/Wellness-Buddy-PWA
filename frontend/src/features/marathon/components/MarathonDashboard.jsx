@@ -62,12 +62,13 @@ const T = {
 async function loadParticipantCandidates(coachId) {
   const res  = await getMarathonParticipants({ coachId, role: 'coach' });
   const list = Array.isArray(res.data) ? res.data : [];
+  // API returns { userId, name, photo, role, teamId, phone, isUpline }
   return list.map(m => ({
-    userId:  m.UserId,
-    name:    m.UserName    || 'Member',
-    photo:   m.ProfileImage || null,
-    phone:   m.PhoneNumber  || '',  // for search
-    teamId:  m.TeamId       || '',  // for search
+    userId:  m.userId,
+    name:    m.name    || 'Member',
+    photo:   m.photo   || null,
+    phone:   m.phone   || '',
+    teamId:  m.teamId  || '',
   }));
 }
 

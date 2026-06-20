@@ -295,7 +295,7 @@ export async function findShareCard(token) {
 // Card data computation v2 — discipline engine
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function computeCardData(marathonId, cardType) {
+export async function computeCardData(marathonId, cardType, { strictDiscipline = true } = {}) {
   const supabase = getSupabaseClient();
 
   const marathon = await findMarathonById(marathonId);
@@ -387,25 +387,19 @@ export async function computeCardData(marathonId, cardType) {
     const closingWeight     = todayClosingByUser[uid]    ?? null;
     const baselineWeight    = baselineMap[uid]           ?? null;
 
-    // Effective today weight — best available reading for progress display
-    const effectiveTodayWeight = disciplineWeight ?? closingWeight;
+    // strictDiscipline=true  → only discipline-window uploads qualify (used by cron)
+    // strictDiscipline=false → fall back to any today upload if no discipline weight
+    //                          (used by card generation so coach always sees real data)
+    const effectiveWeight   = strictDiscipline
+      ? disciplineWeight
+      : (disciplineWeight ?? closingWeight);
 
-    // Previous-day reference must stay inside the marathon period:
-    // on the very first marathon day there is no in-period "yesterday",
-    // so fall back to the locked baseline.
-    const rawPrevClosing    = prevClosingByUser[uid] ?? null;
-    const prevClosingWeight = isFirstMarathonDay
-      ? baselineWeight
-      : (rawPrevClosing ?? baselineWeight);
+    const disciplineStatus  = strictDiscipline
+      ? classifyDisciplineStatus(disciplineWeight, closingWeight)
+      : (closingWeight != null ? DISCIPLINE_STATUS.ELIGIBLE : DISCIPLINE_STATUS.NO_UPLOAD);
 
-    const disciplineStatus  = classifyDisciplineStatus(disciplineWeight, closingWeight);
-    const dayChange         = computeDayChange(effectiveTodayWeight, prevClosingWeight);
-    const lapChange         = computeLapChange(effectiveTodayWeight, baselineWeight);
-
-    // Hierarchy: a participant directly under this coach vs. someone in a
-    // co-coach / deeper hierarchy branch.
-    const participantCoachId = profileMap[uid]?.CoachId != null ? Number(profileMap[uid].CoachId) : null;
-    const hierarchyRole      = participantCoachId === coachId ? 'direct' : 'co_coach';
+    const dayChange         = computeDayChange(effectiveWeight, prevClosingWeight);
+    const lapChange         = computeLapChange(effectiveWeight, baselineWeight);
 
     return {
       userId:           uid,
@@ -430,6 +424,7 @@ export async function computeCardData(marathonId, cardType) {
       todayWeight:      closingWeight,
       effectiveTodayWeight,
       disciplineWeight,
+      effectiveWeight,
       baselineWeight,
       prevClosingWeight,
     };
@@ -593,6 +588,73 @@ export async function getDailyResults(marathonId, date) {
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Fetch stored leader data from marathon_daily_results for a given date,
+ * enriched with profile names and images.
+ *
+ * Used as a fallback in card generation when live computation finds no
+ * eligible (discipline-window) leader — e.g. coach generates the card
+ * mid-day before the window closes, or after the cron has run.
+ *
+ * @param {number} marathonId
+ * @param {string} resultDate — YYYY-MM-DD in IST
+ * @returns {Promise<{lapNumber, dayNumber, dayLeader, lapLeader, communityLeader}|null>}
+ */
+export async function getStoredLeaderData(marathonId, resultDate) {
+  const supabase = getSupabaseClient();
+  const { data: result, error } = await supabase
+    .from('marathon_daily_results')
+    .select('*')
+    .eq('marathon_id', marathonId)
+    .eq('result_date', resultDate)
+    .maybeSingle();
+  if (error || !result) return null;
+
+  // Batch-fetch profiles for all stored leader user IDs
+  const ids = [
+    result.day_leader_user_id,
+    result.lap_leader_user_id,
+    result.community_leader_user_id,
+  ].filter(Boolean);
+
+  const profileMap = {};
+  if (ids.length) {
+    const { data: profs } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "ProfileImage"')
+      .in('"UserId"', ids);
+    (profs || []).forEach(p => { profileMap[p.UserId] = p; });
+  }
+
+  const mkLeader = (userId, reductionKg) => {
+    if (!userId) return null;
+    // stored reduction_kg is always positive (Math.abs was applied on save)
+    // negate it back so the existing formatWeightChange renders it as "-X.XX KG"
+    const changeKg = reductionKg != null ? -Math.abs(reductionKg) : null;
+    return {
+      userId,
+      name:               profileMap[userId]?.UserName    || 'Member',
+      profileImage:       profileMap[userId]?.ProfileImage || null,
+      dayChange:          changeKg,
+      dailyChange:        changeKg,
+      lapChange:          changeKg,
+      cumulativeChange:   changeKg,
+      dailyChangeDisplay: formatWeightChange(changeKg),
+      lapChangeDisplay:   formatWeightChange(changeKg),
+      reductionKg,
+      fromStoredResult:   true,
+    };
+  };
+
+  return {
+    lapNumber:       result.lap_number,
+    dayNumber:       result.day_number,
+    dayLeader:       mkLeader(result.day_leader_user_id,       result.day_leader_reduction_kg),
+    lapLeader:       mkLeader(result.lap_leader_user_id,       result.lap_leader_reduction_kg),
+    communityLeader: mkLeader(result.community_leader_user_id, result.community_leader_reduction_kg),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -816,4 +878,100 @@ export async function getParticipantCandidates(coachId) {
       phone:    u.PhoneNumber  || '',
       isUpline: uplineIds.has(Number(u.UserId)),
     }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Automated daily finalization (used by cron job)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FINALIZE_GRACE_MINUTES = 15;
+
+/**
+ * Called by the /api/cron/marathon-finalize cron every minute.
+ *
+ * For each ACTIVE marathon:
+ *  1. Checks if the discipline window end + grace period has passed in IST.
+ *  2. Skips if a result for today already exists (idempotent).
+ *  3. Computes Day Leader, Lap Leader, and Community Leader via the existing
+ *     computeCardData engine and persists them to marathon_daily_results.
+ *
+ * @returns {{ processed: number, skipped: number }}
+ */
+export async function autoFinalizeActiveMarathons() {
+  const supabase = getSupabaseClient();
+  const now      = currentISTMoment();
+  const todayDate = now.toISOString().substring(0, 10);
+
+  // Current IST minutes-of-day for window comparison
+  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  const { data: marathons, error: mErr } = await supabase
+    .from('marathon_table')
+    .select('id, name, team_name, lap_sequence, started_at, days_per_lap')
+    .eq('status', 'active');
+  if (mErr) throw mErr;
+  if (!marathons?.length) return { processed: 0, skipped: 0 };
+
+  let processed = 0;
+  let skipped   = 0;
+
+  for (const marathon of marathons) {
+    try {
+      // 1. Load per-marathon discipline config
+      const config = await getMarathonConfig(marathon.id);
+      const [eh, em] = config.disciplineEndTime.split(':').map(Number);
+      const windowEndMinutes = eh * 60 + em + FINALIZE_GRACE_MINUTES;
+
+      if (currentMinutes < windowEndMinutes) {
+        skipped++;
+        continue; // Discipline window not yet closed for this marathon
+      }
+
+      // 2. Idempotency guard — skip if result already recorded today
+      const existing = await getDailyResults(marathon.id, todayDate);
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // 3. Compute leaders using the authoritative discipline engine
+      const liveData = await computeCardData(marathon.id, CARD_TYPES.DAY_LEADER);
+      const { lapNumber, dayNumber } = computeLapAndDay(marathon.started_at, marathon.days_per_lap, now);
+      const eligible = (liveData.participants || []).filter(
+        p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE,
+      );
+
+      await saveDailyResults(marathon.id, {
+        resultDate:        todayDate,
+        lapNumber,
+        dayNumber,
+        dayLeader:         liveData.dayLeader,
+        lapLeader:         liveData.lapLeader,
+        communityLeader:   liveData.communityLeader,
+        eligibleCount:     eligible.length,
+        totalParticipants: (liveData.participants || []).length,
+      });
+
+      logger.info('[autoFinalizeActiveMarathons] Marathon finalized', {
+        marathonId:  marathon.id,
+        todayDate,
+        lapNumber,
+        dayNumber,
+        eligible:    eligible.length,
+        dayLeaderId: liveData.dayLeader?.userId ?? null,
+        lapLeaderId: liveData.lapLeader?.userId ?? null,
+      });
+
+      processed++;
+    } catch (err) {
+      // Log and continue — one failed marathon must not block the others
+      logger.error('[autoFinalizeActiveMarathons] Failed to finalize marathon', {
+        marathonId: marathon.id,
+        error:      err.message,
+        stack:      err.stack,
+      });
+    }
+  }
+
+  return { processed, skipped };
 }

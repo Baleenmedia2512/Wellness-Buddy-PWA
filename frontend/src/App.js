@@ -60,6 +60,7 @@ import React, {
   startTransition,
   useDeferredValue,
 } from "react";
+import ReactDOM from "react-dom";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
@@ -128,8 +129,8 @@ import { fetchPublicCard, savePendingCard, consumePendingCard } from "./features
 import { ClubSelectionModal } from "./features/nutrition-centers";
 // import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
-// import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-// import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
+import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
+import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { CoachScoreSummary } from "./features/leaderboard";
 import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -167,6 +168,7 @@ const WellnessReportsPage = lazy(() => import("./shell/components/WellnessReport
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
+const ActivityReport = lazy(() => import("./features/activity/components/ActivityReport"));
 const AttendanceReport = lazy(() => import("./features/team/components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>
   import("./features/nutrition-centers/components/NutritionCentersMap"),
@@ -186,6 +188,10 @@ const WellnessCounselling = lazy(() =>
 const MarathonDashboard = lazy(() =>
   import("./features/marathon/components/MarathonDashboard"),
 );
+const MarathonRecognitionSplash = lazy(() =>
+  import("./features/marathon/components/MarathonRecognitionSplash"),
+);
+import { useMarathon } from "./features/marathon";
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
 const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
@@ -248,7 +254,26 @@ function WellnessValleyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isInactiveReactivationFlow, setIsInactiveReactivationFlow] = useState(false); // true while inactive user is going through coach-OTP reactivation
+  const [isWaitingForCoachOTP, setIsWaitingForCoachOTP] = useState(false); // true during 5-second wait after contacting coach
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  
+  // Debug logging for waiting state
+  useEffect(() => {
+    console.log("🟣 [isWaitingForCoachOTP state changed]:", isWaitingForCoachOTP);
+    if (isWaitingForCoachOTP) {
+      console.log("🟣 [WAITING MODAL SHOULD RENDER NOW]");
+      // Force a check after a brief delay
+      setTimeout(() => {
+        const modal = document.querySelector('[data-waiting-modal="true"]');
+        if (modal) {
+          console.log("✅ [WAITING MODAL FOUND IN DOM]", modal);
+        } else {
+          console.error("❌ [WAITING MODAL NOT FOUND IN DOM - NOT RENDERING!]");
+        }
+      }, 100);
+    }
+  }, [isWaitingForCoachOTP]);
+  
   // For returning users who already granted permissions, start as true so the
   // camera opens immediately (Snapchat-like). Fresh installs start as false
   // and wait for the permission dialogs to complete before opening camera.
@@ -341,6 +366,10 @@ function WellnessValleyApp() {
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
   const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(''); // Celebration message
+
+  // Weight Progress Tips feature (reverse progress detection)
+  const weightProgressCheck = useWeightProgressCheck();
+  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -628,6 +657,7 @@ function WellnessValleyApp() {
   // Discipline report state (for coaches) - with localStorage persistence
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
+  const [showActivityReport, setShowActivityReport] = useState(false);
 
   // Step Counter state � FEATURE DISABLED
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
@@ -647,6 +677,13 @@ function WellnessValleyApp() {
   // Marathon dashboard state (for coaches)
   const [showMarathon, setShowMarathon] = useState(false);
 
+  // ── Marathon Recognition splash (member-facing, runs globally) ────────────
+  const {
+    pendingRecognition,
+    fetchPendingRecognition,
+    dismissRecognition,
+  } = useMarathon({ userId: user?.id });
+
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
 
@@ -657,6 +694,16 @@ function WellnessValleyApp() {
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
+
+  // Debug logging for ValidateOTP modal state
+  useEffect(() => {
+    console.log("🟢 [showValidateOTP state changed]:", showValidateOTP);
+    if (showValidateOTP) {
+      console.log("✅ ValidateOTP modal OPENED");
+    } else {
+      console.log("❌ ValidateOTP modal CLOSED");
+    }
+  }, [showValidateOTP]);
 
   // Demo account: silent coach-OTP setup is provided by
   // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
@@ -713,6 +760,55 @@ function WellnessValleyApp() {
   // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
   // correctly ignores its own camera-driven state transitions.
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Marathon Recognition: fetch on startup when user is ready ─────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchPendingRecognition();
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- userId dep is stable
+
+  // ── Marathon Recognition: 5-minute polling — native (start/stop with AppState) ─
+  useEffect(() => {
+    if (!user?.id || !Capacitor.isNativePlatform()) return;
+    let handle    = null;
+    let cancelled = false;
+    let pollTimer = null;
+
+    const startPoll = () => {
+      if (!pollTimer) pollTimer = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
+    };
+    const stopPoll = () => {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    };
+
+    startPoll();
+
+    nativeLifecycle.addAppStateListener(({ isActive }) => {
+      if (cancelled) return;
+      if (isActive) {
+        fetchPendingRecognition(); // immediate fetch on resume
+        startPoll();
+      } else {
+        stopPoll();
+      }
+    }).then(h => {
+      if (cancelled) { h?.remove?.(); stopPoll(); }
+      else handle = h;
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      stopPoll();
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
+
+  // ── Marathon Recognition: 5-minute polling — web ─────────────────────────
+  useEffect(() => {
+    if (!user?.id || Capacitor.isNativePlatform()) return;
+    const id = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
 
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
@@ -1434,7 +1530,7 @@ function WellnessValleyApp() {
 
   // Check user status (Active/Inactive) using lookup-user-id API
   const checkUserStatus = useCallback(
-    async (user) => {
+    async (user, skipInactiveModal = false) => {
       if (!user) {
         return true; // If no user, skip check
       }
@@ -1482,7 +1578,10 @@ function WellnessValleyApp() {
         }
 
         if (result === "inactive") {
-          setShowInactiveModal(true);
+          // Skip showing modal if we're in the middle of coach OTP flow
+          if (!skipInactiveModal) {
+            setShowInactiveModal(true);
+          }
           setIsUserActive(false);
           return false;
         }
@@ -1643,9 +1742,13 @@ function WellnessValleyApp() {
   };
 
   // Called when user clicks "Contact Your Coach" inside the inactive modal.
-  // Closes the modal, sends the coach OTP, then shows the ValidateOTP screen.
+  // Closes the modal, sends the coach OTP, waits 5 seconds, then shows the ValidateOTP screen.
   const handleContactCoach = async () => {
+    console.log("🔵 [handleContactCoach] Starting...");
     setShowInactiveModal(false);
+    setIsWaitingForCoachOTP(true); // Show waiting message
+    console.log("🔵 [handleContactCoach] Modal closed, waiting message shown");
+    
     try {
       const storedUserRaw = Session.getOtpUserRaw();
       const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : user;
@@ -1655,34 +1758,57 @@ function WellnessValleyApp() {
         user?.email || user?.Email ||
         Session.getUserEmail();
 
+      console.log("🔵 [handleContactCoach] Fetching coach for userId:", userId);
       const coachRes = await fetch(
         `${apiBaseUrl}/api/user/get-active-coach?userId=${userId}`
       );
       const coachJson = await coachRes.json();
+      console.log("🔵 [handleContactCoach] Coach response:", coachJson);
       // API returns { ok: true, data: { coachId, ... } }
       const coachId = coachJson?.data?.coachId || coachJson?.coachId;
 
       if (coachId) {
+        console.log("🔵 [handleContactCoach] Sending OTP request to coach:", coachId);
         const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: userEmail, coachId }),
         });
         const otpJson = await otpRes.json();
+        console.log("🔵 [handleContactCoach] OTP response:", otpJson);
 
         if (otpRes.ok && otpJson.success !== false) {
-          // OTP emailed to coach — show ValidateOTP as overlay in the !isOtpVerified branch.
+          // OTP emailed to coach — wait 5 seconds before showing ValidateOTP
           // Do NOT change isOtpVerified here — that triggers background effects which
           // call checkUserStatus again, see "Inactive", and re-show the modal.
           setIsInactiveReactivationFlow(true);
+          console.log("🔵 [handleContactCoach] Waiting 5 seconds...");
+          
+          // Wait 5 seconds before showing the ValidateOTP screen
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          
+          console.log("🔵 [handleContactCoach] 5 seconds elapsed, hiding waiting modal");
+          setIsWaitingForCoachOTP(false); // Hide waiting message
+          
+          // Small delay to ensure waiting modal unmounts before ValidateOTP renders
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          
+          console.log("🔵 [handleContactCoach] Now showing ValidateOTP");
           setShowValidateOTP(true);
           return;
+        } else {
+          console.log("🔴 [handleContactCoach] OTP request failed or success=false");
         }
+      } else {
+        console.log("🔴 [handleContactCoach] No coachId found");
       }
     } catch (_err) {
+      console.error("🔴 [handleContactCoach] Error:", _err);
       // swallow network/parse errors — fall through to fallback
     }
     // Fallback: re-show modal if OTP could not be sent
+    console.log("🔴 [handleContactCoach] Fallback - re-showing inactive modal");
+    setIsWaitingForCoachOTP(false);
     setShowInactiveModal(true);
   };
 
@@ -2474,7 +2600,7 @@ function WellnessValleyApp() {
           }
         }
         // Status check � shows inactive modal if account was deactivated.
-        await checkUserStatus(user);
+        await checkUserStatus(user, isInactiveReactivationFlow);
         // Profile completion � silent:true so Gate 3 (profileChecking spinner)
         // never fires on app open. CompleteProfilePage still shows if needed.
         const email = user.email || user.Email;
@@ -2538,16 +2664,20 @@ function WellnessValleyApp() {
     if (!user) return;
 
     const statusCheckInterval = setInterval(async () => {
-      await checkUserStatus(user);
+      // Skip showing inactive modal if we're in reactivation flow
+      await checkUserStatus(user, isInactiveReactivationFlow);
     }, 60000); // Check every 60 seconds
 
     return () => clearInterval(statusCheckInterval);
-  }, [user, checkUserStatus]);
+  }, [user, checkUserStatus, isInactiveReactivationFlow]);
 
   // Check setup wizard status whenever user is set/updated
   useEffect(() => {
     const checkSetupStatus = async () => {
       if (!user || !isUserActive) return;
+      
+      // Skip during inactive reactivation flow - ValidateOTP is managed by handleContactCoach
+      if (isInactiveReactivationFlow) return;
 
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
@@ -2627,7 +2757,7 @@ function WellnessValleyApp() {
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion, checkProfilePicture]);
+  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion, checkProfilePicture, isInactiveReactivationFlow]);
 
   // ? PERFORMANCE: Preload user context when user logs in (warm the cache)
   useEffect(() => {
@@ -2814,6 +2944,26 @@ function WellnessValleyApp() {
       });
     } catch (_) {
       /* non-critical � share card just won't show ideal weight */
+    }
+  };
+
+  /**
+   * Trigger reverse progress modal after weight save
+   * Checks if user's weight moved in wrong direction (reverse progress)
+   * and shows personalized tips if needed
+   */
+  const triggerReverseProgressModal = async (userId, weightId) => {
+    if (!userId || !weightId) return;
+    try {
+      console.log('🔍 [triggerReverseProgressModal] Checking progress for userId:', userId, 'weightId:', weightId);
+      const result = await weightProgressCheck.checkProgress(userId, weightId);
+      console.log('📋 [triggerReverseProgressModal] Result:', result);
+      if (result?.shouldShow) {
+        console.log('✅ [triggerReverseProgressModal] Showing modal');
+        setShowWeightProgressModal(true);
+      }
+    } catch (err) {
+      console.error('❌ Error checking weight progress:', err);
     }
   };
 
@@ -3133,7 +3283,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress and show tips modal
       const savedId = savedWeightIdRef.current || data?.id || null;
-      // await triggerReverseProgressModal(userId, savedId);
+      await triggerReverseProgressModal(userId, savedId);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -3232,7 +3382,7 @@ function WellnessValleyApp() {
 
       // ✅ Check for reverse weight progress after an edit-save too
       const editWeightId = savedWeightIdRef.current || result?.id || null;
-      // await triggerReverseProgressModal(userId, editWeightId);
+      await triggerReverseProgressModal(userId, editWeightId);
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -3960,7 +4110,7 @@ function WellnessValleyApp() {
         setPendingWeightData(null);
 
         handleLeaderboardRefresh();
-        // await triggerReverseProgressModal(userId, data?.id || null);
+        await triggerReverseProgressModal(userId, data?.id || null);
 
       } catch (error) {
         console.error('❌ Error saving weight:', error);
@@ -6185,6 +6335,47 @@ function WellnessValleyApp() {
     showInactiveModal,
     forceLoggedOut 
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HIGHEST PRIORITY: Show waiting modal if contacting coach
+  // This MUST be before ALL other render branches so nothing can block it
+  // ─────────────────────────────────────────────────────────────────────────
+  if (isWaitingForCoachOTP) {
+    console.log("⚪ [RENDER] Showing waiting modal (highest priority)");
+    return (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 999999,
+          background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '16px',
+        }}
+        ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] RENDERED AS TOP-LEVEL ⚪⚪⚪"); }}
+      >
+        <div style={{
+          background: 'white', borderRadius: '20px', padding: '40px',
+          maxWidth: '400px', width: '100%', textAlign: 'center',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '28px' }}>
+            <div style={{
+              width: '72px', height: '72px',
+              border: '5px solid #22c55e', borderTopColor: 'transparent',
+              borderRadius: '50%', animation: 'wv-spin 1s linear infinite',
+            }}></div>
+          </div>
+          <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: '#111827', marginBottom: '14px' }}>
+            Contacting Your Coach...
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: '16px', lineHeight: '1.7', margin: 0 }}>
+            We've sent a request to your coach. Please wait while we prepare the verification screen.
+          </p>
+        </div>
+        <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
   
   // CRITICAL: Render Inactive User Modal at the TOP, before any early returns
   // This ensures it shows even if we're stuck in a loading state
@@ -6285,6 +6476,40 @@ function WellnessValleyApp() {
             onClose={handleUserNotFoundModalClose}
           />
         )}
+        {isWaitingForCoachOTP && ReactDOM.createPortal(
+          <div
+            data-waiting-modal="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 999999,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '16px', backdropFilter: 'blur(8px)',
+            }}
+            ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED (branch1) ⚪⚪⚪"); }}
+          >
+            <div style={{
+              background: 'white', borderRadius: '16px', padding: '32px',
+              maxWidth: '400px', width: '100%', textAlign: 'center',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                <div style={{
+                  width: '64px', height: '64px', border: '4px solid #22c55e',
+                  borderTopColor: 'transparent', borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                }}></div>
+              </div>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111', marginBottom: '12px' }}>
+                Contacting Your Coach...
+              </h2>
+              <p style={{ color: '#666', fontSize: '16px', lineHeight: '1.6' }}>
+                We've sent a request to your coach. Please wait while we prepare the verification screen.
+              </p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>,
+          document.body
+        )}
       </>
     );
   }
@@ -6319,6 +6544,8 @@ function WellnessValleyApp() {
         {showValidateOTP && isInactiveReactivationFlow && (
           <Suspense fallback={null}>
             <ValidateOTP
+              key="reactivation"
+              isReactivationFlow={true}
               onClose={() => {
                 setShowValidateOTP(false);
                 setIsInactiveReactivationFlow(false);
@@ -6335,6 +6562,43 @@ function WellnessValleyApp() {
               onLogout={handleSignOut}
             />
           </Suspense>
+        )}
+
+        {/* Waiting for Coach OTP - Portal renders to document.body */}
+        {isWaitingForCoachOTP && ReactDOM.createPortal(
+          <div
+            data-waiting-modal="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 999999,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '16px',
+              backdropFilter: 'blur(8px)',
+            }}
+            ref={(el) => { if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪"); }}
+          >
+            <div style={{
+              background: 'white', borderRadius: '16px',
+              padding: '32px', maxWidth: '400px', width: '100%', textAlign: 'center',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                <div style={{
+                  width: '64px', height: '64px', border: '4px solid #22c55e',
+                  borderTopColor: 'transparent', borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                }}></div>
+              </div>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111', marginBottom: '12px' }}>
+                Contacting Your Coach...
+              </h2>
+              <p style={{ color: '#666', fontSize: '16px', lineHeight: '1.6' }}>
+                We've sent a request to your coach. Please wait while we prepare the verification screen.
+              </p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>,
+          document.body
         )}
       </>
     );
@@ -6484,6 +6748,21 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+
+      {/* ── Marathon Recognition Splash — full-screen overlay, position:fixed, zIndex:9999 ── */}
+      {pendingRecognition.length > 0 && (
+        <Suspense fallback={null}>
+          <MarathonRecognitionSplash
+            recognitions={pendingRecognition}
+            onComplete={dismissRecognition}
+            onDismiss={() =>
+              dismissRecognition(
+                pendingRecognition.map(r => ({ marathonId: r.marathonId, resultDate: r.resultDate })),
+              )
+            }
+          />
+        </Suspense>
+      )}
       {/* Launch overlay — covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
           (white + centred logo) so the transition is seamless: native splash
@@ -6707,6 +6986,14 @@ function WellnessValleyApp() {
           startTransition(() => setShowActivityTimeReport(true));
           Session.setCurrentPage("activity-time-report");
         }}
+        onShowActivityReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => {
+                startTransition(() => setShowActivityReport(true));
+                Session.setCurrentPage("activity-report");
+              }
+            : null
+        }
         onShowWellnessEnrollment={() => startTransition(() => setShowWellnessReport(true))}
         onShowWellnessReport={
           userRole === "admin" ||
@@ -7885,7 +8172,7 @@ function WellnessValleyApp() {
       />
  
       {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
-      {/* <WeightProgressTipsModal
+      <WeightProgressTipsModal
         isOpen={showWeightProgressModal}
         onClose={() => {
           setShowWeightProgressModal(false);
@@ -7897,7 +8184,7 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
-      /> */}
+      />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
@@ -8048,6 +8335,18 @@ function WellnessValleyApp() {
         </Suspense>
       )}
 
+      {/* Activity Report */}
+      {showActivityReport && (
+        <Suspense fallback={<LoadingSpinner message="Loading Activity Report..." />}>
+          <ActivityReport
+            user={user}
+            userRole={userRole}
+            apiBaseUrl={apiBaseUrl}
+            onBack={() => setShowActivityReport(false)}
+          />
+        </Suspense>
+      )}
+
       {/* Nutrition Centers Map */}
       {showNutritionCentersMap && (
         <Suspense
@@ -8114,17 +8413,26 @@ function WellnessValleyApp() {
       {showValidateOTP && (
         <Suspense fallback={null}>
           <ValidateOTP
+            key={isInactiveReactivationFlow ? 'reactivation' : 'setup'}
+            isReactivationFlow={isInactiveReactivationFlow}
             onClose={() => {
+              console.log("🔴 [ValidateOTP onClose] User closed modal", { isInactiveReactivationFlow });
               setShowValidateOTP(false);
               if (isInactiveReactivationFlow) {
                 // User cancelled reactivation — sign them out cleanly
                 setIsInactiveReactivationFlow(false);
                 handleSignOut();
               } else {
-                setShowSetupWizard(true);
+                // Regular login flow - go back to setup wizard only if not inactive
+                if (isUserActive) {
+                  setShowSetupWizard(true);
+                } else {
+                  console.log("🔴 [ValidateOTP onClose] User is inactive, not showing setup wizard");
+                }
               }
             }}
             onSuccess={() => {
+              console.log("🟢 [ValidateOTP onSuccess] OTP verified, closing modal", { isInactiveReactivationFlow, isUserActive });
               setShowValidateOTP(false);
               if (isInactiveReactivationFlow) {
                 // Reactivation complete — re-run status check to enter app
@@ -8133,6 +8441,10 @@ function WellnessValleyApp() {
                 if (storedUser) {
                   try { checkUserStatus(JSON.parse(storedUser)); } catch (_e) { /* ignore */ }
                 }
+              } else {
+                // Regular login flow - only show setup wizard if user is active
+                // If inactive, the checkUserStatus will show the inactive modal
+                console.log("🟢 [ValidateOTP onSuccess] Regular login flow, checking user status before showing setup wizard");
               }
               // Setup complete, user can now access dashboard
             }}
@@ -8485,6 +8797,31 @@ function WellnessValleyApp() {
           }}
         />
       )} */}
+      
+      {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
+      {isWaitingForCoachOTP && ReactDOM.createPortal(
+        <div 
+          data-waiting-modal="true"
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+          style={{ zIndex: 999999 }}
+          ref={(el) => {
+            if (el) console.log("⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪");
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-fadeIn">
+            <div className="flex justify-center mb-6">
+              <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-green-500"></div>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Contacting Your Coach...
+            </h2>
+            <p className="text-gray-600 text-lg leading-relaxed">
+              We've sent a request to your coach. Please wait while we prepare the verification screen.
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
     </LocationGuard>
   );
