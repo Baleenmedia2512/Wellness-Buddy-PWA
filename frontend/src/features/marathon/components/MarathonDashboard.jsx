@@ -683,17 +683,24 @@ const HIERARCHY_BADGE_MAP = {
 const DetailCell = ({ member }) => {
   const {
     name, profileImage, role, hierarchyRole,
-    dailyGrams, dailyWeightChange, disciplineStatus,
+    dailyGrams, dailyWeightChange, dayChange, lapGrams, disciplineStatus,
     isDayLeader, isLapLeader,
   } = member;
   const ds = DISCIPLINE_STATUS_MAP[disciplineStatus] || DISCIPLINE_STATUS_MAP.no_upload;
   const rb = ROLE_BADGE_MAP[role] || null;
   const hb = !rb ? (HIERARCHY_BADGE_MAP[hierarchyRole] || HIERARCHY_BADGE_MAP.direct) : null;
 
-  // Prefer grams; fall back to kg change. Never show "—" when any data exists.
+  // Defensive fallback: dailyGrams → dailyWeightChange → dayChange → lapGrams (vs. baseline).
+  // lapGrams ensures a value is shown when prevClosingWeight is null (Day 1 / missed yesterday).
   const grams = dailyGrams != null
     ? dailyGrams
-    : (dailyWeightChange != null ? Math.round(dailyWeightChange * 1000) : null);
+    : dailyWeightChange != null
+    ? Math.round(dailyWeightChange * 1000)
+    : dayChange != null
+    ? Math.round(dayChange * 1000)
+    : lapGrams != null
+    ? lapGrams
+    : null;
   const isLoss = grams != null && grams < 0;
   const isGain = grams != null && grams > 0;
   const gramsDisplay = grams == null ? '—'

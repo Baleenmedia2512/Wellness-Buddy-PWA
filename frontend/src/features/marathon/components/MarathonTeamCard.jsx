@@ -178,18 +178,31 @@ const InitialAvatar = ({ name, size }) => (
 
 // Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
-  const { name, profileImage, role, systemRole, dailyGrams, dailyChange } =
-    member;
+  const {
+    name, profileImage, role, systemRole,
+    dailyGrams, dailyChange, dayChange, lapGrams,
+  } = member;
 
+  // Defensive fallback chain:
+  // 1. dailyGrams   — pre-computed integer grams (primary)
+  // 2. dailyChange  — kg float alias for dayChange (backward-compat field)
+  // 3. dayChange    — raw daily kg change (same value, defensive alias check)
+  // 4. lapGrams     — change vs. enrollment baseline; used when prevClosingWeight
+  //                   is null (Day 1 or missed yesterday) so the cell never shows "--"
+  //                   for a member who has a valid weight today.
   const grams =
     dailyGrams != null
       ? Number(dailyGrams)
       : dailyChange != null
       ? Math.round(Number(dailyChange) * 1000)
+      : dayChange != null
+      ? Math.round(Number(dayChange) * 1000)
+      : lapGrams != null
+      ? Number(lapGrams)
       : null;
 
-const isLoss = grams < 0;
-const isGain = grams > 0;
+  const isLoss = grams != null && grams < 0;
+  const isGain = grams != null && grams > 0;
 
   const weightText =
   grams == null
