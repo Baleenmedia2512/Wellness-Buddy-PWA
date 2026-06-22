@@ -97,7 +97,7 @@ export async function fetchWeightRecords(userIds, startDate, endDate) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('UserId, Weight, CreatedAt')
+    .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserId', userIds)
     .gte('CreatedAt', `${startDate}T00:00:00`)
     .lte('CreatedAt', `${endDate}T23:59:59`)
@@ -148,7 +148,7 @@ export async function fetchFoodRecords(userIds, startDate, endDate) {
   
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('UserID, CreatedAt, TotalCalories, AnalysisData')
+    .select('UserID, CreatedAt, TotalCalories, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserID', userIdsAsString)
     .gte('CreatedAt', `${startDate}T00:00:00`)
     .lte('CreatedAt', `${endDate}T23:59:59`)

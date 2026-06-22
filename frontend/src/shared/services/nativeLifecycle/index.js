@@ -164,8 +164,13 @@ export async function getLaunchUrl() {
  * implementation. Kept as breadcrumbs for the future Reminders / StepCounter
  * re-enablement, not as live code.
  */
+/**
+ * Request all required permissions in order: camera → push → geolocation.
+ * Returns { locationGranted: boolean } so callers can gate app access.
+ * On web always returns { locationGranted: true } (no-op).
+ */
 export async function requestAllPermissions() {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform()) return { locationGranted: true };
   try {
     debugLog("📱 Requesting all permissions at once...");
 
@@ -174,7 +179,6 @@ export async function requestAllPermissions() {
 
     // Request push notification permissions
     await PushNotifications.requestPermissions();
-
     // Request location permissions for attendance tracking
     await Geolocation.requestPermissions();
 

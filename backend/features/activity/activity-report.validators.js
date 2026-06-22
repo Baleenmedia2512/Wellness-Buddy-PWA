@@ -3,7 +3,7 @@
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 
-const VALID_ACTIVITY_TYPES = new Set(['summary', 'weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']);
+const VALID_ACTIVITY_TYPES = new Set(['summary', 'member-summary', 'weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']);
 const VALID_DATE_RANGES = new Set(['today', 'yesterday', 'last7days', 'last30days', 'custom']);
 const VALID_ROLES = new Set(['admin', 'coach', 'member', 'developer']);
 
