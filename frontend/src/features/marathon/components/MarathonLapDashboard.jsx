@@ -50,19 +50,27 @@ const ShirtBadge = () => (
 );
 
 // ── Role badge — top-left, every participant gets one ──────────────────────
-const RoleBadge = ({ lapRole, systemRole }) => {
-  let label, bg;
-  if      (lapRole === 'captain')           { label = 'C';  bg = '#059669'; }
-  else if (lapRole === 'assistant_captain') { label = 'AC'; bg = '#0891b2'; }
-  else if (systemRole === 'upline' || systemRole === 'admin') { label = '⭐'; bg = '#7c3aed'; }
-  else                                      { label = '🔗'; bg = '#d97706'; }
+const RoleBadge = ({ lapRole, hierarchyRole }) => {
+  const hierIcon = hierarchyRole === 'downline' ? '⭐' : '🔗';
+  const hierBg   = hierarchyRole === 'downline' ? '#7c3aed' : '#d97706';
+  if (lapRole === 'captain' || lapRole === 'assistant_captain') {
+    const roleBg    = lapRole === 'captain' ? '#059669' : '#0891b2';
+    const roleLabel = lapRole === 'captain' ? 'C' : 'AC';
+    return (
+      <div style={{ position: 'absolute', top: 3, left: 3, zIndex: 10,
+        display: 'flex', gap: 1, alignItems: 'center' }}>
+        <div style={{ background: roleBg, color: '#fff', fontSize: 7, fontWeight: 900,
+          borderRadius: 3, padding: '1px 3px', lineHeight: 1.4,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>{roleLabel}</div>
+        <div style={{ background: hierBg, fontSize: 7, borderRadius: 3, padding: '1px 2px',
+          lineHeight: 1.4, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>{hierIcon}</div>
+      </div>
+    );
+  }
   return (
-    <div style={{
-      position: 'absolute', top: 3, left: 3, zIndex: 10,
-      background: bg, color: '#fff',
-      fontSize: 8, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
-      lineHeight: 1.4, boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-    }}>{label}</div>
+    <div style={{ position: 'absolute', top: 3, left: 3, zIndex: 10,
+      background: hierBg, fontSize: 8, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
+      lineHeight: 1.4, boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>{hierIcon}</div>
   );
 };
 
@@ -77,6 +85,17 @@ const InitialAvatar = ({ name, size }) => (
     {String(name || '?').trim().charAt(0).toUpperCase()}
   </div>
 );
+
+// ── Weight formatting helper (shared with MarathonTeamCard) ──────────────
+function formatGrams(grams) {
+  if (grams == null) return '—';
+  if (grams === 0)   return '▬ 0g';
+  const abs  = Math.abs(grams);
+  const sign = grams < 0 ? '▼' : '▲';
+  return abs >= 1000
+    ? `${sign} ${(abs / 1000).toFixed(2)}kg`
+    : `${sign} ${abs}g`;
+}
 
 // ── Weight result pill — inline, below name ────────────────────────────────
 const ResultPill = ({ dailyGrams, dailyChange, dayChange, lapGrams }) => {
@@ -94,22 +113,21 @@ const ResultPill = ({ dailyGrams, dailyChange, dayChange, lapGrams }) => {
   if (grams == null) {
     return <div style={{ marginTop: 3, fontSize: 9, color: '#9ca3af', fontWeight: 600 }}>—</div>;
   }
-  const isLoss  = grams < 0;
-  const isGain  = grams > 0;
-  const color   = isLoss ? '#059669' : isGain ? '#d97706' : '#6b7280';
-  const bg      = isLoss ? '#dcfce7' : isGain ? '#fef3c7' : '#f3f4f6';
-  const display = isGain ? `+${grams}g` : grams === 0 ? '0g' : `${grams}g`;
+  const isLoss = grams < 0;
+  const isGain = grams > 0;
+  const color  = isLoss ? '#059669' : isGain ? '#d97706' : '#6b7280';
+  const bg     = isLoss ? '#dcfce7' : isGain ? '#fef3c7' : '#f3f4f6';
   return (
     <div style={{
       marginTop: 3, fontSize: 9, fontWeight: 800,
       color, background: bg, borderRadius: 20, padding: '1px 6px', lineHeight: 1.4,
-    }}>{display}</div>
+    }}>{formatGrams(grams)}</div>
   );
 };
 
 // ── Single participant cell (matches share card MemberCell + discipline) ────
 const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
-  const { name, profileImage, role, systemRole, dailyGrams, dailyChange, dayChange, lapGrams, disciplineStatus } = member;
+  const { name, profileImage, role, hierarchyRole, dailyGrams, dailyChange, dayChange, lapGrams, disciplineStatus } = member;
   const ds = DS[disciplineStatus] || DS.no_upload;
 
   const ringColor = isDayLeader
@@ -137,7 +155,7 @@ const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
       padding: '24px 3px 8px', boxSizing: 'border-box',
       boxShadow: shadow, overflow: 'visible',
     }}>
-      <RoleBadge lapRole={role} systemRole={systemRole} />
+      <RoleBadge lapRole={role} hierarchyRole={hierarchyRole} />
       {isDayLeader && <CrownBadge />}
       {isLapLeader && !isDayLeader && <ShirtBadge />}
 

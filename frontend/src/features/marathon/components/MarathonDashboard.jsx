@@ -674,10 +674,10 @@ const ROLE_BADGE_MAP = {
   assistant_captain: { label: 'AC', bg: '#0891b2', color: '#fff' },
 };
 
-// Hierarchy badge — direct downline (🔗) vs co-coach branch (⭐)
+// Hierarchy badge — direct downline (🔗) vs deep downline / co-coach branch (⭐)
 const HIERARCHY_BADGE_MAP = {
   direct:   { label: '🔗', bg: '#d97706' },
-  co_coach: { label: '⭐', bg: '#7c3aed' },
+  downline: { label: '⭐', bg: '#7c3aed' },
 };
 
 const DetailCell = ({ member }) => {
@@ -687,8 +687,10 @@ const DetailCell = ({ member }) => {
     isDayLeader, isLapLeader,
   } = member;
   const ds = DISCIPLINE_STATUS_MAP[disciplineStatus] || DISCIPLINE_STATUS_MAP.no_upload;
+  // Role badge (C / AC) for captains; null for regular members
   const rb = ROLE_BADGE_MAP[role] || null;
-  const hb = !rb ? (HIERARCHY_BADGE_MAP[hierarchyRole] || HIERARCHY_BADGE_MAP.direct) : null;
+  // Hierarchy badge — always shown regardless of role
+  const hb = HIERARCHY_BADGE_MAP[hierarchyRole] || HIERARCHY_BADGE_MAP.direct;
 
   // Defensive fallback: dailyGrams → dailyWeightChange → dayChange → lapGrams (vs. baseline).
   // lapGrams ensures a value is shown when prevClosingWeight is null (Day 1 / missed yesterday).
@@ -703,10 +705,14 @@ const DetailCell = ({ member }) => {
     : null;
   const isLoss = grams != null && grams < 0;
   const isGain = grams != null && grams > 0;
+  // <1000g: show as grams; ≥1000g: convert to kg (2dp)
   const gramsDisplay = grams == null ? '—'
-    : isLoss ? `${(grams / 1000).toFixed(2)} kg`
-    : isGain ? `+${(grams / 1000).toFixed(2)} kg`
-    : '0 kg';
+    : grams === 0 ? '0g'
+    : (() => {
+        const abs  = Math.abs(grams);
+        const sign = grams < 0 ? '-' : '+';
+        return abs >= 1000 ? `${sign}${(abs / 1000).toFixed(2)} kg` : `${sign}${abs}g`;
+      })();
 
   const ringColor = isDayLeader ? '#f59e0b' : isLapLeader ? '#2563eb' : '#e5e7eb';
   const ringWidth = isDayLeader || isLapLeader ? 2.5 : 2;
@@ -720,20 +726,22 @@ const DetailCell = ({ member }) => {
         ? '0 0 0 2px rgba(245,158,11,0.35)'
         : isLapLeader ? '0 0 0 2px rgba(37,99,235,0.30)' : 'none',
     }}>
-      {/* Top-left: role OR hierarchy badge */}
-      {rb ? (
+      {/* Top-left: role badge (C/AC) + hierarchy indicator (🔗/⭐) — always shown */}
+      <div style={{
+        position: 'absolute', top: 4, left: 4, zIndex: 5,
+        display: 'flex', gap: 2, alignItems: 'center',
+      }}>
+        {rb && (
+          <div style={{
+            background: rb.bg, color: rb.color,
+            fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
+          }}>{rb.label}</div>
+        )}
         <div style={{
-          position: 'absolute', top: 4, left: 4, zIndex: 5,
-          background: rb.bg, color: rb.color,
-          fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
-        }}>{rb.label}</div>
-      ) : hb ? (
-        <div style={{
-          position: 'absolute', top: 4, left: 4, zIndex: 5,
           background: hb.bg, color: '#fff',
           fontSize: 9, fontWeight: 800, borderRadius: 4, padding: '1px 4px', lineHeight: 1.4,
         }}>{hb.label}</div>
-      ) : null}
+      </div>
 
       {/* Top-right: leader badge */}
       {isDayLeader && (
