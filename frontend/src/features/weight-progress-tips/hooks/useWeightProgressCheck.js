@@ -71,5 +71,7 @@ export function useWeightProgressCheck() {
     comparison: data?.comparison || null,
     tips: data?.tips || [],
     goalMode: data?.goalMode || null,
+    followedPlanCorrectly: data?.followedPlanCorrectly || false,
+    coachPhone: data?.coachPhone || null,
   };
 }

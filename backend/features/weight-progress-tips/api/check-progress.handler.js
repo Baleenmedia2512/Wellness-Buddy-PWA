@@ -21,6 +21,7 @@ import {
   getTodayNutrition,
   getYesterdayWater,
   getYesterdayActivity,
+  getCoachPhone,
 } from '../data/weight-progress.repo.js';
 import { convertToIST } from '../../../utils/supabaseClient.js';
 
@@ -39,14 +40,14 @@ export async function checkProgressHandler(query) {
   const { userId, currentWeightId } = validateCheckProgress(query);
   console.log('✅ [Step 1] Input validated. userId:', userId, 'currentWeightId:', currentWeightId);
 
-  // Step 2: Fetch user's weight goal mode
-  console.log('🔍 [Step 2] Fetching weight goal mode for userId:', userId);
+  // Step 2: Fetch user's profile data (height, BMR)
+  console.log('🔍 [Step 2] Fetching user profile for userId:', userId);
   const userGoal = await getUserWeightGoal(userId);
   console.log('📋 [Step 2] userGoal result:', userGoal);
 
-  const goalMode = (userGoal?.WeightGoalMode || 'loss').toLowerCase();
   const bmr = parseFloat(userGoal.Bmr) || 0;
-  console.log('✅ [Step 2] goalMode:', goalMode, 'BMR:', bmr);
+  const heightCm = parseFloat(userGoal.Height);
+  console.log('✅ [Step 2] heightCm:', heightCm, 'BMR:', bmr);
 
   // Step 3: Fetch recent weight records
   console.log('🔍 [Step 3] Fetching last 2 weight records for userId:', userId);
@@ -70,6 +71,27 @@ export async function checkProgressHandler(query) {
   console.log('✅ [Step 3] currentWeight:', currentWeight.Weight, 'kg (ID:', currentWeight.ID, ')');
 
   const currentWeightValue = parseFloat(currentWeight.Weight);
+
+  // Step 3b: Auto-detect goal mode from ideal weight (BMI 19–23)
+  let goalMode;
+  if (heightCm && !isNaN(heightCm) && heightCm >= 50 && heightCm <= 250) {
+    const heightM  = heightCm / 100;
+    const idealMin = 19 * heightM * heightM;  // BMI 19 lower bound
+    const idealMax = 23 * heightM * heightM;  // BMI 23 upper bound
+    if (currentWeightValue > idealMax) {
+      goalMode = 'loss';      // above ideal range → needs to lose
+    } else if (currentWeightValue < idealMin) {
+      goalMode = 'gain';      // below ideal range → needs to gain
+    } else {
+      goalMode = 'maintain';  // inside ideal range → no alert
+    }
+    console.log(`✅ [Step 3b] Auto goalMode: ${goalMode} | weight: ${currentWeightValue} kg | idealMin: ${idealMin.toFixed(1)} kg | idealMax: ${idealMax.toFixed(1)} kg`);
+  } else {
+    // Fallback to stored value if height is missing
+    goalMode = (userGoal?.WeightGoalMode || 'loss').toLowerCase();
+    console.log('⚠️ [Step 3b] Height unavailable — fallback goalMode:', goalMode);
+  }
+
   const waterTarget = calculateWaterTarget(currentWeightValue);
   const calorieTarget = computeCalorieTarget(bmr, goalMode);
   const displayCalorieTarget = computeDisplayCalorieTarget(bmr);
@@ -83,7 +105,7 @@ export async function checkProgressHandler(query) {
     const firstTimeTips = [
       {
         priority: 'high',
-        message: `Start your journey! Your goal: ${goalMode === 'loss' ? 'lose weight' : 'gain weight'}. Stay consistent.`,
+        message: `Start your journey! Your goal: ${goalMode === 'loss' ? 'lose weight' : goalMode === 'gain' ? 'gain weight' : 'maintain ideal weight'}. Stay consistent.`,
         icon: '🎯',
       },
       {
@@ -200,6 +222,21 @@ export async function checkProgressHandler(query) {
   });
   console.log('💡 [Step 9] tips generated:', tips.length, JSON.stringify(tips));
 
+  // Step 9b: Detect if user followed their nutrition + water plan correctly.
+  // If none of the nutrition/water tip icons fired, all targets were met.
+  const NUTRITION_TIP_ICONS = ['🔥', '🥩', '🍞', '🥑', '💧'];
+  const followedPlanCorrectly = !tips.some(t => NUTRITION_TIP_ICONS.includes(t.icon));
+  console.log('📋 [Step 9b] followedPlanCorrectly:', followedPlanCorrectly);
+
+  // Step 9c: If user followed the plan but weight went wrong, fetch coach phone
+  // so the frontend can offer a "Contact Your Coach" dial button.
+  let coachPhone = null;
+  if (followedPlanCorrectly && userGoal?.CoachId) {
+    console.log('📞 [Step 9c] Fetching coach phone for coachId:', userGoal.CoachId);
+    coachPhone = await getCoachPhone(userGoal.CoachId);
+    console.log('📞 [Step 9c] coachPhone:', coachPhone ? 'found' : 'not found');
+  }
+
   // Step 10: Build comparison data for UI (includes targets for the modal)
   const comparison = {
     weight: {
@@ -229,7 +266,7 @@ export async function checkProgressHandler(query) {
   console.log('✅ [Step 10] comparison built');
 
   // Step 11: Return full payload for UI
-  console.log('🏁 [Step 11] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode);
+  console.log('🏁 [Step 11] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode, '| followedPlanCorrectly:', followedPlanCorrectly);
   return {
     ok: true,
     data: {
@@ -237,6 +274,8 @@ export async function checkProgressHandler(query) {
       comparison,
       tips,
       goalMode,
+      followedPlanCorrectly,
+      coachPhone,
     },
   };
 }
