@@ -17,6 +17,7 @@ import {
   Trash2,
   Share2,
   Trophy,
+  Camera,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -55,6 +56,12 @@ const Header = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [autoShareEnabled, setAutoShareEnabled] = useState(
     localStorage.getItem('autoShareOnCapture') !== 'false'
+  );
+  // wv.autoCameraOnResume — controls whether the camera auto-opens every time
+  // the user returns the app to the foreground (after completing their first share).
+  // Default ON to preserve existing Snapchat-style behaviour.
+  const [autoCameraOnResumeEnabled, setAutoCameraOnResumeEnabled] = useState(
+    localStorage.getItem('wv.autoCameraOnResume') !== 'false'
   );
   const menuPanelRef = useRef(null);
 
@@ -628,7 +635,7 @@ const Header = ({
                   </div>
 
                   {/* ── AUTO SHARE TOGGLE ── */}
-                  <div className="px-4 py-2 border-t border-gray-100">
+                  <div className="px-4 pt-2 pb-1 border-t border-gray-100">
                     <TouchFeedbackButton
                       onClick={() => {
                         const newValue = !autoShareEnabled;
@@ -659,6 +666,42 @@ const Header = ({
                         <span
                           className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
                             autoShareEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </div>
+                    </TouchFeedbackButton>
+
+                    {/* ── AUTO CAMERA TOGGLE ── */}
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        const newValue = !autoCameraOnResumeEnabled;
+                        setAutoCameraOnResumeEnabled(newValue);
+                        localStorage.setItem('wv.autoCameraOnResume', String(newValue));
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      ariaLabel="Toggle Auto Camera"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Camera className={`h-4 w-4 ${autoCameraOnResumeEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                        <div className="text-left">
+                          <div className="text-xs font-medium text-gray-900">
+                            Auto Camera
+                          </div>
+                          <div className="text-[10px] text-gray-500 leading-tight">
+                            {autoCameraOnResumeEnabled
+                              ? 'Camera opens on app resume'
+                              : 'Open camera manually'}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          autoCameraOnResumeEnabled ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                            autoCameraOnResumeEnabled ? 'translate-x-5' : 'translate-x-0.5'
                           }`}
                         />
                       </div>
