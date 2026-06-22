@@ -28,19 +28,23 @@ const TaskNotificationPanel = ({
   const [activeTab, setActiveTab] = useState('todo');
   
   // Filter tasks by status
-  const pendingTasks = tasks.filter(t => t.status === 'pending');
+  const pendingTasks   = tasks.filter(t => t.status === 'pending');
   const completedTasks = tasks.filter(t => t.status === 'completed');
-  
-  // Auto-close if no pending tasks
+
+  // True only when the user has actually done some tasks today (not just "no tasks yet")
+  const hasDoneTasksToday = completedTasks.length > 0;
+
+  // Auto-close ONLY when user has completed tasks AND none are pending
+  // (do NOT auto-close at midnight just because no windows have opened yet)
   useEffect(() => {
-    if (!loading && pendingTasks.length === 0 && activeTab === 'todo') {
-      debugLog('[TaskPanel] No pending tasks, auto-closing in 2 seconds');
+    if (!loading && pendingTasks.length === 0 && hasDoneTasksToday && activeTab === 'todo') {
+      debugLog('[TaskPanel] All tasks completed — auto-closing in 2 seconds');
       const timer = setTimeout(() => {
         onClose();
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [loading, pendingTasks.length, activeTab, onClose]);
+  }, [loading, pendingTasks.length, hasDoneTasksToday, activeTab, onClose]);
   
   // Refresh tasks every 60 seconds while panel is open
   useEffect(() => {
@@ -145,11 +149,30 @@ const TaskNotificationPanel = ({
                 className="p-4 space-y-3"
               >
                 {pendingTasks.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="text-6xl mb-4">🎉</div>
-                    <h3 className="text-xl font-bold text-gray-700 mb-2">All Done!</h3>
-                    <p className="text-gray-500">You've completed all your tasks for now</p>
-                  </div>
+                  hasDoneTasksToday ? (
+                    /* All windows opened & completed */
+                    <div className="text-center py-16">
+                      <div className="text-6xl mb-4">🎉</div>
+                      <h3 className="text-xl font-bold text-gray-700 mb-2">All Done!</h3>
+                      <p className="text-gray-500">You've completed all your tasks for now</p>
+                    </div>
+                  ) : (
+                    /* No tasks yet — windows haven't opened yet today */
+                    <div className="text-center py-16">
+                      <div className="text-6xl mb-4">🕐</div>
+                      <h3 className="text-xl font-bold text-gray-700 mb-2">No Tasks Yet</h3>
+                      <p className="text-gray-500 text-sm px-4">
+                        Your daily tasks will appear here once their time windows open.
+                        Check back later!
+                      </p>
+                      <button
+                        onClick={refresh}
+                        className="mt-4 px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  )
                 ) : (
                   pendingTasks.map((task) => (
                     <div key={task.task_id}>

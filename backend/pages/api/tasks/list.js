@@ -8,9 +8,9 @@
  * - Log with requestId, userId, route, durationMs
  */
 
-import { format } from 'date-fns';
 import { getTasksByUserAndDate } from '../../../features/tasks/data/task-repo.js';
 import { isTaskVisible } from '../../../features/tasks/domain/task-rules.js';
+import { getISTPartsFromDate } from '../../../features/tasks/domain/completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
@@ -53,7 +53,9 @@ export default async function handler(req, res) {
     
     // Get query params
     const { status, date } = req.query;
-    const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+    // Use IST date to stay consistent with task creation (which also uses IST).
+    // UTC date (format(new Date())) diverges from IST after 18:30 UTC each day.
+    const targetDate = date || getISTPartsFromDate(new Date()).date;
     
     // Validate status if provided
     if (status && !['pending', 'completed', 'missed'].includes(status)) {

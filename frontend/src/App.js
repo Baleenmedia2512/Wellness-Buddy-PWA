@@ -127,7 +127,7 @@ import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import { fetchPublicCard, savePendingCard, consumePendingCard } from "./features/body-parameters-card";
 import { ClubSelectionModal } from "./features/nutrition-centers";
-// import { TaskNotificationPanel } from "./features/tasks";
+import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
@@ -297,8 +297,8 @@ function WellnessValleyApp() {
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
   
   // -- Task Notification Panel (June 2026) -----------------------------------
-  // const [showTaskPanel, setShowTaskPanel] = useState(false);
-  // const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   // PR 3 — disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
@@ -828,6 +828,11 @@ function WellnessValleyApp() {
       !showActivityTimeReport && !showDisciplineReport && !showMarathon && !showScreenTime;
   }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showMarathon, showScreenTime]);
 
+  // Keep task-panel refs in sync with state so mount-only effects never
+  // read stale values from their closures.
+  useEffect(() => { _userIdRef.current        = user?.id ?? null;   }, [user]);
+  useEffect(() => { _showTaskPanelRef.current = showTaskPanel;       }, [showTaskPanel]);
+
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
   // the user is actively filling out the form. Without this guard, returning
@@ -868,6 +873,11 @@ function WellnessValleyApp() {
   // is mounted (it waits for user/apiBaseUrl). Buffer the URL so it can be
   // replayed once the resolver is ready.
   const _pendingDeepLinkUrlRef = useRef(null);
+
+  // Task panel auto-open — refs that mirror state so mount-only effects
+  // can read current values without stale closures.
+  const _userIdRef         = useRef(null);  // mirrors user?.id
+  const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
 
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
@@ -945,6 +955,73 @@ function WellnessValleyApp() {
       try { handle?.remove?.(); } catch { /* ignore */ }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
+
+  // ─── AUTO-OPEN TASK PANEL ON HOME SCREEN RESUME ──────────────────────────
+  // When the app comes back to the foreground (native) or the browser tab
+  // becomes visible again (web) AND the user is on the home screen AND has
+  // pending tasks → open the Task Notification Panel automatically.
+  //
+  // Guards:
+  //  - user must be logged in            (_userIdRef)
+  //  - must be on home screen            (_homeScreenActiveRef)
+  //  - panel must not already be open    (_showTaskPanelRef)
+  //
+  // Uses refs so this effect is safely mount-only (no stale closures).
+  useEffect(() => {
+    const apiBase = getApiBaseUrl();
+
+    /** Fetch pending task count and open panel if > 0 */
+    async function checkAndOpenTaskPanel() {
+      const userId = _userIdRef.current;
+      if (!userId) return;                        // not logged in
+      if (!_homeScreenActiveRef.current) return;  // not on home screen
+      if (_showTaskPanelRef.current) return;       // panel already open
+
+      try {
+        const res  = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
+        const json = await res.json();
+        const pendingCount = (json?.data?.tasks || []).filter(t => t.status === 'pending').length;
+
+        if (pendingCount > 0) {
+          debugLog(`[TaskPanel] ${pendingCount} pending task(s) on resume — auto-opening panel`);
+          startTransition(() => setShowTaskPanel(true));
+        } else {
+          debugLog('[TaskPanel] No pending tasks on resume — panel stays closed');
+        }
+      } catch (err) {
+        debugLog('[TaskPanel] Could not check pending tasks on resume (non-critical):', err.message);
+      }
+    }
+
+    // ── Native (Capacitor): listen for appStateChange ──────────────────────
+    let nativeHandle = null;
+    let cancelled    = false;
+
+    if (Capacitor.isNativePlatform()) {
+      nativeLifecycle.addAppStateListener(({ isActive }) => {
+        if (!isActive || cancelled) return;
+        checkAndOpenTaskPanel();
+      }).then((h) => {
+        if (cancelled) { h?.remove?.(); } else { nativeHandle = h; }
+      }).catch(() => {});
+    }
+
+    // ── Web: listen for visibilitychange ──────────────────────────────────
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndOpenTaskPanel();
+      }
+    };
+    if (!Capacitor.isNativePlatform()) {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
+
+    return () => {
+      cancelled = true;
+      try { nativeHandle?.remove?.(); } catch { /* ignore */ }
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only, uses refs
 
   // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
   // Root cause: `permissionsReady` and `isUserActive` start as `true` for
@@ -1966,46 +2043,46 @@ function WellnessValleyApp() {
   // Fires when user taps a push notification while app is in foreground,
   // background, or cold-start. Reads data.action to decide what to open.
   // Only registered on native (Capacitor) — no-op on web.
-  // useEffect(() => {
-  //   if (!Capacitor.isNativePlatform()) return undefined;
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
 
-  //   let handle = null;
-  //   let cancelled = false;
+    let handle = null;
+    let cancelled = false;
 
-  //   const register = async () => {
-  //     try {
-  //       const { PushNotifications } = await import('@capacitor/push-notifications');
-  //       handle = await PushNotifications.addListener(
-  //         'pushNotificationActionPerformed',
-  //         (event) => {
-  //           const data = event?.notification?.data || {};
-  //           debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
+    const register = async () => {
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        handle = await PushNotifications.addListener(
+          'pushNotificationActionPerformed',
+          (event) => {
+            const data = event?.notification?.data || {};
+            debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
 
-  //           if (data.action === 'openTaskPanel') {
-  //             startTransition(() => {
-  //               if (data.taskId) setHighlightedTaskId(data.taskId);
-  //               setShowTaskPanel(true);
-  //             });
-  //           }
-  //         },
-  //       );
-  //       if (cancelled) {
-  //         handle?.remove?.();
-  //         handle = null;
-  //       }
-  //     } catch (err) {
-  //       debugLog('[App] FCM tap listener registration failed', { err: err?.message });
-  //     }
-  //   };
+            if (data.action === 'openTaskPanel') {
+              startTransition(() => {
+                if (data.taskId) setHighlightedTaskId(data.taskId);
+                setShowTaskPanel(true);
+              });
+            }
+          },
+        );
+        if (cancelled) {
+          handle?.remove?.();
+          handle = null;
+        }
+      } catch (err) {
+        debugLog('[App] FCM tap listener registration failed', { err: err?.message });
+      }
+    };
 
-  //   register();
+    register();
 
-  //   return () => {
-  //     cancelled = true;
-  //     try { handle?.remove?.(); } catch { /* ignore */ }
-  //   };
-  // // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
-  // }, []);
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
+  }, []);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -7105,29 +7182,7 @@ function WellnessValleyApp() {
 
           {/* No inline buttons here anymore - moved to sticky footer at bottom */}
 
-          {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
-          {user && user.id && (
-            <button
-              onClick={() => setShowTaskPanel(true)}
-              className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold w-14 h-14 rounded-full shadow-2xl transform transition-all duration-200 hover:scale-110 flex items-center justify-center"
-              aria-label="Show My Tasks"
-            >
-              <svg 
-                className="w-6 h-6" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
-                />
-              </svg>
-            </button>
-          )}
-          */}
+          {/* Task Notification FAB removed here — bell button lives at the bottom of the return */}
 
           {error && (() => {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
@@ -8767,7 +8822,7 @@ function WellnessValleyApp() {
       )}
 
       {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
-      {/* {user && !showTaskPanel && (
+      {user && !showTaskPanel && (
         <button
           onClick={() => startTransition(() => setShowTaskPanel(true))}
           style={{
@@ -8793,10 +8848,10 @@ function WellnessValleyApp() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
         </button>
-      )} */}
+      )}
 
       {/* Task Notification Panel — opens when user taps a task/water FCM notification */}
-      {/* {showTaskPanel && user && (
+      {showTaskPanel && user && (
         <TaskNotificationPanel
           userId={user.id}
           onClose={() => {
@@ -8827,7 +8882,7 @@ function WellnessValleyApp() {
             setShowTaskPanel(false);
           }}
         />
-      )} */}
+      )}
       
       {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
       {isWaitingForCoachOTP && ReactDOM.createPortal(

@@ -16,9 +16,13 @@ import { getApiBaseUrl } from '../../../config/api.config';
  * whose time windows already opened today but whose cron run was missed.
  * Fire-and-forget — errors are non-fatal.
  */
-async function triggerCatchup(apiBaseUrl) {
+async function triggerCatchup(apiBaseUrl, userId) {
   try {
-    const res = await fetch(`${apiBaseUrl}/api/tasks/catchup`, { method: 'POST' });
+    const res = await fetch(`${apiBaseUrl}/api/tasks/catchup?userId=${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
     const json = await res.json();
     debugLog('[useTaskData] catchup result', json);
     return json?.data?.createdCount ?? 0;
@@ -58,7 +62,7 @@ export function useTaskData(userId) {
         // so any windows that already opened today get their task rows created.
         if (fetched.length === 0 && runCatchup) {
           debugLog('[useTaskData] 0 tasks found — triggering catch-up');
-          const created = await triggerCatchup(apiBaseUrl);
+          const created = await triggerCatchup(apiBaseUrl, userId);
           if (created > 0) {
             // Re-fetch now that rows exist
             const retryRes  = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
