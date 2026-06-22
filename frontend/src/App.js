@@ -8222,7 +8222,7 @@ function WellnessValleyApp() {
           const email = goalModePromptEmail || user?.email;
           if (!email) return;
           const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-            method: 'PUT',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, weightGoalMode: selectedMode }),
           });
