@@ -79,10 +79,17 @@ const InitialAvatar = ({ name, size }) => (
 );
 
 // ── Weight result pill — inline, below name ────────────────────────────────
-const ResultPill = ({ dailyGrams, dailyChange }) => {
+const ResultPill = ({ dailyGrams, dailyChange, dayChange, lapGrams }) => {
+  // Defensive fallback: dailyGrams → dailyChange → dayChange → lapGrams (vs. baseline)
   const grams = dailyGrams != null
     ? dailyGrams
-    : (dailyChange != null ? Math.round(dailyChange * 1000) : null);
+    : dailyChange != null
+    ? Math.round(dailyChange * 1000)
+    : dayChange != null
+    ? Math.round(dayChange * 1000)
+    : lapGrams != null
+    ? lapGrams
+    : null;
 
   if (grams == null) {
     return <div style={{ marginTop: 3, fontSize: 9, color: '#9ca3af', fontWeight: 600 }}>—</div>;
@@ -102,7 +109,7 @@ const ResultPill = ({ dailyGrams, dailyChange }) => {
 
 // ── Single participant cell (matches share card MemberCell + discipline) ────
 const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
-  const { name, profileImage, role, systemRole, dailyGrams, dailyChange, disciplineStatus } = member;
+  const { name, profileImage, role, systemRole, dailyGrams, dailyChange, dayChange, lapGrams, disciplineStatus } = member;
   const ds = DS[disciplineStatus] || DS.no_upload;
 
   const ringColor = isDayLeader
@@ -152,7 +159,7 @@ const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
       }}>{name}</div>
 
-      <ResultPill dailyGrams={dailyGrams} dailyChange={dailyChange} />
+      <ResultPill dailyGrams={dailyGrams} dailyChange={dailyChange} dayChange={dayChange} lapGrams={lapGrams} />
 
       {/* Discipline status */}
       <div style={{ marginTop: 3, fontSize: 9, color: ds.color, fontWeight: 600, textAlign: 'center', lineHeight: 1 }}>
