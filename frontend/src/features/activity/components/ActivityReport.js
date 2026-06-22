@@ -353,25 +353,21 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   useEffect(() => {
     fetchSummary();
     fetchMemberSummary();
-    fetchDetails('education');
-  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
+  }, [fetchSummary, fetchMemberSummary]);
 
   const handleActivityClick = (activityId) => {
-    if (selectedActivity === activityId && activityId !== 'education') {
-      // Clicking active non-education badge goes back to education default
-      setSelectedActivity('education');
+    if (selectedActivity === activityId) {
+      setSelectedActivity(null);
       setDetailRecords([]);
-      fetchDetails('education');
     } else {
       setSelectedActivity(activityId);
-      setSearchQuery('');
       fetchDetails(activityId);
     }
   };
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
-    setSelectedActivity('education');
+    setSelectedActivity(null);
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
@@ -386,7 +382,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
     setShowDatePicker(false);
-    setSelectedActivity('education');
+    setSelectedActivity(null);
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
@@ -626,26 +622,23 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         )}
 
         {/* Activity Badges — compact pill badges */}
-        {summary && (
+        {!selectedActivity && summary && (
           <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar mb-5">
             {ACTIVITY_TYPES.map((activity) => {
               const Icon = activity.icon;
-              const isActive = selectedActivity === activity.id;
               return (
                 <TouchFeedbackButton
                   key={activity.id}
                   onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all active:scale-95 ${
-                    isActive
-                      ? `${activity.bgColor} ${activity.borderColor} shadow-md ring-1 ${activity.borderColor}`
-                      : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${
+                    activity.bgColor
+                  } ${activity.borderColor} shadow-sm active:scale-95`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-600'}`}>
+                  <Icon className={`w-3.5 h-3.5 ${activity.textColor}`} />
+                  <span className={`text-sm font-bold ${activity.textColor}`}>
                     {summary[activity.id] || 0}
                   </span>
-                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
                     {activity.label}
                   </span>
                 </TouchFeedbackButton>
@@ -798,6 +791,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
+                  <TouchFeedbackButton
+                    onClick={() => { setSelectedActivity(null); setSearchQuery(''); }}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                  >
+                    Back to Overview
+                  </TouchFeedbackButton>
                   {filteredRecords.length > 0 && (
                     <TouchFeedbackButton
                       onClick={handleDownload}
@@ -822,52 +821,52 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">S.No</th>
+                    <th className="sticky left-0 z-30 bg-gray-50 px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[50px] min-w-[50px]">S.No</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="sticky left-[50px] z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
                     >
                       Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
                     
                     {selectedActivity === 'weight' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
                     {selectedActivity === 'education' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
                       </>
                     )}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
                       </>
                     )}
                     {selectedActivity === 'water' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                       </>
                     )}
                   </tr>
@@ -875,8 +874,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.memberName}</td>
+                      <td className="sticky left-0 z-10 bg-white px-3 py-3 text-sm text-gray-900 w-[50px] min-w-[50px]">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+                      <td className="sticky left-[50px] z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{record.memberName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.city}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.village}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.phone}</td>
