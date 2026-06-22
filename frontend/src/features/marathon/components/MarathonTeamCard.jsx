@@ -56,55 +56,37 @@ const LeaderBadge = ({ emoji, bg, shadow }) => (
 );
 
 // Role badge — top-left; every participant gets one. Small + elegant.
-// Role badge: shows lap role (C / AC) + hierarchy indicator (🔗 direct / ⭐ downline).
-// Never uses systemRole — hierarchy is determined solely by the backend hierarchyRole field.
-const RoleBadge = ({ lapRole, hierarchyRole }) => {
-  const hierIcon = hierarchyRole === 'downline' ? '⭐' : '🔗';
-  const hierBg   = hierarchyRole === 'downline' ? '#7c3aed' : '#d97706';
-
+// Role badge: C (captain) | AC (assistant captain) | ⭐ (AC's direct-report member) | nothing.
+// Never uses systemRole or hierarchyRole — uses isAssistantCaptainDownline flag from backend.
+const RoleBadge = ({ lapRole, isAssistantCaptainDownline }) => {
   if (lapRole === 'captain') {
     return (
       <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        display: 'flex', gap: 2, alignItems: 'center' }}>
-        <div style={{ background: '#059669', color: '#fff', minWidth: 18, height: 18,
-          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
-          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
-        <div style={{ background: hierBg, minWidth: 16, height: 16,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, borderRadius: 5, lineHeight: 1,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
-      </div>
+        background: '#059669', color: '#fff', minWidth: 18, height: 18,
+        padding: '0 4px', boxSizing: 'border-box', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
     );
   }
   if (lapRole === 'assistant_captain') {
     return (
       <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        display: 'flex', gap: 2, alignItems: 'center' }}>
-        <div style={{ background: '#0891b2', color: '#fff', minWidth: 18, height: 18,
-          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
-          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
-        <div style={{ background: hierBg, minWidth: 16, height: 16,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, borderRadius: 5, lineHeight: 1,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
-      </div>
+        background: '#0891b2', color: '#fff', minWidth: 18, height: 18,
+        padding: '0 4px', boxSizing: 'border-box', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
     );
   }
-  // Regular member: hierarchy indicator only
-  return (
-    <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-      background: hierBg, minWidth: 18, height: 18,
-      padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-      fontSize: 10, borderRadius: 6, lineHeight: 1,
-      boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>
-      {hierIcon}
-    </div>
-  );
+  if (isAssistantCaptainDownline) {
+    // Plain gold star — no background, no border, no shadow
+    return (
+      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
+        fontSize: 13, lineHeight: 1 }}>⭐</div>
+    );
+  }
+  return null;
 };
 
 /**
@@ -202,7 +184,7 @@ const InitialAvatar = ({ name, size }) => (
 // Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
   const {
-    name, profileImage, role, systemRole, hierarchyRole,
+    name, profileImage, role, isAssistantCaptainDownline,
     dailyGrams, dailyChange, dayChange, lapGrams,
   } = member;
 
@@ -267,7 +249,7 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
           left: 8,
         }}
       >
-        <RoleBadge lapRole={role} hierarchyRole={hierarchyRole} />
+        <RoleBadge lapRole={role} isAssistantCaptainDownline={isAssistantCaptainDownline} />
       </div>
 
       {/* Right Badge */}

@@ -26,17 +26,20 @@ export function validateCreateMarathon(body) {
   if (!coachId || isNaN(Number(coachId))) {
     throw new ValidationError(400, 'coachId is required and must be a number');
   }
-  if (!name || typeof name !== 'string' || name.trim().length < 2) {
-    throw new ValidationError(400, 'name is required (min 2 characters)');
+  // name, teamName, startedAt, totalLaps, daysPerLap are now OPTIONAL.
+  // The create handler auto-generates them: team name from coach+AC names,
+  // cycle dates from the Herbalife 2-per-month schedule.
+  if (name != null && (typeof name !== 'string' || name.trim().length < 2)) {
+    throw new ValidationError(400, 'name, if provided, must be at least 2 characters');
   }
-  if (!totalLaps || isNaN(Number(totalLaps)) || Number(totalLaps) < 1 || Number(totalLaps) > 52) {
-    throw new ValidationError(400, 'totalLaps must be a number between 1 and 52');
+  if (totalLaps != null && (isNaN(Number(totalLaps)) || Number(totalLaps) < 1 || Number(totalLaps) > 52)) {
+    throw new ValidationError(400, 'totalLaps must be between 1 and 52');
   }
-  if (!daysPerLap || isNaN(Number(daysPerLap)) || Number(daysPerLap) < 1 || Number(daysPerLap) > 30) {
-    throw new ValidationError(400, 'daysPerLap must be a number between 1 and 30');
+  if (daysPerLap != null && (isNaN(Number(daysPerLap)) || Number(daysPerLap) < 1 || Number(daysPerLap) > 31)) {
+    throw new ValidationError(400, 'daysPerLap must be between 1 and 31');
   }
-  if (!startedAt || !/^\d{4}-\d{2}-\d{2}$/.test(startedAt)) {
-    throw new ValidationError(400, 'startedAt must be a date in YYYY-MM-DD format');
+  if (startedAt != null && !/^\d{4}-\d{2}-\d{2}$/.test(startedAt)) {
+    throw new ValidationError(400, 'startedAt must be YYYY-MM-DD');
   }
 
   // Accept either `participants` (new — objects with userId+role) or `participantUserIds` (legacy)
@@ -65,11 +68,11 @@ export function validateCreateMarathon(body) {
 
   return {
     coachId:      Number(coachId),
-    name:         name.trim(),
-    teamName:     teamName ? String(teamName).trim() : null,
-    totalLaps:    Number(totalLaps),
-    daysPerLap:   Number(daysPerLap),
-    startedAt,
+    name:         name ? name.trim() : null,       // null → auto-generated in handler
+    teamName:     teamName ? String(teamName).trim() : null, // null → auto-generated
+    totalLaps:    totalLaps ? Number(totalLaps) : null,      // null → defaulted to 1
+    daysPerLap:   daysPerLap ? Number(daysPerLap) : null,    // null → from cycle
+    startedAt:    startedAt || null,                         // null → from cycle
     participants: resolvedParticipants,
     // legacy compat
     participantUserIds: resolvedParticipants.map(p => p.userId),
