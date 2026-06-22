@@ -55,36 +55,30 @@ const LeaderBadge = ({ emoji, bg, shadow }) => (
   </div>
 );
 
-// Role badge — top-left; every participant gets one. Small + elegant.
-// Role badge: C (captain) | AC (assistant captain) | ⭐ (AC's direct-report member) | nothing.
-// Never uses systemRole or hierarchyRole — uses isAssistantCaptainDownline flag from backend.
+// Role badge — absolutely positioned within the cell (position:relative).
+// No intermediate wrapper needed — coordinates are relative to the cell directly.
 const RoleBadge = ({ lapRole, isAssistantCaptainDownline }) => {
+  const base = { position: 'absolute', top: 6, left: 6, zIndex: 12 };
   if (lapRole === 'captain') {
     return (
-      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        background: '#059669', color: '#fff', minWidth: 18, height: 18,
-        padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
+      <div style={{ ...base, background: '#059669', color: '#fff',
+        minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
         boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
     );
   }
   if (lapRole === 'assistant_captain') {
     return (
-      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        background: '#0891b2', color: '#fff', minWidth: 18, height: 18,
-        padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
+      <div style={{ ...base, background: '#0891b2', color: '#fff',
+        minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
         boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
     );
   }
   if (isAssistantCaptainDownline) {
-    // Plain gold star — no background, no border, no shadow
-    return (
-      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        fontSize: 13, lineHeight: 1 }}>⭐</div>
-    );
+    return <div style={{ ...base, fontSize: 13, lineHeight: 1 }}>⭐</div>;
   }
   return null;
 };
@@ -241,24 +235,17 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
           : "0 2px 8px rgba(0,0,0,.12)",
       }}
     >
-      {/* Left Badge */}
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 8,
-        }}
-      >
-        <RoleBadge lapRole={role} isAssistantCaptainDownline={isAssistantCaptainDownline} />
-      </div>
+      {/* Role badge — positioned by RoleBadge's own absolute coords */}
+      <RoleBadge lapRole={role} isAssistantCaptainDownline={isAssistantCaptainDownline} />
 
-      {/* Right Badge */}
+      {/* Leader badge — top-right */}
       <div
         style={{
           position: "absolute",
-          top: 8,
-          right: 8,
-          fontSize: 18,
+          top: 6,
+          right: 6,
+          fontSize: 16,
+          lineHeight: 1,
         }}
       >
         {isDayLeader ? "👑" : isLapLeader ? "👕" : ""}
@@ -297,11 +284,13 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
       {/* Weight Result */}
       <div
         style={{
-          marginTop: 12,
-          fontSize: 20,
+          marginTop: 10,
+          fontSize: 17,
           fontWeight: 900,
           color: weightColor,
           lineHeight: 1,
+          textAlign: "center",
+          width: "100%",
         }}
       >
         {weightText}
@@ -431,8 +420,8 @@ const MarathonTeamCard = ({ card }) => {
         </div>
         <div
           style={{
-            display: "inline-block",
-            marginTop: 10,
+            display: "block",
+            margin: "10px auto 0",
             background: "rgba(255,255,255,0.96)",
             color: "#0f766e",
             fontSize: 15,
@@ -440,11 +429,13 @@ const MarathonTeamCard = ({ card }) => {
             letterSpacing: 0.3,
             borderRadius: 100,
             padding: "6px 22px",
-            maxWidth: "92%",
+            width: "fit-content",
+            maxWidth: "88%",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             boxShadow: "0 4px 12px rgba(0,0,0,0.22)",
+            boxSizing: "border-box",
           }}
         >
           {displayName}
