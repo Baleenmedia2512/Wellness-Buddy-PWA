@@ -29,7 +29,7 @@ export async function getProfile({ email }) {
         userName: user.UserName,
         email: user.Email,
         height, dietType, phoneNumber,
-        weightGoalMode: user.WeightGoalMode || 'loss',
+        weightGoalMode: user.WeightGoalMode || null,
         profileComplete: !!(height && dietType && phoneNumber),
         profileImage: user.ProfileImage || null,
         coachId: user.CoachId || null,

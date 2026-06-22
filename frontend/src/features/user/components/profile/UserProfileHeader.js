@@ -56,7 +56,7 @@ const UserProfileHeader = ({
         </div>
       </div>
       <div className="flex flex-col items-end gap-2">
-        {/* {weightGoalMode && (
+        {weightGoalMode && (
           <span
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border-2 shadow-sm
               ${weightGoalMode === 'loss'
@@ -73,7 +73,7 @@ const UserProfileHeader = ({
               {weightGoalMode === 'loss' ? 'Loss Mode' : weightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
             </span>
           </span>
-        )} */}
+        )}
         <TouchFeedbackButton onClick={onClose} disabled={isSaving} ariaLabel="Close"
           className="p-2 hover:bg-green-700 rounded-lg disabled:opacity-50 text-white">
           <X className="w-5 h-5 text-white" />

@@ -131,6 +131,7 @@ import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
+import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import { CoachScoreSummary } from "./features/leaderboard";
 import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -370,6 +371,10 @@ function WellnessValleyApp() {
   // Weight Progress Tips feature (reverse progress detection)
   const weightProgressCheck = useWeightProgressCheck();
   const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
+
+  // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
+  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
+  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -2059,8 +2064,13 @@ function WellnessValleyApp() {
         profileCompletedRef.current = true;
         if (!silent) setProfileChecking(false);
         setShowCompleteProfile(false);
-        // Profile fields complete � check picture gate separately
+        // Profile fields complete — check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
+        // Force goal mode setup if user has never set it
+        if (result.data?.weightGoalMode === null || result.data?.weightGoalMode === undefined) {
+          setGoalModePromptEmail(userEmail);
+          setShowGoalModePrompt(true);
+        }
         return;
       }
 
@@ -8203,6 +8213,23 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
+      />
+
+      {/* Weight Goal Mode Setup Prompt — forced for users who never set their goal */}
+      <WeightGoalSetupPrompt
+        isOpen={showGoalModePrompt}
+        onSave={async (selectedMode) => {
+          const email = goalModePromptEmail || user?.email;
+          if (!email) return;
+          const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, weightGoalMode: selectedMode }),
+          });
+          if (!res.ok) throw new Error('Failed to save goal mode');
+          setShowGoalModePrompt(false);
+          setGoalModePromptEmail(null);
+        }}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
