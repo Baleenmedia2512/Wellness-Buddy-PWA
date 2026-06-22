@@ -75,12 +75,13 @@ export function WeightProgressTipsModal({
   const weightChange   = comparison.weight.change ?? 0;
   const prevWeight     = comparison.weight.previous;
   const currWeight     = comparison.weight.current;
+  const weightWentUp   = currWeight > prevWeight;   // true = increased, false = decreased
 
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
     : followedPlanCorrectly
     ? `You followed your plan correctly, but your weight increased. Please contact your coach for guidance.`
-    : weightChange > 0
+    : weightWentUp
     ? `Your weight is higher than your previous weight.`
     : `Your weight is lower than your previous weight.`;
 
@@ -140,7 +141,7 @@ export function WeightProgressTipsModal({
                   <p className="text-2xl font-bold text-gray-800">{prevWeight} kg</p>
                 </div>
                 <div className="flex flex-col items-center">
-                  {weightChange > 0
+                  {weightWentUp
                     ? <TrendingUp className="text-red-500" size={28} />
                     : <TrendingDown className="text-green-500" size={28} />
                   }
