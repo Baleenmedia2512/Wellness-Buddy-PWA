@@ -2066,11 +2066,6 @@ function WellnessValleyApp() {
         setShowCompleteProfile(false);
         // Profile fields complete — check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-        // Force goal mode setup if user has never set it
-        if (result.data?.weightGoalMode === null || result.data?.weightGoalMode === undefined) {
-          setGoalModePromptEmail(userEmail);
-          setShowGoalModePrompt(true);
-        }
         return;
       }
 
