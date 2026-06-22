@@ -214,15 +214,21 @@ export const DISCIPLINE_STATUS = Object.freeze({
  * Both times are in IST (UTC+5:30).  The DB stores CreatedAt as a plain IST string
  * "YYYY-MM-DD HH:MM:SS" so we only need to compare the time component.
  *
- * @param {string} istCreatedAt  — "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
+ * Supabase REST API returns timestamp columns in ISO 8601 format with a "T" separator
+ * ("YYYY-MM-DDTHH:MM:SS") even though the DB stores them with a space.  This function
+ * normalises both formats before extracting the time component.
+ *
+ * @param {string} istCreatedAt  — "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" or "HH:MM:SS"
  * @param {string} startHHMM     — "03:00"
  * @param {string} endHHMM       — "07:30"
  * @returns {boolean}
  */
 export function isWithinDisciplineWindow(istCreatedAt, startHHMM, endHHMM) {
   if (!istCreatedAt || !startHHMM || !endHHMM) return false;
-  // Extract time part (handles both "HH:MM:SS" and "YYYY-MM-DD HH:MM:SS")
-  const timePart = istCreatedAt.includes(' ') ? istCreatedAt.split(' ')[1] : istCreatedAt;
+  // Normalise: replace ISO 8601 "T" separator with a space so both
+  // "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS" are handled identically.
+  const normalised = String(istCreatedAt).replace('T', ' ');
+  const timePart = normalised.includes(' ') ? normalised.split(' ')[1] : normalised;
   const [th, tm]  = timePart.split(':').map(Number);
   const [sh, sm]  = startHHMM.split(':').map(Number);
   const [eh, em]  = endHHMM.split(':').map(Number);
