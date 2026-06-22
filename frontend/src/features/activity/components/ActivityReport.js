@@ -460,7 +460,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
       // Build CSV header based on activity type
-      let headers = ['S.No', 'Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Date', 'Time', 'Club Name'];
+      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Date', 'Time', 'Club Name'];
       
       if (selectedActivity === 'weight') {
         headers.push('Weight (kg)');
@@ -476,9 +476,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       const csvRows = [headers.join(',')];
 
-      filteredRecords.forEach((record, index) => {
+      filteredRecords.forEach((record) => {
         const baseRow = [
-          index + 1,
           `"${record.memberName || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -825,9 +824,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               <table className="w-full">
                 <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
-                    <th className="sticky left-0 z-30 bg-gray-50 px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[50px] min-w-[50px]">S.No</th>
                     <th
-                      className="sticky left-[50px] z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
+                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
@@ -874,8 +872,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-3 py-3 text-sm text-gray-900 w-[50px] min-w-[50px]">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td className="sticky left-[50px] z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{record.memberName}</td>
+                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{record.memberName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.city}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.village}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.phone}</td>
