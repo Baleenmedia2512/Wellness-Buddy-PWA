@@ -4,7 +4,6 @@ import { CheckCircle } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
-import WeightModeSelector from './WeightModeSelector';
 
 const UserProfileBody = ({ isLoading, form, latestWeight, error, successMessage }) => (
   <div className="p-6 space-y-5">
@@ -20,7 +19,6 @@ const UserProfileBody = ({ isLoading, form, latestWeight, error, successMessage 
           bmr={form.bmr} setBmr={form.setBmr} />
         <IdealWeightCards height={form.height} latestWeight={latestWeight} />
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
-        <WeightModeSelector value={form.weightGoalMode} onChange={form.setWeightGoalMode} />
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">{error}</div>}
         {successMessage && (
           <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2">

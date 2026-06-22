@@ -122,7 +122,6 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <UserProfileHeader user={user} name={form.name} userRole={userRole}
           profileImagePreview={profileImagePreview} faceStatus={face.status}
           showRecrop={!!profileImagePreview && !!cropper.rawImageSrc}
-          weightGoalMode={form.weightGoalMode}
           onPickImage={() => cropper.fileInputRef.current?.click()}
           onRecrop={cropper.reopenCropper} onClose={handleCancel} isSaving={isSaving} />
         <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"
