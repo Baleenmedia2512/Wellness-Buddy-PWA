@@ -116,7 +116,13 @@ export function useMarathon({ coachId, userId } = {}) {
     setLoadingRecognition(true);
     try {
       const res = await getPendingRecognition(userId);
-      setPendingRecognition(res.data || []);
+      // Only surface recognitions that have at least one winner — if all leaders
+      // are null (results not yet computed / no one qualified) there is nothing
+      // to show and we must not mark them as viewed.
+      const withLeaders = (res.data || []).filter(
+        r => r.dayLeader || r.lapLeader || r.communityLeader,
+      );
+      setPendingRecognition(withLeaders);
     } catch {
       // Non-fatal — splash is best-effort
     } finally {

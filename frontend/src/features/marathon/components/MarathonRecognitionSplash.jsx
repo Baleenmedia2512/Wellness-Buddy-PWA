@@ -69,11 +69,16 @@ const MarathonRecognitionSplash = ({ recognitions = [], onComplete, onDismiss })
     }
   }, [isLastSlide, isLastRec, onComplete, recognitions]);
 
-  // Auto-dismiss after 6 seconds if no interaction
+  // Auto-dismiss after 6 seconds if no interaction.
+  // Guard: only start the timer when there is a visible slide — if currentSlide
+  // is undefined (all leaders are null / no slides built) the component renders
+  // null and we must NOT auto-dismiss, otherwise onComplete fires silently and
+  // markRecognitionViewed writes a DB row the user never saw.
   useEffect(() => {
+    if (!currentSlide) return;
     const timer = setTimeout(advance, 6000);
     return () => clearTimeout(timer);
-  }, [advance, slideIdx, recIdx]);
+  }, [advance, slideIdx, recIdx, currentSlide]);
 
   if (!recognitions.length || !currentRec || !currentSlide) return null;
 
