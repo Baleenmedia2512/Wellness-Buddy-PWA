@@ -353,7 +353,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   useEffect(() => {
     fetchSummary();
     fetchMemberSummary();
-  }, [fetchSummary, fetchMemberSummary]);
+    // Also load detail records for the default pre-selected activity on mount.
+    // fetchDetails is the stable useCallback instance; selectedActivity is read
+    // via closure so it is NOT added as a dependency — we only want this to
+    // re-run when the API params change (i.e. when fetchDetails is recreated).
+    if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
   const handleActivityClick = (activityId) => {
     if (selectedActivity === activityId) {
