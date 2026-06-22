@@ -3,7 +3,7 @@
  *
  * v2 additions: myLaps, leaderboard, pendingRecognition
  */
-import { useState, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   listMarathons,
   getCardData,
@@ -43,6 +43,11 @@ export function useMarathon({ coachId, userId } = {}) {
   // ── Recognition splashes ───────────────────────────────────────────────────
   const [pendingRecognition, setPendingRecognition] = useState([]);
   const [loadingRecognition, setLoadingRecognition] = useState(false);
+  // In-memory cache of just-dismissed keys ("marathonId_resultDate").
+  // Prevents a concurrent fetchPendingRecognition (triggered by app-resume)
+  // from re-showing a recognition that the user already tapped "continue" on
+  // but whose markRecognitionViewed DB write hasn't landed yet.
+  const dismissedCacheRef = useRef(new Set());
 
   // ─────────────────────────────────────────────────────────────────────────
   const fetchMarathons = useCallback(async (status = null) => {
@@ -122,7 +127,13 @@ export function useMarathon({ coachId, userId } = {}) {
       const withLeaders = (res.data || []).filter(
         r => r.dayLeader || r.lapLeader || r.communityLeader,
       );
-      setPendingRecognition(withLeaders);
+      // Filter out any recognition the user already dismissed this session.
+      // Protects against the race where app-resume re-fetches before the
+      // markRecognitionViewed DB write has completed.
+      const filtered = withLeaders.filter(
+        r => !dismissedCacheRef.current.has(`${r.marathonId}_${r.resultDate}`),
+      );
+      setPendingRecognition(filtered);
     } catch {
       // Non-fatal — splash is best-effort
     } finally {
@@ -131,19 +142,29 @@ export function useMarathon({ coachId, userId } = {}) {
   }, [userId]);
 
   const dismissRecognition = useCallback(async (viewedList) => {
-    if (!userId || !viewedList?.length) {
-      setPendingRecognition([]);
-      return;
-    }
-    // Mark as viewed in DB FIRST — before clearing state.
-    // This ensures the API call completes even if the user closes the app
-    // immediately after tapping Continue or Skip.
+    // 1. Clear the splash immediately (optimistic) so it disappears on tap.
+    setPendingRecognition([]);
+
+    if (!userId || !viewedList?.length) return;
+
+    // 2. Add to in-memory cache so any concurrent fetchPendingRecognition
+    //    (e.g. triggered by app-resume) cannot re-show these recognitions
+    //    before the DB writes have landed.
+    viewedList.forEach(v =>
+      dismissedCacheRef.current.add(`${v.marathonId}_${v.resultDate}`)
+    );
+
+    // 3. Persist to DB.
     const results = await Promise.allSettled(
       viewedList.map(v => apiMarkViewed({ userId, marathonId: v.marathonId, resultDate: v.resultDate })),
     );
-    // Log any failures so they are visible in Supabase / console
+
     results.forEach((r, i) => {
       if (r.status === 'rejected') {
+        // DB write failed — remove from cache so the splash can show again.
+        dismissedCacheRef.current.delete(
+          `${viewedList[i]?.marathonId}_${viewedList[i]?.resultDate}`
+        );
         console.error('[Marathon] markRecognitionViewed failed', {
           marathonId:  viewedList[i]?.marathonId,
           resultDate:  viewedList[i]?.resultDate,
@@ -151,8 +172,6 @@ export function useMarathon({ coachId, userId } = {}) {
         });
       }
     });
-    // Clear splash state AFTER the DB writes have settled
-    setPendingRecognition([]);
   }, [userId]);
 
   return {
