@@ -169,8 +169,6 @@ const MarathonLeaderCard = ({ card }) => {
   const theme  = THEMES[cardType] || THEMES.day_leader;
   const leader = card[theme.leaderKey];
 
-  const isCrown  = cardType === 'lap_leader' || cardType === 'community_leader';
-  const BadgeIcon = isCrown ? CrownSvg : MedalSvg;
   const reductionVal = leader ? (theme.reductionValue(leader) || '—') : null;
 
   // ── No-leader state: results not yet available ──────────────────────────
@@ -308,15 +306,6 @@ const MarathonLeaderCard = ({ card }) => {
             ) : (
               <InitialAvatar name={leader?.name} size={166} bg={theme.accentColor + '66'} fg="#fff" />
             )}
-          </div>
-
-          {/* Badge (crown or medal) */}
-          <div style={{
-            position: 'absolute', top: -10, right: -10,
-            filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.3))',
-            zIndex: 4,
-          }}>
-            <BadgeIcon color={theme.accentColor} size={48} />
           </div>
         </div>
       </div>
