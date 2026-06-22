@@ -284,7 +284,7 @@ const LapSection = ({ lap, currentUserId }) => {
             { text: 'AC = Asst. Cap.', bg: '#0891b2' },
             { text: '👑 Day Leader',   bg: 'rgba(245,158,11,0.80)' },
             { text: '👕 Lap Leader',   bg: 'rgba(37,99,235,0.80)' },
-            { text: '🔗 Member',       bg: 'rgba(217,119,6,0.75)' },
+            { text: '⭐ AC Downline',   bg: 'rgba(0,0,0,0.35)' },
           ].map(({ text, bg }) => (
             <span key={text} style={{ fontSize: 8, fontWeight: 600, color: '#fff', background: bg, borderRadius: 5, padding: '2px 5px' }}>{text}</span>
           ))}
