@@ -467,12 +467,19 @@ export async function computeCardData(
 
     const prevClosingWeight = prevClosingByUser[uid] ?? null;
 
+    // Backfill logic: if no previous-day weight exists and the marathon has been
+    // running at least 1 day (totalDaysElapsed > 0), use the enrollment baseline
+    // as the reference so early days don't show "--".  Keeps day-change semantics
+    // (today vs. yesterday) while ensuring coaches always see real progress.
+    const effectivePrevWeight =
+      prevClosingWeight ?? (totalDaysElapsed > 0 ? baselineWeight : null);
+
     const effectiveTodayWeight = effectiveWeight;
 
     const hierarchyRole =
       Number(profileMap[uid]?.CoachId) === coachId ? "direct" : "downline";
 
-    const dayChange = computeDayChange(effectiveWeight, prevClosingWeight);
+    const dayChange = computeDayChange(effectiveWeight, effectivePrevWeight);
     const lapChange = computeLapChange(effectiveWeight, baselineWeight);
 
     return {
@@ -511,6 +518,32 @@ export async function computeCardData(
   const sortedParticipants = [...participants].sort(
     (a, b) => (LAP_ROLE_ORDER[a.role] ?? 1) - (LAP_ROLE_ORDER[b.role] ?? 1),
   );
+
+  // ── isAssistantCaptainDownline ─────────────────────────────────────────────
+  // Find the AC participant (if any), then BFS from their UserId through
+  // profileMap.CoachId chains to identify which participants report up to the AC.
+  const acParticipant = sortedParticipants.find(p => p.role === 'assistant_captain');
+  const acDownlineIds = new Set();
+  if (acParticipant) {
+    let frontier = new Set([acParticipant.userId]);
+    for (let depth = 0; depth < 5 && frontier.size > 0; depth++) {
+      const next = new Set();
+      for (const uid of userIds) {
+        if (!acDownlineIds.has(uid) && uid !== acParticipant.userId) {
+          const coachOfUid = Number(profileMap[uid]?.CoachId);
+          if (frontier.has(coachOfUid)) {
+            acDownlineIds.add(uid);
+            next.add(uid);
+          }
+        }
+      }
+      frontier = next;
+    }
+  }
+  sortedParticipants.forEach(p => {
+    p.isAssistantCaptainDownline = acDownlineIds.has(p.userId);
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const dayLeader = findDayLeaderV2(sortedParticipants);
   const lapLeader = findLapLeaderV2(sortedParticipants);

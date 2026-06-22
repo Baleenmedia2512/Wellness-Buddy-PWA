@@ -50,28 +50,30 @@ const ShirtBadge = () => (
 );
 
 // ── Role badge — top-left, every participant gets one ──────────────────────
-const RoleBadge = ({ lapRole, hierarchyRole }) => {
-  const hierIcon = hierarchyRole === 'downline' ? '⭐' : '🔗';
-  const hierBg   = hierarchyRole === 'downline' ? '#7c3aed' : '#d97706';
-  if (lapRole === 'captain' || lapRole === 'assistant_captain') {
-    const roleBg    = lapRole === 'captain' ? '#059669' : '#0891b2';
-    const roleLabel = lapRole === 'captain' ? 'C' : 'AC';
+const RoleBadge = ({ lapRole, isAssistantCaptainDownline }) => {
+  if (lapRole === 'captain') {
     return (
       <div style={{ position: 'absolute', top: 3, left: 3, zIndex: 10,
-        display: 'flex', gap: 1, alignItems: 'center' }}>
-        <div style={{ background: roleBg, color: '#fff', fontSize: 7, fontWeight: 900,
-          borderRadius: 3, padding: '1px 3px', lineHeight: 1.4,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>{roleLabel}</div>
-        <div style={{ background: hierBg, fontSize: 7, borderRadius: 3, padding: '1px 2px',
-          lineHeight: 1.4, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>{hierIcon}</div>
-      </div>
+        background: '#059669', color: '#fff', fontSize: 7, fontWeight: 900,
+        borderRadius: 3, padding: '1px 3px', lineHeight: 1.4,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>C</div>
     );
   }
-  return (
-    <div style={{ position: 'absolute', top: 3, left: 3, zIndex: 10,
-      background: hierBg, fontSize: 8, fontWeight: 800, borderRadius: 4, padding: '1px 4px',
-      lineHeight: 1.4, boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>{hierIcon}</div>
-  );
+  if (lapRole === 'assistant_captain') {
+    return (
+      <div style={{ position: 'absolute', top: 3, left: 3, zIndex: 10,
+        background: '#0891b2', color: '#fff', fontSize: 7, fontWeight: 900,
+        borderRadius: 3, padding: '1px 3px', lineHeight: 1.4,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>AC</div>
+    );
+  }
+  if (isAssistantCaptainDownline) {
+    // Plain gold star — no background
+    return (
+      <div style={{ position: 'absolute', top: 1, left: 3, zIndex: 10, fontSize: 9, lineHeight: 1 }}>⭐</div>
+    );
+  }
+  return null;
 };
 
 // ── Initial avatar fallback ────────────────────────────────────────────────
@@ -127,7 +129,7 @@ const ResultPill = ({ dailyGrams, dailyChange, dayChange, lapGrams }) => {
 
 // ── Single participant cell (matches share card MemberCell + discipline) ────
 const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
-  const { name, profileImage, role, hierarchyRole, dailyGrams, dailyChange, dayChange, lapGrams, disciplineStatus } = member;
+  const { name, profileImage, role, isAssistantCaptainDownline, dailyGrams, dailyChange, dayChange, lapGrams, disciplineStatus } = member;
   const ds = DS[disciplineStatus] || DS.no_upload;
 
   const ringColor = isDayLeader
@@ -155,7 +157,7 @@ const MemberCell = ({ member, isDayLeader, isLapLeader, isCurrentUser }) => {
       padding: '24px 3px 8px', boxSizing: 'border-box',
       boxShadow: shadow, overflow: 'visible',
     }}>
-      <RoleBadge lapRole={role} hierarchyRole={hierarchyRole} />
+      <RoleBadge lapRole={role} isAssistantCaptainDownline={isAssistantCaptainDownline} />
       {isDayLeader && <CrownBadge />}
       {isLapLeader && !isDayLeader && <ShirtBadge />}
 

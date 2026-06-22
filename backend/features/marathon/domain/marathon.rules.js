@@ -357,6 +357,60 @@ export function buildMarathonDisplayName(teamName, lapSequence, fallbackName) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Marathon cycle scheduling (Herbalife: 2 per month)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the current marathon cycle's start date and length (IST).
+ *
+ * Two cycles per calendar month:
+ *   Cycle A: 1st  → 14th  (14 days)
+ *   Cycle B: 15th → end   (variable: 13–16 days depending on month)
+ *
+ * @param {Date} [now] — injectable clock; pass an IST-shifted Date for IST semantics
+ * @returns {{ startedAt: string, daysPerLap: number }}
+ *   startedAt — "YYYY-MM-DD" of cycle start
+ *   daysPerLap — number of days in this cycle
+ */
+export function computeMarathonCycle(now = new Date()) {
+  const year  = now.getUTCFullYear();
+  const month = now.getUTCMonth(); // 0-indexed
+  const day   = now.getUTCDate();
+
+  let startDay, endDay;
+  if (day <= 14) {
+    startDay = 1;
+    endDay   = 14;
+  } else {
+    startDay = 15;
+    // Last day of this month
+    endDay   = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  }
+
+  const mm      = String(month + 1).padStart(2, '0');
+  const ddStart = String(startDay).padStart(2, '0');
+  return {
+    startedAt:  `${year}-${mm}-${ddStart}`,
+    daysPerLap: endDay - startDay + 1,
+  };
+}
+
+/**
+ * Build a normalised team name from coach and optional co-coach display names.
+ * UPPERCASE, letters and digits only, no spaces.
+ *
+ * @param {string} coachName
+ * @param {string|null} [coCoachName]
+ * @returns {string}
+ */
+export function buildTeamName(coachName, coCoachName = null) {
+  const sanitise = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const base = sanitise(coachName);
+  if (!coCoachName) return base;
+  return base + sanitise(coCoachName);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Eligible participant filter
 // ─────────────────────────────────────────────────────────────────────────────
 
