@@ -56,49 +56,72 @@ const LeaderBadge = ({ emoji, bg, shadow }) => (
 );
 
 // Role badge — top-left; every participant gets one. Small + elegant.
-const RoleBadge = ({ lapRole, systemRole }) => {
-  let label, bg;
-  if (lapRole === "captain") {
-    label = "C";
-    bg = "#059669";
-  } else if (lapRole === "assistant_captain") {
-    label = "AC";
-    bg = "#0891b2";
-  } else if (systemRole === "upline" || systemRole === "admin") {
-    label = "⭐";
-    bg = "#7c3aed";
-  } else {
-    label = "🔗";
-    bg = "#d97706";
+// Role badge: shows lap role (C / AC) + hierarchy indicator (🔗 direct / ⭐ downline).
+// Never uses systemRole — hierarchy is determined solely by the backend hierarchyRole field.
+const RoleBadge = ({ lapRole, hierarchyRole }) => {
+  const hierIcon = hierarchyRole === 'downline' ? '⭐' : '🔗';
+  const hierBg   = hierarchyRole === 'downline' ? '#7c3aed' : '#d97706';
+
+  if (lapRole === 'captain') {
+    return (
+      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
+        display: 'flex', gap: 2, alignItems: 'center' }}>
+        <div style={{ background: '#059669', color: '#fff', minWidth: 18, height: 18,
+          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
+        <div style={{ background: hierBg, minWidth: 16, height: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9, borderRadius: 5, lineHeight: 1,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
+      </div>
+    );
   }
+  if (lapRole === 'assistant_captain') {
+    return (
+      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
+        display: 'flex', gap: 2, alignItems: 'center' }}>
+        <div style={{ background: '#0891b2', color: '#fff', minWidth: 18, height: 18,
+          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
+        <div style={{ background: hierBg, minWidth: 16, height: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9, borderRadius: 5, lineHeight: 1,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
+      </div>
+    );
+  }
+  // Regular member: hierarchy indicator only
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: -6,
-        left: -6,
-        zIndex: 12,
-        background: bg,
-        color: "#fff",
-        minWidth: 18,
-        height: 18,
-        padding: "0 4px",
-        boxSizing: "border-box",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 10,
-        fontWeight: 900,
-        borderRadius: 6,
-        lineHeight: 1,
-        boxShadow: "0 2px 5px rgba(0,0,0,0.3)",
-        border: "1.5px solid #fff",
-      }}
-    >
-      {label}
+    <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
+      background: hierBg, minWidth: 18, height: 18,
+      padding: '0 4px', boxSizing: 'border-box', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      fontSize: 10, borderRadius: 6, lineHeight: 1,
+      boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>
+      {hierIcon}
     </div>
   );
 };
+
+/**
+ * Format an integer grams value for display.
+ *   < 1000g  → "▼ 250g"  / "▲ 300g"  / "▬ 0g"
+ *   ≥ 1000g  → "▼ 1.25kg" / "▲ 1.50kg"
+ *   null     → "--"
+ */
+function formatGrams(grams) {
+  if (grams == null) return '--';
+  if (grams === 0)   return '▬ 0g';
+  const abs  = Math.abs(grams);
+  const sign = grams < 0 ? '▼' : '▲';
+  return abs >= 1000
+    ? `${sign} ${(abs / 1000).toFixed(2)}kg`
+    : `${sign} ${abs}g`;
+}
 
 // Weight result pill — the dominant per-member element.
 // variant: 'day' (gold) | 'lap' (blue) | null (computed from grams)
@@ -179,7 +202,7 @@ const InitialAvatar = ({ name, size }) => (
 // Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
   const {
-    name, profileImage, role, systemRole,
+    name, profileImage, role, systemRole, hierarchyRole,
     dailyGrams, dailyChange, dayChange, lapGrams,
   } = member;
 
@@ -204,14 +227,8 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
   const isLoss = grams != null && grams < 0;
   const isGain = grams != null && grams > 0;
 
-  const weightText =
-  grams == null
-      ? "--"
-      : isLoss
-      ? `▼ ${Math.abs(grams)}g`
-      : isGain
-      ? `▲ ${grams}g`
-      : "▬ 0g";
+  // formatGrams handles g↔kg conversion at the ±1000g boundary
+  const weightText = formatGrams(grams);
 
   const weightColor =
   grams == null
@@ -250,7 +267,7 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
           left: 8,
         }}
       >
-        <RoleBadge lapRole={role} systemRole={systemRole} />
+        <RoleBadge lapRole={role} hierarchyRole={hierarchyRole} />
       </div>
 
       {/* Right Badge */}
@@ -530,7 +547,9 @@ const MarathonTeamCard = ({ card }) => {
             textShadow: "0 3px 16px rgba(0,0,0,0.4)",
           }}
         >
-          {teamDailyTotalDisplay || "—"}
+          {teamDailyTotal != null
+            ? formatGrams(Math.round(teamDailyTotal * 1000))
+            : (teamDailyTotalDisplay || "—")}
         </div>
       </div>
     </div>
