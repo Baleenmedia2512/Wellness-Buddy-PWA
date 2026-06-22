@@ -41,7 +41,7 @@ class LocationAttendanceService {
   async getCurrentLocation() {
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000, // 10 seconds
+      timeout: 15000, // 15 seconds
       maximumAge: 0, // No caching
     };
 
@@ -151,28 +151,34 @@ class LocationAttendanceService {
    * @returns {Promise<{attendanceType: string, latitude: number|null, longitude: number|null, nutritionCenterId: number|null, nearbyCenters: Array}>}
    */
   async determineAttendance(apiBaseUrl, userId) {
+    // Capture GPS first so coords are preserved even if centers API fails later.
+    let location = null;
     try {
-      // Get current location
-      const location = await this.getCurrentLocation();
+      location = await this.getCurrentLocation();
+    } catch (locErr) {
+      console.warn('⚠️ [attendance] GPS capture threw unexpectedly:', locErr.message);
+    }
 
-      if (!location || location.error) {
-        // GPS denied or unavailable -> return error info
-        return {
-          attendanceType: 'remote',
-          latitude: null,
-          longitude: null,
-          nutritionCenterId: null,
-          nearbyCenters: [],
-          locationError: location?.error || 'UNKNOWN',
-        };
-      }
+    // GPS denied or unavailable → remote, no coords
+    if (!location || location.error) {
+      return {
+        attendanceType: 'remote',
+        latitude: null,
+        longitude: null,
+        nutritionCenterId: null,
+        nearbyCenters: [],
+        locationError: location?.error || 'UNKNOWN',
+      };
+    }
 
+    // GPS succeeded — coords are now safe regardless of what happens next.
+    try {
       // Fetch nutrition centers
       const centers = await this.fetchNutritionCenters(apiBaseUrl, userId);
       debugLog(`📍 [attendance] Fetched ${centers.length} nutrition centers for proximity check`);
 
       if (centers.length === 0) {
-        // No centers registered -> remote with GPS coords
+        // No centers registered -> remote WITH GPS coords (coords always saved)
         debugLog('⚠️ [attendance] No nutrition centers found - marking as remote');
         return {
           attendanceType: 'remote',
@@ -215,19 +221,15 @@ class LocationAttendanceService {
       );
 
       if (nearbyCenters.length > 0) {
-        // Within 100m of center(s) -> club
-        // If multiple centers, return them all for user to choose
-        // If only one, auto-select it
         return {
           attendanceType: 'club',
           latitude: location.latitude,
           longitude: location.longitude,
           nutritionCenterId: nearbyCenters.length === 1 ? nearbyCenters[0].center.id : null,
-          nearbyCenters: nearbyCenters, // Return all nearby centers
+          nearbyCenters: nearbyCenters,
           centerName: nearbyCenters.length === 1 ? nearbyCenters[0].center.center_name : null,
         };
       } else {
-        // Not near any center -> remote with GPS coords
         return {
           attendanceType: 'remote',
           latitude: location.latitude,
@@ -237,12 +239,12 @@ class LocationAttendanceService {
         };
       }
     } catch (err) {
-      console.error('❌ Error determining attendance:', err);
-      // Fallback to remote without GPS
+      console.error('❌ Error determining attendance (centers/proximity stage):', err);
+      // GPS coords were already captured — save them as remote rather than losing them.
       return {
         attendanceType: 'remote',
-        latitude: null,
-        longitude: null,
+        latitude: location.latitude,
+        longitude: location.longitude,
         nutritionCenterId: null,
         nearbyCenters: [],
       };

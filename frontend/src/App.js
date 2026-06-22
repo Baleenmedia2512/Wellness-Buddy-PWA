@@ -3029,11 +3029,12 @@ function WellnessValleyApp() {
       // Fails gracefully — weight save is never blocked by a GPS timeout.
       let attendance;
       try {
-        // Add 5-second timeout to prevent hanging on web browsers
-        const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('GPS timeout after 5s')), 5000)
-        );
+        // Add timeout longer than the GPS getCurrentPosition timeout (10s) so
+      // the GPS call always has a chance to resolve before the race cuts it off.
+      const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('GPS timeout after 15s')), 15000)
+      );
         
         attendance = await Promise.race([gpsPromise, timeoutPromise]);
         console.log("📍 [performWeightSave] GPS location captured successfully");
