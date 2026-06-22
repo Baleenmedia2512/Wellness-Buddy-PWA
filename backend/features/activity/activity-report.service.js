@@ -329,13 +329,13 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
           return {
             userId: record.UserId,
             memberName: member.name,
-            city: member.city,
-            village: member.village,
+            city: record.City || member.city || 'N/A',
+            village: record.Village || member.village || 'N/A',
             phone: member.phone,
             coachName: member.coachName,
             date,
             time,
-            clubName: 'N/A',
+            clubName: record.CenterName || 'N/A',
             weight: record.Weight || 'N/A',
           };
         });
@@ -395,13 +395,13 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
           return {
             userId: memberUserId,
             memberName: member.name,
-            city: member.city,
-            village: member.village,
+            city: record.City || member.city || 'N/A',
+            village: record.Village || member.village || 'N/A',
             phone: member.phone,
             coachName: member.coachName,
             date,
             time,
-            clubName: 'N/A',
+            clubName: record.CenterName || 'N/A',
             calories: record.TotalCalories || 0,
             mealType: activityType,
           };
@@ -423,13 +423,13 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
           return {
             userId: memberUserId,
             memberName: member.name,
-            city: member.city,
-            village: member.village,
+            city: record.City || member.city || 'N/A',
+            village: record.Village || member.village || 'N/A',
             phone: member.phone,
             coachName: member.coachName,
             date,
             time,
-            clubName: 'N/A',
+            clubName: record.CenterName || 'N/A',
             waterLiters: volumeLiters,
           };
         });
