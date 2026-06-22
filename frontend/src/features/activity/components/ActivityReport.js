@@ -209,6 +209,9 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
   );
 };
 
+/** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
+const display = (val) => (!val || val === 'N/A') ? '—' : val;
+
 // Main Component
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [loading, setLoading] = useState(false);
@@ -218,13 +221,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
-  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  // Member summary (education attendance per member — shown on mount)
+  const [memberSummaries, setMemberSummaries] = useState([]);
+  const [memberStats, setMemberStats] = useState(null);
+  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -308,28 +317,66 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
 
+  const fetchMemberSummary = useCallback(async () => {
+    if (!user?.id || !apiBaseUrl) return;
+
+    setMemberSummaryLoading(true);
+    try {
+      const params = new URLSearchParams({
+        userId: String(user.id),
+        activityType: 'member-summary',
+        dateRange,
+        role: userRole || 'member',
+      });
+
+      if (dateRange === 'custom' && customStartDate && customEndDate) {
+        params.set('startDate', formatDateForApi(customStartDate));
+        params.set('endDate', formatDateForApi(customEndDate));
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
+        cache: 'no-store',
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch member summaries');
+      }
+
+      setMemberSummaries(data.members || []);
+      setMemberStats(data.stats || null);
+    } catch (err) {
+      // Non-critical: silently log; summary tiles remain visible
+      console.warn('Member summary fetch failed:', err.message);
+    } finally {
+      setMemberSummaryLoading(false);
+    }
+  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+
   useEffect(() => {
     fetchSummary();
-  }, [fetchSummary]);
+    fetchMemberSummary();
+    // Also load detail records for the default pre-selected activity on mount.
+    // fetchDetails is the stable useCallback instance; selectedActivity is read
+    // via closure so it is NOT added as a dependency — we only want this to
+    // re-run when the API params change (i.e. when fetchDetails is recreated).
+    if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
   const handleActivityClick = (activityId) => {
-    if (selectedActivity === activityId) {
-      setSelectedActivity(null);
-      setDetailRecords([]);
-    } else {
-      setSelectedActivity(activityId);
-      fetchDetails(activityId);
-    }
+    setSelectedActivity(activityId);
+    fetchDetails(activityId);
   };
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
+    setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
     if (range === 'custom') {
       setShowDatePicker(true);
     } else {
       setShowDatePicker(false);
-      setSelectedActivity(null);
-      setDetailRecords([]);
     }
   };
 
@@ -337,9 +384,20 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
     setShowDatePicker(false);
-    setSelectedActivity(null);
     setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
   };
+
+  // Filter member summaries by search query
+  const filteredMemberSummaries = useMemo(() => {
+    if (!memberSearchQuery) return memberSummaries;
+    const q = memberSearchQuery.toLowerCase();
+    return memberSummaries.filter(m =>
+      (m.memberName || '').toLowerCase().includes(q) ||
+      (m.coachName || '').toLowerCase().includes(q)
+    );
+  }, [memberSummaries, memberSearchQuery]);
 
   // Filter and sort records
   const filteredRecords = useMemo(() => {
@@ -403,7 +461,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
       // Build CSV header based on activity type
-      let headers = ['S.No', 'Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Date', 'Time', 'Club Name'];
+      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Reg. Date', 'Reg. Time', 'Club Name'];
       
       if (selectedActivity === 'weight') {
         headers.push('Weight (kg)');
@@ -419,9 +477,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       const csvRows = [headers.join(',')];
 
-      filteredRecords.forEach((record, index) => {
+      filteredRecords.forEach((record) => {
         const baseRow = [
-          index + 1,
           `"${record.memberName || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -509,16 +566,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <ArrowLeft className="w-6 h-6" />
               </TouchFeedbackButton>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Education Attendance</h1>
-                <p className="text-sm text-gray-500">Track downline member activities</p>
+                <h1 className="text-xl font-bold text-gray-900">Attendance Report</h1>
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={fetchSummary}
+              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading}
+              disabled={loading || memberSummaryLoading}
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
@@ -527,7 +583,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Date Range Filter — single horizontal scrollable row */}
         <div className="mb-6">
-          <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {DATE_RANGES.map((range) => (
               <TouchFeedbackButton
                 key={range.value}
@@ -564,30 +620,29 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           </div>
         )}
 
-        {/* Activity Badges — single horizontal scrollable row */}
-        {!selectedActivity && summary && (
-          <div className="flex gap-3 overflow-x-auto pb-3 hide-scrollbar mb-6">
+        {/* Activity Type Tabs — always visible, highlights the active type */}
+        {summary && (
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-5">
             {ACTIVITY_TYPES.map((activity) => {
               const Icon = activity.icon;
+              const isActive = selectedActivity === activity.id;
               return (
                 <TouchFeedbackButton
                   key={activity.id}
                   onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 p-4 rounded-2xl border-2 transition-all w-36 ${
-                    activity.bgColor
-                  } ${activity.borderColor} shadow-sm active:scale-95`}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
+                    isActive
+                      ? `${activity.bgColor} ${activity.borderColor}`
+                      : 'bg-white border-gray-200'
+                  }`}
                 >
-                  <div className="flex flex-col items-center gap-2">
-                    <div className={`p-2.5 rounded-full bg-white bg-opacity-70`}>
-                      <Icon className={`w-6 h-6 ${activity.textColor}`} />
-                    </div>
-                    <p className={`text-2xl font-bold ${activity.textColor}`}>
-                      {summary[activity.id] || 0}
-                    </p>
-                    <p className="text-xs font-semibold text-gray-600 text-center leading-tight">
-                      {activity.label}
-                    </p>
-                  </div>
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
+                    {summary[activity.id] || 0}
+                  </span>
+                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {activity.label}
+                  </span>
                 </TouchFeedbackButton>
               );
             })}
@@ -603,12 +658,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
-                  <TouchFeedbackButton
-                    onClick={() => setSelectedActivity(null)}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                  >
-                    Back to Overview
-                  </TouchFeedbackButton>
                   {filteredRecords.length > 0 && (
                     <TouchFeedbackButton
                       onClick={handleDownload}
@@ -633,52 +682,51 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">S.No</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
                     >
-                      Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
                     
                     {selectedActivity === 'weight' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
                     {selectedActivity === 'education' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
                       </>
                     )}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
                       </>
                     )}
                     {selectedActivity === 'water' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                       </>
                     )}
                   </tr>
@@ -686,15 +734,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.memberName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.city}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.village}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.phone}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.coachName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.date}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.time}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.clubName}</td>
+                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{display(record.memberName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {record.clubName && record.clubName !== 'N/A'
+                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
+                          : <span className="text-gray-400 italic">Remote</span>
+                        }
+                      </td>
                       
                       {selectedActivity === 'weight' && (
                         <td className="px-4 py-3 text-sm font-semibold text-blue-600">{record.weight}</td>

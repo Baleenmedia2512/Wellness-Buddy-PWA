@@ -45,7 +45,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           phone: data.phoneNumber || '',
           dietType: data.dietType || '',
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
-          weightGoalMode: data.weightGoalMode || 'loss',
+          weightGoalMode: data.weightGoalMode || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);

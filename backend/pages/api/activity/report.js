@@ -1,10 +1,6 @@
-/**
- * Activity Report API Endpoint
- * Returns activity summary counts or detailed records for a specific activity type
- */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateActivityReport } from '../../../features/activity/activity-report.validators.js';
-import { getActivitySummary, getActivityDetails } from '../../../features/activity/activity-report.service.js';
+import { getActivitySummary, getActivityDetails, getActivityMemberSummary } from '../../../features/activity/activity-report.service.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
@@ -17,6 +13,10 @@ export default async function handler(req, res) {
     
     if (params.activityType === 'summary') {
       return getActivitySummary(params);
+    }
+
+    if (params.activityType === 'member-summary') {
+      return getActivityMemberSummary(params);
     }
     
     return getActivityDetails(params);

@@ -131,6 +131,7 @@ import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
+import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import { CoachScoreSummary } from "./features/leaderboard";
 import { NutritionRefreshProvider, useNutritionRefresh } from "./shared/context/NutritionRefreshContext";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -370,6 +371,10 @@ function WellnessValleyApp() {
   // Weight Progress Tips feature (reverse progress detection)
   const weightProgressCheck = useWeightProgressCheck();
   const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
+
+  // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
+  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
+  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -2059,8 +2064,13 @@ function WellnessValleyApp() {
         profileCompletedRef.current = true;
         if (!silent) setProfileChecking(false);
         setShowCompleteProfile(false);
-        // Profile fields complete � check picture gate separately
+        // Profile fields complete — check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
+        // Force goal mode setup if user has never set it
+        if (result.data?.weightGoalMode === null || result.data?.weightGoalMode === undefined) {
+          setGoalModePromptEmail(userEmail);
+          setShowGoalModePrompt(true);
+        }
         return;
       }
 
@@ -3029,11 +3039,12 @@ function WellnessValleyApp() {
       // Fails gracefully — weight save is never blocked by a GPS timeout.
       let attendance;
       try {
-        // Add 5-second timeout to prevent hanging on web browsers
-        const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('GPS timeout after 5s')), 5000)
-        );
+        // Add timeout longer than the GPS getCurrentPosition timeout (10s) so
+      // the GPS call always has a chance to resolve before the race cuts it off.
+      const gpsPromise = locationAttendanceService.determineAttendance(apiBaseUrl, userId);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('GPS timeout after 15s')), 15000)
+      );
         
         attendance = await Promise.race([gpsPromise, timeoutPromise]);
         console.log("📍 [performWeightSave] GPS location captured successfully");
@@ -6316,6 +6327,7 @@ function WellnessValleyApp() {
   const deferredShowDashboard = useDeferredValue(showDashboard);
   const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
   const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
+  const deferredShowActivityReport = useDeferredValue(showActivityReport);
   const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
   const deferredShowMarathon = useDeferredValue(showMarathon);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
@@ -6685,6 +6697,23 @@ function WellnessValleyApp() {
           }}
           apiBaseUrl={apiBaseUrl}
           userRole={userRole}
+        />
+      </Suspense>
+    );
+  }
+
+  // Activity Report (Education Attendance) — full-page module
+  if (deferredShowActivityReport) {
+    return (
+      <Suspense fallback={null}>
+        <ActivityReport
+          user={user}
+          userRole={userRole}
+          apiBaseUrl={apiBaseUrl}
+          onBack={() => {
+            setShowActivityReport(false);
+            Session.setCurrentPage("main");
+          }}
         />
       </Suspense>
     );
@@ -8186,6 +8215,23 @@ function WellnessValleyApp() {
         userName={savedUserName}
       />
 
+      {/* Weight Goal Mode Setup Prompt — forced for users who never set their goal */}
+      <WeightGoalSetupPrompt
+        isOpen={showGoalModePrompt}
+        onSave={async (selectedMode) => {
+          const email = goalModePromptEmail || user?.email;
+          if (!email) return;
+          const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, weightGoalMode: selectedMode }),
+          });
+          if (!res.ok) throw new Error('Failed to save goal mode');
+          setShowGoalModePrompt(false);
+          setGoalModePromptEmail(null);
+        }}
+      />
+
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
         isOpen={showNewUserProfileModal}
@@ -8331,18 +8377,6 @@ function WellnessValleyApp() {
           <AttendanceReport
             user={user}
             onBack={() => setShowAttendanceReport(false)}
-          />
-        </Suspense>
-      )}
-
-      {/* Activity Report */}
-      {showActivityReport && (
-        <Suspense fallback={<LoadingSpinner message="Loading Activity Report..." />}>
-          <ActivityReport
-            user={user}
-            userRole={userRole}
-            apiBaseUrl={apiBaseUrl}
-            onBack={() => setShowActivityReport(false)}
           />
         </Suspense>
       )}
