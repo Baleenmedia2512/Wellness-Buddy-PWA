@@ -62,11 +62,16 @@ export async function handleGetCardData(query) {
   }
 
   // ── Enrich participants with display-formatted values ─────────────────────
-  const enrichedParticipants = (liveData.participants || []).map(p => ({
-    ...p,
-    dailyChangeDisplay: formatWeightChange(p.dailyChange),
-    lapChangeDisplay:   formatWeightChange(p.lapChange),
-  }));
+ const dayLeaderId = dayLeader?.userId;
+const lapLeaderId = lapLeader?.userId;
+
+const enrichedParticipants = (liveData.participants || []).map(p => ({
+  ...p,
+  isDayLeader: p.userId === dayLeaderId,
+  isLapLeader: p.userId === lapLeaderId,
+  dailyChangeDisplay: formatWeightChange(p.dailyChange),
+  lapChangeDisplay: formatWeightChange(p.lapChange),
+}));
 
   const cardPayload = {
     ...liveData,

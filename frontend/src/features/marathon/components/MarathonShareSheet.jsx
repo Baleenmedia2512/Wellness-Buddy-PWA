@@ -27,7 +27,7 @@ import { debugLog }            from '../../../shared/utils/logger.js';
 
 const NEEDS_IMAGE_CAPTURE = Capacitor.isNativePlatform();
 const CAPTURE_OPTS        = { scale: 1.5, quality: 0.85, immediate: true };
-
+const CAPTURE_WIDTH = 720;
 const waitForPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
 function buildShareText(card) {
@@ -133,14 +133,14 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
         left:          '-9999px',
         top:           0,
         /* Match CARD_W exactly so html2canvas captures no extra whitespace */
-        width:         400,
+        width:         CAPTURE_WIDTH,
         height:        'auto',
         overflow:      'visible',
         pointerEvents: 'none',
         zIndex:        -1,
       }}
     >
-      <div ref={cardRef} style={{ width: 400, display: 'inline-block' }}>
+      <div ref={cardRef} style={{ width: CAPTURE_WIDTH , display: 'inline-block' }}>
         {isLeaderCard
           ? <MarathonLeaderCard card={card} />
           : <MarathonTeamCard   card={card} />
