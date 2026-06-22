@@ -160,9 +160,10 @@ const InitialAvatar = ({ name = '?', size = 160, bg = '#ffffff22', fg = '#fff' }
  *     dayLeader?: object,
  *     lapLeader?: object,
  *   }
+ *   fullScreen?: boolean  — when true, fills its container instead of using CARD_W
  * }} props
  */
-const MarathonLeaderCard = ({ card }) => {
+const MarathonLeaderCard = ({ card, fullScreen = false }) => {
   if (!card) return null;
 
   const { cardType = 'day_leader', marathonName, lapNumber, dayNumber } = card;
@@ -222,16 +223,18 @@ const MarathonLeaderCard = ({ card }) => {
     );
   }
 
+  const photoSize = fullScreen ? 190 : 176;
+
   return (
     <div style={{
-      width: CARD_W,
-      minHeight: 580,
+      ...(fullScreen
+        ? { width: '100%', flex: 1, borderRadius: 0, display: 'flex', flexDirection: 'column' }
+        : { width: CARD_W, minHeight: 580, borderRadius: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }
+      ),
       background: theme.bgGradient,
-      borderRadius: 28,
       overflow: 'hidden',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif',
       position: 'relative',
-      boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
     }}>
 
       {/* ── Background glow ── */}
@@ -244,7 +247,7 @@ const MarathonLeaderCard = ({ card }) => {
       {/* ── Title section ── */}
       <div style={{
         position: 'relative',
-        paddingTop: 36,
+        paddingTop: fullScreen ? 14 : 36,
         textAlign: 'center',
         zIndex: 2,
       }}>
@@ -274,7 +277,7 @@ const MarathonLeaderCard = ({ card }) => {
       }}>
         {/* Ray burst behind photo */}
         <div style={{ position: 'absolute', top: -40, left: '50%', transform: 'translateX(-50%)' }}>
-          <RayBurst color="rgba(255,255,255,0.10)" size={280} />
+          <RayBurst color="rgba(255,255,255,0.10)" size={fullScreen ? 340 : 280} />
         </div>
 
         {/* Photo container */}
@@ -288,7 +291,7 @@ const MarathonLeaderCard = ({ card }) => {
 
           {/* White border ring */}
           <div style={{
-            width: 176, height: 176,
+            width: photoSize, height: photoSize,
             borderRadius: '50%',
             border: '5px solid rgba(255,255,255,0.9)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
@@ -304,7 +307,7 @@ const MarathonLeaderCard = ({ card }) => {
                 crossOrigin="anonymous"
               />
             ) : (
-              <InitialAvatar name={leader?.name} size={166} bg={theme.accentColor + '66'} fg="#fff" />
+              <InitialAvatar name={leader?.name} size={photoSize - 10} bg={theme.accentColor + '66'} fg="#fff" />
             )}
           </div>
         </div>
@@ -314,12 +317,15 @@ const MarathonLeaderCard = ({ card }) => {
       <div style={{
         position: 'relative',
         zIndex: 2,
-        margin: '24px 20px 24px',
+        ...(fullScreen
+          ? { flex: 1, margin: '16px 16px 0', borderRadius: '22px 22px 0 0', padding: '22px 24px 0',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              boxShadow: '0 -4px 24px rgba(0,0,0,0.12)' }
+          : { margin: '24px 20px 24px', borderRadius: 20, padding: '22px 24px 24px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }
+        ),
         background: 'rgba(255,255,255,0.95)',
         backdropFilter: 'blur(20px)',
-        borderRadius: 20,
-        padding: '22px 24px 24px',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
       }}>
 
         {/* Name */}
@@ -357,8 +363,8 @@ const MarathonLeaderCard = ({ card }) => {
         {/* Divider */}
         <div style={{ height: 1, background: '#f3f4f6', marginBottom: 18 }} />
 
-        {/* Reduction metric */}
-        <div style={{ textAlign: 'center' }}>
+        {/* Reduction metric — flex:1 in fullScreen so it fills remaining height */}
+        <div style={{ textAlign: 'center', ...(fullScreen ? { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } : {}) }}>
           <div style={{
             fontSize: 12, fontWeight: 700, color: '#9ca3af',
             textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6,
@@ -366,7 +372,7 @@ const MarathonLeaderCard = ({ card }) => {
             {theme.reductionLabel}
           </div>
           <div style={{
-            fontSize: 42, fontWeight: 900,
+            fontSize: fullScreen ? 52 : 42, fontWeight: 900,
             color: theme.metricColor,
             letterSpacing: -1,
             lineHeight: 1,
@@ -374,20 +380,33 @@ const MarathonLeaderCard = ({ card }) => {
             {reductionVal || '—'}
           </div>
         </div>
+
+        {/* Watermark lives inside the white sheet in fullScreen mode */}
+        {fullScreen && (
+          <div style={{
+            fontSize: 10, fontWeight: 600, color: '#d1d5db',
+            letterSpacing: 2.5, textTransform: 'uppercase',
+            paddingBottom: 14, paddingTop: 10,
+          }}>
+            Wellness Valley
+          </div>
+        )}
       </div>
 
-      {/* ── Footer watermark ── */}
-      <div style={{
-        position: 'relative', zIndex: 2,
-        textAlign: 'center',
-        paddingBottom: 20,
-        fontSize: 11, fontWeight: 600,
-        color: 'rgba(255,255,255,0.55)',
-        letterSpacing: 1.5,
-        textTransform: 'uppercase',
-      }}>
-        Wellness Valley
-      </div>
+      {/* ── Footer watermark (share-card mode only) ── */}
+      {!fullScreen && (
+        <div style={{
+          position: 'relative', zIndex: 2,
+          textAlign: 'center',
+          paddingBottom: 20,
+          fontSize: 11, fontWeight: 600,
+          color: 'rgba(255,255,255,0.55)',
+          letterSpacing: 1.5,
+          textTransform: 'uppercase',
+        }}>
+          Wellness Valley
+        </div>
+      )}
     </div>
   );
 };
