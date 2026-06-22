@@ -21,6 +21,7 @@ import {
   getTodayNutrition,
   getYesterdayWater,
   getYesterdayActivity,
+  getCoachPhone,
 } from '../data/weight-progress.repo.js';
 import { convertToIST } from '../../../utils/supabaseClient.js';
 
@@ -221,6 +222,21 @@ export async function checkProgressHandler(query) {
   });
   console.log('💡 [Step 9] tips generated:', tips.length, JSON.stringify(tips));
 
+  // Step 9b: Detect if user followed their nutrition + water plan correctly.
+  // If none of the nutrition/water tip icons fired, all targets were met.
+  const NUTRITION_TIP_ICONS = ['🔥', '🥩', '🍞', '🥑', '💧'];
+  const followedPlanCorrectly = !tips.some(t => NUTRITION_TIP_ICONS.includes(t.icon));
+  console.log('📋 [Step 9b] followedPlanCorrectly:', followedPlanCorrectly);
+
+  // Step 9c: If user followed the plan but weight went wrong, fetch coach phone
+  // so the frontend can offer a "Contact Your Coach" dial button.
+  let coachPhone = null;
+  if (followedPlanCorrectly && userGoal?.CoachId) {
+    console.log('📞 [Step 9c] Fetching coach phone for coachId:', userGoal.CoachId);
+    coachPhone = await getCoachPhone(userGoal.CoachId);
+    console.log('📞 [Step 9c] coachPhone:', coachPhone ? 'found' : 'not found');
+  }
+
   // Step 10: Build comparison data for UI (includes targets for the modal)
   const comparison = {
     weight: {
@@ -250,7 +266,7 @@ export async function checkProgressHandler(query) {
   console.log('✅ [Step 10] comparison built');
 
   // Step 11: Return full payload for UI
-  console.log('🏁 [Step 11] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode);
+  console.log('🏁 [Step 11] Returning shouldShow: true with', tips.length, 'tips for goalMode:', goalMode, '| followedPlanCorrectly:', followedPlanCorrectly);
   return {
     ok: true,
     data: {
@@ -258,6 +274,8 @@ export async function checkProgressHandler(query) {
       comparison,
       tips,
       goalMode,
+      followedPlanCorrectly,
+      coachPhone,
     },
   };
 }

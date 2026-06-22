@@ -8208,6 +8208,8 @@ function WellnessValleyApp() {
         comparison={weightProgressCheck.comparison}
         goalMode={weightProgressCheck.goalMode}
         userName={savedUserName}
+        followedPlanCorrectly={weightProgressCheck.followedPlanCorrectly}
+        coachPhone={weightProgressCheck.coachPhone}
       />
 
       {/* Weight Goal Mode Setup Prompt — forced for users who never set their goal */}

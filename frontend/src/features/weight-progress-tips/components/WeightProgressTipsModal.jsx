@@ -56,6 +56,8 @@ export function WeightProgressTipsModal({
   comparison,
   goalMode,
   userName,
+  followedPlanCorrectly = false,
+  coachPhone = null,
 }) {
   if (!isOpen || !comparison) return null;
 
@@ -70,6 +72,8 @@ export function WeightProgressTipsModal({
 
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
+    : followedPlanCorrectly
+    ? `You followed your plan correctly, but your weight increased. Please contact your coach for guidance.`
     : goalMode === 'loss'
     ? `You gained ${Math.abs(weightChange).toFixed(1)} kg even though your goal is weight loss.`
     : `You lost ${Math.abs(weightChange).toFixed(1)} kg even though your goal is weight gain.`;
@@ -77,6 +81,13 @@ export function WeightProgressTipsModal({
   const handleNoOpenGallery = () => {
     onClose();
     onOpenGallery?.();
+  };
+
+  const handleContactCoach = () => {
+    if (coachPhone) {
+      // _system opens the native phone dialer on Android/iOS via Capacitor
+      window.open(`tel:${coachPhone}`, '_system');
+    }
   };
 
   const yNutrition = comparison.nutrition?.yesterday  || {};
@@ -125,7 +136,7 @@ export function WeightProgressTipsModal({
                 <div className="flex flex-col items-center">
                   {weightChange > 0
                     ? <TrendingUp className="text-red-500" size={28} />
-                    : <TrendingDown className="text-orange-500" size={28} />
+                    : <TrendingDown className="text-green-500" size={28} />
                   }
                 </div>
                 <div className="text-center">
@@ -151,7 +162,7 @@ export function WeightProgressTipsModal({
           {!isFirstUpload && (
             <section>
               <h3 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span>📊</span> Yesterday&rsquo;s Analysis
+                <span>📊</span> Yesterday&rsquo;s Nutrition
               </h3>
               <div className="bg-gray-50 rounded-xl px-4 py-1 divide-y divide-gray-100">
                 <AnalysisRow
@@ -199,16 +210,26 @@ export function WeightProgressTipsModal({
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-2xl flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-50 border-2 border-green-300 text-orange-800 hover:bg-orange-100 transition"
+            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-50 border-2 border-green-300 text-green-800 hover:bg-green-100 transition"
           >
             OK
           </button>
-          <button
-            onClick={handleNoOpenGallery}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-500 text-white hover:from-orange-600 hover:to-red-600 transition"
-          >
-            NO
-          </button>
+          {followedPlanCorrectly ? (
+            <button
+              onClick={handleContactCoach}
+              disabled={!coachPhone}
+              className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              📞 Contact Your Coach
+            </button>
+          ) : (
+            <button
+              onClick={handleNoOpenGallery}
+              className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition"
+            >
+              NO
+            </button>
+          )}
         </div>
 
       </div>
