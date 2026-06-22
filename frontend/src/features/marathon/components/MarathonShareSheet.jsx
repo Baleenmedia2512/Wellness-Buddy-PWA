@@ -27,7 +27,12 @@ import { debugLog }            from '../../../shared/utils/logger.js';
 
 const NEEDS_IMAGE_CAPTURE = Capacitor.isNativePlatform();
 const CAPTURE_OPTS        = { scale: 1.5, quality: 0.85, immediate: true };
-const CAPTURE_WIDTH = 720;
+
+// Card widths must match CARD_W declared inside each card component.
+// The capture container must be exactly this wide so html2canvas never
+// includes transparent padding on the right edge.
+const TEAM_CARD_W   = 480;   // MarathonTeamCard   CARD_W
+const LEADER_CARD_W = 400;   // MarathonLeaderCard CARD_W
 const waitForPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
 function buildShareText(card) {
@@ -125,6 +130,8 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
                     || card.cardType === 'lap_leader'
                     || card.cardType === 'community_leader';
 
+  const captureWidth = isLeaderCard ? LEADER_CARD_W : TEAM_CARD_W;
+
   return (
     <div
       aria-hidden="true"
@@ -132,15 +139,15 @@ const MarathonShareSheet = ({ isOpen, onClose, card, shareUrl }) => {
         position:      'fixed',
         left:          '-9999px',
         top:           0,
-        /* Match CARD_W exactly so html2canvas captures no extra whitespace */
-        width:         CAPTURE_WIDTH,
+        /* Width matches the card exactly — no transparent whitespace on right */
+        width:         captureWidth,
         height:        'auto',
         overflow:      'visible',
         pointerEvents: 'none',
         zIndex:        -1,
       }}
     >
-      <div ref={cardRef} style={{ width: CAPTURE_WIDTH , display: 'inline-block' }}>
+      <div ref={cardRef} style={{ width: captureWidth, display: 'inline-block' }}>
         {isLeaderCard
           ? <MarathonLeaderCard card={card} />
           : <MarathonTeamCard   card={card} />
