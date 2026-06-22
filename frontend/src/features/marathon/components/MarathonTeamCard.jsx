@@ -108,54 +108,141 @@ const InitialAvatar = ({ name, size }) => (
 
 // Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
-  const { name, profileImage, role, systemRole, dailyGrams, dailyChange } = member;
-  const theme     = isDayLeader ? GOLD : isLapLeader ? BLUE : null;
-  const ringColor = theme ? theme.ring : '#e5e7eb';
-  const ringWidth = theme ? 3 : 2;
-  const photoGlow = theme
-    ? theme.glow
-    : '0 3px 8px rgba(0,0,0,0.18)';
-  const variant   = isDayLeader ? 'day' : isLapLeader ? 'lap' : null;
+  const { name, profileImage, role, systemRole, dailyGrams } = member;
+
+  const isLoss = dailyGrams < 0;
+  const isGain = dailyGrams > 0;
+
+  const weightText =
+    dailyGrams == null
+      ? '--'
+      : isLoss
+      ? `▼ ${Math.abs(dailyGrams)}g`
+      : isGain
+      ? `▲ ${dailyGrams}g`
+      : '▬ 0g';
+
+  const weightColor =
+    dailyGrams == null
+      ? '#9ca3af'
+      : isLoss
+      ? '#16a34a'
+      : isGain
+      ? '#ea580c'
+      : '#6b7280';
 
   return (
-    <div style={{
-      flex: '1 1 0', background: 'rgba(255,255,255,0.98)', borderRadius: 14,
-      position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '14px 4px 11px', boxSizing: 'border-box', overflow: 'visible',
-      boxShadow: theme
-        ? (isDayLeader
-            ? '0 6px 18px rgba(245,158,11,0.30)'
-            : '0 6px 18px rgba(37,99,235,0.26)')
-        : '0 2px 8px rgba(0,0,0,0.14)',
-      border: theme ? `1.5px solid ${theme.ring}` : '1px solid rgba(0,0,0,0.04)',
-    }}>
-      {/* Photo with badges anchored to it */}
-      <div style={{ position: 'relative', width: PHOTO_SIZE, height: PHOTO_SIZE }}>
-        <RoleBadge lapRole={role} systemRole={systemRole} />
-        {isDayLeader && <LeaderBadge emoji="👑" bg="#f59e0b" shadow="0 2px 8px rgba(245,158,11,0.8)" />}
-        {isLapLeader && !isDayLeader && <LeaderBadge emoji="👕" bg="#2563eb" shadow="0 2px 8px rgba(37,99,235,0.8)" />}
-
-        <div style={{
-          width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: '50%', overflow: 'hidden',
-          border: `${ringWidth}px solid ${ringColor}`, background: '#e5e7eb',
-          boxShadow: photoGlow, boxSizing: 'border-box',
-        }}>
-          {profileImage
-            ? <img src={profileImage} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} crossOrigin="anonymous" />
-            : <InitialAvatar name={name} size={PHOTO_SIZE} />
-          }
-        </div>
+    <div
+      style={{
+        flex: 1,
+        background: '#fff',
+        borderRadius: 18,
+        minHeight: 180,
+        position: 'relative',
+        padding: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        boxSizing: 'border-box',
+        boxShadow:
+          isDayLeader
+            ? '0 0 0 3px #fbbf24'
+            : isLapLeader
+            ? '0 0 0 3px #3b82f6'
+            : '0 2px 8px rgba(0,0,0,.12)',
+      }}
+    >
+      {/* Left Badge */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+        }}
+      >
+        <RoleBadge
+          lapRole={role}
+          systemRole={systemRole}
+        />
       </div>
 
-      {/* Weight result — dominant element */}
-      <ResultPill dailyGrams={dailyGrams} dailyChange={dailyChange} variant={variant} />
+      {/* Right Badge */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          fontSize: 18,
+        }}
+      >
+        {isDayLeader
+          ? '👑'
+          : isLapLeader
+          ? '👕'
+          : ''}
+      </div>
 
-      {/* Name — secondary, single line */}
-      <div style={{
-        marginTop: 4, fontSize: 10, fontWeight: 600, color: '#4b5563', textAlign: 'center',
-        lineHeight: 1.2, width: '100%', padding: '0 4px', boxSizing: 'border-box',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{name}</div>
+      {/* Photo */}
+      <div
+        style={{
+          marginTop: 8,
+          width: 82,
+          height: 82,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          border: isDayLeader
+            ? '4px solid #fbbf24'
+            : isLapLeader
+            ? '4px solid #3b82f6'
+            : '2px solid #e5e7eb',
+        }}
+      >
+        {profileImage ? (
+          <img
+            src={profileImage}
+            alt={name}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <InitialAvatar
+            name={name}
+            size={82}
+          />
+        )}
+      </div>
+
+      {/* Weight Result */}
+      <div
+        style={{
+          marginTop: 12,
+          fontSize: 20,
+          fontWeight: 900,
+          color: weightColor,
+          lineHeight: 1,
+        }}
+      >
+        {weightText}
+      </div>
+
+      {/* Name */}
+      <div
+        style={{
+          marginTop: 10,
+          textAlign: 'center',
+          fontSize: 12,
+          fontWeight: 700,
+          color: '#111827',
+          lineHeight: 1.2,
+          height: 30,
+          overflow: 'hidden',
+        }}
+      >
+        {name}
+      </div>
     </div>
   );
 };
