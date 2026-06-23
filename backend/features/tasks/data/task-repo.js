@@ -17,6 +17,77 @@ import logger from '../../../shared/lib/logger.js';
 // getPool() returns the pool wrapper, not a connection — do NOT call it directly.
 const dbPool = () => getPool().getConnection();
 
+// ─── Supabase REST helpers (cron hot path — no DATABASE_URL required) ─────────
+
+function timeHm(timeStr) {
+  return String(timeStr ?? '').substring(0, 5);
+}
+
+function isTimeInRange(currentTime, windowStart, windowEnd) {
+  return currentTime >= windowStart && currentTime <= windowEnd;
+}
+
+function addSecondsToTime(timeStr, seconds) {
+  const parts = String(timeStr).split(':').map(Number);
+  const h = parts[0] || 0;
+  const m = parts[1] || 0;
+  const s = parts[2] || 0;
+  let total = h * 3600 + m * 60 + s + seconds;
+  total = ((total % 86400) + 86400) % 86400;
+  const hh = Math.floor(total / 3600);
+  const mm = Math.floor((total % 3600) / 60);
+  const ss = total % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function mapCreatedTaskRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    task_id:   row.TaskId,
+    user_id:   String(row.UserId),
+    task_type: row.TaskType,
+  };
+}
+
+async function fetchActiveTimeWindows(supabase) {
+  const { data, error } = await supabase
+    .from('activity_time_windows_table')
+    .select('ActivityType, WindowStartTime, WindowEndTime, EffectiveFromDate, EffectiveToDate')
+    .is('EffectiveToDate', null)
+    .order('WindowStartTime');
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchActiveMembers(supabase) {
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('UserId, Email, UserName, Status, PushToken')
+    .eq('Status', 'Active');
+  if (error) throw error;
+  return data || [];
+}
+
+function crossJoinWindowsWithMembers(windows, members) {
+  const result = [];
+  for (const tw of windows) {
+    for (const u of members) {
+      result.push({
+        activity_type: tw.ActivityType,
+        start_time:    tw.WindowStartTime,
+        end_time:      tw.WindowEndTime,
+        user_id:       String(u.UserId),
+        Email:         u.Email,
+        UserName:      u.UserName,
+        Status:        u.Status,
+        PushToken:     u.PushToken,
+      });
+    }
+  }
+  return result;
+}
+
 /**
  * Get all tasks for a user on a specific date with status filter.
  * Uses Supabase REST (same transport as /api/admin/time-windows).
@@ -151,8 +222,8 @@ async function getTasksNeedingNotification(currentTime, currentDate) {
  * @returns {Promise<Object>} - Created task
  */
 async function createTask(taskData) {
-  const client = await dbPool();
-  
+  const supabase = getSupabaseClient();
+
   try {
     const {
       userId,
@@ -161,39 +232,59 @@ async function createTask(taskData) {
       windowStart,
       windowEnd,
       priority = 'medium',
-      taskDataJson = {}
+      taskDataJson = {},
     } = taskData;
-    
-    const result = await client.query(`
-      INSERT INTO tasks_table (
-        "UserId",
-        "TaskType",
-        "TaskDate",
-        "WindowStart",
-        "WindowEnd",
-        "Priority",
-        "TaskData",
-        "Status"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-      ON CONFLICT ("UserId", "TaskType", "TaskDate") DO UPDATE
-        SET
-          "WindowStart" = EXCLUDED."WindowStart",
-          "WindowEnd"   = EXCLUDED."WindowEnd"
-        WHERE tasks_table."Status" = 'pending'
-      RETURNING *
-    `, [userId, taskType, taskDate, windowStart, windowEnd, priority, JSON.stringify(taskDataJson)]);
-    
-    if (result[0].length > 0) {
-      logger.info('Task created', { taskId: result[0][0].TaskId, userId, taskType, taskDate });
-      return result[0][0];
+
+    const { data: existing, error: findError } = await supabase
+      .from('tasks_table')
+      .select('*')
+      .eq('UserId', String(userId))
+      .eq('TaskType', taskType)
+      .eq('TaskDate', taskDate)
+      .maybeSingle();
+
+    if (findError) throw findError;
+
+    if (existing) {
+      if (existing.Status !== 'pending') return null;
+
+      const { data: updated, error: updateError } = await supabase
+        .from('tasks_table')
+        .update({ WindowStart: windowStart, WindowEnd: windowEnd })
+        .eq('TaskId', existing.TaskId)
+        .select('*')
+        .single();
+
+      if (updateError) throw updateError;
+      logger.info('Task created', { taskId: updated.TaskId, userId, taskType, taskDate });
+      return mapCreatedTaskRow(updated);
     }
-    
-    return null; // Task already exists
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('tasks_table')
+      .insert({
+        UserId:      String(userId),
+        TaskType:    taskType,
+        TaskDate:    taskDate,
+        WindowStart: windowStart,
+        WindowEnd:   windowEnd,
+        Priority:    priority,
+        TaskData:    taskDataJson,
+        Status:      'pending',
+      })
+      .select('*')
+      .single();
+
+    if (insertError) {
+      if (insertError.code === '23505') return null;
+      throw insertError;
+    }
+
+    logger.info('Task created', { taskId: inserted.TaskId, userId, taskType, taskDate });
+    return mapCreatedTaskRow(inserted);
   } catch (error) {
     logger.error('Error creating task', { taskData, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -239,23 +330,21 @@ async function completeTask(taskId, completionData) {
  * @returns {Promise<void>}
  */
 async function markNotificationSent(taskId) {
-  const client = await dbPool();
-  
   try {
-    await client.query(`
-      UPDATE tasks_table
-      SET 
-        "NotificationSent" = true,
-        "NotificationSentAt" = NOW()
-      WHERE "TaskId" = $1
-    `, [taskId]);
-    
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('tasks_table')
+      .update({
+        NotificationSent:   true,
+        NotificationSentAt: new Date().toISOString(),
+      })
+      .eq('TaskId', taskId);
+
+    if (error) throw error;
     logger.info('Notification marked as sent', { taskId });
   } catch (error) {
     logger.error('Error marking notification sent', { taskId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -294,27 +383,19 @@ async function expireOldTasks(beforeDate) {
  * @returns {Promise<Array>} - Array of time window objects
  */
 async function getTimeWindowsByUser(userId) {
-  const client = await dbPool();
-  
   try {
-    const result = await client.query(`
-      SELECT 
-        "ActivityType" as activity_type,
-        "WindowStartTime" as start_time,
-        "WindowEndTime" as end_time,
-        "EffectiveFromDate" as effective_from,
-        "EffectiveToDate" as effective_to
-      FROM activity_time_windows_table
-      WHERE "EffectiveToDate" IS NULL
-      ORDER BY "WindowStartTime" ASC
-    `);
-    
-    return result[0];
+    const supabase = getSupabaseClient();
+    const windows = await fetchActiveTimeWindows(supabase);
+    return windows.map((w) => ({
+      activity_type:  w.ActivityType,
+      start_time:     w.WindowStartTime,
+      end_time:       w.WindowEndTime,
+      effective_from: w.EffectiveFromDate,
+      effective_to:   w.EffectiveToDate,
+    }));
   } catch (error) {
     logger.error('Error fetching time windows', { userId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -329,38 +410,33 @@ async function getTimeWindowsByUser(userId) {
  * @returns {Promise<Array>}    Rows: { activity_type, start_time, end_time, user_id, PushToken, ... }
  */
 async function getWindowsAlreadyOpenedToday(currentTime, currentDate) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      SELECT
-        tw."ActivityType"    AS activity_type,
-        tw."WindowStartTime" AS start_time,
-        tw."WindowEndTime"   AS end_time,
-        u."UserId"           AS user_id,
-        u."Email",
-        u."UserName",
-        u."Status",
-        u."PushToken"
-      FROM activity_time_windows_table tw
-      CROSS JOIN team_table u
-      WHERE tw."EffectiveToDate" IS NULL
-        AND u."Status" = 'Active'
-        AND substring(tw."WindowStartTime"::text, 1, 5) <= $1
-      AND NOT EXISTS (
-        SELECT 1 FROM tasks_table t
-        WHERE t."UserId"   = u."UserId"::text
-          AND t."TaskType" = tw."ActivityType"
-          AND t."TaskDate" = $2::date
-      )
-    `, [currentTime, currentDate]);
-    return result[0];
+    const supabase = getSupabaseClient();
+    const [windows, members] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+    ]);
+
+    const { data: existingTasks, error } = await supabase
+      .from('tasks_table')
+      .select('UserId, TaskType')
+      .eq('TaskDate', currentDate);
+
+    if (error) throw error;
+
+    const existingKeys = new Set(
+      (existingTasks || []).map((t) => `${String(t.UserId)}:${t.TaskType}`),
+    );
+
+    const openedWindows = windows.filter((w) => timeHm(w.WindowStartTime) <= currentTime);
+    const rows = crossJoinWindowsWithMembers(openedWindows, members);
+
+    return rows.filter((row) => !existingKeys.has(`${row.user_id}:${row.activity_type}`));
   } catch (error) {
     logger.error('Error fetching opened windows without tasks', {
       currentTime, currentDate, error: error.message,
     });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -371,32 +447,18 @@ async function getWindowsAlreadyOpenedToday(currentTime, currentDate) {
  * @returns {Promise<Array>} - Array of time windows with user info (all active users get same windows)
  */
 async function getTimeWindowsByStartTime(startTime) {
-  const client = await dbPool();
-  
   try {
-    const result = await client.query(`
-      SELECT 
-        tw."ActivityType" as activity_type,
-        tw."WindowStartTime" as start_time,
-        tw."WindowEndTime" as end_time,
-        u."UserId" as user_id,
-        u."Email",
-        u."UserName",
-        u."Status",
-        u."PushToken"
-      FROM activity_time_windows_table tw
-      CROSS JOIN team_table u
-      WHERE tw."EffectiveToDate" IS NULL
-        AND u."Status" = 'Active'
-        AND substring(tw."WindowStartTime"::text, 1, 5) = $1
-    `, [startTime]);
-    
-    return result[0];
+    const supabase = getSupabaseClient();
+    const [windows, members] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+    ]);
+
+    const matching = windows.filter((w) => timeHm(w.WindowStartTime) === startTime);
+    return crossJoinWindowsWithMembers(matching, members);
   } catch (error) {
     logger.error('Error fetching time windows by start time', { startTime, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -410,19 +472,26 @@ async function getTimeWindowsByStartTime(startTime) {
  * @returns {Promise<void>}
  */
 async function incrementReminderCount(taskId) {
-  const client = await dbPool();
   try {
-    await client.query(`
-      UPDATE tasks_table
-      SET "ReminderCount" = "ReminderCount" + 1
-      WHERE "TaskId" = $1
-    `, [taskId]);
+    const supabase = getSupabaseClient();
+    const { data: row, error: readError } = await supabase
+      .from('tasks_table')
+      .select('ReminderCount')
+      .eq('TaskId', taskId)
+      .single();
+
+    if (readError) throw readError;
+
+    const { error: updateError } = await supabase
+      .from('tasks_table')
+      .update({ ReminderCount: (row?.ReminderCount ?? 0) + 1 })
+      .eq('TaskId', taskId);
+
+    if (updateError) throw updateError;
     logger.info('Reminder count incremented', { taskId });
   } catch (error) {
     logger.error('Error incrementing reminder count', { taskId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -507,45 +576,55 @@ async function dismissTaskToday(taskId) {
  * @returns {Promise<Array>}
  */
 async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      SELECT
-        t."TaskId"                  as task_id,
-        t."UserId"                  as user_id,
-        t."TaskType"                as task_type,
-        t."TaskDate"                as task_date,
-        tw."WindowStartTime"        as window_start,
-        tw."WindowEndTime"          as window_end,
-        t."ReminderCount"           as reminder_count,
-        t."SnoozedUntil"            as snoozed_until,
-        t."ReminderDismissedToday"  as reminder_dismissed_today,
-        t."NotificationSent"        as notification_sent,
-        t."Status"                  as status,
-        u."PushToken"
-      FROM tasks_table t
-      JOIN team_table u ON t."UserId"::text = u."UserId"::text
-      JOIN activity_time_windows_table tw
-        ON tw."ActivityType" = t."TaskType"
-       AND tw."EffectiveToDate" IS NULL
-      WHERE t."TaskDate"                = $1::date
-        AND t."Status"                  = 'pending'
-        AND t."ReminderDismissedToday"  = false
-        AND t."ReminderCount"           < 2
-        AND t."NotificationSent"        = true
-        AND (
-              t."SnoozedUntil" IS NULL
-              OR t."SnoozedUntil" <= $3
-            )
-        AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
-    `, [currentDate, currentTime, currentDateTime]);
+    const supabase = getSupabaseClient();
+    const [windows, members] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+    ]);
 
-    return result[0];
+    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
+    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+
+    const { data: tasks, error } = await supabase
+      .from('tasks_table')
+      .select('*')
+      .eq('TaskDate', currentDate)
+      .eq('Status', 'pending')
+      .eq('ReminderDismissedToday', false)
+      .eq('NotificationSent', true);
+
+    if (error) throw error;
+
+    return (tasks || [])
+      .filter((t) => {
+        if ((t.ReminderCount ?? 0) >= 2) return false;
+        if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
+        const tw = windowsByType[t.TaskType];
+        if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
+        return Boolean(memberByUser[String(t.UserId)]?.PushToken);
+      })
+      .map((t) => {
+        const tw     = windowsByType[t.TaskType];
+        const member = memberByUser[String(t.UserId)];
+        return {
+          task_id:                  t.TaskId,
+          user_id:                  String(t.UserId),
+          task_type:                t.TaskType,
+          task_date:                t.TaskDate,
+          window_start:             tw.WindowStartTime,
+          window_end:               tw.WindowEndTime,
+          reminder_count:           t.ReminderCount,
+          snoozed_until:            t.SnoozedUntil,
+          reminder_dismissed_today: t.ReminderDismissedToday,
+          notification_sent:        t.NotificationSent,
+          status:                   t.Status,
+          PushToken:                member.PushToken,
+        };
+      });
   } catch (error) {
     logger.error('Error fetching tasks needing reminder', { currentDate, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -661,48 +740,66 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
  * @returns {Promise<Array>}
  */
 async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      SELECT
-        t."TaskId"                  AS task_id,
-        t."UserId"                  AS user_id,
-        t."TaskType"                AS task_type,
-        t."TaskDate"                AS task_date,
-        tw."WindowStartTime"        AS window_start,
-        tw."WindowEndTime"          AS window_end,
-        t."ReminderCount"           AS reminder_count,
-        t."SnoozedUntil"            AS snoozed_until,
-        t."ReminderDismissedToday"  AS reminder_dismissed_today,
-        t."Status"                  AS status,
-        uta."AverageCompletionTime" AS average_completion_time,
-        u."PushToken"
-      FROM tasks_table t
-      JOIN user_task_averages uta
-        ON uta."UserId"   = t."UserId"::integer
-       AND uta."TaskType" = t."TaskType"
-      JOIN team_table u
-        ON u."UserId"::text = t."UserId"::text
-      JOIN activity_time_windows_table tw
-        ON tw."ActivityType" = t."TaskType"
-       AND tw."EffectiveToDate" IS NULL
-      WHERE t."TaskDate"               = $1::date
-        AND t."Status"                 = 'pending'
-        AND t."NotificationSent"       = true
-        AND t."ReminderDismissedToday" = false
-        AND t."ReminderCount"          < 2
-        AND (t."SnoozedUntil" IS NULL OR t."SnoozedUntil" <= $3)
-        AND $2::time BETWEEN tw."WindowStartTime" AND tw."WindowEndTime"
-        AND $2::time >= uta."AverageCompletionTime"
-        AND $2::time <  (uta."AverageCompletionTime"::interval + interval '5 minutes')::time
-    `, [currentDate, currentTime, currentDateTime]);
+    const supabase = getSupabaseClient();
+    const [windows, members, averagesResult] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime'),
+    ]);
 
-    return result[0];
+    if (averagesResult.error) throw averagesResult.error;
+
+    const { data: tasks, error } = await supabase
+      .from('tasks_table')
+      .select('*')
+      .eq('TaskDate', currentDate)
+      .eq('Status', 'pending')
+      .eq('NotificationSent', true)
+      .eq('ReminderDismissedToday', false);
+
+    if (error) throw error;
+
+    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
+    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+    const avgKey        = (uid, type) => `${uid}:${type}`;
+    const avgMap        = Object.fromEntries(
+      (averagesResult.data || []).map((a) => [avgKey(String(a.UserId), a.TaskType), a.AverageCompletionTime]),
+    );
+
+    return (tasks || [])
+      .filter((t) => {
+        if ((t.ReminderCount ?? 0) >= 2) return false;
+        if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
+        const avg = avgMap[avgKey(String(t.UserId), t.TaskType)];
+        if (!avg) return false;
+        const tw = windowsByType[t.TaskType];
+        if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
+        if (currentTime < avg) return false;
+        if (currentTime >= addSecondsToTime(avg, 300)) return false;
+        return Boolean(memberByUser[String(t.UserId)]?.PushToken);
+      })
+      .map((t) => {
+        const tw     = windowsByType[t.TaskType];
+        const member = memberByUser[String(t.UserId)];
+        return {
+          task_id:                  t.TaskId,
+          user_id:                  String(t.UserId),
+          task_type:                t.TaskType,
+          task_date:                t.TaskDate,
+          window_start:             tw.WindowStartTime,
+          window_end:               tw.WindowEndTime,
+          reminder_count:           t.ReminderCount,
+          snoozed_until:            t.SnoozedUntil,
+          reminder_dismissed_today: t.ReminderDismissedToday,
+          status:                   t.Status,
+          average_completion_time:  avgMap[avgKey(String(t.UserId), t.TaskType)],
+          PushToken:                member.PushToken,
+        };
+      });
   } catch (error) {
     logger.error('Error in getTasksPastAverageTime', { currentDate, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 

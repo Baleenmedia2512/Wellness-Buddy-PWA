@@ -283,20 +283,45 @@ describe('expireOldTasks', () => {
 
 // ─── createTask ───────────────────────────────────────────────────────────────
 
-describe('createTask', () => {
-  let mockQuery;
-  let mockRelease;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
+function setupSupabaseForCreateTask({ existing = null, inserted = null, insertError = null, updated = null }) {
+  const maybeSingle = jest.fn().mockResolvedValue({ data: existing, error: null });
+  const findSelect = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({ maybeSingle }),
+      }),
+    }),
   });
 
-  it('returns the created row when insert succeeds', async () => {
-    const newRow = { TaskId: 100, UserId: '339', TaskType: 'weight' };
-    mockQuery.mockResolvedValueOnce(mysqlResult([newRow]));
+  const insertSingle = jest.fn().mockResolvedValue(
+    insertError ? { data: null, error: insertError } : { data: inserted, error: null },
+  );
+  const insert = jest.fn().mockReturnValue({
+    select: jest.fn().mockReturnValue({ single: insertSingle }),
+  });
+
+  const updateSingle = jest.fn().mockResolvedValue({ data: updated, error: null });
+  const update = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({ single: updateSingle }),
+    }),
+  });
+
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn(() => ({ select: findSelect, insert, update })),
+  });
+
+  return { maybeSingle, insert, update };
+}
+
+describe('createTask', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns the created row with snake_case aliases when insert succeeds', async () => {
+    const newRow = { TaskId: 100, UserId: '339', TaskType: 'weight', Status: 'pending' };
+    setupSupabaseForCreateTask({ existing: null, inserted: newRow });
 
     const row = await createTask({
       userId:      '339',
@@ -306,12 +331,18 @@ describe('createTask', () => {
       windowEnd:   '07:30:00',
     });
 
-    expect(row).toEqual(newRow);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+    expect(row).toMatchObject({
+      TaskId:    100,
+      task_id:   100,
+      user_id:   '339',
+      task_type: 'weight',
+    });
   });
 
-  it('returns null when the task already exists (ON CONFLICT DO NOTHING)', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+  it('returns null when the task already exists and is not pending', async () => {
+    setupSupabaseForCreateTask({
+      existing: { TaskId: 1, Status: 'completed', UserId: '339', TaskType: 'weight' },
+    });
 
     const row = await createTask({
       userId:      '339',
@@ -322,7 +353,23 @@ describe('createTask', () => {
     });
 
     expect(row).toBeNull();
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null on unique-violation insert (concurrent create)', async () => {
+    setupSupabaseForCreateTask({
+      existing: null,
+      insertError: { code: '23505', message: 'duplicate key' },
+    });
+
+    const row = await createTask({
+      userId:      '339',
+      taskType:    'weight',
+      taskDate:    '2026-06-09',
+      windowStart: '06:00:00',
+      windowEnd:   '07:30:00',
+    });
+
+    expect(row).toBeNull();
   });
 });
 
@@ -361,24 +408,65 @@ describe('completeTask', () => {
 
 // ─── getTasksNeedingReminder ──────────────────────────────────────────────────
 
-describe('getTasksNeedingReminder', () => {
-  let mockQuery;
-  let mockRelease;
+function setupSupabaseForReminders(pendingTasks = []) {
+  const windowsIs = jest.fn().mockReturnValue({
+    order: jest.fn().mockResolvedValue({
+      data: [{
+        ActivityType: 'lunch', WindowStartTime: '12:00:00', WindowEndTime: '16:00:00',
+      }],
+      error: null,
+    }),
+  });
+  const windowsSelect = jest.fn().mockReturnValue({ is: windowsIs });
 
+  const membersEq = jest.fn().mockResolvedValue({
+    data: [{ UserId: 339, PushToken: 'tok_abc', Status: 'Active' }],
+    error: null,
+  });
+  const membersSelect = jest.fn().mockReturnValue({ eq: membersEq });
+
+  const tasksResult = { data: pendingTasks, error: null };
+  const tasksChain = {
+    eq: jest.fn(function tasksEq() { return tasksChain; }),
+    then: (resolve, reject) => Promise.resolve(tasksResult).then(resolve, reject),
+  };
+  const tasksSelect = jest.fn().mockReturnValue(tasksChain);
+
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn((table) => {
+      if (table === 'activity_time_windows_table') return { select: windowsSelect };
+      if (table === 'team_table') return { select: membersSelect };
+      if (table === 'tasks_table') return { select: tasksSelect };
+      throw new Error(`Unexpected table: ${table}`);
+    }),
+  });
+}
+
+describe('getTasksNeedingReminder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
   });
 
-  it('returns the reminder rows array', async () => {
-    const reminderRow = { task_id: 5, user_id: '339', push_token: 'tok_abc' };
-    mockQuery.mockResolvedValueOnce(mysqlResult([reminderRow]));
+  it('returns eligible reminder rows via Supabase REST (no pg pool)', async () => {
+    setupSupabaseForReminders([{
+      TaskId: 5,
+      UserId: '339',
+      TaskType: 'lunch',
+      TaskDate: '2026-06-09',
+      Status: 'pending',
+      ReminderCount: 0,
+      ReminderDismissedToday: false,
+      NotificationSent: true,
+      SnoozedUntil: null,
+    }]);
 
     const rows = await getTasksNeedingReminder('2026-06-09', '13:00:00', new Date('2026-06-09T13:00:00'));
 
-    expect([...rows]).toEqual([reminderRow]);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      task_id: 5,
+      user_id: '339',
+      PushToken: 'tok_abc',
+    });
   });
 });
