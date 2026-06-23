@@ -165,3 +165,24 @@ export async function dismissTask(taskId, explicitUserId = null) {
     return { ok: false, error: { code: 'NETWORK_ERROR', message: error.message } };
   }
 }
+
+/**
+ * Fetch learned average completion times for profile / reminders.
+ *
+ * @param {string|null} userId
+ * @returns {Promise<{ ok: boolean, data?: { averages: Array }, error?: Object }>}
+ */
+export async function fetchTaskAverages(userId = null) {
+  const resolvedUserId = resolveTaskUserId(userId);
+  if (!resolvedUserId) return missingUserIdResult();
+
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/tasks/averages?userId=${encodeURIComponent(resolvedUserId)}`,
+    );
+    return await response.json();
+  } catch (error) {
+    debugLog('[taskApi] Error fetching task averages', { error: error.message });
+    return { ok: false, error: { code: 'NETWORK_ERROR', message: error.message } };
+  }
+}

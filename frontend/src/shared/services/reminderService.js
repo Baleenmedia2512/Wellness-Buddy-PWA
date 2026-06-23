@@ -372,9 +372,18 @@ export async function fetchUserAverages(userId) {
     });
     if (!response.data?.ok) return {};
     const map = {};
-    (response.data.data?.averages || []).forEach(({ task_type, average_completion_time }) => {
-      if (task_type && average_completion_time) {
-        map[task_type] = String(average_completion_time);
+    (response.data.data?.averages || []).forEach(({
+      task_type,
+      average_completion_time,
+      effective_reminder_time,
+      is_personalized,
+    }) => {
+      const time = effective_reminder_time || average_completion_time;
+      if (task_type && time) {
+        map[task_type] = String(time);
+        if (is_personalized) {
+          map[`${task_type}__personalized`] = 'true';
+        }
       }
     });
     debugLog('[ReminderService] fetchUserAverages:', map);
@@ -464,7 +473,7 @@ export async function applyRemindersToNative(prefsRaw, averagesMap = {}) {
     // Build personalised body only when a learned average exists
     const avgStr = averagesMap[type];
     let personalizedBody = undefined;
-    if (avgStr) {
+    if (avgStr && averagesMap[`${type}__personalized`] === 'true') {
       const avg = parsePgTime(avgStr);
       if (avg) {
         const avgLabel = formatReminderTime(avg.hour, avg.minute);
