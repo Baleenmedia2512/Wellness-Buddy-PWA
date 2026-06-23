@@ -135,15 +135,9 @@ function extractNutrition(analysisResult, deviceInfo) {
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
-  } catch (_) { /* ignore parse */ }
-
-  // 🔍 DEBUG: Log extracted nutrition values
-  console.log('🔍 [extractNutrition] Extracted values:', {
-    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
-    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
-    micronutrients,
-    confidenceScore, processedBy,
-  });
+  } catch (err) {
+    logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
+  }
 
   return {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
@@ -160,6 +154,15 @@ export async function save(input) {
     captureId,
     city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
   } = input;
+
+  const saveStart = Date.now();
+  logger.info('analysis.save: started', {
+    userId: userId?.toString(),
+    captureId: captureId ?? null,
+    endpoint: 'background-analysis/save',
+    hasImage: !!ImageBase64,
+    hasClientTimestamp: !!clientTimestamp,
+  });
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
@@ -210,12 +213,17 @@ export async function save(input) {
   // FK); a retry or background-service replay finds the existing row and
   // UPDATEs in place. Without this guard, retries would duplicate meal rows.
   let data;
+  const upsertMode = captureId ? 'with-capture' : 'no-capture';
   try {
     if (captureId) {
       const existing = await repo.findFoodByCaptureId(captureId, userId.toString());
       if (existing) {
+        logger.info('analysis.save: updating existing food row (idempotent retry)', {
+          captureId, userId: userId.toString(), existingId: existing.ID,
+        });
         data = await repo.updateWithAnalysisResult(existing.ID, userId.toString(), analysisPayload);
       } else {
+        logger.info('analysis.save: inserting new food row', { captureId, userId: userId.toString() });
         data = await repo.insertAnalysis({
           UserID: userId.toString(),
           CaptureID: captureId,
@@ -273,20 +281,44 @@ export async function save(input) {
   // captures-side transient does not fail the user save.
   if (captureId) {
     try {
-      await captures.updateTypeById({
+      const promotionResult = await captures.updateTypeById({
         captureId,
         userId: userId.toString(),
         toType: IMAGE_TYPE_FOOD,
       });
+      if (promotionResult.changed) {
+        logger.info('analysis.save: capture promoted to food', {
+          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+        });
+      } else {
+        // ALREADY_IN_TARGET_STATE is expected on retries; log at debug level.
+        logger.debug('analysis.save: capture promotion no-op', {
+          captureId, userId: userId.toString(), reason: promotionResult.reason,
+        });
+      }
     } catch (err) {
-      logger.warn('analysis.save: failed to promote capture to food', {
-        captureId, userId: userId.toString(), err: err.message,
+      // Consistency warning: food row saved but capture state NOT promoted.
+      // The diary feed filters on captures.ImageType='food', so this entry
+      // will be hidden until a subsequent retry promotes the capture.
+      logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
+        captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+        err: err.message,
       });
     }
   }
 
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
+
+  const totalLatencyMs = Date.now() - saveStart;
+  logger.info('analysis.save: completed', {
+    userId: userId?.toString(),
+    captureId: captureId ?? null,
+    foodRowId: data?.ID || data?.id,
+    totalLatencyMs,
+    upsertMode,
+    confidenceScore,
+  });
 
   return {
     httpStatus: 200,
