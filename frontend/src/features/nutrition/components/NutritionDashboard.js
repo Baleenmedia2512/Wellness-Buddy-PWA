@@ -122,6 +122,23 @@ const NutritionDashboard = ({
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
   const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
 
+  // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
+  React.useEffect(() => {
+    const tr = window.__captureTrace;
+    if (tr) {
+      console.log(
+        `[CAPTURE-TRACE-${tr.id}] Stage 17 | NutritionDashboard mounted\n` +
+        `  ts=${Date.now()}  (+${Date.now() - tr.t0}ms from T0)\n` +
+        `  captureId=${tr.captureId ?? 'null'}\n` +
+        `  traceId=${tr.traceId ?? 'none'}\n` +
+        `  nutritionRefreshKey=${nutritionRefreshKey}\n` +
+        `  savePromiseRef=${tr.savePromiseRef}\n` +
+        `  pendingShareRef=${tr.pendingShareRef}`,
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
+
   // Day analyses + daily stats orchestration (auto-fetch on user/date change).
   const {
     analyses,
