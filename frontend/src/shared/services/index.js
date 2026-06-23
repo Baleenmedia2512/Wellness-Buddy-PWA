@@ -18,7 +18,6 @@ export * as cameraService from './cameraService.js';
 export * as firebase from './firebase.js';
 export * as galleryMonitor from './galleryMonitor.js';
 export * as geminiService from './geminiService.js';
-export * as imageTypeDetector from './imageTypeDetector.js';  // Legacy — do not use in new code
 export * as reminderService from './reminderService.js';
 export * as teamHierarchyService from './teamHierarchyService.js';
 export * as tokenCost from './tokenCost/index.js';
