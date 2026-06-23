@@ -11,6 +11,30 @@ import { useState, useEffect, useCallback } from 'react';
 import { debugLog } from '../../../shared/utils/logger';
 import { getApiBaseUrl } from '../../../config/api.config';
 
+function catchupStorageKey(userId) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  return `taskCatchup:${userId}:${today}`;
+}
+
+function shouldRunCatchupToday(userId) {
+  try {
+    return typeof sessionStorage === 'undefined'
+      || !sessionStorage.getItem(catchupStorageKey(userId));
+  } catch {
+    return true;
+  }
+}
+
+function markCatchupDoneToday(userId) {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(catchupStorageKey(userId), '1');
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
 /**
  * Call POST /api/tasks/catchup so the server creates any task rows
  * whose time windows already opened today but whose cron run was missed.
@@ -60,26 +84,26 @@ export function useTaskData(userId) {
 
         // On first load, always run catch-up so missed windows (e.g. education
         // at 07:15 when cron was down) are backfilled even if some tasks exist.
-        if (runCatchup) {
+        if (runCatchup && shouldRunCatchupToday(userId)) {
+          markCatchupDoneToday(userId);
           debugLog('[useTaskData] Running catch-up for missed windows', { existingCount: fetched.length });
           const created = await triggerCatchup(apiBaseUrl, userId);
           // #region agent log
           fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'useTaskData.js:catchup',message:'catchup completed',data:{existingCount:fetched.length,createdCount:created},timestamp:Date.now(),hypothesisId:'H-catchup',runId:'post-fix'})}).catch(()=>{});
           // #endregion
-          if (created > 0) {
-            const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
-              method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
+          const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const retryData = await retryRes.json();
+          if (retryData.ok) {
+            setTasks(retryData.data.tasks || []);
+            setError(null);
+            debugLog('[useTaskData] Tasks re-fetched after catch-up', {
+              count: (retryData.data.tasks || []).length,
+              created,
             });
-            const retryData = await retryRes.json();
-            if (retryData.ok) {
-              setTasks(retryData.data.tasks || []);
-              setError(null);
-              debugLog('[useTaskData] Tasks re-fetched after catch-up', {
-                count: (retryData.data.tasks || []).length,
-              });
-              return;
-            }
+            return;
           }
         }
 

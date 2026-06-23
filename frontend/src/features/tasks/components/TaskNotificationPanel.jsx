@@ -28,7 +28,7 @@ const TaskNotificationPanel = ({
   const [activeTab, setActiveTab] = useState('todo');
   
   // Filter tasks by status
-  const pendingTasks   = tasks.filter(t => t.status === 'pending');
+  const pendingTasks   = tasks.filter((t) => String(t.status).toLowerCase() === 'pending');
   const completedTasks = tasks.filter(t => t.status === 'completed');
 
   // True only when the user has actually done some tasks today (not just "no tasks yet")
@@ -55,11 +55,13 @@ const TaskNotificationPanel = ({
     return () => clearInterval(interval);
   }, [refresh]);
   
-  const handleTaskClick = async (task) => {
+  const handleTaskClick = (task) => {
     debugLog('[TaskPanel] Task clicked', { taskId: task.task_id, taskType: task.task_type });
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'TaskNotificationPanel.jsx:handleTaskClick',message:'task card clicked',data:{taskId:task.task_id,taskType:task.task_type},timestamp:Date.now(),hypothesisId:'H-camera-gesture',runId:'post-fix-2'})}).catch(()=>{});
+    // #endregion
     if (onTaskComplete) {
-      await onTaskComplete(task);
-      refresh();
+      onTaskComplete(task);
     }
   };
 

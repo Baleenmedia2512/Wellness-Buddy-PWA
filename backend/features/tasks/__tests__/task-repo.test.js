@@ -93,9 +93,9 @@ function setupSupabaseForTasks(taskRows = [], windowRows = [], tasksError = null
     ? Promise.resolve({ data: null, error: tasksError })
     : Promise.resolve({ data: buildSupabaseTaskRows(taskRows), error: null });
 
-  const statusEq = jest.fn().mockReturnValue(taskResult);
+  const statusIlike = jest.fn().mockReturnValue(taskResult);
   const dateEq = statusFilter
-    ? jest.fn().mockReturnValue({ eq: statusEq })
+    ? jest.fn().mockReturnValue({ ilike: statusIlike })
     : jest.fn().mockReturnValue(taskResult);
   const userEq = jest.fn().mockReturnValue({ eq: dateEq });
   const taskSelect = jest.fn().mockReturnValue({ eq: userEq });
@@ -120,7 +120,7 @@ function setupSupabaseForTasks(taskRows = [], windowRows = [], tasksError = null
     }),
   });
 
-  return { taskSelect, userEq, dateEq, statusEq };
+  return { taskSelect, userEq, dateEq, statusIlike };
 }
 
 // ─── getTasksByUserAndDate ────────────────────────────────────────────────────
@@ -156,12 +156,12 @@ describe('getTasksByUserAndDate', () => {
     expect([...rows]).toEqual([]);
   });
 
-  it('applies status filter when supplied', async () => {
-    const { statusEq } = setupSupabaseForTasks([], [], null, 'pending');
+  it('applies case-insensitive status filter when supplied', async () => {
+    const { statusIlike } = setupSupabaseForTasks([], [], null, 'pending');
 
     await getTasksByUserAndDate('339', '2026-06-09', 'pending');
 
-    expect(statusEq).toHaveBeenCalledWith('Status', 'pending');
+    expect(statusIlike).toHaveBeenCalledWith('Status', 'pending');
   });
 
   it('propagates a DB error', async () => {

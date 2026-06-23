@@ -396,6 +396,7 @@ function WellnessValleyApp() {
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
   const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
   const fileInputRef = useRef(null);
+  const taskCameraInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
   const cachedWeightShareDataUrlRef = useRef(null);
 
@@ -3662,6 +3663,72 @@ function WellnessValleyApp() {
   };
 
   /**
+   * Open the native camera / file picker for a task card "Take Photo" tap.
+   * Weight manual modal is disabled — camera is the primary entry path.
+   */
+  const openCameraForTask = (task) => {
+    const taskType = task?.task_type;
+    debugLog('[App] openCameraForTask', { taskId: task?.task_id, taskType });
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:openCameraForTask:entry',message:'task camera requested',data:{taskId:task?.task_id,taskType,hasFileInputRef:!!fileInputRef.current,hasOpenCamera:!!fileInputRef.current?.openCamera},timestamp:Date.now(),hypothesisId:'H-camera-gesture',runId:'post-fix-2'})}).catch(()=>{});
+    // #endregion
+
+    setShowManualWeightModal(false);
+    setShowManualFoodModal(false);
+    setShowManualEducationModal(false);
+
+    if (taskType === 'water') {
+      setDashboardInitialTab('water');
+      setShowDashboard(true);
+      Session.setCurrentPage('dashboard');
+      setShowTaskPanel(false);
+      return;
+    }
+
+    if (taskType === 'weight') {
+      setImageType('weight');
+      setCurrentWeightImage(null);
+    } else if (['breakfast', 'lunch', 'dinner'].includes(taskType)) {
+      setImageType('food');
+      setManualMealType(taskType);
+    } else if (taskType === 'education') {
+      setImageType('education');
+    } else {
+      setImageType('food');
+    }
+
+    // Open camera synchronously inside the user-gesture stack.
+    let opened = false;
+    if (Capacitor.isNativePlatform()) {
+      const api = fileInputRef.current;
+      if (api?.openCamera) {
+        api.openCamera();
+        opened = true;
+      }
+    } else {
+      const taskInput = taskCameraInputRef.current;
+      if (taskInput) {
+        taskInput.click();
+        opened = true;
+      } else {
+        const api = fileInputRef.current;
+        if (api?.openCamera) {
+          api.openCamera();
+          opened = true;
+        }
+      }
+    }
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:openCameraForTask:opened',message:opened?'camera trigger fired':'camera trigger failed',data:{taskId:task?.task_id,taskType,opened,isNative:Capacitor.isNativePlatform(),hasTaskInput:!!taskCameraInputRef.current,hasFileInputRef:!!fileInputRef.current?.openCamera},timestamp:Date.now(),hypothesisId:'H-camera-mount',runId:'post-fix-3'})}).catch(()=>{});
+    // #endregion
+    if (!opened) {
+      debugLog('[App] Could not open camera for task — no input ref ready');
+    }
+
+    setShowTaskPanel(false);
+  };
+
+  /**
    * Handle manual food entry from modal (used when AI is unavailable)
    */
   const handleManualFoodSave = async (manualData) => {
@@ -5742,6 +5809,18 @@ function WellnessValleyApp() {
       );
       debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     }
+  };
+
+  /** File input dedicated to task-panel "Take Photo" on web (body-level, always mounted). */
+  const handleTaskCameraFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:handleTaskCameraFileChange',message:'task camera file selected',data:{fileName:file.name,fileSize:file.size,imageType},timestamp:Date.now(),hypothesisId:'H-camera-mount',runId:'post-fix-3'})}).catch(()=>{});
+    // #endregion
+    const timestamp = new Date(file.lastModified).toISOString();
+    handleImageSelect(file, timestamp);
+    event.target.value = '';
   };
 
   // ?? Retry food analysis with the last image
@@ -8853,35 +8932,31 @@ function WellnessValleyApp() {
       {/* Task Notification Panel — opens when user taps a task/water FCM notification */}
       {showTaskPanel && user && (
         <TaskNotificationPanel
-          userId={user.id}
+          userId={user.id || user.UserId || Session.getDbUserId()}
           onClose={() => {
             setShowTaskPanel(false);
             setHighlightedTaskId(null);
           }}
           highlightedTaskId={highlightedTaskId}
           onTaskComplete={(task) => {
-            debugLog('[App] Task completion triggered', { taskId: task.task_id, taskType: task.task_type });
-            
-            // Open appropriate modal/screen based on task type
-            if (task.task_type === 'weight') {
-              setImageType('weight');
-              setShowManualWeightModal(true);
-            } else if (['breakfast', 'lunch', 'dinner'].includes(task.task_type)) {
-              setImageType('food');
-              setManualMealType(task.task_type);
-              setShowManualFoodModal(true);
-            } else if (task.task_type === 'education') {
-              setShowManualEducationModal(true);
-            } else if (task.task_type === 'water') {
-              setDashboardInitialTab('water');
-              setShowDashboard(true);
-              Session.setCurrentPage('dashboard');
-            }
-            
-            // Close task panel after opening the relevant UI
-            setShowTaskPanel(false);
+            openCameraForTask(task);
           }}
         />
+      )}
+
+      {/* Body-level file input for task-panel camera on web (avoids nested ref / gesture issues) */}
+      {user && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <input
+          ref={taskCameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleTaskCameraFileChange}
+          style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, width: 1, height: 1 }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />,
+        document.body,
       )}
       
       {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}

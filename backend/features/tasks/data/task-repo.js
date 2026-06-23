@@ -117,7 +117,7 @@ function mapTaskRowWithWindows(row, windowsByType) {
     user_id: row.UserId,
     task_type: row.TaskType,
     task_date: row.TaskDate,
-    status: row.Status,
+    status: String(row.Status ?? 'pending').toLowerCase(),
     priority: row.Priority,
     window_start: tw?.WindowStartTime ?? null,
     window_end: tw?.WindowEndTime ?? null,
@@ -162,7 +162,7 @@ async function getTasksByUserAndDate(userId, date, status = null) {
       .eq('TaskDate', date);
 
     if (status) {
-      taskQuery = taskQuery.eq('Status', status);
+      taskQuery = taskQuery.ilike('Status', status);
     }
 
     const { data: taskRows, error: tasksError } = await taskQuery;

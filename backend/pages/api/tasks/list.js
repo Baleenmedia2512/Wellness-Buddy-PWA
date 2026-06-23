@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     if (!status || status === 'pending') {
       const now = new Date();
       filteredTasks = tasks.filter(task => {
-        if (task.status !== 'pending') return true;
+        if (String(task.status).toLowerCase() !== 'pending') return true;
         return isTaskVisible(task, now);
       });
     }
