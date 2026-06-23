@@ -55,7 +55,7 @@ export default async function handler(req, res) {
 
     const { taskId, snoozeMinutes } = req.body;
     const snoozedUntil = calculateSnoozeExpiry(snoozeMinutes, new Date());
-    const updated = await snoozeTask(taskId, snoozedUntil);
+    const updated = await snoozeTask(taskId, snoozedUntil, userId);
 
     const durationMs = Date.now() - startTime;
     logger.info('Task snoozed via API', {

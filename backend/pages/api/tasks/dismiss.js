@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     }
 
     const { taskId } = req.body;
-    const updated = await dismissTaskToday(taskId);
+    const updated = await dismissTaskToday(taskId, userId);
 
     const durationMs = Date.now() - startTime;
     logger.info('Task reminders dismissed via API', {

@@ -6,9 +6,33 @@
  */
 
 import { getApiBaseUrl } from '../../../config/api.config';
+import { getDbUserId } from '../../../shared/services/sessionStorage';
 import { debugLog } from '../../../shared/utils/logger';
 
 const apiBaseUrl = getApiBaseUrl();
+
+/**
+ * Resolve authenticated user id for task API calls.
+ * Prefer an explicit userId from the caller (matches useTaskData / list).
+ */
+function resolveTaskUserId(explicitUserId = null) {
+  if (explicitUserId) return String(explicitUserId);
+  return (
+    getDbUserId()
+    || (typeof localStorage !== 'undefined' ? localStorage.getItem('wellness_user_id') : null)
+    || (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null)
+  );
+}
+
+function missingUserIdResult() {
+  return {
+    ok: false,
+    error: {
+      code: 'UNAUTHORIZED',
+      message: 'Authentication required',
+    },
+  };
+}
 
 /**
  * Get tasks for a user
@@ -50,7 +74,10 @@ export async function getTasks(userId, status = null) {
  * @param {Object} completionData - Completion data
  * @returns {Promise<Object>} - { ok, data: { taskId, status, completedAt } }
  */
-export async function completeTask(taskId, taskType, completionData) {
+export async function completeTask(taskId, taskType, completionData, explicitUserId = null) {
+  const userId = resolveTaskUserId(explicitUserId);
+  if (!userId) return missingUserIdResult();
+
   try {
     const response = await fetch(`${apiBaseUrl}/api/tasks/complete`, {
       method: 'POST',
@@ -58,6 +85,7 @@ export async function completeTask(taskId, taskType, completionData) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        userId,
         taskId,
         taskType,
         completionData
@@ -90,14 +118,23 @@ export async function completeTask(taskId, taskType, completionData) {
  * @param {number} snoozeMinutes - Must be 15, 30, or 60.
  * @returns {Promise<Object>}    - { ok, data: { taskId, reminderCount, snoozedUntil } }
  */
-export async function snoozeTask(taskId, snoozeMinutes) {
+export async function snoozeTask(taskId, snoozeMinutes, explicitUserId = null) {
+  const userId = resolveTaskUserId(explicitUserId);
+  // #region agent log
+  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:pre',message:'snooze auth resolution',data:{hasExplicitUserId:!!explicitUserId,hasResolvedUserId:!!userId,hasDbUserId:!!getDbUserId()},timestamp:Date.now(),hypothesisId:'H1-H2',runId:'pre-fix'})}).catch(()=>{});
+  // #endregion
+  if (!userId) return missingUserIdResult();
+
   try {
     const response = await fetch(`${apiBaseUrl}/api/tasks/snooze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId, snoozeMinutes })
+      body: JSON.stringify({ userId, taskId, snoozeMinutes })
     });
     const data = await response.json();
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:post',message:'snooze response',data:{status:response.status,ok:data?.ok,errorCode:data?.error?.code},timestamp:Date.now(),hypothesisId:'H1-H3',runId:'pre-fix'})}).catch(()=>{});
+    // #endregion
     if (data.ok) {
       debugLog('[taskApi] Task snoozed', { taskId, snoozeMinutes });
     }
@@ -114,12 +151,15 @@ export async function snoozeTask(taskId, snoozeMinutes) {
  * @param {number} taskId     - Task ID.
  * @returns {Promise<Object>} - { ok, data: { taskId, reminderDismissedToday } }
  */
-export async function dismissTask(taskId) {
+export async function dismissTask(taskId, explicitUserId = null) {
+  const userId = resolveTaskUserId(explicitUserId);
+  if (!userId) return missingUserIdResult();
+
   try {
     const response = await fetch(`${apiBaseUrl}/api/tasks/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId })
+      body: JSON.stringify({ userId, taskId })
     });
     const data = await response.json();
     if (data.ok) {

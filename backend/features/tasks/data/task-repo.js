@@ -514,32 +514,46 @@ async function incrementReminderCount(taskId) {
  * @param {Date}   snoozedUntil - Expiry timestamp returned by calculateSnoozeExpiry().
  * @returns {Promise<Object>}   - Updated task row.
  */
-async function snoozeTask(taskId, snoozedUntil) {
-  const client = await dbPool();
+async function snoozeTask(taskId, snoozedUntil, userId) {
   try {
-    const result = await client.query(`
-      UPDATE tasks_table
-      SET
-        "SnoozedUntil"   = $1,
-        "ReminderCount"  = "ReminderCount" + 1
-      WHERE "TaskId" = $2 AND "Status" = 'pending'
-      RETURNING
-        "TaskId"              as task_id,
-        "ReminderCount"       as reminder_count,
-        "SnoozedUntil"        as snoozed_until
-    `, [snoozedUntil, taskId]);
+    const supabase = getSupabaseClient();
+    const { data: row, error: readError } = await supabase
+      .from('tasks_table')
+      .select('ReminderCount')
+      .eq('TaskId', taskId)
+      .eq('UserId', String(userId))
+      .eq('Status', 'pending')
+      .single();
 
-    if (result[0].length === 0) {
+    if (readError || !row) {
       throw new Error('Task not found or not pending');
     }
 
-    logger.info('Task snoozed', { taskId, snoozedUntil });
-    return result[0][0];
+    const { data, error } = await supabase
+      .from('tasks_table')
+      .update({
+        SnoozedUntil:  snoozedUntil.toISOString(),
+        ReminderCount: (row.ReminderCount ?? 0) + 1,
+      })
+      .eq('TaskId', taskId)
+      .eq('UserId', String(userId))
+      .eq('Status', 'pending')
+      .select('TaskId, ReminderCount, SnoozedUntil')
+      .single();
+
+    if (error || !data) {
+      throw new Error('Task not found or not pending');
+    }
+
+    logger.info('Task snoozed', { taskId, snoozedUntil, userId });
+    return {
+      task_id:        data.TaskId,
+      reminder_count: data.ReminderCount,
+      snoozed_until:  data.SnoozedUntil,
+    };
   } catch (error) {
-    logger.error('Error snoozing task', { taskId, error: error.message });
+    logger.error('Error snoozing task', { taskId, userId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -550,29 +564,30 @@ async function snoozeTask(taskId, snoozedUntil) {
  * @param {number} taskId - Task ID.
  * @returns {Promise<Object>} - Updated task row.
  */
-async function dismissTaskToday(taskId) {
-  const client = await dbPool();
+async function dismissTaskToday(taskId, userId) {
   try {
-    const result = await client.query(`
-      UPDATE tasks_table
-      SET "ReminderDismissedToday" = true
-      WHERE "TaskId" = $1 AND "Status" = 'pending'
-      RETURNING
-        "TaskId"                  as task_id,
-        "ReminderDismissedToday"  as reminder_dismissed_today
-    `, [taskId]);
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tasks_table')
+      .update({ ReminderDismissedToday: true })
+      .eq('TaskId', taskId)
+      .eq('UserId', String(userId))
+      .eq('Status', 'pending')
+      .select('TaskId, ReminderDismissedToday')
+      .single();
 
-    if (result[0].length === 0) {
+    if (error || !data) {
       throw new Error('Task not found or not pending');
     }
 
-    logger.info('Task reminders dismissed for today', { taskId });
-    return result[0][0];
+    logger.info('Task reminders dismissed for today', { taskId, userId });
+    return {
+      task_id:                  data.TaskId,
+      reminder_dismissed_today: data.ReminderDismissedToday,
+    };
   } catch (error) {
-    logger.error('Error dismissing task reminders', { taskId, error: error.message });
+    logger.error('Error dismissing task reminders', { taskId, userId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 

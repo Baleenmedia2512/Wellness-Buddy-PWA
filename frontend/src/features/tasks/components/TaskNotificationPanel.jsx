@@ -185,6 +185,7 @@ const TaskNotificationPanel = ({
                       {!task.reminder_dismissed_today && (
                         <ReminderActionBar
                           task={task}
+                          userId={userId}
                           onActionComplete={handleReminderAction}
                         />
                       )}

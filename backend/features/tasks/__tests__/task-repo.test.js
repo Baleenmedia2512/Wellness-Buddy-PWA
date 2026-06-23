@@ -181,72 +181,94 @@ describe('getTasksByUserAndDate', () => {
 
 // ─── snoozeTask ───────────────────────────────────────────────────────────────
 
-describe('snoozeTask', () => {
-  let mockQuery;
-  let mockRelease;
+function setupSupabaseForSnooze({ row = { ReminderCount: 0 }, updated = null, readError = null, updateError = null }) {
+  const readSingle = jest.fn().mockResolvedValue(
+    readError ? { data: null, error: readError } : { data: row, error: null },
+  );
+  const readChain = {
+    eq: jest.fn(function snoozeEq() { return readChain; }),
+    single: readSingle,
+  };
 
+  const updateSingle = jest.fn().mockResolvedValue(
+    updateError ? { data: null, error: updateError } : { data: updated, error: null },
+  );
+  const updateChain = {
+    eq: jest.fn(function snoozeEq() { return updateChain; }),
+    select: jest.fn().mockReturnValue({ single: updateSingle }),
+  };
+
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn(() => ({
+      select: jest.fn().mockReturnValue(readChain),
+      update: jest.fn().mockReturnValue(updateChain),
+    })),
+  });
+}
+
+describe('snoozeTask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
   });
 
   it('returns the updated task row on success', async () => {
-    const updatedRow = { task_id: 42, reminder_count: 1, snoozed_until: '2026-06-09T07:15:00' };
-    mockQuery.mockResolvedValueOnce(mysqlResult([updatedRow]));
+    setupSupabaseForSnooze({
+      updated: { TaskId: 42, ReminderCount: 1, SnoozedUntil: '2026-06-09T07:15:00' },
+    });
 
-    const row = await snoozeTask(42, new Date('2026-06-09T07:15:00'));
+    const row = await snoozeTask(42, new Date('2026-06-09T07:15:00'), '339');
 
-    expect(row).toEqual(updatedRow);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+    expect(row).toEqual({
+      task_id: 42,
+      reminder_count: 1,
+      snoozed_until: '2026-06-09T07:15:00',
+    });
   });
 
   it('throws when the task is not found or not pending', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+    setupSupabaseForSnooze({ readError: { message: 'not found' } });
 
-    await expect(snoozeTask(99, new Date())).rejects.toThrow(
+    await expect(snoozeTask(99, new Date(), '339')).rejects.toThrow(
       'Task not found or not pending',
     );
-    expect(mockRelease).toHaveBeenCalledTimes(1);
-  });
-
-  it('propagates unexpected DB errors and still releases', async () => {
-    mockQuery.mockRejectedValueOnce(new Error('deadlock detected'));
-
-    await expect(snoozeTask(42, new Date())).rejects.toThrow('deadlock detected');
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 });
 
 // ─── dismissTaskToday ─────────────────────────────────────────────────────────
 
-describe('dismissTaskToday', () => {
-  let mockQuery;
-  let mockRelease;
+function setupSupabaseForDismiss({ updated = null, updateError = null }) {
+  const updateSingle = jest.fn().mockResolvedValue(
+    updateError ? { data: null, error: updateError } : { data: updated, error: null },
+  );
+  const updateChain = {
+    eq: jest.fn(function dismissEq() { return updateChain; }),
+    select: jest.fn().mockReturnValue({ single: updateSingle }),
+  };
 
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn(() => ({ update: jest.fn().mockReturnValue(updateChain) })),
+  });
+}
+
+describe('dismissTaskToday', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
   });
 
   it('returns the updated row when task is dismissed', async () => {
-    const updatedRow = { task_id: 7, reminder_dismissed_today: true };
-    mockQuery.mockResolvedValueOnce(mysqlResult([updatedRow]));
+    setupSupabaseForDismiss({
+      updated: { TaskId: 7, ReminderDismissedToday: true },
+    });
 
-    const row = await dismissTaskToday(7);
+    const row = await dismissTaskToday(7, '339');
 
     expect(row.reminder_dismissed_today).toBe(true);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
   it('throws when task is not found', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+    setupSupabaseForDismiss({ updateError: { message: 'not found' } });
 
-    await expect(dismissTaskToday(99)).rejects.toThrow('Task not found or not pending');
-    expect(mockRelease).toHaveBeenCalledTimes(1);
+    await expect(dismissTaskToday(99, '339')).rejects.toThrow('Task not found or not pending');
   });
 });
 

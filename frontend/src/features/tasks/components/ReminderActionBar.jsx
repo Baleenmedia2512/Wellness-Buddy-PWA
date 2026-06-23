@@ -28,8 +28,9 @@ const SNOOZE_OPTIONS = [
  * @param {Object}   props.task                  - Task object (task_id, task_type, …)
  * @param {Function} props.onActionComplete       - Called after any successful action so the
  *                                                  parent can refresh the task list.
+ * @param {string}   props.userId                 - Authenticated user id (same as task list).
  */
-const ReminderActionBar = ({ task, onActionComplete }) => {
+const ReminderActionBar = ({ task, userId, onActionComplete }) => {
   const [snoozeOpen, setSnoozeOpen]   = useState(false);
   const [loading, setLoading]         = useState(false);
   const [errorMsg, setErrorMsg]       = useState(null);
@@ -42,7 +43,7 @@ const ReminderActionBar = ({ task, onActionComplete }) => {
       debugLog('[ReminderActionBar] Snoozing task', { taskId: task.task_id, minutes });
 
       // 1. Persist snooze state to backend (source of truth)
-      const result = await snoozeTask(task.task_id, minutes);
+      const result = await snoozeTask(task.task_id, minutes, userId);
       if (!result.ok) {
         setErrorMsg(result.error?.message || 'Could not snooze task');
         return;
@@ -67,7 +68,7 @@ const ReminderActionBar = ({ task, onActionComplete }) => {
       debugLog('[ReminderActionBar] Dismissing task', { taskId: task.task_id });
 
       // 1. Persist dismiss to backend
-      const result = await dismissTask(task.task_id);
+      const result = await dismissTask(task.task_id, userId);
       if (!result.ok) {
         setErrorMsg(result.error?.message || 'Could not dismiss task');
         return;
