@@ -261,7 +261,7 @@ export class JobQueue {
    */
   async _persistToSupabase(job) {
     // Dynamic import avoids circular dependency with supabaseClient at module load
-    const { getSupabaseClient } = await import('../../utils/supabaseClient.js');
+    const { getSupabaseClient } = await import('../../../utils/supabaseClient.js');
     const supabase = getSupabaseClient();
 
     const { error } = await supabase
