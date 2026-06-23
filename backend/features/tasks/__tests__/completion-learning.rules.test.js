@@ -91,8 +91,21 @@ describe('inferMealTaskType — activity_time_windows_table', () => {
     expect(inferMealTaskType('20:02:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('dinner');
   });
 
-  it('returns null outside all meal windows (e.g. 10:00 AM gap)', () => {
-    expect(inferMealTaskType('10:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBeNull();
+  it('attributes gap after breakfast to breakfast (late logging grace)', () => {
+    expect(inferMealTaskType('09:16:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
+    expect(inferMealTaskType('10:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
+  });
+
+  it('attributes gap after lunch to lunch', () => {
+    expect(inferMealTaskType('16:30:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('lunch');
+  });
+
+  it('attributes late evening logs after dinner window to dinner', () => {
+    expect(inferMealTaskType('21:30:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('dinner');
+  });
+
+  it('attributes early morning before breakfast window to breakfast', () => {
+    expect(inferMealTaskType('04:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
   });
 
   it('returns null when table rows are missing — no hardcoded fallback', () => {

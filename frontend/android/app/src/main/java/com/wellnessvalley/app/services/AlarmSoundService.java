@@ -75,6 +75,8 @@ public class AlarmSoundService extends Service {
     private Vibrator        mVibrator;
     private Handler         mAutoStopHandler;
     private Runnable        mAutoStopRunnable;
+    private String          mActivityType;
+    private String          mTaskId;
 
     // ─────────────────────────────────────────────────────────────────────
     // Service lifecycle
@@ -139,6 +141,9 @@ public class AlarmSoundService extends Service {
     private void startAlarm(String title, String message, String activityType, String taskId) {
         Log.d(TAG, "🔔 Starting alarm sound");
 
+        mActivityType = activityType;
+        mTaskId       = taskId;
+
         // 1. Acquire WakeLock so CPU stays awake
         acquireWakeLock();
 
@@ -194,6 +199,12 @@ public class AlarmSoundService extends Service {
             restartIntent.setAction(ACTION_START);
             if (title   != null) restartIntent.putExtra(EXTRA_TITLE,   title);
             if (message != null) restartIntent.putExtra(EXTRA_MESSAGE, message);
+            if (mActivityType != null) {
+                restartIntent.putExtra(EXTRA_ACTIVITY_TYPE, mActivityType);
+            }
+            if (mTaskId != null) {
+                restartIntent.putExtra(EXTRA_TASK_ID, mTaskId);
+            }
 
             // Use PendingIntent for a Service (startForegroundService)
             PendingIntent pi = PendingIntent.getForegroundService(
@@ -395,20 +406,11 @@ public class AlarmSoundService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // "Upload Now" → open panel and launch camera / water dashboard
-        Intent uploadIntent = ReminderPlugin.buildTaskPanelIntent(this, activityType, taskId, true);
-        PendingIntent uploadPi = PendingIntent.getActivity(
-                this,
-                9006,
-                uploadIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
         // Full-screen intent → opens AlarmFullScreenActivity on top of lock screen
         Intent fullScreenIntent = new Intent(this, AlarmFullScreenActivity.class);
         fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-        fullScreenIntent.putExtra(EXTRA_TITLE,        title);
-        fullScreenIntent.putExtra(EXTRA_MESSAGE,      message);
+        fullScreenIntent.putExtra(EXTRA_TITLE,         title);
+        fullScreenIntent.putExtra(EXTRA_MESSAGE,       message);
         fullScreenIntent.putExtra(EXTRA_ACTIVITY_TYPE, activityType);
         fullScreenIntent.putExtra(EXTRA_TASK_ID,       taskId);
         PendingIntent fullScreenPi = PendingIntent.getActivity(
@@ -421,7 +423,8 @@ public class AlarmSoundService extends Service {
         // Wellness Valley logo as large icon
         Bitmap largeLogo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        // Build notification — "Upload Now" only for photo-log tasks (not sleep / water)
+        NotificationCompat.Builder notifBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setLargeIcon(largeLogo)
                 .setContentTitle(title)
@@ -433,8 +436,20 @@ public class AlarmSoundService extends Service {
                 .setOngoing(true)             // Cannot be swiped away while alarm rings
                 .setAutoCancel(false)
                 .setContentIntent(openPi)
-                .setFullScreenIntent(fullScreenPi, true)   // ← pops up full screen immediately
-                .addAction(R.drawable.ic_notification, "Upload Now", uploadPi)
+                .setFullScreenIntent(fullScreenPi, true);   // ← pops up full screen immediately
+
+        if (ReminderAlarmReceiver.isPhotoUploadReminder(activityType)) {
+            Intent uploadIntent = ReminderPlugin.buildTaskPanelIntent(this, activityType, taskId, true);
+            PendingIntent uploadPi = PendingIntent.getActivity(
+                    this,
+                    9006,
+                    uploadIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            notifBuilder.addAction(R.drawable.ic_notification, "Upload Now", uploadPi);
+        }
+
+        return notifBuilder
                 .addAction(R.drawable.ic_notification, "⏰ Snooze 5 min", snoozePi)
                 .addAction(R.drawable.ic_notification, "✖ Dismiss", dismissPi)
                 .build();

@@ -213,10 +213,15 @@ public class ReminderPlugin: CAPPlugin {
 
         let taskType = call.getString("taskType") ?? "task"
         let label    = call.getString("label")    ?? taskType.capitalized
+        let body     = call.getString("body")
 
         let content       = UNMutableNotificationContent()
         content.title     = "🔔 \(label) — Snoozed Reminder"
-        content.body      = buildActivityMessage(activityType: taskType, label: label)
+        if let customBody = body, !customBody.isEmpty {
+            content.body = customBody
+        } else {
+            content.body = buildActivityMessage(activityType: taskType, label: label)
+        }
         content.sound     = .default
         content.categoryIdentifier = ReminderPlugin.categoryTaskReminder
         content.userInfo  = [

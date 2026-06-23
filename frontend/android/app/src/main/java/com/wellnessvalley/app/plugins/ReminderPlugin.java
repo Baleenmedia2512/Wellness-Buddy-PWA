@@ -397,6 +397,9 @@ public class ReminderPlugin extends Plugin {
         String  taskType      = call.getString("taskType", "task");
         String  label         = call.getString("label", taskType);
         Integer snoozeMinutes = call.getInt("snoozeMinutes");
+        String  body          = call.getString("body");
+        Integer hour          = call.getInt("hour", -1);
+        Integer minute        = call.getInt("minute", -1);
 
         if (taskId == null || snoozeMinutes == null) {
             call.reject("Missing required parameters: taskId, snoozeMinutes");
@@ -409,7 +412,11 @@ public class ReminderPlugin extends Plugin {
 
         try {
             long triggerAtMs = System.currentTimeMillis() + (long) snoozeMinutes * 60 * 1000;
-            ReminderAlarmReceiver.scheduleOneShot(getContext(), taskId, taskType, label, triggerAtMs);
+            int alarmHour   = hour    != null ? hour    : -1;
+            int alarmMinute = minute  != null ? minute  : -1;
+            ReminderAlarmReceiver.scheduleOneShot(
+                    getContext(), taskId, taskType, label, triggerAtMs,
+                    body, alarmHour, alarmMinute);
 
             JSObject res = new JSObject();
             res.put("success",   true);

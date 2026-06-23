@@ -115,8 +115,27 @@ export function buildActivityWindowsMap(rowsOrMap) {
 }
 
 /**
- * Infer breakfast / lunch / dinner from IST wall-clock time using
- * activity_time_windows_table windows only (no hardcoded fallbacks).
+ * Meal windows sorted by start time (breakfast → lunch → dinner).
+ *
+ * @param {Object} windowMap
+ * @returns {Array<{ type: string, start: string, end: string }>}
+ */
+function getSortedMealWindows(windowMap) {
+  return MEAL_ACTIVITY_TYPES
+    .map((type) => {
+      const bounds = normalizeActivityWindow(windowMap[type]);
+      return bounds ? { type, start: bounds.start, end: bounds.end } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Infer breakfast / lunch / dinner from IST wall-clock time.
+ *
+ * Inside a configured window → that meal. Between windows → the earlier meal
+ * (late-logging grace for task completion). Discipline scoring uses strict
+ * windows separately — this rule is task-completion only.
  *
  * @param {string} timeHHMMSS
  * @param {Array<Object>|Object} timeWindows  table rows or map keyed by ActivityType
@@ -125,15 +144,29 @@ export function buildActivityWindowsMap(rowsOrMap) {
 export function inferMealTaskType(timeHHMMSS, timeWindows) {
   if (!timeHHMMSS || !timeWindows) return null;
 
-  const windowMap = buildActivityWindowsMap(timeWindows);
+  const meals = getSortedMealWindows(buildActivityWindowsMap(timeWindows));
+  if (!meals.length) return null;
 
-  for (const mealType of MEAL_ACTIVITY_TYPES) {
-    const bounds = normalizeActivityWindow(windowMap[mealType]);
-    if (!bounds) continue;
+  for (let i = 0; i < meals.length; i++) {
+    const current = meals[i];
 
-    if (timeHHMMSS >= bounds.start && timeHHMMSS <= bounds.end) {
-      return mealType;
+    if (timeHHMMSS >= current.start && timeHHMMSS <= current.end) {
+      return current.type;
     }
+
+    const next = meals[i + 1];
+    if (next && timeHHMMSS > current.end && timeHHMMSS < next.start) {
+      return current.type;
+    }
+  }
+
+  if (timeHHMMSS < meals[0].start) {
+    return meals[0].type;
+  }
+
+  const last = meals[meals.length - 1];
+  if (timeHHMMSS > last.end) {
+    return last.type;
   }
 
   return null;

@@ -17,6 +17,19 @@ describe('buildServerIstTimestamp', () => {
 });
 
 describe('inferFoodTaskTypesFromTodayLogs', () => {
+  it('maps gap-time breakfast food rows to breakfast (e.g. 9:16 AM)', () => {
+    const types = inferFoodTaskTypesFromTodayLogs(
+      [{
+        CreatedAt: '2026-06-23 09:16:00',
+        AnalysisData: JSON.stringify({ foods: [{ name: 'sambar', weight_g: 200 }] }),
+      }],
+      ACTIVITY_TIME_WINDOWS_MAP,
+      { date: '2026-06-23', time: '21:44:00' },
+      new Set(['breakfast']),
+    );
+    expect(types.has('breakfast')).toBe(true);
+  });
+
   it('maps a lunch food row to lunch', () => {
     const types = inferFoodTaskTypesFromTodayLogs(
       [{
