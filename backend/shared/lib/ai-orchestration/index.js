@@ -22,7 +22,18 @@ export {
   analyse,
   classifyAndAnalyse,
   CONFIDENCE_THRESHOLD,
+  confirmPersisted,
+  confirmFailed,
+  confirmEnrichmentComplete,
+  getAnalysisStatus,
 } from './AIAnalysisOrchestrator.js';
+
+// ── Analysis Status ───────────────────────────────────────────────────────────
+export {
+  ANALYSIS_STATUS,
+  TERMINAL_ANALYSIS_STATES,
+  IN_PROGRESS_ANALYSIS_STATES,
+} from './AnalysisStatus.js';
 
 // ── AI Gateway ────────────────────────────────────────────────────────────────
 export {

@@ -26,6 +26,7 @@ import logger from '../logger.js';
 import { TraceContext } from './ObservabilityTracer.js';
 import { enrichNutrition } from './AIGateway.js';
 import { jobQueue, JOB_STATUS } from './JobQueue.js';
+import { confirmEnrichmentComplete } from './AIAnalysisOrchestrator.js';
 
 // ── Micronutrient column mapping ──────────────────────────────────────────────
 // Maps enrichment JSON keys → food_nutrition_data_table PascalCase columns.
@@ -148,6 +149,9 @@ export async function processNextJob() {
 
     // 5. Mark job completed
     await jobQueue.markCompleted(job.jobId);
+
+    // 6. Transition analysisStatus ENRICHING → COMPLETE (best-effort)
+    if (job.captureId) confirmEnrichmentComplete(job.captureId);
 
     const summary = trace.complete({ success: true, imageType: 'food' });
 
