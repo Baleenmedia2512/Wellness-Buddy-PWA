@@ -88,9 +88,6 @@ export function useTaskData(userId) {
           markCatchupDoneToday(userId);
           debugLog('[useTaskData] Running catch-up for missed windows', { existingCount: fetched.length });
           const created = await triggerCatchup(apiBaseUrl, userId);
-          // #region agent log
-          fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'useTaskData.js:catchup',message:'catchup completed',data:{existingCount:fetched.length,createdCount:created},timestamp:Date.now(),hypothesisId:'H-catchup',runId:'post-fix'})}).catch(()=>{});
-          // #endregion
           const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },

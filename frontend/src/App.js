@@ -3669,9 +3669,6 @@ function WellnessValleyApp() {
   const openCameraForTask = (task) => {
     const taskType = task?.task_type;
     debugLog('[App] openCameraForTask', { taskId: task?.task_id, taskType });
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:openCameraForTask:entry',message:'task camera requested',data:{taskId:task?.task_id,taskType,hasFileInputRef:!!fileInputRef.current,hasOpenCamera:!!fileInputRef.current?.openCamera},timestamp:Date.now(),hypothesisId:'H-camera-gesture',runId:'post-fix-2'})}).catch(()=>{});
-    // #endregion
 
     setShowManualWeightModal(false);
     setShowManualFoodModal(false);
@@ -3718,9 +3715,6 @@ function WellnessValleyApp() {
         }
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:openCameraForTask:opened',message:opened?'camera trigger fired':'camera trigger failed',data:{taskId:task?.task_id,taskType,opened,isNative:Capacitor.isNativePlatform(),hasTaskInput:!!taskCameraInputRef.current,hasFileInputRef:!!fileInputRef.current?.openCamera},timestamp:Date.now(),hypothesisId:'H-camera-mount',runId:'post-fix-3'})}).catch(()=>{});
-    // #endregion
     if (!opened) {
       debugLog('[App] Could not open camera for task — no input ref ready');
     }
@@ -5815,9 +5809,6 @@ function WellnessValleyApp() {
   const handleTaskCameraFileChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'App.js:handleTaskCameraFileChange',message:'task camera file selected',data:{fileName:file.name,fileSize:file.size,imageType},timestamp:Date.now(),hypothesisId:'H-camera-mount',runId:'post-fix-3'})}).catch(()=>{});
-    // #endregion
     const timestamp = new Date(file.lastModified).toISOString();
     handleImageSelect(file, timestamp);
     event.target.value = '';

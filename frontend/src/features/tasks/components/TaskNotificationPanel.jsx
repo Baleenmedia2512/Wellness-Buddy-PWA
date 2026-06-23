@@ -57,9 +57,6 @@ const TaskNotificationPanel = ({
   
   const handleTaskClick = (task) => {
     debugLog('[TaskPanel] Task clicked', { taskId: task.task_id, taskType: task.task_type });
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'TaskNotificationPanel.jsx:handleTaskClick',message:'task card clicked',data:{taskId:task.task_id,taskType:task.task_type},timestamp:Date.now(),hypothesisId:'H-camera-gesture',runId:'post-fix-2'})}).catch(()=>{});
-    // #endregion
     if (onTaskComplete) {
       onTaskComplete(task);
     }

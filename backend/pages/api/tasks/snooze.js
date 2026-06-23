@@ -1,7 +1,7 @@
 /**
  * /api/tasks/snooze — Snooze a pending task reminder
  *
- * POST body: { taskId: number, snoozeMinutes: 15 | 30 | 60 }
+ * POST body: { taskId: number, snoozeMinutes: 5 | 10 }
  *
  * Per claude.md §2.6: validate input, return { ok, data/error }, explicit status codes.
  */
