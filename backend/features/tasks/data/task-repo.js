@@ -40,6 +40,19 @@ function addSecondsToTime(timeStr, seconds) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
+function timeToSeconds(timeStr) {
+  const parts = String(timeStr).split(':').map(Number);
+  return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+}
+
+function secondsToTime(totalSeconds) {
+  let total = ((totalSeconds % 86400) + 86400) % 86400;
+  const hh = Math.floor(total / 3600);
+  const mm = Math.floor((total % 3600) / 60);
+  const ss = total % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
 function mapCreatedTaskRow(row) {
   if (!row) return null;
   return {
@@ -296,30 +309,29 @@ async function createTask(taskData) {
  * @returns {Promise<Object>} - Updated task
  */
 async function completeTask(taskId, completionData) {
-  const client = await dbPool();
-  
   try {
-    const result = await client.query(`
-      UPDATE tasks_table
-      SET 
-        "Status" = 'completed',
-        "CompletedAt" = NOW(),
-        "CompletionData" = $1
-      WHERE "TaskId" = $2 AND "Status" = 'pending'
-      RETURNING *
-    `, [JSON.stringify(completionData), taskId]);
-    
-    if (result[0].length > 0) {
-      logger.info('Task completed', { taskId, userId: result[0][0].UserId });
-      return result[0][0];
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tasks_table')
+      .update({
+        Status:         'completed',
+        CompletedAt:    new Date().toISOString(),
+        CompletionData: completionData,
+      })
+      .eq('TaskId', taskId)
+      .eq('Status', 'pending')
+      .select('*')
+      .single();
+
+    if (error || !data) {
+      throw new Error('Task not found or already completed');
     }
-    
-    throw new Error('Task not found or already completed');
+
+    logger.info('Task completed', { taskId, userId: data.UserId });
+    return data;
   } catch (error) {
     logger.error('Error completing task', { taskId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -637,31 +649,32 @@ async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime
  * @returns {Promise<Object|null>}
  */
 async function getPendingTaskForUser(userId, taskType, taskDate) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      SELECT
-        "TaskId" as task_id,
-        "UserId" as user_id,
-        "TaskType" as task_type,
-        "TaskDate" as task_date,
-        "Status" as status
-      FROM tasks_table
-      WHERE "UserId"   = $1
-        AND "TaskType" = $2
-        AND "TaskDate" = $3::date
-        AND "Status"   = 'pending'
-      LIMIT 1
-    `, [userId, taskType, taskDate]);
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tasks_table')
+      .select('TaskId, UserId, TaskType, TaskDate, Status')
+      .eq('UserId', String(userId))
+      .eq('TaskType', taskType)
+      .eq('TaskDate', taskDate)
+      .eq('Status', 'pending')
+      .maybeSingle();
 
-    return result[0][0] || null;
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+      task_id:   data.TaskId,
+      user_id:   String(data.UserId),
+      task_type: data.TaskType,
+      task_date: data.TaskDate,
+      status:    data.Status,
+    };
   } catch (error) {
     logger.error('Error fetching pending task for user', {
       userId, taskType, taskDate, error: error.message,
     });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -677,44 +690,72 @@ async function getPendingTaskForUser(userId, taskType, taskDate) {
  * @returns {Promise<Object>}        - Updated average row.
  */
 async function upsertTaskAverage(userId, taskType, completionTimeStr) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      INSERT INTO user_task_averages (
-        "UserId", "TaskType", "AverageCompletionTime", "SampleCount", "LastCalculatedAt"
-      ) VALUES ($1, $2, $3::time, 1, NOW())
-      ON CONFLICT ("UserId", "TaskType") DO UPDATE
-        SET
-          "AverageCompletionTime" = (
-            -- incremental running average (stored as epoch seconds, then cast back to time)
-            to_timestamp(
-              (
-                EXTRACT(EPOCH FROM user_task_averages."AverageCompletionTime"::interval)
-                + (
-                    EXTRACT(EPOCH FROM $3::time::interval)
-                    - EXTRACT(EPOCH FROM user_task_averages."AverageCompletionTime"::interval)
-                  )
-                  / (user_task_averages."SampleCount" + 1)
-              )
-            )::time
-          ),
-          "SampleCount"          = user_task_averages."SampleCount" + 1,
-          "LastCalculatedAt"     = NOW()
-      RETURNING
-        "AverageId"             as average_id,
-        "UserId"                as user_id,
-        "TaskType"              as task_type,
-        "AverageCompletionTime" as average_completion_time,
-        "SampleCount"           as sample_count
-    `, [userId, taskType, completionTimeStr]);
+    const supabase = getSupabaseClient();
+    const { data: existing, error: findError } = await supabase
+      .from('user_task_averages')
+      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+      .eq('UserId', userId)
+      .eq('TaskType', taskType)
+      .maybeSingle();
 
+    if (findError) throw findError;
+
+    const now = new Date().toISOString();
+
+    if (!existing) {
+      const { data, error } = await supabase
+        .from('user_task_averages')
+        .insert({
+          UserId:                  userId,
+          TaskType:                taskType,
+          AverageCompletionTime:   completionTimeStr,
+          SampleCount:             1,
+          LastCalculatedAt:        now,
+        })
+        .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+        .single();
+
+      if (error) throw error;
+      logger.info('Task average upserted', { userId, taskType, completionTimeStr });
+      return {
+        average_id:              data.AverageId,
+        user_id:                 data.UserId,
+        task_type:               data.TaskType,
+        average_completion_time: data.AverageCompletionTime,
+        sample_count:            data.SampleCount,
+      };
+    }
+
+    const count  = (existing.SampleCount ?? 0) + 1;
+    const oldSec = timeToSeconds(existing.AverageCompletionTime);
+    const newSec = timeToSeconds(completionTimeStr);
+    const avgSec = oldSec + (newSec - oldSec) / count;
+
+    const { data, error } = await supabase
+      .from('user_task_averages')
+      .update({
+        AverageCompletionTime: secondsToTime(avgSec),
+        SampleCount:           count,
+        LastCalculatedAt:      now,
+      })
+      .eq('UserId', userId)
+      .eq('TaskType', taskType)
+      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+      .single();
+
+    if (error) throw error;
     logger.info('Task average upserted', { userId, taskType, completionTimeStr });
-    return result[0][0];
+    return {
+      average_id:              data.AverageId,
+      user_id:                 data.UserId,
+      task_type:               data.TaskType,
+      average_completion_time: data.AverageCompletionTime,
+      sample_count:            data.SampleCount,
+    };
   } catch (error) {
     logger.error('Error upserting task average', { userId, taskType, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -857,22 +898,23 @@ async function syncPendingTaskWindowsForActivityType(activityType, fromDate) {
  * @returns {Promise<Array<{ task_type, average_completion_time, sample_count }>>}
  */
 async function getUserTaskAverages(userId) {
-  const client = await dbPool();
   try {
-    const result = await client.query(`
-      SELECT
-        "TaskType"              AS task_type,
-        "AverageCompletionTime" AS average_completion_time,
-        "SampleCount"           AS sample_count
-      FROM user_task_averages
-      WHERE "UserId" = $1
-    `, [userId]);
-    return result[0];
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('user_task_averages')
+      .select('TaskType, AverageCompletionTime, SampleCount')
+      .eq('UserId', userId);
+
+    if (error) throw error;
+
+    return (data || []).map((row) => ({
+      task_type:               row.TaskType,
+      average_completion_time: row.AverageCompletionTime,
+      sample_count:            row.SampleCount,
+    }));
   } catch (error) {
     logger.error('Error fetching user task averages', { userId, error: error.message });
     throw error;
-  } finally {
-    client.release();
   }
 }
 

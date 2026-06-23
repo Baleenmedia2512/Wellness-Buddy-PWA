@@ -375,34 +375,41 @@ describe('createTask', () => {
 
 // ─── completeTask ─────────────────────────────────────────────────────────────
 
-describe('completeTask', () => {
-  let mockQuery;
-  let mockRelease;
+function setupSupabaseForCompleteTask({ updated = null, error = null }) {
+  const single = jest.fn().mockResolvedValue(
+    error ? { data: null, error } : { data: updated, error: null },
+  );
+  const eq2 = jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue({ single }) });
+  const eq1 = jest.fn().mockReturnValue({ eq: eq2 });
+  const update = jest.fn().mockReturnValue({ eq: eq1 });
 
+  getSupabaseClient.mockReturnValue({
+    from: jest.fn(() => ({ update })),
+  });
+
+  return { update, single };
+}
+
+describe('completeTask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery   = jest.fn();
-    mockRelease = jest.fn();
-    setupMockConnection(mockQuery, mockRelease);
   });
 
   it('returns the updated row on success', async () => {
     const updatedRow = { TaskId: 1, Status: 'completed', UserId: '339' };
-    mockQuery.mockResolvedValueOnce(mysqlResult([updatedRow]));
+    setupSupabaseForCompleteTask({ updated: updatedRow });
 
     const row = await completeTask(1, { weight: 70 });
 
     expect(row).toEqual(updatedRow);
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
   it('throws when task is not found or already completed', async () => {
-    mockQuery.mockResolvedValueOnce(mysqlResult([]));
+    setupSupabaseForCompleteTask({ updated: null });
 
     await expect(completeTask(999, { weight: 70 })).rejects.toThrow(
       'Task not found or already completed',
     );
-    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 });
 

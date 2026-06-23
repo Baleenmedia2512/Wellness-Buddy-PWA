@@ -48,17 +48,18 @@ export default async function handler(req, res) {
   logger.info('Cron job started: tasks', { correlationId });
 
   try {
-    // Run all three checks in parallel — they are independent
-    await Promise.all([
+    const [createStats, followUpStats, personalStats] = await Promise.all([
       checkAndCreateTasksForCurrentTime(),
       checkAndSendFollowUpReminders(),
-      checkAndSendPersonalisedReminders()
+      checkAndSendPersonalisedReminders(),
     ]);
 
     const durationMs = Date.now() - startTime;
-    logger.info('Cron job completed: tasks', { correlationId, durationMs });
+    const summary = { createStats, followUpStats, personalStats, transport: 'supabase-rest' };
 
-    return res.status(200).json({ ok: true, data: { correlationId, durationMs } });
+    logger.info('Cron job completed: tasks', { correlationId, durationMs, summary });
+
+    return res.status(200).json({ ok: true, data: { correlationId, durationMs, summary } });
 
   } catch (error) {
     const durationMs = Date.now() - startTime;

@@ -78,18 +78,24 @@ export function convertToIST(timestamp) {
  */
 export function getSupabaseClient() {
   if (!supabaseInstance) {
-    if (!process.env.SUPABASE_ANON_KEY) {
-      throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
+    const url = process.env.SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ANON_KEY;
+
+    if (!url || !key) {
+      throw new Error(
+        'SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_KEY) must be set',
+      );
     }
-    
-    supabaseInstance = createClient(
-      process.env.SUPABASE_URL ,
-      process.env.SUPABASE_ANON_KEY
-    );
-    
-    console.log('✅ Supabase REST client initialized');
+
+    supabaseInstance = createClient(url, key);
+
+    console.log('✅ Supabase REST client initialized', {
+      auth: process.env.SUPABASE_SERVICE_KEY ? 'service_role' : 'anon',
+    });
   }
-  
+
   return supabaseInstance;
 }
 
