@@ -16,7 +16,7 @@
  * On any successful change we call `onChanged()` so the feed re-fetches.
  */
 import React, { useState } from 'react';
-import { imageTypeDetector } from '../../shared/services/imageTypeDetector';
+import { analyzeImage } from '../../shared/services/orchestratorService';
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
   UnknownShareViewer,
@@ -119,9 +119,10 @@ export default function UnknownEntryFlow({
     try {
       const file = base64ToImageFile(imageBase64);
 
-      // Use full image type detection so weight, education, and smartwatch
-      // captures are also correctly re-classified — not just food.
-      const detectedType = await imageTypeDetector.detectImageType(file);
+      // Use the unified orchestrator (single Gemini call) so weight, education,
+      // and smartwatch captures are re-classified consistently with the main
+      // capture flow — replaces the old two-step imageTypeDetector chain.
+      const detectedType = await analyzeImage(file, { userId, captureId });
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
