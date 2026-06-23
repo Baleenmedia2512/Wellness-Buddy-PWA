@@ -80,7 +80,7 @@ const UNIFIED_SCHEMA = {
   properties: {
     imageType:  { type: SchemaType.STRING },
     confidence: { type: SchemaType.NUMBER },
-    details:    { type: SchemaType.OBJECT, properties: {}, additionalProperties: true },
+    details:    { type: SchemaType.OBJECT, properties: {} },
     fastNutrition: {
       type:       SchemaType.OBJECT,
       properties: FAST_NUTRITION_PROPS,
