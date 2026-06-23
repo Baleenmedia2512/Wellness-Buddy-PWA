@@ -78,7 +78,7 @@ async function persistEnrichment(foodRowId, enrichmentPayload) {
   if (!foodRowId || Object.keys(enrichmentPayload).length === 0) return;
 
   // Dynamic import avoids circular dependency at module load
-  const { getSupabaseClient } = await import('../../utils/supabaseClient.js');
+  const { getSupabaseClient } = await import('../../../utils/supabaseClient.js');
   const supabase = getSupabaseClient();
 
   const { error } = await supabase
