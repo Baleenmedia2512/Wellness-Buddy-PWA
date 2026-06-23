@@ -10,11 +10,12 @@
  * Temp files: always cleaned up via withTempFileCleanup (try/finally).
  * Retries: transient Gemini errors retried up to 3× with exponential backoff.
  * JSON safety: all response parsing via safeParseJson (never bare JSON.parse).
- * Fallback: returns structured fallback result on analysis failure so the
- *           capture flow never crashes.
+ * Failure visibility: every fallback response includes a structured log entry
+ *   with requestId, captureId, stage, and error — never silently returned.
  * ---------------------------------------------------------------------------
  */
 
+import { randomUUID } from 'crypto';
 import formidable from 'formidable';
 import fs from 'fs';
 import logger from '../../../shared/lib/logger.js';
@@ -120,7 +121,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: 'Only POST allowed' } });
   }
 
-  const t0 = Date.now();
+  // Every request receives a unique traceId so failures are fully traceable.
+  const requestId = randomUUID();
+  const t0        = Date.now();
 
   const form = formidable({ maxFileSize: 10 * 1024 * 1024 });
   let fields, files;
@@ -129,7 +132,7 @@ export default async function handler(req, res) {
       form.parse(req, (err, f, fi) => (err ? reject(err) : resolve([f, fi])));
     });
   } catch (err) {
-    logger.warn('analyze-nutrition: form parse error', { error: err.message });
+    logger.warn('analyze-nutrition: form parse error', { requestId, error: err.message });
     return res.status(400).json({
       ok: false,
       error: { code: 'FORM_PARSE_ERROR', message: 'Failed to parse form data' },
@@ -137,6 +140,11 @@ export default async function handler(req, res) {
   }
 
   return withTempFileCleanup(files, async () => {
+    // Extract optional captureId for correlation (passed by new clients)
+    const captureId = Array.isArray(fields?.captureId)
+      ? fields.captureId[0]
+      : (fields?.captureId ?? null);
+
     const imageFile = files.image?.[0] ?? files.image;
     if (!imageFile) {
       return res.status(400).json({
@@ -149,7 +157,12 @@ export default async function handler(req, res) {
     try {
       model = getModel('nutrition', FOOD_ANALYSIS_SCHEMA);
     } catch (err) {
-      logger.error('analyze-nutrition: Gemini client init failed', { error: err.message });
+      logger.error('analyze-nutrition: Gemini client init failed', {
+        requestId,
+        captureId: captureId ?? null,
+        stage:     'init',
+        error:     err.message,
+      });
       return res.status(500).json({
         ok: false,
         error: { code: err.code || 'SERVER_CONFIG_ERROR', message: 'AI service not configured' },
@@ -170,36 +183,68 @@ export default async function handler(req, res) {
     } catch (err) {
       const latencyMs = Date.now() - t0;
       logger.error('analyze-nutrition: Gemini failed after retries', {
-        latencyMs, attempts, error: err.message, status: err.status ?? null,
+        requestId,
+        captureId:  captureId ?? null,
+        stage:      'gemini',
+        latencyMs,
+        attempts,
+        error:      err.message,
+        status:     err.status ?? null,
       });
-      // Return fallback — never crash capture flow
-      return res.status(200).json({ ok: true, data: { ...FALLBACK_RESULT } });
+      // Return fallback — never crash capture flow, but always log failure
+      return res.status(200).json({
+        ok:   true,
+        data: { ...FALLBACK_RESULT },
+        _meta: { requestId, latencyMs, retryCount: attempts - 1, defaulted: true },
+      });
     }
 
     const parsed = safeParseJson(rawText, { label: 'nutrition' });
     if (!parsed.ok) {
-      logger.warn('analyze-nutrition: response parse failed', { latencyMs: Date.now() - t0, error: parsed.error });
-      return res.status(200).json({ ok: true, data: { ...FALLBACK_RESULT } });
+      logger.warn('analyze-nutrition: response parse failed', {
+        requestId,
+        captureId:  captureId ?? null,
+        stage:      'parse',
+        latencyMs:  Date.now() - t0,
+        error:      parsed.error,
+      });
+      return res.status(200).json({
+        ok:   true,
+        data: { ...FALLBACK_RESULT },
+        _meta: { requestId, latencyMs: Date.now() - t0, retryCount: attempts - 1, defaulted: true },
+      });
     }
 
     const shape = validateShape(parsed.data, ['foods', 'total', 'confidence'], { label: 'nutrition' });
     if (!shape.ok) {
-      logger.warn('analyze-nutrition: response schema invalid', { latencyMs: Date.now() - t0, missing: shape.missing });
-      return res.status(200).json({ ok: true, data: { ...FALLBACK_RESULT } });
+      logger.warn('analyze-nutrition: response schema invalid', {
+        requestId,
+        captureId:  captureId ?? null,
+        stage:      'schema_validation',
+        latencyMs:  Date.now() - t0,
+        missing:    shape.missing,
+      });
+      return res.status(200).json({
+        ok:   true,
+        data: { ...FALLBACK_RESULT },
+        _meta: { requestId, latencyMs: Date.now() - t0, retryCount: attempts - 1, defaulted: true },
+      });
     }
 
     const latencyMs = Date.now() - t0;
     logger.info('analyze-nutrition: success', {
+      requestId,
+      captureId:  captureId ?? null,
       latencyMs,
       retryCount: attempts - 1,
-      foodCount: parsed.data.foods?.length ?? 0,
+      foodCount:  parsed.data.foods?.length ?? 0,
       confidence: parsed.data.confidence,
     });
 
     return res.status(200).json({
       ok: true,
       data: parsed.data,
-      _meta: { latencyMs, retryCount: attempts - 1 },
+      _meta: { requestId, latencyMs, retryCount: attempts - 1 },
     });
   });
 }

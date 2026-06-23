@@ -12,6 +12,7 @@ import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
+import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -265,6 +266,17 @@ export async function save(input) {
     } else if (error.code === '23505') {
       errorMessage = 'Duplicate key error: The database sequence needs to be reset. Please contact support.';
     }
+
+    // Signal to the orchestrator that persistence failed so the capture
+    // status transitions to FAILED rather than staying in ANALYZING.
+    // Never mark a capture FAST_COMPLETE without a persisted domain row.
+    if (captureId) {
+      confirmFailed(captureId, error.code ?? 'SAVE_FAILED', {
+        errorMessage,
+        userId: userId?.toString(),
+      });
+    }
+
     return {
       httpStatus: 500,
       body: {
@@ -305,6 +317,11 @@ export async function save(input) {
         err: err.message,
       });
     }
+
+    // Signal to the orchestrator that the food row is now persisted.
+    // This transitions the capture analysisStatus from ANALYZING → FAST_COMPLETE.
+    // Must be called AFTER the food row is in the DB and the capture is promoted.
+    confirmPersisted(captureId, { foodRowId: data?.ID || data?.id });
   }
 
   await repo.touchLastActive(userId);

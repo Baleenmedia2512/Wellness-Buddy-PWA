@@ -43,8 +43,34 @@
 import logger from '../logger.js';
 import { TraceContext } from './ObservabilityTracer.js';
 import { idempotencyGuard, JOB_STATUS } from './IdempotencyGuard.js';
+import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
 import { jobQueue } from './JobQueue.js';
+
+// ── Per-capture analysis status store ────────────────────────────────────────
+// In-process map: captureId → { status, traceId, updatedAt, errorCode? }
+// Eviction: entries older than STATUS_TTL_MS are pruned on each write.
+const STATUS_TTL_MS  = 10 * 60 * 1_000; // 10 minutes
+const _statusStore   = new Map();
+
+function _setStatus(captureId, status, extra = {}) {
+  if (!captureId) return;
+  const key = String(captureId);
+
+  // Prune stale entries on each write to bound memory
+  const now = Date.now();
+  for (const [k, v] of _statusStore.entries()) {
+    if (now - v.updatedAt > STATUS_TTL_MS) _statusStore.delete(k);
+  }
+
+  _statusStore.set(key, { status, updatedAt: now, ...extra });
+
+  logger.info('orchestrator: analysisStatus updated', {
+    captureId: key,
+    status,
+    ...extra,
+  });
+}
 
 // ── Public constants ──────────────────────────────────────────────────────────
 
@@ -118,6 +144,9 @@ export async function analyse(params) {
     idempotencyGuard.register(captureId, { traceId: trace.traceId });
   }
 
+  // Transition: PENDING → ANALYZING
+  _setStatus(captureId, ANALYSIS_STATUS.ANALYZING, { traceId: trace.traceId });
+
   // ── Step 2: Fast analysis (single unified Gemini call) ────────────────────
   let fastResult;
   try {
@@ -127,10 +156,17 @@ export async function analyse(params) {
     logger.error('orchestrator: fast analysis failed, using fallback', {
       traceId:   trace.traceId,
       captureId,
+      stage:     ANALYSIS_STATUS.ANALYZING,
       error:     err.message,
       code:      err.code ?? null,
     });
 
+    // Transition: ANALYZING → FAILED
+    _setStatus(captureId, ANALYSIS_STATUS.FAILED, {
+      traceId:   trace.traceId,
+      stage:     ANALYSIS_STATUS.ANALYZING,
+      errorCode: err.code ?? 'FAST_ANALYSIS_FAILED',
+    });
     if (captureId) idempotencyGuard.fail(captureId, err.code ?? 'FAST_ANALYSIS_FAILED');
 
     trace.complete({ success: false, errorCode: err.code ?? 'FAST_ANALYSIS_FAILED' });
@@ -140,6 +176,7 @@ export async function analyse(params) {
       captureId,
       duplicate:       false,
       ...FAST_FALLBACK,
+      analysisStatus:  ANALYSIS_STATUS.FAILED,
       error:           err.message,
       enrichmentJobId: null,
       observability:   null,
@@ -147,6 +184,9 @@ export async function analyse(params) {
   }
 
   // ── Step 3: Enqueue enrichment job (food images only, non-blocking) ────────
+  // NOTE: FAST_COMPLETE is NOT set here. It is set by confirmPersisted() after
+  // the caller successfully persists the domain row (food / weight / etc.).
+  // This prevents the "READY but data missing" defect.
   let enrichmentJobId = null;
   if (fastResult.imageType === 'food' && imageBase64) {
     try {
@@ -161,6 +201,7 @@ export async function analyse(params) {
       });
       enrichmentJobId = jobId;
 
+      // Transition: will become ENRICHING after FAST_COMPLETE is set
       logger.info('orchestrator: enrichment job enqueued', {
         jobId,
         traceId:   trace.traceId,
@@ -176,13 +217,14 @@ export async function analyse(params) {
     }
   }
 
-  // ── Step 4: Mark idempotency as completed ──────────────────────────────────
+  // ── Step 4: Return result — status remains ANALYZING until confirmPersisted()
+  // The caller MUST invoke confirmPersisted(captureId) after the domain row
+  // is saved, or confirmFailed(captureId) if save fails.
   const result = buildResult({ traceId: trace.traceId, captureId, fastResult, enrichmentJobId });
-  if (captureId) idempotencyGuard.complete(captureId, result);
 
   const observability = trace.complete({ success: true, imageType: fastResult.imageType });
 
-  return { ...result, observability };
+  return { ...result, observability, analysisStatus: ANALYSIS_STATUS.ANALYZING };
 }
 
 // ── Result builder ────────────────────────────────────────────────────────────
@@ -206,6 +248,102 @@ function buildResult({ traceId, captureId, fastResult, enrichmentJobId }) {
     enrichmentJobId,
     enrichmentStatus: enrichmentJobId ? JOB_STATUS.PROCESSING : null,
   };
+}
+
+// ── Post-persistence status confirmations ────────────────────────────────────
+// These are called by domain services (e.g. analysis.service.js,
+// weight.service.js) AFTER the domain row is successfully persisted.
+// Only then is the capture marked FAST_COMPLETE, preventing the
+// "UI shows READY but data is missing" defect.
+
+/**
+ * Confirm that the domain row for a capture has been successfully persisted.
+ * Transitions analysisStatus from ANALYZING → FAST_COMPLETE, and if an
+ * enrichment job was enqueued, immediately to ENRICHING.
+ *
+ * Must be called by the persistence layer after a successful DB write.
+ * Must NOT be called speculatively — only on confirmed success.
+ *
+ * @param {string} captureId
+ * @param {object} [persistedData]   Optional metadata (e.g. { foodRowId }).
+ */
+export function confirmPersisted(captureId, persistedData = {}) {
+  if (!captureId) return;
+
+  _setStatus(captureId, ANALYSIS_STATUS.FAST_COMPLETE, {
+    ...persistedData,
+    confirmedAt: Date.now(),
+  });
+
+  // Also complete the idempotency guard entry so concurrent requests get
+  // the cached result rather than triggering a new Gemini call.
+  idempotencyGuard.complete(captureId, { analysisStatus: ANALYSIS_STATUS.FAST_COMPLETE, ...persistedData });
+
+  logger.info('orchestrator: capture confirmed as persisted → FAST_COMPLETE', {
+    captureId: String(captureId),
+    ...persistedData,
+  });
+}
+
+/**
+ * Signal that persistence failed for a capture.
+ * Transitions analysisStatus to FAILED and fails the idempotency guard entry
+ * so the next request retries rather than receiving a stale "processing" status.
+ *
+ * Must be called by the persistence layer when the DB write fails.
+ *
+ * @param {string} captureId
+ * @param {string} [errorCode]
+ * @param {object} [details]   Additional context for the structured failure log.
+ */
+export function confirmFailed(captureId, errorCode = 'PERSIST_FAILED', details = {}) {
+  if (!captureId) return;
+
+  _setStatus(captureId, ANALYSIS_STATUS.FAILED, {
+    errorCode,
+    stage: 'persist',
+    ...details,
+  });
+
+  idempotencyGuard.fail(captureId, errorCode);
+
+  logger.error('orchestrator: capture persistence failed → FAILED', {
+    captureId: String(captureId),
+    errorCode,
+    stage:     'persist',
+    ...details,
+  });
+}
+
+/**
+ * Signal that the background enrichment job has completed.
+ * Transitions analysisStatus from ENRICHING → COMPLETE.
+ *
+ * Called by JobWorker after successful micronutrient write-back.
+ *
+ * @param {string} captureId
+ */
+export function confirmEnrichmentComplete(captureId) {
+  if (!captureId) return;
+
+  _setStatus(captureId, ANALYSIS_STATUS.COMPLETE, { completedAt: Date.now() });
+
+  logger.info('orchestrator: enrichment complete → COMPLETE', {
+    captureId: String(captureId),
+  });
+}
+
+/**
+ * Get the current analysis status for a capture.
+ * Returns null if the captureId has not been registered (e.g. no orchestrate call).
+ *
+ * @param {string | null | undefined} captureId
+ * @returns {{ status: string, updatedAt: number } | null}
+ */
+export function getAnalysisStatus(captureId) {
+  if (!captureId) return null;
+  const entry = _statusStore.get(String(captureId));
+  return entry ?? null;
 }
 
 // ── Legacy compatibility shim ─────────────────────────────────────────────────
