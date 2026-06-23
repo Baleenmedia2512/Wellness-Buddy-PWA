@@ -113,6 +113,16 @@ export function useTaskData(userId) {
     fetchTasks({ runCatchup: false });
   }, [fetchTasks]);
 
+  // Re-fetch when food/weight/education saves complete elsewhere in the app.
+  useEffect(() => {
+    const onTasksChanged = () => {
+      debugLog('[useTaskData] wellness:tasks-changed — refreshing');
+      refresh();
+    };
+    window.addEventListener('wellness:tasks-changed', onTasksChanged);
+    return () => window.removeEventListener('wellness:tasks-changed', onTasksChanged);
+  }, [refresh]);
+
   return {
     tasks,
     loading,

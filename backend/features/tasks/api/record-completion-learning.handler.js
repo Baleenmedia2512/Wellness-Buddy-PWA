@@ -20,6 +20,8 @@ import {
   extractIstParts,
   resolveFoodSaveTaskType,
   buildActivityWindowsMap,
+  getISTPartsFromDate,
+  normalizeTaskTypeHint,
 } from '../domain/completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -102,12 +104,15 @@ export async function recordCompletionLearning({
  */
 export async function recordFoodSaveCompletionLearning({
   userId,
-  istTimestamp,
+  istTimestamp: _istTimestamp,
   analysisResult,
   completionData = {},
+  taskTypeHint = null,
 }) {
-  const parts = extractIstParts(istTimestamp);
-  if (!parts) return;
+  // Task completion uses upload-time IST (not EXIF) so a lunch logged now
+  // completes today's lunch task even when the photo has a stale EXIF clock.
+  const serverParts = getISTPartsFromDate(new Date());
+  if (!serverParts?.date || !serverParts?.time) return;
 
   let windows;
   try {
@@ -121,8 +126,9 @@ export async function recordFoodSaveCompletionLearning({
     windows = {};
   }
 
-  const taskType = resolveFoodSaveTaskType({
-    istTimeOnly: parts.time,
+  const hintType = normalizeTaskTypeHint(taskTypeHint);
+  const taskType = hintType || resolveFoodSaveTaskType({
+    istTimeOnly: serverParts.time,
     analysisResult,
     timeWindows: windows,
   });
@@ -130,15 +136,18 @@ export async function recordFoodSaveCompletionLearning({
   if (!taskType) {
     logger.info('recordFoodSaveCompletionLearning: no matching task type for save', {
       userId,
-      istTime: parts.time,
+      istTime: serverParts.time,
+      hadHint: !!hintType,
     });
     return;
   }
 
+  const serverIstTimestamp = `${serverParts.date} ${serverParts.time}`;
+
   await recordCompletionLearning({
     userId,
     taskType,
-    istTimestamp,
+    istTimestamp: serverIstTimestamp,
     completionData,
   });
 }

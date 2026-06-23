@@ -387,6 +387,10 @@ function WellnessValleyApp() {
     captureId: null,
   });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
+  const manualMealTypeRef = useRef("");
+  useEffect(() => {
+    manualMealTypeRef.current = manualMealType;
+  }, [manualMealType]);
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
@@ -5060,6 +5064,10 @@ function WellnessValleyApp() {
         clubLocationFields.attendanceType = "remote";
       }
 
+      const mealHint = ['breakfast', 'lunch', 'dinner'].includes(manualMealTypeRef.current)
+        ? manualMealTypeRef.current
+        : undefined;
+
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
         ...clubLocationFields,
@@ -5067,6 +5075,7 @@ function WellnessValleyApp() {
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.
         captureId: foodCaptureIdRef.current || undefined,
+        ...(mealHint ? { taskTypeHint: mealHint } : {}),
       });
       foodCaptureIdRef.current = null;
       debugLog("? [App] Save successful:", saveRes);
@@ -5080,11 +5089,18 @@ function WellnessValleyApp() {
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
       debugLog("? [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
+      if (mealHint) {
+        setManualMealType("");
+      }
+
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
+
+      // Refresh task panel if open — lunch/food save should move task to Completed.
+      window.dispatchEvent(new CustomEvent("wellness:tasks-changed"));
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button

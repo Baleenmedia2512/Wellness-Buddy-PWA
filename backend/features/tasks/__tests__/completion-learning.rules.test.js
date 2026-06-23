@@ -9,6 +9,7 @@ import {
   normalizeActivityWindow,
   buildActivityWindowsMap,
   resolveFoodSaveTaskType,
+  normalizeTaskTypeHint,
   formatAverageTimeLabel,
   buildPersonalisedReminderBody,
   buildSecondReminderBody,
@@ -111,6 +112,19 @@ describe('resolveFoodSaveTaskType', () => {
       analysisResult: { foods: [{ name: 'rice', weight_g: 200 }] },
       timeWindows: ACTIVITY_TIME_WINDOWS_TABLE_ROWS,
     })).toBe('lunch');
+  });
+});
+
+describe('normalizeTaskTypeHint', () => {
+  it('accepts valid meal hints', () => {
+    expect(normalizeTaskTypeHint('lunch')).toBe('lunch');
+    expect(normalizeTaskTypeHint('Breakfast')).toBe('breakfast');
+  });
+
+  it('rejects invalid hints', () => {
+    expect(normalizeTaskTypeHint('weight')).toBeNull();
+    expect(normalizeTaskTypeHint('')).toBeNull();
+    expect(normalizeTaskTypeHint(null)).toBeNull();
   });
 });
 

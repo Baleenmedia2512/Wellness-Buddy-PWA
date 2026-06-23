@@ -46,6 +46,21 @@ export function extractIstParts(istTimestamp) {
  */
 const MEAL_ACTIVITY_TYPES = ['breakfast', 'lunch', 'dinner'];
 
+/** Task types that a food save may complete (meals + beverage-only water). */
+const FOOD_SAVE_TASK_TYPES = ['water', ...MEAL_ACTIVITY_TYPES];
+
+/**
+ * Normalize an optional client hint (e.g. from "Upload Now" on a task card).
+ *
+ * @param {unknown} hint
+ * @returns {'water'|'breakfast'|'lunch'|'dinner'|null}
+ */
+export function normalizeTaskTypeHint(hint) {
+  if (!hint || typeof hint !== 'string') return null;
+  const normalized = hint.toLowerCase().trim();
+  return FOOD_SAVE_TASK_TYPES.includes(normalized) ? normalized : null;
+}
+
 /**
  * Normalize one activity_time_windows_table row (or task-repo alias) to { start, end }.
  * Accepts ActivityType/WindowStartTime/WindowEndTime or activity_type/start_time/end_time.
