@@ -981,7 +981,32 @@ function WellnessValleyApp() {
 
   const _userIdRef         = useRef(null);  // mirrors user?.id
   const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
-  const _wasHomeActiveRef  = useRef(false);
+  /** User closed the panel with X — no auto-open until app goes to background */
+  const _taskPanelUserClosedRef = useRef(false);
+
+  /** Pending tasks that still deserve auto-open (not "don't remind again today"). */
+  const pendingTasksNeedingPanel = (tasks) =>
+    (tasks || []).filter(
+      (t) =>
+        String(t.status).toLowerCase() === 'pending' &&
+        !t.reminder_dismissed_today,
+    );
+
+  const openTaskPanelFromUserOrReminder = useCallback((taskId = null) => {
+    _taskPanelUserClosedRef.current = false;
+    startTransition(() => {
+      if (taskId) setHighlightedTaskId(String(taskId));
+      setShowTaskPanel(true);
+    });
+  }, []);
+
+  const closeTaskPanelByUser = useCallback(() => {
+    _taskPanelUserClosedRef.current = true;
+    startTransition(() => {
+      setShowTaskPanel(false);
+      setHighlightedTaskId(null);
+    });
+  }, []);
 
   // Keep task-panel refs in sync so mount-only resume listeners read live values.
   useEffect(() => {
@@ -1137,60 +1162,75 @@ function WellnessValleyApp() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
-  // ─── AUTO-OPEN TASK PANEL ON HOME SCREEN RESUME ──────────────────────────
-  // When the app comes back to the foreground (native) or the browser tab
-  // becomes visible again (web) AND the user is on the home screen AND has
-  // pending tasks → open the Task Notification Panel automatically.
+  // ─── AUTO-OPEN TASK PANEL ON APP OPEN / RESUME ONLY ───────────────────────
+  // Show the panel when the user opens the app or returns from background.
+  // Do NOT auto-open while they are already using the app (home ↔ dashboard).
   //
-  // Guards:
-  //  - user must be logged in            (_userIdRef)
-  //  - must be on home screen            (_homeScreenActiveRef)
-  //  - panel must not already be open    (_showTaskPanelRef)
-  //
-  // Uses refs so this effect is safely mount-only (no stale closures).
+  // Rules:
+  //  - App launch or resume from background → open if pending tasks exist
+  //  - User closes panel (X) → stay closed until app is backgrounded
+  //  - App backgrounded → reset dismiss so next open shows panel again
+  //  - Bell icon / push tap → always opens manually
   useEffect(() => {
     const apiBase = getApiBaseUrl();
 
-    /** Fetch pending task count and open panel if > 0 */
-    async function checkAndOpenTaskPanel() {
+    const isHomeScreenActive = () => {
+      return (
+        !!_userIdRef.current &&
+        !_profileGateActiveRef.current &&
+        _homeScreenActiveRef.current
+      );
+    };
+
+    async function checkAndOpenTaskPanel(source) {
       const userId = _userIdRef.current;
-      if (!userId) return;                        // not logged in
-      if (!_homeScreenActiveRef.current) return;  // not on home screen
-      if (_showTaskPanelRef.current) return;       // panel already open
+      if (!userId) return;
+      if (!isHomeScreenActive()) return;
+      if (_showTaskPanelRef.current) return;
+      if (_taskPanelUserClosedRef.current) return;
 
       try {
-        const res  = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
+        const res = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
         const json = await res.json();
-        const pendingCount = (json?.data?.tasks || []).filter(t => t.status === 'pending').length;
+        const needsPanel = pendingTasksNeedingPanel(json?.data?.tasks);
 
-        if (pendingCount > 0) {
-          debugLog(`[TaskPanel] ${pendingCount} pending task(s) on resume — auto-opening panel`);
+        if (needsPanel.length > 0) {
+          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — auto-open (${source})`);
           startTransition(() => setShowTaskPanel(true));
         } else {
-          debugLog('[TaskPanel] No pending tasks on resume — panel stays closed');
+          debugLog(`[TaskPanel] No pending tasks needing panel (${source})`);
         }
       } catch (err) {
-        debugLog('[TaskPanel] Could not check pending tasks on resume (non-critical):', err.message);
+        debugLog(`[TaskPanel] Could not check pending tasks (${source}):`, err.message);
       }
     }
 
-    // ── Native (Capacitor): listen for appStateChange ──────────────────────
+    function onAppBackground() {
+      _taskPanelUserClosedRef.current = false;
+      debugLog('[TaskPanel] App backgrounded — reset panel dismiss for next open');
+    }
+
     let nativeHandle = null;
-    let cancelled    = false;
+    let cancelled = false;
 
     if (Capacitor.isNativePlatform()) {
       nativeLifecycle.addAppStateListener(({ isActive }) => {
-        if (!isActive || cancelled) return;
-        checkAndOpenTaskPanel();
+        if (cancelled) return;
+        if (!isActive) {
+          onAppBackground();
+          return;
+        }
+        checkAndOpenTaskPanel('native-resume');
       }).then((h) => {
         if (cancelled) { h?.remove?.(); } else { nativeHandle = h; }
       }).catch(() => {});
     }
 
-    // ── Web: listen for visibilitychange ──────────────────────────────────
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        checkAndOpenTaskPanel();
+      if (document.visibilityState === 'hidden') {
+        onAppBackground();
+      } else if (document.visibilityState === 'visible') {
+        checkAndOpenTaskPanel('web-resume');
       }
     };
     if (!Capacitor.isNativePlatform()) {
@@ -1202,15 +1242,15 @@ function WellnessValleyApp() {
       try { nativeHandle?.remove?.(); } catch { /* ignore */ }
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only, uses refs
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only, uses refs
 
-  // ─── AUTO-OPEN TASK PANEL ON HOME SCREEN ENTRY ───────────────────────────
-  // Fires when the user lands on or navigates back to the home screen
-  // (including first visit after login). Complements the resume listener above.
+  // Cold start — first app open after login (web + native)
+  const _taskPanelLaunchDoneRef = useRef(false);
   useEffect(() => {
-    const isHomeActive =
-      !!user &&
-      !authLoading &&
+    if (_taskPanelLaunchDoneRef.current) return;
+    if (!user || authLoading) return;
+
+    const isHome =
       !showDashboard &&
       !showCompleteProfile &&
       !showActivityTimeReport &&
@@ -1218,27 +1258,25 @@ function WellnessValleyApp() {
       !showMarathon &&
       !showScreenTime;
 
-    const wasHomeActive = _wasHomeActiveRef.current;
-    _wasHomeActiveRef.current = isHomeActive;
+    if (!isHome || showTaskPanel || _taskPanelUserClosedRef.current) return;
 
-    if (!isHomeActive || wasHomeActive) return;
+    _taskPanelLaunchDoneRef.current = true;
 
     const userId = user?.id || user?.UserId || Session.getDbUserId();
-    if (!userId || showTaskPanel) return;
+    if (!userId) return;
 
     const apiBase = getApiBaseUrl();
     (async () => {
       try {
-        const res  = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
+        const res = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
         const json = await res.json();
-        const pendingCount = (json?.data?.tasks || []).filter((t) => t.status === 'pending').length;
-
-        if (pendingCount > 0) {
-          debugLog(`[TaskPanel] ${pendingCount} pending task(s) on home entry — auto-opening panel`);
+        const needsPanel = pendingTasksNeedingPanel(json?.data?.tasks);
+        if (needsPanel.length > 0) {
+          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — cold-start open`);
           startTransition(() => setShowTaskPanel(true));
         }
       } catch (err) {
-        debugLog('[TaskPanel] Could not check pending tasks on home entry (non-critical):', err.message);
+        debugLog('[TaskPanel] Cold-start check failed:', err.message);
       }
     })();
   }, [
@@ -2395,10 +2433,7 @@ function WellnessValleyApp() {
             debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
 
             if (data.action === 'openTaskPanel') {
-              startTransition(() => {
-                if (data.taskId) setHighlightedTaskId(String(data.taskId));
-                setShowTaskPanel(true);
-              });
+              openTaskPanelFromUserOrReminder(data.taskId);
             }
           },
         );
@@ -4235,10 +4270,12 @@ function WellnessValleyApp() {
 
     if (taskType === 'water') {
       activeTaskTypeRef.current = 'water';
-      setDashboardInitialTab('water');
-      setShowDashboard(true);
       Session.setCurrentPage('dashboard');
-      setShowTaskPanel(false);
+      startTransition(() => {
+        setDashboardInitialTab('water');
+        setShowDashboard(true);
+        setShowTaskPanel(false);
+      });
       return;
     }
 
@@ -4281,7 +4318,7 @@ function WellnessValleyApp() {
       debugLog('[App] Could not open camera for task — no input ref ready');
     }
 
-    setShowTaskPanel(false);
+    startTransition(() => setShowTaskPanel(false));
   };
 
   const openCameraForTaskRef = useRef(openCameraForTask);
@@ -4296,6 +4333,7 @@ function WellnessValleyApp() {
 
     startTransition(() => {
       if (data.taskId) setHighlightedTaskId(String(data.taskId));
+      _taskPanelUserClosedRef.current = false;
       setShowTaskPanel(true);
     });
 
@@ -10125,7 +10163,7 @@ function WellnessValleyApp() {
         {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
         {user && !showTaskPanel && (
           <button
-            onClick={() => startTransition(() => setShowTaskPanel(true))}
+            onClick={() => openTaskPanelFromUserOrReminder()}
             style={{
               position: 'fixed',
               bottom: 24,
@@ -10155,10 +10193,7 @@ function WellnessValleyApp() {
         {showTaskPanel && user && (
           <TaskNotificationPanel
             userId={user.id || user.UserId || Session.getDbUserId()}
-            onClose={() => {
-              setShowTaskPanel(false);
-              setHighlightedTaskId(null);
-            }}
+            onClose={closeTaskPanelByUser}
             highlightedTaskId={highlightedTaskId}
             onTaskComplete={openCameraForTask}
           />
