@@ -389,11 +389,15 @@ export async function computeCardData(
     profileMap[p.UserId] = p;
   });
 
-  // Weight records: today + yesterday
-  const today = istDayRange(now, 0);
+  // Weight records: today + yesterday + entire current lap period
+  // The lap-period query is the source of truth for lap leader calculation:
+  // it returns the most recent weight any participant logged since marathon start,
+  // so the lap leader is never null just because nobody weighed in today.
+  const today     = istDayRange(now, 0);
   const yesterday = istDayRange(now, 1);
+  const lapStartStr = String(marathon.started_at).substring(0, 10) + ' 00:00:00.000';
 
-  const [todayRes, yestRes] = await Promise.all([
+  const [todayRes, yestRes, lapPeriodRes] = await Promise.all([
     supabase
       .from("weight_records_table")
       .select('"UserId", "Weight", "CreatedAt"')
@@ -410,14 +414,24 @@ export async function computeCardData(
       .lte('"CreatedAt"', yesterday.end)
       .or('"IsDeleted".is.null,"IsDeleted".eq.0')
       .order('"CreatedAt"', { ascending: false }),
+    supabase
+      .from("weight_records_table")
+      .select('"UserId", "Weight", "CreatedAt"')
+      .in('"UserId"', userIds)
+      .gte('"CreatedAt"', lapStartStr)
+      .lte('"CreatedAt"', today.end)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('"CreatedAt"', { ascending: false }),
   ]);
-  if (todayRes.error) throw todayRes.error;
-  if (yestRes.error) throw yestRes.error;
+  if (todayRes.error)     throw todayRes.error;
+  if (yestRes.error)      throw yestRes.error;
+  if (lapPeriodRes.error) throw lapPeriodRes.error;
 
   // Build per-user weight maps
-  const todayClosingByUser = {}; // latest weight today (any time)
+  const todayClosingByUser    = {}; // latest weight today (any time)
   const todayDisciplineByUser = {}; // latest weight within discipline window
-  const prevClosingByUser = {}; // latest weight yesterday
+  const prevClosingByUser     = {}; // latest weight yesterday
+  const lapBestByUser         = {}; // most recent weight in current lap period
 
   (todayRes.data || []).forEach((r) => {
     if (!todayClosingByUser[r.UserId]) todayClosingByUser[r.UserId] = r.Weight;
@@ -434,6 +448,11 @@ export async function computeCardData(
   });
   (yestRes.data || []).forEach((r) => {
     if (!prevClosingByUser[r.UserId]) prevClosingByUser[r.UserId] = r.Weight;
+  });
+  // Lap-period: pick the LATEST (most recent) weight per user since marathon start.
+  // Ordered DESC already, so first hit per user is the most recent.
+  (lapPeriodRes.data || []).forEach((r) => {
+    if (!lapBestByUser[r.UserId]) lapBestByUser[r.UserId] = r.Weight;
   });
 
   // Assemble participants
@@ -467,13 +486,27 @@ export async function computeCardData(
 
     const prevClosingWeight = prevClosingByUser[uid] ?? null;
 
+    // Backfill logic: if no previous-day weight exists and the marathon has been
+    // running at least 1 day (totalDaysElapsed > 0), use the enrollment baseline
+    // as the reference so early days don't show "--".  Keeps day-change semantics
+    // (today vs. yesterday) while ensuring coaches always see real progress.
+    const effectivePrevWeight =
+      prevClosingWeight ?? (totalDaysElapsed > 0 ? baselineWeight : null);
+
     const effectiveTodayWeight = effectiveWeight;
 
     const hierarchyRole =
       Number(profileMap[uid]?.CoachId) === coachId ? "direct" : "downline";
 
-    const dayChange = computeDayChange(effectiveWeight, prevClosingWeight);
-    const lapChange = computeLapChange(effectiveWeight, baselineWeight);
+    const dayChange = computeDayChange(effectiveWeight, effectivePrevWeight);
+
+    // Lap change uses the best available weight in the lap period (today's weight
+    // if logged, otherwise the most recent weight during the marathon cycle).
+    // This ensures lap leader is computed even when no weight was logged today.
+    const lapEffectiveWeight = effectiveWeight ?? lapBestByUser[uid] ?? null;
+    const lapChange = computeLapChange(lapEffectiveWeight, baselineWeight);
+    // Eligible for lap leader if any weight was logged during the current lap.
+    const lapEligible = lapBestByUser[uid] != null;
 
     return {
       userId: uid,
@@ -487,6 +520,7 @@ export async function computeCardData(
       disciplineStatus,
       dayChange,
       lapChange,
+      lapEligible,
       cumulativeChange: lapChange,
       // explicit DTO field consumed by modal + share cards
       dailyWeightChange: dayChange,
@@ -512,8 +546,31 @@ export async function computeCardData(
     (a, b) => (LAP_ROLE_ORDER[a.role] ?? 1) - (LAP_ROLE_ORDER[b.role] ?? 1),
   );
 
+  // ── isAssistantCaptainDownline ─────────────────────────────────────────────
+  // A member is ⭐ if their direct manager (CoachId in team_table) is NOT the
+  // marathon coach — i.e. they came through the AC's organisational branch.
+  sortedParticipants.forEach(p => {
+    p.isAssistantCaptainDownline =
+      p.role === 'member' &&
+      Number(profileMap[p.userId]?.CoachId) !== coachId;
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const dayLeader = findDayLeaderV2(sortedParticipants);
-  const lapLeader = findLapLeaderV2(sortedParticipants);
+
+  // Lap leader: uses lapEligible (any weight in lap period) rather than today's
+  // disciplineStatus so the leader is always computed even without today's upload.
+  const lapLeader = (() => {
+    const eligible = sortedParticipants.filter(
+      p => p.lapEligible && p.lapChange != null && p.lapChange < 0,
+    );
+    if (!eligible.length) return null;
+    return eligible.reduce((best, p) => {
+      if (p.lapChange < best.lapChange) return p;
+      if (p.lapChange === best.lapChange && p.userId < best.userId) return p;
+      return best;
+    });
+  })();
   const teamDailyTotal = computeTeamDailyTotal(sortedParticipants);
 
   // Stamp leader flags onto the participant DTOs so every consumer
@@ -1102,9 +1159,17 @@ export async function autoFinalizeActiveMarathons() {
         continue; // Discipline window not yet closed for this marathon
       }
 
-      // 2. Idempotency guard — skip if result already recorded today
+      // 2. Idempotency guard — skip only if a result with at least one leader
+      //    already exists. A row where all leader fields are NULL means the
+      //    earlier run found no eligible participants; we must keep retrying
+      //    until a real winner is found (or the day ends with no winner).
       const existing = await getDailyResults(marathon.id, todayDate);
-      if (existing) {
+      if (
+        existing &&
+        (existing.day_leader_user_id ||
+          existing.lap_leader_user_id ||
+          existing.community_leader_user_id)
+      ) {
         skipped++;
         continue;
       }

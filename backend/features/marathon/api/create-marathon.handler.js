@@ -12,7 +12,11 @@ import {
   countLapSequenceForTeam,
   completePreviousActiveLaps,
 }                                                                          from '../data/marathon.repo.js';
-import { buildMarathonDisplayName }                                        from '../domain/marathon.rules.js';
+import {
+  buildMarathonDisplayName,
+  buildTeamName,
+  computeMarathonCycle,
+}                                                                          from '../domain/marathon.rules.js';
 import { ValidationError }                                                 from '../../../shared/lib/ValidationError.js';
 import { getSupabaseClient }                                               from '../../../utils/supabaseClient.js';
 import logger                                                              from '../../../shared/lib/logger.js';
@@ -60,53 +64,79 @@ export async function handleCreateMarathon(body) {
     throw new ValidationError(403, 'Only coaches may create marathons');
   }
 
+  // ── Auto-derive marathon cycle (startedAt + daysPerLap) ─────────────────
+  // If the client omits these, derive them from the current IST date:
+  //   1st–14th  → cycle A: startedAt = 1st, daysPerLap = 14
+  //   15th–end  → cycle B: startedAt = 15th, daysPerLap = remaining days
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIST = new Date(Date.now() + IST_OFFSET_MS);
+  const cycle  = computeMarathonCycle(nowIST);
+  const resolvedStartedAt  = payload.startedAt  || cycle.startedAt;
+  const resolvedDaysPerLap = payload.daysPerLap || cycle.daysPerLap;
+  const resolvedTotalLaps  = payload.totalLaps  || 1;
+
+  // ── Auto-generate team name (coach name + AC name, uppercase, no spaces) ─
+  const supabase = getSupabaseClient();
+  let resolvedTeamName = payload.teamName;
+  if (!resolvedTeamName) {
+    const { data: coachProfile } = await supabase
+      .from('team_table')
+      .select('"UserName"')
+      .eq('"UserId"', payload.coachId)
+      .maybeSingle();
+
+    const acUserId = payload.participants.find(p => p.role === 'assistant_captain')?.userId ?? null;
+    let acName = null;
+    if (acUserId) {
+      const { data: acProfile } = await supabase
+        .from('team_table')
+        .select('"UserName"')
+        .eq('"UserId"', acUserId)
+        .maybeSingle();
+      acName = acProfile?.UserName || null;
+    }
+    resolvedTeamName = buildTeamName(coachProfile?.UserName || `TEAM${payload.coachId}`, acName);
+  }
+
   // ── Participant weight eligibility validation ────────────────────────────
-  // Every participant must have at least one weight record in [startedAt, today IST].
-  // Skipped for future-dated marathons (period not yet started).
   const memberIds = payload.participants.map(p => p.userId);
-  const missingWeightIds = await findParticipantsWithoutWeight(memberIds, payload.startedAt);
+  const missingWeightIds = await findParticipantsWithoutWeight(memberIds, resolvedStartedAt);
   if (missingWeightIds.length > 0) {
     throw new ValidationError(
       422,
-      `${missingWeightIds.length} participant(s) have no weight record for the current marathon period (${payload.startedAt} to today). Remove them or ask them to log their weight first.`,
+      `${missingWeightIds.length} participant(s) have no weight record for the current marathon period (${resolvedStartedAt} to today). Remove them or ask them to log their weight first.`,
     );
   }
 
   // ── Team name auto-sequencing ────────────────────────────────────────────
-  let lapSequence = 1;
-  if (payload.teamName) {
-    const existingCount = await countLapSequenceForTeam(payload.coachId, payload.teamName);
-    lapSequence = existingCount + 1;
-
-    // Auto-complete any previous active LAPs for this team so only one is
-    // active at a time. Non-fatal — new LAP is still created even if this fails.
-    if (existingCount > 0) {
-      try {
-        await completePreviousActiveLaps(payload.coachId, payload.teamName);
-      } catch (err) {
-        logger.warn('[handleCreateMarathon] Failed to complete previous active laps (non-fatal)', { error: err.message });
-      }
+  const existingCount = await countLapSequenceForTeam(payload.coachId, resolvedTeamName);
+  const lapSequence   = existingCount + 1;
+  if (existingCount > 0) {
+    try {
+      await completePreviousActiveLaps(payload.coachId, resolvedTeamName);
+    } catch (err) {
+      logger.warn('[handleCreateMarathon] Failed to complete previous active laps (non-fatal)', { error: err.message });
     }
   }
 
-  const displayName = payload.teamName
-    ? buildMarathonDisplayName(payload.teamName, lapSequence, payload.name)
-    : payload.name;
+  const displayName = buildMarathonDisplayName(
+    resolvedTeamName,
+    lapSequence,
+    payload.name || resolvedTeamName,
+  );
 
   // ── Create marathon ──────────────────────────────────────────────────────
   const marathon = await insertMarathon({
     coachId:     payload.coachId,
     name:        displayName,
-    teamName:    payload.teamName,
+    teamName:    resolvedTeamName,
     lapSequence,
-    totalLaps:   payload.totalLaps,
-    daysPerLap:  payload.daysPerLap,
-    startedAt:   payload.startedAt,
+    totalLaps:   resolvedTotalLaps,
+    daysPerLap:  resolvedDaysPerLap,
+    startedAt:   resolvedStartedAt,
   });
 
   // ── Insert participants with roles ───────────────────────────────────────
-  // Always ensure the creating coach is captain, even if not sent by the client.
-  // De-duplicate: if the coach is already in the list, upgrade their role to captain.
   const participantsWithCoach = (() => {
     const filtered = payload.participants.filter(p => p.userId !== payload.coachId);
     const existingCaptains = filtered.filter(p => p.role === 'captain');

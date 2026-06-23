@@ -55,56 +55,32 @@ const LeaderBadge = ({ emoji, bg, shadow }) => (
   </div>
 );
 
-// Role badge — top-left; every participant gets one. Small + elegant.
-// Role badge: shows lap role (C / AC) + hierarchy indicator (🔗 direct / ⭐ downline).
-// Never uses systemRole — hierarchy is determined solely by the backend hierarchyRole field.
-const RoleBadge = ({ lapRole, hierarchyRole }) => {
-  const hierIcon = hierarchyRole === 'downline' ? '⭐' : '🔗';
-  const hierBg   = hierarchyRole === 'downline' ? '#7c3aed' : '#d97706';
-
+// Role badge — absolutely positioned within the cell (position:relative).
+// No intermediate wrapper needed — coordinates are relative to the cell directly.
+const RoleBadge = ({ lapRole, isAssistantCaptainDownline }) => {
+  const base = { position: 'absolute', top: 6, left: 6, zIndex: 12 };
   if (lapRole === 'captain') {
     return (
-      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        display: 'flex', gap: 2, alignItems: 'center' }}>
-        <div style={{ background: '#059669', color: '#fff', minWidth: 18, height: 18,
-          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
-          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
-        <div style={{ background: hierBg, minWidth: 16, height: 16,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, borderRadius: 5, lineHeight: 1,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
-      </div>
+      <div style={{ ...base, background: '#059669', color: '#fff',
+        minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>C</div>
     );
   }
   if (lapRole === 'assistant_captain') {
     return (
-      <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-        display: 'flex', gap: 2, alignItems: 'center' }}>
-        <div style={{ background: '#0891b2', color: '#fff', minWidth: 18, height: 18,
-          padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
-          boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
-        <div style={{ background: hierBg, minWidth: 16, height: 16,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, borderRadius: 5, lineHeight: 1,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.25)', border: '1.5px solid #fff' }}>{hierIcon}</div>
-      </div>
+      <div style={{ ...base, background: '#0891b2', color: '#fff',
+        minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 900, borderRadius: 6, lineHeight: 1,
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>AC</div>
     );
   }
-  // Regular member: hierarchy indicator only
-  return (
-    <div style={{ position: 'absolute', top: -6, left: -6, zIndex: 12,
-      background: hierBg, minWidth: 18, height: 18,
-      padding: '0 4px', boxSizing: 'border-box', display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-      fontSize: 10, borderRadius: 6, lineHeight: 1,
-      boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: '1.5px solid #fff' }}>
-      {hierIcon}
-    </div>
-  );
+  if (isAssistantCaptainDownline) {
+    return <div style={{ ...base, fontSize: 13, lineHeight: 1 }}>⭐</div>;
+  }
+  return null;
 };
 
 /**
@@ -202,7 +178,7 @@ const InitialAvatar = ({ name, size }) => (
 // Single member cell — photo-forward, compact, result-first.
 const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
   const {
-    name, profileImage, role, systemRole, hierarchyRole,
+    name, profileImage, role, isAssistantCaptainDownline,
     dailyGrams, dailyChange, dayChange, lapGrams,
   } = member;
 
@@ -259,24 +235,17 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
           : "0 2px 8px rgba(0,0,0,.12)",
       }}
     >
-      {/* Left Badge */}
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 8,
-        }}
-      >
-        <RoleBadge lapRole={role} hierarchyRole={hierarchyRole} />
-      </div>
+      {/* Role badge — positioned by RoleBadge's own absolute coords */}
+      <RoleBadge lapRole={role} isAssistantCaptainDownline={isAssistantCaptainDownline} />
 
-      {/* Right Badge */}
+      {/* Leader badge — top-right */}
       <div
         style={{
           position: "absolute",
-          top: 8,
-          right: 8,
-          fontSize: 18,
+          top: 6,
+          right: 6,
+          fontSize: 16,
+          lineHeight: 1,
         }}
       >
         {isDayLeader ? "👑" : isLapLeader ? "👕" : ""}
@@ -315,11 +284,13 @@ const MemberCell = ({ member, isDayLeader, isLapLeader }) => {
       {/* Weight Result */}
       <div
         style={{
-          marginTop: 12,
-          fontSize: 20,
+          marginTop: 10,
+          fontSize: 17,
           fontWeight: 900,
           color: weightColor,
           lineHeight: 1,
+          textAlign: "center",
+          width: "100%",
         }}
       >
         {weightText}
@@ -449,8 +420,8 @@ const MarathonTeamCard = ({ card }) => {
         </div>
         <div
           style={{
-            display: "inline-block",
-            marginTop: 10,
+            display: "block",
+            margin: "10px auto 0",
             background: "rgba(255,255,255,0.96)",
             color: "#0f766e",
             fontSize: 15,
@@ -458,11 +429,13 @@ const MarathonTeamCard = ({ card }) => {
             letterSpacing: 0.3,
             borderRadius: 100,
             padding: "6px 22px",
-            maxWidth: "92%",
+            width: "fit-content",
+            maxWidth: "88%",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             boxShadow: "0 4px 12px rgba(0,0,0,0.22)",
+            boxSizing: "border-box",
           }}
         >
           {displayName}

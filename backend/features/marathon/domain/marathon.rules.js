@@ -214,15 +214,21 @@ export const DISCIPLINE_STATUS = Object.freeze({
  * Both times are in IST (UTC+5:30).  The DB stores CreatedAt as a plain IST string
  * "YYYY-MM-DD HH:MM:SS" so we only need to compare the time component.
  *
- * @param {string} istCreatedAt  — "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
+ * Supabase REST API returns timestamp columns in ISO 8601 format with a "T" separator
+ * ("YYYY-MM-DDTHH:MM:SS") even though the DB stores them with a space.  This function
+ * normalises both formats before extracting the time component.
+ *
+ * @param {string} istCreatedAt  — "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" or "HH:MM:SS"
  * @param {string} startHHMM     — "03:00"
  * @param {string} endHHMM       — "07:30"
  * @returns {boolean}
  */
 export function isWithinDisciplineWindow(istCreatedAt, startHHMM, endHHMM) {
   if (!istCreatedAt || !startHHMM || !endHHMM) return false;
-  // Extract time part (handles both "HH:MM:SS" and "YYYY-MM-DD HH:MM:SS")
-  const timePart = istCreatedAt.includes(' ') ? istCreatedAt.split(' ')[1] : istCreatedAt;
+  // Normalise: replace ISO 8601 "T" separator with a space so both
+  // "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS" are handled identically.
+  const normalised = String(istCreatedAt).replace('T', ' ');
+  const timePart = normalised.includes(' ') ? normalised.split(' ')[1] : normalised;
   const [th, tm]  = timePart.split(':').map(Number);
   const [sh, sm]  = startHHMM.split(':').map(Number);
   const [eh, em]  = endHHMM.split(':').map(Number);
@@ -354,6 +360,60 @@ export function findCommunityLeader(allParticipants) {
 export function buildMarathonDisplayName(teamName, lapSequence, fallbackName) {
   if (!teamName) return fallbackName;
   return `${teamName} - LAP ${lapSequence}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marathon cycle scheduling (Herbalife: 2 per month)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the current marathon cycle's start date and length (IST).
+ *
+ * Two cycles per calendar month:
+ *   Cycle A: 1st  → 14th  (14 days)
+ *   Cycle B: 15th → end   (variable: 13–16 days depending on month)
+ *
+ * @param {Date} [now] — injectable clock; pass an IST-shifted Date for IST semantics
+ * @returns {{ startedAt: string, daysPerLap: number }}
+ *   startedAt — "YYYY-MM-DD" of cycle start
+ *   daysPerLap — number of days in this cycle
+ */
+export function computeMarathonCycle(now = new Date()) {
+  const year  = now.getUTCFullYear();
+  const month = now.getUTCMonth(); // 0-indexed
+  const day   = now.getUTCDate();
+
+  let startDay, endDay;
+  if (day <= 14) {
+    startDay = 1;
+    endDay   = 14;
+  } else {
+    startDay = 15;
+    // Last day of this month
+    endDay   = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  }
+
+  const mm      = String(month + 1).padStart(2, '0');
+  const ddStart = String(startDay).padStart(2, '0');
+  return {
+    startedAt:  `${year}-${mm}-${ddStart}`,
+    daysPerLap: endDay - startDay + 1,
+  };
+}
+
+/**
+ * Build a normalised team name from coach and optional co-coach display names.
+ * UPPERCASE, letters and digits only, no spaces.
+ *
+ * @param {string} coachName
+ * @param {string|null} [coCoachName]
+ * @returns {string}
+ */
+export function buildTeamName(coachName, coCoachName = null) {
+  const sanitise = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const base = sanitise(coachName);
+  if (!coCoachName) return base;
+  return base + sanitise(coCoachName);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

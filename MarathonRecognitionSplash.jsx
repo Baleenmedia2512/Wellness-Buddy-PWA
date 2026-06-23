@@ -147,7 +147,7 @@ const MarathonRecognitionSplash = ({ recognitions = [], onComplete }) => {
         }}>
           Tap to continue
         </span>
-        <span style={{ fontSize: 16, color: '#9ca3af', lineHeight: 1 }}>{String.fromCharCode(8594)}</span>
+        <span style={{ fontSize: 14, color: '#9ca3af' }}>â€º</span>
       </div>
     </div>
   );
