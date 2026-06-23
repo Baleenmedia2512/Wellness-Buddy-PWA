@@ -23,6 +23,7 @@ import {
   getTasksNeedingReminder,
   incrementReminderCount,
   getTasksPastAverageTime,
+  getPendingTasksNeedingInitialNotification,
   getWindowsAlreadyOpenedToday,
 } from '../data/task-repo.js';
 import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
@@ -367,12 +368,44 @@ async function checkAndSendPersonalisedReminders() {
 // ─── Catch-up: create tasks missed by cron ───────────────────────────────────
 
 /**
+ * Send the first FCM push for pending tasks whose window is already open but
+ * NotificationSent is still false (catch-up rows, missed cron minute, etc.).
+ */
+async function checkAndSendMissedInitialNotifications(userId = null) {
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+  const stats = { eligible: 0, sent: 0, errors: 0 };
+
+  logger.info('Running missed initial notification check', { currentDate, currentTime, userId });
+
+  try {
+    const tasks = await getPendingTasksNeedingInitialNotification(currentDate, currentTime, userId);
+    stats.eligible = tasks.length;
+
+    for (const task of tasks) {
+      const sent = await sendTaskNotification(task, task);
+      if (sent) stats.sent += 1;
+      else stats.errors += 1;
+    }
+
+    logger.info('Missed initial notification check completed', stats);
+    return stats;
+  } catch (error) {
+    logger.error('Error in missed initial notification check', {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
+}
+
+/**
  * Create tasks for ALL time windows that opened today before now but whose
  * task rows are missing (cron was down, cold-start missed, Vercel free-tier
  * gap, etc.).
  *
- * Does NOT send a push notification — the task simply becomes visible in the
- * UI so the user can complete it manually. Safe to call multiple times
+ * Does NOT send a push notification when called alone — use
+ * checkAndSendMissedInitialNotifications() in the same cron tick.
  * (createTask uses ON CONFLICT DO NOTHING for existing rows).
  *
  * @returns {Promise<number>}  Number of tasks created.
@@ -406,6 +439,14 @@ async function createMissingTasksForToday(userId = null) {
           userId:   window.user_id,
           taskType: window.activity_type,
         });
+        await sendTaskNotification(
+          {
+            task_id:   task.task_id,
+            user_id:   task.user_id,
+            task_type: task.task_type,
+          },
+          window,
+        );
       }
     }
 
@@ -426,5 +467,6 @@ export {
   sendTaskNotification,
   checkAndSendFollowUpReminders,
   checkAndSendPersonalisedReminders,
+  checkAndSendMissedInitialNotifications,
   createMissingTasksForToday,
 };

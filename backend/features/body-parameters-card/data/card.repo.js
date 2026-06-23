@@ -31,6 +31,9 @@ export async function insertCard(payload) {
       bmr:          payload.bmr,
       body_age:     payload.bodyAge,
       visceral_fat: payload.visceralFat,
+      chest_cm:     payload.chestCm,
+      waist_cm:     payload.waistCm,
+      hip_cm:       payload.hipCm,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -61,6 +64,9 @@ export async function updateCard(id, payload) {
       bmr:           payload.bmr,
       body_age:      payload.bodyAge,
       visceral_fat:  payload.visceralFat,
+      chest_cm:      payload.chestCm,
+      waist_cm:      payload.waistCm,
+      hip_cm:        payload.hipCm,
       recorded_date: payload.recordedDate,
       location_name: payload.locationName,
     })
@@ -86,7 +92,7 @@ export async function findCardByToken(token) {
     .select(
       'id, created_by, user_id, public_share_token, share_expires_at, ' +
       'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, visceral_fat, recorded_date, location_name, created_at'
+      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, created_at'
     )
     .eq('public_share_token', token)
     .eq('is_deleted', false)
@@ -292,7 +298,7 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .select('id, weight_kg, bmi, fat_percent, body_age, recorded_date')
+    .select('id, weight_kg, bmi, fat_percent, body_age, chest_cm, waist_cm, hip_cm, recorded_date')
     .eq('user_id', userId)
     .neq('id', excludeCardId)
     .eq('is_deleted', false)
@@ -309,6 +315,9 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
     bmi:          row.bmi           ?? null,
     fatPercent:   row.fat_percent   ?? null,
     bodyAge:      row.body_age      ?? null,
+    chestCm:      row.chest_cm      ?? null,
+    waistCm:      row.waist_cm      ?? null,
+    hipCm:        row.hip_cm        ?? null,
     recordedDate: row.recorded_date ?? null,
   };
 }
@@ -390,6 +399,9 @@ export async function listCardsForCoach(coachId) {
       bmr:          card.bmr,
       bodyAge:      card.body_age,
       visceralFat:  card.visceral_fat,
+      chestCm:      card.chest_cm,
+      waistCm:      card.waist_cm,
+      hipCm:        card.hip_cm,
       recordedDate: card.recorded_date,
       locationName: card.location_name,
       createdAt:    card.created_at,

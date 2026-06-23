@@ -37,6 +37,9 @@ const EMPTY_FORM = {
   bmr:          '',
   visceralFat:  '',
   bodyAge:      '',
+  chestCm:      '',
+  waistCm:      '',
+  hipCm:        '',
   recordedDate: new Date().toISOString().substring(0, 10),
   locationName: '',
 };
@@ -61,6 +64,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
         visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
+        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
+        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
       };
@@ -107,6 +113,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
         visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
+        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
+        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
       });
@@ -376,6 +385,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          form.bmr,
         visceralFat:  form.visceralFat,
         bodyAge:      form.bodyAge,
+        chestCm:      form.chestCm,
+        waistCm:      form.waistCm,
+        hipCm:        form.hipCm,
         recordedDate: form.recordedDate,
         locationName: form.locationName,
       });
@@ -396,6 +408,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:         form.bmr          || undefined,
         visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
+        chestCm:     form.chestCm      || undefined,
+        waistCm:     form.waistCm      || undefined,
+        hipCm:       form.hipCm        || undefined,
         recordedDate: form.recordedDate || undefined,
         locationName: form.locationName || undefined,
       };
@@ -423,6 +438,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          form.bmr,
         visceralFat:  form.visceralFat,
         bodyAge:      form.bodyAge,
+        chestCm:      form.chestCm,
+        waistCm:      form.waistCm,
+        hipCm:        form.hipCm,
         recordedDate: form.recordedDate,
         locationName: form.locationName,
       };

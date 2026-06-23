@@ -937,6 +937,88 @@ async function getUserTaskAverages(userId) {
   }
 }
 
+/**
+ * Pending tasks whose activity window is open but the first FCM was never sent.
+ * Covers catch-up-created rows and cron minutes that were missed.
+ *
+ * @param {string} currentDate  YYYY-MM-DD (IST)
+ * @param {string} currentTime  HH:mm:ss (IST)
+ * @param {string|null} userId  Optional — scope to one user (catch-up path)
+ * @returns {Promise<Array>}
+ */
+async function getPendingTasksNeedingInitialNotification(currentDate, currentTime, userId = null) {
+  try {
+    const supabase = getSupabaseClient();
+    const [windows, members] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+    ]);
+
+    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
+    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+
+    const { data: tasks, error } = await supabase
+      .from('tasks_table')
+      .select('*')
+      .eq('TaskDate', currentDate)
+      .eq('Status', 'pending')
+      .eq('NotificationSent', false)
+      .eq('ReminderDismissedToday', false);
+
+    if (error) throw error;
+
+    return (tasks || [])
+      .filter((t) => {
+        if (userId && String(t.UserId) !== String(userId)) return false;
+        const tw = windowsByType[t.TaskType];
+        if (!tw) return false;
+        if (timeHm(currentTime) < timeHm(tw.WindowStartTime)) return false;
+        if (!isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
+        return Boolean(memberByUser[String(t.UserId)]?.PushToken);
+      })
+      .map((t) => {
+        const tw     = windowsByType[t.TaskType];
+        const member = memberByUser[String(t.UserId)];
+        return {
+          task_id:       t.TaskId,
+          user_id:       String(t.UserId),
+          task_type:     t.TaskType,
+          task_date:     t.TaskDate,
+          window_start:  tw.WindowStartTime,
+          window_end:    tw.WindowEndTime,
+          PushToken:     member.PushToken,
+        };
+      });
+  } catch (error) {
+    logger.error('Error fetching tasks needing initial notification', {
+      currentDate, currentTime, error: error.message,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Whether an active team member has an FCM push token registered.
+ * @param {string|number} userId
+ * @returns {Promise<boolean>}
+ */
+async function userHasPushToken(userId) {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('PushToken')
+      .eq('UserId', String(userId))
+      .eq('Status', 'Active')
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data?.PushToken);
+  } catch (error) {
+    logger.error('Error checking push token', { userId, error: error.message });
+    return false;
+  }
+}
+
 export {
   getTasksByUserAndDate,
   getTasksNeedingNotification,
@@ -951,6 +1033,8 @@ export {
   snoozeTask,
   dismissTaskToday,
   getTasksNeedingReminder,
+  getPendingTasksNeedingInitialNotification,
+  userHasPushToken,
   upsertTaskAverage,
   incrementReminderCount,
   getTasksPastAverageTime,

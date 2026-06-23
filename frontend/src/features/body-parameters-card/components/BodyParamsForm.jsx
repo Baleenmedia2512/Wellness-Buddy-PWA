@@ -3,7 +3,7 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Location, Name, Phone, Age, Gender, Height, Weight, BMI, Fat%, BMR, Body Age.
+ * Fields: Date, Location, Name, Phone, Age, Gender, Height, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
@@ -91,6 +91,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
   const bmrRef = useRef(null);
   const bmiRef = useRef(null);
   const bodyAgeRef = useRef(null);
+  const chestRef = useRef(null);
+  const waistRef = useRef(null);
+  const hipRef = useRef(null);
 
   // Focus next field with smooth scroll
   const focusNextField = (ref) => {
@@ -409,7 +412,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  // Last field - could trigger save or just blur
+                  focusNextField(chestRef);
                 }
               };
               
@@ -439,6 +442,38 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
               );
             })()}
           </div>
+
+          {/* Chest - Full Width */}
+          <InputField
+            label="Chest (cm)"
+            value={vm.form.chestCm}
+            onChange={(v) => vm.setField('chestCm', v)}
+            type="number"
+            placeholder="cm"
+            inputRef={chestRef}
+            onEnter={() => focusNextField(waistRef)}
+          />
+
+          {/* Waist - Full Width */}
+          <InputField
+            label="Waist (cm)"
+            value={vm.form.waistCm}
+            onChange={(v) => vm.setField('waistCm', v)}
+            type="number"
+            placeholder="cm"
+            inputRef={waistRef}
+            onEnter={() => focusNextField(hipRef)}
+          />
+
+          {/* Hip - Full Width */}
+          <InputField
+            label="Hip (cm)"
+            value={vm.form.hipCm}
+            onChange={(v) => vm.setField('hipCm', v)}
+            type="number"
+            placeholder="cm"
+            inputRef={hipRef}
+          />
         </div>
 
         {/* Actions */}

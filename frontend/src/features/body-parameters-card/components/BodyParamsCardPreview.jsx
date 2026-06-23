@@ -508,6 +508,33 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               isExistingUser={isExistingUser}
             />
           )}
+          {card.chestCm != null && card.chestCm !== '' && (
+            <MetricRow
+              icon="📏" iconBg="#f0fdf4"
+              label="Chest"
+              value={fmt(card.chestCm, ' cm')}
+              prevValue={previousCard?.chestCm != null ? previousCard.chestCm + ' cm' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
+          {card.waistCm != null && card.waistCm !== '' && (
+            <MetricRow
+              icon="📏" iconBg="#f0fdf4"
+              label="Waist"
+              value={fmt(card.waistCm, ' cm')}
+              prevValue={previousCard?.waistCm != null ? previousCard.waistCm + ' cm' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
+          {card.hipCm != null && card.hipCm !== '' && (
+            <MetricRow
+              icon="📏" iconBg="#f0fdf4"
+              label="Hip"
+              value={fmt(card.hipCm, ' cm')}
+              prevValue={previousCard?.hipCm != null ? previousCard.hipCm + ' cm' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
 
           {/* Footer brand */}
           <div style={{

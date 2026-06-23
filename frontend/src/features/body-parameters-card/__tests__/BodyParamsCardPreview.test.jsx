@@ -158,6 +158,22 @@ describe('BodyParamsCardPreview', () => {
     expect(screen.queryByText('AGING')).not.toBeInTheDocument();
   });
 
+  it('renders optional chest, waist, and hip measurements below body age', () => {
+    render(<BodyParamsCardPreview card={{
+      ...SAMPLE_CARD,
+      chestCm: 95,
+      waistCm: 82,
+      hipCm: 98,
+    }} />);
+
+    expect(screen.getByText('95 cm')).toBeInTheDocument();
+    expect(screen.getByText('82 cm')).toBeInTheDocument();
+    expect(screen.getByText('98 cm')).toBeInTheDocument();
+    expect(screen.getByText('Chest')).toBeInTheDocument();
+    expect(screen.getByText('Waist')).toBeInTheDocument();
+    expect(screen.getByText('Hip')).toBeInTheDocument();
+  });
+
   it('renders Wellness Valley footer', () => {
     render(<BodyParamsCardPreview card={SAMPLE_CARD} />);
     expect(screen.getByText('Wellness Valley')).toBeInTheDocument();

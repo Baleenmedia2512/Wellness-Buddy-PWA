@@ -11,34 +11,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { debugLog } from '../../../shared/utils/logger';
 import { getApiBaseUrl } from '../../../config/api.config';
 
-function catchupStorageKey(userId) {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  return `taskCatchup:${userId}:${today}`;
-}
-
-function shouldRunCatchupToday(userId) {
-  try {
-    return typeof sessionStorage === 'undefined'
-      || !sessionStorage.getItem(catchupStorageKey(userId));
-  } catch {
-    return true;
-  }
-}
-
-function markCatchupDoneToday(userId) {
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(catchupStorageKey(userId), '1');
-    }
-  } catch {
-    /* private mode */
-  }
-}
-
 /**
  * Call POST /api/tasks/catchup so the server creates any task rows
- * whose time windows already opened today but whose cron run was missed.
- * Fire-and-forget — errors are non-fatal.
+ * whose time windows already opened today but whose cron run was missed,
+ * and sends the first FCM for pending tasks in open windows.
+ * Idempotent — safe on every panel open.
  */
 async function triggerCatchup(apiBaseUrl, userId) {
   try {
@@ -49,10 +26,18 @@ async function triggerCatchup(apiBaseUrl, userId) {
     });
     const json = await res.json();
     debugLog('[useTaskData] catchup result', json);
-    return json?.data?.createdCount ?? 0;
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'useTaskData.js:triggerCatchup',message:'catchup response',data:{status:res.status,ok:json?.ok,createdCount:json?.data?.createdCount,notificationsSent:json?.data?.notificationsSent,notifyEligible:json?.data?.notifyEligible,hasPushToken:json?.data?.hasPushToken,hasNotificationsField:json?.data?.notificationsSent!==undefined},timestamp:Date.now(),hypothesisId:'H4-H6',runId:'post-fix'})}).catch(()=>{});
+    // #endregion
+    return {
+      createdCount: json?.data?.createdCount ?? 0,
+      notificationsSent: json?.data?.notificationsSent ?? 0,
+      notifyEligible: json?.data?.notifyEligible ?? 0,
+      hasPushToken: json?.data?.hasPushToken ?? null,
+    };
   } catch (err) {
     debugLog('[useTaskData] catchup failed (non-critical):', err.message);
-    return 0;
+    return { createdCount: 0, notificationsSent: 0, notifyEligible: 0, hasPushToken: null };
   }
 }
 
@@ -82,12 +67,11 @@ export function useTaskData(userId) {
       if (data.ok) {
         const fetched = data.data.tasks || [];
 
-        // On first load, always run catch-up so missed windows (e.g. education
-        // at 07:15 when cron was down) are backfilled even if some tasks exist.
-        if (runCatchup && shouldRunCatchupToday(userId)) {
-          markCatchupDoneToday(userId);
-          debugLog('[useTaskData] Running catch-up for missed windows', { existingCount: fetched.length });
-          const created = await triggerCatchup(apiBaseUrl, userId);
+        // Catch-up on every panel open: backfill missed windows and send first
+        // FCM for tasks whose window is open but NotificationSent is still false.
+        if (runCatchup) {
+          debugLog('[useTaskData] Running catch-up', { existingCount: fetched.length });
+          const { createdCount, notificationsSent, notifyEligible, hasPushToken } = await triggerCatchup(apiBaseUrl, userId);
           const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
@@ -98,7 +82,10 @@ export function useTaskData(userId) {
             setError(null);
             debugLog('[useTaskData] Tasks re-fetched after catch-up', {
               count: (retryData.data.tasks || []).length,
-              created,
+              createdCount,
+              notificationsSent,
+              notifyEligible,
+              hasPushToken,
             });
             return;
           }
@@ -118,7 +105,7 @@ export function useTaskData(userId) {
     }
   }, [userId, apiBaseUrl]);
 
-  // Initial fetch — run catch-up on first load only
+  // Initial fetch — catch-up on every panel open (idempotent)
   useEffect(() => {
     fetchTasks({ runCatchup: true });
   }, [fetchTasks]);
