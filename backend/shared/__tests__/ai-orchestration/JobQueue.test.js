@@ -167,12 +167,14 @@ describe('JobQueue — stats()', () => {
     await q.enqueue(jobPayload({ captureId: 'a' }));
     await q.enqueue(jobPayload({ captureId: 'b' }));
     const { jobId } = await q.enqueue(jobPayload({ captureId: 'c' }));
-    await q.claimNext();
-    await q.markCompleted(jobId);
+    await q.claimNext();       // a → PROCESSING
+    await q.markCompleted(jobId); // c → COMPLETED (direct, without claiming)
 
+    // State: a=PROCESSING, b=PENDING, c=COMPLETED
     const stats = q.stats();
-    expect(stats.pending).toBeGreaterThanOrEqual(2);
-    expect(stats.completed).toBe(1);
+    expect(stats.pending).toBe(1);     // only b
+    expect(stats.processing).toBe(1);  // a
+    expect(stats.completed).toBe(1);   // c
     expect(stats.total).toBe(3);
   });
 });

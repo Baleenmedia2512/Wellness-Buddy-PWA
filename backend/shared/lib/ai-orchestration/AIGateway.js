@@ -143,13 +143,29 @@ imageType rules (pick the BEST match):
 confidence:
   0.9+ unmistakable  |  0.8 clear  |  0.6–0.79 uncertain → use "other"  |  <0.6 use "other"
 
-Populate ONLY the field that matches imageType:
-  food       → fastNutrition (5 macro fields, estimate grams accurately)
-  weight     → weightReading (convert lbs→kg if needed, null value if unreadable)
-  education  → educationData
-  smartwatch → smartwatchData
+FOOD images — populate ALL of:
+  fastNutrition: { calories, protein, carbs, fat, fiber }  ← aggregate totals only
+  details.foods: array of individual items, each with:
+    { name: string, portion: string, weight_g: number,
+      nutrition: { calories, protein, carbs, fat, fiber } }
+  details.total: { calories, protein, carbs, fat, fiber }  ← sum of all items
 
-All other typed fields should be empty objects with zero/null values.
+WEIGHT images — populate ALL of:
+  weightReading: { value: number (kg — convert lbs→kg), unit: "kg" }
+  details: { weightValue: number, unit: "kg",
+             bmi: number|null, bodyFat: number|null,
+             muscleMass: number|null, bmr: number|null }
+  (set null for any body-comp field not visible on the scale display)
+
+SMARTWATCH images — populate ALL of:
+  smartwatchData: { caloriesBurned: number, steps: number, source: string }
+  details: { caloriesBurned: number, steps: number, source: string }
+
+EDUCATION images — populate ALL of:
+  educationData: { isMeeting: true, platform: string }
+  details: { platform: string, participantCount: number|null }
+
+All non-matching typed fields must be null or empty objects.
 JSON only. No markdown. No explanation.`;
 
 /**

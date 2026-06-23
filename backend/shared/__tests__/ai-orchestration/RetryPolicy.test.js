@@ -98,8 +98,12 @@ describe('withEnterpriseRetry — retryable errors', () => {
     const fn = jest.fn().mockRejectedValue(makeRetryable(503));
 
     const promise = withEnterpriseRetry(fn, { ...BASE_OPTS, maxAttempts: 3, label: 'test' });
+    // Attach the expectation BEFORE advancing timers so the rejection
+    // is never "unhandled" (Node emits UnhandledPromiseRejection if .catch
+    // is attached after the rejection fires, which Jest treats as a failure).
+    const assertion = expect(promise).rejects.toMatchObject({ status: 503 });
     await jest.runAllTimersAsync();
-    await expect(promise).rejects.toMatchObject({ status: 503 });
+    await assertion;
     expect(fn).toHaveBeenCalledTimes(3);
   });
 });
@@ -143,41 +147,42 @@ describe('withEnterpriseRetry — per-attempt timeout', () => {
 });
 
 describe('withEnterpriseRetry — circuit breaker integration', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
-  afterEach(() => { jest.useRealTimers(); });
-
+  // Use a unique service name per test to avoid registry contamination.
+  // failureThreshold:1 means a single failure opens the breaker, keeping
+  // the test simple without needing timer manipulation or loops.
   it('does NOT retry when the circuit breaker throws CIRCUIT_OPEN', async () => {
-    // By using a fresh unique service name we get a fresh breaker
-    const service = `test-breaker-${Date.now()}`;
-    const retryable = makeRetryable(500);
-    const fn = jest.fn().mockRejectedValue(retryable);
+    const service = `cb-integ-${Math.random().toString(36).slice(2)}`;
+    // Configure a breaker that opens after just 1 failure by using getBreaker
+    // before withEnterpriseRetry so the registry entry uses our config.
+    const { getBreaker } = require('../../lib/ai-orchestration/CircuitBreaker.js');
+    getBreaker(service, { failureThreshold: 1 });
 
-    // Exhaust the default failureThreshold (5) to open the breaker
-    for (let i = 0; i < 5; i += 1) {
-      const p = withEnterpriseRetry(fn, {
-        service,
-        maxAttempts: 1,
-        baseDelayMs: 1,
-        maxDelayMs:  1,
-        timeoutMs:   0,
-        label:       'cb-open',
-      });
-      await jest.runAllTimersAsync();
-      await p.catch(() => {});
-    }
+    const fn = jest.fn().mockRejectedValue(makeRetryable(500));
 
-    // Now the breaker should be OPEN — next call throws immediately
-    fn.mockClear();
-    const openPromise = withEnterpriseRetry(fn, {
+    // First call: 1 failure → breaker opens
+    await withEnterpriseRetry(fn, {
       service,
-      maxAttempts: 3,
-      baseDelayMs: 1,
-      maxDelayMs:  1,
-      timeoutMs:   0,
-      label:       'cb-reject',
-    });
-    await jest.runAllTimersAsync();
-    await expect(openPromise).rejects.toMatchObject({ code: 'CIRCUIT_OPEN' });
-    expect(fn).not.toHaveBeenCalled(); // fn never called — rejected by breaker
+      maxAttempts:        1,
+      timeoutMs:          0,
+      useCircuitBreaker:  true,
+      baseDelayMs:        0,
+      maxDelayMs:         0,
+      label:              'cb-open',
+    }).catch(() => {});
+
+    // Second call: breaker is OPEN → rejects with CIRCUIT_OPEN, fn is never called
+    fn.mockClear();
+    await expect(
+      withEnterpriseRetry(fn, {
+        service,
+        maxAttempts:       3,
+        timeoutMs:         0,
+        useCircuitBreaker: true,
+        baseDelayMs:       0,
+        maxDelayMs:        0,
+        label:             'cb-reject',
+      }),
+    ).rejects.toMatchObject({ code: 'CIRCUIT_OPEN' });
+    expect(fn).not.toHaveBeenCalled();
   });
 });

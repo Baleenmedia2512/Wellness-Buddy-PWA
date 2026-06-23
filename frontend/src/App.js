@@ -93,10 +93,8 @@ import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
 } from "./features/nutrition";
-import { geminiService } from "./shared/services/geminiService";
-import { imageTypeDetector } from "./shared/services/imageTypeDetector";
+import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import { weightDetectionService } from "./features/weight";
-import { educationDetectionService } from "./features/education";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
@@ -4247,9 +4245,13 @@ function WellnessValleyApp() {
     try {
       const file = base64ToImageFile(imageBase64);
 
-      // Use full image type detection — not just food — so weight, education,
-      // and smartwatch captures are also correctly re-classified on retry.
-      const detectedType = await imageTypeDetector.detectImageType(file);
+      // Use the single orchestrate call — same single-Gemini-call path as
+      // handleImageSelect — so weight, education, and smartwatch captures are
+      // correctly re-classified on retry with idempotency via captureId.
+      const detectedType = await orchestrateAnalyzeImage(file, {
+        captureId: String(captureId),
+        userId: user?.id ? String(user.id) : null,
+      });
 
       if (detectedType.type === "food") {
         // Food path: promote the unknown capture to a food entry
@@ -5313,11 +5315,6 @@ function WellnessValleyApp() {
       setImagePreview(processedImage);
       setLoading(true); // Ensure loading is true when preview shows
 
-      // Set current user for token tracking on imageTypeDetector (unified detection)
-      if (user?.id && user?.email) {
-        imageTypeDetector.setCurrentUser(user.id, user.email);
-      }
-
       // ?? [Share] Pre-create the public-share row IN PARALLEL with Gemini
       // detection. By the time we know the image is food, the share token is
       // typically already returned, so the share button appears the same
@@ -5396,71 +5393,44 @@ function WellnessValleyApp() {
       // and guarantee captureId is set before the save request goes out.
       pendingSharePromiseRef.current = pendingSharePromise;
 
-      // --- [BUG 2 FIX] Always run AI analysis in the background ----------
-      // The previous first-image-of-day gate skipped Gemini for subsequent
-      // captures, which made every food after the first show as "Unknown
-      // Food" / 0 kcal. The early-share .then() above already opened the
-      // share sheet, so analysis no longer needs to block the UX — it runs
-      // silently and populates the dashboard for when the user returns.
-      // ---------------------------------------------------------------------
+      // ── PHASE 3 MIGRATION: single orchestrator call replaces the old
+      // classifyImageTypeFast() + detectImageType() two-step chain.
+      // Both calls ran 2–3 Gemini requests; orchestrate runs exactly 1.
+      // The captures POST runs in parallel (pendingSharePromise above), so
+      // captureId is available from foodCaptureIdRef.current by the time
+      // orchestrate returns (~2 s AI latency >> ~0.3 s captures latency).
 
-      // ? [Share] FAST CLASSIFICATION � kick off a lightweight Gemini call
-      // that ONLY returns the image type label (no nutrition extraction).
-      // Typical latency ~400�900ms, vs. ~2�4s for the full unified detect
-      // below. As soon as this confirms "food", we flip `imageType` and let
-      // the captures POST `.then` surface the share URL, so the
-      // "Share Image + Link" button appears ~1.5�3s sooner. The full
-      // `detectImageType` call still runs afterwards to produce the actual
-      // nutrition data � and if it disagrees with the fast classifier, the
-      // weight/education/smartwatch branches below clear the optimistic
-      // food state.
-      const fastClassifyStart = Date.now();
-      debugLog(
-        `?? [PERF] ? Fast classify started (+${
-          fastClassifyStart - perfStart
-        }ms from capture start)`,
-      );
-      imageTypeDetector
-        .classifyImageTypeFast(file)
-        .then((fast) => {
-          debugLog(
-            `?? [PERF] ? Fast classify resolved in ${
-              Date.now() - fastClassifyStart
-            }ms (+${Date.now() - perfStart}ms from capture start) ? type=${
-              fast?.type
-            }`,
-          );
-          if (fast?.type === "food") {
-            setImageType("food");
-            pendingSharePromise.then((share) => {
-              if (share) {
-                foodCaptureIdRef.current = share.id;
-                setFoodShareUrl(share.url);
-                debugLog(
-                  `?? [PERF] ?? Share URL surfaced to UI (+${
-                    Date.now() - perfStart
-                  }ms from capture start)`,
-                );
-              }
-            });
-          }
-        })
-        .catch(() => {
-          // Soft-fail � the full detect below will set imageType correctly.
-        });
-
-      // ? Detect image type using Gemini AI (single unified call)
       const apiStart = Date.now();
       debugLog(
-        `?? [PERF] ?? Gemini detectImageType started (+${
-          apiStart - perfStart
-        }ms from capture start)`,
+        `⏱️ [PERF] → Orchestrate started (+${apiStart - perfStart}ms from capture start)`,
       );
-      const detectedType = await imageTypeDetector.detectImageType(file);
+
+      // Resolve user ID once for the orchestrate request.
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try { resolvedUserIdForOrchestrate = await getUserId(user); } catch (_) {}
+      }
+
+      // Start orchestrate in parallel with the already-running captures POST.
+      // captureId will be read from foodCaptureIdRef.current after both settle.
+      const detectedType = await orchestrateAnalyzeImage(file, {
+        userId: resolvedUserIdForOrchestrate ?? null,
+        // captureId intentionally omitted here — pendingSharePromise resolves
+        // concurrently; idempotency is enforced at the save layer instead.
+      });
+
       debugLog(
-        `?? [PERF] ?? Gemini API call: ${Date.now() - apiStart}ms (+${
+        `⏱️ [PERF] → Orchestrate: ${Date.now() - apiStart}ms (+${
           Date.now() - perfStart
-        }ms from capture start) ? type=${detectedType?.type}`,
+        }ms from capture start) → type=${detectedType?.type}` +
+        (detectedType?.traceId ? ` traceId=${detectedType.traceId}` : ''),
+      );
+      debugLog("[TRACE] orchestrate | stage=COMPLETE" +
+        ` | captureId=${foodCaptureIdRef.current ?? 'pending'}` +
+        ` | imageType=${detectedType.type}` +
+        ` | confidence=${detectedType.confidence}` +
+        ` | duration=${Date.now() - apiStart}ms` +
+        (detectedType?.enrichmentJobId ? ` | enrichmentJobId=${detectedType.enrichmentJobId}` : ''),
       );
       debugLog("🔍 [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
@@ -5469,6 +5439,23 @@ function WellnessValleyApp() {
         hasFoods: detectedType.details?.foods?.length || 0,
         fullResponse: detectedType,
       });
+
+      // Surface the share URL now that we know the image type.
+      // pendingSharePromise has almost certainly resolved by now (captures POST
+      // is ~200-500 ms, orchestrate is ~2 s), so this .then() fires synchronously.
+      if (detectedType.type === "food") {
+        pendingSharePromise.then((share) => {
+          if (share) {
+            foodCaptureIdRef.current = share.id;
+            setFoodShareUrl(share.url);
+            debugLog(
+              `⏱️ [PERF] → Share URL surfaced to UI (+${
+                Date.now() - perfStart
+              }ms from capture start)`,
+            );
+          }
+        });
+      }
 
       // 🍽️ Early detection: If food items detected, show them immediately
       if (
