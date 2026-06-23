@@ -26,9 +26,6 @@ async function triggerCatchup(apiBaseUrl, userId) {
     });
     const json = await res.json();
     debugLog('[useTaskData] catchup result', json);
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'useTaskData.js:triggerCatchup',message:'catchup response',data:{status:res.status,ok:json?.ok,createdCount:json?.data?.createdCount,notificationsSent:json?.data?.notificationsSent,notifyEligible:json?.data?.notifyEligible,hasPushToken:json?.data?.hasPushToken,hasNotificationsField:json?.data?.notificationsSent!==undefined},timestamp:Date.now(),hypothesisId:'H4-H6',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
     return {
       createdCount: json?.data?.createdCount ?? 0,
       notificationsSent: json?.data?.notificationsSent ?? 0,

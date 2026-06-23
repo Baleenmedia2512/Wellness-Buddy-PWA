@@ -31,6 +31,8 @@ import {
   getISTPartsFromDate,
   formatAverageTimeLabel,
   buildPersonalisedReminderBody,
+  buildSecondReminderBody,
+  getReminderTitle,
 } from './completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
@@ -70,9 +72,6 @@ async function checkAndCreateTasksForCurrentTime() {
             userId: window.user_id,
             taskType: window.activity_type,
           });
-
-          const sent = await sendTaskNotification(task, window);
-          if (sent) stats.notificationsSent += 1;
         }
       } catch (loopError) {
         stats.errors += 1;
@@ -190,18 +189,11 @@ function getNotificationBody(taskType) {
   return bodies[taskType] || 'Tap to complete';
 }
 
-// ─── Follow-up reminder (second push) ────────────────────────────────────────
+// ─── Reminder 2 (average + 30 minutes) ───────────────────────────────────────
 
 /**
- * Check for pending tasks whose snooze has expired and send a follow-up FCM push.
- *
- * Rules enforced by shouldTriggerReminder() (domain layer, pure):
- * - Status must be pending
- * - Not dismissed today
- * - ReminderCount < 2
- * - SnoozedUntil must have passed (or be null)
- *
- * Should run every minute alongside checkAndCreateTasksForCurrentTime().
+ * Send reminder 2 for pending tasks exactly 30 minutes after the user's
+ * average completion time (reminder 1 must have already been sent).
  */
 async function checkAndSendFollowUpReminders() {
   const now = new Date();
@@ -235,8 +227,8 @@ async function checkAndSendFollowUpReminders() {
       }
 
       const notification = {
-        title: `🔔 Reminder: ${getNotificationTitle(task.task_type)}`,
-        body: getNotificationBody(task.task_type),
+        title: getReminderTitle(task.task_type),
+        body:  buildSecondReminderBody(task.task_type),
         data: {
           action: 'openTaskPanel',
           taskId: task.task_id.toString(),
@@ -273,19 +265,11 @@ async function checkAndSendFollowUpReminders() {
   }
 }
 
-// ─── Personalised reminder (past average time) ────────────────────────────────
+// ─── Reminder 1 (personalised average time) ─────────────────────────────────
 
 /**
- * Send a personalised reminder to any user who has NOT yet completed a task
- * and whose personal average completion time for that task has already passed.
- *
- * Example:
- *   User normally uploads weight at 06:30.
- *   Today at 06:31 the weight task is still pending.
- *   → Send: "You usually log your weight around 6:30 AM — still pending!"
- *
- * Runs every minute as part of the cron job.
- * Only fires when user_task_averages has a record (at least 1 past completion).
+ * Send reminder 1 at the user's learned average completion time when the task
+ * is still pending. Requires at least one past completion (user_task_averages).
  */
 async function checkAndSendPersonalisedReminders() {
   const now = new Date();
@@ -324,7 +308,7 @@ async function checkAndSendPersonalisedReminders() {
       const avgLabel = formatAverageTimeLabel(task.average_completion_time || '');
 
       const notification = {
-        title: `⏰ ${getNotificationTitle(task.task_type)}`,
+        title: getReminderTitle(task.task_type),
         body:  buildPersonalisedReminderBody(task.task_type, avgLabel),
         data: {
           action:     'openTaskPanel',
@@ -439,14 +423,6 @@ async function createMissingTasksForToday(userId = null) {
           userId:   window.user_id,
           taskType: window.activity_type,
         });
-        await sendTaskNotification(
-          {
-            task_id:   task.task_id,
-            user_id:   task.user_id,
-            task_type: task.task_type,
-          },
-          window,
-        );
       }
     }
 

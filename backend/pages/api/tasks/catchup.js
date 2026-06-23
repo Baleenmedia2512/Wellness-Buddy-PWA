@@ -13,7 +13,7 @@
  *   log with { requestId, userId, route, durationMs }.
  */
 
-import { createMissingTasksForToday, checkAndSendMissedInitialNotifications } from '../../../features/tasks/domain/task-scheduler.js';
+import { createMissingTasksForToday } from '../../../features/tasks/domain/task-scheduler.js';
 import { userHasPushToken } from '../../../features/tasks/data/task-repo.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
@@ -46,10 +46,7 @@ export default async function handler(req, res) {
     }
 
     const createdCount = await createMissingTasksForToday(userId);
-    const [notifyStats, hasPushToken] = await Promise.all([
-      checkAndSendMissedInitialNotifications(userId),
-      userHasPushToken(userId),
-    ]);
+    const hasPushToken = await userHasPushToken(userId);
 
     const durationMs = Date.now() - startTime;
     logger.info('Task catch-up completed', {
@@ -58,20 +55,14 @@ export default async function handler(req, res) {
       route: '/api/tasks/catchup',
       durationMs,
       createdCount,
-      notificationsSent: notifyStats.sent,
-      notifyEligible: notifyStats.eligible,
     });
-
-    // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'catchup.js:handler',message:'catchup notify result',data:{userId,createdCount,eligible:notifyStats.eligible,sent:notifyStats.sent,errors:notifyStats.errors,hasPushToken},timestamp:Date.now(),hypothesisId:'H4-H6',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
 
     return res.status(200).json({
       ok: true,
       data: {
         createdCount,
-        notificationsSent: notifyStats.sent,
-        notifyEligible: notifyStats.eligible,
+        notificationsSent: 0,
+        notifyEligible: 0,
         hasPushToken,
       },
     });

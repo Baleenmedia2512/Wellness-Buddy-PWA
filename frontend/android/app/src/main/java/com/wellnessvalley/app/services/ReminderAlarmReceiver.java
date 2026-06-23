@@ -56,6 +56,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
     public static final String EXTRA_LABEL         = "label";
     /** Optional personalised notification body built by reminderService.js */
     public static final String EXTRA_BODY          = "body";
+    public static final String EXTRA_TASK_ID       = "taskId";
 
     // Notification channel
     private static final String CHANNEL_ID   = "WellnessReminders";
@@ -99,21 +100,26 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int    minute       = intent.getIntExtra(EXTRA_MINUTE, -1);
         String label        = intent.getStringExtra(EXTRA_LABEL);
         String body         = intent.getStringExtra(EXTRA_BODY);  // may be null
+        boolean isOneShot   = intent.getBooleanExtra("oneShot", false);
+        int taskId          = intent.getIntExtra(EXTRA_TASK_ID, -1);
 
-        if (activityType == null || hour < 0 || minute < 0) {
+        if (activityType == null) {
+            Log.e(TAG, "❌ Invalid intent — missing activityType");
+            return;
+        }
+        if (!isOneShot && (hour < 0 || minute < 0)) {
             Log.e(TAG, "❌ Invalid intent extras — activityType=" + activityType
                     + " hour=" + hour + " minute=" + minute);
             return;
         }
 
         Log.d(TAG, "⏰ Reminder fired for " + activityType
-                + " at " + formatTime(hour, minute));
+                + (isOneShot ? " (one-shot snooze)" : " at " + formatTime(hour, minute)));
 
-        // 1. Start AlarmSoundService → plays alarm ringtone + shows foreground notification
-        startAlarmSound(context, activityType, label, hour, minute, body);
+        String taskIdStr = taskId > 0 ? String.valueOf(taskId) : null;
+        startAlarmSound(context, activityType, label, hour, minute, body, taskIdStr);
 
-        // 2. Reschedule for the SAME time tomorrow — only for daily alarms (not one-shot snooze)
-        boolean isOneShot = intent.getBooleanExtra("oneShot", false);
+        // Reschedule for the SAME time tomorrow — only for daily alarms (not one-shot snooze)
         if (!isOneShot && hour >= 0 && minute >= 0) {
             scheduleNextDay(context, activityType, label, hour, minute, body);
         }
@@ -128,25 +134,30 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  String label,
                                  int hour,
                                  int minute,
-                                 String body) {
+                                 String body,
+                                 String taskId) {
         try {
             String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
             String message;
             if (body != null && !body.isEmpty()) {
-                // Use the personalised body passed from reminderService.js
                 message = body;
-            } else {
-                // Fallback: generic activity-window message
+            } else if (hour >= 0 && minute >= 0) {
                 int totalMinutes   = hour * 60 + minute + 15;
                 int activityHour   = (totalMinutes / 60) % 24;
                 int activityMinute = totalMinutes % 60;
                 message = getActivityMessage(context, activityType, activityHour, activityMinute);
+            } else {
+                message = getActivityMessage(context, activityType, 0, 0);
             }
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
-            serviceIntent.putExtra(AlarmSoundService.EXTRA_TITLE,   title);
-            serviceIntent.putExtra(AlarmSoundService.EXTRA_MESSAGE, message);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_TITLE,         title);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_MESSAGE,       message);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_ACTIVITY_TYPE, activityType);
+            if (taskId != null) {
+                serviceIntent.putExtra(AlarmSoundService.EXTRA_TASK_ID, taskId);
+            }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent);
@@ -432,6 +443,7 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             intent.putExtra(EXTRA_HOUR,   -1);   // -1 signals one-shot (no self-reschedule)
             intent.putExtra(EXTRA_MINUTE, -1);
             intent.putExtra(EXTRA_LABEL,  label);
+            intent.putExtra(EXTRA_TASK_ID, taskId);
             // Extra flag so onReceive() skips the "reschedule for tomorrow" step
             intent.putExtra("oneShot", true);
 

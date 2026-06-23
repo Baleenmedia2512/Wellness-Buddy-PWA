@@ -236,7 +236,7 @@ function getTaskIcon(taskType) {
 const MAX_DAILY_REMINDERS = 2;
 
 /** Allowed snooze durations in minutes. */
-const VALID_SNOOZE_MINUTES = [15, 30, 60];
+const VALID_SNOOZE_MINUTES = [5, 10];
 
 /**
  * Return true when the current time falls inside the task's activity window.

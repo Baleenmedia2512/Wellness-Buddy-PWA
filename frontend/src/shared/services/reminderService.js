@@ -40,6 +40,7 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
     updateWaterIntake:      async () => ({ success: false }),
     scheduleSnooze:         async () => ({ success: false, reason: 'not-native' }),
     cancelSnooze:           async () => ({ success: false }),
+    consumePendingTaskNotification: async () => ({}),
   }),
 });
 
@@ -402,7 +403,7 @@ function parsePgTime(timeStr) {
 /**
  * Return the native alarm trigger time for a task type.
  *
- * If a learned average exists → fire at average + 1 min.
+ * If a learned average exists → fire at the average time.
  * Otherwise       → fall back to the user's saved preference time.
  *
  * @param {string} taskType
@@ -416,9 +417,7 @@ function computePersonalizedAlarmTime(taskType, averagesMap, fallbackHour, fallb
   if (!avgTimeStr) return { hour: fallbackHour, minute: fallbackMinute };
   const parsed = parsePgTime(avgTimeStr);
   if (!parsed) return { hour: fallbackHour, minute: fallbackMinute };
-  // Fire 1 minute after average so task is likely still pending
-  const totalMin = parsed.hour * 60 + parsed.minute + 1;
-  return { hour: Math.floor(totalMin / 60) % 24, minute: totalMin % 60 };
+  return { hour: parsed.hour, minute: parsed.minute };
 }
 
 /**
@@ -685,6 +684,55 @@ export async function cancelSnooze(taskId) {
     debugLog('[ReminderService] cancelSnooze', { taskId });
   } catch (e) {
     debugLog('[ReminderService] cancelSnooze failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Cancel native daily alarm(s) for a completed activity type.
+ * Water cancels all water_N slots; other types cancel a single alarm.
+ *
+ * @param {string} activityType
+ */
+export async function cancelActivityReminder(activityType) {
+  if (!isNative() || !activityType) return;
+  try {
+    if (activityType === 'water' || activityType.startsWith('water_')) {
+      for (let i = 1; i <= WATER_MAX_REMINDERS; i++) {
+        await ReminderPluginNative.cancelReminder({ activityType: `water_${i}` });
+      }
+    } else {
+      await ReminderPluginNative.cancelReminder({ activityType });
+    }
+    debugLog('[ReminderService] cancelActivityReminder', { activityType });
+  } catch (e) {
+    debugLog('[ReminderService] cancelActivityReminder failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Listen for native local-notification actions (task panel deep links).
+ *
+ * @param {(data: { action: string, taskType?: string, taskId?: string, uploadNow?: boolean }) => void} callback
+ * @returns {Promise<{ remove: Function }>}
+ */
+export async function registerTaskReminderActionListener(callback) {
+  if (!isNative()) return { remove: () => {} };
+  return ReminderPluginNative.addListener('taskReminderAction', callback);
+}
+
+/**
+ * Consume a task-notification action stored during cold start (native only).
+ *
+ * @returns {Promise<Object|null>}
+ */
+export async function consumePendingTaskNotification() {
+  if (!isNative()) return null;
+  try {
+    const result = await ReminderPluginNative.consumePendingTaskNotification();
+    return result?.action ? result : null;
+  } catch (e) {
+    debugLog('[ReminderService] consumePendingTaskNotification failed:', e.message);
+    return null;
   }
 }
 

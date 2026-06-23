@@ -1,9 +1,9 @@
 /**
  * ReminderActionBar.jsx — Snooze / Dismiss action bar for a pending task card
  *
- * Renders three actions beneath a task:
- *   • Snooze   — dropdown: 15 min | 30 min | 1 hour
- *   • Dismiss  — soft close ("remind me next window")
+ * Renders four actions beneath a task:
+ *   • Snooze   — dropdown: 5 min | 10 min
+ *   • Dismiss  — close reminder for now (task stays pending)
  *   • Don't Remind Again Today — hard dismiss for today
  *
  * Per claude.md §2.3: PascalCase component, single default export.
@@ -18,9 +18,8 @@ import { debugLog } from '../../../shared/utils/logger';
 
 /** Snooze options exposed to the user. */
 const SNOOZE_OPTIONS = [
-  { label: '15 minutes', value: 15 },
-  { label: '30 minutes', value: 30 },
-  { label: '1 hour',     value: 60 },
+  { label: '5 minutes',  value: 5 },
+  { label: '10 minutes', value: 10 },
 ];
 
 function isSnoozeActive(task) {
@@ -38,8 +37,10 @@ function formatSnoozeLabel(minutes) {
  * @param {Function} props.onActionComplete       - Called after any successful action so the
  *                                                  parent can refresh the task list.
  * @param {string}   props.userId                 - Authenticated user id (same as task list).
+ * @param {Function} props.onSoftDismiss           - Called when user dismisses this reminder only.
+ * @param {boolean}  props.isSoftDismissed         - Hide actions after soft dismiss.
  */
-const ReminderActionBar = ({ task, userId, onActionComplete }) => {
+const ReminderActionBar = ({ task, userId, onActionComplete, onSoftDismiss, isSoftDismissed = false }) => {
   const [snoozeOpen, setSnoozeOpen]   = useState(false);
   const [loading, setLoading]         = useState(false);
   const [errorMsg, setErrorMsg]       = useState(null);
@@ -90,27 +91,34 @@ const ReminderActionBar = ({ task, userId, onActionComplete }) => {
     }
   };
 
-  const handleDismiss = async () => {
+  const handleSoftDismiss = () => {
+    debugLog('[ReminderActionBar] Soft dismiss', { taskId: task.task_id });
+    onSoftDismiss?.(task.task_id);
+  };
+
+  const handleDontRemindToday = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      debugLog('[ReminderActionBar] Dismissing task', { taskId: task.task_id });
+      debugLog('[ReminderActionBar] Don\'t remind again today', { taskId: task.task_id });
 
-      // 1. Persist dismiss to backend
       const result = await dismissTask(task.task_id, userId);
       if (!result.ok) {
-        setErrorMsg(result.error?.message || 'Could not dismiss task');
+        setErrorMsg(result.error?.message || 'Could not update reminder settings');
         return;
       }
 
-      // 2. Also cancel any pending native snooze alarm so it doesn't fire later
       await cancelSnooze(task.task_id);
 
-      onActionComplete?.('dismissed', { taskId: task.task_id });
+      onActionComplete?.('dismissed-today', { taskId: task.task_id });
     } finally {
       setLoading(false);
     }
   };
+
+  if (isSoftDismissed) {
+    return null;
+  }
 
   return (
     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -166,10 +174,22 @@ const ReminderActionBar = ({ task, userId, onActionComplete }) => {
         </AnimatePresence>
       </div>
 
+      {/* ── Dismiss (current reminder only) ── */}
+      <button
+        disabled={loading}
+        onClick={handleSoftDismiss}
+        className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full
+                   bg-white text-gray-600 border border-gray-200
+                   hover:bg-gray-50 disabled:opacity-50 transition-colors"
+      >
+        <span>✕</span>
+        <span>Dismiss</span>
+      </button>
+
       {/* ── Don't Remind Again Today ── */}
       <button
         disabled={loading}
-        onClick={handleDismiss}
+        onClick={handleDontRemindToday}
         className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full
                    bg-gray-50 text-gray-500 border border-gray-200
                    hover:bg-gray-100 disabled:opacity-50 transition-colors"

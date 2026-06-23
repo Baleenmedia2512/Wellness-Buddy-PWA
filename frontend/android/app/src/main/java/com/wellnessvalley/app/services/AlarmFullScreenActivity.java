@@ -14,6 +14,7 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.wellnessvalley.app.R;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 
 /**
  * AlarmFullScreenActivity
@@ -50,8 +51,10 @@ public class AlarmFullScreenActivity extends AppCompatActivity {
         setContentView(R.layout.activity_alarm_fullscreen);
 
         // Populate UI with title/message from intent
-        String title   = getIntent().getStringExtra(AlarmSoundService.EXTRA_TITLE);
-        String message = getIntent().getStringExtra(AlarmSoundService.EXTRA_MESSAGE);
+        String title        = getIntent().getStringExtra(AlarmSoundService.EXTRA_TITLE);
+        String message      = getIntent().getStringExtra(AlarmSoundService.EXTRA_MESSAGE);
+        String activityType = getIntent().getStringExtra(AlarmSoundService.EXTRA_ACTIVITY_TYPE);
+        String taskId       = getIntent().getStringExtra(AlarmSoundService.EXTRA_TASK_ID);
         if (title   == null) title   = "Wellness Reminder";
         if (message == null) message = "Time for your activity!";
 
@@ -59,6 +62,21 @@ public class AlarmFullScreenActivity extends AppCompatActivity {
         TextView tvMessage = findViewById(R.id.tvAlarmMessage);
         if (tvTitle   != null) tvTitle.setText(title);
         if (tvMessage != null) tvMessage.setText(message);
+
+        // Upload Now — open task panel and launch capture flow
+        final String finalActivityType = activityType;
+        final String finalTaskId       = taskId;
+        Button btnUploadNow = findViewById(R.id.btnUploadNow);
+        if (btnUploadNow != null) {
+            btnUploadNow.setOnClickListener(v -> {
+                Log.d(TAG, "📸 Upload Now tapped");
+                sendToService(AlarmSoundService.ACTION_DISMISS, null, null);
+                Intent open = ReminderPlugin.buildTaskPanelIntent(
+                        this, finalActivityType, finalTaskId, true);
+                startActivity(open);
+                finish();
+            });
+        }
 
         // Snooze button
         final String finalTitle   = title;

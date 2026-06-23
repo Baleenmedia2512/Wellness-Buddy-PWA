@@ -5,10 +5,9 @@
  * Auth: Bearer <CRON_SECRET>
  *
  * Responsibilities:
- *  1. checkAndCreateTasksForCurrentTime()       — create tasks when windows open, send first FCM push
- *  2. checkAndSendMissedInitialNotifications()  — first push for catch-up / missed-minute tasks
- *  3. checkAndSendFollowUpReminders()           — re-send FCM when snoozed tasks expire
- *  4. checkAndSendPersonalisedReminders()       — remind at user's average log time
+ *  1. checkAndCreateTasksForCurrentTime()       — create tasks when windows open (no push)
+ *  2. checkAndSendPersonalisedReminders()       — reminder 1 at user's average log time
+ *  3. checkAndSendFollowUpReminders()           — reminder 2 at average + 30 minutes
  *
  * Per claude.md §2.8: idempotent, logs with correlation ID, fails loudly.
  */
@@ -17,7 +16,6 @@ import {
   checkAndCreateTasksForCurrentTime,
   checkAndSendFollowUpReminders,
   checkAndSendPersonalisedReminders,
-  checkAndSendMissedInitialNotifications,
 } from '../../../features/tasks/domain/task-scheduler.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -51,15 +49,14 @@ export default async function handler(req, res) {
   logger.info('Cron job started: tasks', { correlationId });
 
   try {
-    const [createStats, missedInitialStats, followUpStats, personalStats] = await Promise.all([
+    const [createStats, followUpStats, personalStats] = await Promise.all([
       checkAndCreateTasksForCurrentTime(),
-      checkAndSendMissedInitialNotifications(),
       checkAndSendFollowUpReminders(),
       checkAndSendPersonalisedReminders(),
     ]);
 
     const durationMs = Date.now() - startTime;
-    const summary = { createStats, missedInitialStats, followUpStats, personalStats, transport: 'supabase-rest' };
+    const summary = { createStats, followUpStats, personalStats, transport: 'supabase-rest' };
 
     logger.info('Cron job completed: tasks', { correlationId, durationMs, summary });
 

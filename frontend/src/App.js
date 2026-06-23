@@ -959,6 +959,19 @@ function WellnessValleyApp() {
     showScreenTime,
   ]);
 
+  const _userIdRef         = useRef(null);  // mirrors user?.id
+  const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
+  const _wasHomeActiveRef  = useRef(false);
+
+  // Keep task-panel refs in sync so mount-only resume listeners read live values.
+  useEffect(() => {
+    _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
+  }, [user]);
+
+  useEffect(() => {
+    _showTaskPanelRef.current = showTaskPanel;
+  }, [showTaskPanel]);
+
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
   // the user is actively filling out the form. Without this guard, returning
@@ -999,11 +1012,6 @@ function WellnessValleyApp() {
   // is mounted (it waits for user/apiBaseUrl). Buffer the URL so it can be
   // replayed once the resolver is ready.
   const _pendingDeepLinkUrlRef = useRef(null);
-
-  // Task panel auto-open — refs that mirror state so mount-only effects
-  // can read current values without stale closures.
-  const _userIdRef         = useRef(null);  // mirrors user?.id
-  const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
 
   // Callback passed to <ImageUpload onCameraStateChange={...}>. This is the
   // SINGLE source of truth for "the native camera UI is on/off the screen".
@@ -1175,6 +1183,55 @@ function WellnessValleyApp() {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only, uses refs
+
+  // ─── AUTO-OPEN TASK PANEL ON HOME SCREEN ENTRY ───────────────────────────
+  // Fires when the user lands on or navigates back to the home screen
+  // (including first visit after login). Complements the resume listener above.
+  useEffect(() => {
+    const isHomeActive =
+      !!user &&
+      !authLoading &&
+      !showDashboard &&
+      !showCompleteProfile &&
+      !showActivityTimeReport &&
+      !showDisciplineReport &&
+      !showMarathon &&
+      !showScreenTime;
+
+    const wasHomeActive = _wasHomeActiveRef.current;
+    _wasHomeActiveRef.current = isHomeActive;
+
+    if (!isHomeActive || wasHomeActive) return;
+
+    const userId = user?.id || user?.UserId || Session.getDbUserId();
+    if (!userId || showTaskPanel) return;
+
+    const apiBase = getApiBaseUrl();
+    (async () => {
+      try {
+        const res  = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
+        const json = await res.json();
+        const pendingCount = (json?.data?.tasks || []).filter((t) => t.status === 'pending').length;
+
+        if (pendingCount > 0) {
+          debugLog(`[TaskPanel] ${pendingCount} pending task(s) on home entry — auto-opening panel`);
+          startTransition(() => setShowTaskPanel(true));
+        }
+      } catch (err) {
+        debugLog('[TaskPanel] Could not check pending tasks on home entry (non-critical):', err.message);
+      }
+    })();
+  }, [
+    user,
+    authLoading,
+    showDashboard,
+    showCompleteProfile,
+    showActivityTimeReport,
+    showDisciplineReport,
+    showMarathon,
+    showScreenTime,
+    showTaskPanel,
+  ]);
 
   // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
   // Root cause: `permissionsReady` and `isUserActive` start as `true` for
@@ -2319,7 +2376,7 @@ function WellnessValleyApp() {
 
             if (data.action === 'openTaskPanel') {
               startTransition(() => {
-                if (data.taskId) setHighlightedTaskId(data.taskId);
+                if (data.taskId) setHighlightedTaskId(String(data.taskId));
                 setShowTaskPanel(true);
               });
             }
@@ -4200,6 +4257,59 @@ function WellnessValleyApp() {
 
     setShowTaskPanel(false);
   };
+
+  const openCameraForTaskRef = useRef(openCameraForTask);
+  useEffect(() => {
+    openCameraForTaskRef.current = openCameraForTask;
+  }, [openCameraForTask]);
+
+  /** Native local-notification / alarm → Task Notification Panel deep link */
+  const handleNativeTaskReminderAction = useCallback((data) => {
+    if (!data || data.action !== 'openTaskPanel') return;
+    debugLog('[App] Native task reminder action', data);
+
+    startTransition(() => {
+      if (data.taskId) setHighlightedTaskId(String(data.taskId));
+      setShowTaskPanel(true);
+    });
+
+    if (data.uploadNow && data.taskType) {
+      setTimeout(() => {
+        openCameraForTaskRef.current?.({
+          task_type: data.taskType,
+          task_id: data.taskId,
+        });
+      }, 400);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+
+    let handle = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { registerTaskReminderActionListener, consumePendingTaskNotification } =
+          await import('./shared/services/reminderService');
+
+        handle = await registerTaskReminderActionListener((data) => {
+          if (!cancelled) handleNativeTaskReminderAction(data);
+        });
+
+        const pending = await consumePendingTaskNotification();
+        if (!cancelled && pending) handleNativeTaskReminderAction(pending);
+      } catch (err) {
+        debugLog('[App] Native task reminder bridge failed', err?.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [handleNativeTaskReminderAction]);
 
   /**
    * Handle manual food entry from modal (used when AI is unavailable)

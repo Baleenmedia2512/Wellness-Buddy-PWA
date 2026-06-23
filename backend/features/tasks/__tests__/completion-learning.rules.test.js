@@ -11,6 +11,10 @@ import {
   resolveFoodSaveTaskType,
   formatAverageTimeLabel,
   buildPersonalisedReminderBody,
+  buildSecondReminderBody,
+  getReminderTitle,
+  isAtReminderMinute,
+  addMinutesToTime,
 } from '../domain/completion-learning.rules.js';
 import {
   ACTIVITY_TIME_WINDOWS_TABLE_ROWS,
@@ -122,7 +126,9 @@ describe('formatAverageTimeLabel', () => {
 
 describe('buildPersonalisedReminderBody', () => {
   it('uses weight-specific copy', () => {
-    expect(buildPersonalisedReminderBody('weight', '4:30 AM')).toContain('upload your weight');
+    const body = buildPersonalisedReminderBody('weight', '4:30 AM');
+    expect(body).toContain('upload your weight image around 4:30 AM');
+    expect(body).toContain("haven't uploaded today's weight image yet");
   });
 
   it('uses breakfast-specific copy', () => {
@@ -131,5 +137,30 @@ describe('buildPersonalisedReminderBody', () => {
 
   it('falls back for unknown types', () => {
     expect(buildPersonalisedReminderBody('custom', '9:00 AM')).toContain('usually complete this');
+  });
+});
+
+describe('buildSecondReminderBody', () => {
+  it('uses weight-specific second reminder copy', () => {
+    expect(buildSecondReminderBody('weight')).toContain('weight image is still pending');
+  });
+});
+
+describe('getReminderTitle', () => {
+  it('returns product title for weight', () => {
+    expect(getReminderTitle('weight')).toBe('Weight Upload Pending');
+  });
+});
+
+describe('isAtReminderMinute', () => {
+  it('matches HH:mm regardless of seconds', () => {
+    expect(isAtReminderMinute('04:30:15', '04:30:00')).toBe(true);
+    expect(isAtReminderMinute('04:31:00', '04:30:00')).toBe(false);
+  });
+});
+
+describe('addMinutesToTime', () => {
+  it('adds 30 minutes for reminder 2 scheduling', () => {
+    expect(addMinutesToTime('04:30:00', 30)).toBe('05:00:00');
   });
 });

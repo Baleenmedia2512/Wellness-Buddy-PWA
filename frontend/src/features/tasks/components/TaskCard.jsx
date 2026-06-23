@@ -34,9 +34,9 @@ const TaskCard = ({ task, onClick, isHighlighted = false }) => {
   };
 
   const getActionText = (type) => {
-    if (['weight', 'breakfast', 'lunch', 'dinner', 'education'].includes(type)) {
-      return '📸 Take Photo';
-    }
+    if (type === 'weight') return '📸 Upload Now';
+    if (['breakfast', 'lunch', 'dinner', 'education'].includes(type)) return '📸 Upload Now';
+    if (type === 'water') return '💧 Log Water Now';
     return '✓ Complete';
   };
 

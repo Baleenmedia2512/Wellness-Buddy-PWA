@@ -437,7 +437,7 @@ describe('completeTask', () => {
 
 // ─── getTasksNeedingReminder ──────────────────────────────────────────────────
 
-function setupSupabaseForReminders(pendingTasks = []) {
+function setupSupabaseForReminders(pendingTasks = [], averages = []) {
   const windowsIs = jest.fn().mockReturnValue({
     order: jest.fn().mockResolvedValue({
       data: [{
@@ -454,6 +454,11 @@ function setupSupabaseForReminders(pendingTasks = []) {
   });
   const membersSelect = jest.fn().mockReturnValue({ eq: membersEq });
 
+  const averagesSelect = jest.fn().mockResolvedValue({
+    data: averages,
+    error: null,
+  });
+
   const tasksResult = { data: pendingTasks, error: null };
   const tasksChain = {
     eq: jest.fn(function tasksEq() { return tasksChain; }),
@@ -465,6 +470,7 @@ function setupSupabaseForReminders(pendingTasks = []) {
     from: jest.fn((table) => {
       if (table === 'activity_time_windows_table') return { select: windowsSelect };
       if (table === 'team_table') return { select: membersSelect };
+      if (table === 'user_task_averages') return { select: averagesSelect };
       if (table === 'tasks_table') return { select: tasksSelect };
       throw new Error(`Unexpected table: ${table}`);
     }),
@@ -476,20 +482,24 @@ describe('getTasksNeedingReminder', () => {
     jest.clearAllMocks();
   });
 
-  it('returns eligible reminder rows via Supabase REST (no pg pool)', async () => {
+  it('returns eligible second-reminder rows at average + 30 minutes', async () => {
     setupSupabaseForReminders([{
       TaskId: 5,
       UserId: '339',
       TaskType: 'lunch',
       TaskDate: '2026-06-09',
       Status: 'pending',
-      ReminderCount: 0,
+      ReminderCount: 1,
       ReminderDismissedToday: false,
-      NotificationSent: true,
+      NotificationSent: false,
       SnoozedUntil: null,
+    }], [{
+      UserId: 339,
+      TaskType: 'lunch',
+      AverageCompletionTime: '12:00:00',
     }]);
 
-    const rows = await getTasksNeedingReminder('2026-06-09', '13:00:00', new Date('2026-06-09T13:00:00'));
+    const rows = await getTasksNeedingReminder('2026-06-09', '12:30:00', new Date('2026-06-09T12:30:00'));
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({

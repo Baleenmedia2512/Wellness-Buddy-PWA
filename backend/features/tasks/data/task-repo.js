@@ -12,6 +12,7 @@
 import { getPool } from '../../../utils/dbPool.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
+import { isAtReminderMinute, addMinutesToTime } from '../domain/completion-learning.rules.js';
 
 // Each call acquires a dedicated connection (has .query() and .release()).
 // getPool() returns the pool wrapper, not a connection — do NOT call it directly.
@@ -512,7 +513,7 @@ async function incrementReminderCount(taskId) {
 }
 
 /**
- * Snooze a task — sets SnoozedUntil and increments ReminderCount.
+ * Snooze a task — sets SnoozedUntil only (does not consume a daily reminder slot).
  *
  * @param {number} taskId      - Task ID.
  * @param {Date}   snoozedUntil - Expiry timestamp returned by calculateSnoozeExpiry().
@@ -536,8 +537,7 @@ async function snoozeTask(taskId, snoozedUntil, userId) {
     const { data, error } = await supabase
       .from('tasks_table')
       .update({
-        SnoozedUntil:  snoozedUntil.toISOString(),
-        ReminderCount: (row.ReminderCount ?? 0) + 1,
+        SnoozedUntil: snoozedUntil.toISOString(),
       })
       .eq('TaskId', taskId)
       .eq('UserId', String(userId))
@@ -596,10 +596,8 @@ async function dismissTaskToday(taskId, userId) {
 }
 
 /**
- * Fetch pending tasks whose snooze has expired and that are still eligible
- * for a follow-up reminder (ReminderCount < 2, not dismissed).
- *
- * Used by the background scheduler to trigger second reminders.
+ * Fetch pending tasks whose snooze has expired and that are eligible for
+ * reminder 2 (exactly 30 minutes after the user's average completion time).
  *
  * @param {string} currentDate     - YYYY-MM-DD (IST)
  * @param {string} currentTime     - HH:mm:ss (IST)
@@ -609,35 +607,46 @@ async function dismissTaskToday(taskId, userId) {
 async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime) {
   try {
     const supabase = getSupabaseClient();
-    const [windows, members] = await Promise.all([
+    const [windows, members, averagesResult] = await Promise.all([
       fetchActiveTimeWindows(supabase),
       fetchActiveMembers(supabase),
+      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime'),
     ]);
 
-    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
-    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+    if (averagesResult.error) throw averagesResult.error;
 
     const { data: tasks, error } = await supabase
       .from('tasks_table')
       .select('*')
       .eq('TaskDate', currentDate)
       .eq('Status', 'pending')
-      .eq('ReminderDismissedToday', false)
-      .eq('NotificationSent', true);
+      .eq('ReminderDismissedToday', false);
 
     if (error) throw error;
 
+    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
+    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+    const avgKey        = (uid, type) => `${uid}:${type}`;
+    const avgMap        = Object.fromEntries(
+      (averagesResult.data || []).map((a) => [avgKey(String(a.UserId), a.TaskType), a.AverageCompletionTime]),
+    );
+
     return (tasks || [])
       .filter((t) => {
-        if ((t.ReminderCount ?? 0) >= 2) return false;
+        if ((t.ReminderCount ?? 0) !== 1) return false;
         if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
+        const avg = avgMap[avgKey(String(t.UserId), t.TaskType)];
+        if (!avg) return false;
         const tw = windowsByType[t.TaskType];
         if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
+        const secondReminderTime = addMinutesToTime(avg, 30);
+        if (!isAtReminderMinute(currentTime, secondReminderTime)) return false;
         return Boolean(memberByUser[String(t.UserId)]?.PushToken);
       })
       .map((t) => {
         const tw     = windowsByType[t.TaskType];
         const member = memberByUser[String(t.UserId)];
+        const avg    = avgMap[avgKey(String(t.UserId), t.TaskType)];
         return {
           task_id:                  t.TaskId,
           user_id:                  String(t.UserId),
@@ -650,6 +659,7 @@ async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime
           reminder_dismissed_today: t.ReminderDismissedToday,
           notification_sent:        t.NotificationSent,
           status:                   t.Status,
+          average_completion_time:  avg,
           PushToken:                member.PushToken,
         };
       });
@@ -788,11 +798,11 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
  *
  * Guards (all must be true to return a row):
  *   1. Task is pending today.
- *   2. Current time > user's AverageCompletionTime for that TaskType.
- *   3. NotificationSent = true  (first push already sent — this is a follow-up only).
+ *   2. Current IST minute matches user's AverageCompletionTime (reminder 1).
+ *   3. ReminderCount = 0 (first reminder not yet sent).
  *   4. ReminderDismissedToday = false.
- *   5. ReminderCount < 2  (cap at 2 reminders per day).
- *   6. SnoozedUntil is NULL or already expired  (respect active snooze).
+ *   5. SnoozedUntil is NULL or already expired.
+ *   6. User has a learned average for this task type.
  *
  * @param {string} currentDate     - YYYY-MM-DD (IST)
  * @param {string} currentTime     - HH:mm:ss (IST wall clock)
@@ -815,7 +825,6 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
       .select('*')
       .eq('TaskDate', currentDate)
       .eq('Status', 'pending')
-      .eq('NotificationSent', true)
       .eq('ReminderDismissedToday', false);
 
     if (error) throw error;
@@ -829,14 +838,13 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
 
     return (tasks || [])
       .filter((t) => {
-        if ((t.ReminderCount ?? 0) >= 2) return false;
+        if ((t.ReminderCount ?? 0) !== 0) return false;
         if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
         const avg = avgMap[avgKey(String(t.UserId), t.TaskType)];
         if (!avg) return false;
         const tw = windowsByType[t.TaskType];
         if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
-        if (currentTime < avg) return false;
-        if (currentTime >= addSecondsToTime(avg, 300)) return false;
+        if (!isAtReminderMinute(currentTime, avg)) return false;
         return Boolean(memberByUser[String(t.UserId)]?.PushToken);
       })
       .map((t) => {
