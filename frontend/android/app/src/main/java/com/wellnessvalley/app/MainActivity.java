@@ -18,7 +18,9 @@ import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
 import com.wellnessvalley.app.plugins.KeepAwakePlugin;
 import com.wellnessvalley.app.plugins.ReminderPlugin;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 import com.wellnessvalley.app.plugins.ScreenTimePlugin;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
@@ -219,7 +221,9 @@ public class MainActivity extends BridgeActivity {
     }
     
     private void handleNotificationIntent(Intent intent) {
-        if (intent != null && intent.getBooleanExtra("openBackgroundHistory", false)) {
+        if (intent == null) return;
+
+        if (intent.getBooleanExtra("openBackgroundHistory", false)) {
             // Send event to JavaScript side after a short delay to ensure the app is ready
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 try {
@@ -228,6 +232,17 @@ public class MainActivity extends BridgeActivity {
                     android.util.Log.e("MainActivity", "Failed to trigger notification event", e);
                 }
             }, 1000);
+            return;
+        }
+
+        if (intent.getBooleanExtra(ReminderPlugin.EXTRA_OPEN_TASK_PANEL, false)) {
+            final String taskType  = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_TYPE);
+            final String taskId    = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_ID);
+            final boolean uploadNow = intent.getBooleanExtra(ReminderPlugin.EXTRA_UPLOAD_NOW, false);
+
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                ReminderPlugin.deliverTaskReminderAction(this, taskType, taskId, uploadNow);
+            }, 800);
         }
     }
     

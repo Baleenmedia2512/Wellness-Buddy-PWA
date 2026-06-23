@@ -27,6 +27,7 @@ export default async function handler(req, res) {
           userId: input.userId,
           istTimestamp: deriveIstTimestampFromAnalysisInput(input),
           analysisResult: input.analysisResult,
+          taskTypeHint: input.taskTypeHint ?? null,
           completionData: { foodData: input.analysisResult },
         }).catch((err) =>
           logger.error('food save: habit learning failed (non-critical)', {

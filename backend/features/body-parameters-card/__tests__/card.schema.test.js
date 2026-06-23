@@ -65,8 +65,25 @@ describe('validateCreateCard', () => {
     expect(out.phoneNumber).toBe('+919876543210');
   });
 
-  it('throws 422 for invalid phoneNumber', () => {
-    expect(() => validateCreateCard({ ...base, phoneNumber: 'abc' })).toThrow('phoneNumber must be');
+  it('accepts optional chest, waist, and hip measurements', () => {
+    const out = validateCreateCard({
+      ...base,
+      chestCm: 95,
+      waistCm: 82.5,
+      hipCm: 98,
+    });
+    expect(out.chestCm).toBe(95);
+    expect(out.waistCm).toBeCloseTo(82.5);
+    expect(out.hipCm).toBe(98);
+  });
+
+  it('throws 422 for out-of-range chestCm', () => {
+    expect(() => validateCreateCard({ ...base, chestCm: 10 })).toThrow('chestCm must be between');
+  });
+
+  it('accepts chestCm at the lower measurement bound', () => {
+    const out = validateCreateCard({ ...base, chestCm: 25 });
+    expect(out.chestCm).toBe(25);
   });
 
   it('allows empty phoneNumber', () => {

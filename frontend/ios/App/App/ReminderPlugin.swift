@@ -21,8 +21,78 @@ public class ReminderPlugin: CAPPlugin {
 
     private let center      = UNUserNotificationCenter.current()
     private let prefsKey    = "wellnessReminderPrefs"
-    private let waterKey    = "wellnessWaterToday"    // UserDefaults key for water cache
+    private let waterKey    = "wellnessWaterToday"
     private let idPrefix    = "wellness_reminder_"
+    private static let pendingStorageKey = "wellnessPendingTaskNotification"
+
+    static let actionOpenTaskPanel = "openTaskPanel"
+    static let categoryTaskReminder = "TASK_REMINDER"
+    static let actionUploadNow      = "UPLOAD_NOW"
+    static let actionDismiss        = "DISMISS"
+
+    private static weak var sharedInstance: ReminderPlugin?
+
+    public override func load() {
+        super.load()
+        ReminderPlugin.sharedInstance = self
+        registerNotificationCategories()
+    }
+
+    // MARK: - Notification categories (Upload Now / Dismiss)
+
+    private func registerNotificationCategories() {
+        let upload = UNNotificationAction(
+            identifier: ReminderPlugin.actionUploadNow,
+            title: "Upload Now",
+            options: [.foreground]
+        )
+        let dismiss = UNNotificationAction(
+            identifier: ReminderPlugin.actionDismiss,
+            title: "Dismiss",
+            options: []
+        )
+        let category = UNNotificationCategory(
+            identifier: ReminderPlugin.categoryTaskReminder,
+            actions: [upload, dismiss],
+            intentIdentifiers: [],
+            options: []
+        )
+        center.setNotificationCategories([category])
+    }
+
+    /** Persist pending action for cold-start delivery to JS. */
+    @objc public static func storePendingAction(_ userInfo: [AnyHashable: Any], uploadNow: Bool) {
+        var payload = userInfo
+        payload["action"] = actionOpenTaskPanel
+        payload["uploadNow"] = uploadNow
+        UserDefaults.standard.set(payload, forKey: pendingStorageKey)
+        if let instance = sharedInstance {
+            instance.notifyTaskReminderListeners(payload, uploadNow: uploadNow)
+        }
+    }
+
+    private func notifyTaskReminderListeners(_ userInfo: [AnyHashable: Any], uploadNow: Bool) {
+        var data: [String: Any] = ["action": ReminderPlugin.actionOpenTaskPanel, "uploadNow": uploadNow]
+        if let taskType = userInfo["taskType"] as? String { data["taskType"] = taskType }
+        if let taskId = userInfo["taskId"] as? String { data["taskId"] = taskId }
+        else if let taskId = userInfo["taskId"] as? Int { data["taskId"] = String(taskId) }
+        notifyListeners("taskReminderAction", data: data)
+    }
+
+    // MARK: - consumePendingTaskNotification
+
+    @objc func consumePendingTaskNotification(_ call: CAPPluginCall) {
+        guard let payload = UserDefaults.standard.dictionary(forKey: ReminderPlugin.pendingStorageKey) else {
+            call.resolve([:])
+            return
+        }
+        UserDefaults.standard.removeObject(forKey: ReminderPlugin.pendingStorageKey)
+        var data: [String: Any] = ["action": ReminderPlugin.actionOpenTaskPanel]
+        if let taskType = payload["taskType"] as? String { data["taskType"] = taskType }
+        if let taskId = payload["taskId"] as? String { data["taskId"] = taskId }
+        if let uploadNow = payload["uploadNow"] as? Bool { data["uploadNow"] = uploadNow }
+        call.resolve(data)
+    }
 
     // MARK: - scheduleReminder (sync resolve)
     @objc func scheduleReminder(_ call: CAPPluginCall) {
@@ -148,6 +218,12 @@ public class ReminderPlugin: CAPPlugin {
         content.title     = "🔔 \(label) — Snoozed Reminder"
         content.body      = buildActivityMessage(activityType: taskType, label: label)
         content.sound     = .default
+        content.categoryIdentifier = ReminderPlugin.categoryTaskReminder
+        content.userInfo  = [
+            "action":   ReminderPlugin.actionOpenTaskPanel,
+            "taskType": taskType,
+            "taskId":   String(taskId),
+        ]
 
         let trigger    = UNTimeIntervalNotificationTrigger(
                             timeInterval: TimeInterval(snoozeMinutes * 60),
@@ -285,6 +361,11 @@ public class ReminderPlugin: CAPPlugin {
         content.title = "� \(label) Reminder"
         content.body  = body
         content.sound = .default
+        content.categoryIdentifier = ReminderPlugin.categoryTaskReminder
+        content.userInfo = [
+            "action":   ReminderPlugin.actionOpenTaskPanel,
+            "taskType": activityType,
+        ]
 
         var dc        = DateComponents()
         dc.hour       = hour

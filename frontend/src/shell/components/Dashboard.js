@@ -20,7 +20,14 @@ import DashboardTabs from './DashboardTabs';
 // dashboards; the shell only hosts the "Other" (unknown capture) flow.
 import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
+import DiaryEntryUndoBanner, { DIARY_UNDO_SECONDS } from './DiaryEntryUndoBanner';
 import { undoDeleteCapture } from '../../features/captures';
+import { deleteMealById, undoMealDelete } from '../../features/nutrition';
+import { deleteWeight, undoDeleteWeight } from '../../features/weight';
+import {
+  deleteEducationLog,
+  undoEducationDelete,
+} from '../../features/education/services/educationDashboardService';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -149,7 +156,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const [unknownFlow, setUnknownFlow] = useState(null);
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
-  // { captureId, userId, imageBase64, expiresAt }
+  // Undo banner after diary timeline swipe-delete (food / weight / education / watch).
+  const [diaryUndo, setDiaryUndo] = useState(null);
+  // { kind, entryId, userId, message, expiresAt }
   const viewingSelf = !selectedMember || selectedMember.isSelf;
 
   // ── Timeline imperative handles (ff.diary-timeline) ──────────────────────
@@ -200,10 +209,83 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // watch: informational only (kcal already visible on card), no detail modal.
   };
 
-  // Swipe-to-delete is intentionally disabled for unknown rows to preserve the
-  // undo UX (deletion happens inside UnknownEntryFlow). The "Other" feed only
-  // contains unknown rows, so this is a no-op kept for the DiaryFeed contract.
-  const handleEntryDelete = () => {};
+  const diaryUndoLabels = {
+    food: 'Food entry deleted',
+    weight: 'Weight entry deleted',
+    education: 'Education entry deleted',
+    watch: 'Smartwatch entry deleted',
+  };
+
+  const restoreDiaryEntry = async ({ kind, entryId, userId }) => {
+    switch (kind) {
+      case 'food':
+        await undoMealDelete({ apiBaseUrl, id: entryId, userId });
+        triggerNutritionRefresh({ immediate: true, source: 'diary-undo' });
+        break;
+      case 'weight': {
+        const { ok, data } = await undoDeleteWeight({ id: entryId, userId });
+        if (!ok || !data?.success) {
+          throw new Error(data?.message || 'Failed to restore weight entry');
+        }
+        setWeightReloadKey((k) => k + 1);
+        break;
+      }
+      case 'education':
+      case 'watch':
+        await undoEducationDelete({ apiBaseUrl, userId, logId: entryId });
+        setDiaryEducationRefreshKey((k) => k + 1);
+        break;
+      default:
+        return;
+    }
+    reloadDiary();
+  };
+
+  // Swipe-to-delete for timeline rows. Unknown ("Other") rows have no swipe UI —
+  // they delete via UnknownEntryFlow (tap → Delete + undo banner).
+  const handleEntryDelete = async (entry) => {
+    if (!entry || !ownerId || !viewingSelf) return;
+    const entryId = entry.payload?.id;
+    if (!entryId) return;
+
+    try {
+      switch (entry.kind) {
+        case 'food':
+          await deleteMealById({ apiBaseUrl, id: entryId, userId: ownerId });
+          triggerNutritionRefresh({ immediate: true, source: 'diary-swipe-delete' });
+          break;
+        case 'weight': {
+          const { ok, data } = await deleteWeight({ userId: ownerId, entryId });
+          if (!ok || !data?.success) {
+            throw new Error(data?.message || 'Failed to delete weight entry');
+          }
+          setWeightReloadKey((k) => k + 1);
+          break;
+        }
+        case 'education':
+        case 'watch': {
+          await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: entryId });
+          setDiaryEducationRefreshKey((k) => k + 1);
+          break;
+        }
+        default:
+          return;
+      }
+
+      setDiaryUndo({
+        kind: entry.kind,
+        entryId,
+        userId: ownerId,
+        message: diaryUndoLabels[entry.kind] || 'Entry deleted',
+        expiresAt: Date.now() + DIARY_UNDO_SECONDS * 1000,
+      });
+      reloadDiary();
+    } catch (err) {
+      console.error('[Dashboard] diary swipe-delete failed:', err);
+      alert(err?.message || 'Failed to delete. Please try again.');
+      reloadDiary();
+    }
+  };
 
   const handleUnknownChanged = (change = {}) => {
     setUnknownFlow(null);
@@ -754,6 +836,21 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         }}
         onExpire={() => {
           setUnknownUndo(null);
+        }}
+      />
+    )}
+
+    {diaryUndo && (
+      <DiaryEntryUndoBanner
+        entryKey={`${diaryUndo.kind}-${diaryUndo.entryId}`}
+        message={diaryUndo.message}
+        expiresAt={diaryUndo.expiresAt}
+        onUndo={async () => {
+          await restoreDiaryEntry(diaryUndo);
+          setDiaryUndo(null);
+        }}
+        onExpire={() => {
+          setDiaryUndo(null);
         }}
       />
     )}

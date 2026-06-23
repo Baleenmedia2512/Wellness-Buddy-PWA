@@ -23,6 +23,7 @@ import {
   getTasksNeedingReminder,
   incrementReminderCount,
   getTasksPastAverageTime,
+  getPendingTasksNeedingInitialNotification,
   getWindowsAlreadyOpenedToday,
 } from '../data/task-repo.js';
 import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
@@ -30,6 +31,8 @@ import {
   getISTPartsFromDate,
   formatAverageTimeLabel,
   buildPersonalisedReminderBody,
+  buildSecondReminderBody,
+  getReminderTitle,
 } from './completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
@@ -41,41 +44,50 @@ import { sendPushNotification } from '../../../shared/services/pushNotificationS
 async function checkAndCreateTasksForCurrentTime() {
   const now = new Date();
   const { date: currentDate, timeHm: currentTime } = getISTPartsFromDate(now);
+  const stats = { windowsFound: 0, tasksCreated: 0, notificationsSent: 0, errors: 0 };
 
-  logger.info('Running task creation check', { currentTime, currentDate });
-  
+  logger.info('Running task creation check', { currentTime, currentDate, transport: 'supabase-rest' });
+
   try {
-    // Get all time windows starting at current time
     const timeWindows = await getTimeWindowsByStartTime(currentTime);
-    
+    stats.windowsFound = timeWindows.length;
+
     logger.info(`Found ${timeWindows.length} time windows starting now`);
-    
+
     for (const window of timeWindows) {
-      // Create task
-      const task = await createTask({
-        userId: window.user_id,
-        taskType: window.activity_type,
-        taskDate: currentDate,
-        windowStart: window.start_time,
-        windowEnd: window.end_time,
-        priority: window.activity_type === 'weight' ? 'high' : 'medium'
-      });
-      
-      if (task) {
-        logger.info('Task created for time window', {
-          taskId: task.task_id,
+      try {
+        const task = await createTask({
           userId: window.user_id,
-          taskType: window.activity_type
+          taskType: window.activity_type,
+          taskDate: currentDate,
+          windowStart: window.start_time,
+          windowEnd: window.end_time,
+          priority: window.activity_type === 'weight' ? 'high' : 'medium',
         });
-        
-        // Send notification (implement based on your notification system)
-        await sendTaskNotification(task, window);
+
+        if (task) {
+          stats.tasksCreated += 1;
+          logger.info('Task created for time window', {
+            taskId: task.task_id,
+            userId: window.user_id,
+            taskType: window.activity_type,
+          });
+        }
+      } catch (loopError) {
+        stats.errors += 1;
+        logger.error('Error creating/sending task for window', {
+          userId: window.user_id,
+          taskType: window.activity_type,
+          error: loopError.message,
+        });
       }
     }
-    
-    logger.info('Task creation check completed');
+
+    logger.info('Task creation check completed', stats);
+    return stats;
   } catch (error) {
     logger.error('Error in task creation check', { error: error.message, stack: error.stack });
+    throw error;
   }
 }
 
@@ -102,7 +114,6 @@ async function expirePreviousDayTasks() {
  */
 async function sendTaskNotification(task, window) {
   try {
-    // Notification payload
     const notification = {
       title: getNotificationTitle(task.task_type),
       body: getNotificationBody(task.task_type),
@@ -110,48 +121,47 @@ async function sendTaskNotification(task, window) {
         action: 'openTaskPanel',
         taskId: task.task_id.toString(),
         taskType: task.task_type,
-        userId: task.user_id
-      }
+        userId: task.user_id,
+      },
     };
-    
+
     logger.info('Sending task notification', {
       taskId: task.task_id,
       userId: task.user_id,
-      taskType: task.task_type
+      taskType: task.task_type,
     });
-    
-    // Get user's push token from window data (populated by task-repo query)
+
     const pushToken = window.PushToken;
-    
+
     if (!pushToken) {
       logger.warn('Cannot send notification: user has no push token', {
-        userId: task.user_id
+        userId: task.user_id,
       });
-      return;
+      return false;
     }
-    
-    // Send push notification via Firebase
+
     const sent = await sendPushNotification(pushToken, notification);
-    
+
     if (sent) {
-      // Mark notification as sent in database
       await markNotificationSent(task.task_id);
       logger.info('Task notification sent successfully', {
         taskId: task.task_id,
-        userId: task.user_id
+        userId: task.user_id,
       });
-    } else {
-      logger.error('Failed to send task notification', {
-        taskId: task.task_id,
-        userId: task.user_id
-      });
+      return true;
     }
-    
+
+    logger.error('Failed to send task notification', {
+      taskId: task.task_id,
+      userId: task.user_id,
+    });
+    return false;
   } catch (error) {
     logger.error('Error sending task notification', {
       taskId: task.task_id,
-      error: error.message
+      error: error.message,
     });
+    return false;
   }
 }
 
@@ -179,123 +189,118 @@ function getNotificationBody(taskType) {
   return bodies[taskType] || 'Tap to complete';
 }
 
-// ─── Follow-up reminder (second push) ────────────────────────────────────────
+// ─── Reminder 2 (average + 30 minutes) ───────────────────────────────────────
 
 /**
- * Check for pending tasks whose snooze has expired and send a follow-up FCM push.
- *
- * Rules enforced by shouldTriggerReminder() (domain layer, pure):
- * - Status must be pending
- * - Not dismissed today
- * - ReminderCount < 2
- * - SnoozedUntil must have passed (or be null)
- *
- * Should run every minute alongside checkAndCreateTasksForCurrentTime().
+ * Send reminder 2 for pending tasks exactly 30 minutes after the user's
+ * average completion time (reminder 1 must have already been sent).
  */
 async function checkAndSendFollowUpReminders() {
   const now = new Date();
   const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0 };
 
   logger.info('Running follow-up reminder check', { currentDate, currentTime });
 
   try {
     const tasks = await getTasksNeedingReminder(currentDate, currentTime, now);
+    stats.eligible = tasks.length;
 
     logger.info(`Found ${tasks.length} tasks eligible for follow-up reminder`);
 
     for (const task of tasks) {
-      // Double-check domain rules with injected clock (defence-in-depth)
-      if (!shouldTriggerReminder(task, now)) continue;
+      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; continue; }
       if (!isWithinTaskWindow(task, now)) {
+        stats.skipped += 1;
         logger.info('Skipping follow-up reminder — outside window', {
           taskId: task.task_id, taskType: task.task_type,
-          window: `${task.window_start}–${task.window_end}`
+          window: `${task.window_start}–${task.window_end}`,
         });
         continue;
       }
 
       const pushToken = task.PushToken || task.push_token;
       if (!pushToken) {
+        stats.skipped += 1;
         logger.warn('No push token for follow-up reminder', { taskId: task.task_id, userId: task.user_id });
         continue;
       }
 
       const notification = {
-        title: `🔔 Reminder: ${getNotificationTitle(task.task_type)}`,
-        body: getNotificationBody(task.task_type),
+        title: getReminderTitle(task.task_type),
+        body:  buildSecondReminderBody(task.task_type),
         data: {
           action: 'openTaskPanel',
           taskId: task.task_id.toString(),
           taskType: task.task_type,
           userId: task.user_id.toString(),
-          isFollowUp: 'true'
-        }
+          isFollowUp: 'true',
+        },
       };
 
       const sent = await sendPushNotification(pushToken, notification);
 
       if (sent) {
         await incrementReminderCount(task.task_id);
+        stats.sent += 1;
         logger.info('Follow-up reminder sent', {
           taskId: task.task_id,
           userId: task.user_id,
-          taskType: task.task_type
+          taskType: task.task_type,
         });
       } else {
+        stats.errors += 1;
         logger.error('Failed to send follow-up reminder', {
           taskId: task.task_id,
-          userId: task.user_id
+          userId: task.user_id,
         });
       }
     }
 
-    logger.info('Follow-up reminder check completed');
+    logger.info('Follow-up reminder check completed', stats);
+    return stats;
   } catch (error) {
     logger.error('Error in follow-up reminder check', { error: error.message, stack: error.stack });
+    throw error;
   }
 }
 
-// ─── Personalised reminder (past average time) ────────────────────────────────
+// ─── Reminder 1 (personalised average time) ─────────────────────────────────
 
 /**
- * Send a personalised reminder to any user who has NOT yet completed a task
- * and whose personal average completion time for that task has already passed.
- *
- * Example:
- *   User normally uploads weight at 06:30.
- *   Today at 06:31 the weight task is still pending.
- *   → Send: "You usually log your weight around 6:30 AM — still pending!"
- *
- * Runs every minute as part of the cron job.
- * Only fires when user_task_averages has a record (at least 1 past completion).
+ * Send reminder 1 at the user's learned average completion time when the task
+ * is still pending. Requires at least one past completion (user_task_averages).
  */
 async function checkAndSendPersonalisedReminders() {
   const now = new Date();
   const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0 };
 
   logger.info('Running personalised reminder check', { currentDate, currentTime });
 
   try {
     const tasks = await getTasksPastAverageTime(currentDate, currentTime, now);
+    stats.eligible = tasks.length;
 
     logger.info(`Found ${tasks.length} tasks past user average time`);
 
     for (const task of tasks) {
-      // Domain rule guard (defence-in-depth)
-      if (!shouldTriggerReminder(task, now)) continue;
+      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; continue; }
       if (!isWithinTaskWindow(task, now)) {
+        stats.skipped += 1;
         logger.info('Skipping personalised reminder — outside window', {
           taskId: task.task_id, taskType: task.task_type,
-          window: `${task.window_start}–${task.window_end}`
+          window: `${task.window_start}–${task.window_end}`,
         });
         continue;
       }
 
       const pushToken = task.PushToken || task.push_token;
       if (!pushToken) {
+        stats.skipped += 1;
         logger.warn('No push token for personalised reminder', {
           taskId: task.task_id,
-          userId: task.user_id
+          userId: task.user_id,
         });
         continue;
       }
@@ -303,64 +308,100 @@ async function checkAndSendPersonalisedReminders() {
       const avgLabel = formatAverageTimeLabel(task.average_completion_time || '');
 
       const notification = {
-        title: `⏰ ${getNotificationTitle(task.task_type)}`,
+        title: getReminderTitle(task.task_type),
         body:  buildPersonalisedReminderBody(task.task_type, avgLabel),
         data: {
           action:     'openTaskPanel',
           taskId:     task.task_id.toString(),
           taskType:   task.task_type,
           userId:     task.user_id.toString(),
-          isPersonal: 'true'
-        }
+          isPersonal: 'true',
+        },
       };
 
       const sent = await sendPushNotification(pushToken, notification);
 
       if (sent) {
         await incrementReminderCount(task.task_id);
+        stats.sent += 1;
         logger.info('Personalised reminder sent', {
           taskId:  task.task_id,
           userId:  task.user_id,
-          avgTime: avgLabel
+          avgTime: avgLabel,
         });
       } else {
+        stats.errors += 1;
         logger.error('Failed to send personalised reminder', {
           taskId: task.task_id,
-          userId: task.user_id
+          userId: task.user_id,
         });
       }
     }
 
-    logger.info('Personalised reminder check completed');
+    logger.info('Personalised reminder check completed', stats);
+    return stats;
   } catch (error) {
     logger.error('Error in personalised reminder check', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
+    throw error;
   }
 }
 
 // ─── Catch-up: create tasks missed by cron ───────────────────────────────────
 
 /**
+ * Send the first FCM push for pending tasks whose window is already open but
+ * NotificationSent is still false (catch-up rows, missed cron minute, etc.).
+ */
+async function checkAndSendMissedInitialNotifications(userId = null) {
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+  const stats = { eligible: 0, sent: 0, errors: 0 };
+
+  logger.info('Running missed initial notification check', { currentDate, currentTime, userId });
+
+  try {
+    const tasks = await getPendingTasksNeedingInitialNotification(currentDate, currentTime, userId);
+    stats.eligible = tasks.length;
+
+    for (const task of tasks) {
+      const sent = await sendTaskNotification(task, task);
+      if (sent) stats.sent += 1;
+      else stats.errors += 1;
+    }
+
+    logger.info('Missed initial notification check completed', stats);
+    return stats;
+  } catch (error) {
+    logger.error('Error in missed initial notification check', {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
+}
+
+/**
  * Create tasks for ALL time windows that opened today before now but whose
  * task rows are missing (cron was down, cold-start missed, Vercel free-tier
  * gap, etc.).
  *
- * Does NOT send a push notification — the task simply becomes visible in the
- * UI so the user can complete it manually. Safe to call multiple times
+ * Does NOT send a push notification when called alone — use
+ * checkAndSendMissedInitialNotifications() in the same cron tick.
  * (createTask uses ON CONFLICT DO NOTHING for existing rows).
  *
  * @returns {Promise<number>}  Number of tasks created.
  */
-async function createMissingTasksForToday() {
+async function createMissingTasksForToday(userId = null) {
   const now = new Date();
   const { date: currentDate, timeHm: currentTime } = getISTPartsFromDate(now);
 
-  logger.info('Running catch-up task creation', { currentDate, currentTime });
+  logger.info('Running catch-up task creation', { currentDate, currentTime, userId });
 
   try {
-    const windows = await getWindowsAlreadyOpenedToday(currentTime, currentDate);
+    const windows = await getWindowsAlreadyOpenedToday(currentTime, currentDate, userId);
 
     logger.info(`Catch-up: ${windows.length} missing task(s) found`);
 
@@ -402,5 +443,6 @@ export {
   sendTaskNotification,
   checkAndSendFollowUpReminders,
   checkAndSendPersonalisedReminders,
+  checkAndSendMissedInitialNotifications,
   createMissingTasksForToday,
 };

@@ -117,6 +117,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let userInfo = response.notification.request.content.userInfo
+        let actionId = response.actionIdentifier
+
+        if userInfo["action"] as? String == ReminderPlugin.actionOpenTaskPanel
+            || userInfo["taskType"] != nil {
+            let uploadNow = (actionId == ReminderPlugin.actionUploadNow)
+            if actionId != ReminderPlugin.actionDismiss {
+                ReminderPlugin.storePendingAction(userInfo, uploadNow: uploadNow)
+            }
+        }
+
         completionHandler()
     }
 }

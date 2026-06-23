@@ -29,18 +29,24 @@ function AnalysisRow({ label, icon, target, consumed, unit }) {
     diff == null ? 'text-gray-700' :
     diff > 0     ? 'text-red-600' :
     diff < 0     ? 'text-orange-600' :
-                   'text-gray-800';
+                   'text-green-600';
 
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3">
-      <span className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
+    <div className="flex items-center py-3 border-b border-gray-100 last:border-0">
+      {/* Col 1: icon + label — fixed width so all labels align */}
+      <span className="flex items-center gap-2 text-sm font-semibold text-gray-700 w-[150px] shrink-0">
         {icon && <span>{icon}</span>}
         {label}
       </span>
-      <span className="text-sm text-right whitespace-nowrap">
-        <strong className={consumedClass}>{consumedDisplay}</strong>
-        <span className="text-gray-400"> vs </span>
-        <strong className="text-gray-700">{targetDisplay}</strong>
+      {/* Col 2: consumed — fixed width, right-aligned */}
+      <strong className={`${consumedClass} text-base font-bold w-[60px] text-right shrink-0`}>
+        {consumedDisplay}
+      </strong>
+      {/* Col 3: vs — fixed width, centered */}
+      <span className="text-gray-400 font-medium w-[36px] text-center shrink-0">vs</span>
+      {/* Col 4: target + unit — remaining space, left-aligned */}
+      <span>
+        <strong className="text-gray-700 text-base font-bold">{targetDisplay}</strong>
         <span className="text-gray-500 text-xs ml-1">{unit}</span>
       </span>
     </div>
@@ -56,6 +62,8 @@ export function WeightProgressTipsModal({
   comparison,
   goalMode,
   userName,
+  followedPlanCorrectly = false,
+  coachPhone = null,
 }) {
   if (!isOpen || !comparison) return null;
 
@@ -67,16 +75,26 @@ export function WeightProgressTipsModal({
   const weightChange   = comparison.weight.change ?? 0;
   const prevWeight     = comparison.weight.previous;
   const currWeight     = comparison.weight.current;
+  const weightWentUp   = currWeight > prevWeight;   // true = increased, false = decreased
 
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
-    : goalMode === 'loss'
-    ? `You gained ${Math.abs(weightChange).toFixed(1)} kg even though your goal is weight loss.`
-    : `You lost ${Math.abs(weightChange).toFixed(1)} kg even though your goal is weight gain.`;
+    : followedPlanCorrectly
+    ? `You followed your plan correctly, but your weight increased. Please contact your coach for guidance.`
+    : weightWentUp
+    ? `Your weight is higher than your previous weight.`
+    : `Your weight is lower than your previous weight.`;
 
   const handleNoOpenGallery = () => {
     onClose();
     onOpenGallery?.();
+  };
+
+  const handleContactCoach = () => {
+    if (coachPhone) {
+      // _system opens the native phone dialer on Android/iOS via Capacitor
+      window.open(`tel:${coachPhone}`, '_system');
+    }
   };
 
   const yNutrition = comparison.nutrition?.yesterday  || {};
@@ -101,7 +119,7 @@ export function WeightProgressTipsModal({
             {isFirstUpload ? <CheckCircle size={32} className="shrink-0 mt-0.5" /> : <AlertCircle size={32} className="shrink-0 mt-0.5" />}
             <div>
               <h2 className="text-xl font-bold leading-tight">
-                {isFirstUpload ? '🎉 Welcome to Your Journey!' : 'Weight Progress'}
+                {isFirstUpload ? '🎉 Welcome to Your Journey!' : 'Weight Update'}
               </h2>
               <p className="text-sm opacity-90 mt-0.5">Hello, <strong>{displayName}</strong></p>
               <p className="text-sm opacity-90">
@@ -123,9 +141,9 @@ export function WeightProgressTipsModal({
                   <p className="text-2xl font-bold text-gray-800">{prevWeight} kg</p>
                 </div>
                 <div className="flex flex-col items-center">
-                  {weightChange > 0
+                  {weightWentUp
                     ? <TrendingUp className="text-red-500" size={28} />
-                    : <TrendingDown className="text-orange-500" size={28} />
+                    : <TrendingDown className="text-green-500" size={28} />
                   }
                 </div>
                 <div className="text-center">
@@ -151,7 +169,7 @@ export function WeightProgressTipsModal({
           {!isFirstUpload && (
             <section>
               <h3 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span>📊</span> Yesterday&rsquo;s Analysis
+                <span>📊</span> Daily Summary
               </h3>
               <div className="bg-gray-50 rounded-xl px-4 py-1 divide-y divide-gray-100">
                 <AnalysisRow
@@ -199,16 +217,25 @@ export function WeightProgressTipsModal({
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-2xl flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-50 border-2 border-green-300 text-orange-800 hover:bg-orange-100 transition"
+            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-50 border-2 border-green-300 text-green-800 hover:bg-green-100 transition"
           >
             OK
           </button>
-          <button
-            onClick={handleNoOpenGallery}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-500 text-white hover:from-orange-600 hover:to-red-600 transition"
-          >
-            NO
-          </button>
+          {followedPlanCorrectly ? (
+            coachPhone ? (
+              <button
+                onClick={handleContactCoach}
+                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 transition flex items-center justify-center gap-2"
+              >
+                📞 Contact Your Coach
+              </button>
+            ) : (
+              <div className="flex-1 py-2 px-3 rounded-xl bg-gray-100 border border-gray-200 flex items-center gap-2 text-sm text-gray-500">
+                <span>ℹ️</span>
+                <span>Coach contact number is not set. Please reach out to them directly.</span>
+              </div>
+            )
+          ) : null}
         </div>
 
       </div>

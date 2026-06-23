@@ -23,9 +23,12 @@
 
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
+// food_nutrition_data_table / weight_records_table / education_logs_table store
+// CreatedAt as "timestamp without time zone" using IST space format
+// (e.g. "2026-06-23 15:17:00") from convertToIST — not ISO "T" format.
 const istDayBounds = (date) => ({
-  start: `${date}T00:00:00`,
-  end:   `${date}T23:59:59`,
+  start: `${date} 00:00:00`,
+  end:   `${date} 23:59:59`,
 });
 
 const istDayBoundsWithOffset = (date) => ({

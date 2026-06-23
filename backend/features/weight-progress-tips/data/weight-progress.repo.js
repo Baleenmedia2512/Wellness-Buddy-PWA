@@ -16,7 +16,7 @@ export async function getUserWeightGoal(userId) {
   try {
     const { data, error } = await supabase
       .from('team_table')
-      .select('"WeightGoalMode", "Height", "Bmr"')
+      .select('"WeightGoalMode", "Height", "Bmr", "CoachId"')
       .eq('UserId', parseInt(userId, 10))
       .maybeSingle();
 
@@ -25,14 +25,40 @@ export async function getUserWeightGoal(userId) {
       throw error;
     }
     console.log('✅ [repo:getUserWeightGoal] Result:', data);
-    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null };
+    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
   } catch (error) {
     if (error.message?.includes('column') && error.message?.includes('WeightGoalMode')) {
       console.warn('⚠️ [repo:getUserWeightGoal] WeightGoalMode column not found, using default "loss".');
-      return { WeightGoalMode: 'loss', Height: null, Bmr: null };
+      return { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
     }
     throw error;
   }
+}
+
+/**
+ * Get the phone number of a user's coach from team_table.
+ * Returns null if not found or not set.
+ *
+ * @param {number} coachId
+ * @returns {Promise<string|null>}
+ */
+export async function getCoachPhone(coachId) {
+  if (!coachId) return null;
+  const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getCoachPhone] Querying team_table for coachId:', coachId);
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"PhoneNumber"')
+    .eq('UserId', parseInt(coachId, 10))
+    .maybeSingle();
+  if (error) {
+    console.warn('⚠️ [repo:getCoachPhone] Error fetching coach phone:', error.message);
+    return null;
+  }
+  const phone = data?.PhoneNumber;
+  const result = phone && String(phone).trim() ? String(phone).trim() : null;
+  console.log('✅ [repo:getCoachPhone] coachPhone:', result ? 'found' : 'not found');
+  return result;
 }
 
 /**

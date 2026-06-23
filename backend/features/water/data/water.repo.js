@@ -10,7 +10,6 @@
  * ---------------------------------------------------------------------------
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { getPool } from '../../../utils/dbPool.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -71,8 +70,8 @@ export async function getFoodRowsForDate(userId, date) {
  * Return every active user's pending 'water' task for the given date,
  * including their push token so the scheduler can send FCM notifications.
  *
- * Uses the pg pool (not Supabase client) because it requires a JOIN
- * across tasks_table and team_table.
+ * Uses Supabase REST (same transport as /api/tasks/list) so cron works when
+ * DATABASE_URL is misconfigured but SUPABASE_URL is valid.
  *
  * @param {string} date  YYYY-MM-DD
  * @returns {Promise<Array<{
@@ -88,39 +87,61 @@ export async function getFoodRowsForDate(userId, date) {
  * }>>}
  */
 export async function getPendingWaterTasksForDate(date) {
-  const client = await getPool();
-  try {
-    const result = await client.query(
-      `SELECT
-         t."TaskId"                  AS task_id,
-         t."UserId"                  AS user_id,
-         t."TaskDate"                AS task_date,
-         t."WindowStart"             AS window_start,
-         t."WindowEnd"               AS window_end,
-         t."ReminderCount"           AS reminder_count,
-         t."ReminderDismissedToday"  AS reminder_dismissed_today,
-         t."SnoozedUntil"            AS snoozed_until,
-         u."PushToken"               AS push_token
-       FROM tasks_table t
-       JOIN team_table u ON t."UserId"::text = u."UserId"::text
-       WHERE t."TaskDate" = $1::date
-         AND t."TaskType" = 'water'
-         AND t."Status"   = 'pending'
-         AND u."Status"   = 'Active'
-         AND u."PushToken" IS NOT NULL
-       ORDER BY t."UserId"`,
-      [date],
-    );
-    return result.rows;
-  } catch (error) {
+  const supabase = getSupabaseClient();
+
+  const { data: tasks, error: tasksError } = await supabase
+    .from('tasks_table')
+    .select(
+      'TaskId, UserId, TaskDate, WindowStart, WindowEnd, ReminderCount, ReminderDismissedToday, SnoozedUntil',
+    )
+    .eq('TaskDate', date)
+    .eq('TaskType', 'water')
+    .eq('Status', 'pending');
+
+  if (tasksError) {
     logger.error('[water.repo] getPendingWaterTasksForDate failed', {
       date,
-      err: error.message,
+      err: tasksError.message,
     });
-    return [];
-  } finally {
-    client.release();
+    throw new Error(tasksError.message);
   }
+
+  if (!tasks?.length) return [];
+
+  const userIds = [...new Set(tasks.map((t) => String(t.UserId)))];
+
+  const { data: members, error: membersError } = await supabase
+    .from('team_table')
+    .select('UserId, PushToken, Status')
+    .in('UserId', userIds)
+    .eq('Status', 'Active')
+    .not('PushToken', 'is', null);
+
+  if (membersError) {
+    logger.error('[water.repo] getPendingWaterTasksForDate members query failed', {
+      date,
+      err: membersError.message,
+    });
+    throw new Error(membersError.message);
+  }
+
+  const tokenByUser = Object.fromEntries(
+    (members || []).map((m) => [String(m.UserId), m.PushToken]),
+  );
+
+  return tasks
+    .filter((t) => tokenByUser[String(t.UserId)])
+    .map((t) => ({
+      task_id:                  t.TaskId,
+      user_id:                  String(t.UserId),
+      task_date:                t.TaskDate,
+      window_start:             t.WindowStart,
+      window_end:               t.WindowEnd,
+      reminder_count:           t.ReminderCount,
+      reminder_dismissed_today: t.ReminderDismissedToday,
+      snoozed_until:            t.SnoozedUntil,
+      push_token:               tokenByUser[String(t.UserId)],
+    }));
 }
 
 /**
@@ -132,20 +153,34 @@ export async function getPendingWaterTasksForDate(date) {
  * @returns {Promise<void>}
  */
 export async function incrementWaterTaskReminderCount(taskId) {
-  const client = await getPool();
-  try {
-    await client.query(
-      'UPDATE tasks_table SET "ReminderCount" = "ReminderCount" + 1 WHERE "TaskId" = $1',
-      [taskId],
-    );
-    logger.info('[water.repo] reminder count incremented', { taskId });
-  } catch (error) {
-    logger.error('[water.repo] incrementWaterTaskReminderCount failed', {
+  const supabase = getSupabaseClient();
+
+  const { data: row, error: readError } = await supabase
+    .from('tasks_table')
+    .select('ReminderCount')
+    .eq('TaskId', taskId)
+    .single();
+
+  if (readError) {
+    logger.error('[water.repo] incrementWaterTaskReminderCount read failed', {
       taskId,
-      err: error.message,
+      err: readError.message,
     });
-    throw error;
-  } finally {
-    client.release();
+    throw new Error(readError.message);
   }
+
+  const { error: updateError } = await supabase
+    .from('tasks_table')
+    .update({ ReminderCount: (row?.ReminderCount ?? 0) + 1 })
+    .eq('TaskId', taskId);
+
+  if (updateError) {
+    logger.error('[water.repo] incrementWaterTaskReminderCount update failed', {
+      taskId,
+      err: updateError.message,
+    });
+    throw new Error(updateError.message);
+  }
+
+  logger.info('[water.repo] reminder count incremented', { taskId });
 }

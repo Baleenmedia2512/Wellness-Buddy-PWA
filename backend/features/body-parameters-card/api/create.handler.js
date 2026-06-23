@@ -67,6 +67,9 @@ export async function handleCreateCard(body) {
       bmr:          payload.bmr,
       bodyAge:      payload.bodyAge,
       visceralFat:  payload.visceralFat,
+      chestCm:      payload.chestCm,
+      waistCm:      payload.waistCm,
+      hipCm:        payload.hipCm,
       recordedDate: payload.recordedDate,
       locationName: payload.locationName,
     });
@@ -107,6 +110,9 @@ export async function handleCreateCard(body) {
         bmr:              card.bmr,
         bodyAge:          card.body_age,
         visceralFat:      card.visceral_fat,
+        chestCm:          card.chest_cm,
+        waistCm:          card.waist_cm,
+        hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
         phoneNumber:      payload.phoneNumber, // Include phone from request

@@ -271,31 +271,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           setBodyParamsPreCapCard(formData);
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
-          const isEditMode = Boolean(selectedCard?.id);
-          
           setIsBodyParamsFormOpen(false);
-          
-          // Instantly add/update card in the list (optimistic update)
-          setBodyParamsCards(prevCards => {
-            if (isEditMode && selectedCard?.id) {
-              // Update mode: Replace the existing card with same ID
-              return prevCards.map(c => 
-                c.id === selectedCard.id ? { ...c, ...card, id: selectedCard.id } : c
-              );
-            } else {
-              // Create mode: Add new card at the beginning
-              return [card, ...prevCards];
+
+          // Keep list in sync — update existing row when create path reused a card id.
+          setBodyParamsCards((prevCards) => {
+            const idx = prevCards.findIndex((c) => c.id === card.id);
+            if (idx >= 0) {
+              const next = [...prevCards];
+              next[idx] = { ...prevCards[idx], ...card };
+              return next;
             }
+            return [card, ...prevCards];
           });
-          
+
           setSelectedCard(null);
-          
-          // Show share sheet immediately
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
-          
-          // DO NOT auto-refresh - keep the optimistic card visible
-          // Card persists through sharing and app lifecycle
-          // User can manually refresh if needed using the refresh button
+
+          // Reload from server so refresh shows the same persisted measurements.
+          fetchData(true);
         }}
       />
 

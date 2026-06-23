@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  * - Fetch tasks from API
- * - Auto-trigger catch-up creation when 0 tasks found (cron may have missed windows)
+ * - Auto-trigger catch-up on first panel load (backfills missed windows)
  * - Handle loading/error states
  */
 
@@ -13,18 +13,29 @@ import { getApiBaseUrl } from '../../../config/api.config';
 
 /**
  * Call POST /api/tasks/catchup so the server creates any task rows
- * whose time windows already opened today but whose cron run was missed.
- * Fire-and-forget — errors are non-fatal.
+ * whose time windows already opened today but whose cron run was missed,
+ * and sends the first FCM for pending tasks in open windows.
+ * Idempotent — safe on every panel open.
  */
-async function triggerCatchup(apiBaseUrl) {
+async function triggerCatchup(apiBaseUrl, userId) {
   try {
-    const res = await fetch(`${apiBaseUrl}/api/tasks/catchup`, { method: 'POST' });
+    const res = await fetch(`${apiBaseUrl}/api/tasks/catchup?userId=${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
     const json = await res.json();
     debugLog('[useTaskData] catchup result', json);
-    return json?.data?.createdCount ?? 0;
+    return {
+      createdCount: json?.data?.createdCount ?? 0,
+      reconciledCount: json?.data?.reconciledCount ?? 0,
+      notificationsSent: json?.data?.notificationsSent ?? 0,
+      notifyEligible: json?.data?.notifyEligible ?? 0,
+      hasPushToken: json?.data?.hasPushToken ?? null,
+    };
   } catch (err) {
     debugLog('[useTaskData] catchup failed (non-critical):', err.message);
-    return 0;
+    return { createdCount: 0, notificationsSent: 0, notifyEligible: 0, hasPushToken: null };
   }
 }
 
@@ -54,23 +65,27 @@ export function useTaskData(userId) {
       if (data.ok) {
         const fetched = data.data.tasks || [];
 
-        // If no tasks returned AND this is the first load, trigger catch-up
-        // so any windows that already opened today get their task rows created.
-        if (fetched.length === 0 && runCatchup) {
-          debugLog('[useTaskData] 0 tasks found — triggering catch-up');
-          const created = await triggerCatchup(apiBaseUrl);
-          if (created > 0) {
-            // Re-fetch now that rows exist
-            const retryRes  = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
-              method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
+        // Catch-up on every panel open: backfill missed windows and send first
+        // FCM for tasks whose window is open but NotificationSent is still false.
+        if (runCatchup) {
+          debugLog('[useTaskData] Running catch-up', { existingCount: fetched.length });
+          const { createdCount, notificationsSent, notifyEligible, hasPushToken } = await triggerCatchup(apiBaseUrl, userId);
+          const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const retryData = await retryRes.json();
+          if (retryData.ok) {
+            setTasks(retryData.data.tasks || []);
+            setError(null);
+            debugLog('[useTaskData] Tasks re-fetched after catch-up', {
+              count: (retryData.data.tasks || []).length,
+              createdCount,
+              notificationsSent,
+              notifyEligible,
+              hasPushToken,
             });
-            const retryData = await retryRes.json();
-            if (retryData.ok) {
-              setTasks(retryData.data.tasks || []);
-              setError(null);
-              return;
-            }
+            return;
           }
         }
 
@@ -88,16 +103,26 @@ export function useTaskData(userId) {
     }
   }, [userId, apiBaseUrl]);
 
-  // Initial fetch — run catch-up on first load only
+  // Initial fetch — catch-up on every panel open (idempotent)
   useEffect(() => {
     fetchTasks({ runCatchup: true });
   }, [fetchTasks]);
 
-  // Manual refresh — no catch-up (user-triggered, tasks may just be completed)
+  // Manual refresh — includes catch-up/reconcile so completed activities move tabs.
   const refresh = useCallback(() => {
     setLoading(true);
-    fetchTasks({ runCatchup: false });
+    fetchTasks({ runCatchup: true });
   }, [fetchTasks]);
+
+  // Re-fetch when food/weight/education saves complete elsewhere in the app.
+  useEffect(() => {
+    const onTasksChanged = () => {
+      debugLog('[useTaskData] wellness:tasks-changed — refreshing with reconcile');
+      refresh();
+    };
+    window.addEventListener('wellness:tasks-changed', onTasksChanged);
+    return () => window.removeEventListener('wellness:tasks-changed', onTasksChanged);
+  }, [refresh]);
 
   return {
     tasks,

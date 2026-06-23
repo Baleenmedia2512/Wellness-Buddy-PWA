@@ -3,7 +3,13 @@
  * Calls validation → data. No HTTP concerns here.
  */
 import { validateUpdateCard } from '../validation/card.schema.js';
-import { updateCard, createTeamMemberFromPhone, linkCardToUser, findPreviousCardByUserId } from '../data/card.repo.js';
+import {
+  updateCard,
+  createTeamMemberFromPhone,
+  linkCardToUser,
+  findPreviousCardByUserId,
+  findTeamPhoneByUserId,
+} from '../data/card.repo.js';
 
 /**
  * @param {object} body - raw request body (must include `id`)
@@ -30,6 +36,10 @@ export async function handleUpdateCard(body) {
     ? await findPreviousCardByUserId(card.user_id, card.id)
     : null;
 
+  const phoneNumber = card.user_id
+    ? await findTeamPhoneByUserId(card.user_id)
+    : (payload.phoneNumber || null);
+
   return {
     httpStatus: 200,
     body: {
@@ -39,6 +49,21 @@ export async function handleUpdateCard(body) {
         publicShareToken: card.public_share_token,
         shareExpiresAt:   card.share_expires_at,
         name:             card.name,
+        age:              card.age,
+        gender:           card.gender,
+        heightCm:         card.height_cm,
+        weightKg:         card.weight_kg,
+        bmi:              card.bmi,
+        fatPercent:       card.fat_percent,
+        bmr:              card.bmr,
+        bodyAge:          card.body_age,
+        visceralFat:      card.visceral_fat,
+        chestCm:          card.chest_cm,
+        waistCm:          card.waist_cm,
+        hipCm:            card.hip_cm,
+        recordedDate:     card.recorded_date,
+        locationName:     card.location_name,
+        phoneNumber:      phoneNumber || payload.phoneNumber || null,
         previousCard,
       },
     },

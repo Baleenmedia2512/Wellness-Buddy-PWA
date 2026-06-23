@@ -9,12 +9,6 @@ import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
 
-import org.json.JSONObject;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -26,6 +20,10 @@ import com.wellnessvalley.app.services.ReminderBootReceiver;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /**
  * ReminderPlugin
@@ -57,6 +55,108 @@ import org.json.JSONObject;
 public class ReminderPlugin extends Plugin {
 
     private static final String TAG = "ReminderPlugin";
+
+    /** Intent / JS bridge extras for task-panel deep links */
+    public static final String EXTRA_OPEN_TASK_PANEL = "openTaskPanel";
+    public static final String EXTRA_TASK_TYPE       = "taskType";
+    public static final String EXTRA_TASK_ID         = "taskId";
+    public static final String EXTRA_UPLOAD_NOW      = "uploadNow";
+    public static final String ACTION_OPEN_TASK_PANEL = "openTaskPanel";
+
+    private static final String PENDING_PREFS = "WellnessTaskNotification";
+    private static final String PENDING_KEY   = "pending_action";
+
+    private static ReminderPlugin instance = null;
+
+    @Override
+    public void load() {
+        super.load();
+        instance = this;
+    }
+
+    /**
+     * Deliver a task-reminder action to JS (panel open / upload now).
+     * Persists to SharedPreferences when the WebView bridge is not ready yet.
+     */
+    public static void deliverTaskReminderAction(Context ctx,
+                                                 String taskType,
+                                                 String taskId,
+                                                 boolean uploadNow) {
+        try {
+            JSObject data = new JSObject();
+            data.put("action", ACTION_OPEN_TASK_PANEL);
+            if (taskType != null && !taskType.isEmpty()) data.put("taskType", taskType);
+            if (taskId != null && !taskId.isEmpty()) data.put("taskId", taskId);
+            data.put("uploadNow", uploadNow);
+
+            if (instance != null) {
+                instance.notifyListeners("taskReminderAction", data);
+                Log.d(TAG, "✅ taskReminderAction delivered to JS");
+            } else if (ctx != null) {
+                SharedPreferences sp = ctx.getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE);
+                sp.edit()
+                    .putString(PENDING_KEY + "_action", ACTION_OPEN_TASK_PANEL)
+                    .putString(PENDING_KEY + "_taskType", taskType != null ? taskType : "")
+                    .putString(PENDING_KEY + "_taskId", taskId != null ? taskId : "")
+                    .putBoolean(PENDING_KEY + "_uploadNow", uploadNow)
+                    .apply();
+                Log.d(TAG, "💾 taskReminderAction persisted for cold start");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ deliverTaskReminderAction failed", e);
+        }
+    }
+
+    /** Build a MainActivity intent that opens the Task Notification Panel. */
+    public static Intent buildTaskPanelIntent(Context ctx,
+                                              String taskType,
+                                              String taskId,
+                                              boolean uploadNow) {
+        Intent intent = new Intent(ctx, com.wellnessvalley.app.MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra(EXTRA_OPEN_TASK_PANEL, true);
+        if (taskType != null) intent.putExtra(EXTRA_TASK_TYPE, taskType);
+        if (taskId != null) intent.putExtra(EXTRA_TASK_ID, taskId);
+        intent.putExtra(EXTRA_UPLOAD_NOW, uploadNow);
+        return intent;
+    }
+
+    // ── consumePendingTaskNotification ────────────────────────────────────
+
+    /**
+     * Return a pending task-notification action saved during cold start, then clear it.
+     * JS: await ReminderPlugin.consumePendingTaskNotification()
+     */
+    @PluginMethod
+    public void consumePendingTaskNotification(PluginCall call) {
+        try {
+            SharedPreferences sp = getContext().getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE);
+            String action = sp.getString(PENDING_KEY + "_action", null);
+            if (action == null) {
+                call.resolve(new JSObject());
+                return;
+            }
+            JSObject data = new JSObject();
+            data.put("action", action);
+            String taskType = sp.getString(PENDING_KEY + "_taskType", "");
+            String taskId   = sp.getString(PENDING_KEY + "_taskId", "");
+            if (!taskType.isEmpty()) data.put("taskType", taskType);
+            if (!taskId.isEmpty())   data.put("taskId", taskId);
+            data.put("uploadNow", sp.getBoolean(PENDING_KEY + "_uploadNow", false));
+
+            sp.edit()
+                .remove(PENDING_KEY + "_action")
+                .remove(PENDING_KEY + "_taskType")
+                .remove(PENDING_KEY + "_taskId")
+                .remove(PENDING_KEY + "_uploadNow")
+                .apply();
+
+            call.resolve(data);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ consumePendingTaskNotification failed", e);
+            call.reject("Failed to consume pending notification: " + e.getMessage());
+        }
+    }
 
     // ── scheduleReminder ─────────────────────────────────────────────────
 

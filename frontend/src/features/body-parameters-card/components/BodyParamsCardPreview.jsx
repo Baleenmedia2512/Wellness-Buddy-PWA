@@ -48,6 +48,55 @@ const FatDropIcon = () => (
   </svg>
 );
 
+const TORSO_FILL = '#4b5563';
+const MEASURE_STROKE = '#3b82f6';
+
+const measureTicks = (x1, y, x2) => (
+  <>
+    <line x1={x1} y1={y} x2={x1} y2={y - 2.5} stroke={MEASURE_STROKE} strokeWidth="1.8" strokeLinecap="round"/>
+    <line x1={x2} y1={y} x2={x2} y2={y - 2.5} stroke={MEASURE_STROKE} strokeWidth="1.8" strokeLinecap="round"/>
+  </>
+);
+
+const ChestMeasureIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22" fill="none" aria-hidden="true">
+    <circle cx="14" cy="3.5" r="2.2" fill={TORSO_FILL}/>
+    <path
+      d="M9 6.5 L7 8.5 L8 11.5 L7.5 22 C7.5 23.5 10 24 14 24 C18 24 20.5 23.5 20.5 22 L20 11.5 L21 8.5 L19 6.5 Z"
+      fill={TORSO_FILL}
+      opacity="0.85"
+    />
+    <line x1="7" y1="10.5" x2="21" y2="10.5" stroke={MEASURE_STROKE} strokeWidth="2.2" strokeLinecap="round"/>
+    {measureTicks(7, 10.5, 21)}
+  </svg>
+);
+
+const WaistMeasureIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22" fill="none" aria-hidden="true">
+    <circle cx="14" cy="3.5" r="2.2" fill={TORSO_FILL}/>
+    <path
+      d="M9 6.5 L7 8.5 L8.5 12 L7.5 22 C7.5 23.5 10 24 14 24 C18 24 20.5 23.5 20.5 22 L19.5 12 L21 8.5 L19 6.5 Z"
+      fill={TORSO_FILL}
+      opacity="0.85"
+    />
+    <line x1="8" y1="15" x2="20" y2="15" stroke={MEASURE_STROKE} strokeWidth="2.2" strokeLinecap="round"/>
+    {measureTicks(8, 15, 20)}
+  </svg>
+);
+
+const HipMeasureIcon = () => (
+  <svg viewBox="0 0 28 28" width="22" height="22" fill="none" aria-hidden="true">
+    <circle cx="14" cy="3.5" r="2.2" fill={TORSO_FILL}/>
+    <path
+      d="M9 6.5 L7 8.5 L8 12 L6.5 22 C6.5 24 10 24.5 14 24.5 C18 24.5 21.5 24 21.5 22 L20 12 L21 8.5 L19 6.5 Z"
+      fill={TORSO_FILL}
+      opacity="0.85"
+    />
+    <line x1="6.5" y1="19.5" x2="21.5" y2="19.5" stroke={MEASURE_STROKE} strokeWidth="2.2" strokeLinecap="round"/>
+    {measureTicks(6.5, 19.5, 21.5)}
+  </svg>
+);
+
 /* ── Thin vertical | divider ── */
 const VDivider = () => (
   <div style={{
@@ -505,6 +554,33 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               rangeNote={bodyAgeRangeNote}
               oval
               prevValue={previousCard?.bodyAge != null ? previousCard.bodyAge + ' Yrs' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
+          {card.chestCm != null && card.chestCm !== '' && (
+            <MetricRow
+              icon={<ChestMeasureIcon />} iconBg="#f0fdf4"
+              label="Chest"
+              value={fmt(card.chestCm, ' cm')}
+              prevValue={previousCard?.chestCm != null ? previousCard.chestCm + ' cm' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
+          {card.waistCm != null && card.waistCm !== '' && (
+            <MetricRow
+              icon={<WaistMeasureIcon />} iconBg="#f0fdf4"
+              label="Waist"
+              value={fmt(card.waistCm, ' cm')}
+              prevValue={previousCard?.waistCm != null ? previousCard.waistCm + ' cm' : '—'}
+              isExistingUser={isExistingUser}
+            />
+          )}
+          {card.hipCm != null && card.hipCm !== '' && (
+            <MetricRow
+              icon={<HipMeasureIcon />} iconBg="#f0fdf4"
+              label="Hip"
+              value={fmt(card.hipCm, ' cm')}
+              prevValue={previousCard?.hipCm != null ? previousCard.hipCm + ' cm' : '—'}
               isExistingUser={isExistingUser}
             />
           )}

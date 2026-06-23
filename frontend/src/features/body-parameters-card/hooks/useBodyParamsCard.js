@@ -26,6 +26,16 @@ function toNationalDigits(phone) {
   return d;
 }
 
+function toOptionalNum(val) {
+  if (val === '' || val == null) return undefined;
+  const n = parseFloat(val);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+function pickSavedField(apiVal, formVal) {
+  return apiVal != null && apiVal !== '' ? apiVal : formVal;
+}
+
 const EMPTY_FORM = {
   name:         '',  phoneNumber:  '',
   age:          '',
@@ -37,6 +47,9 @@ const EMPTY_FORM = {
   bmr:          '',
   visceralFat:  '',
   bodyAge:      '',
+  chestCm:      '',
+  waistCm:      '',
+  hipCm:        '',
   recordedDate: new Date().toISOString().substring(0, 10),
   locationName: '',
 };
@@ -61,6 +74,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
         visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
+        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
+        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
       };
@@ -107,6 +123,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
         visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
         bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
+        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
+        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
+        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
       });
@@ -358,6 +377,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     if (bodyAgeNum !== null && (isNaN(bodyAgeNum) || bodyAgeNum < 1 || bodyAgeNum > 120)) {
       setError('Body Age must be between 1 and 120'); return;
     }
+    for (const [field, label] of [
+      ['chestCm', 'Chest'],
+      ['waistCm', 'Waist'],
+      ['hipCm', 'Hip'],
+    ]) {
+      const n = toOptionalNum(form[field]);
+      if (n != null && (n < 20 || n > 250)) {
+        setError(`${label} must be between 20 and 250 cm`); return;
+      }
+    }
     setError('');
     setIsSaving(true);
 
@@ -376,6 +405,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:          form.bmr,
         visceralFat:  form.visceralFat,
         bodyAge:      form.bodyAge,
+        chestCm:      toOptionalNum(form.chestCm),
+        waistCm:      toOptionalNum(form.waistCm),
+        hipCm:        toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate,
         locationName: form.locationName,
       });
@@ -396,6 +428,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmr:         form.bmr          || undefined,
         visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
+        chestCm:     toOptionalNum(form.chestCm),
+        waistCm:     toOptionalNum(form.waistCm),
+        hipCm:       toOptionalNum(form.hipCm),
         recordedDate: form.recordedDate || undefined,
         locationName: form.locationName || undefined,
       };
@@ -409,22 +444,25 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
       const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
 
-      // Merge API response with full form data so the card preview
-      // has all fields (API only returns id/token/name).
+      // Merge API response with form fallbacks so the share card always has
+      // the saved measurements (API is source of truth after persist).
       const fullCard = {
         ...cardCore,
-        age:          form.age,
-        phoneNumber:  form.phoneNumber,
-        gender:       form.gender,
-        heightCm:     form.heightCm,
-        weightKg:     form.weightKg,
-        bmi:          form.bmi,
-        fatPercent:   form.fatPercent,
-        bmr:          form.bmr,
-        visceralFat:  form.visceralFat,
-        bodyAge:      form.bodyAge,
-        recordedDate: form.recordedDate,
-        locationName: form.locationName,
+        age:          pickSavedField(cardCore.age, form.age),
+        phoneNumber:  pickSavedField(cardCore.phoneNumber, form.phoneNumber),
+        gender:       pickSavedField(cardCore.gender, form.gender),
+        heightCm:     pickSavedField(cardCore.heightCm, form.heightCm),
+        weightKg:     pickSavedField(cardCore.weightKg, form.weightKg),
+        bmi:          pickSavedField(cardCore.bmi, form.bmi),
+        fatPercent:   pickSavedField(cardCore.fatPercent, form.fatPercent),
+        bmr:          pickSavedField(cardCore.bmr, form.bmr),
+        visceralFat:  pickSavedField(cardCore.visceralFat, form.visceralFat),
+        bodyAge:      pickSavedField(cardCore.bodyAge, form.bodyAge),
+        chestCm:      pickSavedField(cardCore.chestCm, form.chestCm),
+        waistCm:      pickSavedField(cardCore.waistCm, form.waistCm),
+        hipCm:        pickSavedField(cardCore.hipCm, form.hipCm),
+        recordedDate: pickSavedField(cardCore.recordedDate, form.recordedDate),
+        locationName: pickSavedField(cardCore.locationName, form.locationName),
       };
 
       setSavedCard(fullCard);
