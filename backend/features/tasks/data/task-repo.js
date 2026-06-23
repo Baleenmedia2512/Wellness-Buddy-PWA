@@ -1006,6 +1006,70 @@ async function getPendingTasksNeedingInitialNotification(currentDate, currentTim
 }
 
 /**
+ * Fetch today's food logs for task reconciliation.
+ * Uses date-prefix match so both "YYYY-MM-DD HH:MM:SS" and ISO formats work.
+ *
+ * @param {string|number} userId
+ * @param {string} date  YYYY-MM-DD (IST)
+ * @returns {Promise<Array>}
+ */
+async function fetchTodayFoodLogsForUser(userId, date) {
+  const supabase = getSupabaseClient();
+  const { start, end } = { start: `${date} 00:00:00`, end: `${date} 23:59:59` };
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('AnalysisData, CreatedAt, TotalCalories')
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null)
+    .gte('CreatedAt', start)
+    .lte('CreatedAt', end);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * @param {string|number} userId
+ * @param {string} date  YYYY-MM-DD (IST)
+ * @returns {Promise<Array>}
+ */
+async function fetchTodayWeightLogsForUser(userId, date) {
+  const supabase = getSupabaseClient();
+  const start = `${date} 00:00:00`;
+  const end = `${date} 23:59:59`;
+  const { data, error } = await supabase
+    .from('weight_records_table')
+    .select('ID, CreatedAt')
+    .eq('UserId', String(userId))
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .gte('CreatedAt', start)
+    .lte('CreatedAt', end);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * @param {string|number} userId
+ * @param {string} date  YYYY-MM-DD (IST)
+ * @returns {Promise<Array>}
+ */
+async function fetchTodayEducationLogsForUser(userId, date) {
+  const supabase = getSupabaseClient();
+  const start = `${date} 00:00:00`;
+  const end = `${date} 23:59:59`;
+  const { data, error } = await supabase
+    .from('education_logs_table')
+    .select('Id, CreatedAt')
+    .eq('UserId', String(userId))
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .not('Topic', 'like', 'Calories Burned:%')
+    .gte('CreatedAt', start)
+    .lte('CreatedAt', end);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
  * Whether an active team member has an FCM push token registered.
  * @param {string|number} userId
  * @returns {Promise<boolean>}
@@ -1049,4 +1113,7 @@ export {
   getPendingTaskForUser,
   getUserTaskAverages,
   syncPendingTaskWindowsForActivityType,
+  fetchTodayFoodLogsForUser,
+  fetchTodayWeightLogsForUser,
+  fetchTodayEducationLogsForUser,
 };

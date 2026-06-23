@@ -15,6 +15,9 @@ import {
   upsertTaskAverage,
   getPendingTaskForUser,
   getTimeWindowsByUser,
+  fetchTodayFoodLogsForUser,
+  fetchTodayWeightLogsForUser,
+  fetchTodayEducationLogsForUser,
 } from '../data/task-repo.js';
 import {
   extractIstParts,
@@ -26,11 +29,6 @@ import {
   normalizeActivityWindow,
 } from '../domain/completion-learning.rules.js';
 import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
-import {
-  fetchFoodForDay,
-  fetchWeightForDay,
-  fetchEducationForDay,
-} from '../../background-analysis/diary.repository.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -172,8 +170,15 @@ export function inferFoodTaskTypesFromTodayLogs(foods, windows, serverParts, pen
     }
   }
 
-  // Fallback: meal logged during its active window (handles stale EXIF on save time).
-  if (hasMealFoodToday && pendingMealTypes.size > 0) {
+  // Fallback: any meal logged today while that meal's window is still open
+  // (handles stale EXIF timestamps on CreatedAt).
+  const hasCaloricMealToday = foods.some((row) => {
+    const analysisResult = parseFoodAnalysisRow(row);
+    if (analysisResult && isExemptedBeverageOnly(analysisResult)) return false;
+    return parseFloat(row.TotalCalories) > 0 || Boolean(analysisResult);
+  });
+
+  if ((hasMealFoodToday || hasCaloricMealToday) && pendingMealTypes.size > 0) {
     for (const mealType of ['breakfast', 'lunch', 'dinner']) {
       if (!pendingMealTypes.has(mealType)) continue;
       const bounds = normalizeActivityWindow(windows[mealType]);
@@ -209,9 +214,9 @@ export async function reconcilePendingTasksForUser(userId) {
 
   try {
     const [weights, education, foods] = await Promise.all([
-      fetchWeightForDay(String(numericUserId), serverParts.date),
-      fetchEducationForDay(String(numericUserId), serverParts.date),
-      fetchFoodForDay(String(numericUserId), serverParts.date),
+      fetchTodayWeightLogsForUser(numericUserId, serverParts.date),
+      fetchTodayEducationLogsForUser(numericUserId, serverParts.date),
+      fetchTodayFoodLogsForUser(numericUserId, serverParts.date),
     ]);
 
     if (weights.length && pendingTypes.has('weight')) completedTypes.add('weight');

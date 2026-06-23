@@ -33,7 +33,7 @@ const TaskNotificationPanel = ({
   
   // Filter tasks by status
   const pendingTasks   = tasks.filter((t) => String(t.status).toLowerCase() === 'pending');
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const completedTasks = tasks.filter((t) => String(t.status).toLowerCase() === 'completed');
 
   // True only when the user has actually done some tasks today (not just "no tasks yet")
   const hasDoneTasksToday = completedTasks.length > 0;

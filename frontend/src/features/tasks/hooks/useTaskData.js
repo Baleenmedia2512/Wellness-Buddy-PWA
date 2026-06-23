@@ -28,6 +28,7 @@ async function triggerCatchup(apiBaseUrl, userId) {
     debugLog('[useTaskData] catchup result', json);
     return {
       createdCount: json?.data?.createdCount ?? 0,
+      reconciledCount: json?.data?.reconciledCount ?? 0,
       notificationsSent: json?.data?.notificationsSent ?? 0,
       notifyEligible: json?.data?.notifyEligible ?? 0,
       hasPushToken: json?.data?.hasPushToken ?? null,
@@ -107,16 +108,16 @@ export function useTaskData(userId) {
     fetchTasks({ runCatchup: true });
   }, [fetchTasks]);
 
-  // Manual refresh — no catch-up (user-triggered, tasks may just be completed)
+  // Manual refresh — includes catch-up/reconcile so completed activities move tabs.
   const refresh = useCallback(() => {
     setLoading(true);
-    fetchTasks({ runCatchup: false });
+    fetchTasks({ runCatchup: true });
   }, [fetchTasks]);
 
   // Re-fetch when food/weight/education saves complete elsewhere in the app.
   useEffect(() => {
     const onTasksChanged = () => {
-      debugLog('[useTaskData] wellness:tasks-changed — refreshing');
+      debugLog('[useTaskData] wellness:tasks-changed — refreshing with reconcile');
       refresh();
     };
     window.addEventListener('wellness:tasks-changed', onTasksChanged);

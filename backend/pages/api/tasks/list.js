@@ -11,6 +11,7 @@
 import { getTasksByUserAndDate } from '../../../features/tasks/data/task-repo.js';
 import { isTaskVisible } from '../../../features/tasks/domain/task-rules.js';
 import { getISTPartsFromDate } from '../../../features/tasks/domain/completion-learning.rules.js';
+import { reconcilePendingTasksForUser } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
@@ -68,6 +69,13 @@ export default async function handler(req, res) {
       });
     }
     
+    // Sync task status with today's logged activity (food/weight/education).
+    let reconciledCount = 0;
+    const todayIst = getISTPartsFromDate(new Date()).date;
+    if (targetDate === todayIst) {
+      reconciledCount = await reconcilePendingTasksForUser(userId);
+    }
+
     // Fetch tasks
     const tasks = await getTasksByUserAndDate(userId, targetDate, status);
     
@@ -88,6 +96,7 @@ export default async function handler(req, res) {
       route: '/api/tasks/list',
       durationMs,
       taskCount: filteredTasks.length,
+      reconciledCount,
       status,
       date: targetDate
     });
