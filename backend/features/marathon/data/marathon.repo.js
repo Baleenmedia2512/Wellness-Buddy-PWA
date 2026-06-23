@@ -1159,9 +1159,17 @@ export async function autoFinalizeActiveMarathons() {
         continue; // Discipline window not yet closed for this marathon
       }
 
-      // 2. Idempotency guard — skip if result already recorded today
+      // 2. Idempotency guard — skip only if a result with at least one leader
+      //    already exists. A row where all leader fields are NULL means the
+      //    earlier run found no eligible participants; we must keep retrying
+      //    until a real winner is found (or the day ends with no winner).
       const existing = await getDailyResults(marathon.id, todayDate);
-      if (existing) {
+      if (
+        existing &&
+        (existing.day_leader_user_id ||
+          existing.lap_leader_user_id ||
+          existing.community_leader_user_id)
+      ) {
         skipped++;
         continue;
       }
