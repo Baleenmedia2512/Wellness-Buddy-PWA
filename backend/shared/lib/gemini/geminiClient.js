@@ -59,6 +59,20 @@ export const MODEL_CONFIGS = {
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
   },
+
+  /**
+   * Unified single-call inference (AIGateway.analyzeUnified).
+   * Replaces the old classify→nutrition two-call chain.
+   * Needs a higher output budget than classify because it also carries
+   * fastNutrition (5 macro fields) for food images in the same response.
+   */
+  unified: {
+    temperature: 0,
+    topK: 1,
+    topP: 1.0,
+    maxOutputTokens: 1024,
+    responseMimeType: 'application/json',
+  },
 };
 
 // ── Singleton factory ─────────────────────────────────────────────────────────
