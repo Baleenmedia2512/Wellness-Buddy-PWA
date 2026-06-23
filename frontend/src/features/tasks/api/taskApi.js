@@ -115,7 +115,7 @@ export async function completeTask(taskId, taskType, completionData, explicitUse
  * Snooze a task reminder.
  *
  * @param {number} taskId        - Task ID.
- * @param {number} snoozeMinutes - Must be 5 or 10.
+ * @param {number} snoozeMinutes - Must be 15, 30, or 60.
  * @returns {Promise<Object>}    - { ok, data: { taskId, reminderCount, snoozedUntil } }
  */
 export async function snoozeTask(taskId, snoozeMinutes, explicitUserId = null) {

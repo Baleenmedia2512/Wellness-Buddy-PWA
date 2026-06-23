@@ -659,7 +659,7 @@ export async function resetRemindersToDefaults() {
  * @param {number} taskId        - Task ID (used to uniquely identify the alarm).
  * @param {string} taskType      - e.g. 'weight', 'breakfast'.
  * @param {string} label         - Human-readable label for the notification title.
- * @param {number} snoozeMinutes - Must be 5 or 10.
+ * @param {number} snoozeMinutes - Must be 15, 30, or 60.
  */
 export async function scheduleSnooze(taskId, taskType, label, snoozeMinutes) {
   if (!isNative()) return;

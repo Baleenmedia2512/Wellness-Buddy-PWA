@@ -2,7 +2,7 @@
  * ReminderActionBar.jsx — Snooze / Dismiss action bar for a pending task card
  *
  * Renders three actions beneath a task:
- *   • Snooze   — dropdown: 5 min | 10 min
+ *   • Snooze   — dropdown: 15 min | 30 min | 1 hour
  *   • Dismiss  — soft close ("remind me next window")
  *   • Don't Remind Again Today — hard dismiss for today
  *
@@ -18,8 +18,9 @@ import { debugLog } from '../../../shared/utils/logger';
 
 /** Snooze options exposed to the user. */
 const SNOOZE_OPTIONS = [
-  { label: '5 minutes', value: 5 },
-  { label: '10 minutes', value: 10 },
+  { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
+  { label: '1 hour',     value: 60 },
 ];
 
 function isSnoozeActive(task) {
