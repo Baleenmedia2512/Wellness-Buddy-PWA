@@ -6041,11 +6041,18 @@ function WellnessValleyApp() {
         // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, "unknown");
         // PR-D / ADR-0003: when the Diary feed is enabled, AI detection
-        // failures must NOT prompt the user. The capture stays tagged
-        // 'unknown' and surfaces as an "Other" row in the Diary (with Retry /
-        // Edit there). Only fall back to the legacy PR-3 disambiguation modal
-        // when the flag is OFF, preserving backward-compatible behaviour.
-        if (!isFlagEnabled("ff.diary-feed")) {
+        // failures must NOT open the picker modal — the capture surfaces as
+        // an "Other" row in the Diary with Retry / Edit there.
+        // EXCEPTION: if the AI failed *entirely* (defaulted=true — e.g. API
+        // key missing/invalid, network error, timeout), always surface an
+        // error so the user knows something went wrong rather than silently
+        // seeing "✓ Ready" with no result.
+        const aiFailedEntirely = detectedType?.details?.defaulted === true;
+        if (aiFailedEntirely) {
+          setError(
+            "⚠️ AI analysis could not run. Please check your internet connection and try again.",
+          );
+        } else if (!isFlagEnabled("ff.diary-feed")) {
           setUnknownCaptureModal({ open: true, pendingSharePromise });
         }
         setLoading(false);
