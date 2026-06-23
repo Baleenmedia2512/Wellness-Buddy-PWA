@@ -26,6 +26,18 @@ export function getISTPartsFromDate(clock) {
 }
 
 /**
+ * Build an IST timestamp string for task completion (upload/server time).
+ *
+ * @param {Date} [clock=new Date()]
+ * @returns {string|null}  'YYYY-MM-DD HH:MM:SS'
+ */
+export function buildServerIstTimestamp(clock = new Date()) {
+  const parts = getISTPartsFromDate(clock);
+  if (!parts?.date || !parts?.time) return null;
+  return `${parts.date} ${parts.time}`;
+}
+
+/**
  * Parse an IST timestamp string into date + time parts.
  *
  * @param {string} istTimestamp  e.g. '2026-06-15 08:05:00' or ISO with T

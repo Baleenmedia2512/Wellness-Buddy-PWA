@@ -15,6 +15,7 @@
 
 import { createMissingTasksForToday } from '../../../features/tasks/domain/task-scheduler.js';
 import { userHasPushToken } from '../../../features/tasks/data/task-repo.js';
+import { reconcilePendingTasksForUser } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
@@ -46,6 +47,7 @@ export default async function handler(req, res) {
     }
 
     const createdCount = await createMissingTasksForToday(userId);
+    const reconciledCount = await reconcilePendingTasksForUser(userId);
     const hasPushToken = await userHasPushToken(userId);
 
     const durationMs = Date.now() - startTime;
@@ -55,12 +57,14 @@ export default async function handler(req, res) {
       route: '/api/tasks/catchup',
       durationMs,
       createdCount,
+      reconciledCount,
     });
 
     return res.status(200).json({
       ok: true,
       data: {
         createdCount,
+        reconciledCount,
         notificationsSent: 0,
         notifyEligible: 0,
         hasPushToken,

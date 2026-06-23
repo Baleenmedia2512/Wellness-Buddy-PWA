@@ -388,9 +388,25 @@ function WellnessValleyApp() {
   });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
   const manualMealTypeRef = useRef("");
+  const activeTaskTypeRef = useRef("");
   useEffect(() => {
     manualMealTypeRef.current = manualMealType;
   }, [manualMealType]);
+
+  const FOOD_TASK_HINTS = new Set(["breakfast", "lunch", "dinner", "water"]);
+  const getFoodTaskTypeHint = () => {
+    const fromTask = activeTaskTypeRef.current;
+    if (FOOD_TASK_HINTS.has(fromTask)) return fromTask;
+    const fromMeal = manualMealTypeRef.current;
+    return FOOD_TASK_HINTS.has(fromMeal) ? fromMeal : undefined;
+  };
+  const clearActiveTaskContext = () => {
+    activeTaskTypeRef.current = "";
+    setManualMealType("");
+  };
+  const notifyTasksChanged = () => {
+    window.dispatchEvent(new CustomEvent("wellness:tasks-changed"));
+  };
   const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
@@ -3870,6 +3886,9 @@ function WellnessValleyApp() {
         handleLeaderboardRefresh();
       }, 3000);
 
+      notifyTasksChanged();
+      clearActiveTaskContext();
+
       // ✅ Check for reverse weight progress and show tips modal
       const savedId = savedWeightIdRef.current || data?.id || null;
       await triggerReverseProgressModal(userId, savedId);
@@ -4215,12 +4234,15 @@ function WellnessValleyApp() {
     setShowManualEducationModal(false);
 
     if (taskType === 'water') {
+      activeTaskTypeRef.current = 'water';
       setDashboardInitialTab('water');
       setShowDashboard(true);
       Session.setCurrentPage('dashboard');
       setShowTaskPanel(false);
       return;
     }
+
+    activeTaskTypeRef.current = taskType || '';
 
     if (taskType === 'weight') {
       setImageType('weight');
@@ -4769,6 +4791,9 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
+      notifyTasksChanged();
+      clearActiveTaskContext();
+
       debugLog(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
       if (finalCenterName) {
         debugLog(`   🏢 Club: ${finalCenterName}`);
@@ -4939,10 +4964,12 @@ function WellnessValleyApp() {
 
       // Continue with food save
       try {
+        const mealHint = getFoodTaskTypeHint();
         const saveRes = await saveNutritionAnalysis({
           ...saveData,
           ...clubLocationFields,
           captureId: captureId || undefined,
+          ...(mealHint ? { taskTypeHint: mealHint } : {}),
         });
 
         // saveNutritionAnalysis returns data directly, not { ok, data }
@@ -4962,6 +4989,8 @@ function WellnessValleyApp() {
 
         // Trigger nutrition refresh for home screen cards
         triggerNutritionRefresh({ immediate: true, source: "club-modal-save" });
+        notifyTasksChanged();
+        if (mealHint) clearActiveTaskContext();
       } catch (error) {
         console.error("❌ Error saving nutrition:", error);
         setAlertModal({
@@ -5064,9 +5093,7 @@ function WellnessValleyApp() {
         clubLocationFields.attendanceType = "remote";
       }
 
-      const mealHint = ['breakfast', 'lunch', 'dinner'].includes(manualMealTypeRef.current)
-        ? manualMealTypeRef.current
-        : undefined;
+      const mealHint = getFoodTaskTypeHint();
 
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
@@ -5090,7 +5117,7 @@ function WellnessValleyApp() {
       debugLog("? [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
       if (mealHint) {
-        setManualMealType("");
+        clearActiveTaskContext();
       }
 
       // Refresh discipline scores and leaderboards after meal save
@@ -5099,8 +5126,8 @@ function WellnessValleyApp() {
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
 
-      // Refresh task panel if open — lunch/food save should move task to Completed.
-      window.dispatchEvent(new CustomEvent("wellness:tasks-changed"));
+      // Refresh task panel — food save should move task to Completed.
+      notifyTasksChanged();
 
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
