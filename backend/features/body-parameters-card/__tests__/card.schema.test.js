@@ -81,6 +81,11 @@ describe('validateCreateCard', () => {
     expect(() => validateCreateCard({ ...base, chestCm: 10 })).toThrow('chestCm must be between');
   });
 
+  it('accepts chestCm at the lower measurement bound', () => {
+    const out = validateCreateCard({ ...base, chestCm: 25 });
+    expect(out.chestCm).toBe(25);
+  });
+
   it('allows empty phoneNumber', () => {
     const out = validateCreateCard({ ...base, phoneNumber: '' });
     expect(out.phoneNumber).toBeNull();

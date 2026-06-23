@@ -37,9 +37,9 @@ export function validateCreateCard(body) {
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
   const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99); // No strict validation - allow any reasonable value
-  const chestN    = _optionalFloat(chestCm, 'chestCm', 30, 250);
-  const waistN    = _optionalFloat(waistCm, 'waistCm', 30, 250);
-  const hipN      = _optionalFloat(hipCm, 'hipCm', 30, 250);
+  const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
+  const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
+  const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
@@ -107,9 +107,9 @@ export function validateUpdateCard(body) {
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
   const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999); // No strict validation - allow any reasonable value
-  const chestN    = _optionalFloat(chestCm, 'chestCm', 30, 250);
-  const waistN    = _optionalFloat(waistCm, 'waistCm', 30, 250);
-  const hipN      = _optionalFloat(hipCm, 'hipCm', 30, 250);
+  const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
+  const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
+  const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
 
   if (gender != null && !VALID_GENDERS.includes(gender)) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
