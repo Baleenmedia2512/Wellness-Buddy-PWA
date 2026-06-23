@@ -160,11 +160,15 @@ export function useMarathon({ coachId, userId } = {}) {
     );
 
     results.forEach((r, i) => {
+      // Always remove from the in-memory cache once the API has settled.
+      // On success: the DB row is now the source of truth — the cache must not
+      // keep blocking future fetches (e.g. after a user deletes the DB row in
+      // testing, or on a new day when a fresh result_date is generated).
+      // On failure: allow the splash to re-appear so the user can retry.
+      dismissedCacheRef.current.delete(
+        `${viewedList[i]?.marathonId}_${viewedList[i]?.resultDate}`
+      );
       if (r.status === 'rejected') {
-        // DB write failed — remove from cache so the splash can show again.
-        dismissedCacheRef.current.delete(
-          `${viewedList[i]?.marathonId}_${viewedList[i]?.resultDate}`
-        );
         console.error('[Marathon] markRecognitionViewed failed', {
           marathonId:  viewedList[i]?.marathonId,
           resultDate:  viewedList[i]?.resultDate,
