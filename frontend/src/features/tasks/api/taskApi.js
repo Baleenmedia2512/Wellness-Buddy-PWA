@@ -121,19 +121,19 @@ export async function completeTask(taskId, taskType, completionData, explicitUse
 export async function snoozeTask(taskId, snoozeMinutes, explicitUserId = null) {
   const userId = resolveTaskUserId(explicitUserId);
   // #region agent log
-  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:pre',message:'snooze auth resolution',data:{hasExplicitUserId:!!explicitUserId,hasResolvedUserId:!!userId,hasDbUserId:!!getDbUserId()},timestamp:Date.now(),hypothesisId:'H1-H2',runId:'pre-fix'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:pre',message:'snooze auth resolution',data:{hasExplicitUserId:!!explicitUserId,hasResolvedUserId:!!userId,hasDbUserId:!!getDbUserId()},timestamp:Date.now(),hypothesisId:'H1-H2',runId:'post-fix'})}).catch(()=>{});
   // #endregion
   if (!userId) return missingUserIdResult();
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/tasks/snooze`, {
+    const response = await fetch(`${apiBaseUrl}/api/tasks/snooze?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, taskId, snoozeMinutes })
     });
     const data = await response.json();
     // #region agent log
-    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:post',message:'snooze response',data:{status:response.status,ok:data?.ok,errorCode:data?.error?.code},timestamp:Date.now(),hypothesisId:'H1-H3',runId:'pre-fix'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:snoozeTask:post',message:'snooze response',data:{status:response.status,ok:data?.ok,errorCode:data?.error?.code},timestamp:Date.now(),hypothesisId:'H1-H3',runId:'post-fix'})}).catch(()=>{});
     // #endregion
     if (data.ok) {
       debugLog('[taskApi] Task snoozed', { taskId, snoozeMinutes });
@@ -153,15 +153,21 @@ export async function snoozeTask(taskId, snoozeMinutes, explicitUserId = null) {
  */
 export async function dismissTask(taskId, explicitUserId = null) {
   const userId = resolveTaskUserId(explicitUserId);
+  // #region agent log
+  fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:dismissTask:pre',message:'dismiss auth resolution',data:{hasExplicitUserId:!!explicitUserId,hasResolvedUserId:!!userId},timestamp:Date.now(),hypothesisId:'H1-H2',runId:'post-fix'})}).catch(()=>{});
+  // #endregion
   if (!userId) return missingUserIdResult();
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/tasks/dismiss`, {
+    const response = await fetch(`${apiBaseUrl}/api/tasks/dismiss?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, taskId })
     });
     const data = await response.json();
+    // #region agent log
+    fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'taskApi.js:dismissTask:post',message:'dismiss response',data:{status:response.status,ok:data?.ok,errorCode:data?.error?.code},timestamp:Date.now(),hypothesisId:'H1-H3',runId:'post-fix'})}).catch(()=>{});
+    // #endregion
     if (data.ok) {
       debugLog('[taskApi] Task reminders dismissed', { taskId });
     }

@@ -377,14 +377,14 @@ async function checkAndSendPersonalisedReminders() {
  *
  * @returns {Promise<number>}  Number of tasks created.
  */
-async function createMissingTasksForToday() {
+async function createMissingTasksForToday(userId = null) {
   const now = new Date();
   const { date: currentDate, timeHm: currentTime } = getISTPartsFromDate(now);
 
-  logger.info('Running catch-up task creation', { currentDate, currentTime });
+  logger.info('Running catch-up task creation', { currentDate, currentTime, userId });
 
   try {
-    const windows = await getWindowsAlreadyOpenedToday(currentTime, currentDate);
+    const windows = await getWindowsAlreadyOpenedToday(currentTime, currentDate, userId);
 
     logger.info(`Catch-up: ${windows.length} missing task(s) found`);
 

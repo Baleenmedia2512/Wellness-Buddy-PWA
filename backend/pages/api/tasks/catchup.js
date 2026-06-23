@@ -44,7 +44,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const createdCount = await createMissingTasksForToday();
+    const createdCount = await createMissingTasksForToday(userId);
 
     const durationMs = Date.now() - startTime;
     logger.info('Task catch-up completed', {

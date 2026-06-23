@@ -421,13 +421,17 @@ async function getTimeWindowsByUser(userId) {
  * @param {string} currentDate  YYYY-MM-DD (IST)
  * @returns {Promise<Array>}    Rows: { activity_type, start_time, end_time, user_id, PushToken, ... }
  */
-async function getWindowsAlreadyOpenedToday(currentTime, currentDate) {
+async function getWindowsAlreadyOpenedToday(currentTime, currentDate, userId = null) {
   try {
     const supabase = getSupabaseClient();
     const [windows, members] = await Promise.all([
       fetchActiveTimeWindows(supabase),
       fetchActiveMembers(supabase),
     ]);
+
+    const scopedMembers = userId
+      ? members.filter((u) => String(u.UserId) === String(userId))
+      : members;
 
     const { data: existingTasks, error } = await supabase
       .from('tasks_table')
@@ -441,7 +445,7 @@ async function getWindowsAlreadyOpenedToday(currentTime, currentDate) {
     );
 
     const openedWindows = windows.filter((w) => timeHm(w.WindowStartTime) <= currentTime);
-    const rows = crossJoinWindowsWithMembers(openedWindows, members);
+    const rows = crossJoinWindowsWithMembers(openedWindows, scopedMembers);
 
     return rows.filter((row) => !existingKeys.has(`${row.user_id}:${row.activity_type}`));
   } catch (error) {

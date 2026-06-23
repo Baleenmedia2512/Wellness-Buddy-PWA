@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  * - Fetch tasks from API
- * - Auto-trigger catch-up creation when 0 tasks found (cron may have missed windows)
+ * - Auto-trigger catch-up on first panel load (backfills missed windows)
  * - Handle loading/error states
  */
 
@@ -58,14 +58,16 @@ export function useTaskData(userId) {
       if (data.ok) {
         const fetched = data.data.tasks || [];
 
-        // If no tasks returned AND this is the first load, trigger catch-up
-        // so any windows that already opened today get their task rows created.
-        if (fetched.length === 0 && runCatchup) {
-          debugLog('[useTaskData] 0 tasks found — triggering catch-up');
+        // On first load, always run catch-up so missed windows (e.g. education
+        // at 07:15 when cron was down) are backfilled even if some tasks exist.
+        if (runCatchup) {
+          debugLog('[useTaskData] Running catch-up for missed windows', { existingCount: fetched.length });
           const created = await triggerCatchup(apiBaseUrl, userId);
+          // #region agent log
+          fetch('http://127.0.0.1:7614/ingest/1b02d057-3db7-401f-8265-b89fca49dfb2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fbd973'},body:JSON.stringify({sessionId:'fbd973',location:'useTaskData.js:catchup',message:'catchup completed',data:{existingCount:fetched.length,createdCount:created},timestamp:Date.now(),hypothesisId:'H-catchup',runId:'post-fix'})}).catch(()=>{});
+          // #endregion
           if (created > 0) {
-            // Re-fetch now that rows exist
-            const retryRes  = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
+            const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
               method: 'GET',
               headers: { 'Content-Type': 'application/json' },
             });
@@ -73,6 +75,9 @@ export function useTaskData(userId) {
             if (retryData.ok) {
               setTasks(retryData.data.tasks || []);
               setError(null);
+              debugLog('[useTaskData] Tasks re-fetched after catch-up', {
+                count: (retryData.data.tasks || []).length,
+              });
               return;
             }
           }
