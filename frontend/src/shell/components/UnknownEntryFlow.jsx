@@ -288,6 +288,11 @@ export default function UnknownEntryFlow({
         apiBaseUrl={apiBaseUrl}
         userId={userId}
         timeLabel="What food was in this photo?"
+        skipTypeSelect={true}
+        altSwitchButtons={[
+          { label: 'Weight', icon: '⚖️', sub: 'It\'s a scale photo', onClick: () => setStage('weight') },
+          { label: 'Education', icon: '🎓', sub: 'It\'s a meeting screen', onClick: () => setStage('education') },
+        ]}
       />
 
       <ManualWeightEntryModal

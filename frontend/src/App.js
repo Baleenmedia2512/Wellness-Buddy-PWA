@@ -5872,9 +5872,29 @@ function WellnessValleyApp() {
       // Stage 3 — orchestrate request started
       _ctLog(3, 'orchestrate request started', { apiStart, userId: resolvedUserIdForOrchestrate ?? null });
 
+      // ⚡ PERFORMANCE: send the already-compressed image to the orchestrator
+      // instead of the original camera file. On Android the original image
+      // can be 4–8 MB; the compressed version is 150–300 KB — a 10–20×
+      // reduction in upload size → the single biggest latency win available.
+      let fileForOrchestrate = file;
+      try {
+        const compressedBlob = await fetch(processedImage).then((r) => r.blob());
+        fileForOrchestrate = new File(
+          [compressedBlob],
+          file.name || 'capture.jpg',
+          { type: 'image/jpeg' },
+        );
+        debugLog(
+          `⏱️ [PERF] → Using compressed file for orchestrate: ${(fileForOrchestrate.size / 1024).toFixed(0)} KB` +
+          ` (original: ${(file.size / 1024).toFixed(0)} KB)`,
+        );
+      } catch (_) {
+        // Fallback to original file if blob conversion fails.
+      }
+
       // Start orchestrate in parallel with the already-running captures POST.
       // captureId will be read from foodCaptureIdRef.current after both settle.
-      const detectedType = await orchestrateAnalyzeImage(file, {
+      const detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
         userId: resolvedUserIdForOrchestrate ?? null,
         // captureId intentionally omitted here — pendingSharePromise resolves
         // concurrently; idempotency is enforced at the save layer instead.
