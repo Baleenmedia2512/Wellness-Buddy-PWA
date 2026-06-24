@@ -221,32 +221,29 @@ const validateParticipants = async () => {
       validateOnly: true
     });
 
-    return result?.data?.valid !== false;
+    console.log('VALIDATION RESULT', result);
+
+    if (result?.valid === false) {
+      const count = result?.missingWeightIds?.length || 0;
+
+      setErr(
+        count > 0
+          ? `${count} selected members have not logged their weight for the current marathon period.\n\nAsk them to upload their weight record first or remove them from the LAP.`
+          : result?.message || 'Validation failed.'
+      );
+
+      return false;
+    }
+
+    return true;
   } catch (e) {
     console.error('VALIDATION ERROR', e);
 
-    const apiMessage =
+    setErr(
       e?.response?.data?.message ||
       e?.message ||
-      '';
-
-    if (
-      apiMessage.toLowerCase().includes('no weight record')
-    ) {
-      const countMatch = apiMessage.match(/^(\d+)/);
-
-      const count = countMatch
-        ? parseInt(countMatch[1], 10)
-        : null;
-
-      setErr(
-        count
-          ? `${count} selected members have not logged their weight for the current marathon period.\n\nAsk them to upload their weight record first or remove them from the LAP.`
-          : apiMessage
-      );
-    } else {
-      setErr(apiMessage || 'Validation failed');
-    }
+      'Validation failed'
+    );
 
     return false;
   }
