@@ -101,6 +101,20 @@ export async function handleCreateMarathon(body) {
   // ── Participant weight eligibility validation ────────────────────────────
   const memberIds = payload.participants.map(p => p.userId);
   const missingWeightIds = await findParticipantsWithoutWeight(memberIds, resolvedStartedAt);
+  if (body.validateOnly === true) {
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      valid: missingWeightIds.length === 0,
+      missingWeightIds,
+      message:
+        missingWeightIds.length > 0
+          ? `${missingWeightIds.length} participant(s) have no weight record for the current marathon period.`
+          : 'Validation successful'
+    }
+  };
+}
   if (missingWeightIds.length > 0) {
     throw new ValidationError(
       422,

@@ -191,6 +191,7 @@ const selectedMemberObjects = members.filter(m =>
   }, [coachId]);
 
  const toggleMember = uid => {
+   setErr(null);
   setSelectedMembers(prev => {
     if (prev.includes(uid)) {
       return prev.filter(id => id !== uid);
@@ -204,7 +205,52 @@ const selectedMemberObjects = members.filter(m =>
   });
 };
 
+const validateParticipants = async () => {
+  try {
+    setErr(null);
 
+    const participants = selectedMembers.map(id => ({
+      userId: id,
+      role: 'member'
+    }));
+
+    const result = await createMarathon({
+      coachId,
+      participants,
+      role: 'coach',
+      validateOnly: true
+    });
+
+    return result?.data?.valid !== false;
+  } catch (e) {
+    console.error('VALIDATION ERROR', e);
+
+    const apiMessage =
+      e?.response?.data?.message ||
+      e?.message ||
+      '';
+
+    if (
+      apiMessage.toLowerCase().includes('no weight record')
+    ) {
+      const countMatch = apiMessage.match(/^(\d+)/);
+
+      const count = countMatch
+        ? parseInt(countMatch[1], 10)
+        : null;
+
+      setErr(
+        count
+          ? `${count} selected members have not logged their weight for the current marathon period.\n\nAsk them to upload their weight record first or remove them from the LAP.`
+          : apiMessage
+      );
+    } else {
+      setErr(apiMessage || 'Validation failed');
+    }
+
+    return false;
+  }
+};
   const handleCreate = async () => {
     if (selectedIds.length < LAP_SIZE) return setErr(`Select exactly ${LAP_SIZE} members (you + 8 = 9 total)`);
     if (selectedIds.length > LAP_SIZE) return setErr(`Too many — select exactly ${LAP_SIZE} members`);
@@ -226,8 +272,32 @@ const result = await createMarathon({
 });
       onCreated(result?.data?.marathonId || result?.data?.id || null);
     } catch (e) {
-      setErr(e.message || 'Failed to create LAP');
-    } finally {
+  console.error(e);
+
+  const apiMessage =
+    e?.response?.data?.message ||
+    e?.message ||
+    '';
+
+  let userMessage =
+    'Failed to create LAP. Please try again.';
+
+  if (
+    apiMessage.toLowerCase().includes('no weight record')
+  ) {
+    const countMatch = apiMessage.match(/^(\d+)/);
+
+    const count = countMatch
+      ? parseInt(countMatch[1], 10)
+      : null;
+
+    userMessage = count
+      ? `${count} selected member${count > 1 ? 's have' : ' has'} not logged their weight for the current marathon period.\n\nAsk them to upload their weight record first or remove them from the LAP.`
+      : `Some selected members have not logged their weight for the current marathon period.\n\nAsk them to upload their weight record first or remove them from the LAP.`;
+  }
+
+  setErr(userMessage);
+} finally {
       setBusy(false);
     }
   };
@@ -380,13 +450,21 @@ const result = await createMarathon({
             Cancel
           </button>
 
-          <button
-            onClick={() => setStep(2)}
-            disabled={selectedMembers.length !== LAP_SIZE}
-            style={{ flex: 2 }}
-          >
-            Next
-          </button>
+         <button
+  onClick={async () => {
+    const valid = await validateParticipants();
+
+    if (valid) {
+      setStep(2);
+    }
+  }}
+  disabled={
+    selectedMembers.length !== LAP_SIZE
+  }
+  style={{ flex: 2 }}
+>
+  Next
+</button>
         </div>
       </>
     )}
