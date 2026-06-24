@@ -6388,11 +6388,13 @@ function WellnessValleyApp() {
           // Legacy path (diary-feed OFF): disambiguation modal.
           setUnknownCaptureModal({ open: true, pendingSharePromise });
         } else {
-          // Diary-feed ON: AI ran but couldn't identify the image.
-          // Open the best manual entry modal so the user can still log their
-          // data immediately instead of seeing a frozen unresponsive screen.
-          showToast("📷 Couldn't identify — please log manually");
-          openBestManualModal();
+          // Diary-feed ON: capture is already tagged 'unknown' above.
+          // It surfaces in the diary as an "Other" row where the user can
+          // Retry (re-run AI), Edit (manual entry), or Delete.
+          // Reset to camera so the user can take the next photo immediately;
+          // they find the unidentified entry in the diary.
+          showToast("📷 Saved as 'Other' in diary — tap it to identify");
+          resetCaptureUiOnly();
         }
         setLoading(false);
         return;
@@ -9441,10 +9443,10 @@ function WellnessValleyApp() {
               onClose={() => setShowTestGuide(false)}
             />
 
-            {/* Spacer to push buttons to bottom when there's little content */}
-            <div className="flex-1 min-h-[20px]" />
+            {/* Spacer so page content isn't hidden behind the floating buttons */}
+            <div className="min-h-[88px]" />
 
-            {/* 📸 Sticky Footer - Camera & Gallery Buttons */}
+            {/* 📸 Floating Camera & Gallery FABs — fixed so always visible */}
             {user &&
               !authLoading &&
               isOtpVerified &&
@@ -9456,39 +9458,37 @@ function WellnessValleyApp() {
               !showWellnessCounselling &&
               !showValidateOTP &&
               !showCompleteProfile && (
-                <div className="flex justify-center gap-3 py-4 mt-auto">
-                  {/* Camera Button */}
-                  <button
-                    onClick={() => {
-                      fileInputRef.current?.openCamera?.();
-                    }}
-                    disabled={loading}
-                    className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Take Photo"
-                    aria-label="Camera access"
-                  >
-                    <img
-                      src="/app.png"
-                      alt="Camera"
-                      className="w-full h-full object-cover scale-110 pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </button>
-
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex gap-5 items-end pointer-events-none">
                   {/* Gallery Button */}
                   <button
-                    onClick={() => {
-                      fileInputRef.current?.openGallery?.();
-                    }}
+                    onClick={() => fileInputRef.current?.openGallery?.()}
                     disabled={loading}
-                    className="w-12 h-12 p-0 shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-14 h-14 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
                     title="Choose from Gallery"
                     aria-label="Gallery access"
+                    style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.3))" }}
                   >
                     <img
                       src="/gallery.png"
                       alt="Gallery"
-                      className="w-full h-full object-cover scale-110 pointer-events-none select-none"
+                      className="w-full h-full object-cover rounded-full pointer-events-none select-none"
+                      draggable={false}
+                    />
+                  </button>
+
+                  {/* Camera Button — primary, slightly larger */}
+                  <button
+                    onClick={() => fileInputRef.current?.openCamera?.()}
+                    disabled={loading}
+                    className="w-16 h-16 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
+                    title="Take Photo"
+                    aria-label="Camera access"
+                    style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.35))" }}
+                  >
+                    <img
+                      src="/app.png"
+                      alt="Camera"
+                      className="w-full h-full object-cover rounded-full scale-110 pointer-events-none select-none"
                       draggable={false}
                     />
                   </button>

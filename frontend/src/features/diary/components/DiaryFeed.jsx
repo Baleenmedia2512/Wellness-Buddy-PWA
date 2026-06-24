@@ -240,7 +240,7 @@ export default function DiaryFeed({
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
-    () => (entry) => {
+    () => (entry, { hideTime = false } = {}) => {
       const Row = ROWS_BY_KIND[entry.kind] || OtherRow;
       return (
         <Row
@@ -248,6 +248,7 @@ export default function DiaryFeed({
           entry={entry}
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
+          hideTime={hideTime}
         />
       );
     },
@@ -302,7 +303,8 @@ export default function DiaryFeed({
               entry={entry}
               isLast={idx === visibleEntries.length - 1}
             >
-              {renderRow(entry)}
+              {/* hideTime=true: time is already shown in the left-column label */}
+              {renderRow(entry, { hideTime: true })}
             </TimelineEntryWrapper>
           ))}
         </div>

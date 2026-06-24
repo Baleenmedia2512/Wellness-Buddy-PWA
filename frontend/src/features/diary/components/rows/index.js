@@ -49,6 +49,18 @@ function formatTime(iso) {
   });
 }
 
+/** Returns a meal-type badge descriptor based on the hour of capturedAt. */
+function getMealLabel(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const h = d.getHours();
+  if (h >= 5  && h < 11) return { label: 'Breakfast', cls: 'text-orange-600 bg-orange-50' };
+  if (h >= 11 && h < 16) return { label: 'Lunch',     cls: 'text-emerald-600 bg-emerald-50' };
+  if (h >= 16 && h < 21) return { label: 'Dinner',    cls: 'text-purple-600 bg-purple-50' };
+  return { label: 'Snack', cls: 'text-blue-600 bg-blue-50' };
+}
+
 function Thumb({ imageBase64, imagePath, fallback }) {
   const src =
     imageBase64 && imageBase64.trim() !== ''
@@ -76,7 +88,7 @@ function Thumb({ imageBase64, imagePath, fallback }) {
 
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
-export function FoodRow({ entry, onOpen, onDelete }) {
+export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
@@ -85,6 +97,7 @@ export function FoodRow({ entry, onOpen, onDelete }) {
   // This matches the display behavior of the original MealCard in NutritionDashboard
   const foodData = parseAnalysisData(p.analysisData, 'text-gray-400');
   const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
+  const meal = getMealLabel(entry.capturedAt);
 
   return (
     <div
@@ -135,8 +148,17 @@ export function FoodRow({ entry, onOpen, onDelete }) {
 
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback="🍽️" />
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-gray-900 truncate">{mealName}</h4>
-          <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h4 className="font-semibold text-gray-900 truncate">{mealName}</h4>
+            {meal && (
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${meal.cls}`}>
+                {meal.label}
+              </span>
+            )}
+          </div>
+          {!hideTime && (
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+          )}
           {(p.totals?.protein > 0 || p.totals?.carbs > 0 || p.totals?.fat > 0) && (
             <p className="text-[10px] text-gray-400 mt-0.5">
               P {Math.round(p.totals?.protein ?? 0)}g · C {Math.round(p.totals?.carbs ?? 0)}g · F {Math.round(p.totals?.fat ?? 0)}g
@@ -154,7 +176,7 @@ export function FoodRow({ entry, onOpen, onDelete }) {
 
 // ─── kind: weight ───────────────────────────────────────────────────────────
 
-export function WeightRow({ entry, onOpen, onDelete }) {
+export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -208,10 +230,12 @@ export function WeightRow({ entry, onOpen, onDelete }) {
         <Thumb imageBase64={p.imageBase64} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Weight</h4>
-          <p className="text-xs text-gray-500">
-            {formatTime(entry.capturedAt)}
-            {typeof p.bmi === 'number' ? ` · BMI ${p.bmi.toFixed(1)}` : ''}
-          </p>
+          {!hideTime && (
+            <p className="text-xs text-gray-500">
+              {formatTime(entry.capturedAt)}
+              {typeof p.bmi === 'number' ? ` · BMI ${p.bmi.toFixed(1)}` : ''}
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="font-bold text-base text-gray-900">{p.weight}</p>
@@ -224,7 +248,7 @@ export function WeightRow({ entry, onOpen, onDelete }) {
 
 // ─── kind: education ────────────────────────────────────────────────────────
 
-export function EducationRow({ entry, onOpen, onDelete }) {
+export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -278,10 +302,12 @@ export function EducationRow({ entry, onOpen, onDelete }) {
         <Thumb imageBase64={p.imageBase64} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">{p.topic || 'Education'}</h4>
-          <p className="text-xs text-gray-500">
-            {formatTime(entry.capturedAt)}
-            {p.platform ? ` · ${p.platform}` : ''}
-          </p>
+          {!hideTime && (
+            <p className="text-xs text-gray-500">
+              {formatTime(entry.capturedAt)}
+              {p.platform ? ` · ${p.platform}` : ''}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -290,7 +316,7 @@ export function EducationRow({ entry, onOpen, onDelete }) {
 
 // ─── kind: watch ────────────────────────────────────────────────────────────
 
-export function WatchRow({ entry, onOpen, onDelete }) {
+export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -341,12 +367,12 @@ export function WatchRow({ entry, onOpen, onDelete }) {
         <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
           style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
 
-        <div className="w-12 h-12 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-          <Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />
-        </div>
+        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Smartwatch</h4>
-          <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+          {!hideTime && (
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+          )}
         </div>
         <div className="text-right">
           <p className="font-bold text-base text-gray-900">{p.kcal}</p>
@@ -361,7 +387,7 @@ export function WatchRow({ entry, onOpen, onDelete }) {
 // Supports both swipe-to-delete (quick removal) and tap-to-open
 // (UnknownEntryFlow for Retry / Edit).
 
-export function OtherRow({ entry, onOpen, onDelete }) {
+export function OtherRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -416,7 +442,7 @@ export function OtherRow({ entry, onOpen, onDelete }) {
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Other</h4>
           <p className="text-xs text-gray-500">
-            {formatTime(entry.capturedAt)} · couldn&apos;t identify
+            {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
           </p>
         </div>
         <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
