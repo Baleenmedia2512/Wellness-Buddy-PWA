@@ -1,125 +1,43 @@
 /**
- * Secure Weight Detection Service - Backend Proxy Version
- * 
- * Calls backend /api/ai/detect-weight instead of Gemini directly.
- * Per claude.md §8.2: API keys must NEVER be exposed to frontend.
+ * Weight Detection Service — pure utility methods used by App.js.
+ * AI weight detection now goes through /api/ai/orchestrate (orchestratorService).
  */
 
-import axios from 'axios';
-import { debugLog } from '../../../shared/utils/logger.js';
-import { getApiBaseUrl } from '../../../config/api.config';
-
-const API_BASE = getApiBaseUrl();
-
-class SecureWeightDetectionService {
-  constructor() {
-    this.timeout = 60000; // 60 second timeout
-    this.maxRetries = 2;
-    this.initialized = true; // Always ready - no Gemini setup needed
+class WeightDetectionService {
+  /** Convert weight between units (pure math, no API call). */
+  convertWeight(weight, fromUnit, toUnit) {
+    if (fromUnit === toUnit) return weight;
+    if (fromUnit === 'kg' && toUnit === 'lbs') return Math.round(weight * 2.20462 * 10) / 10;
+    if (fromUnit === 'lbs' && toUnit === 'kg') return Math.round(weight * 0.453592 * 10) / 10;
+    return weight;
   }
 
-  /**
-   * Dummy initialize method for backward compatibility
-   * Secure services don't need initialization - they just call backend
-   */
-  async initialize() {
-    debugLog('✅ SecureWeightDetectionService: Already initialized (backend proxy)');
-    return Promise.resolve();
-  }
-
-  /**
-   * Detect if image is a weight scale and extract weight value
-   * Now calls backend instead of Gemini directly
-   */
-  async detectImageType(imageFile) {
-    debugLog('🔒 SecureWeightDetection: Calling backend...');
-
-    try {
-      const formData = new FormData();
-      formData.append('image', imageFile);
-
-      const response = await axios.post(
-        `${API_BASE}/api/ai/detect-weight`,
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: this.timeout,
-        }
-      );
-
-      if (!response.data.ok) {
-        throw new Error(response.data.error?.message || 'Weight detection failed');
-      }
-
-      const data = response.data.data;
-
-      return {
-        isWeightScale: data.isWeightScale || false,
-        confidence: data.confidence || 0,
-        reason: data.reason || '',
-      };
-
-    } catch (error) {
-      console.error('❌ Backend weight detection failed:', error);
-      throw error;
+  /** Validate a detected weight change against the previous entry (pure logic, no API call). */
+  validateWeightChange(detectedWeight, previousWeight, previousWeightDate) {
+    if (!previousWeight || isNaN(previousWeight)) {
+      return { valid: true, warning: false, message: 'First weight entry - no previous data to compare' };
     }
-  }
-
-  /**
-   * Detect weight value from scale image
-   */
-  async detectWeight(imageFile) {
-    debugLog('🔒 SecureWeightDetection: Extracting weight from scale...');
-
-    try {
-      const formData = new FormData();
-      formData.append('image', imageFile);
-
-      const response = await axios.post(
-        `${API_BASE}/api/ai/detect-weight`,
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: this.timeout,
-        }
-      );
-
-      if (!response.data.ok) {
-        throw new Error(response.data.error?.message || 'Weight extraction failed');
-      }
-
-      const data = response.data.data;
-
+    const detected = parseFloat(detectedWeight);
+    const previous = parseFloat(previousWeight);
+    const hoursDiff = (new Date() - new Date(previousWeightDate)) / (1000 * 60 * 60);
+    const daysDiff = Math.floor(hoursDiff / 24);
+    const maxChange = hoursDiff <= 24 ? 1.5 : hoursDiff <= 48 ? 2.5 : hoursDiff <= 168 ? 5.0 : 10.0;
+    const diff = detected - previous;
+    const absDiff = Math.abs(diff);
+    if (absDiff > maxChange) {
+      const ctx = hoursDiff <= 24 ? 'in 24 hours' : `in ${daysDiff} day(s)`;
       return {
-        weight: data.weight || null,
-        unit: data.unit || 'kg',
-        confidence: data.confidence || 0,
-        isWeightScale: data.isWeightScale || false,
-        reason: data.reason || '',
+        valid: false, warning: true,
+        message: `⚠️ Detected weight change of ${absDiff.toFixed(1)} kg ${ctx} seems unrealistic (max: ${maxChange} kg).\n\nPlease verify the scale shows ${detected} kg or retake the photo.`,
+        detectedWeight: detected, previousWeight: previous, difference: diff, maxAllowed: maxChange, daysSinceLastEntry: daysDiff,
       };
-
-    } catch (error) {
-      console.error('❌ Weight extraction failed:', error);
-      throw error;
     }
-  }
-
-  /**
-   * Convert file to base64 (for backward compatibility if needed)
-   */
-  async fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    if (absDiff > 1.0) {
+      return { valid: true, warning: true, message: `Weight changed by ${absDiff.toFixed(1)} kg in ${daysDiff} day(s)`, detectedWeight: detected, previousWeight: previous, difference: diff };
+    }
+    return { valid: true, warning: false, message: 'Weight change looks normal', detectedWeight: detected, previousWeight: previous, difference: diff };
   }
 }
 
-// Export singleton
-export const weightDetectionService = new SecureWeightDetectionService();
+export const weightDetectionService = new WeightDetectionService();
 export default weightDetectionService;

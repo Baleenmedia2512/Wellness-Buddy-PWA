@@ -8,6 +8,7 @@ import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
+import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -76,6 +77,9 @@ export async function saveLog(input) {
         captureId, userId: userId.toString(), err: err.message,
       });
     }
+    // Signal to the orchestrator that the education row is now persisted.
+    // Transitions analysisStatus from ANALYZING → FAST_COMPLETE.
+    confirmPersisted(captureId, { logId: data?.Id || data?.id || data?.ID });
   }
 
   return {

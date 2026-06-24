@@ -34,7 +34,9 @@ export function NutritionRefreshProvider({ children }) {
     const { immediate = false, source = 'unknown' } = options;
 
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`🔄 [NutritionRefresh] Triggered by: ${source}`, { immediate, currentKey: refreshKey });
+      // Use the functional-update form below, so we do NOT need refreshKey
+      // in the closure here — the stale value would only be wrong in logs.
+      console.log(`🔄 [NutritionRefresh] Triggered by: ${source}`, { immediate });
     }
 
     // Immediate refresh (used after saves/deletes) - wrapped in startTransition
@@ -65,7 +67,7 @@ export function NutritionRefreshProvider({ children }) {
       }
       return prev; // Already pending, skip
     });
-  }, [refreshKey]);
+  }, []); // stable — uses functional-update form for setRefreshKey, no stale closure risk
 
   const value = {
     refreshKey,

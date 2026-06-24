@@ -856,6 +856,48 @@ function WellnessValleyApp() {
   // ?? Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
+  // savePromiseRef: holds the in-flight background-save Promise so that
+  // showDashboardPage can await it before opening the Dashboard.
+  // Set to the Promise returned by scheduleNutritionSaveInBackground when a
+  // food save starts; cleared to null (via .finally) when the save settles.
+  // Handles rapid captures: the identity check in the .finally callback ensures
+  // only the most-recent save clears the ref.
+  const savePromiseRef = useRef(null);
+
+  // ── FORENSIC INSTRUMENTATION ─────────────────────────────────────────────
+  // captureTraceRef: holds { id, t0, traceId } for the active capture so that
+  // every async stage can emit a correlated [CAPTURE-TRACE-<id>] log line.
+  // window.__captureTrace is also written for cross-file visibility.
+  const captureTraceRef = useRef(null);
+
+  /** Emit one correlated trace log line. Pure debug — no side effects. */
+  const _ctLog = (stage, label, extra = {}) => {
+    const tr = captureTraceRef.current;
+    if (!tr) return;
+    const now = Date.now();
+    const lines = [
+      `[CAPTURE-TRACE-${tr.id}] Stage ${String(stage).padStart(2, '0')} | ${label}`,
+      `  ts=${now}  (+${now - tr.t0}ms from T0)`,
+      `  captureId=${foodCaptureIdRef.current ?? 'null'}`,
+      `  traceId=${tr.traceId ?? 'none'}`,
+      `  pendingShareRef=${pendingSharePromiseRef.current != null}`,
+      `  savePromiseRef=${savePromiseRef.current != null}`,
+      `  imageType=${imageType}`,
+      `  loading=${loading}`,
+      `  saveLoading=${saveLoading}`,
+    ];
+    Object.entries(extra).forEach(([k, v]) => lines.push(`  ${k}=${JSON.stringify(v)}`));
+    console.log(lines.join('\n'));
+    // Write last-known state to global so useDayAnalyses / NutritionDashboard can emit correlated logs.
+    window.__captureTrace = {
+      id: tr.id, t0: tr.t0, traceId: tr.traceId, lastStage: stage,
+      captureId: foodCaptureIdRef.current,
+      pendingShareRef: pendingSharePromiseRef.current != null,
+      savePromiseRef: savePromiseRef.current != null,
+    };
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
   const disciplineLeaderboardRef = useRef(null);
@@ -2057,6 +2099,25 @@ function WellnessValleyApp() {
       }
       if (selectedImage) setSelectedImage(null);
       if (imageType) setImageType(null);
+
+      // savePromiseRef guard: if a food save is in-flight, wait for it to
+      // settle before opening the Dashboard so the initial fetch finds
+      // committed data. Resolves immediately when no save is pending.
+      // The Promise always resolves (never rejects) — errors are caught and
+      // handled inside scheduleNutritionSaveInBackground.
+      const pendingSave = savePromiseRef.current;
+      if (pendingSave) {
+        debugLog("⏳ [Dashboard] Awaiting active food save...");
+        _ctLog(16, 'showDashboardPage — awaiting pending save BEFORE opening', { hadPendingSave: true });
+        await pendingSave;
+        debugLog("✅ [Dashboard] Save settled — opening Dashboard");
+      }
+      // Stage 16 (final) — Dashboard about to open
+      _ctLog(16, 'showDashboardPage — setShowDashboard(true) about to fire', {
+        hadPendingSave: !!pendingSave,
+        imageTypeInClosure: imageType,
+        preferredTab,
+      });
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
       if (
@@ -5058,6 +5119,12 @@ function WellnessValleyApp() {
         hasImageBase64: !!saveData.imageBase64,
       });
       setSaveLoading(true);
+      // Stage 8 — performNutritionSave entered
+      _ctLog(8, 'performNutritionSave entered', {
+        userId: saveData.userId,
+        hasImageBase64: !!saveData.imageBase64,
+        hasCaptureTimestamp: !!saveData.captureTimestamp,
+      });
 
       // Await the captures POST if it hasn't resolved yet, so captureId is
       // always populated before saveNutritionAnalysis fires.  Without this,
@@ -5071,17 +5138,50 @@ function WellnessValleyApp() {
         }
         pendingSharePromiseRef.current = null;
       }
+      // Stage 9 — pendingSharePromise resolved (captureId now settled)
+      _ctLog(9, 'pendingSharePromise settled', {
+        captureIdAfterSettle: foodCaptureIdRef.current ?? 'null',
+        pendingShareRefCleared: pendingSharePromiseRef.current == null,
+      });
 
       // Capture GPS location for every food photo — not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Fails gracefully — nutrition save is never blocked by a GPS timeout.
+      // Hard-capped at GPS_TIMEOUT_MS so the DB write is never blocked longer than
+      // that. The internal Geolocation timeout is 15 s which is too long — a cold GPS
+      // lock can delay triggerNutritionRefresh by 15 s and leave the Dashboard empty.
+      const GPS_TIMEOUT_MS = 5_000; // 5 s max wait; fall back to remote on timeout
       let clubLocationFields = {};
       let attendance;
+      // Stage 10 — GPS started
+      const _gpsStart = Date.now();
+      _ctLog(10, 'GPS started', { GPS_TIMEOUT_MS });
       try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          saveData.userId,
-        );
+        attendance = await Promise.race([
+          locationAttendanceService.determineAttendance(
+            apiBaseUrl,
+            saveData.userId,
+          ),
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  attendanceType: "remote",
+                  latitude: null,
+                  longitude: null,
+                  nutritionCenterId: null,
+                  nearbyCenters: [],
+                }),
+              GPS_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        // Stage 11 — GPS finished
+        _ctLog(11, 'GPS finished', {
+          attendanceType: attendance?.attendanceType,
+          hasCoords: !!(attendance?.latitude && attendance?.longitude),
+          gpsLatencyMs: Date.now() - _gpsStart,
+          timedOut: (Date.now() - _gpsStart) >= GPS_TIMEOUT_MS,
+        });
         debugLog("📍 [nutrition] Attendance determined:", attendance);
 
         // If multiple clubs detected, auto-select the closest one (first in array)
@@ -5146,6 +5246,13 @@ function WellnessValleyApp() {
       debugLog("? [App] Save successful:", saveRes);
       debugLog(`⏱️ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
+      // Stage 13 — backend response received (DB write committed)
+      _ctLog(13, 'backend response received (DB committed)', {
+        foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
+        success: saveRes?.success ?? true,
+        saveLatencyMs: Date.now() - saveStart,
+      });
+
       if (process.env.NODE_ENV !== "production") {
         // debugLog('? Save successful:', saveRes);
       }
@@ -5161,7 +5268,16 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
+      // triggerNutritionRefresh fires ONLY after DB commit — this is the
+      // single safe point. savePromiseRef will resolve after this function
+      // returns, so Dashboard navigation that awaited it sees committed data.
+
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
+      // Stage 14 — triggerNutritionRefresh about to be called
+      _ctLog(14, 'triggerNutritionRefresh called', {
+        source: 'camera-save',
+        foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
+      });
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
 
       // Refresh task panel — food save should move task to Completed.
@@ -5193,7 +5309,11 @@ function WellnessValleyApp() {
   }) => {
     setLoadingState("saving");
 
-    void (async () => {
+    // Return the Promise so callers can store it in savePromiseRef and await
+    // it before opening the Dashboard. The IIFE catches all errors internally,
+    // so this Promise always resolves (never rejects). Callers do not need
+    // .catch() but .finally() is used to clear savePromiseRef when done.
+    return (async () => {
       try {
         if (!saveUser) {
           throw new Error("Please sign in to save nutrition data");
@@ -5256,8 +5376,13 @@ function WellnessValleyApp() {
         console.error("❌ Save failed:", err?.message || err);
         setSaveError(getFriendlyErrorMessage(err));
         setSaveLoading(false);
+        // Trigger a refresh even on failure: a partial write (food row inserted
+        // but capture promotion failed) leaves data in DB that the Dashboard
+        // should discover. If nothing was written the fetch returns the same
+        // empty result — no harm done.
+        triggerNutritionRefresh({ immediate: true, source: "camera-save-error" });
       }
-    })();
+    })(); // void — caller captures the returned promise into savePromiseRef
   };
 
   // Handle duplicate modal confirmation
@@ -5581,6 +5706,13 @@ function WellnessValleyApp() {
     setDetectedFoodNames([]); // Clear previous detection
     setLoadingState("analyzing"); // Reset to analyzing state
     lastImageFileRef.current = file; // Store for retry
+    savePromiseRef.current = null; // Clear any completed prior save
+
+    // Stage 1 — handleImageSelect entered
+    const _ct1Id = Math.random().toString(36).slice(2, 8).toUpperCase();
+    captureTraceRef.current = { id: _ct1Id, t0: Date.now(), traceId: null };
+    window.__captureTrace = { id: _ct1Id, t0: Date.now() };
+    _ctLog(1, 'handleImageSelect entered', { fileSize: file?.size, hasExif: !!exifTimestamp });
 
     // ? PERFORMANCE TRACKING
     const perfStart = Date.now();
@@ -5692,6 +5824,8 @@ function WellnessValleyApp() {
                 Date.now() - perfStart
               }ms from capture start) → token ready`,
             );
+            // Stage 2 — capture row created
+            _ctLog(2, 'capture row created', { captureRowId: capData.data.id, shareCode: capData.data.shareCode || capData.data.token, latencyMs: capDuration });
             return {
               id: capData.data.id,
               url: `${apiBaseUrl}/share/${
@@ -5735,6 +5869,9 @@ function WellnessValleyApp() {
         try { resolvedUserIdForOrchestrate = await getUserId(user); } catch (_) {}
       }
 
+      // Stage 3 — orchestrate request started
+      _ctLog(3, 'orchestrate request started', { apiStart, userId: resolvedUserIdForOrchestrate ?? null });
+
       // Start orchestrate in parallel with the already-running captures POST.
       // captureId will be read from foodCaptureIdRef.current after both settle.
       const detectedType = await orchestrateAnalyzeImage(file, {
@@ -5756,6 +5893,25 @@ function WellnessValleyApp() {
         ` | duration=${Date.now() - apiStart}ms` +
         (detectedType?.enrichmentJobId ? ` | enrichmentJobId=${detectedType.enrichmentJobId}` : ''),
       );
+
+      // Stage 4 — orchestrate response received
+      if (captureTraceRef.current) captureTraceRef.current.traceId = detectedType?.traceId ?? null;
+      _ctLog(4, 'orchestrate response received', {
+        latencyMs: Date.now() - apiStart,
+        imageType: detectedType?.type,
+        confidence: detectedType?.confidence,
+        traceId: detectedType?.traceId ?? null,
+        enrichmentJobId: detectedType?.enrichmentJobId ?? null,
+        duplicate: detectedType?.duplicate ?? false,
+        foodCount: detectedType?.details?.foods?.length ?? 0,
+        defaulted: detectedType?.details?.defaulted ?? false,
+      });
+      // Stage 5 — detectedType result (type routing decision)
+      _ctLog(5, 'detectedType routing', {
+        routedTo: detectedType?.type === 'food' ? 'FOOD' : detectedType?.type === 'weight' ? 'WEIGHT' : detectedType?.type === 'education' ? 'EDUCATION' : detectedType?.type === 'smartwatch' ? 'SMARTWATCH' : 'OTHER',
+        willEnterFoodBranch: detectedType?.type === 'food' && !( detectedType?.type === 'other' || (detectedType?.confidence < 0.6) ),
+        hasFastNutrition: !!detectedType?.fastNutrition,
+      });
       debugLog("🔍 [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
@@ -6203,11 +6359,18 @@ function WellnessValleyApp() {
         // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, "unknown");
         // PR-D / ADR-0003: when the Diary feed is enabled, AI detection
-        // failures must NOT prompt the user. The capture stays tagged
-        // 'unknown' and surfaces as an "Other" row in the Diary (with Retry /
-        // Edit there). Only fall back to the legacy PR-3 disambiguation modal
-        // when the flag is OFF, preserving backward-compatible behaviour.
-        if (!isFlagEnabled("ff.diary-feed")) {
+        // failures must NOT open the picker modal — the capture surfaces as
+        // an "Other" row in the Diary with Retry / Edit there.
+        // EXCEPTION: if the AI failed *entirely* (defaulted=true — e.g. API
+        // key missing/invalid, network error, timeout), always surface an
+        // error so the user knows something went wrong rather than silently
+        // seeing "✓ Ready" with no result.
+        const aiFailedEntirely = detectedType?.details?.defaulted === true;
+        if (aiFailedEntirely) {
+          setError(
+            "⚠️ AI analysis could not run. Please check your internet connection and try again.",
+          );
+        } else if (!isFlagEnabled("ff.diary-feed")) {
           setUnknownCaptureModal({ open: true, pendingSharePromise });
         }
         setLoading(false);
@@ -6217,21 +6380,12 @@ function WellnessValleyApp() {
       // It's a food image - use nutrition data from unified detection
       console.log("🍽️ [Food Detection] Setting imageType to food");
       setImageType("food");
-      // The pending-capture POST was kicked off in parallel with the Gemini
-      // detection call (see `pendingSharePromise` above). Surface its URL as
-      // soon as it resolves so the Share button appears the instant food is
-      // confirmed � no extra round-trip wait after detection.
-      pendingSharePromise.then((share) => {
-        if (share) {
-          foodCaptureIdRef.current = share.id;
-          setFoodShareUrl(share.url);
-          debugLog(
-            `?? [PERF] ?? Share URL surfaced to UI (+${
-              Date.now() - perfStart
-            }ms from capture start)`,
-          );
-        }
-      });
+      // Phase 3: share URL already surfaced by the .then() registered at the
+      // detectedType.type === "food" guard above (line ~5447). A second
+      // .then() here is redundant — pendingSharePromise has already resolved,
+      // so both callbacks fire synchronously on the microtask queue, writing
+      // foodCaptureIdRef.current twice and racing with performNutritionSave's
+      // null-reset. Removed to eliminate the double-write race.
       debugLog("🍽️ [DEBUG] Processing as FOOD image");
       debugLog("🍽️ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
@@ -6588,15 +6742,40 @@ function WellnessValleyApp() {
           ...result,
           loggedAt: exifTimestamp || new Date().toISOString(),
         });
+        // Stage 6 — setNutritionData called (UI card about to render)
+        _ctLog(6, 'setNutritionData called', {
+          calories: result?.nutrition?.calories ?? null,
+          itemCount: result?.itemCount ?? null,
+          confidence: result?.confidence ?? null,
+          source: result?.source ?? null,
+        });
 
         // Analysis done — unlock Share immediately; club/GPS + DB save in bg.
+        // Capture the returned Promise so showDashboardPage can await it.
         setLoading(false);
-        scheduleNutritionSaveInBackground({
+        // Stage 7 — scheduleNutritionSaveInBackground about to start
+        _ctLog(7, 'scheduleNutritionSaveInBackground starting', {
+          hasUser: !!user,
+          userId: user?.id ?? null,
+          hasFile: !!file,
+          hasProcessedImage: !!processedImage,
+        });
+        const _saveP = scheduleNutritionSaveInBackground({
           user,
           file,
           processedImage,
           analysisResult: result,
           exifTimestamp,
+        });
+        savePromiseRef.current = _saveP;
+        // Clear the ref when this specific save settles (handles rapid captures).
+        _saveP.finally(() => {
+          // Stage 15 — savePromise resolved (IIFE settled)
+          _ctLog(15, '_saveP.finally — savePromise settled', {
+            isCurrentSave: savePromiseRef.current === _saveP,
+            clearingRef: savePromiseRef.current === _saveP,
+          });
+          if (savePromiseRef.current === _saveP) savePromiseRef.current = null;
         });
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);

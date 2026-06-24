@@ -439,6 +439,16 @@ export async function updateCaptureType({ id, userId, imageType }) {
       body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } },
     };
   }
+
+  // For smartwatch captures the domain row (activity) is written separately
+  // and does not carry a captureId. The PATCH to update the capture type IS
+  // the persistence event for the orchestrator — signal FAST_COMPLETE now.
+  // Weight and education call confirmPersisted() in their own service layers
+  // (after the domain row write), so this guard avoids a double-signal.
+  if (imageType === 'smartwatch' && id) {
+    confirmPersisted(String(id));
+  }
+
   return { httpStatus: 200, body: { ok: true, data: result } };
 }
 

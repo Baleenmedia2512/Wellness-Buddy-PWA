@@ -74,13 +74,66 @@ const ENRICHMENT_PROPS = {
 /**
  * Unified single-call schema.
  * Classifies the image AND captures type-appropriate fast data in one inference.
+ * NOTE: Gemini structured-output does NOT support `additionalProperties` — never add it.
  */
 const UNIFIED_SCHEMA = {
   type: SchemaType.OBJECT,
   properties: {
     imageType:  { type: SchemaType.STRING },
     confidence: { type: SchemaType.NUMBER },
-    details:    { type: SchemaType.OBJECT, properties: {}, additionalProperties: true },
+    // `details` fully specified so Gemini populates the correct sub-fields
+    // per imageType without needing additionalProperties.
+    details: {
+      type: SchemaType.OBJECT,
+      properties: {
+        // ── FOOD ───────────────────────────────────────────────────
+        foods: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              name:      { type: SchemaType.STRING },
+              portion:   { type: SchemaType.STRING },
+              weight_g:  { type: SchemaType.NUMBER },
+              nutrition: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  calories: { type: SchemaType.NUMBER },
+                  protein:  { type: SchemaType.NUMBER },
+                  carbs:    { type: SchemaType.NUMBER },
+                  fat:      { type: SchemaType.NUMBER },
+                  fiber:    { type: SchemaType.NUMBER },
+                },
+              },
+            },
+          },
+        },
+        total: {
+          type: SchemaType.OBJECT,
+          properties: {
+            calories: { type: SchemaType.NUMBER },
+            protein:  { type: SchemaType.NUMBER },
+            carbs:    { type: SchemaType.NUMBER },
+            fat:      { type: SchemaType.NUMBER },
+            fiber:    { type: SchemaType.NUMBER },
+          },
+        },
+        // ── WEIGHT ─────────────────────────────────────────────
+        weightValue: { type: SchemaType.NUMBER },
+        unit:        { type: SchemaType.STRING },
+        bmi:         { type: SchemaType.NUMBER },
+        bodyFat:     { type: SchemaType.NUMBER },
+        muscleMass:  { type: SchemaType.NUMBER },
+        bmr:         { type: SchemaType.NUMBER },
+        // ── SMARTWATCH ────────────────────────────────────────
+        caloriesBurned: { type: SchemaType.NUMBER },
+        steps:          { type: SchemaType.NUMBER },
+        source:         { type: SchemaType.STRING },
+        // ── EDUCATION ────────────────────────────────────────
+        platform:         { type: SchemaType.STRING },
+        participantCount: { type: SchemaType.NUMBER },
+      },
+    },
     fastNutrition: {
       type:       SchemaType.OBJECT,
       properties: FAST_NUTRITION_PROPS,
@@ -133,39 +186,62 @@ const ENRICHMENT_SCHEMA = {
 
 const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON object matching the schema exactly.
 
-imageType rules (pick the BEST match):
-  "food"       — edible food, drinks, meals, snacks
-  "weight"     — weighing scale with a visible numeric display
-  "education"  — virtual meeting UI (Google Meet, Zoom, Teams)
-  "smartwatch" — fitness tracker / smartwatch screen
-  "other"      — none of the above
+=== imageType — STRICT RULES (read carefully before choosing) ===
 
-confidence:
-  0.9+ unmistakable  |  0.8 clear  |  0.6–0.79 uncertain → use "other"  |  <0.6 use "other"
+"food"
+  ANY edible item: meals, snacks, drinks, raw ingredients, packaged food,
+  nutrition supplements (Herbalife shakes, protein powder, meal replacements,
+  supplement sachets/bottles). If it goes in your mouth for nutrition, it is food.
 
-FOOD images — populate ALL of:
-  fastNutrition: { calories, protein, carbs, fat, fiber }  ← aggregate totals only
-  details.foods: array of individual items, each with:
-    { name: string, portion: string, weight_g: number,
-      nutrition: { calories, protein, carbs, fat, fiber } }
-  details.total: { calories, protein, carbs, fat, fiber }  ← sum of all items
+"weight"
+  A weighing scale with a VISIBLE NUMERIC weight reading on its display.
+  Must show actual digits (kg or lbs). A scale with no visible number is "other".
 
-WEIGHT images — populate ALL of:
-  weightReading: { value: number (kg — convert lbs→kg), unit: "kg" }
-  details: { weightValue: number, unit: "kg",
-             bmi: number|null, bodyFat: number|null,
-             muscleMass: number|null, bmr: number|null }
-  (set null for any body-comp field not visible on the scale display)
+"smartwatch"
+  A fitness tracker or smartwatch DEVICE SCREEN showing health/activity metrics:
+  steps walked, calories burned, heart rate, distance, active minutes.
+  Examples: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band.
+  KEY RULE: if the screen shows ACTIVITY DATA on a WEARABLE DEVICE — it is
+  "smartwatch", even if it also shows calorie numbers.
+  A phone screenshot of a fitness app (Google Fit, Samsung Health) is also
+  "smartwatch" if it shows activity summary data.
+  NEVER classify a smartwatch/fitness screen as "education".
 
-SMARTWATCH images — populate ALL of:
-  smartwatchData: { caloriesBurned: number, steps: number, source: string }
-  details: { caloriesBurned: number, steps: number, source: string }
+"education"
+  ONLY a screenshot of a live VIDEO CALL where you can see:
+    - Participant video tiles (faces on screen)
+    - Meeting toolbar (mute button, camera button, end-call button)
+    - Platform branding: Google Meet, Zoom, or Microsoft Teams UI.
+  If there are NO participant video tiles and NO meeting toolbar, it is NOT education.
+  A smartwatch, fitness app, food photo, or generic screenshot is NEVER education.
 
-EDUCATION images — populate ALL of:
-  educationData: { isMeeting: true, platform: string }
-  details: { platform: string, participantCount: number|null }
+"other" — use when the image does not clearly match any of the above.
 
-All non-matching typed fields must be null or empty objects.
+=== confidence ===
+  0.9+ very clear  |  0.7–0.89 clear  |  0.5–0.69 uncertain  |  <0.5 → use "other"
+
+=== Per-type fields to populate ===
+
+FOOD — populate ALL:
+  fastNutrition: { calories, protein, carbs, fat, fiber }  ← aggregate totals
+  details.foods: array, each item: { name, portion, weight_g, nutrition:{calories,protein,carbs,fat,fiber} }
+  details.total: { calories, protein, carbs, fat, fiber }
+  Name each food specifically (e.g. "Herbalife Formula 1 Shake" not "Drink",
+  "Idli" not "Rice Cake", "Chapati" not "Flatbread").
+
+WEIGHT — populate ALL:
+  weightReading: { value: number in kg (convert lbs if needed), unit: "kg" }
+  details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not on display
+
+SMARTWATCH — populate ALL:
+  smartwatchData: { caloriesBurned, steps, source }  (source = device brand)
+  details: { caloriesBurned, steps, source }
+
+EDUCATION — populate ALL:
+  educationData: { isMeeting: true, platform }  (platform = "Google Meet"/"Zoom"/"Teams")
+  details: { platform, participantCount }
+
+All fields not relevant to the detected imageType must be omitted or null.
 JSON only. No markdown. No explanation.`;
 
 /**
@@ -231,7 +307,12 @@ async function callModel(configKey, parts, schema, { label, trace = null }) {
 const TYPE_ALIAS = Object.freeze({ weight_scale: 'weight', meeting: 'education' });
 
 function normaliseType(raw, confidence) {
-  if (!raw || confidence < 0.80) return 'other';
+  // Trust Gemini's self-reported imageType when confidence is reasonable.
+  // The prompt already instructs Gemini to return 'other' when uncertain
+  // (0.6–0.79 range), so double-filtering at 0.80 here was incorrectly
+  // discarding valid education / smartwatch detections on the first attempt.
+  // Only override as a last-resort sanity check at 0.50.
+  if (!raw || confidence < 0.50) return 'other';
   return TYPE_ALIAS[raw] ?? raw;
 }
 

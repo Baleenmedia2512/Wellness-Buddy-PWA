@@ -162,6 +162,22 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
           '-' +
           String(date.getDate()).padStart(2, '0');
         const cacheBuster = Date.now();
+
+        // Stage 18 — useDayAnalyses fetch started
+        const _trD = window.__captureTrace;
+        if (_trD) {
+          console.log(
+            `[CAPTURE-TRACE-${_trD.id}] Stage 18 | useDayAnalyses fetch started\n` +
+            `  ts=${Date.now()}  (+${Date.now() - _trD.t0}ms from T0)\n` +
+            `  captureId=${_trD.captureId ?? 'null'}\n` +
+            `  traceId=${_trD.traceId ?? 'none'}\n` +
+            `  userId=${actualUserId}\n` +
+            `  date=${dateString}\n` +
+            `  savePromiseRef=${_trD.savePromiseRef}\n` +
+            `  cacheBuster=${cacheBuster}`,
+          );
+        }
+
         const response = await fetch(
           `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
           {
@@ -170,6 +186,18 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
           },
         );
         const data = await response.json();
+
+        // Stage 19 — useDayAnalyses fetch completed
+        if (_trD) {
+          console.log(
+            `[CAPTURE-TRACE-${_trD.id}] Stage 19 | useDayAnalyses fetch completed\n` +
+            `  ts=${Date.now()}  (+${Date.now() - _trD.t0}ms from T0)\n` +
+            `  captureId=${_trD.captureId ?? 'null'}\n` +
+            `  httpStatus=${response.status}\n` +
+            `  dataSuccess=${data.success}\n` +
+            `  rowsReturned=${data.data?.length ?? 'n/a'}`,
+          );
+        }
 
         if (data.success) {
           let list = data.data || [];
@@ -185,6 +213,18 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
 
           setAnalyses(list);
           calculateDailyStats(list);
+
+          // Stage 20 — final meal count returned
+          if (_trD) {
+            console.log(
+              `[CAPTURE-TRACE-${_trD.id}] Stage 20 | final meal count after setAnalyses\n` +
+              `  ts=${Date.now()}  (+${Date.now() - _trD.t0}ms from T0)\n` +
+              `  captureId=${_trD.captureId ?? 'null'}\n` +
+              `  mealCount=${list.length}\n` +
+              `  mealIds=${list.map(m => m.ID ?? m.id).join(',') || 'none'}\n` +
+              `  defect=${list.length === 0 ? 'YES — empty result' : 'no'}`,
+            );
+          }
         } else {
           setError('Failed to load nutrition data');
         }

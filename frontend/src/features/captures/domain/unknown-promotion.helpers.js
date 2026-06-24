@@ -52,15 +52,48 @@ export function resolveGeminiCalories(analysis) {
   }, 0);
 }
 
-/** True when Gemini returned at least one food item with positive calories. */
+/** True when the analysis result contains at least one food item with positive calories.
+ *  Accepts both the legacy geminiService shape ({ detailedItems, nutrition }) and the
+ *  new orchestrator shape ({ foods[], total }) so retry flows work on both paths. */
 export function hasRecognizedFood(analysis) {
+  // New orchestrator format: foods[] + total
+  const newItems = analysis?.foods;
+  if (Array.isArray(newItems) && newItems.length > 0) {
+    const cal = Number(analysis?.total?.calories) ||
+      newItems.reduce((s, f) => s + (Number(f?.nutrition?.calories) || Number(f?.calories) || 0), 0);
+    return cal > 0;
+  }
+  // Legacy geminiService format: detailedItems
   const items = analysis?.detailedItems;
   if (!Array.isArray(items) || items.length === 0) return false;
   return resolveGeminiCalories(analysis) > 0;
 }
 
-/** Transform geminiService image analysis → backend `analysisResult` shape. */
+/** Transform an AI analysis result → backend `analysisResult` shape.
+ *  Accepts both the legacy geminiService shape ({ detailedItems, nutrition }) and the
+ *  new orchestrator shape ({ foods[], total }) so retry flows work on both paths. */
 export function buildAnalysisFromGeminiAnalysis(analysis) {
+  // New orchestrator format: foods[] + total
+  if (Array.isArray(analysis?.foods) && analysis.foods.length > 0) {
+    const foods = analysis.foods.map(foodItemFromGeminiItem).filter(Boolean);
+    const total = analysis.total || {};
+    return {
+      foods,
+      total: {
+        calories: total.calories ?? 0,
+        protein: total.protein ?? 0,
+        carbs: total.carbs ?? 0,
+        fat: total.fat ?? 0,
+        fiber: total.fiber ?? 0,
+        sugar: total.sugar ?? 0,
+        sodium: total.sodium ?? 0,
+        cholesterol: total.cholesterol ?? 0,
+        glycemic_index: total.glycemic_index ?? null,
+      },
+      confidence: analysis.confidence || 'medium',
+    };
+  }
+  // Legacy geminiService format: detailedItems + nutrition
   const foods = (analysis?.detailedItems || [])
     .map(foodItemFromGeminiItem)
     .filter(Boolean);

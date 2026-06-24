@@ -148,7 +148,10 @@ function _normalise(data, duration) {
 
   // ── FOOD ────────────────────────────────────────────────────────────────────
   if (type === 'food') {
-    const fn = data.fastNutrition;
+    // fastNutrition is the top-level aggregate. Fall back to details.total when
+    // Gemini omits fastNutrition (it is optional in UNIFIED_SCHEMA) so we can
+    // still build details.foods from whatever the AI did return.
+    const fn = data.fastNutrition ?? data.details?.total ?? null;
     if (fn) {
       // Carry fastNutrition into details for downstream code that reads it.
       details.fastNutrition = fn;
