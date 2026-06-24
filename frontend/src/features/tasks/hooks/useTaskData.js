@@ -2,22 +2,40 @@
  * useTaskData.js — Hook for fetching and managing task data
  *
  * Responsibilities:
- * - Fetch tasks from API
- * - Auto-trigger catch-up on first panel load (backfills missed windows)
+ * - Fetch tasks from API (single GET /api/tasks/list per request)
+ * - Run recovery catchup ONCE per IST day (not on every panel open)
  * - Handle loading/error states
+ *
+ * Architecture note:
+ *   /api/tasks/list already calls reconcilePendingTasksForUser() on every
+ *   request, so stale pending tasks are fixed without a separate catchup call.
+ *   Catchup (creating missing task rows when cron was down) only needs to run
+ *   once per day — subsequent opens within the same day see identical rows.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { debugLog } from '../../../shared/utils/logger';
 import { getApiBaseUrl } from '../../../config/api.config';
 
+/** IST date string "YYYY-MM-DD" for today. */
+function istDateToday() {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().substring(0, 10);
+}
+
+const CATCHUP_DATE_KEY = 'wv.taskPanel.catchupDate';
+
 /**
- * Call POST /api/tasks/catchup so the server creates any task rows
- * whose time windows already opened today but whose cron run was missed,
- * and sends the first FCM for pending tasks in open windows.
- * Idempotent — safe on every panel open.
+ * Run POST /api/tasks/catchup at most once per IST calendar day.
+ * Recovery-only: creates any task rows that cron missed.
+ * Does NOT send FCM (handled server-side at task-creation time).
+ * Idempotent — safe to call any number of times; localStorage gate prevents
+ * redundant API calls within the same day.
  */
-async function triggerCatchup(apiBaseUrl, userId) {
+async function runCatchupOnceToday(apiBaseUrl, userId) {
+  const today = istDateToday();
+  if (localStorage.getItem(CATCHUP_DATE_KEY) === today) return; // already done today
+  localStorage.setItem(CATCHUP_DATE_KEY, today);
+
   try {
     const res = await fetch(`${apiBaseUrl}/api/tasks/catchup?userId=${userId}`, {
       method: 'POST',
@@ -25,17 +43,16 @@ async function triggerCatchup(apiBaseUrl, userId) {
       body: JSON.stringify({ userId }),
     });
     const json = await res.json();
-    debugLog('[useTaskData] catchup result', json);
-    return {
+    debugLog('[useTaskData] daily catchup result', {
       createdCount: json?.data?.createdCount ?? 0,
       reconciledCount: json?.data?.reconciledCount ?? 0,
-      notificationsSent: json?.data?.notificationsSent ?? 0,
-      notifyEligible: json?.data?.notifyEligible ?? 0,
-      hasPushToken: json?.data?.hasPushToken ?? null,
-    };
+    });
   } catch (err) {
-    debugLog('[useTaskData] catchup failed (non-critical):', err.message);
-    return { createdCount: 0, notificationsSent: 0, notifyEligible: 0, hasPushToken: null };
+    // Non-critical: catchup failure means missed-cron rows may not appear until
+    // the next day's catchup. The cron itself is the primary task-creation path.
+    debugLog('[useTaskData] daily catchup failed (non-critical):', err.message);
+    // Reset date key so the next panel open retries.
+    localStorage.removeItem(CATCHUP_DATE_KEY);
   }
 }
 
@@ -46,7 +63,7 @@ export function useTaskData(userId) {
 
   const apiBaseUrl = getApiBaseUrl();
 
-  const fetchTasks = useCallback(async ({ runCatchup = false } = {}) => {
+  const fetchTasks = useCallback(async () => {
     if (!userId) {
       setLoading(false);
       return;
@@ -63,35 +80,9 @@ export function useTaskData(userId) {
       const data = await response.json();
 
       if (data.ok) {
-        const fetched = data.data.tasks || [];
-
-        // Catch-up on every panel open: backfill missed windows and send first
-        // FCM for tasks whose window is open but NotificationSent is still false.
-        if (runCatchup) {
-          debugLog('[useTaskData] Running catch-up', { existingCount: fetched.length });
-          const { createdCount, notificationsSent, notifyEligible, hasPushToken } = await triggerCatchup(apiBaseUrl, userId);
-          const retryRes = await fetch(`${apiBaseUrl}/api/tasks/list?userId=${userId}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const retryData = await retryRes.json();
-          if (retryData.ok) {
-            setTasks(retryData.data.tasks || []);
-            setError(null);
-            debugLog('[useTaskData] Tasks re-fetched after catch-up', {
-              count: (retryData.data.tasks || []).length,
-              createdCount,
-              notificationsSent,
-              notifyEligible,
-              hasPushToken,
-            });
-            return;
-          }
-        }
-
-        setTasks(fetched);
+        setTasks(data.data.tasks || []);
         setError(null);
-        debugLog('[useTaskData] Tasks fetched', { count: fetched.length });
+        debugLog('[useTaskData] Tasks fetched', { count: (data.data.tasks || []).length });
       } else {
         throw new Error(data.error?.message || 'Failed to fetch tasks');
       }
@@ -103,21 +94,25 @@ export function useTaskData(userId) {
     }
   }, [userId, apiBaseUrl]);
 
-  // Initial fetch — catch-up on every panel open (idempotent)
+  // On mount: run recovery catchup once today, then fetch.
   useEffect(() => {
-    fetchTasks({ runCatchup: true });
-  }, [fetchTasks]);
+    if (!userId) { setLoading(false); return; }
+    (async () => {
+      await runCatchupOnceToday(apiBaseUrl, userId);
+      await fetchTasks();
+    })();
+  }, [fetchTasks, userId, apiBaseUrl]);
 
-  // Manual refresh — includes catch-up/reconcile so completed activities move tabs.
+  // Manual refresh — simple re-fetch (reconcile runs inside list endpoint).
   const refresh = useCallback(() => {
     setLoading(true);
-    fetchTasks({ runCatchup: true });
+    fetchTasks();
   }, [fetchTasks]);
 
   // Re-fetch when food/weight/education saves complete elsewhere in the app.
   useEffect(() => {
     const onTasksChanged = () => {
-      debugLog('[useTaskData] wellness:tasks-changed — refreshing with reconcile');
+      debugLog('[useTaskData] wellness:tasks-changed — refreshing');
       refresh();
     };
     window.addEventListener('wellness:tasks-changed', onTasksChanged);

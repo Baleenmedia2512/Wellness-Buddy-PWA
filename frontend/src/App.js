@@ -1023,8 +1023,20 @@ function WellnessValleyApp() {
 
   const _userIdRef         = useRef(null);  // mirrors user?.id
   const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
-  /** User closed the panel with X — no auto-open until app goes to background */
-  const _taskPanelUserClosedRef = useRef(false);
+
+  // localStorage key: stores the IST date on which the user last manually
+  // closed the panel. The auto-open gate respects this for the rest of that
+  // calendar day, resetting at IST midnight. FCM taps and bell-icon clicks
+  // always open the panel regardless of this key.
+  const PANEL_CLOSED_DATE_KEY = 'wv.taskPanel.closedDate';
+
+  /** Return today's IST date string 'YYYY-MM-DD'. */
+  const istToday = () =>
+    new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().substring(0, 10);
+
+  /** True when the user already closed the panel today (IST). */
+  const wasTaskPanelClosedToday = () =>
+    localStorage.getItem(PANEL_CLOSED_DATE_KEY) === istToday();
 
   /** Pending tasks that still deserve auto-open (not "don't remind again today"). */
   const pendingTasksNeedingPanel = (tasks) =>
@@ -1035,7 +1047,6 @@ function WellnessValleyApp() {
     );
 
   const openTaskPanelFromUserOrReminder = useCallback((taskId = null) => {
-    _taskPanelUserClosedRef.current = false;
     startTransition(() => {
       if (taskId) setHighlightedTaskId(String(taskId));
       setShowTaskPanel(true);
@@ -1043,7 +1054,10 @@ function WellnessValleyApp() {
   }, []);
 
   const closeTaskPanelByUser = useCallback(() => {
-    _taskPanelUserClosedRef.current = true;
+    // Record the IST date so the panel won't auto-open again today.
+    // Camera open/close cycles (background → foreground) do NOT reset this
+    // gate, eliminating the repeated-interruption loop users experienced.
+    localStorage.setItem(PANEL_CLOSED_DATE_KEY, istToday());
     startTransition(() => {
       setShowTaskPanel(false);
       setHighlightedTaskId(null);
@@ -1204,89 +1218,17 @@ function WellnessValleyApp() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
-  // ─── AUTO-OPEN TASK PANEL ON APP OPEN / RESUME ONLY ───────────────────────
-  // Show the panel when the user opens the app or returns from background.
-  // Do NOT auto-open while they are already using the app (home ↔ dashboard).
+  // ─── AUTO-OPEN TASK PANEL — ONCE PER IST DAY ────────────────────────────
+  // The panel opens automatically at most once per IST calendar day (on the
+  // first app open after IST midnight that has pending tasks).
   //
   // Rules:
-  //  - App launch or resume from background → open if pending tasks exist
-  //  - User closes panel (X) → stay closed until app is backgrounded
-  //  - App backgrounded → reset dismiss so next open shows panel again
-  //  - Bell icon / push tap → always opens manually
-  useEffect(() => {
-    const apiBase = getApiBaseUrl();
-
-    const isHomeScreenActive = () => {
-      return (
-        !!_userIdRef.current &&
-        !_profileGateActiveRef.current &&
-        _homeScreenActiveRef.current
-      );
-    };
-
-    async function checkAndOpenTaskPanel(source) {
-      const userId = _userIdRef.current;
-      if (!userId) return;
-      if (!isHomeScreenActive()) return;
-      if (_showTaskPanelRef.current) return;
-      if (_taskPanelUserClosedRef.current) return;
-
-      try {
-        const res = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
-        const json = await res.json();
-        const needsPanel = pendingTasksNeedingPanel(json?.data?.tasks);
-
-        if (needsPanel.length > 0) {
-          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — auto-open (${source})`);
-          startTransition(() => setShowTaskPanel(true));
-        } else {
-          debugLog(`[TaskPanel] No pending tasks needing panel (${source})`);
-        }
-      } catch (err) {
-        debugLog(`[TaskPanel] Could not check pending tasks (${source}):`, err.message);
-      }
-    }
-
-    function onAppBackground() {
-      _taskPanelUserClosedRef.current = false;
-      debugLog('[TaskPanel] App backgrounded — reset panel dismiss for next open');
-    }
-
-    let nativeHandle = null;
-    let cancelled = false;
-
-    if (Capacitor.isNativePlatform()) {
-      nativeLifecycle.addAppStateListener(({ isActive }) => {
-        if (cancelled) return;
-        if (!isActive) {
-          onAppBackground();
-          return;
-        }
-        checkAndOpenTaskPanel('native-resume');
-      }).then((h) => {
-        if (cancelled) { h?.remove?.(); } else { nativeHandle = h; }
-      }).catch(() => {});
-    }
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        onAppBackground();
-      } else if (document.visibilityState === 'visible') {
-        checkAndOpenTaskPanel('web-resume');
-      }
-    };
-    if (!Capacitor.isNativePlatform()) {
-      document.addEventListener('visibilitychange', handleVisibility);
-    }
-
-    return () => {
-      cancelled = true;
-      try { nativeHandle?.remove?.(); } catch { /* ignore */ }
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only, uses refs
-
-  // Cold start — first app open after login (web + native)
+  //  - Cold-start: open once today if pending tasks exist AND user hasn't
+  //    manually closed the panel yet today (IST date gate).
+  //  - App resume / camera transitions: do NOT auto-open. Removing this
+  //    eliminates the loop: Panel → X → camera → photo → Panel → X → …
+  //  - Bell icon / FCM tap / native alarm tap: always open (no gate).
+  //  - User closes with X: gate stays set until IST midnight.
   const _taskPanelLaunchDoneRef = useRef(false);
   useEffect(() => {
     if (_taskPanelLaunchDoneRef.current) return;
@@ -1300,7 +1242,10 @@ function WellnessValleyApp() {
       !showMarathon &&
       !showScreenTime;
 
-    if (!isHome || showTaskPanel || _taskPanelUserClosedRef.current) return;
+    if (!isHome || showTaskPanel) return;
+
+    // Respect the user's explicit daily close (persists through camera / background).
+    if (wasTaskPanelClosedToday()) return;
 
     _taskPanelLaunchDoneRef.current = true;
 
@@ -1314,11 +1259,11 @@ function WellnessValleyApp() {
         const json = await res.json();
         const needsPanel = pendingTasksNeedingPanel(json?.data?.tasks);
         if (needsPanel.length > 0) {
-          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — cold-start open`);
+          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — daily auto-open`);
           startTransition(() => setShowTaskPanel(true));
         }
       } catch (err) {
-        debugLog('[TaskPanel] Cold-start check failed:', err.message);
+        debugLog('[TaskPanel] Daily open check failed:', err.message);
       }
     })();
   }, [
@@ -4394,7 +4339,6 @@ function WellnessValleyApp() {
 
     startTransition(() => {
       if (data.taskId) setHighlightedTaskId(String(data.taskId));
-      _taskPanelUserClosedRef.current = false;
       setShowTaskPanel(true);
     });
 

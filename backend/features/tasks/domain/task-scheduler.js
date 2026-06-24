@@ -54,6 +54,10 @@ async function checkAndCreateTasksForCurrentTime() {
 
     logger.info(`Found ${timeWindows.length} time windows starting now`);
 
+    // Collect initial-notification promises so DB writes finish first (sequential)
+    // but FCM sends run in parallel (fire-and-forget) after the loop.
+    const notificationPromises = [];
+
     for (const window of timeWindows) {
       try {
         const task = await createTask({
@@ -72,6 +76,33 @@ async function checkAndCreateTasksForCurrentTime() {
             userId: window.user_id,
             taskType: window.activity_type,
           });
+
+          // Send initial FCM push immediately for every newly created task.
+          // NotificationSent guards against double-sends if createTask returned
+          // an existing pending row that was already notified.
+          if (!task.NotificationSent) {
+            notificationPromises.push(
+              sendTaskNotification(task, window)
+                .then((sent) => {
+                  if (sent) {
+                    stats.notificationsSent += 1;
+                    logger.info('Initial task notification sent', {
+                      taskId: task.task_id,
+                      userId: window.user_id,
+                      taskType: window.activity_type,
+                    });
+                  }
+                })
+                .catch((err) => {
+                  stats.errors += 1;
+                  logger.error('Initial task notification failed', {
+                    taskId: task.task_id,
+                    userId: window.user_id,
+                    error: err.message,
+                  });
+                }),
+            );
+          }
         }
       } catch (loopError) {
         stats.errors += 1;
@@ -82,6 +113,9 @@ async function checkAndCreateTasksForCurrentTime() {
         });
       }
     }
+
+    // Wait for all FCM sends to settle before returning stats.
+    await Promise.all(notificationPromises);
 
     logger.info('Task creation check completed', stats);
     return stats;

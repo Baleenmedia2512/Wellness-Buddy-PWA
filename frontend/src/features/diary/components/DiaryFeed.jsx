@@ -90,17 +90,12 @@ function formatTimelineDate(dateStr) {
  *
  * @param {{ entry: object, isLast: boolean, children: React.ReactNode }} props
  */
-function TimelineEntryWrapper({ entry, isLast, children }) {
+function TimelineEntryWrapper({ isLast, children }) {
   return (
     <div className="flex gap-3 items-start">
-      {/* Left column: time + vertical connector */}
-      <div className="flex flex-col items-end" style={{ minWidth: '4.5rem' }}>
-        <span
-          className="text-xs font-medium text-emerald-700 whitespace-nowrap leading-relaxed"
-          aria-hidden="true"
-        >
-          {formatTimelineTime(entry.capturedAt)}
-        </span>
+      {/* Left column: vertical connector only — time is shown inside the tile */}
+      <div className="flex flex-col items-center" style={{ minWidth: '1rem' }}>
+        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-3 shrink-0" aria-hidden="true" />
         {!isLast && (
           <div
             className="flex-1 mt-1 w-px bg-gray-200"
@@ -300,11 +295,10 @@ export default function DiaryFeed({
           {visibleEntries.map((entry, idx) => (
             <TimelineEntryWrapper
               key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
-              entry={entry}
               isLast={idx === visibleEntries.length - 1}
             >
-              {/* hideTime=true: time is already shown in the left-column label */}
-              {renderRow(entry, { hideTime: true })}
+              {/* hideTime not set — time shown inside the tile */}
+              {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
