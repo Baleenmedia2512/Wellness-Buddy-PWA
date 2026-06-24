@@ -7,6 +7,7 @@ import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -63,19 +64,24 @@ public class AlarmFullScreenActivity extends AppCompatActivity {
         if (tvTitle   != null) tvTitle.setText(title);
         if (tvMessage != null) tvMessage.setText(message);
 
-        // Upload Now — open task panel and launch capture flow
+        // Upload Now — open task panel and launch capture flow (meal / weight tasks only)
         final String finalActivityType = activityType;
         final String finalTaskId       = taskId;
         Button btnUploadNow = findViewById(R.id.btnUploadNow);
         if (btnUploadNow != null) {
-            btnUploadNow.setOnClickListener(v -> {
-                Log.d(TAG, "📸 Upload Now tapped");
-                sendToService(AlarmSoundService.ACTION_DISMISS, null, null);
-                Intent open = ReminderPlugin.buildTaskPanelIntent(
-                        this, finalActivityType, finalTaskId, true);
-                startActivity(open);
-                finish();
-            });
+            if (ReminderAlarmReceiver.isPhotoUploadReminder(activityType)) {
+                btnUploadNow.setVisibility(View.VISIBLE);
+                btnUploadNow.setOnClickListener(v -> {
+                    Log.d(TAG, "📸 Upload Now tapped");
+                    sendToService(AlarmSoundService.ACTION_DISMISS, null, null);
+                    Intent open = ReminderPlugin.buildTaskPanelIntent(
+                            this, finalActivityType, finalTaskId, true);
+                    startActivity(open);
+                    finish();
+                });
+            } else {
+                btnUploadNow.setVisibility(View.GONE);
+            }
         }
 
         // Snooze button

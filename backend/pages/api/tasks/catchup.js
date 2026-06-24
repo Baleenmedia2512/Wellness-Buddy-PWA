@@ -13,7 +13,7 @@
  *   log with { requestId, userId, route, durationMs }.
  */
 
-import { createMissingTasksForToday } from '../../../features/tasks/domain/task-scheduler.js';
+import { createMissingTasksForToday, checkAndSendMissedInitialNotifications } from '../../../features/tasks/domain/task-scheduler.js';
 import { userHasPushToken } from '../../../features/tasks/data/task-repo.js';
 import { reconcilePendingTasksForUser } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import logger from '../../../shared/lib/logger.js';
@@ -48,6 +48,7 @@ export default async function handler(req, res) {
 
     const createdCount = await createMissingTasksForToday(userId);
     const reconciledCount = await reconcilePendingTasksForUser(userId);
+    const notifyStats = await checkAndSendMissedInitialNotifications(userId);
     const hasPushToken = await userHasPushToken(userId);
 
     const durationMs = Date.now() - startTime;
@@ -65,8 +66,8 @@ export default async function handler(req, res) {
       data: {
         createdCount,
         reconciledCount,
-        notificationsSent: 0,
-        notifyEligible: 0,
+        notificationsSent: notifyStats.sent,
+        notifyEligible: notifyStats.eligible,
         hasPushToken,
       },
     });

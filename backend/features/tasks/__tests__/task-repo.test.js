@@ -497,6 +497,7 @@ describe('getTasksNeedingReminder', () => {
       UserId: 339,
       TaskType: 'lunch',
       AverageCompletionTime: '12:00:00',
+      SampleCount: 5,
     }]);
 
     const rows = await getTasksNeedingReminder('2026-06-09', '12:30:00', new Date('2026-06-09T12:30:00'));

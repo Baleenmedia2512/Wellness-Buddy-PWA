@@ -24,6 +24,7 @@ import {
   incrementReminderCount,
   getTasksPastAverageTime,
   getPendingTasksNeedingInitialNotification,
+  getTasksAtWindowStartMinute,
   getWindowsAlreadyOpenedToday,
 } from '../data/task-repo.js';
 import { shouldTriggerReminder, isWithinTaskWindow } from './task-rules.js';
@@ -32,10 +33,94 @@ import {
   formatAverageTimeLabel,
   buildPersonalisedReminderBody,
   buildSecondReminderBody,
+  buildWindowStartReminderBody,
+  buildGroupedPendingTasksBody,
   getReminderTitle,
+  isAtReminderMinute,
 } from './completion-learning.rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { sendPushNotification } from '../../../shared/services/pushNotificationService.js';
+
+/**
+ * Group tasks by user and send one notification per user when multiple are eligible.
+ * Returns stats { sent, errors, grouped }.
+ */
+async function sendNotificationsGrouped(tasks, buildNotificationForTask, markSent) {
+  const stats = { sent: 0, errors: 0, grouped: 0 };
+  const byUser = new Map();
+
+  for (const task of tasks) {
+    const key = `${task.user_id}:${task.PushToken || task.push_token || ''}`;
+    if (!byUser.has(key)) byUser.set(key, []);
+    byUser.get(key).push(task);
+  }
+
+  for (const [, userTasks] of byUser) {
+    const pushToken = userTasks[0].PushToken || userTasks[0].push_token;
+    if (!pushToken) continue;
+
+    try {
+      if (userTasks.length === 1) {
+        const task = userTasks[0];
+        const notification = buildNotificationForTask(task);
+        const sent = await sendPushNotification(pushToken, notification);
+        if (sent) {
+          await markSent(task);
+          stats.sent += 1;
+        } else {
+          stats.errors += 1;
+        }
+        continue;
+      }
+
+      stats.grouped += 1;
+      const notification = {
+        title: 'Wellness Tasks Pending',
+        body:  buildGroupedPendingTasksBody(userTasks.length),
+        data: {
+          action:     'openTaskPanel',
+          userId:     userTasks[0].user_id.toString(),
+          taskCount:  String(userTasks.length),
+          isGrouped:  'true',
+        },
+      };
+
+      const sent = await sendPushNotification(pushToken, notification);
+      if (sent) {
+        for (const task of userTasks) {
+          await markSent(task);
+        }
+        stats.sent += userTasks.length;
+      } else {
+        stats.errors += userTasks.length;
+      }
+    } catch (error) {
+      stats.errors += userTasks.length;
+      logger.error('Error sending grouped notification', {
+        userId: userTasks[0].user_id,
+        error: error.message,
+      });
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Run daily reset at IST midnight: expire yesterday's pending tasks.
+ */
+async function runDailyTaskResetIfMidnight() {
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+
+  if (!isAtReminderMinute(currentTime, '00:00:00')) {
+    return { expired: 0, skipped: true };
+  }
+
+  logger.info('Running IST midnight task reset', { currentDate });
+  const expired = await expireOldTasks(currentDate);
+  return { expired, skipped: false };
+}
 
 /**
  * Check and create tasks for time windows starting now
@@ -149,23 +234,24 @@ async function expirePreviousDayTasks() {
 async function sendTaskNotification(task, window) {
   try {
     const notification = {
-      title: getNotificationTitle(task.task_type),
-      body: getNotificationBody(task.task_type),
+      title: getReminderTitle(task.task_type),
+      body: buildWindowStartReminderBody(task.task_type),
       data: {
         action: 'openTaskPanel',
         taskId: task.task_id.toString(),
         taskType: task.task_type,
         userId: task.user_id,
+        isWindowStart: 'true',
       },
     };
 
-    logger.info('Sending task notification', {
+    logger.info('Sending window-start task notification', {
       taskId: task.task_id,
       userId: task.user_id,
       taskType: task.task_type,
     });
 
-    const pushToken = window.PushToken;
+    const pushToken = window.PushToken || task.PushToken;
 
     if (!pushToken) {
       logger.warn('Cannot send notification: user has no push token', {
@@ -178,20 +264,20 @@ async function sendTaskNotification(task, window) {
 
     if (sent) {
       await markNotificationSent(task.task_id);
-      logger.info('Task notification sent successfully', {
+      logger.info('Window-start notification sent successfully', {
         taskId: task.task_id,
         userId: task.user_id,
       });
       return true;
     }
 
-    logger.error('Failed to send task notification', {
+    logger.error('Failed to send window-start notification', {
       taskId: task.task_id,
       userId: task.user_id,
     });
     return false;
   } catch (error) {
-    logger.error('Error sending task notification', {
+    logger.error('Error sending window-start notification', {
       taskId: task.task_id,
       error: error.message,
     });
@@ -200,27 +286,11 @@ async function sendTaskNotification(task, window) {
 }
 
 function getNotificationTitle(taskType) {
-  const titles = {
-    weight: '⚖️ Time to log your weight!',
-    breakfast: '🍳 Time to log breakfast!',
-    lunch: '🍽️ Time to log lunch!',
-    dinner: '🌙 Time to log dinner!',
-    education: '📚 Time to log education!',
-    water: '💧 Time to track water!'
-  };
-  return titles[taskType] || '📋 Task reminder';
+  return getReminderTitle(taskType);
 }
 
 function getNotificationBody(taskType) {
-  const bodies = {
-    weight: 'Take a quick photo of your scale',
-    breakfast: 'Capture your meal to track nutrition',
-    lunch: 'Don\'t forget to log your lunch',
-    dinner: 'Log your dinner to complete the day',
-    education: 'Record your learning activity',
-    water: 'Track your water intake'
-  };
-  return bodies[taskType] || 'Tap to complete';
+  return buildWindowStartReminderBody(taskType);
 }
 
 // ─── Reminder 2 (average + 30 minutes) ───────────────────────────────────────
@@ -232,64 +302,54 @@ function getNotificationBody(taskType) {
 async function checkAndSendFollowUpReminders() {
   const now = new Date();
   const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
-  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0 };
+  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0, grouped: 0 };
 
   logger.info('Running follow-up reminder check', { currentDate, currentTime });
 
   try {
     const tasks = await getTasksNeedingReminder(currentDate, currentTime, now);
-    stats.eligible = tasks.length;
-
-    logger.info(`Found ${tasks.length} tasks eligible for follow-up reminder`);
-
-    for (const task of tasks) {
-      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; continue; }
+    const eligible = tasks.filter((task) => {
+      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; return false; }
       if (!isWithinTaskWindow(task, now)) {
         stats.skipped += 1;
-        logger.info('Skipping follow-up reminder — outside window', {
-          taskId: task.task_id, taskType: task.task_type,
-          window: `${task.window_start}–${task.window_end}`,
-        });
-        continue;
+        return false;
       }
-
-      const pushToken = task.PushToken || task.push_token;
-      if (!pushToken) {
+      if (!(task.PushToken || task.push_token)) {
         stats.skipped += 1;
-        logger.warn('No push token for follow-up reminder', { taskId: task.task_id, userId: task.user_id });
-        continue;
+        return false;
       }
+      return true;
+    });
 
-      const notification = {
+    stats.eligible = eligible.length;
+    logger.info(`Found ${eligible.length} tasks eligible for follow-up reminder`);
+
+    const groupStats = await sendNotificationsGrouped(
+      eligible,
+      (task) => ({
         title: getReminderTitle(task.task_type),
         body:  buildSecondReminderBody(task.task_type),
         data: {
-          action: 'openTaskPanel',
-          taskId: task.task_id.toString(),
-          taskType: task.task_type,
-          userId: task.user_id.toString(),
+          action:     'openTaskPanel',
+          taskId:     task.task_id.toString(),
+          taskType:   task.task_type,
+          userId:     task.user_id.toString(),
           isFollowUp: 'true',
         },
-      };
-
-      const sent = await sendPushNotification(pushToken, notification);
-
-      if (sent) {
+      }),
+      async (task) => {
         await incrementReminderCount(task.task_id);
-        stats.sent += 1;
         logger.info('Follow-up reminder sent', {
           taskId: task.task_id,
           userId: task.user_id,
           taskType: task.task_type,
         });
-      } else {
-        stats.errors += 1;
-        logger.error('Failed to send follow-up reminder', {
-          taskId: task.task_id,
-          userId: task.user_id,
-        });
-      }
-    }
+      },
+    );
+
+    stats.sent = groupStats.sent;
+    stats.errors = groupStats.errors;
+    stats.grouped = groupStats.grouped;
 
     logger.info('Follow-up reminder check completed', stats);
     return stats;
@@ -308,74 +368,119 @@ async function checkAndSendFollowUpReminders() {
 async function checkAndSendPersonalisedReminders() {
   const now = new Date();
   const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
-  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0 };
+  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0, grouped: 0 };
 
   logger.info('Running personalised reminder check', { currentDate, currentTime });
 
   try {
     const tasks = await getTasksPastAverageTime(currentDate, currentTime, now);
-    stats.eligible = tasks.length;
-
-    logger.info(`Found ${tasks.length} tasks past user average time`);
-
-    for (const task of tasks) {
-      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; continue; }
+    const eligible = tasks.filter((task) => {
+      if (!shouldTriggerReminder(task, now)) { stats.skipped += 1; return false; }
       if (!isWithinTaskWindow(task, now)) {
         stats.skipped += 1;
-        logger.info('Skipping personalised reminder — outside window', {
-          taskId: task.task_id, taskType: task.task_type,
-          window: `${task.window_start}–${task.window_end}`,
-        });
-        continue;
+        return false;
       }
-
-      const pushToken = task.PushToken || task.push_token;
-      if (!pushToken) {
+      if (!(task.PushToken || task.push_token)) {
         stats.skipped += 1;
-        logger.warn('No push token for personalised reminder', {
-          taskId: task.task_id,
-          userId: task.user_id,
-        });
-        continue;
+        return false;
       }
+      return true;
+    });
 
-      const avgLabel = formatAverageTimeLabel(task.average_completion_time || '');
+    stats.eligible = eligible.length;
+    logger.info(`Found ${eligible.length} tasks at personalised reminder time`);
 
-      const notification = {
-        title: getReminderTitle(task.task_type),
-        body:  buildPersonalisedReminderBody(task.task_type, avgLabel),
-        data: {
-          action:     'openTaskPanel',
-          taskId:     task.task_id.toString(),
-          taskType:   task.task_type,
-          userId:     task.user_id.toString(),
-          isPersonal: 'true',
-        },
-      };
-
-      const sent = await sendPushNotification(pushToken, notification);
-
-      if (sent) {
+    const groupStats = await sendNotificationsGrouped(
+      eligible,
+      (task) => {
+        const avgLabel = formatAverageTimeLabel(
+          task.average_completion_time || task.effective_reminder_time || '',
+        );
+        return {
+          title: getReminderTitle(task.task_type),
+          body:  buildPersonalisedReminderBody(task.task_type, avgLabel),
+          data: {
+            action:     'openTaskPanel',
+            taskId:     task.task_id.toString(),
+            taskType:   task.task_type,
+            userId:     task.user_id.toString(),
+            isPersonal: 'true',
+          },
+        };
+      },
+      async (task) => {
         await incrementReminderCount(task.task_id);
-        stats.sent += 1;
         logger.info('Personalised reminder sent', {
-          taskId:  task.task_id,
-          userId:  task.user_id,
-          avgTime: avgLabel,
-        });
-      } else {
-        stats.errors += 1;
-        logger.error('Failed to send personalised reminder', {
           taskId: task.task_id,
           userId: task.user_id,
+          taskType: task.task_type,
         });
-      }
-    }
+      },
+    );
+
+    stats.sent = groupStats.sent;
+    stats.errors = groupStats.errors;
+    stats.grouped = groupStats.grouped;
 
     logger.info('Personalised reminder check completed', stats);
     return stats;
   } catch (error) {
     logger.error('Error in personalised reminder check', {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
+}
+
+// ─── Window-start reminder (existing system) ─────────────────────────────────
+
+/**
+ * Send window-start notifications when an activity window opens.
+ * Uses NotificationSent flag (WindowStartReminderSent equivalent).
+ */
+async function checkAndSendWindowStartReminders() {
+  const now = new Date();
+  const { date: currentDate, time: currentTime } = getISTPartsFromDate(now);
+  const stats = { eligible: 0, sent: 0, skipped: 0, errors: 0, grouped: 0 };
+
+  logger.info('Running window-start reminder check', { currentDate, currentTime });
+
+  try {
+    const tasks = await getTasksAtWindowStartMinute(currentDate, currentTime);
+    stats.eligible = tasks.length;
+
+    const groupStats = await sendNotificationsGrouped(
+      tasks,
+      (task) => ({
+        title: getReminderTitle(task.task_type),
+        body:  buildWindowStartReminderBody(task.task_type),
+        data: {
+          action:        'openTaskPanel',
+          taskId:        task.task_id.toString(),
+          taskType:      task.task_type,
+          userId:        task.user_id.toString(),
+          isWindowStart: 'true',
+        },
+      }),
+      async (task) => {
+        await markNotificationSent(task.task_id);
+        logger.info('Window-start reminder sent', {
+          taskId: task.task_id,
+          userId: task.user_id,
+          taskType: task.task_type,
+        });
+      },
+    );
+
+    stats.sent = groupStats.sent;
+    stats.errors = groupStats.errors;
+    stats.grouped = groupStats.grouped;
+
+    logger.info('Window-start reminder check completed', stats);
+    return stats;
+  } catch (error) {
+    logger.error('Error in window-start reminder check', {
       error: error.message,
       stack: error.stack,
     });
@@ -474,9 +579,11 @@ async function createMissingTasksForToday(userId = null) {
 export {
   checkAndCreateTasksForCurrentTime,
   expirePreviousDayTasks,
+  runDailyTaskResetIfMidnight,
   sendTaskNotification,
   checkAndSendFollowUpReminders,
   checkAndSendPersonalisedReminders,
+  checkAndSendWindowStartReminders,
   checkAndSendMissedInitialNotifications,
   createMissingTasksForToday,
 };

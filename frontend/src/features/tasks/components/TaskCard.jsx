@@ -50,6 +50,17 @@ const TaskCard = ({ task, onClick, isHighlighted = false }) => {
     return `${hour12}:${minutes} ${ampm}`;
   };
 
+  const getCurrentIstTime = () => {
+    const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    return ist.toISOString().substring(11, 19);
+  };
+
+  const isPastWindowEnd = () => {
+    if (!task.window_end) return false;
+    const end = String(task.window_end).substring(0, 8);
+    return getCurrentIstTime() > end;
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -80,6 +91,11 @@ const TaskCard = ({ task, onClick, isHighlighted = false }) => {
                 {formatTime(task.window_start)} - {formatTime(task.window_end)}
               </span>
             </div>
+            {isPastWindowEnd() && (
+              <p className="text-xs text-amber-600 mt-1">
+                Window ended — you can still log today
+              </p>
+            )}
           </div>
         </div>
 

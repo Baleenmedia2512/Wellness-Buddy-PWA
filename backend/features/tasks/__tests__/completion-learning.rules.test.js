@@ -16,6 +16,14 @@ import {
   getReminderTitle,
   isAtReminderMinute,
   addMinutesToTime,
+  appendCompletionHistory,
+  computeAverageFromHistory,
+  resolveEffectiveReminderTime,
+  resolveDisplayAverageLabel,
+  buildWindowStartReminderBody,
+  buildGroupedPendingTasksBody,
+  DEFAULT_COMPLETION_TIMES,
+  MIN_SAMPLES_FOR_PERSONALIZED,
 } from '../domain/completion-learning.rules.js';
 import {
   ACTIVITY_TIME_WINDOWS_TABLE_ROWS,
@@ -83,8 +91,21 @@ describe('inferMealTaskType — activity_time_windows_table', () => {
     expect(inferMealTaskType('20:02:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('dinner');
   });
 
-  it('returns null outside all meal windows (e.g. 10:00 AM gap)', () => {
-    expect(inferMealTaskType('10:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBeNull();
+  it('attributes gap after breakfast to breakfast (late logging grace)', () => {
+    expect(inferMealTaskType('09:16:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
+    expect(inferMealTaskType('10:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
+  });
+
+  it('attributes gap after lunch to lunch', () => {
+    expect(inferMealTaskType('16:30:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('lunch');
+  });
+
+  it('attributes late evening logs after dinner window to dinner', () => {
+    expect(inferMealTaskType('21:30:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('dinner');
+  });
+
+  it('attributes early morning before breakfast window to breakfast', () => {
+    expect(inferMealTaskType('04:00:00', ACTIVITY_TIME_WINDOWS_TABLE_ROWS)).toBe('breakfast');
   });
 
   it('returns null when table rows are missing — no hardcoded fallback', () => {
@@ -141,8 +162,8 @@ describe('formatAverageTimeLabel', () => {
 describe('buildPersonalisedReminderBody', () => {
   it('uses weight-specific copy', () => {
     const body = buildPersonalisedReminderBody('weight', '4:30 AM');
-    expect(body).toContain('upload your weight image around 4:30 AM');
-    expect(body).toContain("haven't uploaded today's weight image yet");
+    expect(body).toContain('upload your weight around 4:30 AM');
+    expect(body).toContain("Today's upload is still pending");
   });
 
   it('uses breakfast-specific copy', () => {
@@ -156,7 +177,7 @@ describe('buildPersonalisedReminderBody', () => {
 
 describe('buildSecondReminderBody', () => {
   it('uses weight-specific second reminder copy', () => {
-    expect(buildSecondReminderBody('weight')).toContain('weight image is still pending');
+    expect(buildSecondReminderBody('weight')).toContain('weight upload is still pending');
   });
 });
 
@@ -176,5 +197,69 @@ describe('isAtReminderMinute', () => {
 describe('addMinutesToTime', () => {
   it('adds 30 minutes for reminder 2 scheduling', () => {
     expect(addMinutesToTime('04:30:00', 30)).toBe('05:00:00');
+  });
+});
+
+describe('appendCompletionHistory', () => {
+  it('keeps only the last 7 completion times', () => {
+    let history = [];
+    for (let i = 0; i < 10; i += 1) {
+      history = appendCompletionHistory(history, `0${i % 10}:00:00`);
+    }
+    expect(history).toHaveLength(7);
+    expect(history[0]).toBe('03:00:00');
+    expect(history[6]).toBe('09:00:00');
+  });
+});
+
+describe('computeAverageFromHistory', () => {
+  it('averages the last completion times', () => {
+    const avg = computeAverageFromHistory(['04:28:00', '04:32:00', '04:30:00']);
+    expect(avg).toBe('04:30:00');
+  });
+});
+
+describe('resolveEffectiveReminderTime', () => {
+  it('uses default times when sample_count < 3', () => {
+    expect(resolveEffectiveReminderTime('weight', {
+      average_completion_time: '04:31:00',
+      sample_count: 2,
+    })).toBe(DEFAULT_COMPLETION_TIMES.weight);
+  });
+
+  it('uses personalised average when sample_count >= 3', () => {
+    expect(resolveEffectiveReminderTime('weight', {
+      average_completion_time: '04:31:00',
+      sample_count: 3,
+    })).toBe('04:31:00');
+  });
+
+  it('falls back to default when no row exists', () => {
+    expect(resolveEffectiveReminderTime('breakfast', null)).toBe(DEFAULT_COMPLETION_TIMES.breakfast);
+  });
+});
+
+describe('buildWindowStartReminderBody', () => {
+  it('uses spec copy for weight window start', () => {
+    expect(buildWindowStartReminderBody('weight')).toContain("have not uploaded today's weight yet");
+  });
+});
+
+describe('buildGroupedPendingTasksBody', () => {
+  it('mentions multiple pending tasks', () => {
+    expect(buildGroupedPendingTasksBody(3)).toContain('3 pending wellness tasks');
+  });
+});
+
+describe('resolveDisplayAverageLabel', () => {
+  it('shows default label before personalised threshold', () => {
+    expect(resolveDisplayAverageLabel('weight', { sample_count: 1 })).toBe('6:00 AM');
+  });
+
+  it('shows personalised label after threshold', () => {
+    expect(resolveDisplayAverageLabel('weight', {
+      average_completion_time: '04:31:00',
+      sample_count: 4,
+    })).toBe('4:31 AM');
   });
 });

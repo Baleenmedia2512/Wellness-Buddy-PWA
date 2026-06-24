@@ -12,7 +12,7 @@
 import { getPool } from '../../../utils/dbPool.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { isAtReminderMinute, addMinutesToTime } from '../domain/completion-learning.rules.js';
+import { isAtReminderMinute, addMinutesToTime, appendCompletionHistory, computeAverageFromHistory, resolveEffectiveReminderTime, DEFAULT_COMPLETION_TIMES } from '../domain/completion-learning.rules.js';
 
 // Each call acquires a dedicated connection (has .query() and .release()).
 // getPool() returns the pool wrapper, not a connection — do NOT call it directly.
@@ -52,6 +52,37 @@ function secondsToTime(totalSeconds) {
   const mm = Math.floor((total % 3600) / 60);
   const ss = total % 60;
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function buildAveragesLookup(averagesRows) {
+  const avgKey = (uid, type) => `${uid}:${type}`;
+  const rowMap = Object.fromEntries(
+    (averagesRows || []).map((a) => [
+      avgKey(String(a.UserId), a.TaskType),
+      {
+        average_completion_time: a.AverageCompletionTime,
+        sample_count:            a.SampleCount ?? 0,
+        completion_history:      a.CompletionHistory ?? [],
+      },
+    ]),
+  );
+
+  const effectiveMap = {};
+  for (const [key, row] of Object.entries(rowMap)) {
+    const taskType = key.split(':').slice(1).join(':');
+    effectiveMap[key] = resolveEffectiveReminderTime(taskType, row);
+  }
+
+  return { rowMap, effectiveMap, avgKey };
+}
+
+function resolveEffectiveTimeForUser(avgKeyFn, rowMap, userId, taskType) {
+  const key = avgKeyFn(String(userId), taskType);
+  const row = rowMap[key];
+  if (row) {
+    return resolveEffectiveReminderTime(taskType, row);
+  }
+  return DEFAULT_COMPLETION_TIMES[taskType] ?? null;
 }
 
 function mapCreatedTaskRow(row) {
@@ -610,7 +641,7 @@ async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime
     const [windows, members, averagesResult] = await Promise.all([
       fetchActiveTimeWindows(supabase),
       fetchActiveMembers(supabase),
-      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime'),
+      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime, SampleCount, CompletionHistory'),
     ]);
 
     if (averagesResult.error) throw averagesResult.error;
@@ -626,27 +657,25 @@ async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime
 
     const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
     const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
-    const avgKey        = (uid, type) => `${uid}:${type}`;
-    const avgMap        = Object.fromEntries(
-      (averagesResult.data || []).map((a) => [avgKey(String(a.UserId), a.TaskType), a.AverageCompletionTime]),
-    );
+    const { rowMap, avgKey } = buildAveragesLookup(averagesResult.data);
 
     return (tasks || [])
       .filter((t) => {
         if ((t.ReminderCount ?? 0) !== 1) return false;
         if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
-        const avg = avgMap[avgKey(String(t.UserId), t.TaskType)];
-        if (!avg) return false;
+        const effectiveTime = resolveEffectiveTimeForUser(avgKey, rowMap, t.UserId, t.TaskType);
+        if (!effectiveTime) return false;
         const tw = windowsByType[t.TaskType];
         if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
-        const secondReminderTime = addMinutesToTime(avg, 30);
+        const secondReminderTime = addMinutesToTime(effectiveTime, 30);
         if (!isAtReminderMinute(currentTime, secondReminderTime)) return false;
         return Boolean(memberByUser[String(t.UserId)]?.PushToken);
       })
       .map((t) => {
         const tw     = windowsByType[t.TaskType];
         const member = memberByUser[String(t.UserId)];
-        const avg    = avgMap[avgKey(String(t.UserId), t.TaskType)];
+        const row    = rowMap[avgKey(String(t.UserId), t.TaskType)];
+        const effectiveTime = resolveEffectiveTimeForUser(avgKey, rowMap, t.UserId, t.TaskType);
         return {
           task_id:                  t.TaskId,
           user_id:                  String(t.UserId),
@@ -659,7 +688,8 @@ async function getTasksNeedingReminder(currentDate, currentTime, currentDateTime
           reminder_dismissed_today: t.ReminderDismissedToday,
           notification_sent:        t.NotificationSent,
           status:                   t.Status,
-          average_completion_time:  avg,
+          average_completion_time:  row?.average_completion_time ?? effectiveTime,
+          effective_reminder_time:  effectiveTime,
           PushToken:                member.PushToken,
         };
       });
@@ -723,7 +753,7 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
     const supabase = getSupabaseClient();
     const { data: existing, error: findError } = await supabase
       .from('user_task_averages')
-      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount, CompletionHistory')
       .eq('UserId', userId)
       .eq('TaskType', taskType)
       .maybeSingle();
@@ -731,6 +761,9 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
     if (findError) throw findError;
 
     const now = new Date().toISOString();
+    const history = appendCompletionHistory(existing?.CompletionHistory, completionTimeStr);
+    const count = (existing?.SampleCount ?? 0) + 1;
+    const avgTime = computeAverageFromHistory(history);
 
     if (!existing) {
       const { data, error } = await supabase
@@ -738,11 +771,12 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
         .insert({
           UserId:                  userId,
           TaskType:                taskType,
-          AverageCompletionTime:   completionTimeStr,
+          AverageCompletionTime:   avgTime ?? completionTimeStr,
           SampleCount:             1,
+          CompletionHistory:       history,
           LastCalculatedAt:        now,
         })
-        .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+        .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount, CompletionHistory')
         .single();
 
       if (error) throw error;
@@ -753,24 +787,21 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
         task_type:               data.TaskType,
         average_completion_time: data.AverageCompletionTime,
         sample_count:            data.SampleCount,
+        completion_history:      data.CompletionHistory,
       };
     }
-
-    const count  = (existing.SampleCount ?? 0) + 1;
-    const oldSec = timeToSeconds(existing.AverageCompletionTime);
-    const newSec = timeToSeconds(completionTimeStr);
-    const avgSec = oldSec + (newSec - oldSec) / count;
 
     const { data, error } = await supabase
       .from('user_task_averages')
       .update({
-        AverageCompletionTime: secondsToTime(avgSec),
+        AverageCompletionTime: avgTime ?? existing.AverageCompletionTime,
         SampleCount:           count,
+        CompletionHistory:     history,
         LastCalculatedAt:      now,
       })
       .eq('UserId', userId)
       .eq('TaskType', taskType)
-      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount')
+      .select('AverageId, UserId, TaskType, AverageCompletionTime, SampleCount, CompletionHistory')
       .single();
 
     if (error) throw error;
@@ -781,6 +812,7 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
       task_type:               data.TaskType,
       average_completion_time: data.AverageCompletionTime,
       sample_count:            data.SampleCount,
+      completion_history:      data.CompletionHistory,
     };
   } catch (error) {
     logger.error('Error upserting task average', { userId, taskType, error: error.message });
@@ -798,11 +830,11 @@ async function upsertTaskAverage(userId, taskType, completionTimeStr) {
  *
  * Guards (all must be true to return a row):
  *   1. Task is pending today.
- *   2. Current IST minute matches user's AverageCompletionTime (reminder 1).
- *   3. ReminderCount = 0 (first reminder not yet sent).
+ *   2. Current IST minute matches effective reminder time (personalised or default).
+ *   3. ReminderCount = 0 (first personalised reminder not yet sent).
  *   4. ReminderDismissedToday = false.
  *   5. SnoozedUntil is NULL or already expired.
- *   6. User has a learned average for this task type.
+ *   6. User has a resolvable reminder time for this task type.
  *
  * @param {string} currentDate     - YYYY-MM-DD (IST)
  * @param {string} currentTime     - HH:mm:ss (IST wall clock)
@@ -815,7 +847,7 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
     const [windows, members, averagesResult] = await Promise.all([
       fetchActiveTimeWindows(supabase),
       fetchActiveMembers(supabase),
-      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime'),
+      supabase.from('user_task_averages').select('UserId, TaskType, AverageCompletionTime, SampleCount, CompletionHistory'),
     ]);
 
     if (averagesResult.error) throw averagesResult.error;
@@ -831,25 +863,24 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
 
     const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
     const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
-    const avgKey        = (uid, type) => `${uid}:${type}`;
-    const avgMap        = Object.fromEntries(
-      (averagesResult.data || []).map((a) => [avgKey(String(a.UserId), a.TaskType), a.AverageCompletionTime]),
-    );
+    const { rowMap, avgKey } = buildAveragesLookup(averagesResult.data);
 
     return (tasks || [])
       .filter((t) => {
         if ((t.ReminderCount ?? 0) !== 0) return false;
         if (t.SnoozedUntil && new Date(t.SnoozedUntil) > currentDateTime) return false;
-        const avg = avgMap[avgKey(String(t.UserId), t.TaskType)];
-        if (!avg) return false;
+        const effectiveTime = resolveEffectiveTimeForUser(avgKey, rowMap, t.UserId, t.TaskType);
+        if (!effectiveTime) return false;
         const tw = windowsByType[t.TaskType];
         if (!tw || !isTimeInRange(currentTime, tw.WindowStartTime, tw.WindowEndTime)) return false;
-        if (!isAtReminderMinute(currentTime, avg)) return false;
+        if (!isAtReminderMinute(currentTime, effectiveTime)) return false;
         return Boolean(memberByUser[String(t.UserId)]?.PushToken);
       })
       .map((t) => {
         const tw     = windowsByType[t.TaskType];
         const member = memberByUser[String(t.UserId)];
+        const row    = rowMap[avgKey(String(t.UserId), t.TaskType)];
+        const effectiveTime = resolveEffectiveTimeForUser(avgKey, rowMap, t.UserId, t.TaskType);
         return {
           task_id:                  t.TaskId,
           user_id:                  String(t.UserId),
@@ -861,7 +892,8 @@ async function getTasksPastAverageTime(currentDate, currentTime, currentDateTime
           snoozed_until:            t.SnoozedUntil,
           reminder_dismissed_today: t.ReminderDismissedToday,
           status:                   t.Status,
-          average_completion_time:  avgMap[avgKey(String(t.UserId), t.TaskType)],
+          average_completion_time:  row?.average_completion_time ?? effectiveTime,
+          effective_reminder_time:  effectiveTime,
           PushToken:                member.PushToken,
         };
       });
@@ -929,18 +961,92 @@ async function getUserTaskAverages(userId) {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('user_task_averages')
-      .select('TaskType, AverageCompletionTime, SampleCount')
+      .select('TaskType, AverageCompletionTime, SampleCount, CompletionHistory')
       .eq('UserId', userId);
 
     if (error) throw error;
 
-    return (data || []).map((row) => ({
-      task_type:               row.TaskType,
-      average_completion_time: row.AverageCompletionTime,
-      sample_count:            row.SampleCount,
-    }));
+    const rowByType = Object.fromEntries(
+      (data || []).map((row) => [row.TaskType, row]),
+    );
+
+    return Object.keys(DEFAULT_COMPLETION_TIMES).map((taskType) => {
+      const row = rowByType[taskType];
+      const sampleCount = row?.SampleCount ?? 0;
+      const effectiveTime = resolveEffectiveReminderTime(taskType, {
+        average_completion_time: row?.AverageCompletionTime,
+        sample_count: sampleCount,
+      });
+      return {
+        task_type:               taskType,
+        average_completion_time: row?.AverageCompletionTime ?? null,
+        effective_reminder_time: effectiveTime,
+        sample_count:            sampleCount,
+        completion_history:      row?.CompletionHistory ?? [],
+        is_personalized:         sampleCount >= 3,
+      };
+    });
   } catch (error) {
     logger.error('Error fetching user task averages', { userId, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Pending tasks whose activity window opens at the current IST minute and
+ * whose window-start notification (NotificationSent) has not been sent yet.
+ *
+ * @param {string} currentDate  YYYY-MM-DD (IST)
+ * @param {string} currentTime  HH:mm:ss (IST)
+ * @param {string|null} userId  Optional scope
+ * @returns {Promise<Array>}
+ */
+async function getTasksAtWindowStartMinute(currentDate, currentTime, userId = null) {
+  try {
+    const supabase = getSupabaseClient();
+    const [windows, members] = await Promise.all([
+      fetchActiveTimeWindows(supabase),
+      fetchActiveMembers(supabase),
+    ]);
+
+    const windowsByType = Object.fromEntries(windows.map((w) => [w.ActivityType, w]));
+    const memberByUser  = Object.fromEntries(members.map((m) => [String(m.UserId), m]));
+
+    const { data: tasks, error } = await supabase
+      .from('tasks_table')
+      .select('*')
+      .eq('TaskDate', currentDate)
+      .eq('Status', 'pending')
+      .eq('NotificationSent', false)
+      .eq('ReminderDismissedToday', false);
+
+    if (error) throw error;
+
+    return (tasks || [])
+      .filter((t) => {
+        if (userId && String(t.UserId) !== String(userId)) return false;
+        const tw = windowsByType[t.TaskType];
+        if (!tw) return false;
+        if (!isAtReminderMinute(currentTime, tw.WindowStartTime)) return false;
+        return Boolean(memberByUser[String(t.UserId)]?.PushToken);
+      })
+      .map((t) => {
+        const tw     = windowsByType[t.TaskType];
+        const member = memberByUser[String(t.UserId)];
+        return {
+          task_id:      t.TaskId,
+          user_id:      String(t.UserId),
+          task_type:    t.TaskType,
+          task_date:    t.TaskDate,
+          window_start: tw.WindowStartTime,
+          window_end:   tw.WindowEndTime,
+          PushToken:    member.PushToken,
+        };
+      });
+  } catch (error) {
+    logger.error('Error fetching tasks at window start minute', {
+      currentDate, currentTime, error: error.message,
+    });
     throw error;
   }
 }
@@ -1105,6 +1211,7 @@ export {
   snoozeTask,
   dismissTaskToday,
   getTasksNeedingReminder,
+  getTasksAtWindowStartMinute,
   getPendingTasksNeedingInitialNotification,
   userHasPushToken,
   upsertTaskAverage,

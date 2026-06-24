@@ -210,8 +210,8 @@ export function buildDefaultPreferences(timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.end) {
-      const parsed = parseTimeString(window.end);
+    if (window && window.start) {
+      const parsed = parseTimeString(window.start);
       if (parsed) {
         const reminder = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
         activities[type] = {
@@ -255,6 +255,27 @@ export function buildDefaultPreferences(timeWindowMap) {
 }
 
 /**
+ * If the user never customised their reminder time, migrate from the old
+ * default (window end − 15 min) to the correct default (window start − 15 min).
+ */
+function maybeMigrateReminderTime(activity, window) {
+  if (!activity || !window?.start || !window?.end) return activity;
+
+  const startParsed = parseTimeString(window.start);
+  const endParsed   = parseTimeString(window.end);
+  if (!startParsed || !endParsed) return activity;
+
+  const oldDefault = subtractMinutes(endParsed.hour, endParsed.minute, REMINDER_OFFSET);
+  const newDefault = subtractMinutes(startParsed.hour, startParsed.minute, REMINDER_OFFSET);
+
+  if (activity.hour === oldDefault.hour && activity.minute === oldDefault.minute
+      && (oldDefault.hour !== newDefault.hour || oldDefault.minute !== newDefault.minute)) {
+    return { ...activity, hour: newDefault.hour, minute: newDefault.minute };
+  }
+  return activity;
+}
+
+/**
  * Merge saved preferences with fresh time-window data.
  * - Preserves user's enabled/time customisations
  * - Updates windowStart/windowEnd from the latest API data
@@ -264,17 +285,17 @@ export function mergePreferencesWithWindows(savedPrefs, timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.end) {
+    if (window && window.start) {
       if (merged.activities[type]) {
         // Update window info but keep user's custom time & enabled state
-        merged.activities[type] = {
+        merged.activities[type] = maybeMigrateReminderTime({
           ...merged.activities[type],
           windowStart: window.start,
           windowEnd:   window.end,
-        };
+        }, window);
       } else {
         // Activity not in saved prefs — add it with default reminder time
-        const parsed   = parseTimeString(window.end);
+        const parsed   = parseTimeString(window.start);
         const reminder = parsed
           ? subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET)
           : { hour: 7, minute: 0 };
@@ -372,9 +393,18 @@ export async function fetchUserAverages(userId) {
     });
     if (!response.data?.ok) return {};
     const map = {};
-    (response.data.data?.averages || []).forEach(({ task_type, average_completion_time }) => {
-      if (task_type && average_completion_time) {
-        map[task_type] = String(average_completion_time);
+    (response.data.data?.averages || []).forEach(({
+      task_type,
+      average_completion_time,
+      effective_reminder_time,
+      is_personalized,
+    }) => {
+      const time = effective_reminder_time || average_completion_time;
+      if (task_type && time) {
+        map[task_type] = String(time);
+        if (is_personalized) {
+          map[`${task_type}__personalized`] = 'true';
+        }
       }
     });
     debugLog('[ReminderService] fetchUserAverages:', map);
@@ -464,7 +494,7 @@ export async function applyRemindersToNative(prefsRaw, averagesMap = {}) {
     // Build personalised body only when a learned average exists
     const avgStr = averagesMap[type];
     let personalizedBody = undefined;
-    if (avgStr) {
+    if (avgStr && averagesMap[`${type}__personalized`] === 'true') {
       const avg = parsePgTime(avgStr);
       if (avg) {
         const avgLabel = formatReminderTime(avg.hour, avg.minute);
@@ -651,6 +681,55 @@ export async function resetRemindersToDefaults() {
 // ── Snooze helpers (native local notification bridge) ──────────────────────────
 
 /**
+ * Build the native alarm body text for a task type and scheduled alarm time.
+ * Mirrors ReminderAlarmReceiver.getActivityMessage() on Android.
+ *
+ * @param {string} taskType
+ * @param {number} alarmHour   Scheduled alarm hour (0–23), or -1 when unknown
+ * @param {number} alarmMinute Scheduled alarm minute (0–59), or -1 when unknown
+ * @returns {string}
+ */
+function buildNativeReminderBody(taskType, alarmHour, alarmMinute) {
+  const type = String(taskType || '').toLowerCase();
+
+  if (type === 'sleep') {
+    return '🌙 Bedtime in 15 minutes! Wind down and prepare for a good night\'s sleep.';
+  }
+
+  if (alarmHour < 0 || alarmMinute < 0) {
+    const timeless = {
+      weight:    '⚖️ Time to log your weight and stay on track!',
+      education: '📚 Education session is due. Get ready to learn!',
+      breakfast: '🥗 Breakfast window is open. Time to prepare your meal and log it!',
+      lunch:     '🍱 Lunch window is open. Don\'t forget to log your meal!',
+      dinner:    '🌙 Dinner window is open. Plan your evening meal and log it!',
+      water:     '💧 Time to drink water! Stay hydrated throughout the day.',
+    };
+    if (timeless[type]) return timeless[type];
+    if (type.startsWith('water_')) return timeless.water;
+    return `Time for your ${taskType} reminder!`;
+  }
+
+  const totalMins = alarmHour * 60 + alarmMinute + REMINDER_OFFSET;
+  const actHour   = Math.floor(totalMins / 60) % 24;
+  const actMinute = totalMins % 60;
+  const timeStr   = formatReminderTime(actHour, actMinute);
+
+  const timed = {
+    weight:    `⚖️ Your Weight tracking time starts at ${timeStr}. Log your weight now to stay on track!`,
+    education: `📚 Education session starts at ${timeStr}. Get ready to learn!`,
+    breakfast: `🥗 Breakfast window opens at ${timeStr}. Time to prepare your meal and log it!`,
+    lunch:     `🍱 Lunch window opens at ${timeStr}. Don't forget to log your meal!`,
+    dinner:    `🌙 Dinner window opens at ${timeStr}. Plan your evening meal!`,
+  };
+  if (timed[type]) return timed[type];
+  if (type.startsWith('water_')) {
+    return '💧 Time to drink water! Stay hydrated throughout the day.';
+  }
+  return `Your ${taskType} time starts at ${timeStr}.`;
+}
+
+/**
  * Schedule a one-shot native local notification at the snooze expiry time.
  * Works on Android (AlarmManager) and iOS (UNTimeIntervalNotificationTrigger).
  * Safe to call on web — silently no-ops.
@@ -663,7 +742,29 @@ export async function resetRemindersToDefaults() {
 export async function scheduleSnooze(taskId, taskType, label, snoozeMinutes) {
   if (!isNative()) return;
   try {
-    await ReminderPluginNative.scheduleSnooze({ taskId, taskType, label, snoozeMinutes });
+    const prefs = loadReminderPreferences();
+    let alarmHour   = -1;
+    let alarmMinute = -1;
+
+    if (taskType === 'sleep' && prefs?.sleep) {
+      alarmHour   = prefs.sleep.hour   ?? -1;
+      alarmMinute = prefs.sleep.minute ?? -1;
+    } else if (prefs?.activities?.[taskType]) {
+      alarmHour   = prefs.activities[taskType].hour   ?? -1;
+      alarmMinute = prefs.activities[taskType].minute ?? -1;
+    }
+
+    const body = buildNativeReminderBody(taskType, alarmHour, alarmMinute);
+
+    await ReminderPluginNative.scheduleSnooze({
+      taskId,
+      taskType,
+      label,
+      snoozeMinutes,
+      body,
+      hour:   alarmHour,
+      minute: alarmMinute,
+    });
     debugLog('[ReminderService] scheduleSnooze', { taskId, taskType, snoozeMinutes });
   } catch (e) {
     // Non-critical — FCM server-side push is the fallback
