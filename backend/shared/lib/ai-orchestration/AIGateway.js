@@ -95,6 +95,8 @@ const UNIFIED_SCHEMA = {
               name:      { type: SchemaType.STRING },
               portion:   { type: SchemaType.STRING },
               weight_g:  { type: SchemaType.NUMBER },
+              volume_ml: { type: SchemaType.NUMBER },  // required for drinks/liquids
+              isLiquid:  { type: SchemaType.BOOLEAN }, // true for water, tea, shakes, etc.
               nutrition: {
                 type: SchemaType.OBJECT,
                 properties: {
@@ -104,8 +106,12 @@ const UNIFIED_SCHEMA = {
                   fat:      { type: SchemaType.NUMBER },
                   fiber:    { type: SchemaType.NUMBER },
                 },
+                // Force Gemini to always provide all macro values (use 0 not null)
+                required: ['calories', 'protein', 'carbs', 'fat', 'fiber'],
               },
             },
+            // Minimum required per item so food lists are never empty/nutrition-less
+            required: ['name', 'nutrition'],
           },
         },
         total: {
@@ -186,62 +192,68 @@ const ENRICHMENT_SCHEMA = {
 
 const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON object matching the schema exactly.
 
-=== imageType — STRICT RULES (read carefully before choosing) ===
+=== imageType — pick the BEST match ===
 
 "food"
-  ANY edible item: meals, snacks, drinks, raw ingredients, packaged food,
-  nutrition supplements (Herbalife shakes, protein powder, meal replacements,
-  supplement sachets/bottles). If it goes in your mouth for nutrition, it is food.
+  ANY edible item: meals, snacks, ALL drinks (water, tea, coffee, juice, milk,
+  protein shakes, Herbalife shakes, energy drinks), raw ingredients, packaged food,
+  nutrition supplements (powder sachets, capsules, bottles with nutritional content).
+  RULE: when in doubt between "food" and "other", ALWAYS choose "food".
 
 "weight"
   A weighing scale with a VISIBLE NUMERIC weight reading on its display.
-  Must show actual digits (kg or lbs). A scale with no visible number is "other".
+  Must show actual digits (kg or lbs). No visible number → "other".
 
 "smartwatch"
-  A fitness tracker or smartwatch DEVICE SCREEN showing health/activity metrics:
-  steps walked, calories burned, heart rate, distance, active minutes.
-  Examples: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band.
-  KEY RULE: if the screen shows ACTIVITY DATA on a WEARABLE DEVICE — it is
-  "smartwatch", even if it also shows calorie numbers.
-  A phone screenshot of a fitness app (Google Fit, Samsung Health) is also
-  "smartwatch" if it shows activity summary data.
-  NEVER classify a smartwatch/fitness screen as "education".
+  A fitness tracker or smartwatch screen showing activity/health data:
+  steps, calories burned, heart rate, distance, active minutes.
+  Examples: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band, Google Fit,
+  Samsung Health app (phone screenshot showing daily summary).
+  KEY RULE: activity data on any screen → "smartwatch". NEVER classify as "education".
 
 "education"
-  ONLY a screenshot of a live VIDEO CALL where you can see:
-    - Participant video tiles (faces on screen)
-    - Meeting toolbar (mute button, camera button, end-call button)
-    - Platform branding: Google Meet, Zoom, or Microsoft Teams UI.
-  If there are NO participant video tiles and NO meeting toolbar, it is NOT education.
-  A smartwatch, fitness app, food photo, or generic screenshot is NEVER education.
+  ONLY a live video-call screenshot with ALL THREE visible:
+    1. Participant video tiles (faces in boxes)
+    2. Meeting toolbar (mute/camera/end-call buttons)
+    3. Platform UI: Google Meet, Zoom, or Microsoft Teams
+  Missing any one of those three → NOT education.
 
-"other" — use when the image does not clearly match any of the above.
+"other" — use ONLY when the image is clearly NOT food, NOT a scale, NOT a fitness
+  screen, and NOT a video call. Examples: random landscape, text document, animal
+  photo with no food. If you have ANY reasonable chance it is food, choose "food".
 
 === confidence ===
-  0.9+ very clear  |  0.7–0.89 clear  |  0.5–0.69 uncertain  |  <0.5 → use "other"
+  Report how confident you are: 0.0 – 1.0.
+  CRITICAL: confidence is ONLY a score to report — it does NOT change your imageType.
+  Never downgrade imageType to "other" just because confidence is < 0.8.
+  A blurry food photo is still "food" at confidence 0.55.
 
 === Per-type fields to populate ===
 
 FOOD — populate ALL:
   fastNutrition: { calories, protein, carbs, fat, fiber }  ← aggregate totals
-  details.foods: array, each item: { name, portion, weight_g, nutrition:{calories,protein,carbs,fat,fiber} }
-  details.total: { calories, protein, carbs, fat, fiber }
-  Name each food specifically (e.g. "Herbalife Formula 1 Shake" not "Drink",
-  "Idli" not "Rice Cake", "Chapati" not "Flatbread").
+  details.foods: array; each item MUST have name + nutrition.calories (use 0 if genuinely 0).
+    { name, portion, weight_g, volume_ml, isLiquid,
+      nutrition: { calories, protein, carbs, fat, fiber } }
+  DRINKS / WATER: set isLiquid:true, provide volume_ml (e.g. 250 for a glass),
+    calories:0 is CORRECT for plain water / black coffee / plain tea.
+  details.total: { calories, protein, carbs, fat, fiber }  ← sum of all items
+  Name specifically: "Herbalife Formula 1 Shake", "Masala Chai", "Idli", "Chapati",
+    "Plain Water" — never use vague names like "Drink" or "Food".
 
 WEIGHT — populate ALL:
-  weightReading: { value: number in kg (convert lbs if needed), unit: "kg" }
-  details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not on display
+  weightReading: { value: number in kg (convert lbs if shown), unit: "kg" }
+  details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not visible
 
 SMARTWATCH — populate ALL:
-  smartwatchData: { caloriesBurned, steps, source }  (source = device brand)
+  smartwatchData: { caloriesBurned, steps, source }  (source = brand e.g. "Apple Watch")
   details: { caloriesBurned, steps, source }
 
 EDUCATION — populate ALL:
-  educationData: { isMeeting: true, platform }  (platform = "Google Meet"/"Zoom"/"Teams")
+  educationData: { isMeeting: true, platform }  ("Google Meet" / "Zoom" / "Teams")
   details: { platform, participantCount }
 
-All fields not relevant to the detected imageType must be omitted or null.
+Omit or set null for fields not relevant to the detected imageType.
 JSON only. No markdown. No explanation.`;
 
 /**

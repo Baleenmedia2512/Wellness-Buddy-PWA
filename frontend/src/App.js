@@ -6358,20 +6358,21 @@ function WellnessValleyApp() {
         // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
         // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, "unknown");
-        // PR-D / ADR-0003: when the Diary feed is enabled, AI detection
-        // failures must NOT open the picker modal — the capture surfaces as
-        // an "Other" row in the Diary with Retry / Edit there.
-        // EXCEPTION: if the AI failed *entirely* (defaulted=true — e.g. API
-        // key missing/invalid, network error, timeout), always surface an
-        // error so the user knows something went wrong rather than silently
-        // seeing "✓ Ready" with no result.
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
         if (aiFailedEntirely) {
+          // Complete AI failure (network/API key/timeout) — show error.
           setError(
             "⚠️ AI analysis could not run. Please check your internet connection and try again.",
           );
         } else if (!isFlagEnabled("ff.diary-feed")) {
+          // Legacy path (diary-feed OFF): disambiguation modal.
           setUnknownCaptureModal({ open: true, pendingSharePromise });
+        } else {
+          // Diary-feed ON: AI ran but couldn't identify the image.
+          // Open the best manual entry modal so the user can still log their
+          // data immediately instead of seeing a frozen unresponsive screen.
+          showToast("📷 Couldn't identify — please log manually");
+          openBestManualModal();
         }
         setLoading(false);
         return;

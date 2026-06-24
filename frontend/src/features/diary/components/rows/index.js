@@ -358,36 +358,69 @@ export function WatchRow({ entry, onOpen, onDelete }) {
 }
 
 // ─── kind: unknown (the "Other" card) ───────────────────────────────────────
-// Unknown entries have their own delete flow via UnknownEntryFlow modal with
-// undo functionality, so we keep this as a simple clickable card without
-// swipe-to-delete.
+// Supports both swipe-to-delete (quick removal) and tap-to-open
+// (UnknownEntryFlow for Retry / Edit).
 
-export function OtherRow({ entry, onOpen }) {
+export function OtherRow({ entry, onOpen, onDelete }) {
   const p = entry.payload || {};
+  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen ? () => onOpen(entry) : undefined}
-      onKeyDown={(e) => {
-        if (!onOpen) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(entry);
-        }
-      }}
-      aria-label="Unrecognised capture, tap to identify"
-      data-testid="diary-row-unknown"
-      className="bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow"
+      className="relative w-full"
+      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
-      <div className="flex-1 min-w-0">
-        <h4 className="font-semibold text-gray-900 truncate">Other</h4>
-        <p className="text-xs text-gray-500">
-          {formatTime(entry.capturedAt)} · couldn't identify
-        </p>
+      {/* Swipe-delete background */}
+      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+        <div
+          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+          style={{
+            opacity: swipe.progress,
+            transform: `scale(${0.6 + swipe.progress * 0.4})`,
+            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+          }}
+        >
+          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+          </svg>
+        </div>
       </div>
-      <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+
+      {/* Card */}
+      <div
+        ref={swipe.elRef}
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
+        onKeyDown={(e) => {
+          if (swipe.leaving) return;
+          if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
+        }}
+        {...swipe.touchHandlers}
+        {...swipe.pointerHandlers}
+        aria-label="Unrecognised capture, tap to identify or swipe to delete"
+        data-testid="diary-row-unknown"
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        style={{
+          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
+          willChange: 'transform',
+        }}
+      >
+        {/* Progress bar */}
+        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+
+        <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-gray-900 truncate">Other</h4>
+          <p className="text-xs text-gray-500">
+            {formatTime(entry.capturedAt)} · couldn&apos;t identify
+          </p>
+        </div>
+        <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+      </div>
     </div>
   );
 }

@@ -47,7 +47,7 @@ function UnknownShareViewer({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-900"
+        className="w-full max-w-sm overflow-y-auto max-h-[90vh] rounded-2xl bg-white shadow-xl dark:bg-gray-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5">
@@ -101,7 +101,7 @@ function UnknownShareViewer({
         ) : null}
 
         {canMutate ? (
-          <div className="flex flex-col gap-2 px-5 pb-5">
+          <div className="flex flex-col gap-2 px-5 pb-8">
             <div className="flex gap-2">
               <button
                 type="button"
