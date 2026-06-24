@@ -230,16 +230,166 @@ const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON obj
 
 === Per-type fields to populate ===
 
-FOOD — populate ALL:
-  fastNutrition: { calories, protein, carbs, fat, fiber }  ← aggregate totals
-  details.foods: array; each item MUST have name + nutrition.calories (use 0 if genuinely 0).
-    { name, portion, weight_g, volume_ml, isLiquid,
-      nutrition: { calories, protein, carbs, fat, fiber } }
-  DRINKS / WATER: set isLiquid:true, provide volume_ml (e.g. 250 for a glass),
-    calories:0 is CORRECT for plain water / black coffee / plain tea.
-  details.total: { calories, protein, carbs, fat, fiber }  ← sum of all items
-  Name specifically: "Herbalife Formula 1 Shake", "Masala Chai", "Idli", "Chapati",
-    "Plain Water" — never use vague names like "Drink" or "Food".
+FOOD — populate ALL nutrition fields for every detected food or beverage.
+
+fastNutrition:
+{
+  calories,
+  protein,
+  carbs,
+  fat,
+  fiber
+}
+← Aggregate totals across all detected foods and drinks.
+
+details.foods:
+Array of all detected food and beverage items.
+
+Each item MUST contain:
+
+{
+  name,
+  portion,
+  weight_g,
+  volume_ml,
+  isLiquid,
+
+  nutrition: {
+    calories,
+    protein,
+    carbs,
+    fat,
+    fiber,
+
+    glycemic_index,
+    glycemic_load,
+
+    micronutrients: {
+      vitamins: {
+        vitamin_a,
+        vitamin_b1,
+        vitamin_b2,
+        vitamin_b3,
+        vitamin_b5,
+        vitamin_b6,
+        vitamin_b7,
+        vitamin_b9,
+        vitamin_b12,
+        vitamin_c,
+        vitamin_d,
+        vitamin_e,
+        vitamin_k
+      },
+
+      minerals: {
+        calcium,
+        iron,
+        magnesium,
+        phosphorus,
+        potassium,
+        sodium,
+        zinc,
+        copper,
+        manganese,
+        selenium,
+        chromium,
+        iodine,
+        molybdenum
+      },
+
+      lipids: {
+        cholesterol,
+        omega3,
+        omega6,
+        saturated_fat,
+        monounsaturated_fat,
+        polyunsaturated_fat,
+        trans_fat
+      },
+
+      carbohydrates: {
+        sugar,
+        added_sugar,
+        starch,
+        net_carbs
+      }
+    }
+  }
+}
+
+Food Identification Rules:
+- Use specific food names whenever possible.
+- Examples:
+  - "Herbalife Formula 1 Shake"
+  - "Masala Chai"
+  - "Idli"
+  - "Chapati"
+  - "Paneer Butter Masala"
+  - "Plain Water"
+  - "Black Coffee"
+- Never use generic names such as:
+  - "Food"
+  - "Meal"
+  - "Drink"
+  - "Snack"
+  - "Item"
+
+Portion Estimation Rules:
+- Estimate realistic serving sizes using visible context.
+- Provide weight_g for solids.
+- Provide volume_ml for liquids.
+- If both can be reasonably estimated, provide both.
+
+Drink Rules:
+- All beverages MUST have:
+  isLiquid: true
+- Provide volume_ml whenever possible.
+- Plain water:
+  calories = 0
+  protein = 0
+  carbs = 0
+  fat = 0
+  fiber = 0
+- Black coffee and unsweetened plain tea may legitimately contain near-zero calories.
+
+Nutrition Rules:
+- Estimate nutrients using USDA FoodData Central or equivalent standard nutrition databases.
+- Never omit nutrition fields.
+- If a nutrient is genuinely absent, return 0.
+- If a nutrient cannot be reasonably estimated, return null.
+- All nutrient values must be numeric where available.
+
+details.total:
+Must contain aggregated totals for ALL detected food and beverage items.
+
+{
+  calories,
+  protein,
+  carbs,
+  fat,
+  fiber,
+
+  glycemic_load,
+
+  micronutrients: {
+    vitamins,
+    minerals,
+    lipids,
+    carbohydrates
+  }
+}
+
+Consistency Rules:
+- Detect ALL visible edible items and beverages in the image.
+- Do NOT stop after identifying the dominant dish.
+- Each visible food/drink must appear as a separate object in details.foods.
+- Include side dishes, beverages, sauces, condiments, toppings, and water.
+- details.total MUST equal the sum of all food items.
+- fastNutrition MUST match the total calories, protein, carbs, fat, and fiber values from details.total.
+- Every detected food or beverage must appear in details.foods.
+- Return valid JSON only.
+- No markdown.
+- No explanations.
 
 WEIGHT — populate ALL:
   weightReading: { value: number in kg (convert lbs if shown), unit: "kg" }
