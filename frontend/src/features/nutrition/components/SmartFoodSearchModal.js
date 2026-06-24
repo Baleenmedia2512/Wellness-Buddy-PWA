@@ -18,6 +18,10 @@ const SmartFoodSearchModal = ({
   userId,
   timeLabel,
   altSwitchButtons,
+  // When true, skip the "AI Unavailable / Log Food" type-select screen and go
+  // directly to the search/manual form. Use when the caller has already
+  // established the entry type (e.g. UnknownEntryFlow after picking Food).
+  skipTypeSelect = false,
 }) => {
   const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,7 +47,7 @@ const SmartFoodSearchModal = ({
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
-      setShowTypeSelect(true);
+      setShowTypeSelect(!skipTypeSelect);
       setSearchQuery("");
       setMyItems([]);
       setCommunityItems([]);

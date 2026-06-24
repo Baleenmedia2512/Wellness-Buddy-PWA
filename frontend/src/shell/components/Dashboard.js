@@ -241,8 +241,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     reloadDiary();
   };
 
-  // Swipe-to-delete for timeline rows. Unknown ("Other") rows have no swipe UI —
-  // they delete via UnknownEntryFlow (tap → Delete + undo banner).
+  // Swipe-to-delete for timeline rows including unknown ("Other") rows.
   const handleEntryDelete = async (entry) => {
     if (!entry || !ownerId || !viewingSelf) return;
     const entryId = entry.payload?.id;
@@ -266,6 +265,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         case 'watch': {
           await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: entryId });
           setDiaryEducationRefreshKey((k) => k + 1);
+          break;
+        }
+        case 'unknown': {
+          // Direct capture delete (no associated domain row for unknown entries).
+          const { deleteCapture } = await import('../../features/captures');
+          await deleteCapture({ captureId: entryId, userId: ownerId });
           break;
         }
         default:

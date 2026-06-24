@@ -63,16 +63,14 @@ export const MODEL_CONFIGS = {
   /**
    * Unified single-call inference (AIGateway.analyzeUnified).
    * Replaces the old classify→nutrition two-call chain.
-   * Must be at least as large as the nutrition budget because a food image
-   * response includes details.foods[] (multiple items) + fastNutrition +
-   * details.total — easily 1500-3000 tokens for a complex plate.
-   * 1024 was too small and caused JSON truncation → parse failures → FALLBACK.
+   * Food plates rarely exceed 800 tokens; 2048 gives 2.5× headroom while
+   * halving the previous 4096 allocation → less memory pre-reserved per call.
    */
   unified: {
     temperature: 0,
     topK: 1,
     topP: 1.0,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 2048,
     responseMimeType: 'application/json',
   },
 };
