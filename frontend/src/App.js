@@ -193,7 +193,6 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import { initializeFCM } from './shared/services/fcmRegistrationService';
-import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 // ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
