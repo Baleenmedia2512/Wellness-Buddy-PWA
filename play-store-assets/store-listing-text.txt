@@ -1,0 +1,40 @@
+App Name: Wellness Valley
+
+Short Description (80 characters max):
+AI nutrition tracker - Snap food photos, get instant health insights! 🥗📸
+
+Full Description:
+🥗 WELLNESS VALLEY - Your AI-Powered Nutrition Companion
+
+Transform your health journey with intelligent food tracking and personalized nutrition insights!
+
+🔥 KEY FEATURES:
+• 📸 Smart Food Recognition - Snap photos, get instant nutrition analysis
+• 🧠 AI-Powered Insights - Personalized recommendations based on your goals  
+• 📊 Comprehensive Tracking - Calories, macros, vitamins, and minerals
+• 🎯 Goal Setting - Weight management and health objectives
+• 📱 Offline Ready - Works without internet connection
+• 🔒 Privacy First - Your data stays secure and private
+
+✨ WHY WELLNESS VALLEY?
+Our advanced AI technology makes nutrition tracking effortless. Simply take a photo of your meal, and our smart system identifies foods and provides detailed nutritional information. Get personalized insights to help you make healthier choices and reach your wellness goals.
+
+🏥 HEALTH & SAFETY:
+This app is designed for general wellness and nutrition education. It is not a substitute for professional medical advice. Always consult healthcare providers for medical concerns.
+
+📞 SUPPORT:
+We're here to help! Contact us at easy2work.india@gmail.com for support or feedback.
+
+Download Wellness Valley today and start your journey to better health! 🌟
+
+---
+
+Release Notes v1.0:
+🎉 Welcome to Wellness Valley v1.0!
+
+🥗 AI-powered nutrition tracking
+📸 Smart food photo analysis  
+📊 Comprehensive health insights
+🔒 Privacy-focused design
+
+Start your wellness journey today!

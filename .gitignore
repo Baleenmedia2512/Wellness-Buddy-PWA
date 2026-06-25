@@ -49,6 +49,10 @@ jspm_packages/
 .env.development.local
 .env.test.local
 .env.production.local
+# .env.production is ignored for security; remove this line if your team tracks production env files in version control
+.env.production
+.env.production
+.env.android
 
 # API keys and secrets
 .env.example
@@ -188,3 +192,13 @@ firebase-debug.*.log*
 
 # Local Netlify folder
 .netlify
+# Cypress screenshots and videos
+frontend/cypress/screenshots/
+frontend/cypress/videos/
+
+foodnutritiontable.json
+weightrecoredstable.json
+wellnessvalleyDump20260109.sql
+
+reports/smoke-2*.json
+!reports/smoke-baseline.json

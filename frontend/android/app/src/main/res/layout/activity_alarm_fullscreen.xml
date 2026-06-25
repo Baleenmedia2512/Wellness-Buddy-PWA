@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_alarm_fullscreen.xml
+    Full-screen alarm UI that appears on top of the lock screen when an activity reminder fires.
+    Shows alarm icon, activity name, reminder message, and Snooze / Dismiss buttons.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="#1A1A2E">
+
+    <!-- App logo icon -->
+    <ImageView
+        android:id="@+id/ivAlarmIcon"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:src="@mipmap/ic_launcher"
+        android:layout_marginBottom="24dp"
+        android:contentDescription="App Logo" />
+
+    <!-- "REMINDER" label -->
+    <TextView
+        android:id="@+id/tvAlarmLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="REMINDER"
+        android:textColor="#4CAF50"
+        android:textSize="12sp"
+        android:letterSpacing="0.2"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Activity title e.g. "🔔 Breakfast Reminder" -->
+    <TextView
+        android:id="@+id/tvAlarmTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Wellness Reminder"
+        android:textColor="#FFFFFF"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Divider line -->
+    <View
+        android:layout_width="60dp"
+        android:layout_height="2dp"
+        android:background="#4CAF50"
+        android:layout_marginBottom="20dp" />
+
+    <!-- Reminder message -->
+    <TextView
+        android:id="@+id/tvAlarmMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Time for your activity!"
+        android:textColor="#CCCCCC"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:lineSpacingMultiplier="1.4"
+        android:layout_marginBottom="32dp" />
+
+    <!-- Upload Now button -->
+    <Button
+        android:id="@+id/btnUploadNow"
+        android:layout_width="240dp"
+        android:layout_height="52dp"
+        android:text="📸  Upload Now"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:background="#4CAF50"
+        android:layout_marginBottom="16dp"
+        android:stateListAnimator="@null" />
+
+    <!-- Snooze button -->
+    <Button
+        android:id="@+id/btnSnooze"
+        android:layout_width="240dp"
+        android:layout_height="52dp"
+        android:text="⏰  Snooze 5 minutes"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:background="#3A3A5C"
+        android:layout_marginBottom="16dp"
+        android:stateListAnimator="@null" />
+
+    <!-- Dismiss button -->
+    <Button
+        android:id="@+id/btnDismiss"
+        android:layout_width="240dp"
+        android:layout_height="52dp"
+        android:text="✖  Dismiss"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:background="#C0392B"
+        android:stateListAnimator="@null" />
+
+</LinearLayout>

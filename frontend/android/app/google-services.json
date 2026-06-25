@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "499376291787",
+    "project_id": "wellness-valley",
+    "storage_bucket": "wellness-valley.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499376291787:android:86727a6963d95ea5e9404e",
+        "android_client_info": {
+          "package_name": "com.wellnessvalley.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "499376291787-hjjps67kfiplmicd0g388oiteovrjdsg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessvalley.app",
+            "certificate_hash": "32466dadb68dad9e7780e3b0f538cccb300b620e"
+          }
+        },
+        {
+          "client_id": "499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

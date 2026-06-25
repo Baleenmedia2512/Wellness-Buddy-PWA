@@ -1,0 +1,67 @@
+
+Screen 1: LoginScreen
+Screen 2: OTP EntryScreen
+Screen 3:Setup Wizard -Step 1 (Team ID)
+Screen 4:Setup Wizard -Step 2 (Upline Assignment)
+Screen 5:Setup Wizard -Step 3 (Basic Profile)
+Screen 6: Mandatory Profile PictureScreen
+Screen 7: **Profile CompletionScreen**
+Screen 8: **User Not Found Modal**
+Screen 9: **Inactive User Modal**
+Screen 10: **Main Dashboard - Nutrition Tab**
+Screen 11: **Main Dashboard - Weight Tab**
+Screen 12: **Main Dashboard - Education Tab**
+Screen 13: **Main Dashboard - Water Tab**
+Screen 14: **Nutrition Analysis Panel**
+Screen 15: **Duplicate Food Detection Modal**
+Screen 16: **Manual Food Entry Modal**
+Screen 17: **Smart FoodSearch Modal**
+Screen 18: **Meal Analysis Detail Modal**
+Screen 19: **Editable Food ItemScreen**
+Screen 20: **Nutrition Calendar Panel**
+Screen 21: **Calorie Trend ChartScreen**
+Screen 22: **Weight Analysis Result Card**
+Screen 23: **Duplicate Weight Detection Modal**
+Screen 24: **Manual Weight Entry Modal**
+Screen 25: **Weight Detail Modal**
+Screen 26: **Weight Trend ChartScreen**
+Screen 27: **Weight Loss Leaderboard**
+Screen 28: **Education Analysis Result Card**
+Screen 29: **ClubSelection Modal**
+Screen 30: **Manual Education Entry Modal**
+Screen 31: **Education Log Detail Modal**
+Screen 32: **Education Trend ChartScreen**
+Screen 33: **Water TrackerScreen**
+Screen 34: **User Profile Modal**
+Screen 35: **Profile Picture CropScreen**
+Screen 36: **Delete Account Flow - Warning**
+Screen 37: **Delete Account Flow - OTP Verification**
+Screen 38: **Delete Account Flow -Success**
+Screen 39: **Weight Loss Leaderboard**
+Screen 40: **Discipline Leaderboard**
+Screen 41: **Personal DisciplineScoreScreen**
+Screen 42: **Team MemberSearchScreen**
+Screen 43: **Team Member Profile Modal**
+Screen 44: **Attendance ReportScreen**
+Screen 45: **Hierarchical Club Attendance View**
+Screen 46: **Wellness Counselling Form**
+Screen 47: **Wellness University Enrollment**
+Screen 48: **Wellness University Report**
+Screen 49: **Admin Dashboard - Users Tab**
+Screen 50: **Admin Dashboard - Tokens Tab**
+Screen 51: **Admin Dashboard - Corrections Tab**
+Screen 52: **Admin Dashboard - Reports Tab**
+Screen 53: **Admin Dashboard - Analytics Tab**
+Screen 54: **Nutrition Centers Map**
+Screen 55: **Nutrition Center Registration**
+Screen 56: **Discipline ReportScreen**
+Screen 57: **Activity Time Report**
+Screen 58: **CoachScoreSummaryScreen**
+
+
+## DISABLEDSCREENS (4Screens)
+
+Screen 59: **Step CounterScreen** 
+Screen 60: **Screen Time Dashboard** 
+Screen 61: **ReminderSettingsScreen** 
+Screen 62: **Watch Activity Entry Modal** 

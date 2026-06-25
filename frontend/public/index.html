@@ -2,9 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Wellness Buddy PWA</title>
-  <link rel="icon" href="./logo.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    
+    <!-- Cache Control: Force fresh content on new version -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
+    <title>Wellness Valley</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#10b981" />
+    <meta name="description" content="Track your nutrition, fitness, and wellness journey with AI-powered insights" />
+    
+    <!-- iOS Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Wellness Valley" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+
+    <link rel="icon" href="../assets/icon.png" type="image/png" />
+
+    <!-- ✅ Google Sign-In -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <meta name="google-signin-client_id" content="155478550721-suf2sas620qebja2hbplfh20gktmom1k.apps.googleusercontent.com" />
+    <meta name="google-signin-scope" content="profile email" />
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

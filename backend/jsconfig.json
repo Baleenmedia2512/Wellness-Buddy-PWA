@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@features/*": ["./features/*"],
+      "@shared/*": ["./shared/*"],
+      "@config/*": ["./config/*"]
+    }
+  },
+  "include": ["features", "shared", "config", "pages"]
+}

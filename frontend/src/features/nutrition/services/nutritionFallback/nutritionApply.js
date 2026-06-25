@@ -1,0 +1,56 @@
+// Detect missing/zero nutrition values and apply fallback estimates.
+import { normalizeFoodName, ZERO_CALORIE_FOODS } from './foodDatabase';
+import { getFallbackNutrition } from './nutritionLookup';
+import { debugLog } from '../../../../shared/utils/logger.js';
+
+export function needsNutritionCorrection(food) {
+  if (!food || !food.nutrition) return true;
+  const { calories, protein, carbs, fat } = food.nutrition;
+
+  // Don't "correct" foods that are legitimately 0-calorie.
+  const normalizedName = normalizeFoodName(food.name);
+  if (ZERO_CALORIE_FOODS.includes(normalizedName)) return false;
+
+  if (calories === 0 || (calories === undefined && carbs === 0 && protein === 0 && fat === 0)) {
+    debugLog(`⚠️ [NUTRITION-CHECK] "${food.name}" has suspicious 0 values`);
+    return true;
+  }
+  return false;
+}
+
+export function applyFallbackNutrition(foods) {
+  if (!foods || !Array.isArray(foods)) return foods;
+  debugLog(`🔧 [NUTRITION-FALLBACK] Checking ${foods.length} foods for missing nutrition...`);
+
+  return foods.map((food) => {
+    if (!needsNutritionCorrection(food)) return food;
+    debugLog(`⚠️ [NUTRITION-FALLBACK] "${food.name}" needs correction`);
+    const fallback = getFallbackNutrition(food);
+    if (!fallback) {
+      console.warn(`❌ [NUTRITION-FALLBACK] No fallback found for: "${food.name}"`);
+      return food;
+    }
+    debugLog(`✅ [NUTRITION-FALLBACK] Applied fallback nutrition:`, fallback);
+    const { calories, protein, carbs, fat, fiber } = fallback;
+    // Preserve any sugar/sodium/cholesterol/glycemic_index the AI returned —
+    // fallback only covers macros, the micronutrient enrichment step
+    // (enrichMicronutrients) fills the rest.
+    const sugar       = food.nutrition?.sugar       ?? food.sugar       ?? null;
+    const sodium      = food.nutrition?.sodium      ?? food.sodium      ?? null;
+    const cholesterol = food.nutrition?.cholesterol ?? food.cholesterol ?? null;
+    const glycemicIndex = food.nutrition?.glycemic_index ?? food.glycemic_index ?? null;
+    return {
+      ...food,
+      nutrition: {
+        calories, protein, carbs, fat, fiber,
+        ...(sugar       != null ? { sugar }       : {}),
+        ...(sodium      != null ? { sodium }      : {}),
+        ...(cholesterol != null ? { cholesterol } : {}),
+        ...(glycemicIndex != null ? { glycemic_index: glycemicIndex } : {}),
+      },
+      calories, protein, carbs, fat, fiber,
+      nutritionSource: fallback.source,
+      fallbackApplied: true,
+    };
+  });
+}

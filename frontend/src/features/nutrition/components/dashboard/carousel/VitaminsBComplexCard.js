@@ -1,0 +1,47 @@
+import React from 'react';
+import { Zap } from 'lucide-react';
+import MicroNutrientTile from './MicroNutrientTile';
+
+/**
+ * VitaminsBComplexCard — Card 7 of the Nutrition Carousel.
+ * Vitamins B1, B2, B3, B6, B9, B12. Six tiles in a 3-col × 2-row grid.
+ */
+const VitaminsBComplexCard = ({ tiles, onOpenModal }) => {
+  return (
+    <div className="h-full flex items-center justify-center py-2">
+      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center shadow-md">
+              <Zap className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-lg font-bold text-gray-900">B Vitamins</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-y-1.5 gap-x-2">
+          {tiles.map((t) => (
+            <MicroNutrientTile
+              key={t.key}
+              label={t.label}
+              unit={t.unit}
+              consumed={t.consumed}
+              target={t.target}
+              pct={t.pct}
+              color="from-sky-400 to-indigo-500"
+              nutrientKey={t.key}
+              onOpenModal={onOpenModal}
+            />
+          ))}
+        </div>
+
+        <p className="text-[10px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
+          Energy &amp; nervous-system support
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default VitaminsBComplexCard;

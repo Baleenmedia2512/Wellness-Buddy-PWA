@@ -1,0 +1,911 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  Download,
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Users,
+  Target,
+  Settings,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  LayoutGrid,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  SelfLogo,
+  DirectLogo,
+  FullTeamLogo,
+} from "./DisciplineScoreLogos";
+import TouchFeedbackButton from "../TouchFeedbackButton";
+
+// --- DateRangePicker Component ---
+const DateRangePicker = ({ startDate, endDate, onSelect, onClose, singleDay = false }) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectingStart, setSelectingStart] = useState(true);
+  const [tempStart, setTempStart] = useState(startDate);
+  const [tempEnd, setTempEnd] = useState(endDate);
+
+  const daysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const handleDateClick = (day) => {
+    const clickedDate = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day,
+    );
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (clickedDate > today) {
+      return;
+    }
+
+    if (singleDay) {
+      setTempStart(clickedDate);
+      setTempEnd(clickedDate);
+      onSelect(clickedDate, clickedDate);
+      return;
+    }
+
+    if (selectingStart) {
+      setTempStart(clickedDate);
+      setTempEnd(null);
+      setSelectingStart(false);
+    } else {
+      if (clickedDate < tempStart) {
+        setTempEnd(tempStart);
+        setTempStart(clickedDate);
+      } else {
+        const finalEnd = clickedDate < tempStart ? tempStart : clickedDate;
+        const finalStart = clickedDate < tempStart ? clickedDate : tempStart;
+        setTempEnd(finalEnd);
+        onSelect(finalStart, finalEnd);
+      }
+    }
+  };
+
+  const isInRange = (day) => {
+    if (!tempStart || !tempEnd) return false;
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day,
+    );
+    return date >= tempStart && date <= tempEnd;
+  };
+
+  const isStartDate = (day) => {
+    if (!tempStart) return false;
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day,
+    );
+    return date.toDateString() === tempStart.toDateString();
+  };
+
+  const isEndDate = (day) => {
+    if (!tempEnd) return false;
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day,
+    );
+    return date.toDateString() === tempEnd.toDateString();
+  };
+
+  const isFutureDate = (day) => {
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day,
+    );
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return date > today;
+  };
+
+  const prevMonth = () => {
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1),
+    );
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1),
+    );
+  };
+
+  const blanks = Array(getFirstDayOfMonth(currentMonth)).fill(null);
+  const dayNumbers = Array.from(
+    { length: daysInMonth(currentMonth) },
+    (_, i) => i + 1,
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="absolute top-2 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 p-4 z-[60] max-w-sm mx-auto"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={prevMonth}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        <div className="text-center">
+          <h3 className="font-semibold text-gray-800">
+            {currentMonth.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
+            })}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            {singleDay ? "Select a date" : selectingStart ? "Select start date" : "Select end date"}
+          </p>
+        </div>
+        <button
+          onClick={nextMonth}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <ChevronRight className="w-5 h-5 text-gray-600" />
+        </button>
+      </div>
+
+      {/* Weekday Headers */}
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+          <div
+            key={day}
+            className="text-center text-xs font-medium text-gray-500 py-2"
+          >
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {blanks.map((_, i) => (
+          <div key={`blank-${i}`} className="aspect-square" />
+        ))}
+        {dayNumbers.map((day) => {
+          const isStart = isStartDate(day);
+          const isEnd = isEndDate(day);
+          const inRange = isInRange(day);
+          const isFuture = isFutureDate(day);
+
+          return (
+            <button
+              key={day}
+              onClick={() => handleDateClick(day)}
+              disabled={isFuture}
+              className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all ${
+                isFuture
+                  ? "text-gray-300 cursor-not-allowed"
+                  : isStart || isEnd
+                  ? "bg-green-600 text-white font-bold shadow-md"
+                  : inRange
+                  ? "bg-green-100 text-green-700"
+                  : "hover:bg-gray-100 text-gray-700"
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+// --- Loading Skeleton ---
+export const LoadingSkeleton = () => {
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-auto pb-20"
+      style={{ backgroundColor: "#e8f5e9" }}
+    >
+      <div
+        className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
+        style={{
+          backgroundColor: "#a8dbb5",
+          borderBottom: "1px solid #93c9a1",
+        }}
+      >
+        <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
+              <div>
+                <div className="h-4 w-28 sm:h-5 sm:w-32 bg-green-400 rounded animate-pulse mb-1"></div>
+                <div className="h-2.5 w-20 sm:h-3 sm:w-24 bg-green-300 rounded animate-pulse"></div>
+              </div>
+            </div>
+            <div className="flex gap-1 sm:gap-2">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <div className="flex gap-1.5 sm:gap-2 overflow-hidden">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-7 w-20 sm:h-8 sm:w-24 bg-gray-50 rounded-full shrink-0 animate-pulse border border-gray-100"
+              ></div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm border border-gray-100 h-20 sm:h-24 flex items-center justify-between animate-pulse">
+          <div className="flex-1 flex flex-col items-center gap-2 border-r border-gray-50">
+            <div className="h-3 w-12 bg-gray-100 rounded"></div>
+            <div className="h-6 w-16 bg-gray-100 rounded"></div>
+          </div>
+          <div className="flex-1 flex flex-col items-center gap-2">
+            <div className="h-3 w-12 bg-gray-100 rounded"></div>
+            <div className="h-6 w-8 bg-gray-100 rounded"></div>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="h-12 bg-gray-50 rounded-xl flex-1 animate-pulse border border-gray-100"></div>
+          <div className="h-12 w-24 bg-gray-50 rounded-xl animate-pulse border border-gray-100"></div>
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between animate-pulse"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gray-100"></div>
+                <div>
+                  <div className="h-4 w-32 bg-gray-100 rounded mb-2"></div>
+                  <div className="h-3 w-20 bg-gray-50 rounded"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Common Hierarchical Report Layout
+ * Reusable component for all hierarchy-based reports
+ *
+ * @param {Object} props
+ * @param {string} props.title - Report title (e.g., "Discipline Report", "Attendance Report")
+ * @param {string} props.subtitle - Subtitle showing counts (e.g., "4 Members • 11:19")
+ * @param {Function} props.onBack - Back button handler
+ * @param {Function} props.onRefresh - Refresh button handler
+ * @param {Function} props.onDownload - Optional download/export handler
+ * @param {boolean} props.loading - Loading state
+ * @param {boolean} props.refreshing - Refreshing state
+ * @param {string} props.error - Error message
+ * @param {Function} props.onRetry - Retry handler for errors
+ * @param {string} props.dateRange - Current date range selection
+ * @param {Function} props.onDateRangeChange - Date range change handler
+ * @param {Date} props.customStartDate - Custom start date
+ * @param {Date} props.customEndDate - Custom end date
+ * @param {Function} props.onCustomDateSelect - Custom date selection handler
+ * @param {string} props.searchQuery - Search query
+ * @param {Function} props.onSearchChange - Search change handler
+ * @param {string} props.filter - Current filter value
+ * @param {Array} props.filterOptions - Filter options array [{value, label, color}]
+ * @param {Function} props.onFilterChange - Filter change handler
+ * @param {Object} props.summaryStats - Summary statistics to display
+ * @param {ReactNode} props.children - Hierarchy tree content
+ */
+const HierarchicalReportLayout = ({
+  title,
+  subtitle,
+  onBack,
+  onRefresh,
+  onDownload,
+  onSettings,
+  sortBy,
+  sortOrder,
+  onSortChange,
+  onSortOrderChange,
+  loading,
+  refreshing,
+  error,
+  onRetry,
+  dateRange,
+  onDateRangeChange,
+  customStartDate,
+  customEndDate,
+  onCustomDateSelect,
+  searchQuery,
+  onSearchChange,
+  filter,
+  filterOptions,
+  onFilterChange,
+  summaryStats,
+  onStatClick,
+  topContent,
+  children,
+  allowedDateRanges, // Optional array to filter date range options (e.g., ["today", "yesterday"])
+  singleDayCustom,   // If true, custom picker selects a single day only
+  onExpandAll,       // Handler to expand all hierarchy nodes
+  onCollapseAll,     // Handler to collapse all hierarchy nodes
+  expandedState = null, // "expanded" | "collapsed" | null
+  teamView,          // "direct" | "full" — current view mode
+  onTeamViewChange,  // Handler for Direct/Full toggle
+  customSortOptions, // Optional: override default discipline SORT_OPTIONS with report-specific ones
+}) => {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const [activeExpandBtn, setActiveExpandBtn] = useState(null); // "expanded" | "collapsed" | null — local visual state
+  const filterRef = useRef(null);
+  const sortRef = useRef(null);
+
+  // Keep local visual highlight in sync with incoming expandedState
+  useEffect(() => {
+    if (expandedState !== null) {
+      setActiveExpandBtn(expandedState);
+    }
+  }, [expandedState]);
+
+  // Close filter/sort dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (filterRef.current && !filterRef.current.contains(event.target)) {
+        setIsFilterOpen(false);
+      }
+      if (sortRef.current && !sortRef.current.contains(event.target)) {
+        setIsSortOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const SORT_OPTIONS = [
+    { value: "all",    label: "Show All Scores",           shortLabel: "All",    Logo: LayoutGrid,   color: "text-gray-500"   },
+    { value: "self",   label: "Sort by Self Score",        shortLabel: "Self",   Logo: SelfLogo,     color: "text-blue-600"   },
+    { value: "direct", label: "Sort by Direct Team Score", shortLabel: "Direct", Logo: DirectLogo,   color: "text-green-600"  },
+    { value: "full",   label: "Sort by Full Team Score",   shortLabel: "Full",   Logo: FullTeamLogo, color: "text-purple-600" },
+  ];
+  const sortOptionsToUse = customSortOptions || SORT_OPTIONS;
+  const activeSortOption = sortOptionsToUse.find((o) => o.value === sortBy) || sortOptionsToUse[0];
+
+  const getDateRangeLabel = () => {
+    if (dateRange === "custom" && customStartDate && customEndDate) {
+      const start = customStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const end   = customEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return start === end ? start : `${start} - ${end}`;
+    }
+    return "Custom";
+  };
+
+  const handleDateRangeSelect = (start, end) => {
+    if (onCustomDateSelect) {
+      onCustomDateSelect(start, end);
+    }
+    setShowDatePicker(false);
+  };
+
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-auto pb-20"
+      style={{ backgroundColor: "#e8f5e9" }}
+    >
+      {/* Header */}
+      <div
+        className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
+        style={{
+          backgroundColor: "#a8dbb5",
+          borderBottom: "1px solid #93c9a1",
+        }}
+      >
+        <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
+          {/* Top Bar */}
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TouchFeedbackButton
+                onClick={onBack}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors"
+                ariaLabel="Go back"
+              >
+                <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
+              </TouchFeedbackButton>
+              <div>
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900">
+                  {title}
+                </h1>
+                {subtitle && (
+                  <p className="text-[10px] sm:text-xs text-gray-900">
+                    {subtitle}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-1 sm:gap-2">
+              <TouchFeedbackButton
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
+                ariaLabel="Refresh"
+              >
+                <RefreshCw
+                  className={`h-5 w-5 sm:h-6 sm:w-6 text-green-900 ${
+                    refreshing ? "animate-spin" : ""
+                  }`}
+                />
+              </TouchFeedbackButton>
+              {onSettings && (
+                <TouchFeedbackButton
+                  onClick={onSettings}
+                  className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors"
+                  ariaLabel="Settings"
+                >
+                  <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
+                </TouchFeedbackButton>
+              )}
+              {onDownload && (
+                <TouchFeedbackButton
+                  onClick={onDownload}
+                  className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors"
+                  ariaLabel="Download"
+                >
+                  <Download className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
+                </TouchFeedbackButton>
+              )}
+            </div>
+          </div>
+
+          {/* Date Range Pills - Only show if onDateRangeChange is provided */}
+          {onDateRangeChange && (
+            <div
+              className="relative overflow-x-auto scrollbar-hide"
+              style={{
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              <div className="flex gap-1.5 sm:gap-2 pb-0 justify-center min-w-max mx-auto px-1">
+                {[
+                  { value: "today", label: "Today" },
+                  { value: "yesterday", label: "Yesterday" },
+                  { value: "week", label: "Week" },
+                  { value: "month", label: "Month" },
+                ]
+                  .filter(
+                    (range) =>
+                      !allowedDateRanges ||
+                      allowedDateRanges.includes(range.value),
+                  )
+                  .map((range) => (
+                    <TouchFeedbackButton
+                      key={range.value}
+                      id={`date-range-${range.value}`}
+                      onClick={() => onDateRangeChange(range.value)}
+                      className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                        dateRange === range.value
+                          ? "bg-green-700 text-white border-green-700 shadow-md"
+                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      {range.label}
+                    </TouchFeedbackButton>
+                  ))}
+
+              {/* Custom Date Range Button */}
+              <div className="relative flex-shrink-0">
+                <TouchFeedbackButton
+                  id="date-range-custom"
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                    dateRange === "custom"
+                      ? "bg-green-700 text-white border-green-700 shadow-md"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  {getDateRangeLabel()}
+                </TouchFeedbackButton>
+              </div>
+            </div>
+          </div>
+        )}
+
+          {/* Date Picker Dropdown - Outside overflow container so it's not clipped */}
+          <AnimatePresence>
+            {showDatePicker && (
+              <div className="relative">
+                <DateRangePicker
+                  startDate={customStartDate}
+                  endDate={customEndDate}
+                  onSelect={handleDateRangeSelect}
+                  onClose={() => setShowDatePicker(false)}
+                  singleDay={!!singleDayCustom}
+                />
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        {error ? (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <p className="text-red-600 font-medium">{error}</p>
+            {onRetry && (
+              <TouchFeedbackButton
+                onClick={onRetry}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+              >
+                Try Again
+              </TouchFeedbackButton>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Search — always first, right below header */}
+            {onSearchChange && (
+              <div className="relative w-full">
+                <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search members..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="w-full pl-9 sm:pl-11 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
+              </div>
+            )}
+
+            {/* Top Content (e.g. stats card + toggles) */}
+            {topContent && topContent}
+
+            {/* Summary Stats */}
+            {summaryStats && summaryStats.items?.length > 0 && (
+              <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 mb-2 sm:mb-4">
+                {(summaryStats.title !== "" && summaryStats.title !== null && summaryStats.title !== undefined) && (
+                  <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
+                    {summaryStats.title}
+                  </h2>
+                )}
+                {summaryStats.description && (
+                  <div className="text-xs sm:text-sm text-gray-600 mb-3 text-center">
+                    <p>{summaryStats.description}</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                  {summaryStats.items?.map((item, index) => (
+                    <div
+                      key={index}
+                      onClick={() => item.onClick && item.onClick()}
+                      className={`rounded-lg sm:rounded-xl p-3 sm:p-4 border shadow-sm transition-all ${
+                        item.isActive
+                          ? "bg-gradient-to-br from-green-100 to-blue-100 border-green-500 shadow-md scale-105"
+                          : "bg-gradient-to-br from-green-50 to-blue-50 border-gray-200"
+                      } ${
+                        item.onClick
+                          ? "cursor-pointer hover:shadow-md hover:scale-105 active:scale-95"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex flex-col items-center justify-center text-center h-full">
+                        {item.icon}
+                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
+                          {item.value}
+                        </div>
+                        <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 font-medium">
+                          {item.label}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes Card - sticky below header */}
+            {summaryStats?.note && (
+              <div
+                className="sticky z-30 rounded-2xl p-3 shadow-sm"
+                style={{
+                  top: onDateRangeChange ? '104px' : '62px',
+                  backgroundColor: '#e8f5e9',
+                  paddingBottom: '8px',
+                }}
+              >
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
+                  <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-blue-800">Each member tile shows 3 scores:</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <span className="flex items-center gap-1 text-xs text-blue-700">
+                        <SelfLogo className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="font-bold">Self</span>
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-green-700">
+                        <DirectLogo className="w-3.5 h-3.5 text-green-500" />
+                        <span className="font-bold">Direct</span> team
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-purple-700">
+                        <FullTeamLogo className="w-3.5 h-3.5 text-purple-500" />
+                        <span className="font-bold">Full</span> team
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              </div>
+            )}
+
+            {/* Filter / Sort / Expand controls */}
+            {((filterOptions && filterOptions.length > 0) ||
+              onSortChange || onSortOrderChange ||
+              onExpandAll || onCollapseAll || onTeamViewChange) && (
+              <div className="flex flex-col gap-2 sm:gap-3">
+
+                {/* Row 1: Filter + Sort */}
+                {((filterOptions && filterOptions.length > 0) || onSortChange || onSortOrderChange) && (
+                <div className="flex gap-2 items-center w-full">
+
+                  {/* Filter Dropdown */}
+                  {filterOptions && filterOptions.length > 0 && (
+                    <div className="relative flex-1 min-w-0" ref={filterRef}>
+                      <TouchFeedbackButton
+                        onClick={() => setIsFilterOpen(!isFilterOpen)}
+                        className={`h-9 w-full px-3 rounded-full border transition-all flex items-center justify-center gap-3 bg-white text-gray-700 border-gray-200 hover:bg-gray-50`}
+                      >
+                        <Filter className="h-4 w-4 shrink-0" />
+                        <span className="text-xs font-medium whitespace-nowrap">
+                          {filterOptions.find((o) => o.value === filter)?.label ?? "Filter"}
+                        </span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                            isFilterOpen ? "rotate-180" : ""
+                          }`}
+                        />
+                      </TouchFeedbackButton>
+
+                      <AnimatePresence>
+                        {isFilterOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute left-0 mt-2 w-48 sm:w-56 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
+                          >
+                            {filterOptions.map((option) => (
+                              <button
+                                key={option.value}
+                                onClick={() => {
+                                  onFilterChange(option.value);
+                                  setIsFilterOpen(false);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
+                              >
+                                <span
+                                  className={`font-medium ${
+                                    option.color || "text-gray-700"
+                                  }`}
+                                >
+                                  {option.label}
+                                </span>
+                                {filter === option.value && (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+
+                  {/* Arrow-only sort direction toggle (no field picker) */}
+                  {onSortOrderChange && !onSortChange && (
+                    <TouchFeedbackButton
+                      onClick={() => onSortOrderChange(sortOrder === "desc" ? "asc" : "desc")}
+                      className="h-9 w-9 shrink-0 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                      ariaLabel="Toggle sort direction"
+                    >
+                      {sortOrder === "desc" ? (
+                        <ArrowDown className="h-4 w-4 text-gray-600" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4 text-gray-600" />
+                      )}
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Sort — field picker + separate direction toggle */}
+                  {onSortChange && (
+                    <div className="flex-1 flex items-center gap-1.5">
+                      {/* Field picker dropdown */}
+                      <div className="relative flex-1" ref={sortRef}>
+                        <TouchFeedbackButton
+                          onClick={() => setIsSortOpen(!isSortOpen)}
+                          className="h-9 w-full px-3 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-1.5"
+                          ariaLabel="Sort field"
+                        >
+                          <activeSortOption.Logo className={`h-4 w-4 shrink-0 ${activeSortOption.color}`} />
+                          <span className={`text-xs font-medium truncate text-center ${activeSortOption.color}`}>
+                            {activeSortOption.shortLabel}
+                          </span>
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${isSortOpen ? "rotate-180" : ""}`}
+                          />
+                        </TouchFeedbackButton>
+
+                        <AnimatePresence>
+                          {isSortOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              className="absolute right-0 mt-2 w-52 sm:w-60 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
+                            >
+                              {sortOptionsToUse.map((option) => {
+                                const isActive = sortBy === option.value;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    onClick={() => {
+                                      onSortChange(option.value, sortOrder);
+                                      setIsSortOpen(false);
+                                    }}
+                                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
+                                  >
+                                    <span className={`flex items-center gap-2 font-medium ${isActive ? option.color : "text-gray-700"}`}>
+                                      <option.Logo className={`h-4 w-4 ${isActive ? option.color : "text-gray-400"}`} />
+                                      {option.label}
+                                    </span>
+                                    {isActive && (
+                                      <Check className="h-4 w-4 text-green-600" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Direction toggle button */}
+                      <TouchFeedbackButton
+                        onClick={() => onSortChange(sortBy, sortOrder === "desc" ? "asc" : "desc")}
+                        className="h-9 px-2 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex flex-col items-center justify-center gap-0"
+                        ariaLabel="Toggle sort direction"
+                      >
+                        {sortOrder === "desc" ? (
+                          <ArrowDown className="h-3.5 w-3.5 text-gray-600" />
+                        ) : (
+                          <ArrowUp className="h-3.5 w-3.5 text-gray-600" />
+                        )}
+                        <span className="text-[9px] font-bold text-gray-500 leading-none">
+                          {sortBy === "name"
+                            ? (sortOrder === "desc" ? "Z-A" : "A-Z")
+                            : (sortOrder === "desc" ? "Hi" : "Lo")}
+                        </span>
+                      </TouchFeedbackButton>
+                    </div>
+                  )}
+                </div>
+                )}
+
+                {/* Row 2: Expand/Collapse | Direct/Full — always on one line */}
+                {((onExpandAll || onCollapseAll) || onTeamViewChange) && (
+                  <div className="flex flex-row items-center w-full">
+                    {/* Expand / Collapse pill */}
+                    {(onExpandAll || onCollapseAll) && (
+                      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                        <TouchFeedbackButton
+                          onClick={() => { onExpandAll && onExpandAll(); setActiveExpandBtn("expanded"); }}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            activeExpandBtn === "expanded"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Expand all nodes"
+                        >
+                          Expand All
+                        </TouchFeedbackButton>
+                        <TouchFeedbackButton
+                          onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            activeExpandBtn === "collapsed"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Collapse all nodes"
+                        >
+                          Collapse All
+                        </TouchFeedbackButton>
+                      </div>
+                    )}
+
+                    
+                    {/* Direct / Full pill — always pushed to the right */}
+                    {onTeamViewChange && (
+                      <div className="ml-auto inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                        <TouchFeedbackButton
+                          onClick={() => onTeamViewChange("direct")}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            teamView === "direct"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Direct team view"
+                        >
+                          Direct
+                        </TouchFeedbackButton>
+                        <TouchFeedbackButton
+                          onClick={() => onTeamViewChange("full")}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            teamView === "full"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Full team view"
+                        >
+                          Full
+                        </TouchFeedbackButton>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Hierarchy Tree Content */}
+            <div className="space-y-0">{children}</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default HierarchicalReportLayout;

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- External storage paths for camera/gallery and sharing -->
+    <external-path name="my_images" path="." />
+    <external-path name="downloads" path="Download/" />
+    <external-files-path name="external_files" path="." />
+    
+    <!-- Cache paths for temporary sharing files -->
+    <cache-path name="cache" path="." />
+    <cache-path name="my_cache_images" path="." />
+    <cache-path name="share_images" path="/" />
+    
+    <!-- Internal files paths -->
+    <files-path name="files" path="." />
+    <files-path name="my_files" path="." />
+    
+    <!-- Root path for maximum compatibility -->
+    <root-path name="root" path="." />
+</paths>

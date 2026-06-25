@@ -1,0 +1,21 @@
+// Public surface of nutrition hooks.
+export { useNutritionMeals } from './useNutritionMeals';
+export { useNutritionUndo, UNDO_SECONDS } from './useNutritionUndo';
+export { useNutritionAnalysis } from './useNutritionAnalysis';
+export { useNutritionStats } from './useNutritionStats';
+export { useNutritionFilters } from './useNutritionFilters';
+export { useNutritionPagination } from './useNutritionPagination';
+export { useUserCalorieTarget } from './useUserCalorieTarget';
+export { useUserLatestWeight } from './useUserLatestWeight';
+export { useBurnedCalories } from './useBurnedCalories';
+export { useCalorieTrend } from './useCalorieTrend';
+export { useCalorieChartData } from './useCalorieChartData';
+export { useResolveUserId } from './useResolveUserId';
+export { useDayAnalyses } from './useDayAnalyses';
+export { useInfiniteScroll } from './useInfiniteScroll';
+export { useSwipePanelHeight } from './useSwipePanelHeight';
+export { useCarouselSwipe } from './useCarouselSwipe';
+export { useMealMutations } from './useMealMutations';
+export { useMealItemMutations } from './useMealItemMutations';
+export { useMealDeleteMutations } from './useMealDeleteMutations';
+export { useDeleteWithUndo } from './useDeleteWithUndo';

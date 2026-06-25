@@ -1,19 +1,57 @@
 {
-  "name": "wellness-buddy-pwa-frontend",
-  "version": "1.0.0",
+  "name": "wellness-valley-pwa-frontend",
+  "version": "3.2.3",
   "private": true,
-  "homepage": "https://Baleenmedia2512.github.io/Wellness-Buddy-PWA",
+  "homepage": ".",
   "dependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/camera": "^7.0.1",
+    "@capacitor/cli": "^7.4.2",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/filesystem": "^6.0.0",
+    "@capacitor/geolocation": "^5.0.8",
+    "@capacitor/ios": "^8.3.0",
+    "@capacitor/push-notifications": "^7.0.6",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^7.0.3",
+    "@capawesome/capacitor-android-edge-to-edge-support": "^7.2.3",
+    "@capgo/capacitor-navigation-bar": "^7.1.33",
     "@google/generative-ai": "^0.24.1",
-    "firebase": "^11.10.0",
+    "@ionic/core": "^8.8.8",
+    "@ionic/react": "^8.6.4",
+    "@ionic/react-router": "^8.6.4",
+    "@southdevs/capacitor-google-auth": "^7.0.0",
+    "axios": "^1.13.2",
+    "date-fns": "^2.30.0",
+    "firebase": "^9.23.0",
     "framer-motion": "^12.23.3",
+    "html2canvas": "^1.4.1",
+    "ionicons": "^8.0.13",
+    "joi": "^18.2.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.525.0",
     "react": "^18.3.1",
+    "react-datepicker": "^9.0.0",
+    "react-device-detect": "^2.2.3",
     "react-dom": "^18.3.1",
-    "react-scripts": "5.0.1"
+    "react-easy-crop": "^5.5.7",
+    "react-leaflet": "^4.2.1",
+    "react-router-dom": "^6.30.2",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.15.4",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@playwright/test": "^1.60.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "ajv": "^8.8.2",
     "autoprefixer": "^10.4.14",
+    "eslint": "^10.5.0",
     "gh-pages": "^6.3.0",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.0"
@@ -21,10 +59,15 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "postbuild": "node update-sw-version.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "deploy": "gh-pages -d build",
+    "android:clean": "cd android && gradlew.bat clean",
+    "android:assembleDebug": "cd android && gradlew.bat assembleDebug",
+    "android:fullbuild": "npm run build && npx cap sync android && npm run android:clean && npm run android:assembleDebug",
+    "android:test-cache": "npm run build && echo === Cache Version Updated === && npx cap sync android && echo === Ready to test debug APK ==="
   },
   "eslintConfig": {
     "extends": [
@@ -43,5 +86,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "ajv-keywords": {
+      "ajv": "^8.8.2"
+    }
   }
 }
