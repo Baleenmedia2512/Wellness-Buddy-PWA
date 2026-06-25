@@ -8653,6 +8653,7 @@ useEffect(() => {
             {imageType === "food" && nutritionData && (
               <NutritionCard
                 data={nutritionData}
+                onDataUpdate={(updatedData) => setNutritionData((prev) => ({ ...prev, ...updatedData }))}
                 user={user}
                 savedUserName={savedUserName}
                 savedProfileImage={savedProfileImage}

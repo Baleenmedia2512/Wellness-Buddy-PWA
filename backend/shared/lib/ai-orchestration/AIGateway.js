@@ -227,6 +227,65 @@ const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON obj
   Never downgrade imageType to "other" just because confidence is < 0.8.
   A blurry food photo is still "food" at confidence 0.55.
 
+=== HERBALIFE PRODUCT RECOGNITION ===
+This app is used by Herbalife Wellness community members. Recognise these products by sight:
+
+Meal-replacement shakes (isLiquid: true, treat as a complete meal):
+- "Herbalife Formula 1 Shake" — powder sachet or shaker bottle (vanilla, chocolate, strawberry, mango, cookies & cream).
+  Typical: ~200–260 kcal, 9g protein, 36g carbs, 1g fat per 2-scoop serving prepared with skimmed milk.
+  If prepared with plant milk, adjust calories accordingly.
+- "Herbalife Protein Drink Mix (PDM)" — shaker bottle mixed with shake.
+- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal/protein drink.
+
+Non-meal beverages (isLiquid: true, low calorie, count as hydration NOT meal):
+- "Herbalife Afresh Energy Drink" — yellow/orange powder sachet or prepared cup (lemon, orange, lychee, peach flavours).
+  Typical: 10–20 kcal per serving. NOT a meal replacement.
+- "Herbalife Herbal Tea Concentrate" — small sachet or bottle (lemon, peach, raspberry, cinnamon, original).
+  Typical: 5–10 kcal per serving. NOT a meal replacement.
+
+Supplement pills/tablets (isLiquid: false, near-zero calories):
+- "Herbalife Formula 2 Multivitamin" — orange oval tablets.
+- "Herbalife Formula 3 Cell Activator" — capsules.
+- "Herbalife NightWorks / Niteworks" — white powder or capsules.
+- "Herbalife Xtra-Cal / Herbalife Calcium" — white tablets.
+- Any Herbalife labelled supplement bottle/packet.
+
+=== TAMIL NADU FOOD RECOGNITION ===
+Most users are from Tamil Nadu, India. Be accurate with these regional foods:
+
+Rice dishes: Idli, Dosa, Uthappam, Pongal (sweet/savoury), Puttu, Appam, Idiyappam,
+  Curd Rice (Thayir Sadam), Sambar Rice, Rasam Rice (Rasam Sadam),
+  Tamarind Rice (Puliyodarai), Lemon Rice (Elumichai Sadam), Coconut Rice (Thengai Sadam),
+  Tomato Rice, Vegetable Biryani, Chicken Biryani, Mutton Biryani, Seeraga Samba Biryani.
+
+Breads/Flatbreads: Parotta, Kothu Parotta, Veechu Parotta, Chapati, Phulka, Roti.
+
+Curries/Gravies: Sambar, Rasam, Vatha Kuzhambu, Puli Kuzhambu, Milagu Kuzhambu,
+  Kootu (vegetable+lentil dry curry), Poriyal (dry stir-fry), Avial, Moru Kuzhambu,
+  Chicken Chettinad (spicy chicken curry), Mutton Kuzhambu, Meen Kuzhambu (fish curry),
+  Egg Curry, Egg Bhurji, Paneer Butter Masala, Dal Tadka.
+
+Breakfast side dishes: Coconut Chutney, Tomato Chutney, Onion Chutney, Sambar (with idli/dosa).
+
+Snacks: Murukku, Seedai, Sundal (chickpea/lentil), Bonda, Bajji (Pakoda), Mixture,
+  Ribbon Pakoda, Omapodi, Kara Sev.
+
+Beverages (isLiquid: true, NOT meal replacements):
+  Filter Coffee (Kaapi/Kappi), Masala Chai (Masala Tea), Ginger Tea (Adrak Chai),
+  Kumbakonam Degree Coffee, Buttermilk (Moru), Tender Coconut Water, Sugarcane Juice.
+
+Sweets: Sweet Pongal (Sakkarai Pongal), Payasam (Kheer), Halwa (Carrot/Wheat),
+  Laddu, Mysore Pak, Badusha, Jangiri, Adhirasam.
+
+=== SOLID vs LIQUID — meal type classification ===
+IMPORTANT for isLiquid field:
+- Herbalife Formula 1 shake, protein shakes, meal replacement shakes → isLiquid: true
+  (they ARE liquids AND they count as complete meals — use portion ~250–300 ml)
+- Tea (any variant — chai, masala chai, filter coffee, green tea, etc.) → isLiquid: true
+  (these are beverages, NOT meals)
+- Water, coconut water, buttermilk, juices, Afresh → isLiquid: true (beverages, NOT meals)
+- All solid foods (idli, rice, bread, curry, snacks, etc.) → isLiquid: false (they ARE meals)
+
 === Per-type fields to populate ===
 
 FOOD — populate ALL nutrition fields for every detected food or beverage.

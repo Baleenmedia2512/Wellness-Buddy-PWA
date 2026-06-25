@@ -7,8 +7,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { geminiService } from "../../../shared/services/geminiService";
-import { saveFoodCorrection } from "../services/foodCorrectionService";
+import { saveFoodCorrection, searchFoods } from "../services/foodCorrectionService";
 import {
   getUserContext,
   getUserId,
@@ -37,6 +36,8 @@ import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIco
 import { debugLog } from '../../../shared/utils/logger.js';
 
 const DELETE_UNDO_SECONDS = 5;
+
+// (search helpers are in ../services/foodCorrectionService → searchFoods)
 
 /**
  * Editable food item component for nutrition breakdown
@@ -172,53 +173,36 @@ const EditableFoodItem = forwardRef(
       // Clear previous errors when user types
       setSearchError(null);
 
-      // Check cache first (synchronous, instant)
-      const cached = geminiService.getCachedSearch(trimmed);
-      if (cached) {
-        setSearchResults(cached.results || []);
-        setIsSearching(false);
-        setSearchError(null);
-        return;
-      }
-
       // Set loading state
       setIsSearching(true);
       setSearchError(null);
 
-      // Debounce the API call - only execute after 800ms of no typing
+      // Debounce the API call - only execute after 600ms of no typing
       searchTimeoutRef.current = setTimeout(async () => {
         try {
-          const results = await geminiService.searchFood(trimmed);
-          setSearchResults(results.results || []);
+          const userId = userIdRef.current || (user?.id ? user.id : null);
+          if (!userId) {
+            // Can't search without userId — try to resolve
+            const resolvedId = await getUserId(user).catch(() => null);
+            if (resolvedId) userIdRef.current = resolvedId;
+          }
+          const uid = userIdRef.current;
+          const transformed = await searchFoods(trimmed, uid);
+          setSearchResults(transformed);
           setSearchError(null);
         } catch (error) {
-          // Preserve existing results, show user-friendly error
           setSearchResults([]);
-
-          // Determine error type and set appropriate message
-          if (
-            error.message?.includes("429") ||
-            error.message?.includes("Resource exhausted")
-          ) {
-            setSearchError(
-              "Search limit reached. Please try again in a moment.",
-            );
-          } else if (
-            error.message?.includes("network") ||
-            error.message?.includes("fetch")
-          ) {
-            setSearchError("Network error. Please check your connection.");
+          if (error.message?.includes('network') || error.message?.includes('fetch')) {
+            setSearchError('Network error. Please check your connection.');
           } else {
-            setSearchError(
-              "Search failed. You can still edit the current food.",
-            );
+            setSearchError('Search failed. You can still edit the current food.');
           }
         } finally {
           setIsSearching(false);
           searchTimeoutRef.current = null;
         }
-      }, 800); // 800ms debounce delay (optimized for token efficiency)
-    }, []); // Empty deps is safe - uses refs and state setters
+      }, 600);
+    }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cleanup timeout on unmount
     useEffect(() => {

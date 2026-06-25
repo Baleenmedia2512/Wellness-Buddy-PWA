@@ -4,7 +4,7 @@ import { Share2 } from "lucide-react";
 import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../../shared/services/userIdentity";
-import { geminiService } from "../../../shared/services/geminiService";
+import { searchFoods } from "../services/foodCorrectionService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -269,7 +269,7 @@ const NutritionCard = ({
 
     setShowAddSuggestions(true);
 
-    const cached = geminiService.getCachedSearch?.(trimmed);
+    const cached = null; // cache handled inside searchFoods
     if (cached?.results) {
       setAddSearchResults(cached.results);
       setIsAddSearching(false);
@@ -279,10 +279,11 @@ const NutritionCard = ({
     setIsAddSearching(true);
     addSearchTimeoutRef.current = setTimeout(async () => {
       try {
-        const searchRes = await geminiService.searchFood(trimmed);
-        setAddSearchResults(searchRes?.results || []);
+        const uid = user?.id || (await getUserId(user).catch(() => null));
+        const results = await searchFoods(trimmed, uid);
+        setAddSearchResults(results || []);
       } catch (error) {
-        console.error("[NutritionCard] Add item search failed:", error);
+        console.error('[NutritionCard] Add item search failed:', error);
         setAddSearchResults([]);
       } finally {
         setIsAddSearching(false);
@@ -583,16 +584,17 @@ const NutritionCard = ({
 
     if (!selectedFoodResult) {
       try {
-        const searchRes = await geminiService.searchFood(trimmedName);
-        if (searchRes?.results?.length) {
-          const exactMatch = searchRes.results.find(
-            (r) => (r.name || "").trim().toLowerCase() === trimmedName.toLowerCase(),
+        const uid = user?.id || (await getUserId(user).catch(() => null));
+        const results = await searchFoods(trimmedName, uid);
+        if (results?.length) {
+          const exactMatch = results.find(
+            (r) => (r.name || '').trim().toLowerCase() === trimmedName.toLowerCase(),
           );
-          selectedFoodResult = exactMatch || searchRes.results[0];
+          selectedFoodResult = exactMatch || results[0];
         }
       } catch (error) {
-        console.error("[NutritionCard] Nutrition lookup failed:", error);
-        setAddItemError("Unable to fetch nutrition. Please try again.");
+        console.error('[NutritionCard] Nutrition lookup failed:', error);
+        setAddItemError('Unable to fetch nutrition. Please try again.');
         setIsSaving(false);
         return;
       }
@@ -1541,7 +1543,13 @@ const NutritionCard = ({
           {/* Food Breakdown */}
           <div className="mt-8 pt-6 border-t border-gray-200">
             <div className="flex items-center justify-between mb-4 gap-3">
-              <h3 className="text-lg font-semibold text-gray-800">Food Breakdown</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-800">Food Breakdown</h3>
+                {/* Prominent edit hint so users know they can tap each item to correct it */}
+                <span className="text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2 py-0.5">
+                  ✏️ Tap item to edit
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 {portionAnalysis &&
                   portionAnalysis.totalEstimatedWeight > 0 && (
