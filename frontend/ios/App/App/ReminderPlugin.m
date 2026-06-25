@@ -11,4 +11,6 @@ CAP_PLUGIN(ReminderPlugin, "ReminderPlugin",
     CAP_PLUGIN_METHOD(canScheduleExactAlarms, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(openExactAlarmSettings, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(updateWaterIntake,      CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(scheduleSnooze,         CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(cancelSnooze,           CAPPluginReturnPromise);
 )

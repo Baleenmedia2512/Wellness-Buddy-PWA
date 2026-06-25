@@ -4,11 +4,13 @@
  * Coverage target: ≥ 70% lines / 60% branches (claude.md §9.1 components/).
  *
  * Strategy:
- *  - Mock @capacitor/core (used transitively by LoginIntroPanel).
+ *  - Mock @capacitor/core (used transitively by sub-components).
  *  - Mock authService to prevent real HTTP calls.
- *  - Mock image imports (CRA jest handles .png → empty string, but explicit
- *    mock avoids ENOENT errors in some setups).
  *  - Do NOT mock sub-components — the real components render fine in jsdom.
+ *
+ * Behaviour after Swiggy-style UX update:
+ *  - No intro panel step: email/phone entry shown immediately on first render.
+ *  - OTP screen auto-verifies — no manual Verify button.
  */
 import '@testing-library/jest-dom';
 import React from 'react';
@@ -24,15 +26,6 @@ jest.mock('@capacitor/core', () => ({
 jest.mock('../services/authService', () => ({
   sendOtp: jest.fn().mockResolvedValue({ success: true }),
   verifyOtp: jest.fn().mockResolvedValue({ success: false, message: 'Invalid OTP' }),
-}));
-
-// Phone auth pulls in the real Firebase SDK; stub it at the boundary so the
-// Login render path stays pure-JS in jsdom.
-jest.mock('../services/phoneAuthService', () => ({
-  sendPhoneOtp: jest.fn(),
-  confirmPhoneOtp: jest.fn(),
-  exchangeFirebaseIdToken: jest.fn(),
-  resetPhoneAuth: jest.fn(),
 }));
 
 // Stub TermsAndConditions / PrivacyPolicy so they don't add noise to the DOM
@@ -57,66 +50,30 @@ beforeEach(() => {
 // ─── Initial render ───────────────────────────────────────────────────────────
 
 describe('initial render', () => {
-  it('shows LoginIntroPanel (email button visible) before any navigation', () => {
+  it('shows the mobile/email entry form immediately (no intro panel step)', () => {
     render(<Login onOtpVerified={jest.fn()} />);
-    expect(screen.getByText('Continue with Email')).toBeInTheDocument();
+    // LoginEmailEntry is mounted directly — no "Continue with Email" gating click needed
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
-  it('does not show the email entry form on first render', () => {
+  it('does not show a "Continue with Email" intro button', () => {
     render(<Login onOtpVerified={jest.fn()} />);
-    // The email input is part of LoginEmailEntry which should not be mounted yet
-    expect(screen.queryByPlaceholderText(/email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Continue with Email')).not.toBeInTheDocument();
   });
 
   it('renders "Wellness Valley" heading', () => {
     render(<Login onOtpVerified={jest.fn()} />);
     expect(screen.getByText('Wellness Valley')).toBeInTheDocument();
   });
-});
 
-// ─── Navigation — intro → email entry ────────────────────────────────────────
-
-describe('email entry navigation', () => {
-  it('shows email input after clicking "Continue with Email"', () => {
+  it('shows the "Mobile Number or Email" label', () => {
     render(<Login onOtpVerified={jest.fn()} />);
-    fireEvent.click(screen.getByText('Continue with Email'));
-    // LoginEmailEntry renders an email input
-    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(screen.getByText('Mobile Number or Email')).toBeInTheDocument();
   });
 
-  it('hides the intro panel after choosing email', () => {
+  it('shows the "Send OTP" button initially', () => {
     render(<Login onOtpVerified={jest.fn()} />);
-    fireEvent.click(screen.getByText('Continue with Email'));
-    // LoginIntroPanel is no longer in the tree
-    expect(screen.queryByText('Continue with Email')).not.toBeInTheDocument();
-  });
-});
-
-// ─── Prop forwarding to LoginIntroPanel ───────────────────────────────────────
-
-describe('prop forwarding', () => {
-  it('forwards onSignIn to LoginIntroPanel — Google button appears', () => {
-    render(<Login onSignIn={jest.fn()} onOtpVerified={jest.fn()} />);
-    expect(screen.getByText('Continue with Google')).toBeInTheDocument();
-  });
-
-  it('no Google button when onSignIn is not passed', () => {
-    render(<Login onOtpVerified={jest.fn()} />);
-    expect(screen.queryByText('Continue with Google')).not.toBeInTheDocument();
-  });
-
-  it('forwards loading=true — Google button shows "Signing in..."', () => {
-    render(
-      <Login onSignIn={jest.fn()} loading={true} onOtpVerified={jest.fn()} />
-    );
-    expect(screen.getByText('Signing in...')).toBeInTheDocument();
-  });
-
-  it('forwards error prop — alert with error text is rendered', () => {
-    render(
-      <Login error="Auth failed" onOtpVerified={jest.fn()} />
-    );
-    expect(screen.getByRole('alert')).toHaveTextContent('Auth failed');
+    expect(screen.getByRole('button', { name: /send otp/i })).toBeInTheDocument();
   });
 });
 

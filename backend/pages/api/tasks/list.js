@@ -8,9 +8,10 @@
  * - Log with requestId, userId, route, durationMs
  */
 
-import { format } from 'date-fns';
 import { getTasksByUserAndDate } from '../../../features/tasks/data/task-repo.js';
 import { isTaskVisible } from '../../../features/tasks/domain/task-rules.js';
+import { getISTPartsFromDate } from '../../../features/tasks/domain/completion-learning.rules.js';
+import { reconcilePendingTasksForUser } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
@@ -53,7 +54,9 @@ export default async function handler(req, res) {
     
     // Get query params
     const { status, date } = req.query;
-    const targetDate = date || format(new Date(), 'yyyy-MM-dd');
+    // Use IST date to stay consistent with task creation (which also uses IST).
+    // UTC date (format(new Date())) diverges from IST after 18:30 UTC each day.
+    const targetDate = date || getISTPartsFromDate(new Date()).date;
     
     // Validate status if provided
     if (status && !['pending', 'completed', 'missed'].includes(status)) {
@@ -66,6 +69,13 @@ export default async function handler(req, res) {
       });
     }
     
+    // Sync task status with today's logged activity (food/weight/education).
+    let reconciledCount = 0;
+    const todayIst = getISTPartsFromDate(new Date()).date;
+    if (targetDate === todayIst) {
+      reconciledCount = await reconcilePendingTasksForUser(userId);
+    }
+
     // Fetch tasks
     const tasks = await getTasksByUserAndDate(userId, targetDate, status);
     
@@ -74,7 +84,7 @@ export default async function handler(req, res) {
     if (!status || status === 'pending') {
       const now = new Date();
       filteredTasks = tasks.filter(task => {
-        if (task.status !== 'pending') return true;
+        if (String(task.status).toLowerCase() !== 'pending') return true;
         return isTaskVisible(task, now);
       });
     }
@@ -86,6 +96,7 @@ export default async function handler(req, res) {
       route: '/api/tasks/list',
       durationMs,
       taskCount: filteredTasks.length,
+      reconciledCount,
       status,
       date: targetDate
     });

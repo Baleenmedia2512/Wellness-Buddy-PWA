@@ -36,6 +36,7 @@ import {
 export async function recordPending({
   userId,
   publicShareToken,
+  shareCode = null,
   shareExpiresAt = null,
   imageBase64 = null,
   imagePath = null,
@@ -48,13 +49,14 @@ export async function recordPending({
   const row = await repo.insertPending({
     userId,
     publicShareToken,
+    shareCode,
     shareExpiresAt,
     imageBase64,
     imagePath,
     deviceInfo,
     processedBy,
   });
-  return { id: row.ID, publicShareToken: row.PublicShareToken };
+  return { id: row.ID, publicShareToken: row.PublicShareToken, shareCode: row.ShareCode || null };
 }
 
 /**
@@ -138,4 +140,113 @@ export async function updateTypeById({ captureId, userId, toType }) {
     return { changed: false, reason: 'UPDATE_RETURNED_NO_ROW' };
   }
   return { changed: true, imageType: updated.ImageType };
+}
+
+/**
+ * PR-A.2 / ADR-0003 — read a capture by primary key WITHOUT enforcing
+ * ownership. Used by orchestrators (e.g. the Diary retry-promotion
+ * endpoint in background-analysis) that need to learn who the owner is
+ * BEFORE running the permission policy.
+ *
+ * SECURITY: callers MUST pair this read with `assertCanRetryCapture(...)`
+ * from `domain/permissions/retry.policy.js`. Returning the row here is
+ * NOT an access grant.
+ *
+ * Returns the row (PascalCase keys) or null when not found / soft-deleted.
+ */
+export async function findById(captureId) {
+  if (!captureId) {
+    const err = new Error('captures.findById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findById(captureId);
+}
+
+/**
+ * PR-E / ADR-0003 — look up a capture by its public share token WITHOUT an
+ * owner guard. Used by the unknown-capture share viewer
+ * (`resolveUnknownShare`): the viewer must read the row (image + owner)
+ * BEFORE the permission policy can decide whether the viewer may Retry /
+ * Edit it. Access is NOT granted here — callers MUST pair this with the
+ * `canRetryCapture(...)` policy when exposing mutate actions.
+ *
+ * Returns the full row (PascalCase keys, including ImageBase64) or null
+ * when not found.
+ */
+export async function findByToken(token) {
+  if (!token) {
+    const err = new Error('captures.findByToken: token required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findByToken(token);
+}
+
+/**
+ * Look up a capture by either legacy UUID token or short ShareCode.
+ */
+export async function findByShareIdentifier(identifier) {
+  if (!identifier) {
+    const err = new Error('captures.findByShareIdentifier: identifier required');
+    err.status = 400;
+    throw err;
+  }
+  return repo.findByShareIdentifier(identifier);
+}
+
+/**
+ * 2026-06-09: Soft-delete a capture. Only the owner may delete. This is used
+ * when users want to remove unwanted unknown captures from their diary feed.
+ *
+ * @param {Object} input
+ * @param {string|number} input.captureId
+ * @param {string|number} input.userId
+ * @returns {Promise<{ deleted: boolean }>}
+ */
+export async function deleteById({ captureId, userId }) {
+  if (!captureId) {
+    const err = new Error('captures.deleteById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  if (!userId) {
+    const err = new Error('captures.deleteById: userId required');
+    err.status = 400;
+    throw err;
+  }
+  const result = await repo.softDeleteById({ captureId, userId: userId.toString() });
+  return {
+    httpStatus: 200,
+    body: { ok: true, data: result },
+  };
+}
+
+/**
+ * undoDeleteById — restore a soft-deleted capture (undo delete).
+ *
+ * Validates inputs and delegates to repository layer. Ownership
+ * guard is enforced at repository level (userId must match).
+ *
+ * @param {Object} input
+ * @param {string|number} input.captureId
+ * @param {string|number} input.userId
+ * @returns {Promise<{ restored: boolean }>}
+ */
+export async function undoDeleteById({ captureId, userId }) {
+  if (!captureId) {
+    const err = new Error('captures.undoDeleteById: captureId required');
+    err.status = 400;
+    throw err;
+  }
+  if (!userId) {
+    const err = new Error('captures.undoDeleteById: userId required');
+    err.status = 400;
+    throw err;
+  }
+  const result = await repo.undoSoftDeleteById({ captureId, userId: userId.toString() });
+  return {
+    httpStatus: 200,
+    body: { ok: true, data: result },
+  };
 }

@@ -11,7 +11,7 @@ import {
 import { getUserId } from '../../../shared/services/userIdentity';
 import { WEIGHT_PAGE_SIZE } from '../services/weightDashboardFormatter';
 
-export function useWeightHistoryData({ user, apiBaseUrl }) {
+export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
   const [weightHistory, setWeightHistory] = useState([]);
   const [globalStats, setGlobalStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,14 +93,14 @@ export function useWeightHistoryData({ user, apiBaseUrl }) {
     run();
   }, [user?.email, apiBaseUrl]);
 
-  // Reset & fetch on user change
+  // Reset & fetch on user change or external refresh bump
   useEffect(() => {
     userIdRef.current = null;
     setWeightHistory([]); setHasMoreWeights(false);
     offsetRef.current = 0; hasMoreRef.current = false;
     fetchWeightHistory({ reset: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, refreshKey]);
 
   // Infinite-scroll observer
   useEffect(() => {

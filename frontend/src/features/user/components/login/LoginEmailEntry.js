@@ -1,6 +1,6 @@
 // Login entry step — single input accepts either an email OR a phone number.
-// The country-code picker appears only when the input is detected as a phone
-// number. Email path is byte-identical to the previous behaviour.
+// Phone path is fully enabled: when a phone number is detected a country-code
+// picker appears and the input switches to `type="tel"`.
 import React from 'react';
 import { detectContactType, COUNTRY_CODES } from '../../domain/contactIdentifier';
 
@@ -18,8 +18,13 @@ const LoginEmailEntry = ({
   const channel = detectContactType(email);
   const isPhone = channel === 'phone';
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit();
+  };
+
   return (
-    <div className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {googleUnavailable && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="flex items-start">
@@ -34,10 +39,10 @@ const LoginEmailEntry = ({
       )}
       <div>
         <label htmlFor="recipient" className="block text-sm font-medium text-gray-700 mb-2">
-          Email or Phone Number
+          Mobile Number or Email
         </label>
-        <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
-          {isPhone && (
+        {isPhone ? (
+          <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
             <select
               aria-label="Country code"
               value={countryDial}
@@ -51,19 +56,34 @@ const LoginEmailEntry = ({
                 </option>
               ))}
             </select>
-          )}
+            <input
+              id="recipient"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              name="tel"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="Enter your phone"
+              className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
+            />
+          </div>
+        ) : (
           <input
             id="recipient"
-            type="text"
-            inputMode={isPhone ? 'tel' : 'email'}
-            autoComplete={isPhone ? 'tel' : 'email'}
+            type={channel === 'email' ? 'email' : 'tel'}
+            inputMode={channel === 'email' ? 'email' : 'numeric'}
+            autoComplete={channel === 'email' ? 'email username' : 'tel'}
+            name={channel === 'email' ? 'email' : 'tel'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            placeholder="Enter your email or phone"
-            className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
+            disabled={loading}
+            placeholder="Enter mobile number or email"
+            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-300 text-base"
           />
-        </div>
+        )}
         {isPhone && (
           <p className="mt-1.5 text-xs text-gray-500">
             We&apos;ll send a 6-digit code via SMS to verify your number.
@@ -71,12 +91,13 @@ const LoginEmailEntry = ({
         )}
       </div>
       <button
-        type="button" onClick={onSubmit} disabled={loading || !email}
+        type="submit"
+        disabled={loading || !email}
         className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 min-h-[48px]"
       >
         {loading ? <span className="flex items-center"><Spinner />Sending OTP...</span> : 'Send OTP'}
       </button>
-    </div>
+    </form>
   );
 };
 

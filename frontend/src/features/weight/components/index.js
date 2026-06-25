@@ -1,6 +1,8 @@
 export { default as WeightCard } from './WeightCard';
 export { default as WeightHistoryCard } from './WeightHistoryCard';
 export { default as WeightCardModal } from './WeightCardModal';
+export { default as WeightSummaryCards } from './WeightSummaryCards';
+export { default as WeightChart } from './WeightChart';
 export { default as WeightDashboard } from './WeightDashboard';
 export { default as ManualWeightEntryModal } from './ManualWeightEntryModal';
 export { default as ManualEntryHeader } from './ManualEntryHeader';

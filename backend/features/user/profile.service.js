@@ -5,7 +5,7 @@
  * Preserves response shapes byte-identical to the legacy handlers.
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
-import { VALID_DIETS } from './user.validators.js';
+import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
 import * as repo from './user.repository.js';
 
 const { getISTTimestamp } = repo;
@@ -29,6 +29,7 @@ export async function getProfile({ email }) {
         userName: user.UserName,
         email: user.Email,
         height, dietType, phoneNumber,
+        weightGoalMode: user.WeightGoalMode || 'loss',
         profileComplete: !!(height && dietType && phoneNumber),
         profileImage: user.ProfileImage || null,
         coachId: user.CoachId || null,
@@ -41,12 +42,15 @@ export async function getProfile({ email }) {
   };
 }
 
-function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage }) {
+function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage, weightGoalMode }) {
   const updateData = {};
   let cleanedPhoneNumber;
   if (name != null) updateData.UserName = name;
   if (height != null) updateData.Height = parseFloat(height);
   if (dietType != null && VALID_DIETS.includes(dietType)) updateData.DietType = dietType;
+  if (weightGoalMode != null && VALID_GOAL_MODES.includes(weightGoalMode)) {
+    updateData.WeightGoalMode = weightGoalMode;
+  }
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
@@ -73,7 +77,7 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
 }
 
 export async function updateProfile(input) {
-  const { email, name, height, bmr, dietType, profileImage, phoneNumber } = input;
+  const { email, name, height, bmr, dietType, profileImage, phoneNumber, weightGoalMode } = input;
   const user = await repo.findByEmail(email, 'UserId');
   if (!user) return notFound();
   const userId = user.UserId;
@@ -107,6 +111,7 @@ export async function updateProfile(input) {
         bmr: savedBmr || undefined,
         dietType: dietType || undefined,
         phoneNumber: cleanedPhoneNumber || undefined,
+        weightGoalMode: weightGoalMode || undefined,
         profileImageUpdated: !!profileImage,
       },
     },

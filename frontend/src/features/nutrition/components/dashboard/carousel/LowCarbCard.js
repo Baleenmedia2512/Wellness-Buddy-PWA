@@ -6,14 +6,14 @@ import CircularProgress from './CircularProgress';
  * LowCarbCard — Card 4 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with 3 nutrients side by side.
  */
-const LowCarbCard = ({ carbs, sugar, fiber }) => {
+const LowCarbCard = ({ carbs, sugar, fiber, onOpenModal }) => {
   const carbsPct = carbs.target != null ? Math.round((carbs.consumed / carbs.target) * 100) : null;
   const sugarPct = Math.round((sugar.consumed / sugar.target) * 100);
   const fiberPct = Math.round(((fiber.consumed || 0) / fiber.target) * 100);
 
   return (
-    <div className="h-full flex items-start justify-center pt-1 px-2">
-      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full max-w-md">
+    <div className="h-full flex items-center justify-center py-2">
+      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -29,7 +29,14 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
           {/* Carbs */}
           <div className="text-center">
             {carbsPct != null ? (
-              <CircularProgress percentage={carbsPct} color="from-orange-400 to-amber-400" size={70} strokeWidth={6} targetLabel={carbs.target != null ? `${carbs.target}g` : undefined} />
+              <CircularProgress 
+                percentage={carbsPct} 
+                color="from-orange-400 to-amber-400" 
+                size={70} 
+                strokeWidth={6} 
+                targetLabel={carbs.target != null ? `${carbs.target}g` : undefined} 
+                onClick={() => onOpenModal && onOpenModal('carbs')}
+              />
             ) : (
               <div className="w-[70px] h-[70px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <Wheat className="w-5 h-5 text-gray-400" />
@@ -48,7 +55,14 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
 
           {/* Sugar */}
           <div className="text-center">
-            <CircularProgress percentage={sugarPct} color="from-pink-400 to-rose-400" size={70} strokeWidth={6} targetLabel={`${sugar.target}g`} />
+            <CircularProgress 
+              percentage={sugarPct} 
+              color="from-pink-400 to-rose-400" 
+              size={70} 
+              strokeWidth={6} 
+              targetLabel={`${sugar.target}g`} 
+              onClick={() => onOpenModal && onOpenModal('sugar')}
+            />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Candy className="w-3.5 h-3.5 text-pink-500" />
@@ -61,7 +75,14 @@ const LowCarbCard = ({ carbs, sugar, fiber }) => {
 
           {/* Fiber (goal, not limit) */}
           <div className="text-center">
-            <CircularProgress percentage={fiberPct} color="from-green-400 to-emerald-500" size={70} strokeWidth={6} targetLabel={`${fiber.target}g`} />
+            <CircularProgress 
+              percentage={fiberPct} 
+              color="from-green-400 to-emerald-500" 
+              size={70} 
+              strokeWidth={6} 
+              targetLabel={`${fiber.target}g`} 
+              onClick={() => onOpenModal && onOpenModal('fiber')}
+            />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Leaf className="w-3.5 h-3.5 text-green-600" />

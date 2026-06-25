@@ -6,7 +6,8 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture, validateUpdateCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list, resolvePublicCapture, save, updateCaptureType } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, save, updateCaptureType } from '../analysis.service.js';
+import { resolvePublicCapture } from '../diary.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
@@ -64,14 +65,36 @@ function expectValidationError(fn, status, msgSubstring) {
 describe('validateCreateCapture', () => {
   it('accepts valid body', () => {
     const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc' };
-    expect(validateCreateCapture(body)).toEqual(body);
+    // token defaults to null when the optional client-supplied UUID is absent
+    // (instant-share path supplies one; classic flow does not). See validator
+    // comment in analysis.validators.js :: validateCreateCapture.
+    expect(validateCreateCapture(body)).toEqual({ ...body, token: null, shareCode: null });
+  });
+
+  it('accepts optional short shareCode in create payload', () => {
+    const body = {
+      userId: '42',
+      imageBase64: 'data:image/jpeg;base64,abc',
+      shareCode: 'A7kX92',
+    };
+    expect(validateCreateCapture(body)).toEqual({
+      userId: '42',
+      imageBase64: 'data:image/jpeg;base64,abc',
+      token: null,
+      shareCode: 'A7kX92',
+    });
   });
 
   it('ignores any imageType in the request body (type is set server-side)', () => {
     // imageType is intentionally stripped — new rows start as 'pending'
     // regardless of what the client sends.
     const body = { userId: '42', imageBase64: 'data:image/jpeg;base64,abc', imageType: 'food' };
-    expect(validateCreateCapture(body)).toEqual({ userId: '42', imageBase64: 'data:image/jpeg;base64,abc' });
+    expect(validateCreateCapture(body)).toEqual({
+      userId: '42',
+      imageBase64: 'data:image/jpeg;base64,abc',
+      token: null,
+      shareCode: null,
+    });
   });
 
   it('rejects null body', () => {
@@ -91,9 +114,14 @@ describe('validateCreateCapture', () => {
 
 describe('validatePublicCapture', () => {
   const VALID_UUID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+  const VALID_SHARE_CODE = 'A7kX92';
 
   it('accepts a valid UUID token', () => {
     expect(validatePublicCapture({ token: VALID_UUID })).toEqual({ token: VALID_UUID });
+  });
+
+  it('accepts a valid short share code', () => {
+    expect(validatePublicCapture({ token: VALID_SHARE_CODE })).toEqual({ token: VALID_SHARE_CODE });
   });
 
   it('rejects missing token', () => {
@@ -122,6 +150,7 @@ describe('createPendingCapture', () => {
     expect(result.httpStatus).toBe(201);
     expect(result.body.ok).toBe(true);
     expect(typeof result.body.data.token).toBe('string');
+    expect(result.body.data.shareCode).toMatch(/^[A-Za-z0-9]{6,10}$/);
     // UUID v4 format
     expect(result.body.data.token).toMatch(/^[0-9a-f-]{36}$/);
     // PR 6 — `id` returned to the FE is the captures_table CaptureID.

@@ -14,10 +14,24 @@
  *           ──▶ education
  *           ──▶ smartwatch
  *           ──▶ unknown
+ *   unknown ──▶ food                             (added in PR-A, ADR-0003)
+ *   - unknown ──▶ weight                           (ADR-0003 Diary Edit flow)
+ *   - unknown ──▶ education                        (ADR-0003 Diary Edit flow)
+ *   - unknown ──▶ smartwatch                       (ADR-0003 Diary Retry flow)
  *
- *   Terminal states are IMMUTABLE — once a capture has been classified, its
- *   type may not change. A misclassification is corrected by creating a new
- *   capture, not by mutating the existing one.
+ *   Rules:
+ *   - Terminal states are IMMUTABLE *except* for the `unknown → <terminal>`
+ *     transitions. These are the only way a misclassification is corrected
+ *     in-place; every other terminal can only be replaced by creating a
+ *     new capture.
+ *   - The `unknown → food` exit is the integration point for the Diary
+ *     "Other → Retry / Edit" flow (ADR-0003): when the user (or a coach
+ *     on the user's behalf) supplies nutrition for a capture the detector
+ *     could not classify, the food row is inserted and the capture is
+ *     promoted in place so the share link starts resolving as food.
+ *   - `unknown` exits to `food`, `weight`, `education`, or `smartwatch`
+ *     when the user taps Retry in the Diary and the detector re-classifies
+ *     the capture correctly.
  * ---------------------------------------------------------------------------
  */
 
@@ -56,11 +70,23 @@ export function isTerminal(type) {
 /**
  * Returns true iff `from → to` is a legal transition.
  * Same-state transitions return false (no-op writes are caller's job to skip).
+ *
+ * Legal transitions:
+ *   - pending → <any terminal>
+ *   - unknown → food                (PR-A / ADR-0003)
+ *   - unknown → weight              (ADR-0003 Diary Edit flow)
+ *   - unknown → education           (ADR-0003 Diary Edit flow)
+ *
+ * Every other from→to pair is illegal.
  */
 export function canTransition(from, to) {
   if (!isValidImageType(from) || !isValidImageType(to)) return false;
-  if (from !== IMAGE_TYPE_PENDING) return false;
-  return isTerminal(to);
+  if (from === IMAGE_TYPE_PENDING) return isTerminal(to);
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_FOOD) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_WEIGHT) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_EDUCATION) return true;
+  if (from === IMAGE_TYPE_UNKNOWN && to === IMAGE_TYPE_SMARTWATCH) return true;
+  return false;
 }
 
 /**
@@ -72,8 +98,8 @@ export function assertCanTransition(from, to) {
   if (!canTransition(from, to)) {
     const err = new Error(
       `Illegal capture state transition: ${from} → ${to}. ` +
-      `Only 'pending' may transition to a terminal type ` +
-      `(${TERMINAL_IMAGE_TYPES.join(', ')}).`,
+      `Allowed: 'pending' → any terminal (${TERMINAL_IMAGE_TYPES.join(', ')}), ` +
+      `or 'unknown' → 'food' / 'weight' / 'education' / 'smartwatch'.`,
     );
     err.status = 409;
     err.code = 'INVALID_STATE_TRANSITION';

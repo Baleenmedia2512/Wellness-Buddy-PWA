@@ -1,18 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { Capacitor } from '@capacitor/core';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
-import { InlineNumericKeypad } from '../features/user';
-
-
-// Use the inline custom keypad only on native (Capacitor) builds.
-// On web/PWA, use the device's native keyboard.
-const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
+const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -23,23 +16,52 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
 
   const inputRefs = useRef([]);
 
+  // Component mount/unmount logging
+  useEffect(() => {
+    console.log("🟦 [ValidateOTP] Component MOUNTED", { isReactivationFlow });
+    const mountTime = Date.now();
+    
+    return () => {
+      const unmountTime = Date.now();
+      const duration = ((unmountTime - mountTime) / 1000).toFixed(2);
+      console.log(`🟦 [ValidateOTP] Component UNMOUNTED (was visible for ${duration}s)`);
+    };
+  }, [isReactivationFlow]);
+
   // Fetch request info on load
   useEffect(() => {
+    console.log("🟦 [ValidateOTP] Fetching request info...", { isReactivationFlow });
+    
+    // For reactivation flow, ensure OTP is completely clear
+    if (isReactivationFlow) {
+      console.log("🟦 [ValidateOTP] Reactivation flow - clearing OTP");
+      setOtp(['', '', '', '', '', '']);
+      setError('');
+      setSuccess('');
+    }
+    
     fetchRequestInfo();
-  }, []);
+  }, [isReactivationFlow]);
 
-  // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit - DISABLED for reactivation flow ΓöÇΓöÇ
   useEffect(() => {
+    // Skip auto-fill for reactivation flow
+    if (isReactivationFlow) {
+      console.log("🟦 [ValidateOTP] Skipping demo auto-fill for reactivation flow");
+      return;
+    }
+    
     const userEmail = localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
 
     // Small delay so the screen renders first
     const timer = setTimeout(() => {
+      console.log("🟦 [ValidateOTP] Demo account - auto-filling OTP");
       setOtp(['0', '0', '0', '0', '0', '0']);
     }, 800);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isReactivationFlow]);
   // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const fetchRequestInfo = async () => {
@@ -50,17 +72,33 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         return;
       }
 
+      console.log("🟦 [ValidateOTP] Fetching user status from API...");
       const response = await axios.get(
         `${API_BASE}/api/user/status?email=${encodeURIComponent(userEmail)}`
       );
 
+      console.log("🟦 [ValidateOTP] API Response:", response.data);
+
       if (response.data.pendingRequest) {
-        setRequestInfo(response.data.pendingRequest);
+        const request = response.data.pendingRequest;
+        console.log("🟦 [ValidateOTP] Request info loaded:", request);
+        setRequestInfo(request);
+      } else if (isReactivationFlow) {
+        // In reactivation flow, the API may not return a pendingRequest
+        // because the request type is different (reactivation vs initial setup).
+        // Do NOT close the modal — just show it without requestInfo.
+        // The coach will provide the OTP directly.
+        console.log("🟦 [ValidateOTP] Reactivation flow — no pendingRequest returned, staying open");
       } else {
+        console.log("🟦 [ValidateOTP] No pending request found, closing modal");
         if (onClose) onClose();
       }
     } catch (err) {
-      console.error("Error fetching request info:", err);
+      console.error("🔴 [ValidateOTP] Error fetching request info:", err);
+      if (isReactivationFlow) {
+        // Don't close on error in reactivation flow
+        console.log("🟦 [ValidateOTP] Reactivation flow — ignoring fetch error, staying open");
+      }
     }
   };
 
@@ -122,9 +160,11 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
   // Validate OTP
   const validateOtp = async () => {
     const otpCode = otp.join('');
+    console.log("🟦 [ValidateOTP] Validating OTP:", otpCode);
     
     if (otpCode.length !== 6) {
       setError('Please enter all 6 digits');
+      console.log("🔴 [ValidateOTP] Validation failed: incomplete OTP");
       return;
     }
 
@@ -135,30 +175,36 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
       const userEmail = localStorage.getItem('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
+        console.log("🔴 [ValidateOTP] Validation failed: no user email");
         return;
       }
 
       // Demo bypass for App Review - works for any user with OTP 000000
       const DEMO_OTP = '000000';
       if (otpCode === DEMO_OTP) {
+        console.log("🟦 [ValidateOTP] Demo OTP used, auto-verifying");
         setSuccess('Verified!');
         localStorage.setItem('coachOtpVerified', 'true');
         setTimeout(() => {
+          console.log("🟦 [ValidateOTP] Demo verification complete, calling onSuccess/onClose");
           if (onSuccess) onSuccess();
           else if (onClose) onClose();
         }, 1500);
         return;
       }
 
+      console.log("🟦 [ValidateOTP] Sending validation request to API...");
       await axios.post(
         `${API_BASE}/api/upline/validate-otp`,
         { otp: otpCode, email: userEmail }
       );
 
+      console.log("✅ [ValidateOTP] OTP verified successfully!");
       setSuccess('Verified!');
       localStorage.setItem('coachOtpVerified', 'true');
       
       setTimeout(() => {
+        console.log("🟦 [ValidateOTP] Verification complete, calling onSuccess/onClose");
         if (onSuccess) {
           onSuccess();
         } else if (onClose) {
@@ -166,14 +212,18 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         }
       }, 1500);
     } catch (err) {
+      console.error("🔴 [ValidateOTP] Validation error:", err);
       const errorData = err.response?.data;
       
       if (errorData?.expired) {
+        console.log("🔴 [ValidateOTP] OTP expired");
         setError('Code expired. Please request a new one.');
       } else if (errorData?.attemptsLeft !== undefined) {
+        console.log(`🔴 [ValidateOTP] Incorrect OTP, ${errorData.attemptsLeft} attempts left`);
         setAttemptsLeft(errorData.attemptsLeft);
         setError(`Incorrect code. ${errorData.attemptsLeft} attempts left.`);
       } else {
+        console.log("🔴 [ValidateOTP] Validation failed:", errorData?.error);
         setError(errorData?.error || 'Verification failed');
       }
       
@@ -184,12 +234,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
     }
   };
 
-  // Auto-submit
+  // Auto-submit — disabled for reactivation flow (coach OTP must be manually entered)
   useEffect(() => {
+    if (isReactivationFlow) return; // Never auto-submit in reactivation flow
     if (otp.every(digit => digit !== '')) {
       validateOtp();
     }
-  }, [otp]);
+  }, [otp, isReactivationFlow]);
 
   // Cancel verification
   const handleCancel = async () => {
@@ -207,12 +258,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         { email: userEmail }
       );
 
+      console.log("🟦 [ValidateOTP] User clicked Cancel, closing modal");
       // Close modal and refresh setup status
       if (onClose) {
         onClose();
       }
     } catch (err) {
-      console.error('Cancel error:', err);
+      console.error('🔴 [ValidateOTP] Cancel error:', err);
       setError('Failed to cancel request');
     } finally {
       setCancelling(false);
@@ -267,37 +319,24 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
               <input
                 key={index}
                 ref={el => inputRefs.current[index] = el}
-                type={USE_CUSTOM_KEYPAD ? 'text' : 'tel'}
-                inputMode={USE_CUSTOM_KEYPAD ? 'none' : 'numeric'}
+                type="tel"
+                inputMode="numeric"
                 pattern="[0-9]*"
                 autoComplete={index === 0 ? 'one-time-code' : 'off'}
-                readOnly={USE_CUSTOM_KEYPAD}
                 maxLength={1}
-                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${USE_CUSTOM_KEYPAD ? 'caret-transparent' : ''} ${
+                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${
                   error ? 'border-red-200 bg-red-50 text-red-600' :
                   success ? 'border-green-500 bg-green-50 text-green-600' :
                   digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
                 }`}
                 value={digit}
-                onChange={(e) => !USE_CUSTOM_KEYPAD && handleOtpChange(index, e.target.value)}
-                onKeyDown={(e) => !USE_CUSTOM_KEYPAD && handleKeyDown(index, e)}
-                onPaste={(e) => !USE_CUSTOM_KEYPAD && handlePaste(e)}
-                onFocus={USE_CUSTOM_KEYPAD ? (e) => e.target.blur() : undefined}
-                onContextMenu={USE_CUSTOM_KEYPAD ? (e) => e.preventDefault() : undefined}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                onPaste={handlePaste}
                 disabled={validating}
               />
             ))}
           </div>
-
-          {/* Inline numeric keypad (native apps only) */}
-          {USE_CUSTOM_KEYPAD && (
-            <div className="mb-6">
-              <InlineNumericKeypad
-                onDigit={handleKeypadDigit}
-                onBackspace={handleKeypadBackspace}
-              />
-            </div>
-          )}
 
           <div className="text-center mb-8 min-h-[24px]">
             {error ? (
@@ -355,25 +394,28 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
             </button>
           )}
           
-          <div className="mt-6 text-center">
-            <button 
-              onClick={handleCancel} 
-              disabled={validating || cancelling}
-              className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto transition-all"
-            >
-              {cancelling ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
-                  <span>Cancelling...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                  <span>Go Back To Select Different Coach</span>
-                </>
-              )}
-            </button>
-          </div>
+          {/* Hide "Go Back" button in reactivation flow - user already has a coach */}
+          {!isReactivationFlow && (
+            <div className="mt-6 text-center">
+              <button 
+                onClick={handleCancel} 
+                disabled={validating || cancelling}
+                className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto transition-all"
+              >
+                {cancelling ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    <span>Go Back To Select Different Coach</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>

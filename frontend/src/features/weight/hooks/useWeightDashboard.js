@@ -11,11 +11,11 @@ import {
 import { useWeightHistoryData } from './useWeightHistoryData';
 import { useWeightUndoActions } from './useWeightUndoActions';
 import {
-  buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries,
+  buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries, filterHistoryByDay,
 } from '../services/weightDashboardFormatter';
 
-export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null }) {
-  const data = useWeightHistoryData({ user, apiBaseUrl });
+export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
+  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');
@@ -52,8 +52,15 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null }) 
     setSelectedEntry,
   });
 
+  // History list is scoped to the selected day when one is provided (the
+  // shell date picker drives this). Trend + global stats keep using the
+  // full history so the summary/trend cards stay meaningful.
+  const dayFilteredHistory = useMemo(
+    () => filterHistoryByDay(data.weightHistory, selectedDate),
+    [data.weightHistory, selectedDate],
+  );
   const monthlyGroups = useMemo(
-    () => buildMonthlyGroups(data.weightHistory), [data.weightHistory],
+    () => buildMonthlyGroups(dayFilteredHistory), [dayFilteredHistory],
   );
   const previousWeightMap = useMemo(
     () => buildPreviousWeightMap(data.weightHistory), [data.weightHistory],

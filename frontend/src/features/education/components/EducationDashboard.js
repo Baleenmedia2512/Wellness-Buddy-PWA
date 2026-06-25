@@ -14,10 +14,25 @@ import EducationCameraPanel, { EducationEmptyState } from './EducationCameraPane
 import EducationDashboardSkeleton from './EducationDashboardSkeleton';
 import { useEducationDashboard } from '../hooks/useEducationDashboard';
 
-const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId = null }) => {
-  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey });
+const EducationDashboard = ({
+  user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null, hideOverview = false,
+  // Imperative handle: parent passes a React ref; we write `openRef.current =
+  // (entryId) => ...` each render so the timeline shell can open a log entry.
+  openRef = null,
+  // Called after the detail modal is closed so the timeline can refresh.
+  onAfterModalClose = null,
+}) => {
+  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Imperative open handle for the timeline shell (ff.diary-timeline).
+  if (openRef) {
+    openRef.current = (entryId) => {
+      const log = (vm.educationLogs || []).find((e) => String(e.Id) === String(entryId));
+      if (log) setSelectedLog(log);
+    };
+  }
 
   // Auto-open the entry whose Id matches the deep-link mealId once logs load.
   const autoOpenEducDoneRef = useRef(false);
@@ -44,6 +59,7 @@ const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId =
       `}</style>
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
         <div className="px-3 md:px-4">
+          {!hideOverview && (
           <EducationDashboardHeader
             summary={vm.summary} summaryLoading={vm.summaryLoading}
             educationLogs={vm.educationLogs}
@@ -51,6 +67,7 @@ const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId =
             trendRangeDays={vm.trendRangeDays}
             setTrendRangeDays={vm.setTrendRangeDays}
           />
+          )}
           {vm.monthlyGroups.length === 0 && <EducationCameraPanel />}
           <EducationLogList
             monthlyGroups={vm.monthlyGroups} undoState={vm.undoState}
@@ -67,10 +84,11 @@ const EducationDashboard = ({ user, apiBaseUrl, refreshKey = 0, initialEntryId =
       {selectedLog && (
         <EducationCardModal
           log={selectedLog}
-          onClose={() => setSelectedLog(null)}
+          onClose={() => { setSelectedLog(null); onAfterModalClose?.(); }}
           onDelete={async (log) => {
             setDeletingId(log.Id);
             setSelectedLog(null);
+            onAfterModalClose?.();
             await vm.handleDeleteEducationLog(log);
             setDeletingId(null);
           }}

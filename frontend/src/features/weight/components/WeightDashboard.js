@@ -55,12 +55,13 @@ const ModalFallback = () => (
   </div>
 );
 
-const Overview = (vm) => {
+const Overview = ({ vm, hideOverview, user, apiBaseUrl }) => {
   const latestWeight = vm.weightHistory.length > 0 ? vm.weightHistory[0] : null;
   const previousWeight = vm.weightHistory.length > 1 ? vm.weightHistory[1].Weight : null;
   return (
     <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
       <div className="px-3 md:px-4">
+        {!hideOverview && (
         <div className="mt-3 md:mt-5 mb-4">
           <div
             className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-100 shadow-md overflow-hidden"
@@ -105,7 +106,8 @@ const Overview = (vm) => {
             <WeightPanelDots active={vm.activeWeightPanel} onSelect={vm.setActiveWeightPanel} />
           </div>
         </div>
-        <WeightHistoryList {...vm} user={vm.user} apiBaseUrl={vm.apiBaseUrl} />
+        )}
+        <WeightHistoryList {...vm} user={user} apiBaseUrl={apiBaseUrl} />
       </div>
     </div>
   );
@@ -125,14 +127,36 @@ const Modal = ({ vm }) => (
   </Suspense>
 );
 
-const WeightDashboard = ({ user, apiBaseUrl, hideHeader, initialEntryId = null }) => {
-  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId });
-  const view = vm.loading ? <LoadingSkeleton /> : <Overview {...vm} user={user} apiBaseUrl={apiBaseUrl} />;
+const WeightDashboard = ({
+  user, apiBaseUrl, hideHeader, hideOverview = false,
+  initialEntryId = null, selectedDate = null, refreshKey = 0,
+  // Imperative handle: parent passes a React ref; we write `openRef.current =
+  // (entryId) => ...` each render so the timeline shell can open an entry.
+  openRef = null,
+  // Called after the detail modal is closed so the timeline can refresh.
+  onAfterModalClose = null,
+}) => {
+  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
+
+  // Imperative open handle for the timeline shell (ff.diary-timeline).
+  if (openRef) {
+    openRef.current = (entryId) => {
+      const entry = (vm.weightHistory || []).find((e) => String(e.ID) === String(entryId));
+      if (entry) vm.handleViewEntry(entry);
+    };
+  }
+
+  // Wrap closeModal to fire the optional post-close callback.
+  const closeModal = onAfterModalClose
+    ? () => { vm.closeModal(); onAfterModalClose(); }
+    : vm.closeModal;
+
+  const view = vm.loading ? <LoadingSkeleton /> : <Overview vm={vm} hideOverview={hideOverview} user={user} apiBaseUrl={apiBaseUrl} />;
   const body = (
     <>
       <style>{KEYFRAMES}</style>
       {view}
-      {vm.showModal && vm.selectedEntry && <Modal vm={{ ...vm, apiBaseUrl }} />}
+      {vm.showModal && vm.selectedEntry && <Modal vm={{ ...vm, apiBaseUrl, closeModal }} />}
     </>
   );
   if (!hideHeader) return <div className="min-h-screen bg-gray-50">{body}</div>;

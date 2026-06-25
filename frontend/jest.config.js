@@ -28,6 +28,12 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.js', '**/__tests__/**/*.test.jsx'],
 
+  // Load the jest-dom matchers (toBeInTheDocument, etc.) for direct
+  // `jest` runs. `react-scripts test` auto-loads src/setupTests.js, but
+  // the standalone runner needs it wired explicitly so single-file runs
+  // match CI behaviour.
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+
   // Module name mapper for any CSS/image imports that would otherwise
   // break in a Node environment.
   moduleNameMapper: {

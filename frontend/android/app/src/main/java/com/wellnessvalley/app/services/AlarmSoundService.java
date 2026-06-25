@@ -28,6 +28,7 @@ import androidx.core.app.NotificationCompat;
 
 import com.wellnessvalley.app.MainActivity;
 import com.wellnessvalley.app.R;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 
 /**
  * AlarmSoundService
@@ -50,8 +51,10 @@ public class AlarmSoundService extends Service {
     public static final String ACTION_DISMISS = "com.wellnessvalley.app.ALARM_DISMISS";
     public static final String ACTION_SNOOZE  = "com.wellnessvalley.app.ALARM_SNOOZE";
 
-    public static final String EXTRA_TITLE   = "alarmTitle";
-    public static final String EXTRA_MESSAGE = "alarmMessage";
+    public static final String EXTRA_TITLE        = "alarmTitle";
+    public static final String EXTRA_MESSAGE      = "alarmMessage";
+    public static final String EXTRA_ACTIVITY_TYPE = "activityType";
+    public static final String EXTRA_TASK_ID       = "taskId";
 
     /** How long the alarm rings before auto-stopping (120 seconds) */
     private static final long MAX_ALARM_DURATION_MS = 120_000L;
@@ -72,6 +75,8 @@ public class AlarmSoundService extends Service {
     private Vibrator        mVibrator;
     private Handler         mAutoStopHandler;
     private Runnable        mAutoStopRunnable;
+    private String          mActivityType;
+    private String          mTaskId;
 
     // ─────────────────────────────────────────────────────────────────────
     // Service lifecycle
@@ -107,12 +112,14 @@ public class AlarmSoundService extends Service {
         }
 
         // Default: start playing alarm
-        String title   = intent.getStringExtra(EXTRA_TITLE);
-        String message = intent.getStringExtra(EXTRA_MESSAGE);
+        String title        = intent.getStringExtra(EXTRA_TITLE);
+        String message      = intent.getStringExtra(EXTRA_MESSAGE);
+        String activityType = intent.getStringExtra(EXTRA_ACTIVITY_TYPE);
+        String taskId       = intent.getStringExtra(EXTRA_TASK_ID);
         if (title   == null) title   = "Wellness Alarm";
         if (message == null) message = "Time for your activity!";
 
-        startAlarm(title, message);
+        startAlarm(title, message, activityType, taskId);
         return START_NOT_STICKY;
     }
 
@@ -131,14 +138,17 @@ public class AlarmSoundService extends Service {
     // Alarm start / stop
     // ─────────────────────────────────────────────────────────────────────
 
-    private void startAlarm(String title, String message) {
+    private void startAlarm(String title, String message, String activityType, String taskId) {
         Log.d(TAG, "🔔 Starting alarm sound");
+
+        mActivityType = activityType;
+        mTaskId       = taskId;
 
         // 1. Acquire WakeLock so CPU stays awake
         acquireWakeLock();
 
         // 2. Promote to foreground with an ongoing notification
-        startForeground(FOREGROUND_NOTIF_ID, buildForegroundNotification(title, message));
+        startForeground(FOREGROUND_NOTIF_ID, buildForegroundNotification(title, message, activityType, taskId));
 
         // 3. Play system alarm ringtone
         playAlarmSound();
@@ -189,6 +199,12 @@ public class AlarmSoundService extends Service {
             restartIntent.setAction(ACTION_START);
             if (title   != null) restartIntent.putExtra(EXTRA_TITLE,   title);
             if (message != null) restartIntent.putExtra(EXTRA_MESSAGE, message);
+            if (mActivityType != null) {
+                restartIntent.putExtra(EXTRA_ACTIVITY_TYPE, mActivityType);
+            }
+            if (mTaskId != null) {
+                restartIntent.putExtra(EXTRA_TASK_ID, mTaskId);
+            }
 
             // Use PendingIntent for a Service (startForegroundService)
             PendingIntent pi = PendingIntent.getForegroundService(
@@ -351,7 +367,10 @@ public class AlarmSoundService extends Service {
     // Foreground notification (required to keep service running)
     // ─────────────────────────────────────────────────────────────────────
 
-    private Notification buildForegroundNotification(String title, String message) {
+    private Notification buildForegroundNotification(String title,
+                                                     String message,
+                                                     String activityType,
+                                                     String taskId) {
         NotificationManager nm =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         ensureAlarmChannel(nm);
@@ -378,9 +397,8 @@ public class AlarmSoundService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // Tap notification → open app
-        Intent openApp = new Intent(this, MainActivity.class);
-        openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // Tap notification → open Task Notification Panel
+        Intent openApp = ReminderPlugin.buildTaskPanelIntent(this, activityType, taskId, false);
         PendingIntent openPi = PendingIntent.getActivity(
                 this,
                 9003,
@@ -391,8 +409,10 @@ public class AlarmSoundService extends Service {
         // Full-screen intent → opens AlarmFullScreenActivity on top of lock screen
         Intent fullScreenIntent = new Intent(this, AlarmFullScreenActivity.class);
         fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-        fullScreenIntent.putExtra(EXTRA_TITLE,   title);
-        fullScreenIntent.putExtra(EXTRA_MESSAGE, message);
+        fullScreenIntent.putExtra(EXTRA_TITLE,         title);
+        fullScreenIntent.putExtra(EXTRA_MESSAGE,       message);
+        fullScreenIntent.putExtra(EXTRA_ACTIVITY_TYPE, activityType);
+        fullScreenIntent.putExtra(EXTRA_TASK_ID,       taskId);
         PendingIntent fullScreenPi = PendingIntent.getActivity(
                 this,
                 9005,
@@ -403,7 +423,8 @@ public class AlarmSoundService extends Service {
         // Wellness Valley logo as large icon
         Bitmap largeLogo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        // Build notification — "Upload Now" only for photo-log tasks (not sleep / water)
+        NotificationCompat.Builder notifBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setLargeIcon(largeLogo)
                 .setContentTitle(title)
@@ -415,7 +436,20 @@ public class AlarmSoundService extends Service {
                 .setOngoing(true)             // Cannot be swiped away while alarm rings
                 .setAutoCancel(false)
                 .setContentIntent(openPi)
-                .setFullScreenIntent(fullScreenPi, true)   // ← pops up full screen immediately
+                .setFullScreenIntent(fullScreenPi, true);   // ← pops up full screen immediately
+
+        if (ReminderAlarmReceiver.isPhotoUploadReminder(activityType)) {
+            Intent uploadIntent = ReminderPlugin.buildTaskPanelIntent(this, activityType, taskId, true);
+            PendingIntent uploadPi = PendingIntent.getActivity(
+                    this,
+                    9006,
+                    uploadIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            notifBuilder.addAction(R.drawable.ic_notification, "Upload Now", uploadPi);
+        }
+
+        return notifBuilder
                 .addAction(R.drawable.ic_notification, "⏰ Snooze 5 min", snoozePi)
                 .addAction(R.drawable.ic_notification, "✖ Dismiss", dismissPi)
                 .build();

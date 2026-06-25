@@ -728,8 +728,10 @@ const ImageUpload = forwardRef(
                   </motion.div>
                 )}
 
-                {/* Success Badge - When Analysis Complete */}
-                {!loading && (
+                {/* Success Badge — only when analysis produced a recognised type.
+                    When imageType is null (analysis failed / FALLBACK) we show
+                    nothing here; App.js surfaces an error message instead. */}
+                {!loading && imageType && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}

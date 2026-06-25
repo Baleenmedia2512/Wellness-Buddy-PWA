@@ -16,6 +16,8 @@ import {
   X,
   Trash2,
   Share2,
+  Trophy,
+  Camera,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -28,9 +30,11 @@ const Header = ({
   userRole = "user",
   onSignOut,
   onShowBackgroundHistory,
+  onShowWellnessReports,
   onShowAdminDashboard,
   onShowDisciplineReport,
   onShowActivityTimeReport,
+  onShowActivityReport,
   onShowStepCounter,
   onShowScreenTime,
   onShowReminders,
@@ -40,6 +44,7 @@ const Header = ({
   onShowAttendanceReport,
   onShowNutritionCentersMap,
   onShowRegisterCenter,
+  onShowMarathon,
   onLeaderboardRefresh,
   onProfileSaved,
   manualModeActive = false,
@@ -51,6 +56,12 @@ const Header = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [autoShareEnabled, setAutoShareEnabled] = useState(
     localStorage.getItem('autoShareOnCapture') !== 'false'
+  );
+  // wv.autoCameraOnResume — controls whether the camera auto-opens every time
+  // the user returns the app to the foreground (after completing their first share).
+  // Default ON to preserve existing Snapchat-style behaviour.
+  const [autoCameraOnResumeEnabled, setAutoCameraOnResumeEnabled] = useState(
+    localStorage.getItem('wv.autoCameraOnResume') !== 'false'
   );
   const menuPanelRef = useRef(null);
 
@@ -410,7 +421,7 @@ const Header = ({
                           <LayoutDashboard className="h-5 w-5 text-green-700" />
                         </div>
                         <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                          Dashboard
+                          Diary
                         </span>
                       </TouchFeedbackButton>
 
@@ -441,6 +452,22 @@ const Header = ({
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
                         </TouchFeedbackButton>
                       )} */}
+
+                      {/* Reports — summary + trends */}
+                      {onShowWellnessReports && (
+                        <TouchFeedbackButton
+                          onClick={() => { onShowWellnessReports(); closeMenu(); }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Reports"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                            <TrendingUp className="h-5 w-5 text-emerald-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Reports
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
 
                       {/* Reminders */}
                       {onShowReminders && (
@@ -494,21 +521,21 @@ const Header = ({
                         </TouchFeedbackButton>
                       )}
 
-                      {/* Activity Time Report */}
-                      {onShowActivityTimeReport && (
+                      {/* Education Attendance — opens the merged badge-based Activity Report */}
+                      {onShowActivityReport && (
                         <TouchFeedbackButton
                           onClick={() => {
-                            onShowActivityTimeReport();
+                            onShowActivityReport();
                             closeMenu();
                           }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Activity Time Report"
+                          ariaLabel="Education Attendance"
                         >
-                          <div className="h-10 w-10 rounded-2xl bg-amber-100 flex items-center justify-center">
-                            <Clock3 className="h-5 w-5 text-amber-700" />
+                          <div className="h-10 w-10 rounded-2xl bg-indigo-100 flex items-center justify-center">
+                            <TrendingUp className="h-5 w-5 text-indigo-700" />
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Activity Report
+                            Education{'\n'}Attendance
                           </span>
                         </TouchFeedbackButton>
                       )}
@@ -551,25 +578,6 @@ const Header = ({
                         </TouchFeedbackButton>
                       )}
 
-                      {/* My Attendance */}
-                      {onShowAttendanceReport && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowAttendanceReport();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="My Attendance"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-indigo-100 flex items-center justify-center">
-                            <TrendingUp className="h-5 w-5 text-indigo-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Education Attendance
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
                       {/* Nutrition Centres Map */}
                       {onShowNutritionCentersMap && (
                         <TouchFeedbackButton
@@ -585,6 +593,22 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Physical Club
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Marathon */}
+                      {onShowMarathon && (
+                        <TouchFeedbackButton
+                          onClick={() => { onShowMarathon(); closeMenu(); }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Marathon"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-yellow-100 flex items-center justify-center">
+                            <Trophy className="h-5 w-5 text-yellow-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Marathon
                           </span>
                         </TouchFeedbackButton>
                       )}
@@ -611,7 +635,7 @@ const Header = ({
                   </div>
 
                   {/* ── AUTO SHARE TOGGLE ── */}
-                  <div className="px-4 py-2 border-t border-gray-100">
+                  <div className="px-4 pt-2 pb-1 border-t border-gray-100">
                     <TouchFeedbackButton
                       onClick={() => {
                         const newValue = !autoShareEnabled;
@@ -642,6 +666,42 @@ const Header = ({
                         <span
                           className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
                             autoShareEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </div>
+                    </TouchFeedbackButton>
+
+                    {/* ── AUTO CAMERA TOGGLE ── */}
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        const newValue = !autoCameraOnResumeEnabled;
+                        setAutoCameraOnResumeEnabled(newValue);
+                        localStorage.setItem('wv.autoCameraOnResume', String(newValue));
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      ariaLabel="Toggle Auto Camera"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Camera className={`h-4 w-4 ${autoCameraOnResumeEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                        <div className="text-left">
+                          <div className="text-xs font-medium text-gray-900">
+                            Auto Camera
+                          </div>
+                          <div className="text-[10px] text-gray-500 leading-tight">
+                            {autoCameraOnResumeEnabled
+                              ? 'Camera opens on app resume'
+                              : 'Open camera manually'}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          autoCameraOnResumeEnabled ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                            autoCameraOnResumeEnabled ? 'translate-x-5' : 'translate-x-0.5'
                           }`}
                         />
                       </div>

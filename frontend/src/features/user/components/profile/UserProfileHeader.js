@@ -13,6 +13,7 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', us
 const UserProfileHeader = ({
   user, name, userRole, profileImagePreview, faceStatus,
   showRecrop, onPickImage, onRecrop, onClose, isSaving,
+  weightGoalMode,
 }) => {
   const displayName = name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'User';
@@ -54,10 +55,30 @@ const UserProfileHeader = ({
           )}
         </div>
       </div>
-      <TouchFeedbackButton onClick={onClose} disabled={isSaving} ariaLabel="Close"
-        className="p-2 hover:bg-green-700 rounded-lg disabled:opacity-50 text-white">
-        <X className="w-5 h-5 text-white" />
-      </TouchFeedbackButton>
+      <div className="flex flex-col items-end gap-2">
+        {weightGoalMode && (
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border-2 shadow-sm
+              ${weightGoalMode === 'loss'
+                ? 'bg-red-100 border-red-300 text-red-700'
+                : weightGoalMode === 'gain'
+                ? 'bg-blue-100 border-blue-300 text-blue-700'
+                : 'bg-green-100 border-green-300 text-green-700'
+              }`}
+          >
+            <span className="text-sm">
+              {weightGoalMode === 'loss' ? '🔥' : weightGoalMode === 'gain' ? '💪' : '⚖️'}
+            </span>
+            <span>
+              {weightGoalMode === 'loss' ? 'Loss Mode' : weightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
+            </span>
+          </span>
+        )}
+        <TouchFeedbackButton onClick={onClose} disabled={isSaving} ariaLabel="Close"
+          className="p-2 hover:bg-green-700 rounded-lg disabled:opacity-50 text-white">
+          <X className="w-5 h-5 text-white" />
+        </TouchFeedbackButton>
+      </div>
     </div>
   );
 };

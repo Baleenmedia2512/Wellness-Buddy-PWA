@@ -18,7 +18,9 @@ import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
 import com.wellnessvalley.app.plugins.KeepAwakePlugin;
 import com.wellnessvalley.app.plugins.ReminderPlugin;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 import com.wellnessvalley.app.plugins.ScreenTimePlugin;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
 import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
@@ -142,6 +144,74 @@ public class MainActivity extends BridgeActivity {
         handleNotificationIntent(getIntent());
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
+        
+        // ✅ Diagnose autofill configuration
+        diagnoseAutofillSetup();
+    }
+    
+    /**
+     * ✅ DIAGNOSTIC: Log autofill configuration for debugging
+     * Run this to understand why keyboard suggestions may not appear
+     */
+    private void diagnoseAutofillSetup() {
+        android.util.Log.d("MainActivity", "═══════════════════════════════════════");
+        android.util.Log.d("MainActivity", "AUTOFILL DIAGNOSTIC REPORT");
+        android.util.Log.d("MainActivity", "═══════════════════════════════════════");
+        
+        // Check Android version
+        android.util.Log.d("MainActivity", "Android SDK: " + android.os.Build.VERSION.SDK_INT + 
+            " (" + android.os.Build.VERSION.RELEASE + ")");
+        
+        // Check AutofillManager availability (Android 8.0+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
+            if (afm != null) {
+                boolean isEnabled = afm.isEnabled();
+                boolean hasService = afm.hasEnabledAutofillServices();
+                android.content.ComponentName serviceName = afm.getAutofillServiceComponentName();
+                
+                android.util.Log.d("MainActivity", "AutofillManager found: YES");
+                android.util.Log.d("MainActivity", "  - Enabled: " + (isEnabled ? "✅ YES" : "❌ NO"));
+                android.util.Log.d("MainActivity", "  - Has service: " + (hasService ? "✅ YES" : "❌ NO"));
+                android.util.Log.d("MainActivity", "  - Service: " + (serviceName != null ? serviceName.flattenToString() : "NONE"));
+                
+                if (!isEnabled || !hasService) {
+                    android.util.Log.w("MainActivity", "⚠️ USER ACTION REQUIRED:");
+                    android.util.Log.w("MainActivity", "   Go to Settings → System → Languages & input → Autofill service");
+                    android.util.Log.w("MainActivity", "   Enable: Google or a password manager (LastPass, 1Password, Bitwarden)");
+                }
+            } else {
+                android.util.Log.e("MainActivity", "AutofillManager: ❌ NOT AVAILABLE");
+            }
+        } else {
+            android.util.Log.w("MainActivity", "AutofillManager: ❌ NOT SUPPORTED (Android < 8.0)");
+            android.util.Log.w("MainActivity", "   Fallback: Using deprecated setSaveFormData()");
+        }
+        
+        // Check WebView configuration
+        try {
+            WebView webView = getBridge().getWebView();
+            if (webView != null) {
+                WebSettings settings = webView.getSettings();
+                android.util.Log.d("MainActivity", "WebView Settings:");
+                android.util.Log.d("MainActivity", "  - DOM Storage: " + (settings.getDomStorageEnabled() ? "✅" : "❌"));
+                android.util.Log.d("MainActivity", "  - Database: " + (settings.getDatabaseEnabled() ? "✅" : "❌"));
+                android.util.Log.d("MainActivity", "  - JavaScript: " + (settings.getJavaScriptEnabled() ? "✅" : "❌"));
+                
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    int autofillMode = webView.getImportantForAutofill();
+                    String modeStr = autofillMode == View.IMPORTANT_FOR_AUTOFILL_YES ? "✅ YES" :
+                                    autofillMode == View.IMPORTANT_FOR_AUTOFILL_NO ? "❌ NO" :
+                                    autofillMode == View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS ? "❌ NO (EXCLUDE_DESCENDANTS)" :
+                                    "⚠️ AUTO";
+                    android.util.Log.d("MainActivity", "  - Autofill mode: " + modeStr);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "Failed to read WebView settings", e);
+        }
+        
+        android.util.Log.d("MainActivity", "═══════════════════════════════════════");
     }
     
     @Override
@@ -151,7 +221,9 @@ public class MainActivity extends BridgeActivity {
     }
     
     private void handleNotificationIntent(Intent intent) {
-        if (intent != null && intent.getBooleanExtra("openBackgroundHistory", false)) {
+        if (intent == null) return;
+
+        if (intent.getBooleanExtra("openBackgroundHistory", false)) {
             // Send event to JavaScript side after a short delay to ensure the app is ready
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 try {
@@ -160,6 +232,17 @@ public class MainActivity extends BridgeActivity {
                     android.util.Log.e("MainActivity", "Failed to trigger notification event", e);
                 }
             }, 1000);
+            return;
+        }
+
+        if (intent.getBooleanExtra(ReminderPlugin.EXTRA_OPEN_TASK_PANEL, false)) {
+            final String taskType  = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_TYPE);
+            final String taskId    = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_ID);
+            final boolean uploadNow = intent.getBooleanExtra(ReminderPlugin.EXTRA_UPLOAD_NOW, false);
+
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                ReminderPlugin.deliverTaskReminderAction(this, taskType, taskId, uploadNow);
+            }, 800);
         }
     }
     
@@ -262,7 +345,55 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
                 
-                android.util.Log.d("MainActivity", "✅ WebView optimized for image performance and text selection");
+                // ═══════════════════════════════════════════════════════════════
+                // COMPLETE AUTOFILL CONFIGURATION FOR WEBVIEW
+                // ═══════════════════════════════════════════════════════════════
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    try {
+                        // Step 1: Enable autofill on the WebView
+                        webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+                        
+                        // Step 2: Check AutofillManager status
+                        android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
+                        if (afm != null) {
+                            boolean isEnabled = afm.isEnabled();
+                            boolean hasService = afm.hasEnabledAutofillServices();
+                            android.util.Log.d("MainActivity", 
+                                "Autofill Status: enabled=" + isEnabled + 
+                                ", hasService=" + hasService +
+                                (hasService ? ", service=" + afm.getAutofillServiceComponentName() : ""));
+                            
+                            if (!isEnabled) {
+                                android.util.Log.w("MainActivity", 
+                                    "⚠️ Autofill is disabled. User must enable in Settings → System → Autofill");
+                            }
+                        }
+                        
+                        // Step 3: Enable form data storage for older Android versions
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+                            settings.setSaveFormData(true);
+                            android.util.Log.d("MainActivity", "✅ Form data saving enabled (Android < 8)");
+                        }
+                        
+                        android.util.Log.d("MainActivity", "✅ WebView autofill enabled for keyboard suggestions");
+                    } catch (Exception e) {
+                        android.util.Log.e("MainActivity", "❌ Could not enable autofill", e);
+                    }
+                }
+                
+                // ═══════════════════════════════════════════════════════════════
+                // ENABLE DATABASE AND DOM STORAGE (REQUIRED FOR AUTOCOMPLETE)
+                // ═══════════════════════════════════════════════════════════════
+                if (!settings.getDomStorageEnabled()) {
+                    settings.setDomStorageEnabled(true);
+                    android.util.Log.d("MainActivity", "✅ DOM storage enabled");
+                }
+                if (!settings.getDatabaseEnabled()) {
+                    settings.setDatabaseEnabled(true);
+                    android.util.Log.d("MainActivity", "✅ Database enabled");
+                }
+                
+                android.util.Log.d("MainActivity", "✅ WebView optimized: images, text selection, autofill, storage");
             }
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "Failed to optimize WebView", e);

@@ -1362,7 +1362,7 @@ const NutritionCard = ({
           <div className="grid grid-cols-3 gap-3 mb-4">
             {/* Calories */}
             <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-red-600">
+              <div className="text-2xl font-bold text-red-600">
                 {localNutrition.calories}
               </div>
               <div className="text-sm font-medium text-red-700 mt-1">
@@ -1372,7 +1372,7 @@ const NutritionCard = ({
 
             {/* Carbs */}
             <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-yellow-600">
+              <div className="text-2xl font-bold text-yellow-600">
                 {localNutrition.carbs}g
               </div>
               <div className="text-sm font-medium text-yellow-700 mt-1">
@@ -1382,7 +1382,7 @@ const NutritionCard = ({
 
             {/* Protein */}
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-blue-600">
+              <div className="text-2xl font-bold text-blue-600">
                 {localNutrition.protein}g
               </div>
               <div className="text-sm font-medium text-blue-700 mt-1">
@@ -1392,7 +1392,7 @@ const NutritionCard = ({
 
             {/* Fat */}
             <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-purple-600">
+              <div className="text-2xl font-bold text-purple-600">
                 {localNutrition.fat}g
               </div>
               <div className="text-sm font-medium text-purple-700 mt-1">
@@ -1402,7 +1402,7 @@ const NutritionCard = ({
 
             {/* Fiber */}
             <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-green-600">
                 {localNutrition.fiber}g
               </div>
               <div className="text-sm font-medium text-green-700 mt-1">
@@ -1416,7 +1416,7 @@ const NutritionCard = ({
               if (gi == null) {
                 return (
                   <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-4 text-center">
-                    <div className="text-3xl font-bold text-gray-400">—</div>
+                    <div className="text-2xl font-bold text-gray-400">—</div>
                     <div className="text-sm font-medium text-gray-500 mt-1">GI</div>
                   </div>
                 );
@@ -1428,7 +1428,7 @@ const NutritionCard = ({
                 : { box: 'from-rose-50 to-rose-100 border-rose-200', val: 'text-rose-600', label: 'text-rose-700', tag: 'High' };
               return (
                 <div className={`bg-gradient-to-br ${tone.box} border rounded-xl p-4 text-center`}>
-                  <div className={`text-3xl font-bold ${tone.val}`}>{Math.round(gi)}</div>
+                  <div className={`text-2xl font-bold ${tone.val}`}>{Math.round(gi)}</div>
                   <div className={`text-sm font-medium ${tone.label} mt-1`}>GI · {tone.tag}</div>
                 </div>
               );

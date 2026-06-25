@@ -2,8 +2,11 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import * as repo from './auth.repository.js';
 import logger from '../../shared/lib/logger.js';
-import { verifyFirebaseIdToken } from './firebaseAdmin.js';
 import { isValidPhoneE164, usernameFromPhone } from './domain/contactIdentifier.js';
+import { canonicalPhoneForStorage } from './domain/phone-identity.rules.js';
+import { MDT_OTP_EXPIRY_MINUTES, getMdtSmsConfigGaps, maskPhoneForLog, mdtApiKeyHint, mdtSenderIdHint, mdtTemplateIdHint } from './domain/mdt-phone.rules.js';
+import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
+import { sendMdtSms } from './data/mdt-sms.client.js';
 
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
@@ -97,37 +100,218 @@ async function sendOtpEmail(recipient, otp) {
   });
 }
 
-export async function sendOtp({ recipient, contactType }) {
-  if (DEMO_ACCOUNTS.includes(recipient)) {
-    return { httpStatus: 200, body: { success: true } };
-  }
+function otpExpiryIst(minutesFromNow) {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const expiresAt = new Date(now.getTime() + istOffset + minutesFromNow * 60 * 1000);
+  return expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+}
+
+async function createAndDeliverOtp({ recipient, contactType }) {
+  logger.info('[sendOtp] creating OTP record', {
+    contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
+  });
 
   await repo.deactivateActiveOtps(recipient, contactType);
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await bcrypt.hash(otp, 10);
-
-  // Calculate expiry time in IST (5 minutes from now)
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const expiresAt = new Date(now.getTime() + istOffset + 5 * 60 * 1000);
-  const expiresAtIST = expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
-  const currentTime = getISTTimestamp();
+  const expiryMinutes = contactType === 'phone' ? MDT_OTP_EXPIRY_MINUTES : 5;
 
   await repo.insertOtpToken({
     Recipient: recipient,
     OTPHash: otpHash,
-    ExpiresAt: expiresAtIST,
+    ExpiresAt: otpExpiryIst(expiryMinutes),
     ContactType: contactType,
     IsActive: true,
-    CreatedAt: currentTime,
+    CreatedAt: getISTTimestamp(),
+  });
+
+  logger.info('[sendOtp] OTP stored, dispatching', {
+    contactType,
+    expiryMinutes,
+    channel: contactType === 'phone' ? 'mdt-sms' : 'smtp',
   });
 
   if (contactType === 'email') {
     await sendOtpEmail(recipient, otp);
+    logger.info('[sendOtp] email dispatched', { recipient });
+  } else if (contactType === 'phone') {
+    const message = buildMdtOtpMessage(otp);
+    logger.info('[sendOtp] calling MDT SMS', {
+      recipientHint: maskPhoneForLog(recipient),
+      messageLen: message.length,
+    });
+    await sendMdtSms({ e164: recipient, message });
+    logger.info('[sendOtp] MDT SMS call completed', {
+      recipientHint: maskPhoneForLog(recipient),
+    });
+  }
+}
+
+async function resolveUserAfterOtp({ recipient, contactType }) {
+  let userInfo;
+  let isNewUser = false;
+
+  if (contactType === 'phone') {
+    userInfo = await repo.findUserByPhone(recipient);
+    if (!userInfo) {
+      const storedPhone = canonicalPhoneForStorage(recipient);
+      const { row, isNewUser: created } = await repo.findOrInsertUserByPhone(
+        {
+          EntryDateTime: getISTTimestamp(),
+          EntryUser: 'Wellness Valley',
+          UserName: usernameFromPhone(recipient),
+          Password: 'User@123#',
+          TargetWeightInKg: 0,
+          Status: 'Active',
+          CoachApproved: 0,
+          PhoneNumber: storedPhone,
+        },
+        recipient,
+      );
+      userInfo = row;
+      isNewUser = created;
+      if (created) {
+        logger.info('[verify-otp] new phone user created', {
+          phoneHint: maskPhoneForLog(recipient),
+          storedPhoneHint: storedPhone.length >= 4 ? `***${storedPhone.slice(-4)}` : '****',
+        });
+      } else {
+        logger.info('[verify-otp] concurrent-insert resolved: returning existing user', {
+          userId: userInfo.UserId,
+          phoneHint: maskPhoneForLog(recipient),
+        });
+      }
+    } else {
+      logger.info('[verify-otp] existing phone user authenticated', {
+        userId: userInfo.UserId,
+        phoneHint: maskPhoneForLog(recipient),
+      });
+    }
+    return {
+      isNewUser,
+      user: {
+        id: userInfo.UserId,
+        username: userInfo.UserName,
+        email: userInfo.Email || '',
+        phone: userInfo.PhoneNumber || recipient,
+        status: userInfo.Status,
+      },
+    };
   }
 
-  return { httpStatus: 200, body: { success: true, otp } };
+  userInfo = await repo.findUserByEmail(recipient);
+  if (!userInfo) {
+    userInfo = await repo.insertUser({
+      EntryDateTime: getISTTimestamp(),
+      EntryUser: 'Wellness Valley',
+      UserName: recipient.split('@')[0],
+      Password: 'User@123#',
+      TargetWeightInKg: 0,
+      Status: 'Active',
+      CoachApproved: 0,
+      Email: recipient,
+    });
+    isNewUser = true;
+    logger.debug('🆕 [verify-otp] New user created:', recipient);
+  }
+
+  return {
+    isNewUser,
+    user: {
+      id: userInfo.UserId,
+      username: userInfo.UserName,
+      email: userInfo.Email,
+      status: userInfo.Status,
+    },
+  };
+}
+
+export async function sendOtp({ recipient, contactType }) {
+  if (DEMO_ACCOUNTS.includes(recipient)) {
+    return { httpStatus: 200, body: { success: true } };
+  }
+
+  if (contactType === 'phone') {
+    const configGaps = getMdtSmsConfigGaps();
+    if (configGaps.length > 0) {
+      logger.warn('[sendOtp] MDT not fully configured on server', {
+        route: 'send-otp',
+        missing: configGaps,
+        senderIdHint: mdtSenderIdHint(),
+        templateIdHint: mdtTemplateIdHint(),
+        apiKeyHint: mdtApiKeyHint(process.env.MDT_SMS_API_KEY),
+      });
+      return {
+        httpStatus: 503,
+        body: {
+          success: false,
+          message: `SMS service misconfigured: set ${configGaps.join(', ')} in backend env (local .env or Vercel).`,
+          missingConfig: configGaps,
+          senderIdHint: mdtSenderIdHint(),
+          templateIdHint: mdtTemplateIdHint(),
+          apiKeyHint: mdtApiKeyHint(process.env.MDT_SMS_API_KEY),
+        },
+      };
+    }
+  }
+
+  logger.info('[sendOtp] starting delivery', {
+    contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
+    delivery: contactType === 'phone' ? 'mdt-sms' : 'smtp',
+    mdtSenderId: contactType === 'phone' ? process.env.MDT_SMS_SENDER_ID : undefined,
+    mdtApiKeyHint: contactType === 'phone' ? mdtApiKeyHint(process.env.MDT_SMS_API_KEY) : undefined,
+  });
+
+  try {
+    await createAndDeliverOtp({ recipient, contactType });
+  } catch (err) {
+    logger.warn('[sendOtp] delivery failed', { contactType, message: err.message });
+    const mdtDetail = err.message?.startsWith('MDT SMS rejected:')
+      ? err.message.replace('MDT SMS rejected: ', '')
+      : '';
+    const senderIdHint = mdtSenderIdHint();
+    const templateIdHint = mdtTemplateIdHint();
+    const apiKeyHint = mdtApiKeyHint(process.env.MDT_SMS_API_KEY);
+    const isInvalidSender = /invalid senderid/i.test(mdtDetail) || mdtDetail.includes('code 003');
+    const userMessage = mdtDetail
+      ? (
+        isInvalidSender
+          ? `SMS could not be sent: ${mdtDetail}. Ensure MDT_SMS_API_KEY, MDT_SMS_SENDER_ID, and MDT_SMS_TEMPLATE_ID all belong to the same Baleen/MDT account.`
+          : `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
+      )
+      : 'Failed to send OTP. Please try again.';
+    logger.warn('[sendOtp] returning 502 to client', {
+      contactType,
+      userMessage,
+      providerError: mdtDetail || err.message?.slice(0, 120),
+      senderIdHint,
+      templateIdHint,
+      apiKeyHint,
+    });
+    return {
+      httpStatus: 502,
+      body: {
+        success: false,
+        message: userMessage,
+        ...(contactType === 'phone' && mdtDetail ? {
+          providerError: mdtDetail,
+          senderIdHint,
+          templateIdHint,
+          apiKeyHint,
+        } : {}),
+      },
+    };
+  }
+
+  logger.info('[sendOtp] delivery succeeded', {
+    contactType,
+    recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
+  });
+  return { httpStatus: 200, body: { success: true } };
 }
 
 async function handleDemoVerify({ recipient, otp, purpose }) {
@@ -204,25 +388,7 @@ export async function verifyOtp(input) {
 
   await repo.markOtpVerified(otpData.ID);
 
-  let userInfo = await repo.findUserByEmail(recipient);
-  let isNewUser = false;
-
-  if (!userInfo) {
-    const username = recipient.split('@')[0];
-    const currentTime = getISTTimestamp();
-    userInfo = await repo.insertUser({
-      EntryDateTime: currentTime,
-      EntryUser: 'Wellness Valley',
-      UserName: username,
-      Password: 'User@123#',
-      TargetWeightInKg: 0,
-      Status: 'Active',
-      CoachApproved: 0,
-      Email: recipient,
-    });
-    isNewUser = true;
-    logger.debug('🆕 [verify-otp] New user created:', recipient);
-  }
+  const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
 
   return {
     httpStatus: 200,
@@ -230,83 +396,12 @@ export async function verifyOtp(input) {
       success: true,
       message: 'OTP verified successfully',
       isNewUser,
-      user: {
-        id: userInfo.UserId,
-        username: userInfo.UserName,
-        email: userInfo.Email,
-        status: userInfo.Status,
-      },
+      user,
     },
   };
 }
 
-/**
- * Exchange a Firebase Phone Auth ID token for an app session, find-or-create
- * the user keyed on the phone number returned in the verified token.
- *
- * Flow:
- *   1. Client calls Firebase signInWithPhoneNumber → user enters SMS code
- *      → confirmationResult.confirm(code) → idToken.
- *   2. Client POSTs { idToken, name? } to /api/auth/firebase-phone-login.
- *   3. We re-verify the token with firebase-admin (NEVER trust the client),
- *      pull the verified phone number out of the claims, and resolve to a
- *      `team_table` row.
- *
- * Trust: the only fields that survive verification are `phone_number` and
- * `uid`. The `name` body field is OPTIONAL display-name input for the very
- * first sign-up; we ignore it for existing users.
- */
-export async function firebasePhoneLogin({ idToken, name }) {
-  let decoded;
-  try {
-    decoded = await verifyFirebaseIdToken(idToken);
-  } catch (err) {
-    logger.warn('🚫 [firebasePhoneLogin] Token verification failed:', err.message);
-    return { httpStatus: 401, body: { success: false, message: 'Invalid or expired token' } };
-  }
-
-  const phone = decoded.phone_number;
-  if (!phone || !isValidPhoneE164(phone)) {
-    logger.warn('🚫 [firebasePhoneLogin] Token has no phone_number claim');
-    return {
-      httpStatus: 400,
-      body: { success: false, message: 'Phone number missing from verification token' },
-    };
-  }
-
-  let userInfo = await repo.findUserByPhone(phone);
-  let isNewUser = false;
-
-  if (!userInfo) {
-    const currentTime = getISTTimestamp();
-    const username = (name && name.trim()) || usernameFromPhone(phone);
-    userInfo = await repo.insertUser({
-      EntryDateTime: currentTime,
-      EntryUser: 'Wellness Valley',
-      UserName: username,
-      Password: 'User@123#',
-      TargetWeightInKg: 0,
-      Status: 'Active',
-      CoachApproved: 0,
-      Phone: phone,
-    });
-    isNewUser = true;
-    logger.debug('🆕 [firebasePhoneLogin] New phone user created:', phone);
-  }
-
-  return {
-    httpStatus: 200,
-    body: {
-      success: true,
-      message: 'Phone verified successfully',
-      isNewUser,
-      user: {
-        id: userInfo.UserId,
-        username: userInfo.UserName,
-        email: userInfo.Email || '',
-        phone: userInfo.Phone || phone,
-        status: userInfo.Status,
-      },
-    },
-  };
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Firebase Phone Auth has been removed (no Firebase Admin SDK configured).
+// Use MDT SMS-based OTP instead: /api/auth/send-otp + /api/auth/verify-otp
+// ═══════════════════════════════════════════════════════════════════════════

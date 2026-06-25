@@ -38,8 +38,14 @@ const ReminderPluginNative = registerPlugin('ReminderPlugin', {
     canScheduleExactAlarms: async () => ({ canScheduleExact: false }),
     openExactAlarmSettings: async () => ({ success: false }),
     updateWaterIntake:      async () => ({ success: false }),
+    scheduleSnooze:         async () => ({ success: false, reason: 'not-native' }),
+    cancelSnooze:           async () => ({ success: false }),
+    consumePendingTaskNotification: async () => ({}),
   }),
 });
+
+// ── Platform helper ─────────────────────────────────────────────────────────
+const isNative = () => Capacitor.isNativePlatform();
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const STORAGE_KEY         = 'wellnessReminders';
@@ -204,8 +210,8 @@ export function buildDefaultPreferences(timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.end) {
-      const parsed = parseTimeString(window.end);
+    if (window && window.start) {
+      const parsed = parseTimeString(window.start);
       if (parsed) {
         const reminder = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
         activities[type] = {
@@ -249,6 +255,27 @@ export function buildDefaultPreferences(timeWindowMap) {
 }
 
 /**
+ * If the user never customised their reminder time, migrate from the old
+ * default (window end − 15 min) to the correct default (window start − 15 min).
+ */
+function maybeMigrateReminderTime(activity, window) {
+  if (!activity || !window?.start || !window?.end) return activity;
+
+  const startParsed = parseTimeString(window.start);
+  const endParsed   = parseTimeString(window.end);
+  if (!startParsed || !endParsed) return activity;
+
+  const oldDefault = subtractMinutes(endParsed.hour, endParsed.minute, REMINDER_OFFSET);
+  const newDefault = subtractMinutes(startParsed.hour, startParsed.minute, REMINDER_OFFSET);
+
+  if (activity.hour === oldDefault.hour && activity.minute === oldDefault.minute
+      && (oldDefault.hour !== newDefault.hour || oldDefault.minute !== newDefault.minute)) {
+    return { ...activity, hour: newDefault.hour, minute: newDefault.minute };
+  }
+  return activity;
+}
+
+/**
  * Merge saved preferences with fresh time-window data.
  * - Preserves user's enabled/time customisations
  * - Updates windowStart/windowEnd from the latest API data
@@ -258,17 +285,17 @@ export function mergePreferencesWithWindows(savedPrefs, timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.end) {
+    if (window && window.start) {
       if (merged.activities[type]) {
         // Update window info but keep user's custom time & enabled state
-        merged.activities[type] = {
+        merged.activities[type] = maybeMigrateReminderTime({
           ...merged.activities[type],
           windowStart: window.start,
           windowEnd:   window.end,
-        };
+        }, window);
       } else {
         // Activity not in saved prefs — add it with default reminder time
-        const parsed   = parseTimeString(window.end);
+        const parsed   = parseTimeString(window.start);
         const reminder = parsed
           ? subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET)
           : { hour: 7, minute: 0 };
@@ -319,6 +346,7 @@ function ensureWaterSleepDefaults(prefs) {
  * Returns a normalised map:  { weight: { start, end }, education: { start, end }, ... }
  */
 export async function fetchTimeWindows() {
+
   const apiBase = process.env.REACT_APP_API_BASE_URL;
   try {
     const response = await axios.get(`${apiBase}/api/admin/time-windows`);
@@ -345,16 +373,108 @@ export async function fetchTimeWindows() {
   }
 }
 
-// ── Native scheduling ─────────────────────────────────────────────────────────
+// ── Personalised alarm helpers ────────────────────────────────────────────────
 
-const isNative = () => Capacitor.isNativePlatform();
+/**
+ * Fetch the user's learned average completion times from the backend.
+ *
+ * Returns a plain map: { weight: '04:30:00', breakfast: '08:10:00', ... }
+ * Returns {} on any error — callers fall back to fixed window-offset times.
+ *
+ * @param {string|number|null} userId
+ * @returns {Promise<Object>}
+ */
+export async function fetchUserAverages(userId) {
+  if (!userId) return {};
+  const apiBase = process.env.REACT_APP_API_BASE_URL;
+  try {
+    const response = await axios.get(`${apiBase}/api/tasks/averages`, {
+      params: { userId },
+    });
+    if (!response.data?.ok) return {};
+    const map = {};
+    (response.data.data?.averages || []).forEach(({
+      task_type,
+      average_completion_time,
+      effective_reminder_time,
+      is_personalized,
+    }) => {
+      const time = effective_reminder_time || average_completion_time;
+      if (task_type && time) {
+        map[task_type] = String(time);
+        if (is_personalized) {
+          map[`${task_type}__personalized`] = 'true';
+        }
+      }
+    });
+    debugLog('[ReminderService] fetchUserAverages:', map);
+    return map;
+  } catch (err) {
+    // Non-critical — native alarm falls back to fixed window offset
+    debugLog('[ReminderService] fetchUserAverages failed (non-critical):', err.message);
+    return {};
+  }
+}
+
+/**
+ * Parse a Postgres TIME string "HH:MM:SS" into { hour, minute }.
+ * Returns null if unparseable.
+ */
+function parsePgTime(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).split(':');
+  if (parts.length < 2) return null;
+  const hour   = parseInt(parts[0], 10);
+  const minute = parseInt(parts[1], 10);
+  if (isNaN(hour) || isNaN(minute)) return null;
+  return { hour, minute };
+}
+
+/**
+ * Return the native alarm trigger time for a task type.
+ *
+ * If a learned average exists → fire at the average time.
+ * Otherwise       → fall back to the user's saved preference time.
+ *
+ * @param {string} taskType
+ * @param {Object} averagesMap   { weight: '04:30:00', breakfast: '08:10:00', ... }
+ * @param {number} fallbackHour
+ * @param {number} fallbackMinute
+ * @returns {{ hour: number, minute: number }}
+ */
+function computePersonalizedAlarmTime(taskType, averagesMap, fallbackHour, fallbackMinute) {
+  const avgTimeStr = averagesMap[taskType];
+  if (!avgTimeStr) return { hour: fallbackHour, minute: fallbackMinute };
+  const parsed = parsePgTime(avgTimeStr);
+  if (!parsed) return { hour: fallbackHour, minute: fallbackMinute };
+  return { hour: parsed.hour, minute: parsed.minute };
+}
+
+/**
+ * Build the personalised notification body for a native alarm.
+ * Mirrors buildPersonalisedReminderBody() from completion-learning.rules.js (backend).
+ */
+function buildPersonalizedNativeBody(taskType, avgLabel) {
+  const bodies = {
+    weight:    (t) => `You usually upload your weight around ${t}. Today's weight is still pending.`,
+    breakfast: (t) => `You usually log breakfast around ${t}. Today's breakfast is still pending.`,
+    lunch:     (t) => `You usually log lunch around ${t}. Today's lunch is still pending.`,
+    dinner:    (t) => `You usually log dinner around ${t}. Today's dinner is still pending.`,
+    education: (t) => `You usually complete education around ${t}. It's still pending today.`,
+    water:     (t) => `You usually log water around ${t}. Today's water intake is still pending.`,
+  };
+  const builder = bodies[taskType];
+  return builder ? builder(avgLabel) : `You usually complete this around ${avgLabel}.`;
+}
+
+// ── Native scheduling ─────────────────────────────────────────────────────────
 
 /**
  * Apply the given preferences to the native AlarmManager.
  * Uses scheduleAll() so preferences are also persisted to SharedPreferences
  * for automatic re-scheduling after device reboot.
  */
-export async function applyRemindersToNative(prefsRaw) {
+export async function applyRemindersToNative(prefsRaw, averagesMap = {}) {
   if (!isNative()) {
     debugLog('[ReminderService] Not on native platform — skipping alarm scheduling');
     return;
@@ -364,13 +484,31 @@ export async function applyRemindersToNative(prefsRaw) {
 
   // ── 1. Standard activity reminders (weight / education / meals) ──────
   const reminders = ACTIVITY_TYPES.map((type) => {
-    const activity = prefs.activities[type] || {};
+    const activity  = prefs.activities[type] || {};
+    const fallbackH = activity.hour   ?? 7;
+    const fallbackM = activity.minute ?? 0;
+
+    // Use the user's personal average + 1 min if we have history; else fixed offset
+    const alarmTime = computePersonalizedAlarmTime(type, averagesMap, fallbackH, fallbackM);
+
+    // Build personalised body only when a learned average exists
+    const avgStr = averagesMap[type];
+    let personalizedBody = undefined;
+    if (avgStr && averagesMap[`${type}__personalized`] === 'true') {
+      const avg = parsePgTime(avgStr);
+      if (avg) {
+        const avgLabel = formatReminderTime(avg.hour, avg.minute);
+        personalizedBody = buildPersonalizedNativeBody(type, avgLabel);
+      }
+    }
+
     return {
       activityType: type,
       label:        ACTIVITY_LABELS[type],
-      hour:         activity.hour   ?? 7,
-      minute:       activity.minute ?? 0,
+      hour:         alarmTime.hour,
+      minute:       alarmTime.minute,
       enabled:      activity.enabled ?? false,
+      ...(personalizedBody !== undefined && { personalizedBody }),
     };
   });
 
@@ -489,10 +627,14 @@ export async function updateWaterIntakeCache(drunkMl, goalMl) {
  *
  * @returns {Object} the current preferences
  */
-export async function initReminders() {
+export async function initReminders(userId = null) {
   try {
-    const windowMap   = await fetchTimeWindows();
-    const savedPrefs  = loadReminderPreferences();
+    const [windowMap, averagesMap] = await Promise.all([
+      fetchTimeWindows(),
+      fetchUserAverages(userId),
+    ]);
+
+    const savedPrefs = loadReminderPreferences();
 
     let prefs;
     if (!savedPrefs) {
@@ -502,7 +644,7 @@ export async function initReminders() {
     }
 
     saveReminderPreferences(prefs);
-    await applyRemindersToNative(prefs);
+    await applyRemindersToNative(prefs, averagesMap);
 
     return prefs;
   } catch (err) {
@@ -516,9 +658,10 @@ export async function initReminders() {
  *
  * @param {Object} newPrefs  The full updated preferences object
  */
-export async function updateReminders(newPrefs) {
+export async function updateReminders(newPrefs, userId = null) {
   saveReminderPreferences(newPrefs);
-  await applyRemindersToNative(newPrefs);
+  const averagesMap = await fetchUserAverages(userId);
+  await applyRemindersToNative(newPrefs, averagesMap);
 }
 
 /**
@@ -533,6 +676,165 @@ export async function resetRemindersToDefaults() {
   saveReminderPreferences(prefs);
   await applyRemindersToNative(prefs);
   return prefs;
+}
+
+// ── Snooze helpers (native local notification bridge) ──────────────────────────
+
+/**
+ * Build the native alarm body text for a task type and scheduled alarm time.
+ * Mirrors ReminderAlarmReceiver.getActivityMessage() on Android.
+ *
+ * @param {string} taskType
+ * @param {number} alarmHour   Scheduled alarm hour (0–23), or -1 when unknown
+ * @param {number} alarmMinute Scheduled alarm minute (0–59), or -1 when unknown
+ * @returns {string}
+ */
+function buildNativeReminderBody(taskType, alarmHour, alarmMinute) {
+  const type = String(taskType || '').toLowerCase();
+
+  if (type === 'sleep') {
+    return '🌙 Bedtime in 15 minutes! Wind down and prepare for a good night\'s sleep.';
+  }
+
+  if (alarmHour < 0 || alarmMinute < 0) {
+    const timeless = {
+      weight:    '⚖️ Time to log your weight and stay on track!',
+      education: '📚 Education session is due. Get ready to learn!',
+      breakfast: '🥗 Breakfast window is open. Time to prepare your meal and log it!',
+      lunch:     '🍱 Lunch window is open. Don\'t forget to log your meal!',
+      dinner:    '🌙 Dinner window is open. Plan your evening meal and log it!',
+      water:     '💧 Time to drink water! Stay hydrated throughout the day.',
+    };
+    if (timeless[type]) return timeless[type];
+    if (type.startsWith('water_')) return timeless.water;
+    return `Time for your ${taskType} reminder!`;
+  }
+
+  const totalMins = alarmHour * 60 + alarmMinute + REMINDER_OFFSET;
+  const actHour   = Math.floor(totalMins / 60) % 24;
+  const actMinute = totalMins % 60;
+  const timeStr   = formatReminderTime(actHour, actMinute);
+
+  const timed = {
+    weight:    `⚖️ Your Weight tracking time starts at ${timeStr}. Log your weight now to stay on track!`,
+    education: `📚 Education session starts at ${timeStr}. Get ready to learn!`,
+    breakfast: `🥗 Breakfast window opens at ${timeStr}. Time to prepare your meal and log it!`,
+    lunch:     `🍱 Lunch window opens at ${timeStr}. Don't forget to log your meal!`,
+    dinner:    `🌙 Dinner window opens at ${timeStr}. Plan your evening meal!`,
+  };
+  if (timed[type]) return timed[type];
+  if (type.startsWith('water_')) {
+    return '💧 Time to drink water! Stay hydrated throughout the day.';
+  }
+  return `Your ${taskType} time starts at ${timeStr}.`;
+}
+
+/**
+ * Schedule a one-shot native local notification at the snooze expiry time.
+ * Works on Android (AlarmManager) and iOS (UNTimeIntervalNotificationTrigger).
+ * Safe to call on web — silently no-ops.
+ *
+ * @param {number} taskId        - Task ID (used to uniquely identify the alarm).
+ * @param {string} taskType      - e.g. 'weight', 'breakfast'.
+ * @param {string} label         - Human-readable label for the notification title.
+ * @param {number} snoozeMinutes - Must be 15, 30, or 60.
+ */
+export async function scheduleSnooze(taskId, taskType, label, snoozeMinutes) {
+  if (!isNative()) return;
+  try {
+    const prefs = loadReminderPreferences();
+    let alarmHour   = -1;
+    let alarmMinute = -1;
+
+    if (taskType === 'sleep' && prefs?.sleep) {
+      alarmHour   = prefs.sleep.hour   ?? -1;
+      alarmMinute = prefs.sleep.minute ?? -1;
+    } else if (prefs?.activities?.[taskType]) {
+      alarmHour   = prefs.activities[taskType].hour   ?? -1;
+      alarmMinute = prefs.activities[taskType].minute ?? -1;
+    }
+
+    const body = buildNativeReminderBody(taskType, alarmHour, alarmMinute);
+
+    await ReminderPluginNative.scheduleSnooze({
+      taskId,
+      taskType,
+      label,
+      snoozeMinutes,
+      body,
+      hour:   alarmHour,
+      minute: alarmMinute,
+    });
+    debugLog('[ReminderService] scheduleSnooze', { taskId, taskType, snoozeMinutes });
+  } catch (e) {
+    // Non-critical — FCM server-side push is the fallback
+    debugLog('[ReminderService] scheduleSnooze failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Cancel a previously scheduled native snooze notification.
+ * Safe to call on web — silently no-ops.
+ *
+ * @param {number} taskId - Task ID passed to scheduleSnooze().
+ */
+export async function cancelSnooze(taskId) {
+  if (!isNative()) return;
+  try {
+    await ReminderPluginNative.cancelSnooze({ taskId });
+    debugLog('[ReminderService] cancelSnooze', { taskId });
+  } catch (e) {
+    debugLog('[ReminderService] cancelSnooze failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Cancel native daily alarm(s) for a completed activity type.
+ * Water cancels all water_N slots; other types cancel a single alarm.
+ *
+ * @param {string} activityType
+ */
+export async function cancelActivityReminder(activityType) {
+  if (!isNative() || !activityType) return;
+  try {
+    if (activityType === 'water' || activityType.startsWith('water_')) {
+      for (let i = 1; i <= WATER_MAX_REMINDERS; i++) {
+        await ReminderPluginNative.cancelReminder({ activityType: `water_${i}` });
+      }
+    } else {
+      await ReminderPluginNative.cancelReminder({ activityType });
+    }
+    debugLog('[ReminderService] cancelActivityReminder', { activityType });
+  } catch (e) {
+    debugLog('[ReminderService] cancelActivityReminder failed (non-critical):', e.message);
+  }
+}
+
+/**
+ * Listen for native local-notification actions (task panel deep links).
+ *
+ * @param {(data: { action: string, taskType?: string, taskId?: string, uploadNow?: boolean }) => void} callback
+ * @returns {Promise<{ remove: Function }>}
+ */
+export async function registerTaskReminderActionListener(callback) {
+  if (!isNative()) return { remove: () => {} };
+  return ReminderPluginNative.addListener('taskReminderAction', callback);
+}
+
+/**
+ * Consume a task-notification action stored during cold start (native only).
+ *
+ * @returns {Promise<Object|null>}
+ */
+export async function consumePendingTaskNotification() {
+  if (!isNative()) return null;
+  try {
+    const result = await ReminderPluginNative.consumePendingTaskNotification();
+    return result?.action ? result : null;
+  } catch (e) {
+    debugLog('[ReminderService] consumePendingTaskNotification failed:', e.message);
+    return null;
+  }
 }
 
 // ── Exports ────────────────────────────────────────────────────────────────────

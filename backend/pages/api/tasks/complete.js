@@ -5,8 +5,10 @@
  */
 
 import { completeTask } from '../../../features/tasks/data/task-repo.js';
+import { recordCompletionLearning } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import { validateTaskCompletion } from '../../../features/tasks/domain/task-rules.js';
 import { validateCompleteTaskRequest } from '../../../features/tasks/validation/complete-task.schema.js';
+import { getISTTimestamp } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
 
@@ -78,7 +80,28 @@ export default async function handler(req, res) {
     
     // Complete the task
     const completedTask = await completeTask(taskId, completionData);
-    
+
+    const resolvedTaskType = completedTask.TaskType || taskType;
+    const completedAtRaw   = completedTask.CompletedAt || completedTask.completed_at;
+
+    // Update rolling average — use IST timestamp for consistency with cron windows.
+    const istTimestamp = completedAtRaw
+      ? String(completedAtRaw).replace('T', ' ').substring(0, 19)
+      : getISTTimestamp().substring(0, 19);
+
+    recordCompletionLearning({
+      userId,
+      taskType: resolvedTaskType,
+      istTimestamp,
+      completionData,
+    }).catch((err) =>
+      logger.error('recordCompletionLearning failed after task complete (non-critical)', {
+        taskId,
+        userId,
+        error: err.message,
+      })
+    );
+
     const durationMs = Date.now() - startTime;
     logger.info('Task completed', {
       requestId,
@@ -86,15 +109,15 @@ export default async function handler(req, res) {
       route: '/api/tasks/complete',
       durationMs,
       taskId,
-      taskType: completedTask.task_type
+      taskType: resolvedTaskType,
     });
     
     return res.status(200).json({
       ok: true,
       data: {
-        taskId: completedTask.task_id,
-        status: completedTask.status,
-        completedAt: completedTask.completed_at
+        taskId: completedTask.TaskId || completedTask.task_id,
+        status: completedTask.Status || completedTask.status,
+        completedAt: completedAtRaw,
       }
     });
     

@@ -21,16 +21,15 @@ const config = {
     }
   },
   
-  // ✅ Use HTTP scheme for local development (allows connecting to HTTP backend)
+  // WebView may open backend / share URLs. Phone OTP SMS is sent server-side (MDT on
+  // Vercel) — set REACT_APP_API_BASE_URL in .env.production before `npm run build`.
   server: {
     androidScheme: 'https',
-    hostname: 'localhost',
+    hostname: 'wellness-valley.vercel.app',
     allowNavigation: [
-      
-      'wellness-buddy-pwa-eta.vercel.app',
-      'wellness-buddy-pwa-backend-test.vercel.app'
-    ,
+      'wellness-valley-pwa-backend-test.vercel.app',
       'wellness-buddy-pwa-backend-test.vercel.app',
+      'wellness-buddy-pwa-eta.vercel.app',
       '*.vercel.app',
       '*.googleapis.com',
       '*.firebase.com',

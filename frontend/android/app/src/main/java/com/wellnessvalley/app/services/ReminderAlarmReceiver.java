@@ -49,11 +49,17 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
 
     private static final String TAG = "ReminderAlarmReceiver";
 
+    /** Minutes before activity window start that the daily alarm fires */
+    private static final int REMINDER_OFFSET_MINUTES = 15;
+
     // Intent extras
     public static final String EXTRA_ACTIVITY_TYPE = "activityType";
     public static final String EXTRA_HOUR          = "hour";
     public static final String EXTRA_MINUTE        = "minute";
     public static final String EXTRA_LABEL         = "label";
+    /** Optional personalised notification body built by reminderService.js */
+    public static final String EXTRA_BODY          = "body";
+    public static final String EXTRA_TASK_ID       = "taskId";
 
     // Notification channel
     private static final String CHANNEL_ID   = "WellnessReminders";
@@ -96,21 +102,40 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int    hour         = intent.getIntExtra(EXTRA_HOUR,   -1);
         int    minute       = intent.getIntExtra(EXTRA_MINUTE, -1);
         String label        = intent.getStringExtra(EXTRA_LABEL);
+        String body         = intent.getStringExtra(EXTRA_BODY);  // may be null
+        boolean isOneShot   = intent.getBooleanExtra("oneShot", false);
+        int taskId          = intent.getIntExtra(EXTRA_TASK_ID, -1);
 
-        if (activityType == null || hour < 0 || minute < 0) {
+        if (activityType == null) {
+            Log.e(TAG, "❌ Invalid intent — missing activityType");
+            return;
+        }
+        if (!isOneShot && (hour < 0 || minute < 0)) {
             Log.e(TAG, "❌ Invalid intent extras — activityType=" + activityType
                     + " hour=" + hour + " minute=" + minute);
             return;
         }
 
+        // One-shot snooze alarms carry hour=-1; recover saved alarm time for message text
+        if (isOneShot && (hour < 0 || minute < 0)) {
+            int snoozeHour   = intent.getIntExtra("snoozeAlarmHour",   -1);
+            int snoozeMinute = intent.getIntExtra("snoozeAlarmMinute", -1);
+            if (snoozeHour >= 0 && snoozeMinute >= 0) {
+                hour   = snoozeHour;
+                minute = snoozeMinute;
+            }
+        }
+
         Log.d(TAG, "⏰ Reminder fired for " + activityType
-                + " at " + formatTime(hour, minute));
+                + (isOneShot ? " (one-shot snooze)" : " at " + formatTime(hour, minute)));
 
-        // 1. Start AlarmSoundService → plays alarm ringtone + shows foreground notification
-        startAlarmSound(context, activityType, label, hour, minute);
+        String taskIdStr = taskId > 0 ? String.valueOf(taskId) : null;
+        startAlarmSound(context, activityType, label, hour, minute, body, taskIdStr);
 
-        // 2. Reschedule for the SAME time tomorrow
-        scheduleNextDay(context, activityType, label, hour, minute);
+        // Reschedule for the SAME time tomorrow — only for daily alarms (not one-shot snooze)
+        if (!isOneShot && hour >= 0 && minute >= 0) {
+            scheduleNextDay(context, activityType, label, hour, minute, body);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -121,19 +146,30 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  String activityType,
                                  String label,
                                  int hour,
-                                 int minute) {
+                                 int minute,
+                                 String body,
+                                 String taskId) {
         try {
             String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
-            // Add 15 minutes (the reminder offset) to get the actual activity start time
-            int totalMinutes = hour * 60 + minute + 15;
-            int activityHour   = (totalMinutes / 60) % 24;
-            int activityMinute = totalMinutes % 60;
-            String message = getActivityMessage(context, activityType, activityHour, activityMinute);
+            String message;
+            if (body != null && !body.isEmpty()) {
+                message = body;
+            } else if (hour >= 0 && minute >= 0) {
+                int[] activityStart = activityStartFromAlarm(hour, minute);
+                message = getActivityMessage(context, activityType,
+                        activityStart[0], activityStart[1]);
+            } else {
+                message = getTimelessActivityMessage(activityType);
+            }
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
-            serviceIntent.putExtra(AlarmSoundService.EXTRA_TITLE,   title);
-            serviceIntent.putExtra(AlarmSoundService.EXTRA_MESSAGE, message);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_TITLE,         title);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_MESSAGE,       message);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_ACTIVITY_TYPE, activityType);
+            if (taskId != null) {
+                serviceIntent.putExtra(AlarmSoundService.EXTRA_TASK_ID, taskId);
+            }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent);
@@ -162,11 +198,9 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         ensureChannel(nm);
 
         String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
-        // Add 15 minutes (the reminder offset) to get the actual activity start time
-        int totalMins = hour * 60 + minute + 15;
-        int actHour   = (totalMins / 60) % 24;
-        int actMinute = totalMins % 60;
-        String message = getActivityMessage(context, activityType, actHour, actMinute);
+        int[] activityStart = activityStartFromAlarm(hour, minute);
+        String message = getActivityMessage(context, activityType,
+                activityStart[0], activityStart[1]);
 
         // Tap notification → open app
         Intent openApp = new Intent(context, MainActivity.class);
@@ -216,7 +250,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  String activityType,
                                  String label,
                                  int hour,
-                                 int minute) {
+                                 int minute,
+                                 String body) {
         try {
             Calendar nextDay = Calendar.getInstance();
             nextDay.add(Calendar.DAY_OF_YEAR, 1);
@@ -233,6 +268,10 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             intent.putExtra(EXTRA_HOUR,   hour);
             intent.putExtra(EXTRA_MINUTE, minute);
             intent.putExtra(EXTRA_LABEL,  label);
+            // Carry personalised body forward so the next day also shows the right message
+            if (body != null && !body.isEmpty()) {
+                intent.putExtra(EXTRA_BODY, body);
+            }
 
             int requestCode = getRequestCode(activityType);
             PendingIntent pi = PendingIntent.getBroadcast(
@@ -264,14 +303,29 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
 
     /**
      * Schedule (or reschedule) a daily reminder for an activity.
-     * If the computed time for today has already passed, the first fire
-     * will be tomorrow; otherwise it fires today.
+     * Backward-compatible overload — no personalised body.
      */
     public static void scheduleReminder(Context context,
                                         String activityType,
                                         String label,
                                         int hour,
                                         int minute) {
+        scheduleReminder(context, activityType, label, hour, minute, null);
+    }
+
+    /**
+     * Schedule (or reschedule) a daily reminder for an activity.
+     *
+     * @param body  Optional personalised notification body from reminderService.js.
+     *              When non-null/non-empty, used as the notification text instead of
+     *              the generic getActivityMessage() output.
+     */
+    public static void scheduleReminder(Context context,
+                                        String activityType,
+                                        String label,
+                                        int hour,
+                                        int minute,
+                                        String body) {
         try {
             Calendar trigger = Calendar.getInstance();
             trigger.set(Calendar.HOUR_OF_DAY, hour);
@@ -291,6 +345,9 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             intent.putExtra(EXTRA_HOUR,   hour);
             intent.putExtra(EXTRA_MINUTE, minute);
             intent.putExtra(EXTRA_LABEL,  label);
+            if (body != null && !body.isEmpty()) {
+                intent.putExtra(EXTRA_BODY, body);
+            }
 
             int requestCode = getRequestCode(activityType);
             PendingIntent pi = PendingIntent.getBroadcast(
@@ -314,7 +371,8 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
                         trigger.getTimeInMillis(), pi);
             }
-            Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime());
+            Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime()
+                    + (body != null ? " [personalised]" : " [generic]"));
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to schedule reminder for " + activityType, e);
@@ -366,6 +424,121 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             cancelReminder(context, "water_" + i);
         }
         Log.d(TAG, "🛑 All water reminders cancelled");
+    }
+
+    // ── One-shot snooze helpers ───────────────────────────────────────────
+
+    /**
+     * Schedule a one-shot (non-repeating) local notification for a snoozed task.
+     * Fires at <triggerAtMs> (epoch milliseconds).
+     * Uses request codes in the range 9001–9099 (task-snooze range, keyed by taskId % 99).
+     *
+     * @param context     App context.
+     * @param taskId      Unique task ID (used to derive request code + notification id).
+     * @param taskType    e.g. "weight", "breakfast" — used to build the notification text.
+     * @param label       Human-readable label for the notification.
+     * @param triggerAtMs Epoch millis when the alarm should fire.
+     */
+    public static void scheduleOneShot(Context context,
+                                       int taskId,
+                                       String taskType,
+                                       String label,
+                                       long triggerAtMs) {
+        scheduleOneShot(context, taskId, taskType, label, triggerAtMs, null, -1, -1);
+    }
+
+    /**
+     * Schedule a one-shot (non-repeating) local notification for a snoozed task.
+     * Fires at <triggerAtMs> (epoch milliseconds).
+     * Uses request codes in the range 9001–9099 (task-snooze range, keyed by taskId % 99).
+     *
+     * @param context     App context.
+     * @param taskId      Unique task ID (used to derive request code + notification id).
+     * @param taskType    e.g. "weight", "breakfast" — used to build the notification text.
+     * @param label       Human-readable label for the notification.
+     * @param triggerAtMs Epoch millis when the alarm should fire.
+     * @param body        Pre-built notification body (preserves correct window time on snooze).
+     * @param hour        Scheduled alarm hour, or -1 when unknown.
+     * @param minute      Scheduled alarm minute, or -1 when unknown.
+     */
+    public static void scheduleOneShot(Context context,
+                                       int taskId,
+                                       String taskType,
+                                       String label,
+                                       long triggerAtMs,
+                                       String body,
+                                       int hour,
+                                       int minute) {
+        try {
+            int requestCode = 9001 + (taskId % 99);
+
+            Intent intent = new Intent(context, ReminderAlarmReceiver.class);
+            intent.setAction("com.wellnessvalley.app.SNOOZE_" + taskId);
+            intent.putExtra(EXTRA_ACTIVITY_TYPE, taskType);
+            intent.putExtra(EXTRA_HOUR,   -1);   // -1 signals one-shot (no self-reschedule)
+            intent.putExtra(EXTRA_MINUTE, -1);
+            intent.putExtra(EXTRA_LABEL,  label);
+            intent.putExtra(EXTRA_TASK_ID, taskId);
+            if (body != null && !body.isEmpty()) {
+                intent.putExtra(EXTRA_BODY, body);
+            }
+            // Preserve alarm time for message rebuild if body is missing
+            if (hour >= 0 && minute >= 0) {
+                intent.putExtra("snoozeAlarmHour",   hour);
+                intent.putExtra("snoozeAlarmMinute", minute);
+            }
+            // Extra flag so onReceive() skips the "reschedule for tomorrow" step
+            intent.putExtra("oneShot", true);
+
+            PendingIntent pi = PendingIntent.getBroadcast(
+                    context, requestCode, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) {
+                Log.e(TAG, "❌ AlarmManager null");
+                return;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi);
+            }
+            Log.d(TAG, "✅ One-shot snooze scheduled: taskId=" + taskId
+                    + " type=" + taskType + " at=" + new java.util.Date(triggerAtMs));
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to schedule one-shot snooze", e);
+        }
+    }
+
+    /**
+     * Cancel a previously scheduled one-shot snooze alarm.
+     *
+     * @param context App context.
+     * @param taskId  The task ID that was passed to scheduleOneShot().
+     */
+    public static void cancelOneShot(Context context, int taskId) {
+        try {
+            int requestCode = 9001 + (taskId % 99);
+
+            Intent intent = new Intent(context, ReminderAlarmReceiver.class);
+            intent.setAction("com.wellnessvalley.app.SNOOZE_" + taskId);
+
+            PendingIntent pi = PendingIntent.getBroadcast(
+                    context, requestCode, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (am != null) {
+                am.cancel(pi);
+                Log.d(TAG, "🛑 One-shot snooze cancelled: taskId=" + taskId);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to cancel one-shot snooze", e);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -514,6 +687,50 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         int displayHour = hour % 12;
         if (displayHour == 0) displayHour = 12;
         return String.format("%d:%02d %s", displayHour, minute, period);
+    }
+
+    /** Window start time from the scheduled alarm trigger (alarm fires offset minutes earlier). */
+    private static int[] activityStartFromAlarm(int alarmHour, int alarmMinute) {
+        int totalMins = alarmHour * 60 + alarmMinute + REMINDER_OFFSET_MINUTES;
+        return new int[] { (totalMins / 60) % 24, totalMins % 60 };
+    }
+
+    /**
+     * True for reminders that open the camera / food capture flow via "Upload Now".
+     * Sleep and water reminders only need dismiss / snooze / open-app.
+     */
+    public static boolean isPhotoUploadReminder(String activityType) {
+        if (activityType == null) return false;
+        String t = activityType.toLowerCase(Locale.US);
+        if (t.startsWith("water_") || t.equals("water") || t.equals("sleep")) {
+            return false;
+        }
+        return t.equals("weight") || t.equals("education")
+                || t.equals("breakfast") || t.equals("lunch") || t.equals("dinner");
+    }
+
+    /** Fallback message when alarm time is unavailable (e.g. legacy one-shot snooze). */
+    private static String getTimelessActivityMessage(String activityType) {
+        if (activityType == null) return "Time for your wellness reminder!";
+        switch (activityType.toLowerCase(Locale.US)) {
+            case "weight":
+                return "⚖️ Time to log your weight and stay on track!";
+            case "education":
+                return "📚 Education session is due. Get ready to learn!";
+            case "breakfast":
+                return "🥗 Breakfast window is open. Time to prepare your meal and log it!";
+            case "lunch":
+                return "🍱 Lunch window is open. Don't forget to log your meal!";
+            case "dinner":
+                return "🌙 Dinner window is open. Plan your evening meal and log it!";
+            case "sleep":
+                return "🌙 Bedtime in 15 minutes! Wind down and prepare for a good night's sleep.";
+            default:
+                if (activityType.toLowerCase(Locale.US).startsWith("water_")) {
+                    return "💧 Time to drink water! Stay hydrated throughout the day.";
+                }
+                return "Time for your " + capitalize(activityType) + " reminder!";
+        }
     }
 
     private static String capitalize(String s) {

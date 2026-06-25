@@ -10,20 +10,30 @@ import { Flame, Utensils, User } from 'lucide-react';
  */
 
 // Compact Circular Progress for mobile (green up to 100%, solid red when over)
-const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget }) => {
+const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmrTarget, onClick }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  const isExceeding = percentage > 100;
-  // When over target, fill the entire ring solid red. Otherwise green up to %.
-  const fillPct = isExceeding ? 100 : Math.max(0, percentage);
-  const fillOffset = circumference - (fillPct / 100) * circumference;
+  // Green arc: fills 0-100%, stays at 100% beyond
+  const greenPct = Math.min(100, Math.max(0, percentage));
+  const greenOffset = circumference - (greenPct / 100) * circumference;
 
-  const textColor = isExceeding ? '#dc2626' : '#065f46';
+  // Red arc: starts at 0 until 100%, fills 0-100% from 100-200%, stays at 100% beyond 200%
+  const redPct = Math.min(100, Math.max(0, percentage - 100));
+  const redOffset = circumference - (redPct / 100) * circumference;
+
+  // Text transitions from green to red as you go from 100% to 200%
+  const textColor = percentage <= 100 ? '#065f46' : '#dc2626';
   const subtitle  = bmrTarget ? `of ${bmrTarget.toLocaleString()}` : 'of BMR';
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div 
+      className={`relative ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`} 
+      style={{ width: size, height: size }}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <svg width={size} height={size} className="transform -rotate-90">
         <defs>
           {/* Green gradient */}
@@ -49,19 +59,35 @@ const CompactCircularProgress = ({ percentage, size = 100, strokeWidth = 10, bmr
           opacity="0.3"
         />
 
-        {/* Green arc (base, up to 100%) */}
+        {/* Green arc — fills 0-100%, stays at 100% */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={isExceeding ? 'url(#compactCalRed)' : 'url(#compactCalGreen)'}
+          stroke="url(#compactCalGreen)"
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          strokeDashoffset={fillOffset}
+          strokeDashoffset={greenOffset}
           strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
+
+        {/* Red arc — overlays from 100-200%, stays at 100% beyond */}
+        {percentage > 100 && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="url(#compactCalRed)"
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={redOffset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+          />
+        )}
 
       </svg>
 
@@ -98,9 +124,9 @@ const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }
   const exceeded = Math.max(0, consumed - target);
 
   return (
-    <div className="h-full flex items-start justify-center pt-1 px-2">
+    <div className="h-full flex items-center justify-center py-2">
       {/* Compact Card Container */}
-      <div className="bg-white rounded-xl shadow-lg p-3 w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-lg p-3 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">

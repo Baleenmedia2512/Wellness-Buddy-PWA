@@ -97,6 +97,22 @@
     {
       "path": "/api/cron/deactivate-idle-users",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/tasks",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/water",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/marathon-finalize",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/ai/worker",
+      "schedule": "* * * * *"
     }
   ],
   "env": {

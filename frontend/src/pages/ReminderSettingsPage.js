@@ -438,7 +438,8 @@ const ReminderSettingsPage = ({ onBack, lastWeight: lastWeightProp }) => {
     if (!prefs) return;
     setSaving(true);
     try {
-      await updateReminders(prefs);
+      const userId = localStorage.getItem('dbUserId') || localStorage.getItem('userId') || null;
+      await updateReminders(prefs, userId);
       showToast('success', isNative
         ? 'Reminders saved and scheduled!'
         : 'Reminder preferences saved!');
@@ -482,8 +483,8 @@ const ReminderSettingsPage = ({ onBack, lastWeight: lastWeightProp }) => {
   // ── Compute "default reminder time" label ────────────────────────────
 
   function getDefaultLabel(activity) {
-  if (!activity?.windowEnd) return null;
-  const parsed = parseTimeString(activity.windowEnd);
+  if (!activity?.windowStart) return null;
+  const parsed = parseTimeString(activity.windowStart);
   if (!parsed) return null;
   const def = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
   return formatReminderTime(def.hour, def.minute);
@@ -731,7 +732,7 @@ const ReminderSettingsPage = ({ onBack, lastWeight: lastWeightProp }) => {
                     {/* hint row */}
                     {(() => {
                       if (!defaultTime) return null;
-                      const p = parseTimeString(activity.windowEnd);
+                      const p = parseTimeString(activity.windowStart);
                       if (!p) return null;
                       const d = subtractMinutes(p.hour, p.minute, REMINDER_OFFSET);
                       const isCustom = activity.hour !== d.hour || activity.minute !== d.minute;

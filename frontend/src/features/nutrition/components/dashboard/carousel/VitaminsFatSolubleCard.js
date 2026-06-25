@@ -6,10 +6,10 @@ import MicroNutrientTile from './MicroNutrientTile';
  * VitaminsFatSolubleCard — Card 6 of the Nutrition Carousel.
  * Vitamins A, C, D, E, K. Five tiles in a 3-col grid (last cell blank).
  */
-const VitaminsFatSolubleCard = ({ tiles }) => {
+const VitaminsFatSolubleCard = ({ tiles, onOpenModal }) => {
   return (
-    <div className="h-full flex items-start justify-center pt-1 px-2">
-      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full max-w-md">
+    <div className="h-full flex items-center justify-center py-2">
+      <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -31,6 +31,8 @@ const VitaminsFatSolubleCard = ({ tiles }) => {
               target={t.target}
               pct={t.pct}
               color="from-amber-400 to-orange-500"
+              nutrientKey={t.key}
+              onOpenModal={onOpenModal}
             />
           ))}
         </div>

@@ -1,7 +1,7 @@
 {
   "name": "wellness-buddy-pwa",
   "private": true,
-  "version": "3.2.1",
+  "version": "3.2.2",
   "scripts": {
     "vsa:check": "node scripts/vsa-diagnostic.js",
     "smoke": "node scripts/smoke-test.js",
@@ -22,8 +22,13 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@capacitor/push-notifications": "^8.1.1",
     "@playwright/test": "^1.60.0",
+    "joi": "^18.2.1",
     "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"
+  },
+  "devDependencies": {
+    "eslint": "^10.5.0"
   }
 }

@@ -1,5 +1,34 @@
 import { getSupabaseClient, getISTTimestamp, convertToIST } from '../../utils/supabaseClient.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
+
+async function findCaptureByShareIdentifier(identifier, columns) {
+  const value = (identifier || '').toString().trim();
+  if (!value) return null;
+
+  const supabase = getSupabaseClient();
+  const base = supabase
+    .from('captures_table')
+    .select(columns)
+    .eq('"IsDeleted"', 0)
+    .limit(1);
+
+  if (UUID_RE.test(value)) {
+    const { data, error } = await base.eq('"PublicShareToken"', value).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  if (SHARE_CODE_RE.test(value)) {
+    const { data, error } = await base.eq('"ShareCode"', value).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  return null;
+}
+
 export async function insertAnalysis(payload) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -146,14 +175,10 @@ export async function updateWithAnalysisResult(id, userId, analysisFields) {
  */
 export async function findPublicByToken(token) {
   const supabase = getSupabaseClient();
-  const { data: cap, error: capErr } = await supabase
-    .from('captures_table')
-    .select('"ID", "UserID", "ShareExpiresAt", "ImageType", "ImageBase64", "CreatedAt"')
-    .eq('"PublicShareToken"', token)
-    .eq('"IsDeleted"', 0)
-    .limit(1)
-    .maybeSingle();
-  if (capErr) throw capErr;
+  const cap = await findCaptureByShareIdentifier(
+    token,
+    '"ID", "UserID", "ShareExpiresAt", "ImageType", "ImageBase64", "CreatedAt"',
+  );
   if (!cap) return null;
 
   
@@ -203,14 +228,10 @@ export async function findPublicByToken(token) {
  */
 export async function findOwnerByToken(token) {
   const supabase = getSupabaseClient();
-  const { data: cap, error: capErr } = await supabase
-    .from('captures_table')
-    .select('"ID", "UserID", "CreatedAt", "ShareExpiresAt", "ImageType"')
-    .eq('"PublicShareToken"', token)
-    .eq('"IsDeleted"', 0)
-    .limit(1)
-    .maybeSingle();
-  if (capErr) throw capErr;
+  const cap = await findCaptureByShareIdentifier(
+    token,
+    '"ID", "UserID", "CreatedAt", "ShareExpiresAt", "ImageType"',
+  );
   if (!cap) return null;
 
   const imageType = cap.ImageType || 'food';

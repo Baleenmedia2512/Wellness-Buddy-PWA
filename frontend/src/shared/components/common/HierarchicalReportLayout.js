@@ -368,6 +368,7 @@ const HierarchicalReportLayout = ({
   expandedState = null, // "expanded" | "collapsed" | null
   teamView,          // "direct" | "full" — current view mode
   onTeamViewChange,  // Handler for Direct/Full toggle
+  customSortOptions, // Optional: override default discipline SORT_OPTIONS with report-specific ones
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -403,7 +404,8 @@ const HierarchicalReportLayout = ({
     { value: "direct", label: "Sort by Direct Team Score", shortLabel: "Direct", Logo: DirectLogo,   color: "text-green-600"  },
     { value: "full",   label: "Sort by Full Team Score",   shortLabel: "Full",   Logo: FullTeamLogo, color: "text-purple-600" },
   ];
-  const activeSortOption = SORT_OPTIONS.find((o) => o.value === sortBy) || SORT_OPTIONS[0];
+  const sortOptionsToUse = customSortOptions || SORT_OPTIONS;
+  const activeSortOption = sortOptionsToUse.find((o) => o.value === sortBy) || sortOptionsToUse[0];
 
   const getDateRangeLabel = () => {
     if (dateRange === "custom" && customStartDate && customEndDate) {
@@ -785,7 +787,7 @@ const HierarchicalReportLayout = ({
                               exit={{ opacity: 0, y: -10 }}
                               className="absolute right-0 mt-2 w-52 sm:w-60 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
                             >
-                              {SORT_OPTIONS.map((option) => {
+                              {sortOptionsToUse.map((option) => {
                                 const isActive = sortBy === option.value;
                                 return (
                                   <button
@@ -823,7 +825,9 @@ const HierarchicalReportLayout = ({
                           <ArrowUp className="h-3.5 w-3.5 text-gray-600" />
                         )}
                         <span className="text-[9px] font-bold text-gray-500 leading-none">
-                          {sortOrder === "desc" ? "Z-A" : "A-Z"}
+                          {sortBy === "name"
+                            ? (sortOrder === "desc" ? "Z-A" : "A-Z")
+                            : (sortOrder === "desc" ? "Hi" : "Lo")}
                         </span>
                       </TouchFeedbackButton>
                     </div>

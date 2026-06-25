@@ -282,7 +282,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             {/* Spacer to avoid overlap with fixed label */}
             <div className="w-32 sm:w-40 flex-shrink-0"></div>
             
-            {/* First set of items */}}
+            {/* First set of items */}
             {leaderboardData.map((user) =>
               renderLeaderboardCard(user, `first-${user.userId}`),
             )}

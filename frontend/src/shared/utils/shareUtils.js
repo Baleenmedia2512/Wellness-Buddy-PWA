@@ -7,6 +7,36 @@ import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 
 /**
+ * Resolve the best display name for a user in share text / cards.
+ *
+ * Priority order:
+ *   1. savedUserName — the username the user explicitly set in the app profile
+ *      (loaded from /api/user/profile → data.userName).
+ *   2. user.displayName — Firebase Auth display name (rarely populated for
+ *      email+password accounts).
+ *   3. user.name — generic name field on the session object.
+ *   4. Email prefix (user.email split at '@') — last resort only; this is
+ *      a technical identifier, NOT a display name.
+ *   5. fallback string (default: 'Wellness Valley').
+ *
+ * Pure function — no side-effects, no I/O.
+ *
+ * @param {string|null}  savedUserName   App-profile username from state.
+ * @param {object|null}  user            Session user object.
+ * @param {string}       [fallback]      Used when every field is falsy.
+ * @returns {string}
+ */
+export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness Valley') {
+  return (
+    (savedUserName && savedUserName.trim()) ||
+    user?.displayName ||
+    user?.name ||
+    (user?.email ? user.email.split('@')[0] : null) ||
+    fallback
+  );
+}
+
+/**
  * Reliably check if running on native platform (not web browser)
  * Uses Capacitor.isNativePlatform() which is more accurate than isPlatform()
  */
@@ -25,7 +55,7 @@ const isNativePlatform = () => {
  * with user interaction.
  */
 export const precaptureShareImage = (element, options = {}) => {
-  const { scale = 1.5, quality = 0.85 } = options;
+  const { scale = 1.5, quality = 0.85, immediate = false } = options;
 
   return new Promise((resolve) => {
     if (!element) {
@@ -42,7 +72,7 @@ export const precaptureShareImage = (element, options = {}) => {
           useCORS: true,
           allowTaint: false,
           logging: false,
-          imageTimeout: 5000,
+          imageTimeout: immediate ? 1500 : 5000,
           removeContainer: true,
           scrollY: -window.scrollY,
           scrollX: -window.scrollX,
@@ -59,7 +89,13 @@ export const precaptureShareImage = (element, options = {}) => {
       }
     };
 
-    // Schedule on idle so it never competes with rendering or user input.
+    // User-initiated share flows pass immediate:true so capture starts right away.
+    if (immediate) {
+      run();
+      return;
+    }
+
+    // Background warm-up uses idle time so it never competes with user input.
     if (typeof window.requestIdleCallback === "function") {
       window.requestIdleCallback(run, { timeout: 2000 });
     } else {
@@ -113,7 +149,7 @@ export const shareTextViaWhatsApp = async (text) => {
     }
     // System-share fallback: user can still pick WhatsApp or another app.
     try {
-      await Share.share({ text, dialogTitle: 'Share my meal' });
+      await Share.share({ text, dialogTitle: 'Share via' });
       return true;
     } catch (shareErr) {
       const isCancelled = (shareErr?.message || '').toLowerCase().includes('cancel');

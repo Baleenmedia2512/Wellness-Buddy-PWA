@@ -28,6 +28,7 @@ import {
   useSwipePanelHeight,
   useMealMutations,
 } from "../hooks";
+import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -75,11 +76,18 @@ const NutritionDashboard = ({
   apiBaseUrl,
   onMealDelete,
   hideHeader,
+  hideDateStrip = false,
+  hideOverview = false,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
   watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
   initialMealId = null, // meal ID to auto-open (from deep link)
+  // Imperative handle used by the timeline shell (Dashboard.js) to open a specific
+  // meal by ID without routing through the one-shot `initialMealId` deep-link path.
+  // The parent passes a React ref; we write to `.current` each render so the
+  // closure always has the latest `analyses` snapshot.
+  openRef = null,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -112,6 +120,24 @@ const NutritionDashboard = ({
   const [trendRangeDays, setTrendRangeDays] = useState(7);
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
+  const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
+
+  // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
+  React.useEffect(() => {
+    const tr = window.__captureTrace;
+    if (tr) {
+      console.log(
+        `[CAPTURE-TRACE-${tr.id}] Stage 17 | NutritionDashboard mounted\n` +
+        `  ts=${Date.now()}  (+${Date.now() - tr.t0}ms from T0)\n` +
+        `  captureId=${tr.captureId ?? 'null'}\n` +
+        `  traceId=${tr.traceId ?? 'none'}\n` +
+        `  nutritionRefreshKey=${nutritionRefreshKey}\n` +
+        `  savePromiseRef=${tr.savePromiseRef}\n` +
+        `  pendingShareRef=${tr.pendingShareRef}`,
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
 
   // Day analyses + daily stats orchestration (auto-fetch on user/date change).
   const {
@@ -123,7 +149,7 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId });
+  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
   const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
@@ -326,6 +352,16 @@ const NutritionDashboard = ({
       debugLog('⚠️ [NutritionDashboard] Meal not found for deep link ID:', initialMealId);
     }
   }, [initialMealId, analyses, loading]);
+
+  // Imperative open handle for the timeline shell (ff.diary-timeline).
+  // Written on every render so the closure captures the current `analyses` list.
+  // Consumers call `openRef.current(mealId)` to open a meal by ID.
+  if (openRef) {
+    openRef.current = (mealId) => {
+      const meal = analyses.find((m) => m.ID && String(m.ID) === String(mealId));
+      if (meal) setSelectedMeal(meal);
+    };
+  }
 
   // fetchDayAnalyses + auto-refresh effect moved to useDayAnalyses hook.
 
@@ -536,41 +572,45 @@ const NutritionDashboard = ({
         />
       )}
 
-      {/* Date selector */}
-      <HorizontalCalendarStrip
-        selectedDate={selectedDate}
-        setSelectedDate={setSelectedDate}
-        navigateDate={navigateDate}
-        showCalendar={showCalendar}
-        setShowCalendar={setShowCalendar}
-        calendarMonth={calendarMonth}
-        setCalendarMonth={setCalendarMonth}
-      />
+      {/* Date selector — hidden when the shell provides a single
+          date picker (single-page Diary view). */}
+      {!hideDateStrip && (
+        <HorizontalCalendarStrip
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          navigateDate={navigateDate}
+          showCalendar={showCalendar}
+          setShowCalendar={setShowCalendar}
+          calendarMonth={calendarMonth}
+          setCalendarMonth={setCalendarMonth}
+        />
+      )}
       {/* Content */}
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-4 md:pb-6">
         {loading ? (
           <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
-            <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
-              {/* Summary Card Skeleton */}
-              <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 md:p-5">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <div className="h-3 w-24 bg-gray-200 rounded mb-2 animate-pulse"></div>
-                    <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+            {!hideOverview && (
+              <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
+                <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 md:p-5">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <div className="h-3 w-24 bg-gray-200 rounded mb-2 animate-pulse"></div>
+                      <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse"></div>
                   </div>
-                  <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse"></div>
-                </div>
-                <div className="h-2 w-full bg-gray-200 rounded-full mb-4 animate-pulse"></div>
-                <div className="flex justify-between gap-2">
-                  {[...Array(4)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 h-16 bg-gray-200 rounded-lg animate-pulse"
-                    ></div>
-                  ))}
+                  <div className="h-2 w-full bg-gray-200 rounded-full mb-4 animate-pulse"></div>
+                  <div className="flex justify-between gap-2">
+                    {[...Array(4)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 h-16 bg-gray-200 rounded-lg animate-pulse"
+                      ></div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Meal List Skeletons */}
             <div className="px-4 md:px-6 space-y-6">
@@ -621,38 +661,40 @@ const NutritionDashboard = ({
           </div>
         ) : (
           <>
-            <OverviewPanels
-              showTrendCard={showTrendCard}
-              overviewSwipeHandlers={overviewSwipeHandlers}
-              activeOverviewPanel={activeOverviewPanel}
-              setActiveOverviewPanel={setActiveOverviewPanel}
-              overviewPanelHeight={overviewPanelHeight}
-              summaryPanelRef={summaryPanelRef}
-              dailyStats={dailyStats}
-              calorieTarget={calorieTarget}
-              consumedCalories={consumedCalories}
-              caloriesProgressPercent={caloriesProgressPercent}
-              calorieStatus={calorieStatus}
-              isOverTarget={isOverTarget}
-              burnedCalories={burnedCalories}
-              extraCalories={extraCalories}
-              burnProgress={burnProgress}
-              isBalanced={isBalanced}
-              watchBurned={watchBurned}
-              stepsBurned={stepsBurned}
-              trendPanelRef={trendPanelRef}
-              trendRangeDays={trendRangeDays}
-              setTrendRangeDays={setTrendRangeDays}
-              trendLoading={trendLoading}
-              calorieTrendData={calorieTrendData}
-              calorieChartRenderData={calorieChartRenderData}
-              visibleNutritionDotIndices={visibleNutritionDotIndices}
-              visibleNutritionTickLabels={visibleNutritionTickLabels}
-              trendAverageCalories={trendAverageCalories}
-              trendBestDay={trendBestDay}
-              trendAboveTargetDays={trendAboveTargetDays}
-              renderCaloriePointLabel={renderCaloriePointLabel}
-            />
+            {!hideOverview && (
+              <OverviewPanels
+                showTrendCard={showTrendCard}
+                overviewSwipeHandlers={overviewSwipeHandlers}
+                activeOverviewPanel={activeOverviewPanel}
+                setActiveOverviewPanel={setActiveOverviewPanel}
+                overviewPanelHeight={overviewPanelHeight}
+                summaryPanelRef={summaryPanelRef}
+                dailyStats={dailyStats}
+                calorieTarget={calorieTarget}
+                consumedCalories={consumedCalories}
+                caloriesProgressPercent={caloriesProgressPercent}
+                calorieStatus={calorieStatus}
+                isOverTarget={isOverTarget}
+                burnedCalories={burnedCalories}
+                extraCalories={extraCalories}
+                burnProgress={burnProgress}
+                isBalanced={isBalanced}
+                watchBurned={watchBurned}
+                stepsBurned={stepsBurned}
+                trendPanelRef={trendPanelRef}
+                trendRangeDays={trendRangeDays}
+                setTrendRangeDays={setTrendRangeDays}
+                trendLoading={trendLoading}
+                calorieTrendData={calorieTrendData}
+                calorieChartRenderData={calorieChartRenderData}
+                visibleNutritionDotIndices={visibleNutritionDotIndices}
+                visibleNutritionTickLabels={visibleNutritionTickLabels}
+                trendAverageCalories={trendAverageCalories}
+                trendBestDay={trendBestDay}
+                trendAboveTargetDays={trendAboveTargetDays}
+                renderCaloriePointLabel={renderCaloriePointLabel}
+              />
+            )}
             {/* Meals */}
             <div className="px-3 md:px-4 space-y-3">
               <NutritionMealList

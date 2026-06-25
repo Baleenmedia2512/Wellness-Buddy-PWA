@@ -11,6 +11,7 @@ export default function useProfileForm(initial = {}) {
   const [phone, setPhone] = useState(initial.phone || '');
   const [dietType, setDietType] = useState(initial.dietType || '');
   const [bmr, setBmr] = useState(initial.bmr || '');
+  const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
 
   const reload = (p) => {
     setName(p.name ?? '');
@@ -18,6 +19,7 @@ export default function useProfileForm(initial = {}) {
     setPhone(p.phone ?? '');
     setDietType(p.dietType ?? '');
     setBmr(p.bmr ?? '');
+    setWeightGoalMode(p.weightGoalMode ?? 'loss');
   };
 
   // Optionally re-prime when initial reference changes.
@@ -51,12 +53,14 @@ export default function useProfileForm(initial = {}) {
     bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
     dietType: dietType || undefined,
     phoneNumber: phone.trim() || undefined,
+    weightGoalMode: weightGoalMode || 'loss',
     ...extras,
   });
 
   return {
     name, setName, height, setHeight, phone, setPhone,
     dietType, setDietType, bmr, setBmr,
+    weightGoalMode, setWeightGoalMode,
     heightNum, heightValid, phoneValid, nameValid, dietValid,
     validate, payload, reload,
   };

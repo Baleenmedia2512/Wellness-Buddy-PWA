@@ -1,6 +1,12 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { FileHeart, CheckCircle, Clock, Users, Plus, Search } from "lucide-react";
+import {
+  BodyParamsForm,
+  BodyParamsShareSheet,
+  preloadBodyParamsShareAssets,
+  listBodyParamsCards
+} from "../features/body-parameters-card";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
@@ -34,6 +40,17 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [viewingAssessment, setViewingAssessment] = useState(null);
+
+  // Body Parameters Card states
+  const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
+  const [bodyParamsShareData, setBodyParamsShareData] = useState(null); // { card, shareUrl }
+  const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null); // form data for early pre-capture
+
+  // Warm share-card images while the user fills the form so capture is faster on save.
+  useEffect(() => {
+    if (!isBodyParamsFormOpen) return;
+    preloadBodyParamsShareAssets();
+  }, [isBodyParamsFormOpen]);
   
   // Mock assessment data - replace with API call
   const [assessmentData, setAssessmentData] = useState({});
@@ -361,14 +378,15 @@ const WellnessCounselling = ({ user, onBack }) => {
   };
 
   // Render expanded details when clicking on a node
-  const renderExpandedDetails = (node) => {
+  // COMMENTED OUT: Assessment Details view, Start Assessment button, and View Assessment Details button (images 1, 2, 3)
+  const renderExpandedDetails = (_node) => null;
+  /* const renderExpandedDetails = (node) => {
     const assessment = assessmentData[node.userId];
-    
+
     return (
       <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
         {assessment ? (
           <>
-            {/* Assessment info */}
             <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
               <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
               <span className="text-gray-400">•</span>
@@ -383,7 +401,6 @@ const WellnessCounselling = ({ user, onBack }) => {
           </>
         ) : (
           <>
-            {/* Info note when starting assessment */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
               <p className="text-xs text-blue-800">
                 💡 Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
@@ -403,7 +420,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         )}
       </div>
     );
-  };
+  }; */
 
   // Get status styling
   const getStatusStyle = (node, level, isCurrentUser) => {
@@ -575,8 +592,8 @@ const WellnessCounselling = ({ user, onBack }) => {
         )}
       </HierarchicalReportLayout>
 
-      {/* Wellness Counselling Form Modal */}
-      <WellnessCounsellingForm
+      {/* Wellness Counselling Form Modal — COMMENTED OUT (image 2) */}
+      {/* <WellnessCounsellingForm
         isOpen={isFormOpen}
         onClose={() => {
           setIsFormOpen(false);
@@ -592,22 +609,61 @@ const WellnessCounselling = ({ user, onBack }) => {
           setIsFormOpen(false);
           setSelectedMember(null);
         }}
-      />
+      /> */}
 
-      {/* Assessment View Modal */}
-      {viewingAssessment && (
+      {/* Assessment View Modal — COMMENTED OUT (image 1) */}
+      {/* {viewingAssessment && (
         <AssessmentViewModal
           assessment={viewingAssessment.assessment}
           member={viewingAssessment.node}
           onClose={() => setViewingAssessment(null)}
         />
-      )}
+      )} */}
 
       {/* Member Profile Viewer */}
       <TeamMemberProfileModal
         isOpen={!!profileModalEmail}
         onClose={() => setProfileModalEmail(null)}
         memberEmail={profileModalEmail}
+      />
+
+      {/* ── Body Parameters Card FAB ── */}
+      <button
+        onClick={() => setIsBodyParamsFormOpen(true)}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+        aria-label="Create Body Parameters Card"
+      >
+        <Plus size={28} />
+      </button>
+
+      {/* Body Parameters Card Form */}
+      <BodyParamsForm
+        isOpen={isBodyParamsFormOpen}
+        onClose={() => setIsBodyParamsFormOpen(false)}
+        user={user}
+        selectedMember={null}
+        onSaveStart={(formData) => {
+          // ⚡ Start pre-rendering & capturing the card image immediately,
+          // in parallel with the API save call.
+          setBodyParamsPreCapCard(formData);
+        }}
+        onSaveSuccess={(card, shareUrl, previousCard) => {
+          setIsBodyParamsFormOpen(false);
+          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+        }}
+      />
+
+      {/* Body Parameters Share Sheet */}
+      <BodyParamsShareSheet
+        isOpen={!!bodyParamsShareData}
+        onClose={() => {
+          setBodyParamsShareData(null);
+          setBodyParamsPreCapCard(null);
+        }}
+        card={bodyParamsShareData?.card}
+        shareUrl={bodyParamsShareData?.shareUrl}
+        preCapCard={bodyParamsPreCapCard}
+        previousCard={bodyParamsShareData?.previousCard ?? null}
       />
     </div>
   );

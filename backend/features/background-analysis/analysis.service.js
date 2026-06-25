@@ -12,6 +12,7 @@ import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
+import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 
 const { getISTTimestamp, convertToIST } = repo;
 
@@ -29,6 +30,24 @@ const convertConfidenceToNumeric = (confidence) => {
   }
   return null;
 };
+
+const SHARE_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const DEFAULT_SHARE_CODE_LENGTH = 8;
+
+function generateShareCode(length = DEFAULT_SHARE_CODE_LENGTH) {
+  const size = Math.max(6, Math.min(10, Number(length) || DEFAULT_SHARE_CODE_LENGTH));
+  let out = '';
+  for (let i = 0; i < size; i += 1) {
+    const idx = Math.floor(Math.random() * SHARE_CODE_CHARS.length);
+    out += SHARE_CODE_CHARS[idx];
+  }
+  return out;
+}
+
+function isDuplicateShareCodeError(err) {
+  const msg = `${err?.message || ''} ${err?.details || ''} ${err?.hint || ''}`;
+  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '23505');
+}
 
 function extractNutrition(analysisResult, deviceInfo) {
   let totalCalories = null, totalProtein = null, totalCarbs = null,
@@ -117,15 +136,9 @@ function extractNutrition(analysisResult, deviceInfo) {
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
-  } catch (_) { /* ignore parse */ }
-
-  // 🔍 DEBUG: Log extracted nutrition values
-  console.log('🔍 [extractNutrition] Extracted values:', {
-    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
-    totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
-    micronutrients,
-    confidenceScore, processedBy,
-  });
+  } catch (err) {
+    logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
+  }
 
   return {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
@@ -142,6 +155,15 @@ export async function save(input) {
     captureId,
     city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
   } = input;
+
+  const saveStart = Date.now();
+  logger.info('analysis.save: started', {
+    userId: userId?.toString(),
+    captureId: captureId ?? null,
+    endpoint: 'background-analysis/save',
+    hasImage: !!ImageBase64,
+    hasClientTimestamp: !!clientTimestamp,
+  });
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
@@ -192,12 +214,17 @@ export async function save(input) {
   // FK); a retry or background-service replay finds the existing row and
   // UPDATEs in place. Without this guard, retries would duplicate meal rows.
   let data;
+  const upsertMode = captureId ? 'with-capture' : 'no-capture';
   try {
     if (captureId) {
       const existing = await repo.findFoodByCaptureId(captureId, userId.toString());
       if (existing) {
+        logger.info('analysis.save: updating existing food row (idempotent retry)', {
+          captureId, userId: userId.toString(), existingId: existing.ID,
+        });
         data = await repo.updateWithAnalysisResult(existing.ID, userId.toString(), analysisPayload);
       } else {
+        logger.info('analysis.save: inserting new food row', { captureId, userId: userId.toString() });
         data = await repo.insertAnalysis({
           UserID: userId.toString(),
           CaptureID: captureId,
@@ -239,6 +266,17 @@ export async function save(input) {
     } else if (error.code === '23505') {
       errorMessage = 'Duplicate key error: The database sequence needs to be reset. Please contact support.';
     }
+
+    // Signal to the orchestrator that persistence failed so the capture
+    // status transitions to FAILED rather than staying in ANALYZING.
+    // Never mark a capture FAST_COMPLETE without a persisted domain row.
+    if (captureId) {
+      confirmFailed(captureId, error.code ?? 'SAVE_FAILED', {
+        errorMessage,
+        userId: userId?.toString(),
+      });
+    }
+
     return {
       httpStatus: 500,
       body: {
@@ -255,20 +293,49 @@ export async function save(input) {
   // captures-side transient does not fail the user save.
   if (captureId) {
     try {
-      await captures.updateTypeById({
+      const promotionResult = await captures.updateTypeById({
         captureId,
         userId: userId.toString(),
         toType: IMAGE_TYPE_FOOD,
       });
+      if (promotionResult.changed) {
+        logger.info('analysis.save: capture promoted to food', {
+          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+        });
+      } else {
+        // ALREADY_IN_TARGET_STATE is expected on retries; log at debug level.
+        logger.debug('analysis.save: capture promotion no-op', {
+          captureId, userId: userId.toString(), reason: promotionResult.reason,
+        });
+      }
     } catch (err) {
-      logger.warn('analysis.save: failed to promote capture to food', {
-        captureId, userId: userId.toString(), err: err.message,
+      // Consistency warning: food row saved but capture state NOT promoted.
+      // The diary feed filters on captures.ImageType='food', so this entry
+      // will be hidden until a subsequent retry promotes the capture.
+      logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
+        captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+        err: err.message,
       });
     }
+
+    // Signal to the orchestrator that the food row is now persisted.
+    // This transitions the capture analysisStatus from ANALYZING → FAST_COMPLETE.
+    // Must be called AFTER the food row is in the DB and the capture is promoted.
+    confirmPersisted(captureId, { foodRowId: data?.ID || data?.id });
   }
 
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
+
+  const totalLatencyMs = Date.now() - saveStart;
+  logger.info('analysis.save: completed', {
+    userId: userId?.toString(),
+    captureId: captureId ?? null,
+    foodRowId: data?.ID || data?.id,
+    totalLatencyMs,
+    upsertMode,
+    confidenceScore,
+  });
 
   return {
     httpStatus: 200,
@@ -372,8 +439,20 @@ export async function updateCaptureType({ id, userId, imageType }) {
       body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } },
     };
   }
+
+  // For smartwatch captures the domain row (activity) is written separately
+  // and does not carry a captureId. The PATCH to update the capture type IS
+  // the persistence event for the orchestrator — signal FAST_COMPLETE now.
+  // Weight and education call confirmPersisted() in their own service layers
+  // (after the domain row write), so this guard avoids a double-signal.
+  if (imageType === 'smartwatch' && id) {
+    confirmPersisted(String(id));
+  }
+
   return { httpStatus: 200, body: { ok: true, data: result } };
 }
+
+// retryPromotionToFood moved to ./diary.service.js (PR-B refactor of ADR-0003).
 
 // ─── createPendingCapture ─────────────────────────────────────────────────────
 
@@ -382,8 +461,9 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64, token: clientToken }) {
+export async function createPendingCapture({ userId, imageBase64, token: clientToken, shareCode: clientShareCode }) {
   const token = clientToken || randomUUID();
+  let shareCode = clientShareCode || generateShareCode();
   const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   // PR 6 — captures_table is the ONLY at-capture-time write. No speculative
@@ -393,15 +473,28 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   // analysis.save, weight via weight.saveWeight, etc.) is responsible for
   // inserting its own row with CaptureID = id and promoting the capture via
   // captures.updateTypeById.
-  const capture = await captures.recordPending({
-    userId: userId.toString(),
-    publicShareToken: token,
-    shareExpiresAt,
-    imageBase64: imageBase64 || null,
-    imagePath: 'instant-share',
-    deviceInfo: 'Wellness Valley Web App',
-    processedBy: 'manual_app',
-  });
+  const MAX_SHARE_CODE_ATTEMPTS = 6;
+  let capture = null;
+  for (let attempt = 0; attempt < MAX_SHARE_CODE_ATTEMPTS; attempt += 1) {
+    try {
+      capture = await captures.recordPending({
+        userId: userId.toString(),
+        publicShareToken: token,
+        shareCode,
+        shareExpiresAt,
+        imageBase64: imageBase64 || null,
+        imagePath: 'instant-share',
+        deviceInfo: 'Wellness Valley Web App',
+        processedBy: 'manual_app',
+      });
+      break;
+    } catch (err) {
+      if (!isDuplicateShareCodeError(err) || attempt === MAX_SHARE_CODE_ATTEMPTS - 1) {
+        throw err;
+      }
+      shareCode = generateShareCode();
+    }
+  }
 
   // The `id` returned here is the captures_table primary key. The FE round-
   // trips it as both the `captureId` payload field on the save endpoints and
@@ -413,72 +506,13 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
       data: {
         id: capture.id,
         token,
+        shareCode: capture.shareCode || shareCode,
       },
     },
   };
 }
 
-// ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
-
-/**
- * Look up the OWNER + meal date for a shared token. Used by the in-app
- * deep-link handler: the app opens Dashboard for that user/date and
- * automatically expands the specific meal card. Enforces permission — viewer
- * must be the owner OR appear in the owner's upline coach chain.
- *
- * Returns:
- *   { ok: true,  data: { mealId, ownerUserId, ownerUserName, mealDate, isSelf } }
- *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
- */
-export async function resolvePublicCapture({ token, viewerUserId }) {
-  const row = await repo.findOwnerByToken(token);
-  if (!row) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
-  }
-  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
-    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
-  }
-  const mealId = row.ID ? row.ID.toString() : null;
-  const ownerUserId = row.UserID ? row.UserID.toString() : null;
-  if (!ownerUserId) {
-    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
-  }
-
-  const viewer = viewerUserId.toString();
-  const isSelf = viewer === ownerUserId;
-  if (!isSelf) {
-    // Permission: viewer must appear in the owner's upline coach chain.
-    // Co-coach partners are NOT granted access — they are peers of the owner's
-    // coach and have no supervisory relationship with the owner.
-    const chain = await repo.getCoachChain(ownerUserId);
-    if (!chain.includes(viewer)) {
-      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
-    }
-  }
-
-  const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
-  // correct local date. Using toISOString() would shift a late-evening IST
-  // timestamp to the next UTC day, showing the wrong nutrition entries.
-  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
-
-  return {
-    httpStatus: 200,
-    body: {
-      ok: true,
-      data: {
-        mealId,
-        ownerUserId,
-        ownerUserName,
-        mealDate,
-        isSelf,
-        // imageType drives in-app deep-link tab routing.
-        // Falls back to 'food' for legacy rows that pre-date this column.
-        imageType: row.ImageType || 'food',
-      },
-    },
-  };
-}
+// resolvePublicCapture moved to ./diary.service.js (PR-B refactor of ADR-0003).
 
 // ─── getPublicCapture ─────────────────────────────────────────────────────
 

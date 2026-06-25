@@ -74,30 +74,50 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.2.1',
+  VERSION: '3.2.3',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 40,
+  VERSION_CODE: 43,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 40,
+  IOS_BUILD_NUMBER: 43,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Glycemic Index & UI Improvements',
+  RELEASE_NAME: 'Bug Fixes & Improvements',
   
   // Build date
-  BUILD_DATE: '2026-06-03',
+  BUILD_DATE: '2026-06-16',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 40, versionName: '3.2.1' },
-    IOS: { buildNumber: 40, versionName: '3.2.1' },
+    ANDROID: { versionCode: 43, versionName: '3.2.3' },
+    IOS: { buildNumber: 43, versionName: '3.2.3' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 3.2.3 (Code 43) - 2026-06-16 [ANDROID + iOS RELEASE]
+ *   🐛 Bug Fixes & Stability - Patch release with minor fixes and improvements
+ * 
+ * Version 3.2.2 (Code 41) - 2026-06-15 [ANDROID + iOS RELEASE]
+ *   🧠 Counselling Assessment Card (NEW) - Full wellness counselling assessment feature introduced:
+ *       • AssessmentTargetCard — "Assessment For" info card showing member name, email, counsellor & date
+ *       • WellnessCounsellingForm — Complete initial assessment form with health problems, eating habits,
+ *         sleep quality, diet type, meal timings, water intake, medication details sections
+ *       • AssessmentViewModal — Detailed read-only view of a saved assessment with all recorded data
+ *       • Start Assessment button — Allows counsellor to initiate a new assessment for any team member
+ *       • View Assessment Details button — Opens full assessment view from the hierarchy member card
+ *       • Assessment state reflected on member cards — Green highlight when assessment is on record
+ *   🚫 Counselling UI Temporarily Hidden - All counselling entry points commented out pending review:
+ *       • Wellness Counselling Form modal hidden
+ *       • Assessment Details view modal hidden
+ *       • Start Assessment button & info tip hidden from member expanded view
+ *       • View Assessment Details button hidden from member expanded view
+ *   🚫 Phone Login Disabled - Login input restricted to email only; phone number detection and country-code picker hidden
+ *   🔧 UI Cleanup - Login label and placeholder updated to reflect email-only flow
  * 
  * Version 3.1 (Code 38) - 2026-05-12 [ANDROID + iOS RELEASE]
  *   🗑️ Account Deletion - Full OTP-verified account deletion flow

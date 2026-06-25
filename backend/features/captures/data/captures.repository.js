@@ -36,6 +36,7 @@ const TABLE = 'captures_table';
 export async function insertPending({
   userId,
   publicShareToken,
+  shareCode = null,
   shareExpiresAt = null,
   imageBase64 = null,
   imagePath = null,
@@ -48,6 +49,7 @@ export async function insertPending({
     .insert({
       UserID: userId.toString(),
       PublicShareToken: publicShareToken,
+      ShareCode: shareCode,
       ShareExpiresAt: shareExpiresAt,
       ImageBase64: imageBase64,
       ImagePath: imagePath,
@@ -79,6 +81,40 @@ export async function findByToken(token) {
 }
 
 /**
+ * Look up a capture by short ShareCode. Returns null when not found.
+ */
+export async function findByShareCode(shareCode) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('"ShareCode"', shareCode)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * Resolve either a legacy UUID token or a short ShareCode.
+ */
+export async function findByShareIdentifier(identifier) {
+  const value = (identifier || '').toString().trim();
+  if (!value) return null;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
+
+  if (UUID_RE.test(value)) {
+    return findByToken(value);
+  }
+  if (SHARE_CODE_RE.test(value)) {
+    return findByShareCode(value);
+  }
+  return null;
+}
+
+/**
  * Look up a capture by its primary key, with an ownership guard.
  * Returns the row or null. Added in PR 5 — the resolve path now uses
  * the captures-side ID directly (no more legacy food.ID indirection).
@@ -91,6 +127,30 @@ export async function findByIdForOwner(captureId, userId) {
     .select('*')
     .eq('"ID"', captureId)
     .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 0)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * PR-A.2 / ADR-0003 — look up a capture by primary key WITHOUT an owner
+ * guard. Used by the retry-promotion orchestrator: the orchestrator must
+ * read the row to learn who the owner is BEFORE the permission policy can
+ * decide whether the viewer may act on it. The policy
+ * (`domain/permissions/retry.policy.js`) enforces access; this read does
+ * NOT — callers MUST pair it with `assertCanRetryCapture(...)`.
+ *
+ * Returns the row or null when not found / soft-deleted.
+ */
+export async function findById(captureId) {
+  if (!captureId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('"ID"', captureId)
     .eq('"IsDeleted"', 0)
     .limit(1)
     .maybeSingle();
@@ -142,4 +202,58 @@ export async function updateImageTypeById({ captureId, userId, imageType }) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/**
+ * 2026-06-09: Soft-delete a capture. Sets IsDeleted=1 to hide it from all
+ * listing queries. Only the owner may delete.
+ *
+ * Returns:
+ *   { deleted: true }       on success
+ *   { deleted: false }      if the row was not found or already deleted
+ *
+ * Never throws on not-found — callers treat that as a no-op.
+ */
+export async function softDeleteById({ captureId, userId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ IsDeleted: 1, UpdatedAt: new Date().toISOString() })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 0)  // Only delete if not already deleted
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return { deleted: !!data };
+}
+
+/**
+ * undoSoftDeleteById — restore a soft-deleted capture (undo delete).
+ *
+ * Sets IsDeleted back to 0 for the given capture. Only restores if:
+ *   - The capture belongs to the given userId (ownership guard)
+ *   - The capture is currently marked IsDeleted=1
+ *
+ * Params:
+ *   { captureId: string|number, userId: string|number }
+ *
+ * Returns:
+ *   { restored: true }      on success
+ *   { restored: false }     if not found or not deleted
+ *
+ * Never throws on not-found — callers treat that as a no-op.
+ */
+export async function undoSoftDeleteById({ captureId, userId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ IsDeleted: 0, UpdatedAt: new Date().toISOString() })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', userId.toString())
+    .eq('"IsDeleted"', 1)  // Only restore if currently deleted
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return { restored: !!data };
 }

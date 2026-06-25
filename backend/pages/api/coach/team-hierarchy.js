@@ -89,13 +89,10 @@ export default async function handler(req, res) {
     // Fetch all users in the hierarchy
     let query = supabase
       .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage");
+      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height, Bmr");
 
-    // Only filter by Active status if includeInactive is not true
-    if (includeInactive !== "true") {
-      query = query.eq("Status", "Active");
-    }
-
+    // Always fetch ALL users (Active + Inactive) so inactive intermediate coaches
+    // can be detected and their members promoted up to the nearest active ancestor.
     const { data: allUsers, error: usersError } = await query.order("UserName");
 
     if (usersError) {
@@ -184,11 +181,52 @@ export default async function handler(req, res) {
         coCoachId: deriveCoCoachId(user), // Dynamically derived from coach_teams_table
         status: user.Status,
         profileImage: user.ProfileImage || null,
+        phoneNumber: user.PhoneNumber ? String(user.PhoneNumber).trim() : null,
+        height: user.Height != null ? Number(user.Height) : null,
+        bmr: user.Bmr != null ? Number(user.Bmr) : null,
         teamMembers: [],
         directMemberCount: 0,
         totalMemberCount: 0,
       });
     });
+
+    // Collect the active descendants of an Inactive node, recursively.
+    // Called when buildHierarchy encounters an Inactive direct report — the
+    // inactive node itself is hidden; its active children bubble up to the
+    // nearest active ancestor.
+    // NOTE: defined before buildHierarchy but only called at runtime (mutual
+    //       recursion is safe because both are fully defined before first call).
+    const collectPromotedChildren = (inactiveUserId, promotedParentId, visited, coachPartnerIds) => {
+      const result = [];
+      const newVisited = new Set(visited);
+      newVisited.add(inactiveUserId);
+
+      const directReports = allUsers.filter((u) => {
+        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+        return (
+          (u.CoachId === inactiveUserId || derivedCoCoachId === inactiveUserId) &&
+          u.UserId !== inactiveUserId &&
+          !coachPartnerIds.includes(u.UserId) &&
+          !newVisited.has(u.UserId)
+        );
+      });
+
+      directReports.forEach((report) => {
+        if (report.Status !== 'Active') {
+          // Inactive chain: keep promoting deeper
+          const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          result.push(...deeper);
+        } else {
+          const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+          if (childNode) {
+            childNode.isCoachRelationship = true;
+            result.push(childNode);
+          }
+        }
+      });
+
+      return result;
+    };
 
     // Recursive function to build hierarchy (creates duplicate entries for dual reporting)
     const buildHierarchy = (
@@ -242,6 +280,13 @@ export default async function handler(req, res) {
       directReports.forEach((report) => {
         // Skip if report is the same as current user (self-reference)
         if (report.UserId === userId) return;
+
+        // If this direct report is Inactive: hide it, promote its active descendants up
+        if (report.Status !== 'Active') {
+          const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
+          promoted.forEach((child) => userNode.teamMembers.push(child));
+          return;
+        }
 
         // If this user reports through CoachId
         if (report.CoachId === userId) {
@@ -468,6 +513,9 @@ export default async function handler(req, res) {
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
           Status: node.status,
+          phoneNumber: node.phoneNumber || null,
+          height: node.height != null ? node.height : null,
+          bmr: node.bmr != null ? node.bmr : null,
         };
         if (node.isCoCoach) entry.isCoCoach = true;
         result.set(node.userId, entry);
@@ -494,7 +542,10 @@ export default async function handler(req, res) {
         CoachId: hierarchy.coCoachInfo.coachId,
         CoCoachId: hierarchy.coCoachInfo.coCoachId,
         Status: hierarchy.coCoachInfo.status,
-        isCoCoach: true  // Flag to identify them in search results
+        phoneNumber: hierarchy.coCoachInfo.phoneNumber || null,
+        height: hierarchy.coCoachInfo.height != null ? hierarchy.coCoachInfo.height : null,
+        bmr: hierarchy.coCoachInfo.bmr != null ? hierarchy.coCoachInfo.bmr : null,
+        isCoCoach: true
       });
     }
     

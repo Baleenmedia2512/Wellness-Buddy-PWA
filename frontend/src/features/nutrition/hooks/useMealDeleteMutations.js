@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNutritionRefresh } from '../../../shared/context/NutritionRefreshContext';
 import {
   parseAnalysisData,
   deleteMealById,
@@ -48,6 +49,7 @@ export function useMealDeleteMutations({
   undoSeconds = DEFAULT_UNDO_SECONDS,
 }) {
   const [deletingId, setDeletingId] = useState(null);
+  const { triggerRefresh } = useNutritionRefresh(); // Global refresh trigger for home cards
 
   const optimisticDelete = async (meal, { fromModal }) => {
     if (!meal?.ID) return;
@@ -88,6 +90,8 @@ export function useMealDeleteMutations({
     try {
       await deleteMealById({ apiBaseUrl, id: meal.ID, userId: user?.id });
       if (onMealDelete) onMealDelete(meal.ID);
+      // Trigger global nutrition refresh (updates home cards)
+      triggerRefresh({ immediate: true, source: 'meal-delete' });
     } catch (err) {
       // Rollback on failure
       setAnalyses((prev) => {

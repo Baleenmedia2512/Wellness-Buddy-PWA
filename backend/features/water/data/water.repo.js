@@ -63,3 +63,124 @@ export async function getFoodRowsForDate(userId, date) {
   }
   return data || [];
 }
+
+// ─── Water reminder queries (tasks_table) ─────────────────────────────────────
+
+/**
+ * Return every active user's pending 'water' task for the given date,
+ * including their push token so the scheduler can send FCM notifications.
+ *
+ * Uses Supabase REST (same transport as /api/tasks/list) so cron works when
+ * DATABASE_URL is misconfigured but SUPABASE_URL is valid.
+ *
+ * @param {string} date  YYYY-MM-DD
+ * @returns {Promise<Array<{
+ *   task_id:                  number,
+ *   user_id:                  string,
+ *   task_date:                string,
+ *   window_start:             string,
+ *   window_end:               string,
+ *   reminder_count:           number,
+ *   reminder_dismissed_today: boolean,
+ *   snoozed_until:            string|null,
+ *   push_token:               string,
+ * }>>}
+ */
+export async function getPendingWaterTasksForDate(date) {
+  const supabase = getSupabaseClient();
+
+  const { data: tasks, error: tasksError } = await supabase
+    .from('tasks_table')
+    .select(
+      'TaskId, UserId, TaskDate, WindowStart, WindowEnd, ReminderCount, ReminderDismissedToday, SnoozedUntil',
+    )
+    .eq('TaskDate', date)
+    .eq('TaskType', 'water')
+    .eq('Status', 'pending');
+
+  if (tasksError) {
+    logger.error('[water.repo] getPendingWaterTasksForDate failed', {
+      date,
+      err: tasksError.message,
+    });
+    throw new Error(tasksError.message);
+  }
+
+  if (!tasks?.length) return [];
+
+  const userIds = [...new Set(tasks.map((t) => String(t.UserId)))];
+
+  const { data: members, error: membersError } = await supabase
+    .from('team_table')
+    .select('UserId, PushToken, Status')
+    .in('UserId', userIds)
+    .eq('Status', 'Active')
+    .not('PushToken', 'is', null);
+
+  if (membersError) {
+    logger.error('[water.repo] getPendingWaterTasksForDate members query failed', {
+      date,
+      err: membersError.message,
+    });
+    throw new Error(membersError.message);
+  }
+
+  const tokenByUser = Object.fromEntries(
+    (members || []).map((m) => [String(m.UserId), m.PushToken]),
+  );
+
+  return tasks
+    .filter((t) => tokenByUser[String(t.UserId)])
+    .map((t) => ({
+      task_id:                  t.TaskId,
+      user_id:                  String(t.UserId),
+      task_date:                t.TaskDate,
+      window_start:             t.WindowStart,
+      window_end:               t.WindowEnd,
+      reminder_count:           t.ReminderCount,
+      reminder_dismissed_today: t.ReminderDismissedToday,
+      snoozed_until:            t.SnoozedUntil,
+      push_token:               tokenByUser[String(t.UserId)],
+    }));
+}
+
+/**
+ * Increment ReminderCount on a water task after a hydration reminder is sent.
+ * Ensures each scheduled slot fires exactly once (idempotency guard lives in
+ * shouldSendWaterReminder — this is the write-side of the same mechanism).
+ *
+ * @param {number} taskId
+ * @returns {Promise<void>}
+ */
+export async function incrementWaterTaskReminderCount(taskId) {
+  const supabase = getSupabaseClient();
+
+  const { data: row, error: readError } = await supabase
+    .from('tasks_table')
+    .select('ReminderCount')
+    .eq('TaskId', taskId)
+    .single();
+
+  if (readError) {
+    logger.error('[water.repo] incrementWaterTaskReminderCount read failed', {
+      taskId,
+      err: readError.message,
+    });
+    throw new Error(readError.message);
+  }
+
+  const { error: updateError } = await supabase
+    .from('tasks_table')
+    .update({ ReminderCount: (row?.ReminderCount ?? 0) + 1 })
+    .eq('TaskId', taskId);
+
+  if (updateError) {
+    logger.error('[water.repo] incrementWaterTaskReminderCount update failed', {
+      taskId,
+      err: updateError.message,
+    });
+    throw new Error(updateError.message);
+  }
+
+  logger.info('[water.repo] reminder count incremented', { taskId });
+}
