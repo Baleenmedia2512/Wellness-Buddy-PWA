@@ -7,6 +7,12 @@
       "memory": 1024
     }
   },
+  "crons": [
+    {
+      "path": "/api/ai/worker",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/get-global-corrections",

@@ -37,11 +37,16 @@ const SERVICE = 'gemini';
 
 /** Fast macros: returned inline on every food analysis. */
 const FAST_NUTRITION_PROPS = {
-  calories: { type: SchemaType.NUMBER },
-  protein:  { type: SchemaType.NUMBER },
-  carbs:    { type: SchemaType.NUMBER },
-  fat:      { type: SchemaType.NUMBER },
-  fiber:    { type: SchemaType.NUMBER },
+  calories:    { type: SchemaType.NUMBER },
+  protein:     { type: SchemaType.NUMBER },
+  carbs:       { type: SchemaType.NUMBER },
+  fat:         { type: SchemaType.NUMBER },
+  fiber:       { type: SchemaType.NUMBER },
+  // Include these in fast path so carousel cards are populated without waiting for enrichment
+  sugar:       { type: SchemaType.NUMBER },
+  sodium:      { type: SchemaType.NUMBER },
+  cholesterol: { type: SchemaType.NUMBER },
+  glycemic_index: { type: SchemaType.NUMBER },
 };
 
 /** Enrichment micros: vitamins + minerals returned by background job. */
@@ -68,6 +73,9 @@ const ENRICHMENT_PROPS = {
   zinc:           { type: SchemaType.NUMBER },
   phosphorus:     { type: SchemaType.NUMBER },
 };
+
+/** Full nutrition: all 26 fields returned per-food item in the unified call. */
+const FULL_NUTRITION_PROPS = { ...FAST_NUTRITION_PROPS, ...ENRICHMENT_PROPS };
 
 // ── Structured response schemas (module-level singletons) ─────────────────────
 
@@ -99,15 +107,11 @@ const UNIFIED_SCHEMA = {
               isLiquid:  { type: SchemaType.BOOLEAN }, // true for water, tea, shakes, etc.
               nutrition: {
                 type: SchemaType.OBJECT,
-                properties: {
-                  calories: { type: SchemaType.NUMBER },
-                  protein:  { type: SchemaType.NUMBER },
-                  carbs:    { type: SchemaType.NUMBER },
-                  fat:      { type: SchemaType.NUMBER },
-                  fiber:    { type: SchemaType.NUMBER },
-                },
-                // Force Gemini to always provide all macro values (use 0 not null)
-                required: ['calories', 'protein', 'carbs', 'fat', 'fiber'],
+                properties: FULL_NUTRITION_PROPS,
+                // Require macros + sugar/sodium/cholesterol/GI so carousel cards
+                // are always populated from the initial call (no enrichment needed).
+                required: ['calories', 'protein', 'carbs', 'fat', 'fiber',
+                           'sugar', 'sodium', 'cholesterol', 'glycemic_index'],
               },
             },
             // Minimum required per item so food lists are never empty/nutrition-less
@@ -116,13 +120,7 @@ const UNIFIED_SCHEMA = {
         },
         total: {
           type: SchemaType.OBJECT,
-          properties: {
-            calories: { type: SchemaType.NUMBER },
-            protein:  { type: SchemaType.NUMBER },
-            carbs:    { type: SchemaType.NUMBER },
-            fat:      { type: SchemaType.NUMBER },
-            fiber:    { type: SchemaType.NUMBER },
-          },
+          properties: FULL_NUTRITION_PROPS,
         },
         // ── WEIGHT ─────────────────────────────────────────────
         weightValue: { type: SchemaType.NUMBER },
@@ -143,7 +141,8 @@ const UNIFIED_SCHEMA = {
     fastNutrition: {
       type:       SchemaType.OBJECT,
       properties: FAST_NUTRITION_PROPS,
-      required:   Object.keys(FAST_NUTRITION_PROPS),
+      required:   ['calories', 'protein', 'carbs', 'fat', 'fiber',
+                   'sugar', 'sodium', 'cholesterol', 'glycemic_index'],
     },
     weightReading: {
       type: SchemaType.OBJECT,
@@ -238,14 +237,18 @@ fastNutrition:
   protein,
   carbs,
   fat,
-  fiber
+  fiber,
+  sugar,
+  sodium,
+  cholesterol,
+  glycemic_index
 }
 ← Aggregate totals across all detected foods and drinks.
 
 details.foods:
 Array of all detected food and beverage items.
 
-Each item MUST contain:
+Each item MUST contain ALL nutrition fields (flat, no nesting):
 
 {
   name,
@@ -260,62 +263,32 @@ Each item MUST contain:
     carbs,
     fat,
     fiber,
-
+    sugar,
+    sodium,
+    cholesterol,
     glycemic_index,
-    glycemic_load,
-
-    micronutrients: {
-      vitamins: {
-        vitamin_a,
-        vitamin_b1,
-        vitamin_b2,
-        vitamin_b3,
-        vitamin_b5,
-        vitamin_b6,
-        vitamin_b7,
-        vitamin_b9,
-        vitamin_b12,
-        vitamin_c,
-        vitamin_d,
-        vitamin_e,
-        vitamin_k
-      },
-
-      minerals: {
-        calcium,
-        iron,
-        magnesium,
-        phosphorus,
-        potassium,
-        sodium,
-        zinc,
-        copper,
-        manganese,
-        selenium,
-        chromium,
-        iodine,
-        molybdenum
-      },
-
-      lipids: {
-        cholesterol,
-        omega3,
-        omega6,
-        saturated_fat,
-        monounsaturated_fat,
-        polyunsaturated_fat,
-        trans_fat
-      },
-
-      carbohydrates: {
-        sugar,
-        added_sugar,
-        starch,
-        net_carbs
-      }
-    }
+    vitamin_a,
+    vitamin_c,
+    vitamin_d,
+    vitamin_e,
+    vitamin_k,
+    vitamin_b1,
+    vitamin_b2,
+    vitamin_b3,
+    vitamin_b6,
+    vitamin_b9,
+    vitamin_b12,
+    calcium,
+    iron,
+    magnesium,
+    potassium,
+    zinc,
+    phosphorus
   }
 }
+
+IMPORTANT: nutrition fields are FLAT (no nested micronutrients object).
+Provide each field directly at the nutrition level.
 
 Food Identification Rules:
 - Use specific food names whenever possible.
@@ -345,38 +318,28 @@ Drink Rules:
   isLiquid: true
 - Provide volume_ml whenever possible.
 - Plain water:
-  calories = 0
-  protein = 0
-  carbs = 0
-  fat = 0
-  fiber = 0
+  calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, sugar = 0, sodium = 0
 - Black coffee and unsweetened plain tea may legitimately contain near-zero calories.
 
 Nutrition Rules:
 - Estimate nutrients using USDA FoodData Central or equivalent standard nutrition databases.
-- Never omit nutrition fields.
-- If a nutrient is genuinely absent, return 0.
-- If a nutrient cannot be reasonably estimated, return null.
-- All nutrient values must be numeric where available.
+- Never omit nutrition fields. Estimate ALL 26 fields per food item.
+- If a nutrient is genuinely absent (e.g. water has no vitamin_a), return 0.
+- If a nutrient cannot be reasonably estimated, return 0 (not null).
+- All nutrient values must be numeric.
+- Vitamins: report in standard units (vitamin_a in µg RAE, vitamin_c/b-vitamins in mg, vitamin_d/k in µg).
+- Minerals: report in mg (calcium, iron, magnesium, potassium, sodium, zinc, phosphorus).
 
 details.total:
 Must contain aggregated totals for ALL detected food and beverage items.
+All 26 fields at the top level (same flat structure as per-food nutrition):
 
 {
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber,
-
-  glycemic_load,
-
-  micronutrients: {
-    vitamins,
-    minerals,
-    lipids,
-    carbohydrates
-  }
+  calories, protein, carbs, fat, fiber,
+  sugar, sodium, cholesterol, glycemic_index,
+  vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
+  vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
+  calcium, iron, magnesium, potassium, zinc, phosphorus
 }
 
 Consistency Rules:
@@ -385,7 +348,8 @@ Consistency Rules:
 - Each visible food/drink must appear as a separate object in details.foods.
 - Include side dishes, beverages, sauces, condiments, toppings, and water.
 - details.total MUST equal the sum of all food items.
-- fastNutrition MUST match the total calories, protein, carbs, fat, and fiber values from details.total.
+- fastNutrition calories/protein/carbs/fat/fiber MUST match details.total values.
+- fastNutrition sugar/sodium/cholesterol/glycemic_index MUST match details.total values.
 - Every detected food or beverage must appear in details.foods.
 - Return valid JSON only.
 - No markdown.
@@ -470,11 +434,10 @@ const TYPE_ALIAS = Object.freeze({ weight_scale: 'weight', meeting: 'education' 
 
 function normaliseType(raw, confidence) {
   // Trust Gemini's self-reported imageType when confidence is reasonable.
-  // The prompt already instructs Gemini to return 'other' when uncertain
-  // (0.6–0.79 range), so double-filtering at 0.80 here was incorrectly
-  // discarding valid education / smartwatch detections on the first attempt.
-  // Only override as a last-resort sanity check at 0.50.
-  if (!raw || confidence < 0.50) return 'other';
+  // The prompt already instructs Gemini to ALWAYS choose "food" over "other"
+  // when there is ANY reasonable chance it is food. Only override as a last-
+  // resort sanity check at 0.10 (practically zero confidence).
+  if (!raw || confidence < 0.10) return 'other';
   return TYPE_ALIAS[raw] ?? raw;
 }
 

@@ -249,22 +249,22 @@ const extractFoodContributions = (analyses, nutrientKey) => {
       else if (normalizedKey === 'sugar') amount = nutrition.sugar || 0;
       else if (normalizedKey === 'fiber') amount = nutrition.fiber || 0;
       
-      // Fat-Soluble Vitamins (in mcg or IU)
-      else if (normalizedKey === 'vitaminA') amount = nutrition.vitaminA || 0;
-      else if (normalizedKey === 'vitaminC') amount = nutrition.vitaminC || 0;
-      else if (normalizedKey === 'vitaminD') amount = nutrition.vitaminD || 0;
-      else if (normalizedKey === 'vitaminE') amount = nutrition.vitaminE || 0;
-      else if (normalizedKey === 'vitaminK') amount = nutrition.vitaminK || 0;
+      // Fat-Soluble Vitamins — AI returns snake_case (vitamin_a); also check camelCase for legacy records
+      else if (normalizedKey === 'vitaminA') amount = nutrition.vitamin_a || nutrition.vitaminA || 0;
+      else if (normalizedKey === 'vitaminC') amount = nutrition.vitamin_c || nutrition.vitaminC || 0;
+      else if (normalizedKey === 'vitaminD') amount = nutrition.vitamin_d || nutrition.vitaminD || 0;
+      else if (normalizedKey === 'vitaminE') amount = nutrition.vitamin_e || nutrition.vitaminE || 0;
+      else if (normalizedKey === 'vitaminK') amount = nutrition.vitamin_k || nutrition.vitaminK || 0;
       
-      // B Vitamins (in mg or mcg)
-      else if (normalizedKey === 'vitaminB1' || normalizedKey === 'thiamin') amount = nutrition.vitaminB1 || nutrition.thiamin || 0;
-      else if (normalizedKey === 'vitaminB2' || normalizedKey === 'riboflavin') amount = nutrition.vitaminB2 || nutrition.riboflavin || 0;
-      else if (normalizedKey === 'vitaminB3' || normalizedKey === 'niacin') amount = nutrition.vitaminB3 || nutrition.niacin || 0;
-      else if (normalizedKey === 'vitaminB6') amount = nutrition.vitaminB6 || 0;
-      else if (normalizedKey === 'vitaminB9' || normalizedKey === 'folate') amount = nutrition.vitaminB9 || nutrition.folate || 0;
-      else if (normalizedKey === 'vitaminB12') amount = nutrition.vitaminB12 || 0;
+      // B Vitamins — snake_case primary, camelCase fallback
+      else if (normalizedKey === 'vitaminB1' || normalizedKey === 'thiamin') amount = nutrition.vitamin_b1 || nutrition.vitaminB1 || nutrition.thiamin || 0;
+      else if (normalizedKey === 'vitaminB2' || normalizedKey === 'riboflavin') amount = nutrition.vitamin_b2 || nutrition.vitaminB2 || nutrition.riboflavin || 0;
+      else if (normalizedKey === 'vitaminB3' || normalizedKey === 'niacin') amount = nutrition.vitamin_b3 || nutrition.vitaminB3 || nutrition.niacin || 0;
+      else if (normalizedKey === 'vitaminB6') amount = nutrition.vitamin_b6 || nutrition.vitaminB6 || 0;
+      else if (normalizedKey === 'vitaminB9' || normalizedKey === 'folate') amount = nutrition.vitamin_b9 || nutrition.vitaminB9 || nutrition.folate || 0;
+      else if (normalizedKey === 'vitaminB12') amount = nutrition.vitamin_b12 || nutrition.vitaminB12 || 0;
       
-      // Minerals (in mg or mcg)
+      // Minerals — snake_case only (AI always uses snake_case)
       else if (normalizedKey === 'calcium') amount = nutrition.calcium || 0;
       else if (normalizedKey === 'iron') amount = nutrition.iron || 0;
       else if (normalizedKey === 'magnesium') amount = nutrition.magnesium || 0;
