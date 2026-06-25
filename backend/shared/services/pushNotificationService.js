@@ -13,25 +13,32 @@ let firebaseInitialized = false;
 
 async function initializeFirebase() {
   if (firebaseInitialized) return;
-  
+
   try {
-    // Check if service account key exists
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 
-                               '../../../config/firebase-service-account.json';
-    
-    const { default: serviceAccount } = await import(serviceAccountPath, { assert: { type: 'json' } });
-    
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+      })
     });
-    
+
     firebaseInitialized = true;
-    logger.info('Firebase Admin SDK initialized successfully');
-  } catch (error) {
-    logger.error('Failed to initialize Firebase Admin SDK', { 
-      error: error.message 
+
+    logger.info('Firebase Admin SDK initialized successfully', {
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL
     });
-    throw new Error('Firebase Admin SDK not configured. Add service account key.');
+
+  } catch (error) {
+    logger.error('Failed to initialize Firebase Admin SDK', {
+      error: error.message,
+      hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+      hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+      hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY
+    });
+
+    throw error;
   }
 }
 
