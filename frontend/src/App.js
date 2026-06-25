@@ -6360,7 +6360,7 @@ useEffect(() => {
           // Retry (re-run AI), Edit (manual entry), or Delete.
           // Reset to camera so the user can take the next photo immediately;
           // they find the unidentified entry in the diary.
-          showToast("📷 Saved as 'Other' in diary — tap it to identify");
+          showToast("📷 Couldn't identify — find it in Diary → tap to fix");
           resetCaptureUiOnly();
         }
         setLoading(false);
