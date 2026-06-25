@@ -17,11 +17,11 @@
 	},
 	"server": {
 		"androidScheme": "https",
-		"hostname": "localhost",
+		"hostname": "wellness-valley.vercel.app",
 		"allowNavigation": [
+			"wellness-valley-pwa-backend-test.vercel.app",
+			"wellness-buddy-pwa-backend-test.vercel.app",
 			"wellness-buddy-pwa-eta.vercel.app",
-			"wellness-buddy-pwa-backend-test.vercel.app",
-			"wellness-buddy-pwa-backend-test.vercel.app",
 			"*.vercel.app",
 			"*.googleapis.com",
 			"*.firebase.com",

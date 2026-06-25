@@ -192,7 +192,8 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
-
+import { initializeFCM } from './shared/services/fcmRegistrationService';
+import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 // ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
@@ -930,7 +931,16 @@ function WellnessValleyApp() {
   // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
   // correctly ignores its own camera-driven state transitions.
   // ─────────────────────────────────────────────────────────────────────────
+useEffect(() => {
+  if (!user?.id) return;
+  if (!Capacitor.isNativePlatform()) return;
 
+  initializeFCM(async (token) => {
+    console.log('🔥 FCM Token Generated:', token);
+
+    // Save token to backend here
+  });
+}, [user?.id]);
   // ── Marathon Recognition: fetch on startup when user is ready ─────────────
   useEffect(() => {
     if (!user?.id) return;

@@ -22,6 +22,7 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@capacitor/push-notifications": "^8.1.1",
     "@playwright/test": "^1.60.0",
     "joi": "^18.2.1",
     "pg": "^8.16.3",

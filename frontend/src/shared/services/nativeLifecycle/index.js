@@ -178,7 +178,14 @@ export async function requestAllPermissions() {
     await Camera.requestPermissions({ permissions: ["camera", "photos"] });
 
     // Request push notification permissions
-    await PushNotifications.requestPermissions();
+   const pushPermission =
+  await PushNotifications.requestPermissions();
+
+if (pushPermission.receive === 'granted') {
+  await PushNotifications.register();
+
+  debugLog('Push notification registration requested');
+}
     // Request location permissions for attendance tracking
     await Geolocation.requestPermissions();
 
