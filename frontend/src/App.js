@@ -192,7 +192,7 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
-import { initializeFCM } from './shared/services/fcmRegistrationService';
+import { initializeFCM, resetFCM } from './shared/services/fcmRegistrationService';
 // ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
@@ -935,11 +935,25 @@ useEffect(() => {
   if (!Capacitor.isNativePlatform()) return;
 
   initializeFCM(async (token) => {
-    console.log('🔥 FCM Token Generated:', token);
-
-    // Save token to backend here
+    debugLog('🔥 FCM token received, persisting to backend', { userId: user.id });
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/user/push-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, pushToken: token }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        debugLog('❌ Failed to persist FCM token', { status: res.status, message: body?.message });
+      } else {
+        debugLog('✅ FCM token persisted', { userId: user.id });
+      }
+    } catch (err) {
+      // Non-critical: token will be retried next time PushNotifications.register() fires
+      debugLog('❌ FCM token persistence error (non-critical)', { error: err?.message });
+    }
   });
-}, [user?.id]);
+}, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- apiBaseUrl is build-time constant
   // ── Marathon Recognition: fetch on startup when user is ready ─────────────
   useEffect(() => {
     if (!user?.id) return;
@@ -7290,6 +7304,10 @@ useEffect(() => {
       setUserContext(null);
       setUserContextLoading(false);
       debugLog("🗑️ [Sign Out] User context cache and state cleared");
+
+      // Clear FCM callback so stale token saves cannot target this user's
+      // account if a registration event fires before the next login.
+      resetFCM();
 
       // Clear userId session cache
       clearUserIdCache();
