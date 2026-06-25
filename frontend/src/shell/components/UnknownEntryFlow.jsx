@@ -205,12 +205,6 @@ export default function UnknownEntryFlow({
   };
 
   const handleRetry = () => runAiRetry({ silent: false });
-      }
-    } catch {
-      setRetrying(false);
-      setError("Couldn't analyse the photo — try Edit instead.");
-    }
-  };
 
   const handleDelete = async () => {
     if (!captureId || !userId) return;
