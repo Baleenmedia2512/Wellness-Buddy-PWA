@@ -3,7 +3,7 @@
  * Validates → checks permissions → resolves lap_sequence → inserts marathon
  * → inserts participants with roles → locks baseline weights.
  */
-import { validateCreateMarathon }                                         from '../validation/marathon.schema.js';
+import { validateCreateMarathon, validateCaptainWeights }                 from '../validation/marathon.schema.js';
 import { canManageMarathon }                                              from '../domain/permissions/marathon.policy.js';
 import {
   insertMarathon,
@@ -11,6 +11,7 @@ import {
   lockBaselineWeights,
   countLapSequenceForTeam,
   completePreviousActiveLaps,
+  insertCaptainProvidedWeights,
 }                                                                          from '../data/marathon.repo.js';
 import {
   buildMarathonDisplayName,
@@ -96,6 +97,26 @@ export async function handleCreateMarathon(body) {
       acName = acProfile?.UserName || null;
     }
     resolvedTeamName = buildTeamName(coachProfile?.UserName || `TEAM${payload.coachId}`, acName);
+  }
+
+  // ── Captain-provided weights (pre-fill for participants who haven't weighed in) ──
+  // Validate date range now that resolvedStartedAt is known, then insert before
+  // the eligibility check so those participants pass the weight gate.
+  if (body.captainWeights) {
+    const memberIds = payload.participants.map(p => p.userId);
+    const validatedCaptainWeights = validateCaptainWeights(
+      body.captainWeights,
+      memberIds,
+      resolvedStartedAt,
+      nowIST,
+    );
+    if (validatedCaptainWeights.length > 0) {
+      try {
+        await insertCaptainProvidedWeights(validatedCaptainWeights);
+      } catch (err) {
+        logger.warn('[handleCreateMarathon] Captain weight insertion failed (non-fatal)', { error: err.message });
+      }
+    }
   }
 
   // ── Participant weight eligibility validation ────────────────────────────
