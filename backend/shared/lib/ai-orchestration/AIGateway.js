@@ -189,244 +189,117 @@ const ENRICHMENT_SCHEMA = {
 
 // ── Prompts (module-level constants) ──────────────────────────────────────────
 
-const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON object matching the schema exactly.
+const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
 
-=== imageType — pick the BEST match ===
+=== imageType ===
 
-"food"
-  ANY edible item: meals, snacks, ALL drinks (water, tea, coffee, juice, milk,
-  protein shakes, Herbalife shakes, energy drinks), raw ingredients, packaged food,
-  nutrition supplements (powder sachets, capsules, bottles with nutritional content).
-  RULE: when in doubt between "food" and "other", ALWAYS choose "food".
+"food" — DEFAULT. Any edible item, drink, supplement, raw ingredient, or packaged food.
+  Includes: meals, snacks, water, tea, coffee, juices, shakes, protein powders, pills, sauces.
+  BIAS: If there is ANY reasonable chance this is food, return "food". When in doubt → "food".
 
-"weight"
-  A weighing scale with a VISIBLE NUMERIC weight reading on its display.
-  Must show actual digits (kg or lbs). No visible number → "other".
+"weight" — Weighing scale with a VISIBLE numeric reading (kg or lbs). No digits visible → "other".
 
-"smartwatch"
-  A fitness tracker or smartwatch screen showing activity/health data:
-  steps, calories burned, heart rate, distance, active minutes.
-  Examples: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band, Google Fit,
-  Samsung Health app (phone screenshot showing daily summary).
-  KEY RULE: activity data on any screen → "smartwatch". NEVER classify as "education".
+"smartwatch" — Device or phone screen showing activity data: steps, calories, heart rate, distance.
+  Devices: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band, Google Fit, Samsung Health.
+  Activity data on any screen → "smartwatch", never "education".
 
-"education"
-  ONLY a live video-call screenshot with ALL THREE visible:
-    1. Participant video tiles (faces in boxes)
-    2. Meeting toolbar (mute/camera/end-call buttons)
-    3. Platform UI: Google Meet, Zoom, or Microsoft Teams
-  Missing any one of those three → NOT education.
+"education" — Video-call screenshot with ALL THREE present:
+  (1) participant video tiles  (2) meeting toolbar  (3) Google Meet / Zoom / Teams UI.
+  Any element missing → NOT education.
 
-"other" — use ONLY when the image is clearly NOT food, NOT a scale, NOT a fitness
-  screen, and NOT a video call. Examples: random landscape, text document, animal
-  photo with no food. If you have ANY reasonable chance it is food, choose "food".
+"other" — Only when clearly none of the above. When in doubt → use "food".
 
 === confidence ===
-  Report how confident you are: 0.0 – 1.0.
-  CRITICAL: confidence is ONLY a score to report — it does NOT change your imageType.
-  Never downgrade imageType to "other" just because confidence is < 0.8.
-  A blurry food photo is still "food" at confidence 0.55.
+Score 0.0–1.0. Reports certainty only — never changes imageType.
+A blurry food photo = "food" at 0.55, not "other".
 
-=== HERBALIFE PRODUCT RECOGNITION ===
-This app is used by Herbalife Wellness community members. Recognise these products by sight:
+=== Herbalife products ===
+This app serves Herbalife Wellness community members. Recognize on sight:
 
-Meal-replacement shakes (isLiquid: true, treat as a complete meal):
-- "Herbalife Formula 1 Shake" — powder sachet or shaker bottle (vanilla, chocolate, strawberry, mango, cookies & cream).
-  Typical: ~200–260 kcal, 9g protein, 36g carbs, 1g fat per 2-scoop serving prepared with skimmed milk.
-  If prepared with plant milk, adjust calories accordingly.
-- "Herbalife Protein Drink Mix (PDM)" — shaker bottle mixed with shake.
-- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal/protein drink.
+Meal-replacement shakes (isLiquid: true, complete meal, ~250–300 ml):
+- "Herbalife Formula 1 Shake" — powder sachet or shaker bottle. ~200–260 kcal, 9 g protein, 36 g carbs, 1 g fat. Adjust if prepared with plant milk.
+- "Herbalife Protein Drink Mix (PDM)" — added to F1 shake.
+- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink.
 
-Non-meal beverages (isLiquid: true, low calorie, count as hydration NOT meal):
-- "Herbalife Afresh Energy Drink" — yellow/orange powder sachet or prepared cup (lemon, orange, lychee, peach flavours).
-  Typical: 10–20 kcal per serving. NOT a meal replacement.
-- "Herbalife Herbal Tea Concentrate" — small sachet or bottle (lemon, peach, raspberry, cinnamon, original).
-  Typical: 5–10 kcal per serving. NOT a meal replacement.
+Hydration beverages (isLiquid: true, NOT a meal):
+- "Herbalife Afresh Energy Drink" — yellow/orange powder or prepared cup. ~10–20 kcal.
+- "Herbalife Herbal Tea Concentrate" — small sachet or bottle. ~5–10 kcal.
 
-Supplement pills/tablets (isLiquid: false, near-zero calories):
-- "Herbalife Formula 2 Multivitamin" — orange oval tablets.
-- "Herbalife Formula 3 Cell Activator" — capsules.
-- "Herbalife NightWorks / Niteworks" — white powder or capsules.
-- "Herbalife Xtra-Cal / Herbalife Calcium" — white tablets.
-- Any Herbalife labelled supplement bottle/packet.
+Supplements (isLiquid: false, near-zero calories):
+- "Herbalife Formula 2 Multivitamin" | "Herbalife Formula 3 Cell Activator"
+- "Herbalife NightWorks / Niteworks" | "Herbalife Xtra-Cal"
+- Any other labelled Herbalife supplement bottle or packet.
 
-=== TAMIL NADU FOOD RECOGNITION ===
-Most users are from Tamil Nadu, India. Be accurate with these regional foods:
+=== Tamil Nadu foods ===
+Most users are from Tamil Nadu, India. Use these specific names:
 
-Rice dishes: Idli, Dosa, Uthappam, Pongal (sweet/savoury), Puttu, Appam, Idiyappam,
-  Curd Rice (Thayir Sadam), Sambar Rice, Rasam Rice (Rasam Sadam),
-  Tamarind Rice (Puliyodarai), Lemon Rice (Elumichai Sadam), Coconut Rice (Thengai Sadam),
-  Tomato Rice, Vegetable Biryani, Chicken Biryani, Mutton Biryani, Seeraga Samba Biryani.
+Breakfast:  Idli, Dosa, Uthappam, Pongal (sweet/savoury), Appam, Puttu, Idiyappam
+Rice:       Curd Rice, Lemon Rice, Puliyodarai, Tomato Rice, Coconut Rice,
+            Sambar Rice, Rasam Rice, Chicken Biryani, Mutton Biryani, Seeraga Samba Biryani
+Breads:     Parotta, Kothu Parotta, Veechu Parotta, Chapati, Phulka, Roti
+Curries:    Sambar, Rasam, Poriyal, Kootu, Avial, Moru Kuzhambu, Vatha Kuzhambu,
+            Chicken Chettinad, Mutton Kuzhambu, Meen Kuzhambu, Egg Curry, Egg Bhurji,
+            Paneer Butter Masala, Dal Tadka
+Sides:      Coconut Chutney, Tomato Chutney, Onion Chutney
+Snacks:     Murukku, Seedai, Sundal, Bonda, Bajji, Mixture, Omapodi, Kara Sev
+Beverages:  Filter Coffee, Masala Chai, Ginger Tea, Buttermilk (Moru), Tender Coconut Water, Sugarcane Juice
+Sweets:     Sweet Pongal (Sakkarai Pongal), Payasam, Mysore Pak, Adhirasam, Laddu, Halwa, Jangiri, Badusha
 
-Breads/Flatbreads: Parotta, Kothu Parotta, Veechu Parotta, Chapati, Phulka, Roti.
+=== isLiquid ===
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea)
+         and Herbalife meal-replacement shakes (also count as complete meals)
+false → all solid foods (rice, bread, curry, snacks, idli, etc.)
 
-Curries/Gravies: Sambar, Rasam, Vatha Kuzhambu, Puli Kuzhambu, Milagu Kuzhambu,
-  Kootu (vegetable+lentil dry curry), Poriyal (dry stir-fry), Avial, Moru Kuzhambu,
-  Chicken Chettinad (spicy chicken curry), Mutton Kuzhambu, Meen Kuzhambu (fish curry),
-  Egg Curry, Egg Bhurji, Paneer Butter Masala, Dal Tadka.
+=== FOOD output ===
 
-Breakfast side dishes: Coconut Chutney, Tomato Chutney, Onion Chutney, Sambar (with idli/dosa).
+fastNutrition — 9-field aggregate totals:
+{ calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index }
 
-Snacks: Murukku, Seedai, Sundal (chickpea/lentil), Bonda, Bajji (Pakoda), Mixture,
-  Ribbon Pakoda, Omapodi, Kara Sev.
-
-Beverages (isLiquid: true, NOT meal replacements):
-  Filter Coffee (Kaapi/Kappi), Masala Chai (Masala Tea), Ginger Tea (Adrak Chai),
-  Kumbakonam Degree Coffee, Buttermilk (Moru), Tender Coconut Water, Sugarcane Juice.
-
-Sweets: Sweet Pongal (Sakkarai Pongal), Payasam (Kheer), Halwa (Carrot/Wheat),
-  Laddu, Mysore Pak, Badusha, Jangiri, Adhirasam.
-
-=== SOLID vs LIQUID — meal type classification ===
-IMPORTANT for isLiquid field:
-- Herbalife Formula 1 shake, protein shakes, meal replacement shakes → isLiquid: true
-  (they ARE liquids AND they count as complete meals — use portion ~250–300 ml)
-- Tea (any variant — chai, masala chai, filter coffee, green tea, etc.) → isLiquid: true
-  (these are beverages, NOT meals)
-- Water, coconut water, buttermilk, juices, Afresh → isLiquid: true (beverages, NOT meals)
-- All solid foods (idli, rice, bread, curry, snacks, etc.) → isLiquid: false (they ARE meals)
-
-=== Per-type fields to populate ===
-
-FOOD — populate ALL nutrition fields for every detected food or beverage.
-
-fastNutrition:
+details.foods — one object per visible edible item or beverage:
 {
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber,
-  sugar,
-  sodium,
-  cholesterol,
-  glycemic_index
-}
-← Aggregate totals across all detected foods and drinks.
-
-details.foods:
-Array of all detected food and beverage items.
-
-Each item MUST contain ALL nutrition fields (flat, no nesting):
-
-{
-  name,
-  portion,
-  weight_g,
-  volume_ml,
+  name,       ← specific only: "Idli" / "Masala Chai" / "Plain Water" — never "Food"/"Drink"/"Meal"/"Snack"
+  portion,    ← realistic serving size string
+  weight_g,   ← solids (g)
+  volume_ml,  ← liquids (ml); provide both when estimable
   isLiquid,
-
   nutrition: {
-    calories,
-    protein,
-    carbs,
-    fat,
-    fiber,
-    sugar,
-    sodium,
-    cholesterol,
-    glycemic_index,
-    vitamin_a,
-    vitamin_c,
-    vitamin_d,
-    vitamin_e,
-    vitamin_k,
-    vitamin_b1,
-    vitamin_b2,
-    vitamin_b3,
-    vitamin_b6,
-    vitamin_b9,
-    vitamin_b12,
-    calcium,
-    iron,
-    magnesium,
-    potassium,
-    zinc,
-    phosphorus
+    calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
+    vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
+    vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
+    calcium, iron, magnesium, potassium, zinc, phosphorus
   }
 }
 
-IMPORTANT: nutrition fields are FLAT (no nested micronutrients object).
-Provide each field directly at the nutrition level.
+Nutrition rules:
+- All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
+- vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
+- Plain water: all nutrients 0.
+- Estimate using USDA FoodData Central or equivalent.
 
-Food Identification Rules:
-- Use specific food names whenever possible.
-- Examples:
-  - "Herbalife Formula 1 Shake"
-  - "Masala Chai"
-  - "Idli"
-  - "Chapati"
-  - "Paneer Butter Masala"
-  - "Plain Water"
-  - "Black Coffee"
-- Never use generic names such as:
-  - "Food"
-  - "Meal"
-  - "Drink"
-  - "Snack"
-  - "Item"
-
-Portion Estimation Rules:
-- Estimate realistic serving sizes using visible context.
-- Provide weight_g for solids.
-- Provide volume_ml for liquids.
-- If both can be reasonably estimated, provide both.
-
-Drink Rules:
-- All beverages MUST have:
-  isLiquid: true
-- Provide volume_ml whenever possible.
-- Plain water:
-  calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, sugar = 0, sodium = 0
-- Black coffee and unsweetened plain tea may legitimately contain near-zero calories.
-
-Nutrition Rules:
-- Estimate nutrients using USDA FoodData Central or equivalent standard nutrition databases.
-- Never omit nutrition fields. Estimate ALL 26 fields per food item.
-- If a nutrient is genuinely absent (e.g. water has no vitamin_a), return 0.
-- If a nutrient cannot be reasonably estimated, return 0 (not null).
-- All nutrient values must be numeric.
-- Vitamins: report in standard units (vitamin_a in µg RAE, vitamin_c/b-vitamins in mg, vitamin_d/k in µg).
-- Minerals: report in mg (calcium, iron, magnesium, potassium, sodium, zinc, phosphorus).
-
-details.total:
-Must contain aggregated totals for ALL detected food and beverage items.
-All 26 fields at the top level (same flat structure as per-food nutrition):
-
-{
-  calories, protein, carbs, fat, fiber,
-  sugar, sodium, cholesterol, glycemic_index,
+details.total — same 26 flat fields, sum of all foods:
+{ calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
   vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
   vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
-  calcium, iron, magnesium, potassium, zinc, phosphorus
-}
+  calcium, iron, magnesium, potassium, zinc, phosphorus }
 
-Consistency Rules:
-- Detect ALL visible edible items and beverages in the image.
-- Do NOT stop after identifying the dominant dish.
-- Each visible food/drink must appear as a separate object in details.foods.
-- Include side dishes, beverages, sauces, condiments, toppings, and water.
-- details.total MUST equal the sum of all food items.
-- fastNutrition calories/protein/carbs/fat/fiber MUST match details.total values.
-- fastNutrition sugar/sodium/cholesterol/glycemic_index MUST match details.total values.
-- Every detected food or beverage must appear in details.foods.
-- Return valid JSON only.
-- No markdown.
-- No explanations.
+Consistency:
+- Detect EVERY visible edible item: main dish, sides, chutneys, sauces, condiments, beverages, water. Each = separate object in details.foods. Do NOT stop at the dominant dish.
+- fastNutrition MUST equal details.total for all 9 shared fields.
+- details.total MUST equal the sum of all details.foods items.
 
-WEIGHT — populate ALL:
-  weightReading: { value: number in kg (convert lbs if shown), unit: "kg" }
-  details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not visible
+=== WEIGHT output ===
+weightReading: { value: <kg; convert lbs>, unit: "kg" }
+details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not on display
 
-SMARTWATCH — populate ALL:
-  smartwatchData: { caloriesBurned, steps, source }  (source = brand e.g. "Apple Watch")
-  details: { caloriesBurned, steps, source }
+=== SMARTWATCH output ===
+smartwatchData: { caloriesBurned, steps, source }  ← source = brand e.g. "Apple Watch"
+details: { caloriesBurned, steps, source }
 
-EDUCATION — populate ALL:
-  educationData: { isMeeting: true, platform }  ("Google Meet" / "Zoom" / "Teams")
-  details: { platform, participantCount }
+=== EDUCATION output ===
+educationData: { isMeeting: true, platform }  ← "Google Meet" | "Zoom" | "Teams"
+details: { platform, participantCount }
 
-Omit or set null for fields not relevant to the detected imageType.
+Omit or null fields not relevant to the detected imageType.
 JSON only. No markdown. No explanation.`;
 
 /**
