@@ -303,19 +303,27 @@ Omit or null fields not relevant to the detected imageType.
 JSON only. No markdown. No explanation.`;
 
 /**
- * Build an enrichment prompt with fast-nutrition context to avoid re-analysing macros.
+ * Build an enrichment prompt with fast-nutrition context and food item names.
  * @param {{ calories, protein, carbs, fat } | null} fastCtx
+ * @param {string[]} [foodItems]  Names of identified food items (e.g. ['Filter Coffee'])
  * @returns {string}
  */
-function buildEnrichmentPrompt(fastCtx) {
+function buildEnrichmentPrompt(fastCtx, foodItems) {
   const ctx = fastCtx
     ? `calories=${fastCtx.calories ?? '?'} kcal, protein=${fastCtx.protein ?? '?'} g, carbs=${fastCtx.carbs ?? '?'} g, fat=${fastCtx.fat ?? '?'} g`
     : 'macros unknown';
-  return `This food image was already analysed: ${ctx}.
+  const foodLabel = Array.isArray(foodItems) && foodItems.length > 0
+    ? foodItems.join(', ')
+    : 'the food item in the image';
+  return `This food image was already analysed (${foodLabel}): ${ctx}.
 
 Provide ONLY the 21 micronutrient enrichment values — do NOT re-estimate macros.
 Return JSON matching the schema exactly (all enrichment fields required).
-Estimate values conservatively; never return 0 unless the nutrient is genuinely absent.
+Use USDA FoodData Central reference values. Only return 0 when a nutrient is genuinely absent (e.g. vitamin D in a plant food with no fortification).
+
+Reference values for common Tamil Nadu beverages when made with cow's milk:
+- Filter Coffee / Masala Chai / Tea with milk (per ~150–200 ml cup): calcium 100–150 mg, potassium 180–250 mg, phosphorus 90–120 mg, vitamin_b2 0.15–0.25 mg, vitamin_b12 0.4–0.6 µg, magnesium 12–20 mg, vitamin_a 40–60 µg, vitamin_b1 0.04–0.07 mg.
+
 JSON only. No markdown.`;
 }
 
@@ -510,19 +518,30 @@ export async function classifyImage(imageBuffer, mimeType, { trace = null } = {}
  * @param {Buffer} imageBuffer
  * @param {string} mimeType
  * @param {{ calories, protein, carbs, fat } | null} fastContext  Fast-analysis context.
+ * @param {string[]} [foodItems]  Names of identified food items for context.
  * @param {object} [opts]
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<{ enrichment: object, confidence: string, latencyMs: number }>}
  */
-export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trace = null } = {}) {
+export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodItems, { trace = null } = {}) {
+  // Support legacy call signature where foodItems was omitted (foodItems = opts object)
+  let resolvedFoodItems = foodItems;
+  let resolvedOpts = { trace };
+  if (foodItems && !Array.isArray(foodItems) && typeof foodItems === 'object') {
+    resolvedOpts = foodItems;
+    resolvedFoodItems = [];
+  }
+
   const label      = 'enrichment';
   const imagePart  = imageInlinePart(imageBuffer, mimeType);
-  const prompt     = buildEnrichmentPrompt(fastContext);
+  const prompt     = buildEnrichmentPrompt(fastContext, resolvedFoodItems);
   const stageStart = Date.now();
+
+  const { trace: resolvedTrace = null } = resolvedOpts;
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
-      'nutrition', [imagePart, prompt], ENRICHMENT_SCHEMA, { label, trace },
+      'nutrition', [imagePart, prompt], ENRICHMENT_SCHEMA, { label, trace: resolvedTrace },
     );
 
     const parsed = safeParseJson(rawText, { label });
@@ -531,8 +550,8 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trac
       return { enrichment: {}, confidence: 'low', latencyMs, attempts };
     }
 
-    if (trace) {
-      trace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
     }
 
     return {
@@ -542,9 +561,9 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trac
       attempts,
     };
   } catch (err) {
-    if (trace) {
-      trace.addStage({ name: label, latencyMs: Date.now() - stageStart, success: false, extra: { error: err.message } });
-      trace.error({ stage: label, message: err.message, code: err.code });
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs: Date.now() - stageStart, success: false, extra: { error: err.message } });
+      resolvedTrace.error({ stage: label, message: err.message, code: err.code });
     }
     // Enrichment failures are non-fatal — return empty rather than crashing
     logger.warn('AIGateway.enrichNutrition: failed, returning empty enrichment', { error: err.message });
@@ -566,8 +585,9 @@ export async function analyzeNutrition(imageBuffer, mimeType, { trace = null } =
   const unified = await analyzeUnified(imageBuffer, mimeType, { trace });
   const fast    = unified.fastNutrition ?? {};
 
-  // Run enrichment in parallel (same image, context-aware prompt)
-  const enriched = await enrichNutrition(imageBuffer, mimeType, fast, { trace });
+  // Run enrichment in parallel (same image, context-aware prompt with food names)
+  const foodItems = (unified.details?.foods ?? []).map(f => f.name).filter(Boolean);
+  const enriched = await enrichNutrition(imageBuffer, mimeType, fast, foodItems, { trace });
   const micro    = enriched.enrichment ?? {};
 
   return {

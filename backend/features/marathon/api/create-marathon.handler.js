@@ -136,12 +136,7 @@ export async function handleCreateMarathon(body) {
     }
   };
 }
-  if (missingWeightIds.length > 0) {
-    throw new ValidationError(
-      422,
-      `${missingWeightIds.length} participant(s) have no weight record for the current marathon period (${resolvedStartedAt} to today). Remove them or ask them to log their weight first.`,
-    );
-  }
+  // Weight check is informational only — captain can provide weights after creation.
 
   // ── Team name auto-sequencing ────────────────────────────────────────────
   const existingCount = await countLapSequenceForTeam(payload.coachId, resolvedTeamName);
