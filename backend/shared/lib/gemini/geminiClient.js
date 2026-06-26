@@ -19,7 +19,9 @@ import logger from '../logger.js';
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
 
-export const MODEL_NAME = 'gemini-2.5-flash-lite';
+export const MODEL_NAME          = 'gemini-2.5-flash-lite';
+/** Fallback when the primary model is saturated (503 / high-demand). */
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash';
 
 export const MODEL_CONFIGS = {
   /**
@@ -104,12 +106,16 @@ function getGenAI() {
 /**
  * Return a cached Gemini model for the given configuration key.
  *
- * @param {'classify' | 'nutrition' | 'weight'} configKey
+ * @param {'classify' | 'nutrition' | 'weight' | 'unified'} configKey
  * @param {object} [responseSchema]  Optional structured response schema (SDK SchemaType).
+ * @param {string} [modelOverride]   Override the default model name (e.g. FALLBACK_MODEL_NAME).
  * @returns {import('@google/generative-ai').GenerativeModel}
  */
-export function getModel(configKey, responseSchema = null) {
-  const cacheKey = responseSchema ? `${configKey}:schema` : configKey;
+export function getModel(configKey, responseSchema = null, modelOverride = null) {
+  const modelName = modelOverride ?? MODEL_NAME;
+  const cacheKey  = responseSchema
+    ? `${modelName}:${configKey}:schema`
+    : `${modelName}:${configKey}`;
 
   if (!_modelCache.has(cacheKey)) {
     const genAI = getGenAI();
@@ -123,12 +129,12 @@ export function getModel(configKey, responseSchema = null) {
       : baseConfig;
 
     const model = genAI.getGenerativeModel({
-      model: MODEL_NAME,
+      model: modelName,
       generationConfig,
     });
 
     _modelCache.set(cacheKey, model);
-    logger.debug('geminiClient: model cached', { cacheKey });
+    logger.debug('geminiClient: model cached', { cacheKey, modelName });
   }
 
   return _modelCache.get(cacheKey);

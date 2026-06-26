@@ -27,7 +27,7 @@
  */
 
 import logger from '../logger.js';
-import { getModel, imageInlinePart, SchemaType } from '../gemini/geminiClient.js';
+import { getModel, imageInlinePart, SchemaType, FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
 import { withEnterpriseRetry } from './RetryPolicy.js';
 
@@ -446,10 +446,24 @@ Estimate values conservatively; never return 0 unless the nutrient is genuinely 
 JSON only. No markdown.`;
 }
 
+/**
+ * Returns true when all retries on the primary model were exhausted due to
+ * server-side overload (503) — a signal to try the fallback model.
+ */
+function isPrimaryOverloadedError(err) {
+  if (!err) return false;
+  const status = Number(err.status);
+  if (status === 503) return true;
+  const msg = (err.message ?? '').toLowerCase();
+  return msg.includes('503') || msg.includes('service unavailable') || msg.includes('high demand');
+}
+
 // ── Internal call helper ──────────────────────────────────────────────────────
 
 /**
  * Call a Gemini model with enterprise retry + optional trace instrumentation.
+ * On persistent 503 overload the call is automatically retried once on
+ * FALLBACK_MODEL_NAME so callers remain resilient during peak load spikes.
  *
  * @param {'classify'|'nutrition'|'unified'} configKey
  * @param {Array}   parts        [imagePart, promptString]
@@ -457,15 +471,30 @@ JSON only. No markdown.`;
  * @param {object}  opts
  * @param {string}  opts.label
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
+ * @param {string|null} [opts.modelOverride]  Internal: set by fallback path.
  * @returns {Promise<{ rawText: string, attempts: number, latencyMs: number }>}
  */
-async function callModel(configKey, parts, schema, { label, trace = null }) {
-  const model = getModel(configKey, schema);
+async function callModel(configKey, parts, schema, { label, trace = null, modelOverride = null }) {
+  const model = getModel(configKey, schema, modelOverride);
 
-  const { result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-    () => model.generateContent(parts),
-    { label, service: SERVICE },
-  );
+  let result, attempts, totalLatencyMs;
+  try {
+    ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
+      () => model.generateContent(parts),
+      { label, service: SERVICE },
+    ));
+  } catch (err) {
+    // Primary model saturated → try fallback model once (with its own retries)
+    if (!modelOverride && isPrimaryOverloadedError(err)) {
+      logger.warn('AIGateway.callModel: primary model overloaded, switching to fallback', {
+        label,
+        fallbackModel: FALLBACK_MODEL_NAME,
+        primaryError:  err.message,
+      });
+      return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });
+    }
+    throw err;
+  }
 
   // Propagate retries into trace
   if (trace && attempts > 1) {
