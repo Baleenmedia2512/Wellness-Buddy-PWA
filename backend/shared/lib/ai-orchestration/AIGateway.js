@@ -320,11 +320,16 @@ JSON only. No markdown.`;
 }
 
 /**
- * Returns true when all retries on the primary model were exhausted due to
- * server-side overload (503) — a signal to try the fallback model.
+ * Returns true when the primary model should be abandoned in favour of the
+ * fallback model.  Two cases:
+ *   1. Circuit breaker opened after N consecutive failures — the primary is
+ *      saturated; bypass immediately without waiting for more retries.
+ *   2. All retries exhausted with 503 / service-unavailable errors.
  */
 function isPrimaryOverloadedError(err) {
   if (!err) return false;
+  // Circuit opened for the primary → the primary service is considered down
+  if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
   if (status === 503) return true;
   const msg = (err.message ?? '').toLowerCase();
@@ -350,18 +355,23 @@ function isPrimaryOverloadedError(err) {
 async function callModel(configKey, parts, schema, { label, trace = null, modelOverride = null }) {
   const model = getModel(configKey, schema, modelOverride);
 
+  // The fallback model uses its own independent circuit breaker so an opened
+  // primary breaker does not also block the fallback.
+  const circuitService = modelOverride ? `${SERVICE}-fallback` : SERVICE;
+
   let result, attempts, totalLatencyMs;
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
       () => model.generateContent(parts),
-      { label, service: SERVICE },
+      { label, service: circuitService },
     ));
   } catch (err) {
-    // Primary model saturated → try fallback model once (with its own retries)
+    // Primary model saturated or circuit open → try fallback model once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
-      logger.warn('AIGateway.callModel: primary model overloaded, switching to fallback', {
+      logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
         label,
         fallbackModel: FALLBACK_MODEL_NAME,
+        reason:        err.code === 'CIRCUIT_OPEN' ? 'circuit_open' : '503_overload',
         primaryError:  err.message,
       });
       return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });

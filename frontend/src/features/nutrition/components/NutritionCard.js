@@ -1542,38 +1542,52 @@ const NutritionCard = ({
 
           {/* Food Breakdown */}
           <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-4 gap-3">
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3 gap-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-gray-800">Food Breakdown</h3>
-                {/* Prominent edit hint so users know they can tap each item to correct it */}
-                <span className="text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2 py-0.5">
-                  ✏️ Tap item to edit
+                <h3 className="text-base font-bold text-gray-900">Food Breakdown</h3>
+                <span className="text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2 py-0.5">
+                  Tap avatar to edit
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                {portionAnalysis &&
-                  portionAnalysis.totalEstimatedWeight > 0 && (
-                    <div className="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">
-                      Total: ~{Math.round(portionAnalysis.totalEstimatedWeight)}g
-                    </div>
-                  )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isAddingItem) {
-                      resetAddItemForm();
-                      return;
-                    }
-                    setAddItemError("");
-                    setIsAddingItem(true);
-                  }}
-                  disabled={isSaving || editingIndex !== null}
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isAddingItem ? "Cancel" : "+ Add Missing Item"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAddingItem) {
+                    resetAddItemForm();
+                    return;
+                  }
+                  setAddItemError("");
+                  setIsAddingItem(true);
+                }}
+                disabled={isSaving || editingIndex !== null}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {isAddingItem ? "Cancel" : "+ Add Item"}
+              </button>
             </div>
+
+            {/* Meal totals bar */}
+            {localDetailedItems.length > 0 && (() => {
+              const totalCal  = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.calories ?? it.calories ?? 0), 0);
+              const totalProt = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.protein  ?? it.protein  ?? 0), 0);
+              const totalCarb = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.carbs    ?? it.carbs    ?? 0), 0);
+              const totalFat  = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.fat      ?? it.fat      ?? 0), 0);
+              return (
+                <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 mb-3 text-xs font-semibold">
+                  <span className="text-gray-500">{localDetailedItems.length} item{localDetailedItems.length !== 1 ? 's' : ''}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-900">{totalCal} <span className="font-normal text-gray-400">kcal</span></span>
+                    <span className="text-blue-600">P {totalProt}g</span>
+                    <span className="text-amber-600">C {totalCarb}g</span>
+                    <span className="text-purple-600">F {totalFat}g</span>
+                    {portionAnalysis?.totalEstimatedWeight > 0 && (
+                      <span className="text-gray-400 font-normal">~{Math.round(portionAnalysis.totalEstimatedWeight)}g</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {isAddingItem && (
               <div className="mb-4 p-3 rounded-xl border border-gray-200 bg-gray-50">
@@ -1668,7 +1682,7 @@ const NutritionCard = ({
             )}
 
             {localDetailedItems.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {localDetailedItems.map((item, index) => (
                   <EditableFoodItem
                     key={`${item.name || "item"}-${item.serving?.description || item.portionDescription || "portion"}-${item.serving?.grams || item.grams || item.weight_g || ""}-${index}`}
