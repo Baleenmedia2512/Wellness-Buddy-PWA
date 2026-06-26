@@ -1010,18 +1010,18 @@ const EditableFoodItem = forwardRef(
       const initial = (foodItem.name || '?')[0].toUpperCase();
 
       return (
-        <div className="relative bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
-          {/* Left accent stripe */}
-          <div className={`absolute left-0 top-0 bottom-0 w-1 ${accentColor}`} />
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden">
+          {/* Top accent bar - colour-coded by GI / calorie density */}
+          <div className={`h-1 w-full ${accentColor}`} />
 
-          <div className="pl-4 pr-3 py-3 flex items-start gap-3">
+          <div className="px-3 py-3 flex items-start gap-3">
             {/* Avatar */}
             <button
               type="button"
               onClick={handleEdit}
               disabled={disabled}
               aria-label={`Edit ${foodItem.name}`}
-              className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95 transition-transform'}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95 transition-transform'}`}
             >
               {initial}
             </button>
@@ -1029,8 +1029,8 @@ const EditableFoodItem = forwardRef(
             {/* Content */}
             <div className="flex-1 min-w-0">
               {/* Row 1: name + calories */}
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold text-gray-900 text-sm leading-tight truncate">
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-bold text-gray-900 text-[15px] leading-tight">
                   {foodItem.name}
                   {foodItem.wasAutoCorrected &&
                     (foodItem.name || '').trim().toLowerCase() !==
@@ -1043,9 +1043,10 @@ const EditableFoodItem = forwardRef(
                     </span>
                   )}
                 </span>
-                <span className="font-bold text-gray-900 text-sm flex-shrink-0">
-                  {calories} <span className="text-xs font-normal text-gray-400">kcal</span>
-                </span>
+                <div className="flex-shrink-0 text-right">
+                  <span className="font-extrabold text-orange-500 text-lg leading-none">{calories}</span>
+                  <span className="text-[11px] font-medium text-gray-400 ml-0.5">kcal</span>
+                </div>
               </div>
 
               {/* Row 2: serving + weight */}
@@ -1057,22 +1058,22 @@ const EditableFoodItem = forwardRef(
 
               {/* Row 3: macro pills */}
               <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
-                <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md">
+                <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
                   P {protein}g
                 </span>
-                <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md">
+                <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
                   C {carbs}g
                 </span>
-                <span className="text-[11px] font-semibold text-purple-600 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-md">
+                <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded-full">
                   F {fat}g
                 </span>
                 {fiber > 0 && (
-                  <span className="text-[11px] font-semibold text-green-600 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-md">
+                  <span className="text-[11px] font-bold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">
                     Fi {fiber}g
                   </span>
                 )}
                 {giTone && gi != null && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${giTone.badge}`}>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${giTone.badge}`}>
                     GI {gi} · {giTone.label}
                   </span>
                 )}
@@ -1089,7 +1090,7 @@ const EditableFoodItem = forwardRef(
 
               {/* Row 5: secondary nutrients */}
               {(sugar > 0 || sodium > 0 || chol > 0) && (
-                <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-500">
+                <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-400">
                   {sugar > 0   && <span>Sugar {sugar}g</span>}
                   {sodium > 0  && <span className="before:content-['·'] before:mr-1">Na {sodium}mg</span>}
                   {chol > 0    && <span className="before:content-['·'] before:mr-1">Chol {chol}mg</span>}
@@ -1142,7 +1143,7 @@ const EditableFoodItem = forwardRef(
                     className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
                       disabled
                         ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
-                        : "text-blue-400 hover:text-blue-600 hover:bg-blue-50 border-blue-100"
+                        : "text-green-500 hover:text-green-700 hover:bg-green-50 border-green-200"
                     }`}
                     ariaLabel="Edit food item"
                   >

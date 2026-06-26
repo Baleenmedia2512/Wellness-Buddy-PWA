@@ -1,6 +1,6 @@
 //src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Share2 } from "lucide-react";
+import { Share2, Flame, Beef, Wheat, Droplet, Leaf } from "lucide-react";
 import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../../shared/services/userIdentity";
@@ -1338,111 +1338,87 @@ const NutritionCard = ({
       {/* Visible card without image */}
       <div
         ref={cardRef}
-        className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden"
+        className="bg-white rounded-2xl shadow-xl overflow-hidden ring-1 ring-black/5"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
-          <div className="flex items-center justify-center gap-3">
-            <div className="flex-1 text-center">
-              <h2 className="text-xl font-bold">{generateMealName()}</h2>
-              {localDetailedItems.length > 1 && (
-                <p className="text-green-100 text-sm mt-1">
-                  {localDetailedItems.length} food items analyzed
-                </p>
-              )}
-              {servingInfo && (
-                <p className="text-green-100 text-sm">
-                  Per {servingInfo.description || "100g"}
-                </p>
-              )}
-            </div>
+        <div className="bg-gradient-to-br from-green-700 via-green-600 to-green-500 text-white px-5 pt-5 pb-7 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_60%)]" />
+          <div className="relative">
+            <h2 className="text-xl font-extrabold tracking-tight leading-snug">{generateMealName()}</h2>
+            {localDetailedItems.length > 1 && (
+              <p className="text-green-100/80 text-sm mt-0.5">
+                {localDetailedItems.length} items analyzed
+              </p>
+            )}
+            {servingInfo && (
+              <p className="text-green-100/70 text-sm mt-0.5">
+                Per {servingInfo.description || "100g"}
+              </p>
+            )}
           </div>
         </div>
 
         {/* Nutrition Grid */}
-        <div className="p-6">
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {/* Calories */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {localNutrition.calories}
+        <div className="px-4 pt-0 pb-4 -mt-3">
+          {/* Calorie hero — pulled up to overlap header */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 px-4 py-3.5 flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center shadow-sm">
+                <Flame className="w-5 h-5 text-orange-500" />
               </div>
-              <div className="text-sm font-medium text-red-700 mt-1">
-                Calories
-              </div>
+              <span className="text-sm font-semibold text-gray-600">Total Calories</span>
             </div>
-
-            {/* Carbs */}
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-600">
-                {localNutrition.carbs}g
-              </div>
-              <div className="text-sm font-medium text-yellow-700 mt-1">
-                Carbs
-              </div>
+            <div className="text-right">
+              <span className="text-3xl font-extrabold text-orange-500 leading-none">{localNutrition.calories}</span>
+              <span className="text-xs font-medium text-gray-400 ml-1">kcal</span>
             </div>
-
-            {/* Protein */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {localNutrition.protein}g
-              </div>
-              <div className="text-sm font-medium text-blue-700 mt-1">
-                Protein
-              </div>
-            </div>
-
-            {/* Fat */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {localNutrition.fat}g
-              </div>
-              <div className="text-sm font-medium text-purple-700 mt-1">
-                Fat
-              </div>
-            </div>
-
-            {/* Fiber */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {localNutrition.fiber}g
-              </div>
-              <div className="text-sm font-medium text-green-700 mt-1">
-                Fiber
-              </div>
-            </div>
-
-            {/* Glycemic Index */}
-            {(() => {
-              const gi = localNutrition.glycemic_index;
-              if (gi == null) {
-                return (
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-4 text-center">
-                    <div className="text-2xl font-bold text-gray-400">—</div>
-                    <div className="text-sm font-medium text-gray-500 mt-1">GI</div>
-                  </div>
-                );
-              }
-              const tone = gi <= 55
-                ? { box: 'from-emerald-50 to-emerald-100 border-emerald-200', val: 'text-emerald-600', label: 'text-emerald-700', tag: 'Low' }
-                : gi <= 69
-                ? { box: 'from-amber-50 to-amber-100 border-amber-200', val: 'text-amber-600', label: 'text-amber-700', tag: 'Medium' }
-                : { box: 'from-rose-50 to-rose-100 border-rose-200', val: 'text-rose-600', label: 'text-rose-700', tag: 'High' };
-              return (
-                <div className={`bg-gradient-to-br ${tone.box} border rounded-xl p-4 text-center`}>
-                  <div className={`text-2xl font-bold ${tone.val}`}>{Math.round(gi)}</div>
-                  <div className={`text-sm font-medium ${tone.label} mt-1`}>GI · {tone.tag}</div>
-                </div>
-              );
-            })()}
           </div>
 
+          {/* 4-col macro grid */}
+          <div className="grid grid-cols-4 gap-2 mb-3">
+            {[
+              { label: 'Protein', value: `${localNutrition.protein}g`, icon: Beef,    bg: 'bg-blue-50',   border: 'border-blue-100',   text: 'text-blue-700',   icon_color: 'text-blue-400'   },
+              { label: 'Carbs',   value: `${localNutrition.carbs}g`,   icon: Wheat,   bg: 'bg-amber-50',  border: 'border-amber-100',  text: 'text-amber-700',  icon_color: 'text-amber-400'  },
+              { label: 'Fat',     value: `${localNutrition.fat}g`,     icon: Droplet, bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-700', icon_color: 'text-purple-400' },
+              { label: 'Fiber',   value: `${localNutrition.fiber}g`,   icon: Leaf,    bg: 'bg-green-50',  border: 'border-green-100',  text: 'text-green-700',  icon_color: 'text-green-400'  },
+            ].map(({ label, value, icon: Icon, bg, border, text, icon_color }) => (
+              <div key={label} className={`${bg} border ${border} rounded-2xl py-3 px-1.5 text-center shadow-sm`}>
+                <Icon className={`w-3.5 h-3.5 ${icon_color} mx-auto mb-1`} />
+                <div className={`text-base font-extrabold ${text} leading-tight`}>{value}</div>
+                <div className={`text-[10px] font-semibold ${text} opacity-70 mt-0.5`}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* GI row */}
+          {(() => {
+            const gi = localNutrition.glycemic_index;
+            if (gi == null) return null;
+            const tone = gi <= 55
+              ? { bg: 'bg-emerald-50', border: 'border-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', tag: 'Low GI' }
+              : gi <= 69
+              ? { bg: 'bg-amber-50',   border: 'border-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-500',   tag: 'Medium GI' }
+              : { bg: 'bg-rose-50',    border: 'border-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500',    tag: 'High GI' };
+            return (
+              <div className={`flex items-center justify-between ${tone.bg} border ${tone.border} rounded-2xl px-4 py-2.5 mb-3 shadow-sm`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${tone.dot} shadow-sm`} />
+                  <span className={`text-sm font-semibold ${tone.text}`}>Glycemic Index</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xl font-extrabold ${tone.text}`}>{Math.round(gi)}</span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/80 border ${tone.border} ${tone.text} shadow-sm`}>{tone.tag}</span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Macronutrient Bar */}
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          <div className="mt-5">
+            <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
               Macronutrient Distribution
             </h3>
-            <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
+            <div className="flex rounded-full overflow-hidden h-3 bg-gray-100 shadow-inner">
               {(() => {
                 const totalCals =
                   nutrition.carbs * 4 +
@@ -1541,10 +1517,13 @@ const NutritionCard = ({
           </div>
 
           {/* Food Breakdown */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="mt-5 pt-5 border-t border-gray-100">
             {/* Header row */}
             <div className="flex items-center justify-between mb-3 gap-2">
-              <h3 className="text-base font-bold text-gray-900">Food Breakdown</h3>
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span className="w-1 h-5 rounded-full bg-green-500 inline-block" />
+                Food Breakdown
+              </h3>
               <button
                 type="button"
                 onClick={() => {
@@ -1556,9 +1535,9 @@ const NutritionCard = ({
                   setIsAddingItem(true);
                 }}
                 disabled={isSaving || editingIndex !== null}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="px-3 py-1.5 text-xs font-semibold rounded-full bg-green-500 text-white hover:bg-green-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                {isAddingItem ? "Cancel" : "+ Add Item"}
+                {isAddingItem ? "✕ Cancel" : "+ Add Item"}
               </button>
             </div>
 
@@ -1569,13 +1548,13 @@ const NutritionCard = ({
               const totalCarb = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.carbs    ?? it.carbs    ?? 0), 0);
               const totalFat  = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.fat      ?? it.fat      ?? 0), 0);
               return (
-                <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-3 py-2.5 mb-3 shadow-sm">
-                  <span className="text-xs font-medium text-gray-500">{localDetailedItems.length} item{localDetailedItems.length !== 1 ? 's' : ''}</span>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    <span className="text-sm font-bold text-gray-900">{totalCal} <span className="text-xs font-normal text-gray-400">kcal</span></span>
-                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">P {totalProt}g</span>
-                    <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">C {totalCarb}g</span>
-                    <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-md">F {totalFat}g</span>
+                <div className="flex items-center justify-between bg-green-50/60 border border-green-100 rounded-2xl px-3.5 py-2.5 mb-3 shadow-sm">
+                  <span className="text-xs font-semibold text-green-700">{localDetailedItems.length} item{localDetailedItems.length !== 1 ? 's' : ''}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <span className="text-sm font-extrabold text-gray-900">{totalCal} <span className="text-xs font-normal text-gray-400">kcal</span></span>
+                    <span className="text-xs font-semibold text-blue-600 bg-white border border-blue-100 px-1.5 py-0.5 rounded-full">P {totalProt}g</span>
+                    <span className="text-xs font-semibold text-amber-600 bg-white border border-amber-100 px-1.5 py-0.5 rounded-full">C {totalCarb}g</span>
+                    <span className="text-xs font-semibold text-purple-600 bg-white border border-purple-100 px-1.5 py-0.5 rounded-full">F {totalFat}g</span>
                     {portionAnalysis?.totalEstimatedWeight > 0 && (
                       <span className="text-xs text-gray-400">~{Math.round(portionAnalysis.totalEstimatedWeight)}g</span>
                     )}
@@ -1714,8 +1693,8 @@ const NutritionCard = ({
           {/* Logged At */}
           {data?.loggedAt && (
             <div className="mt-4 text-center">
-              <span className="inline-block text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
-                Logged {new Date(data.loggedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              <span className="inline-block text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-4 py-1.5">
+                📅 Logged {new Date(data.loggedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
               </span>
             </div>
           )}
@@ -1725,10 +1704,10 @@ const NutritionCard = ({
             <button
               onClick={handleShare}
               disabled={isSharing || isSaving}
-              className={`w-full mt-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+              className={`w-full mt-6 py-3.5 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-all duration-200 shadow-lg tracking-wide ${
                 isSharing || isSaving
                   ? "opacity-50 cursor-not-allowed"
-                  : "hover:shadow-lg active:scale-[0.98]"
+                  : "hover:from-green-700 hover:to-green-600 hover:shadow-xl active:scale-[0.97]"
               }`}
               style={{
                 touchAction: "manipulation",
