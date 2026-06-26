@@ -7,8 +7,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { geminiService } from "../../../shared/services/geminiService";
-import { saveFoodCorrection } from "../services/foodCorrectionService";
+import { saveFoodCorrection, searchFoods } from "../services/foodCorrectionService";
 import {
   getUserContext,
   getUserId,
@@ -37,6 +36,8 @@ import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIco
 import { debugLog } from '../../../shared/utils/logger.js';
 
 const DELETE_UNDO_SECONDS = 5;
+
+// (search helpers are in ../services/foodCorrectionService → searchFoods)
 
 /**
  * Editable food item component for nutrition breakdown
@@ -172,53 +173,36 @@ const EditableFoodItem = forwardRef(
       // Clear previous errors when user types
       setSearchError(null);
 
-      // Check cache first (synchronous, instant)
-      const cached = geminiService.getCachedSearch(trimmed);
-      if (cached) {
-        setSearchResults(cached.results || []);
-        setIsSearching(false);
-        setSearchError(null);
-        return;
-      }
-
       // Set loading state
       setIsSearching(true);
       setSearchError(null);
 
-      // Debounce the API call - only execute after 800ms of no typing
+      // Debounce the API call - only execute after 600ms of no typing
       searchTimeoutRef.current = setTimeout(async () => {
         try {
-          const results = await geminiService.searchFood(trimmed);
-          setSearchResults(results.results || []);
+          const userId = userIdRef.current || (user?.id ? user.id : null);
+          if (!userId) {
+            // Can't search without userId — try to resolve
+            const resolvedId = await getUserId(user).catch(() => null);
+            if (resolvedId) userIdRef.current = resolvedId;
+          }
+          const uid = userIdRef.current;
+          const transformed = await searchFoods(trimmed, uid);
+          setSearchResults(transformed);
           setSearchError(null);
         } catch (error) {
-          // Preserve existing results, show user-friendly error
           setSearchResults([]);
-
-          // Determine error type and set appropriate message
-          if (
-            error.message?.includes("429") ||
-            error.message?.includes("Resource exhausted")
-          ) {
-            setSearchError(
-              "Search limit reached. Please try again in a moment.",
-            );
-          } else if (
-            error.message?.includes("network") ||
-            error.message?.includes("fetch")
-          ) {
-            setSearchError("Network error. Please check your connection.");
+          if (error.message?.includes('network') || error.message?.includes('fetch')) {
+            setSearchError('Network error. Please check your connection.');
           } else {
-            setSearchError(
-              "Search failed. You can still edit the current food.",
-            );
+            setSearchError('Search failed. You can still edit the current food.');
           }
         } finally {
           setIsSearching(false);
           searchTimeoutRef.current = null;
         }
-      }, 800); // 800ms debounce delay (optimized for token efficiency)
-    }, []); // Empty deps is safe - uses refs and state setters
+      }, 600);
+    }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cleanup timeout on unmount
     useEffect(() => {
@@ -987,126 +971,187 @@ const EditableFoodItem = forwardRef(
         servingDesc = `${servingDesc} ${itemName}`;
       }
 
-      return (
-        <div className="flex items-start sm:items-center justify-between py-2.5 px-3 gap-4 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-100 last:border-0">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-              <span className="font-medium text-gray-900 text-base">
-                {foodItem.name}
-              </span>
-              {/* 🎯 GLOBAL AUTO-CORRECTION BADGE
-                  Hidden when the current name matches originalAiName — that
-                  means the user has reverted the auto-correction. */}
-              {foodItem.wasAutoCorrected &&
-                (foodItem.name || '').trim().toLowerCase() !==
-                  (foodItem.originalAiName || '').trim().toLowerCase() && (
-                <span
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200"
-                  title={`Auto-corrected from "${foodItem.originalAiName}" · ${foodItem.correctionSource}`}
-                >
-                  ✓ Auto {foodItem.correctionMetadata?.userCount && `(${foodItem.correctionMetadata.userCount})`}
-                </span>
-              )}
-              {servingDesc && (
-                <span className="text-sm text-gray-600">{servingDesc}</span>
-              )}
-              {displayGrams && (
-                <span className="text-xs text-gray-500">
-                  ({displayGrams}
-                  {unit})
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-gray-600">
-              <span className="font-bold text-orange-600 text-sm">
-                {foodItem.nutrition?.calories || foodItem.calories || 0}
-              </span>{" "}
-              <span className="text-orange-600">kcal</span> · Protein{" "}
-              {foodItem.nutrition?.protein || foodItem.protein || 0}g · Carbs{" "}
-              {foodItem.nutrition?.carbs || foodItem.carbs || 0}g · Fiber{" "}
-              {foodItem.nutrition?.fiber || foodItem.fiber || 0}g · Fat{" "}
-              {foodItem.nutrition?.fat || foodItem.fat || 0}g
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2">
-              <span>Sugar {foodItem.nutrition?.sugar ?? foodItem.sugar ?? 0}g</span>
-              <span>· Sodium {foodItem.nutrition?.sodium ?? foodItem.sodium ?? 0}mg</span>
-              <span>· Cholesterol {foodItem.nutrition?.cholesterol ?? foodItem.cholesterol ?? 0}mg</span>
-              {(() => {
-                const gi = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
-                if (gi == null) return null;
-                const tone = gi <= 55
-                  ? 'bg-green-100 text-green-700'
-                  : gi <= 69 ? 'bg-amber-100 text-amber-700'
-                  : 'bg-red-100 text-red-700';
-                const label = gi <= 55 ? 'Low' : gi <= 69 ? 'Mid' : 'High';
-                return (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${tone}`}>
-                    GI {gi} · {label}
-                  </span>
-                );
-              })()}
-            </div>
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            {isDeletePending ? (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                <div className="flex items-center gap-1.5">
-                  <div className="min-w-[86px]">
-                    <span className="text-xs text-amber-700 font-medium block leading-none">
-                      Deleting in {deleteCountdown}s
-                    </span>
-                    <span className="mt-1 block h-0.5 w-full rounded-full bg-amber-200 overflow-hidden">
-                      <span
-                        key={deleteAnimKey}
-                        className="block h-full bg-amber-600"
-                        style={{
-                          transformOrigin: "left",
-                          animation: `countdown-shrink ${DELETE_UNDO_SECONDS}s linear forwards`,
-                        }}
-                      />
-                    </span>
-                  </div>
-                </div>
-                <TouchFeedbackButton
-                  onClick={handleUndoDelete}
-                  className="px-2 py-1 text-xs font-medium rounded-md transition-colors border text-amber-700 hover:text-amber-800 hover:bg-amber-100 border-amber-300"
-                  ariaLabel="Undo delete"
-                >
-                  <span>Undo</span>
-                </TouchFeedbackButton>
-              </div>
-            ) : (
-              <>
-                <TouchFeedbackButton
-                  onClick={handleDelete}
-                  disabled={disabled}
-                  className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
-                    disabled
-                      ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                      : "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                  }`}
-                  ariaLabel="Delete food item"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Delete</span>
-                </TouchFeedbackButton>
-                
+      {/* ── MFP-style food card (view mode) ── */}
+      const calories = Math.round(foodItem.nutrition?.calories ?? foodItem.calories ?? 0);
+      const protein  = Math.round(foodItem.nutrition?.protein  ?? foodItem.protein  ?? 0);
+      const carbs    = Math.round(foodItem.nutrition?.carbs    ?? foodItem.carbs    ?? 0);
+      const fat      = Math.round(foodItem.nutrition?.fat      ?? foodItem.fat      ?? 0);
+      const fiber    = Math.round(foodItem.nutrition?.fiber    ?? foodItem.fiber    ?? 0);
+      const sugar    = Math.round(foodItem.nutrition?.sugar    ?? foodItem.sugar    ?? 0);
+      const sodium   = Math.round(foodItem.nutrition?.sodium   ?? foodItem.sodium   ?? 0);
+      const chol     = Math.round(foodItem.nutrition?.cholesterol ?? foodItem.cholesterol ?? 0);
+      const gi       = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
 
-                <TouchFeedbackButton
-                  onClick={handleEdit}
-                  disabled={disabled}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
-                    disabled
-                      ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                      : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-                  }`}
-                  ariaLabel="Edit food item"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Edit</span>
-                </TouchFeedbackButton>
-              </>
-            )}
+      // Macro bar proportions (protein=4 kcal/g, carbs=4, fat=9)
+      const macroKcal = protein * 4 + carbs * 4 + fat * 9;
+      const proteinPct = macroKcal > 0 ? (protein * 4 / macroKcal) * 100 : 0;
+      const carbsPct   = macroKcal > 0 ? (carbs   * 4 / macroKcal) * 100 : 0;
+      const fatPct     = macroKcal > 0 ? (fat     * 9 / macroKcal) * 100 : 0;
+
+      // GI colour
+      const giTone  = gi == null ? null : gi <= 55 ? { bar: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Low' }
+                                        : gi <= 69 ? { bar: 'bg-amber-500',   badge: 'bg-amber-50  text-amber-700  border-amber-200',   label: 'Med' }
+                                                   : { bar: 'bg-red-500',     badge: 'bg-red-50    text-red-700    border-red-200',     label: 'High' };
+      // Left accent colour driven by GI if available, else calorie density
+      const accentColor = giTone
+        ? giTone.bar
+        : calories > 400 ? 'bg-red-400' : calories > 200 ? 'bg-amber-400' : 'bg-emerald-400';
+
+      // Food initial avatar colour (cycles through palette)
+      const avatarColors = [
+        'bg-orange-100 text-orange-600',
+        'bg-blue-100 text-blue-600',
+        'bg-purple-100 text-purple-600',
+        'bg-green-100 text-green-600',
+        'bg-rose-100 text-rose-600',
+        'bg-cyan-100 text-cyan-600',
+      ];
+      const avatarColor = avatarColors[index % avatarColors.length];
+      const initial = (foodItem.name || '?')[0].toUpperCase();
+
+      return (
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden">
+          {/* Top accent bar - colour-coded by GI / calorie density */}
+          <div className={`h-1 w-full ${accentColor}`} />
+
+          <div className="px-3 py-3 flex items-start gap-3">
+            {/* Avatar */}
+            <button
+              type="button"
+              onClick={handleEdit}
+              disabled={disabled}
+              aria-label={`Edit ${foodItem.name}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95 transition-transform'}`}
+            >
+              {initial}
+            </button>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              {/* Row 1: name + calories */}
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-bold text-gray-900 text-[15px] leading-tight">
+                  {foodItem.name}
+                  {foodItem.wasAutoCorrected &&
+                    (foodItem.name || '').trim().toLowerCase() !==
+                      (foodItem.originalAiName || '').trim().toLowerCase() && (
+                    <span
+                      className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 border border-green-200 align-middle"
+                      title={`Auto-corrected from "${foodItem.originalAiName}"`}
+                    >
+                      ✓ Auto
+                    </span>
+                  )}
+                </span>
+                <div className="flex-shrink-0 text-right">
+                  <span className="font-extrabold text-orange-500 text-lg leading-none">{calories}</span>
+                  <span className="text-[11px] font-medium text-gray-400 ml-0.5">kcal</span>
+                </div>
+              </div>
+
+              {/* Row 2: serving + weight */}
+              {(servingDesc || displayGrams) && (
+                <p className="text-xs text-gray-400 mt-0.5 leading-tight">
+                  {servingDesc}{displayGrams ? ` (${displayGrams}${unit})` : ''}
+                </p>
+              )}
+
+              {/* Row 3: macro pills */}
+              <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+                <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                  P {protein}g
+                </span>
+                <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
+                  C {carbs}g
+                </span>
+                <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded-full">
+                  F {fat}g
+                </span>
+                {fiber > 0 && (
+                  <span className="text-[11px] font-bold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">
+                    Fi {fiber}g
+                  </span>
+                )}
+                {giTone && gi != null && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${giTone.badge}`}>
+                    GI {gi} · {giTone.label}
+                  </span>
+                )}
+              </div>
+
+              {/* Row 4: macro bar */}
+              {macroKcal > 0 && (
+                <div className="mt-1.5 h-1 rounded-full overflow-hidden bg-gray-100 flex">
+                  <div className="bg-blue-400 h-full transition-all" style={{ width: `${proteinPct}%` }} />
+                  <div className="bg-amber-400 h-full transition-all" style={{ width: `${carbsPct}%` }} />
+                  <div className="bg-purple-400 h-full transition-all" style={{ width: `${fatPct}%` }} />
+                </div>
+              )}
+
+              {/* Row 5: secondary nutrients */}
+              {(sugar > 0 || sodium > 0 || chol > 0) && (
+                <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-400">
+                  {sugar > 0   && <span>Sugar {sugar}g</span>}
+                  {sodium > 0  && <span className="before:content-['·'] before:mr-1">Na {sodium}mg</span>}
+                  {chol > 0    && <span className="before:content-['·'] before:mr-1">Chol {chol}mg</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="shrink-0 flex flex-col items-center gap-1.5 ml-1">
+              {isDeletePending ? (
+                <div className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                  <span className="text-[10px] text-amber-700 font-medium whitespace-nowrap">
+                    {deleteCountdown}s
+                  </span>
+                  <span className="block h-0.5 w-10 rounded-full bg-amber-200 overflow-hidden">
+                    <span
+                      key={deleteAnimKey}
+                      className="block h-full bg-amber-600"
+                      style={{
+                        transformOrigin: "left",
+                        animation: `countdown-shrink ${DELETE_UNDO_SECONDS}s linear forwards`,
+                      }}
+                    />
+                  </span>
+                  <TouchFeedbackButton
+                    onClick={handleUndoDelete}
+                    className="text-[10px] font-semibold text-amber-700 hover:text-amber-900"
+                    ariaLabel="Undo delete"
+                  >
+                    Undo
+                  </TouchFeedbackButton>
+                </div>
+              ) : (
+                <>
+                  <TouchFeedbackButton
+                    onClick={handleDelete}
+                    disabled={disabled}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+                      disabled
+                        ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
+                        : "text-red-400 hover:text-red-600 hover:bg-red-50 border-red-100"
+                    }`}
+                    ariaLabel="Delete food item"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </TouchFeedbackButton>
+                  <TouchFeedbackButton
+                    onClick={handleEdit}
+                    disabled={disabled}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+                      disabled
+                        ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
+                        : "text-green-500 hover:text-green-700 hover:bg-green-50 border-green-200"
+                    }`}
+                    ariaLabel="Edit food item"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </TouchFeedbackButton>
+                </>
+              )}
+            </div>
           </div>
           <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
         </div>

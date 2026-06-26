@@ -135,11 +135,12 @@ export async function processNextJob() {
     }
     const imageBuffer = Buffer.from(job.imageBase64, 'base64');
 
-    // 3. Run enrichment analysis (micronutrients only)
+    // 3. Run enrichment analysis (micronutrients only, with food item context)
     const { enrichment } = await enrichNutrition(
       imageBuffer,
       job.mimeType ?? 'image/jpeg',
       job.fastNutrition ?? null,
+      job.foodItems ?? [],
       { trace },
     );
 

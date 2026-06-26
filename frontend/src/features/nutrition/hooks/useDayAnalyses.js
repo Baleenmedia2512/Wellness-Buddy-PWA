@@ -81,9 +81,12 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
             const carbs = n.carbs || analysis.TotalCarbs || 0;
             const fat = n.fat || analysis.TotalFat || 0;
             const fiber = n.fiber || analysis.TotalFiber || 0;
-            const sugar = n.sugar ?? analysis.TotalSugar ?? 0;
-            const sodium = n.sodium ?? analysis.TotalSodium ?? 0;
-            const cholesterol = n.cholesterol ?? analysis.TotalCholesterol ?? 0;
+            // Prefer DB columns (updated by enrichment / initial save) over
+            // JSON values which may be 0 due to schema constraints in older records.
+            // `?? n.xxx ?? 0` ensures: DB non-null wins, JSON fallback when DB null.
+            const sugar = analysis.TotalSugar != null ? analysis.TotalSugar : (n.sugar ?? 0);
+            const sodium = analysis.TotalSodium != null ? analysis.TotalSodium : (n.sodium ?? 0);
+            const cholesterol = analysis.TotalCholesterol != null ? analysis.TotalCholesterol : (n.cholesterol ?? 0);
             // GI is meal-level — read from DB column first; fallback to AnalysisData JSON
             const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
             let mealGI = analysis.GlycemicIndex ?? null;
@@ -119,10 +122,14 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
               _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealCarbs > 0 ? mealGI * mealCarbs : 0),
               _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealCarbs > 0 ? mealCarbs : 0),
               mealCount: acc.mealCount + 1,
-              // Micronutrients: prefer AnalysisData JSON (snake_case), fall back to DB column.
+              // Micronutrients: prefer DB column (updated by enrichment / initial save),
+              // fall back to AnalysisData JSON field. Avoids `??` returning 0 from JSON
+              // when the DB column has been enriched to a real value.
               ...MICRO_FIELDS.reduce((m, f) => {
-                const raw = n[f.aiKey] ?? analysis[f.dbCol] ?? 0;
-                m[f.key] = (acc[f.key] || 0) + (Number(raw) || 0);
+                const dbVal = analysis[f.dbCol];
+                const jsonVal = n[f.aiKey];
+                const val = dbVal != null ? dbVal : (jsonVal ?? 0);
+                m[f.key] = (acc[f.key] || 0) + (Number(val) || 0);
                 return m;
               }, {}),
             };

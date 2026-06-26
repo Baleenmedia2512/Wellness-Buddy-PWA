@@ -429,3 +429,36 @@ export function buildTeamName(coachName, coCoachName = null) {
 export function filterEligible(participants) {
   return participants.filter(p => p.disciplineStatus === DISCIPLINE_STATUS.ELIGIBLE);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Captain-provided weights
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Return every calendar date (as "YYYY-MM-DD" strings) from `marathonStartDate`
+ * up to and including `todayIST`.
+ *
+ * Used to validate the dates a captain is allowed to back-fill weights for.
+ *
+ * @param {string} marathonStartDate  — "YYYY-MM-DD"
+ * @param {Date}   todayIST           — IST-shifted Date object (time ignored)
+ * @returns {Set<string>}
+ */
+export function computeAllowedWeightDates(marathonStartDate, todayIST) {
+  const allowed = new Set();
+  const [sy, sm, sd] = marathonStartDate.split('-').map(Number);
+  const start = new Date(Date.UTC(sy, sm - 1, sd));
+  const end   = new Date(Date.UTC(
+    todayIST.getUTCFullYear(),
+    todayIST.getUTCMonth(),
+    todayIST.getUTCDate(),
+  ));
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const mm  = String(cursor.getUTCMonth() + 1).padStart(2, '0');
+    const dd  = String(cursor.getUTCDate()).padStart(2, '0');
+    allowed.add(`${cursor.getUTCFullYear()}-${mm}-${dd}`);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return allowed;
+}

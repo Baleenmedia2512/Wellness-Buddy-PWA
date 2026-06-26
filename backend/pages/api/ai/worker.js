@@ -45,10 +45,30 @@ const MAX_JOBS_LIMIT   = 10; // safety cap per invocation
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 function isAuthorised(req) {
+  // Accept Vercel Cron Job requests (identified by x-vercel-cron-secret header
+  // or the CRON_SECRET env var set by Vercel). This allows vercel.json cron
+  // to call the worker without needing a separate WORKER_SECRET.
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const cronHeader = req.headers['authorization'] ?? '';
+    const cronToken  = cronHeader.startsWith('Bearer ') ? cronHeader.slice(7) : '';
+    if (cronToken.length === cronSecret.length) {
+      let diff = 0;
+      for (let i = 0; i < cronToken.length; i += 1) {
+        diff |= cronToken.charCodeAt(i) ^ cronSecret.charCodeAt(i);
+      }
+      if (diff === 0) return true;
+    }
+  }
+
   const secret = process.env.WORKER_SECRET;
   if (!secret) {
     // No secret configured — allow in development, deny in production
-    if (process.env.NODE_ENV === 'production') return false;
+    if (process.env.NODE_ENV === 'production') {
+      // In production without a secret, allow requests from Vercel cron
+      // (identified by x-vercel-cron header set by Vercel internally)
+      return req.headers['x-vercel-cron'] === '1';
+    }
     return true;
   }
 

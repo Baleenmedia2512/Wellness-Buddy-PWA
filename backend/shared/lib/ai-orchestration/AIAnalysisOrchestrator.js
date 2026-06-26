@@ -190,6 +190,7 @@ export async function analyse(params) {
   let enrichmentJobId = null;
   if (fastResult.imageType === 'food' && imageBase64) {
     try {
+      const foodItems = (fastResult.details?.foods ?? []).map(f => f.name).filter(Boolean);
       const { jobId } = await jobQueue.enqueue({
         captureId:    captureId ?? '',
         userId:       userId    ?? '',
@@ -197,6 +198,7 @@ export async function analyse(params) {
         imageBase64,
         mimeType,
         fastNutrition: fastResult.fastNutrition ?? {},
+        foodItems,
         foodRowId,
       });
       enrichmentJobId = jobId;

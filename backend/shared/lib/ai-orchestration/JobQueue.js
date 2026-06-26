@@ -78,11 +78,12 @@ export class JobQueue {
    * @param {string} params.traceId
    * @param {string} params.imageBase64
    * @param {string} params.mimeType
-   * @param {object} params.fastNutrition   Macro context for enrichment prompt.
-   * @param {number} params.foodRowId       food_nutrition_data_table PK.
+   * @param {object}   params.fastNutrition   Macro context for enrichment prompt.
+   * @param {string[]} params.foodItems        Identified food item names (for enrichment prompt).
+   * @param {number}   params.foodRowId        food_nutrition_data_table PK.
    * @returns {Promise<{ jobId: string }>}
    */
-  async enqueue({ captureId, userId, traceId, imageBase64, mimeType, fastNutrition, foodRowId }) {
+  async enqueue({ captureId, userId, traceId, imageBase64, mimeType, fastNutrition, foodItems, foodRowId }) {
     const jobId = randomUUID();
     const now   = Date.now();
 
@@ -94,6 +95,7 @@ export class JobQueue {
       imageBase64,
       mimeType:      mimeType ?? 'image/jpeg',
       fastNutrition: fastNutrition ?? {},
+      foodItems:     Array.isArray(foodItems) ? foodItems : [],
       foodRowId:     foodRowId ?? null,
       status:        JOB_STATUS.PENDING,
       retryCount:    0,
@@ -273,6 +275,7 @@ export class JobQueue {
         TraceId:      job.traceId,
         MimeType:     job.mimeType,
         FastNutrition: JSON.stringify(job.fastNutrition),
+        FoodItems:    JSON.stringify(job.foodItems ?? []),
         FoodRowId:    job.foodRowId,
         Status:       job.status,
         RetryCount:   job.retryCount,
