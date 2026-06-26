@@ -1544,12 +1544,7 @@ const NutritionCard = ({
           <div className="mt-8 pt-6 border-t border-gray-200">
             {/* Header row */}
             <div className="flex items-center justify-between mb-3 gap-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-gray-900">Food Breakdown</h3>
-                <span className="text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2 py-0.5">
-                  Tap avatar to edit
-                </span>
-              </div>
+              <h3 className="text-base font-bold text-gray-900">Food Breakdown</h3>
               <button
                 type="button"
                 onClick={() => {
@@ -1574,15 +1569,15 @@ const NutritionCard = ({
               const totalCarb = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.carbs    ?? it.carbs    ?? 0), 0);
               const totalFat  = localDetailedItems.reduce((s, it) => s + Math.round(it.nutrition?.fat      ?? it.fat      ?? 0), 0);
               return (
-                <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 mb-3 text-xs font-semibold">
-                  <span className="text-gray-500">{localDetailedItems.length} item{localDetailedItems.length !== 1 ? 's' : ''}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-gray-900">{totalCal} <span className="font-normal text-gray-400">kcal</span></span>
-                    <span className="text-blue-600">P {totalProt}g</span>
-                    <span className="text-amber-600">C {totalCarb}g</span>
-                    <span className="text-purple-600">F {totalFat}g</span>
+                <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-3 py-2.5 mb-3 shadow-sm">
+                  <span className="text-xs font-medium text-gray-500">{localDetailedItems.length} item{localDetailedItems.length !== 1 ? 's' : ''}</span>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <span className="text-sm font-bold text-gray-900">{totalCal} <span className="text-xs font-normal text-gray-400">kcal</span></span>
+                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">P {totalProt}g</span>
+                    <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">C {totalCarb}g</span>
+                    <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-md">F {totalFat}g</span>
                     {portionAnalysis?.totalEstimatedWeight > 0 && (
-                      <span className="text-gray-400 font-normal">~{Math.round(portionAnalysis.totalEstimatedWeight)}g</span>
+                      <span className="text-xs text-gray-400">~{Math.round(portionAnalysis.totalEstimatedWeight)}g</span>
                     )}
                   </div>
                 </div>
@@ -1718,8 +1713,10 @@ const NutritionCard = ({
 
           {/* Logged At */}
           {data?.loggedAt && (
-            <div className="mt-4 text-center text-xs text-gray-500">
-              Logged at {new Date(data.loggedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+            <div className="mt-4 text-center">
+              <span className="inline-block text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
+                Logged {new Date(data.loggedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
             </div>
           )}
 

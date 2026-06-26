@@ -1021,7 +1021,7 @@ const EditableFoodItem = forwardRef(
               onClick={handleEdit}
               disabled={disabled}
               aria-label={`Edit ${foodItem.name}`}
-              className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95 transition-transform'}`}
             >
               {initial}
             </button>
@@ -1087,12 +1087,12 @@ const EditableFoodItem = forwardRef(
                 </div>
               )}
 
-              {/* Row 5: secondary nutrients (collapsed, small) */}
+              {/* Row 5: secondary nutrients */}
               {(sugar > 0 || sodium > 0 || chol > 0) && (
-                <div className="flex flex-wrap gap-x-2 mt-1 text-[10px] text-gray-400">
+                <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-500">
                   {sugar > 0   && <span>Sugar {sugar}g</span>}
-                  {sodium > 0  && <span>· Na {sodium}mg</span>}
-                  {chol > 0    && <span>· Chol {chol}mg</span>}
+                  {sodium > 0  && <span className="before:content-['·'] before:mr-1">Na {sodium}mg</span>}
+                  {chol > 0    && <span className="before:content-['·'] before:mr-1">Chol {chol}mg</span>}
                 </div>
               )}
             </div>
@@ -1127,26 +1127,26 @@ const EditableFoodItem = forwardRef(
                   <TouchFeedbackButton
                     onClick={handleDelete}
                     disabled={disabled}
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
                       disabled
                         ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
                         : "text-red-400 hover:text-red-600 hover:bg-red-50 border-red-100"
                     }`}
                     ariaLabel="Delete food item"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </TouchFeedbackButton>
                   <TouchFeedbackButton
                     onClick={handleEdit}
                     disabled={disabled}
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
                       disabled
                         ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
                         : "text-blue-400 hover:text-blue-600 hover:bg-blue-50 border-blue-100"
                     }`}
                     ariaLabel="Edit food item"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Edit2 className="w-4 h-4" />
                   </TouchFeedbackButton>
                 </>
               )}

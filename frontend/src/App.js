@@ -165,6 +165,7 @@ import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
+import PermissionPrimerModal from "./shared/components/PermissionPrimerModal";
 import * as authFsm from "./shared/services/auth/fsm";
 import {
   fetchProfileCompletion,
@@ -343,6 +344,9 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return true;
     return localStorage.getItem("wv.permissionsGranted") === "1";
   });
+  // Permission primer: shown once on first native install after authentication.
+  // Blocks the OS system dialogs until the user has read WHY they are needed.
+  const [showPermissionPrimer, setShowPermissionPrimer] = useState(false);
   // Full-screen branded overlay that bridges the native splash → camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
@@ -8180,6 +8184,17 @@ useEffect(() => {
               }
             />
           </Suspense>
+        )}
+        {/* Permission primer — shown once on first install after auth.
+          Appears on top of the launch overlay so the transition is seamless:
+          white launch overlay → primer → OS dialogs → camera.
+          After the user taps Allow (or Skip), handlePermissionsGranted fires
+          permissionsReady → camera auto-opens → launch overlay closes. */}
+        {showPermissionPrimer && (
+          <PermissionPrimerModal
+            onContinue={handlePermissionsGranted}
+            onSkip={handlePermissionsGranted}
+          />
         )}
         {/* Launch overlay — covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
