@@ -1,4 +1,4 @@
-﻿package com.wellnessvalley.app.services;
+package com.wellnessvalley.app.services;
 import com.wellnessvalley.app.R;
 import com.wellnessvalley.app.BuildConfig;
 
