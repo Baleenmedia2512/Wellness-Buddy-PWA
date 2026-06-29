@@ -12,6 +12,8 @@ export default function useProfileForm(initial = {}) {
   const [dietType, setDietType] = useState(initial.dietType || '');
   const [bmr, setBmr] = useState(initial.bmr || '');
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
+  const [communityId, setCommunityId] = useState(initial.communityId || '');
+  const [email, setEmail] = useState(initial.email || '');
 
   const reload = (p) => {
     setName(p.name ?? '');
@@ -20,6 +22,8 @@ export default function useProfileForm(initial = {}) {
     setDietType(p.dietType ?? '');
     setBmr(p.bmr ?? '');
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
+    setCommunityId(p.communityId ?? '');
+    setEmail(p.email ?? '');
   };
 
   // Optionally re-prime when initial reference changes.
@@ -54,6 +58,7 @@ export default function useProfileForm(initial = {}) {
     dietType: dietType || undefined,
     phoneNumber: phone.trim() || undefined,
     weightGoalMode: weightGoalMode || 'loss',
+    communityId: communityId.trim() || undefined,
     ...extras,
   });
 
@@ -61,6 +66,8 @@ export default function useProfileForm(initial = {}) {
     name, setName, height, setHeight, phone, setPhone,
     dietType, setDietType, bmr, setBmr,
     weightGoalMode, setWeightGoalMode,
+    communityId, setCommunityId,
+    email, setEmail,
     heightNum, heightValid, phoneValid, nameValid, dietValid,
     validate, payload, reload,
   };

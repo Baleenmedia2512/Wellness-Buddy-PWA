@@ -32,20 +32,20 @@ function AnalysisRow({ label, icon, target, consumed, unit }) {
                    'text-green-600';
 
   return (
-    <div className="flex items-center py-3 border-b border-gray-100 last:border-0">
-      {/* Col 1: icon + label — fixed width so all labels align */}
-      <span className="flex items-center gap-2 text-sm font-semibold text-gray-700 w-[150px] shrink-0">
-        {icon && <span>{icon}</span>}
-        {label}
+    <div className="flex items-center py-3 border-b border-gray-100 last:border-0 min-w-0">
+      {/* Col 1: icon + label */}
+      <span className="flex items-center gap-1 text-sm font-semibold text-gray-700 w-[120px] xs:w-[150px] shrink-0 min-w-0 truncate">
+        {icon && <span className="shrink-0">{icon}</span>}
+        <span className="truncate">{label}</span>
       </span>
-      {/* Col 2: consumed — fixed width, right-aligned */}
-      <strong className={`${consumedClass} text-base font-bold w-[60px] text-right shrink-0`}>
+      {/* Col 2: consumed */}
+      <strong className={`${consumedClass} text-base font-bold w-[56px] text-right shrink-0`}>
         {consumedDisplay}
       </strong>
-      {/* Col 3: vs — fixed width, centered */}
-      <span className="text-gray-400 font-medium w-[36px] text-center shrink-0">vs</span>
-      {/* Col 4: target + unit — remaining space, left-aligned */}
-      <span>
+      {/* Col 3: vs */}
+      <span className="text-gray-400 font-medium w-[30px] text-center shrink-0">vs</span>
+      {/* Col 4: target + unit */}
+      <span className="min-w-0">
         <strong className="text-gray-700 text-base font-bold">{targetDisplay}</strong>
         <span className="text-gray-500 text-xs ml-1">{unit}</span>
       </span>
@@ -102,8 +102,8 @@ export function WeightProgressTipsModal({
   const water      = comparison.water                 || {};
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
-      <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 px-4 py-4">
+      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto overflow-x-hidden bg-white rounded-2xl shadow-2xl flex flex-col" style={{ maxWidth: 'min(32rem, calc(100vw - 2rem))' }}>
 
         {/* ── Header ───────────────────────────────────────────────────── */}
         <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500 to-teal-500 text-white p-6 rounded-t-2xl">

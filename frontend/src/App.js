@@ -148,6 +148,7 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
+import EmailGateModal from "./features/user/components/EmailGateModal";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -396,6 +397,9 @@ function WellnessValleyApp() {
   const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
   const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
+  // Email gate — forced for phone-OTP users who have no email in their profile
+  const [showEmailGate, setShowEmailGate] = useState(false);
+
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
   const getISTDateStr = (ts) => {
@@ -632,7 +636,7 @@ function WellnessValleyApp() {
       );
 
       const shareDisplayName = resolveShareDisplayName(savedUserName, user);
-      const shareText = `${shareDisplayName} ∩┐╜ Wellness Valley ${getVersionString()}\n?? Tap to view ?\n${foodShareUrl}`;
+      const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
@@ -850,6 +854,16 @@ function WellnessValleyApp() {
   useEffect(() => {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
+
+  // Email gate: fire for session-restored phone users who still have no email.
+  useEffect(() => {
+    if (!user) return;
+    if (!isOtpVerified) return;
+    if (user.email && user.email.trim()) return;   // has email — no gate needed
+    if (!user.id && !user.UserId) return;           // no userId — can't save
+    setShowEmailGate(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth change
+  }, [user?.id, user?.email, isOtpVerified]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -4891,7 +4905,7 @@ function WellnessValleyApp() {
     const instantShareCode = generateInstantShareCode();
     const shareDisplayName = resolveShareDisplayName(savedUserName, user);
     const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
-    const shareText = `${shareDisplayName} ï¿½ Wellness Valley ${getVersionString()}\n?? Tap to view ?\n${instantShareUrl}`;
+    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
 
     // ? Kick off FileReader NOW ï¿½ before overlay paints ï¿½ so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
@@ -6875,11 +6889,14 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // Check profile completion for all users ? new users will always have missing
+        // Check profile completion for all users — new users will always have missing
         // fields and the CompleteProfilePage gate will show. The SetupWizard handles
         // coach/team linking (a separate flow), not personal detail collection.
         if (userEmail) {
           await checkProfileCompletion(userEmail, parsedUser);
+        } else {
+          // Phone-OTP user with no email — show the email gate before anything else.
+          setShowEmailGate(true);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
@@ -7801,6 +7818,7 @@ function WellnessValleyApp() {
                   savedProfileImage={savedProfileImage}
                   sharePhotoBase64={sharePhotoBase64}
                   imageSrc={imagePreview || processedImageRef.current}
+                  foodNames={detectedFoodNames}
                 />
               )}
 
@@ -8018,6 +8036,22 @@ function WellnessValleyApp() {
                       </div>
                     )}
 
+                    {/* Yesterday Weight label */}
+                    {weightDiff && weightDiff.previous != null && (
+                      <div
+                        style={{
+                          background: "linear-gradient(to right, #0d9488, #059669)",
+                          color: "white",
+                          textAlign: "center",
+                          padding: "12px 24px",
+                          fontSize: 18,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Yesterday: {parseFloat((+weightDiff.previous).toFixed(2))} {weightResult.unit}
+                      </div>
+                    )}
+
                     {/* Card content for sharing - Simple and Clean */}
                     <div
                       style={{
@@ -8067,7 +8101,7 @@ function WellnessValleyApp() {
                             lineHeight: 1.1,
                           }}
                         >
-                          {weightResult.weightValue}
+                          {parseFloat((+weightResult.weightValue).toFixed(2))}
                           <span
                             style={{
                               fontSize: 22,
@@ -8080,7 +8114,7 @@ function WellnessValleyApp() {
                         </p>
                       </div>
 
-                      {/* Ideal Weight Strip (share card) */}
+                      {/* Ideal Weight Strip (share card) */
                       {idealWeight && (
                         <div
                           style={{
@@ -8337,7 +8371,7 @@ function WellnessValleyApp() {
                       </div>
                     ) : (
                       <p className="text-3xl font-bold text-purple-700">
-                        {weightResult.weightValue}
+                        {parseFloat((+weightResult.weightValue).toFixed(2))}
                         <span className="text-lg font-normal ml-1">
                           {weightResult.unit}
                         </span>
@@ -8401,88 +8435,22 @@ function WellnessValleyApp() {
                         }`}
                       >
                         {weightDiff.change > 0
-                          ? "?"
+                          ? "↑"
                           : weightDiff.change < 0
-                          ? "?"
-                          : "ï¿½"}{" "}
+                          ? "↓"
+                          : "–"}{" "}
                         {weightDiff.change === 0
                           ? "No change"
-                          : `${Math.abs(weightDiff.change)} ${
+                          : `${Math.abs(weightDiff.change).toFixed(1)} ${
                               weightResult.unit
                             }`}
                         {weightDiff.change < 0 && (
-                          <span className="text-sm ml-1">??</span>
+                          <span className="text-sm ml-1">🎉</span>
                         )}
                       </div>
                     </div>
                   )}
 
-                  {/* Share Button at Bottom - Only show if there's an image */}
-                  {imagePreview && (
-                    <button
-                      onClick={async (e) => {
-                        // Prevent event bubbling to avoid triggering parent click handlers
-                        if (e) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }
-
-                        if (isWeightSharing) return;
-                        setIsWeightSharing(true);
-                        // Yield so React paints the spinner before any heavy work.
-                        await new Promise((r) => setTimeout(r, 0));
-                        try {
-                          const shareOpts = {
-                            title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
-                            text: "",
-                            fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
-                          };
-
-                          // Fast path: pre-captured image (skips html2canvas).
-                          const cached = cachedWeightShareDataUrlRef.current;
-                          if (cached) {
-                            const ok = await shareCachedDataUrl(
-                              cached,
-                              shareOpts,
-                            );
-                            if (ok) return;
-                          }
-
-                          // Fallback: capture live (slower).
-                          await new Promise((resolve) =>
-                            setTimeout(resolve, 100),
-                          );
-                          await captureAndShare(
-                            weightAnalysisShareRef.current,
-                            shareOpts,
-                          );
-                        } catch (error) {
-                          console.error("Failed to share:", error);
-                        } finally {
-                          setIsWeightSharing(false);
-                        }
-                      }}
-                      disabled={isWeightSharing}
-                      className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
-                        isWeightSharing
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:shadow-lg active:scale-[0.98]"
-                      }`}
-                      style={{ touchAction: "manipulation" }}
-                    >
-                      {isWeightSharing ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>Sharing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Share2 className="w-5 h-5" />
-                          <span>Share Weight</span>
-                        </>
-                      )}
-                    </button>
-                  )}
                 </div>
               </>
             )}
@@ -8560,7 +8528,7 @@ function WellnessValleyApp() {
             )}
 
             {/* Spacer so page content isn't hidden behind the floating buttons */}
-            <div className="min-h-[88px]" />
+            <div className="min-h-[120px]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />
 
             {/* ?? Floating Camera & Gallery FABs ï¿½ fixed so always visible */}
             {user &&
@@ -8573,7 +8541,7 @@ function WellnessValleyApp() {
               !showWellnessCounselling &&
               !showValidateOTP &&
               !showCompleteProfile && (
-                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex gap-5 items-end pointer-events-none">
+                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-30 flex gap-5 items-end pointer-events-none pb-4" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
                   {/* Gallery Button */}
                   <button
                     onClick={() => fileInputRef.current?.openGallery?.()}
@@ -8879,6 +8847,19 @@ function WellnessValleyApp() {
           cancelText={alertModal.cancelText}
           onConfirm={alertModal.onConfirm}
         />
+
+        {/* Email Gate — forced for phone-OTP users with no email */}
+        {showEmailGate && user && (
+          <EmailGateModal
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            onComplete={(savedEmail) => {
+              setShowEmailGate(false);
+              // Patch the in-memory user so the rest of the app sees the email
+              setUser((prev) => prev ? { ...prev, email: savedEmail } : prev);
+            }}
+          />
+        )}
 
         {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
         <WeightProgressTipsModal

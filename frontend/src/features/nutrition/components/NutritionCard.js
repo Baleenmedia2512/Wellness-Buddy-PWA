@@ -1698,35 +1698,6 @@ const NutritionCard = ({
               </span>
             </div>
           )}
-
-          {/* Share Button at Bottom - Only show if there's an image */}
-          {(imagePreview || selectedImage) && (
-            <button
-              onClick={handleShare}
-              disabled={isSharing || isSaving}
-              className={`w-full mt-6 py-3.5 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-all duration-200 shadow-lg tracking-wide ${
-                isSharing || isSaving
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:from-green-700 hover:to-green-600 hover:shadow-xl active:scale-[0.97]"
-              }`}
-              style={{
-                touchAction: "manipulation",
-                WebkitTapHighlightColor: "transparent",
-              }}
-            >
-              {isSharing ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Sharing...</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-5 h-5" />
-                  <span>Share</span>
-                </>
-              )}
-            </button>
-          )}
         </div>
       </div>
     </>

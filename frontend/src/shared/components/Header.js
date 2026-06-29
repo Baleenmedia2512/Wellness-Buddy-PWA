@@ -11,7 +11,6 @@ import {
   Heart,
   X,
   Trash2,
-  Share2,
   Camera,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
@@ -38,9 +37,6 @@ const Header = ({
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [autoShareEnabled, setAutoShareEnabled] = useState(
-    localStorage.getItem('autoShareOnCapture') !== 'false'
-  );
   // wv.autoCameraOnResume — controls whether the camera auto-opens every time
   // the user returns the app to the foreground (after completing their first share).
   // Default ON to preserve existing Snapchat-style behaviour.
@@ -487,43 +483,8 @@ const Header = ({
                     </div>
                   </div>
 
-                  {/* ── AUTO SHARE TOGGLE ── */}
+                  {/* ── AUTO CAMERA TOGGLE ── */}
                   <div className="px-4 pt-2 pb-1 border-t border-gray-100">
-                    <TouchFeedbackButton
-                      onClick={() => {
-                        const newValue = !autoShareEnabled;
-                        setAutoShareEnabled(newValue);
-                        localStorage.setItem('autoShareOnCapture', String(newValue));
-                      }}
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-                      ariaLabel="Toggle Auto Share"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Share2 className={`h-4 w-4 ${autoShareEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
-                        <div className="text-left">
-                          <div className="text-xs font-medium text-gray-900">
-                            Auto Share
-                          </div>
-                          <div className="text-[10px] text-gray-500 leading-tight">
-                            {autoShareEnabled
-                              ? 'Opens share instantly'
-                              : 'See results first, share manually'}
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          autoShareEnabled ? 'bg-blue-500' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                            autoShareEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                          }`}
-                        />
-                      </div>
-                    </TouchFeedbackButton>
-
                     {/* ── AUTO CAMERA TOGGLE ── */}
                     <TouchFeedbackButton
                       onClick={() => {

@@ -6,10 +6,11 @@
  * UI state for inline editing only.
  */
 import React, { useState } from 'react';
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Share2 } from 'lucide-react';
 import { validateEditWeight } from '../services/weightFormService';
 import { useWeightDetailImage } from '../hooks/useWeightDetailImage';
 import WeightDetailHeader from './WeightDetailHeader';
+import { captureAndShare } from '../../../shared/utils/shareUtils';
 
 const WeightCardModal = ({
   data, onClose, onDelete, onUpdate, apiBaseUrl, userId = null,
@@ -18,6 +19,8 @@ const WeightCardModal = ({
   const [editWeight, setEditWeight] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+  const cardRef = React.useRef(null);
 
   const { lazyImage, imageLoading } = useWeightDetailImage({ apiBaseUrl, userId, entry: data });
 
@@ -51,6 +54,7 @@ const WeightCardModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
       <div
+        ref={cardRef}
         className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         style={{ animation: 'slideUp 0.3s ease-out' }}
       >
@@ -99,12 +103,35 @@ const WeightCardModal = ({
             )}
           </div>
 
-          <button
-            onClick={() => { onDelete?.(data); onClose?.(); }}
-            className="w-full py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
-          >
-            <Trash2 className="w-4 h-4" /> Delete Entry
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                if (isSharing || !cardRef.current) return;
+                setIsSharing(true);
+                try {
+                  await captureAndShare(cardRef.current, {
+                    title: `Weight ${displayWeight} kg`,
+                    fileName: `wellness-weight-${Date.now()}.png`,
+                  });
+                } catch (err) {
+                  if (!err?.message?.toLowerCase().includes('cancel')) console.error('Share failed:', err);
+                } finally {
+                  setIsSharing(false);
+                }
+              }}
+              disabled={isSharing}
+              className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              {isSharing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Share2 className="w-4 h-4" />}
+              {isSharing ? 'Sharing…' : 'Share'}
+            </button>
+            <button
+              onClick={() => { onDelete?.(data); onClose?.(); }}
+              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+          </div>
         </div>
       </div>
 

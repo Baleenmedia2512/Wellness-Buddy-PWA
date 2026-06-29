@@ -12,8 +12,9 @@
  * this satisfies the "card should open with delete option" requirement
  * for the Diary feed (matching the original dashboard tab cards).
  */
-import React from 'react';
-import { X, Flame, Trash2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Flame, Trash2, Share2 } from 'lucide-react';
+import { captureAndShare } from '../../../shared/utils/shareUtils';
 
 function macro(n) {
   const v = Number(n);
@@ -35,6 +36,8 @@ function extractItems(analysisData) {
 }
 
 const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
+  const cardRef = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
   if (!payload) return null;
 
   const totals = payload.totals || {};
@@ -59,12 +62,31 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     }
   };
 
+  const handleShare = async () => {
+    if (isSharing || !cardRef.current) return;
+    setIsSharing(true);
+    try {
+      const mealLabel = items.length > 0 ? items[0].name : 'Food Entry';
+      await captureAndShare(cardRef.current, {
+        title: mealLabel,
+        fileName: `wellness-food-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4"
       onClick={onClose}
     >
       <div
+        ref={cardRef}
         className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         style={{ animation: 'slideUp 0.3s ease-out' }}
         onClick={(e) => e.stopPropagation()}
@@ -131,18 +153,30 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
           )}
         </div>
 
-        {/* Delete button — matches original dashboard card behavior */}
-        {onDelete && (
-          <div className="p-4 border-t border-gray-100">
+        {/* Footer actions */}
+        <div className="p-4 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={handleShare}
+            disabled={isSharing}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+          >
+            {isSharing ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Share2 className="w-5 h-5" />
+            )}
+            {isSharing ? 'Sharing…' : 'Share'}
+          </button>
+          {onDelete && (
             <button
               onClick={handleDelete}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+              className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
             >
               <Trash2 className="w-5 h-5" />
               Delete
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

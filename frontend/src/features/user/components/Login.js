@@ -61,8 +61,8 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             </h1>
             <p className="text-sm xs:text-base text-gray-500">
               {auth.otpSent
-                ? `We've sent a verification code to ${auth.activeChannel === 'phone' ? 'your phone' : auth.email}`
-                : 'Enter your mobile number or email to continue'}
+                ? `We've sent a 6-digit code via SMS to your phone`
+                : 'Enter your mobile number to continue'}
             </p>
           </div>
           {!auth.otpSent ? (

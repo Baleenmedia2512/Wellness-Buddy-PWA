@@ -29,8 +29,6 @@ import { debugLog } from './logger.js';
 export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness Valley') {
   return (
     (savedUserName && savedUserName.trim()) ||
-    user?.displayName ||
-    user?.name ||
     (user?.email ? user.email.split('@')[0] : null) ||
     fallback
   );
