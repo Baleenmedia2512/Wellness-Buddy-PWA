@@ -68,7 +68,8 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
           {!auth.otpSent ? (
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
               countryDial={auth.countryDial} setCountryDial={auth.setCountryDial}
-              onSubmit={handleSendOtp} loading={auth.loading} />
+              onSubmit={handleSendOtp} loading={auth.loading}
+              errorMessage={auth.errorMessage} />
           ) : (
             <LoginOtpEntry otpCtl={otpCtl} onVerify={auth.verifyOtp}
               loading={auth.loading} verified={auth.verified}

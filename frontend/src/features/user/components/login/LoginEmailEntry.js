@@ -13,7 +13,7 @@ const Spinner = () => (
 
 const LoginEmailEntry = ({
   email, setEmail, onSubmit, loading, googleUnavailable,
-  countryDial, setCountryDial,
+  countryDial, setCountryDial, errorMessage,
 }) => {
   const channel = detectContactType(email);
   const isPhone = channel === 'phone';
@@ -90,6 +90,9 @@ const LoginEmailEntry = ({
           </p>
         )}
       </div>
+      {errorMessage && (
+        <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+      )}
       <button
         type="submit"
         disabled={loading || !email}
