@@ -2524,15 +2524,17 @@ function WellnessValleyApp() {
   // session so the exact-alarm check is deferred, then sets permissionsReady.
   const handlePermissionsGranted = useCallback(async () => {
     setShowPermissionPrimer(false);
-    // Mark that the primer ran this session ï¿½ exact-alarm check must not
+    // Mark granted BEFORE the async OS dialogs so the effect can't re-show
+    // the primer if it re-runs while the OS dialogs are open.
+    localStorage.setItem("wv.permissionsGranted", "1");
+    // Mark that the primer ran this session — exact-alarm check must not
     // interrupt the very next screen (first camera / food analysis).
     sessionStorage.setItem("wv.primerDoneThisSession", "1");
     try {
       await requestAllPermissions();
     } catch (_) {
-      // fail-open ï¿½ camera still opens
+      // fail-open — camera still opens
     }
-    localStorage.setItem("wv.permissionsGranted", "1");
     setPermissionsReady(true);
   }, [requestAllPermissions]);
 
@@ -2565,7 +2567,8 @@ function WellnessValleyApp() {
         if (mounted) setPermissionsReady(true);
       });
     return () => { mounted = false; };
-  }, [user, requestAllPermissions, handleSaveUserCache, handlePermissionsGranted]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handlePermissionsGranted is not used inside this effect body; it is wired via onContinue/onSkip props on the modal
+  }, [user, requestAllPermissions, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
   useEffect(() => {
@@ -8114,7 +8117,7 @@ function WellnessValleyApp() {
                         </p>
                       </div>
 
-                      {/* Ideal Weight Strip (share card) */
+                      {/* Ideal Weight Strip (share card) */}
                       {idealWeight && (
                         <div
                           style={{

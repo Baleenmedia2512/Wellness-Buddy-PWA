@@ -193,8 +193,10 @@ export function validateDiaryList(query) {
     throw new ValidationError(400, 'date is not a valid calendar date');
   }
   // Reject future dates (per ADR-0003 PR-B test plan).
-  const todayUtc = new Date().toISOString().slice(0, 10);
-  if (date > todayUtc) {
+  // Use IST (UTC+5:30) so dates before 05:30 AM IST are not wrongly rejected
+  // — at 05:28 IST the UTC date is still yesterday, causing false "future" errors.
+  const todayIst = new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10);
+  if (date > todayIst) {
     throw new ValidationError(400, 'date cannot be in the future');
   }
   return {
