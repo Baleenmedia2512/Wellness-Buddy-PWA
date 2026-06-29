@@ -7,7 +7,7 @@ import {
   preloadBodyParamsShareAssets,
   listBodyParamsCards
 } from "../features/body-parameters-card";
-import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/TeamScopeLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,

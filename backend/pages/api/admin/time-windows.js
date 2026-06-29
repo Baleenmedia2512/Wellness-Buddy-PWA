@@ -1,5 +1,4 @@
 ﻿import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
-import { syncTaskWindowsAfterAdminChange } from '../../../features/tasks/api/sync-task-windows.handler.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -187,24 +186,6 @@ export default async function handler(req, res) {
         throw insertError;
       }
 
-      // Keep pending tasks + reminders aligned with the new active window row.
-      try {
-        const { updatedCount } = await syncTaskWindowsAfterAdminChange(
-          activityType,
-          effectiveFromDate,
-        );
-        logger.info('Pending tasks synced after time window change', {
-          activityType,
-          effectiveFromDate,
-          updatedCount,
-        });
-      } catch (syncErr) {
-        logger.error('Failed to sync pending tasks after window change (non-blocking)', {
-          activityType,
-          error: syncErr.message,
-        });
-      }
-      
       res.status(200).json({
         success: true,
         message: 'Time window updated successfully',

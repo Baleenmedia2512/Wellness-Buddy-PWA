@@ -52,8 +52,8 @@ const safeRemove = (key) => {
 // Active top-level view tag. Restored on cold start so the user lands on the
 // last sub-page they visited (Dashboard / Discipline / Activity / etc).
 // Known values: "main" | "dashboard" | "nutrition-dashboard" |
-//   "weight-tracking" | "weight-insights" | "discipline-report" |
-//   "activity-time-report" | "step-counter" | "screen-time"
+//   "weight-tracking" | "weight-insights" |
+//   "activity-time-report" | "step-counter"
 // Read by:  App.js (cold-start restore + back-button handler)
 // Written by: showDashboardPage, showMainPage, sign-in/out handlers, JSX taps
 export const getCurrentPage = () => safeGet("currentPage");

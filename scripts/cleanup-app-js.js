@@ -25,7 +25,7 @@ content = content.replace(/\n  \/\/ On Android, request exact alarm permission.*
 content = content.replace(/\n  const openWellnessReportsPage = useCallback\(.*?\), \[\],\n  \);\n\n  const closeWellnessReportsPage = useCallback\(\(\) => \{.*?\}, \[\]\);\n/s, '\n');
 
 // 6. Fix showMainPage
-content = content.replace("    setShowWellnessReports(false);\n    setShowActivityTimeReport(false);\n    setShowDisciplineReport(false);\n    setShowMarathon(false);\n    // setShowStepCounter(false); // feature disabled\n    setShowScreenTime(false);\n", '');
+content = content.replace("    setShowWellnessReports(false);\n    setShowActivityTimeReport(false);\n    setShowDisciplineReport(false);\n    setShowMarathon(false);\n    // setShowStepCounter(false); // feature disabled\n", '');
 
 // 7. Remove initReminders call
 content = content.replace(/\n          \/\/ Initialise personalised native reminders[\s\S]*?}\n          }\n\n          \/\/ Background validation/, '\n\n          // Background validation');
@@ -46,10 +46,7 @@ content = content.replace('\n  const deferredShowActivityTimeReport = useDeferre
 content = content.replace(/\n  \/\/ Summary \+ trend reports \(nutrition \/ weight \/ education\)\n  if \(deferredShowWellnessReports\) \{[\s\S]*?\n  \}\n\n  \/\/ Full page dashboard/, '\n\n  // Full page dashboard');
 
 // 11. Remove commented step counter block
-content = content.replace(/\n  \/\/ Step Counter page[\s\S]*?\/\/ \}\n\n  \/\/ Screen Time/, '\n\n  // Screen Time');
-
-// 12. Remove commented screen time block
-content = content.replace(/\n  \/\/ Screen Time page[\s\S]*?\/\/ \}\n\n  \/\/ Reminders/, '\n\n  // Reminders');
+content = content.replace(/\n  \/\/ Step Counter page[\s\S]*?\/\/ \}\n\n  \/\/ Reminders/, '\n\n  // Reminders');
 
 // 13. Remove Reminders render block
 content = content.replace(/\n  \/\/ Reminders page\n  if \(showReminders\) \{[\s\S]*?\n  \}\n\n  \/\/ Discipline/, '\n\n  // Discipline');
@@ -68,20 +65,20 @@ content = content.replace(/\n  \/\/ Marathon Dashboard[\s\S]*?if \(deferredShowM
 
 // 18. Fix back button handler
 content = content.replace("      if (showActivityTimeReport) {\n        showMainPage();\n        return true;\n      }\n      if (showDisciplineReport) {\n        showMainPage();\n        return true;\n      }\n      if (showMarathon) {\n        showMainPage();\n        return true;\n      }\n", '');
-content = content.replace("      if (showStepCounter) {\n        // setShowStepCounter(false); // feature disabled\n        Session.setCurrentPage(\"main\");\n        return true;\n      }\n      if (showScreenTime) {\n        setShowScreenTime(false);\n        Session.setCurrentPage(\"main\");\n        return true;\n      }\n", '');
-content = content.replace("      !showDashboard &&\n        !showActivityTimeReport &&\n        !showDisciplineReport &&\n        !showMarathon &&\n        !showStepCounter &&\n        !showScreenTime,\n    );", "      !showDashboard,\n    );");
-content = content.replace("  }, [\n    ionRouter,\n    showDashboard,\n    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n    showStepCounter,\n    showScreenTime,\n  ]);", "  }, [\n    ionRouter,\n    showDashboard,\n  ]);");
+content = content.replace("      if (showStepCounter) {\n        // setShowStepCounter(false); // feature disabled\n        Session.setCurrentPage(\"main\");\n        return true;\n      }\n", '');
+content = content.replace("      !showDashboard &&\n        !showActivityTimeReport &&\n        !showDisciplineReport &&\n        !showMarathon &&\n        !showStepCounter,\n    );", "      !showDashboard,\n    );");
+content = content.replace("  }, [\n    ionRouter,\n    showDashboard,\n    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n    showStepCounter,\n  ]);", "  }, [\n    ionRouter,\n    showDashboard,\n  ]);");
 
 // 19. Fix homeScreenActiveRef effect deps
-content = content.replace("      !showActivityTimeReport &&\n      !showDisciplineReport &&\n      !showMarathon &&\n      !showScreenTime;\n  }, [\n    user,\n    authLoading,\n    showDashboard,\n    showCompleteProfile,\n    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n    showScreenTime,\n  ]);", "  }, [\n    user,\n    authLoading,\n    showDashboard,\n    showCompleteProfile,\n  ]);");
+content = content.replace("      !showActivityTimeReport &&\n      !showDisciplineReport &&\n      !showMarathon;\n  }, [\n    user,\n    authLoading,\n    showDashboard,\n    showCompleteProfile,\n    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n  ]);", "  }, [\n    user,\n    authLoading,\n    showDashboard,\n    showCompleteProfile,\n  ]);");
 
 // 20. Fix task panel launch effect deps
-content = content.replace("      !showActivityTimeReport &&\n      !showDisciplineReport &&\n      !showMarathon &&\n      !showScreenTime;\n\n    if (!isHome", ";\n\n    if (!isHome");
-content = content.replace("    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n    showScreenTime,\n    showTaskPanel,", "    showTaskPanel,");
+content = content.replace("      !showActivityTimeReport &&\n      !showDisciplineReport &&\n      !showMarathon;\n\n    if (!isHome", ";\n\n    if (!isHome");
+content = content.replace("    showActivityTimeReport,\n    showDisciplineReport,\n    showMarathon,\n    showTaskPanel,", "    showTaskPanel,");
 
 // 21. Remove Header props for deleted features
 content = content.replace(/\n          onShowWellnessReports=\{[^\n]*\}\n/, '\n');
-content = content.replace("          // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED\n          // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED\n          onShowReminders={showRemindersPage}\n", '');
+content = content.replace("          // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED\n          onShowReminders={showRemindersPage}\n", '');
 content = content.replace(/          onShowDisciplineReport=\{[\s\S]*?          \}\n/, '');
 content = content.replace(/          onShowActivityTimeReport=\{[\s\S]*?          \}\n/, '');
 content = content.replace(/          onShowActivityReport=\{[\s\S]*?          \}\n/, '');
@@ -102,6 +99,6 @@ console.log('Original:', originalLength, 'New:', content.replace(/\r\n/g, '\n').
 
 // Check remaining
 const check = content.replace(/\r\n/g, '\n');
-const terms = ['showDisciplineReport','showActivityTimeReport','showActivityReport','showStepCounter','showScreenTime','showReminders','showAttendanceReport','showMarathon','showWellnessReports','showWellnessReport','fetchPendingRecognition','pendingRecognition','MarathonDashboard','DisciplineReport','ActivityTimeReport','ActivityReport','AttendanceReport','WellnessReportsPage','WellnessUniversityReport','ReminderSettingsPage','initReminders','checkExactAlarmPermission','openWellnessReportsPage','useMarathon'];
+const terms = ['showDisciplineReport','showActivityTimeReport','showActivityReport','showStepCounter','showReminders','showAttendanceReport','showMarathon','showWellnessReports','showWellnessReport','fetchPendingRecognition','pendingRecognition','MarathonDashboard','DisciplineReport','ActivityTimeReport','ActivityReport','AttendanceReport','WellnessReportsPage','WellnessUniversityReport','ReminderSettingsPage','initReminders','checkExactAlarmPermission','openWellnessReportsPage','useMarathon'];
 console.log('Remaining:');
 terms.forEach(t => { const n=(check.match(new RegExp(t,'g'))||[]).length; if(n>0) console.log(' ',t,n+'x'); });

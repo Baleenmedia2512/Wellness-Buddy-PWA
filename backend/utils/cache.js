@@ -155,7 +155,6 @@ export const cacheKeys = {
   nutritionStats: (userId, date) => `nutrition:stats:${userId}:${date}`,
   nutritionMeals: (userId) => `nutrition:meals:${userId}`,
   educationSummary: (userId) => `education:summary:${userId}`,
-  disciplineReport: (coachId, range) => `discipline:${coachId}:${range}`,
 };
 
 export default cache;

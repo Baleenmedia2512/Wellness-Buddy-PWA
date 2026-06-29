@@ -1,5 +1,5 @@
-// src/components/common/DisciplineScoreLogos.js
-// Three distinct SVG logos for the Discipline Report stats strip:
+// src/components/common/TeamScopeLogos.js
+// Three distinct SVG logos for team scope selection:
 //   SelfLogo      — single person (My Score)
 //   DirectLogo    — leader + 2 direct reports (Direct Team)
 //   FullTeamLogo  — 3-level pyramid tree  (Full Team)

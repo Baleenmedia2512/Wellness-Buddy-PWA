@@ -8,12 +8,10 @@ import {
   TrendingUp,
   Map,
   Building2,
-  Smartphone,
   Heart,
   X,
   Trash2,
   Share2,
-  Trophy,
   Camera,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
@@ -27,13 +25,10 @@ const Header = ({
   userRole = "user",
   onSignOut,
   onShowBackgroundHistory,
-  onShowStepCounter,
-  onShowScreenTime,
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowRegisterCenter,
-  onShowMarathon,
   onLeaderboardRefresh,
   onProfileSaved,
   manualModeActive = false,
@@ -414,34 +409,6 @@ const Header = ({
                         </span>
                       </TouchFeedbackButton>
 
-                      {/* Step Counter — FEATURE DISABLED */}
-                      {/* {onShowStepCounter && (
-                        <TouchFeedbackButton
-                          onClick={() => { onShowStepCounter(); closeMenu(); }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Step Counter"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-teal-100 flex items-center justify-center">
-                            <Footprints className="h-5 w-5 text-teal-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Step Counter</span>
-                        </TouchFeedbackButton>
-                      )} */}
-
-                      {/* Screen Time — FEATURE DISABLED */}
-                      {/* {onShowScreenTime && (
-                        <TouchFeedbackButton
-                          onClick={() => { onShowScreenTime(); closeMenu(); }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Screen Time"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
-                            <Smartphone className="h-5 w-5 text-blue-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
-                        </TouchFeedbackButton>
-                      )} */}
-
                       {/* Wellness University */}
                       {onShowWellnessEnrollment && (
                         <TouchFeedbackButton
@@ -495,22 +462,6 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Physical Club
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Marathon */}
-                      {onShowMarathon && (
-                        <TouchFeedbackButton
-                          onClick={() => { onShowMarathon(); closeMenu(); }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Marathon"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-yellow-100 flex items-center justify-center">
-                            <Trophy className="h-5 w-5 text-yellow-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Marathon
                           </span>
                         </TouchFeedbackButton>
                       )}

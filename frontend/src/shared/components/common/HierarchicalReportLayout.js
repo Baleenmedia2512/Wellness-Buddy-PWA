@@ -24,7 +24,7 @@ import {
   SelfLogo,
   DirectLogo,
   FullTeamLogo,
-} from "./DisciplineScoreLogos";
+} from "./TeamScopeLogos";
 import TouchFeedbackButton from "../TouchFeedbackButton";
 
 // --- DateRangePicker Component ---

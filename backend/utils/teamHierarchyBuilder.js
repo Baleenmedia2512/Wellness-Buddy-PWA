@@ -2,7 +2,7 @@
  * Shared Team Hierarchy Builder
  * ─────────────────────────────────────────────────────────────────────────────
  * Single source of truth for building the coach → co-coach → team-members tree
- * used by /api/coach/team-hierarchy (Discipline Report) AND
+ * used by /api/coach/team-hierarchy AND
  * /api/coach/hierarchical-club-attendance (Attendance Report).
  *
  * Extracted verbatim from the original team-hierarchy.js handler so that both

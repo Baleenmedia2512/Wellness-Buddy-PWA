@@ -124,7 +124,7 @@ const TeamNode = ({
     }
   }
 
-  // Activity icons matching DisciplineReport.js
+  // Activity icons
   const activityIcons = {
     weight: <BathroomScaleIcon className="w-4 h-4" />,
     education: <BookOpen className="w-4 h-4" />,

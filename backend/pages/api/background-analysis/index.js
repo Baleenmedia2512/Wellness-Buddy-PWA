@@ -2,7 +2,6 @@ import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateSave, validateList, validateDelete } from '../../../features/background-analysis/analysis.validators.js';
 import { save, list, deleteAnalysis } from '../../../features/background-analysis/analysis.service.js';
-import { recordFoodSaveCompletionLearning } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import { convertToIST, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -21,21 +20,6 @@ export default async function handler(req, res) {
     return runService(res, async () => {
       const input = validateSave(req.body);
       const result = await save(input);
-
-      if (result.httpStatus === 200 && result.body?.success) {
-        recordFoodSaveCompletionLearning({
-          userId: input.userId,
-          istTimestamp: deriveIstTimestampFromAnalysisInput(input),
-          analysisResult: input.analysisResult,
-          taskTypeHint: input.taskTypeHint ?? null,
-          completionData: { foodData: input.analysisResult },
-        }).catch((err) =>
-          logger.error('food save: habit learning failed (non-critical)', {
-            userId: input.userId,
-            error: err.message,
-          })
-        );
-      }
 
       return result;
     });

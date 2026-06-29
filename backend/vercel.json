@@ -113,10 +113,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/marathon-finalize",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/ai/worker",
       "schedule": "* * * * *"
     }

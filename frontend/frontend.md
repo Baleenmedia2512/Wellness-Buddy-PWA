@@ -45,7 +45,7 @@ Features: activity, admin, auth, background-analysis, body-parameters-card, capt
 - `shared/utils/` — **[logger.js](src/shared/utils/logger.js) lives here** (not `lib/`), plus `fetchWithAbort.js`, `imageValidator.js`, `mobileInit.js`, `timezoneUtils.js`, `backButtonHandler.js`, `shareUtils.js`.
 - `shared/services/` — [apiClient.js](src/shared/services/apiClient.js), `cacheManager.js`, `cameraService.js`, `firebase.js`, `geminiService.js`, `getUserId.js`, `userIdentity.js`, plus `auth/`, `nativeLifecycle/`, `tokenCost/` subfolders.
 - `shared/context/` — only `NutritionRefreshContext.js`.
-- `shared/plugins/` — Capacitor native plugin JS wrappers: `galleryMonitorPlugin`, `screenTimePlugin`, `stepCounterPlugin`, `keepAwakePlugin`, `inAppUpdatePlugin`, `foodImageAnalysis`.
+- `shared/plugins/` — Capacitor native plugin JS wrappers: `galleryMonitorPlugin`, `stepCounterPlugin`, `keepAwakePlugin`, `inAppUpdatePlugin`, `foodImageAnalysis`.
 
 **Graduation to `shared/`:** used in ≥2 features, no feature-specific props, has its own tests.
 

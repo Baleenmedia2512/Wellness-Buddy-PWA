@@ -97,11 +97,5 @@ export async function logWaterIntake({ userId, ml, userEmail, source = 'WaterTra
     analysisResult,
     deviceInfo: { source },
     userEmail,
-    taskTypeHint: 'water',
-  }).then((result) => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('wellness:tasks-changed'));
-    }
-    return result;
   });
 }

@@ -17,8 +17,6 @@ import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
 import com.wellnessvalley.app.plugins.KeepAwakePlugin;
-import com.wellnessvalley.app.plugins.ScreenTimePlugin;
-import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
@@ -42,15 +40,9 @@ public class MainActivity extends BridgeActivity {
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
 
-        // ✅ Register StepCounterPlugin for in-app step tracking
-        registerPlugin(StepCounterPlugin.class);
-        
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
         
-        // ✅ Register ScreenTimePlugin for device screen time tracking
-        registerPlugin(ScreenTimePlugin.class);
-
         // ✅ Register KeepAwakePlugin to prevent screen sleep while app is active
         registerPlugin(KeepAwakePlugin.class);
         
@@ -403,14 +395,12 @@ public class MainActivity extends BridgeActivity {
                 permissions = new String[] {
                     android.Manifest.permission.READ_MEDIA_IMAGES,
                     android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
-                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                    android.Manifest.permission.POST_NOTIFICATIONS
                 };
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 permissions = new String[] {
                     android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                    android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                    android.Manifest.permission.CAMERA
                 };
             } else {
                 permissions = new String[] {

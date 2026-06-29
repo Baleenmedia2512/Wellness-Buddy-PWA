@@ -40,7 +40,6 @@ const EducationDashboard = lazy(() => import('../../features/education/component
 const DiaryFeed = lazy(() =>
   import('../../features/diary').then((m) => ({ default: m.DiaryFeed })),
 );
-// FEATURE DISABLED: const StepsDashboard = lazy(() => import('./StepsDashboard'));
 // FEATURE DISABLED: const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
 /**
@@ -67,7 +66,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
-    const validTabs = ['nutrition', 'weight', 'education', 'steps', 'screen'];
+    const validTabs = ['nutrition', 'weight', 'education', 'screen'];
     if (diaryEnabled) validTabs.push('diary');
     if (initialTab && validTabs.includes(initialTab)) {
       localStorage.setItem('dashboard_activeTab', initialTab);
@@ -104,7 +103,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // the three seeded values here.
   useEffect(() => {
     if (!initialTab) return;
-    const valid = ['nutrition', 'weight', 'education', 'steps', 'screen'];
+    const valid = ['nutrition', 'weight', 'education', 'screen'];
     if (diaryEnabled) valid.push('diary');
     if (!valid.includes(initialTab)) return;
     setActiveTab(initialTab);
@@ -137,7 +136,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     localStorage.setItem('dashboard_activeTab', tab);
-    if (tab === 'steps' || tab === 'screen') {
+    if (tab === 'screen') {
       setSelectedDate(new Date());
     }
   };
@@ -368,7 +367,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 single-page Diary. In the Diary, this one shell-level "Today"
                 button opens the month-grid date picker and drives the day for
                 every stacked dashboard (Nutrition's own strip is suppressed). */}
-            {(activeTab === 'steps' || activeTab === 'screen') && (
+            {(activeTab === 'screen') && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
@@ -413,7 +412,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
       {/* Inline Calendar — month-grid date picker. Shown for the
           (disabled) steps/screen tabs AND the single-page Diary. */}
-      {(activeTab === 'steps' || activeTab === 'screen' || diaryEnabled) && (
+      {(activeTab === 'screen' || diaryEnabled) && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
         }`}>
@@ -755,18 +754,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           )}
           </>
           )}
-
-          {/* FEATURE DISABLED: Steps tab content
-          {activeTab === 'steps' && (
-            <StepsDashboard
-              user={displayUser}
-              apiBaseUrl={apiBaseUrl}
-              hideHeader={true}
-              selectedDate={selectedDate}
-              setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
-            />
-          )}
-          */}
 
           {/* FEATURE DISABLED: Screen tab content
           {activeTab === 'screen' && (

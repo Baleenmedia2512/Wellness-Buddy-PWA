@@ -39,12 +39,10 @@ const OUT_FILE = process.env.SMOKE_OUTPUT
 // Each entry: [method, path, body?]
 // Methods chosen based on filename verb (save/update/delete vs get/list).
 const ENDPOINTS = [
-  ['GET',  '/api/admin/all-members-discipline'],
   ['GET',  '/api/admin/time-windows'],
   ['GET',  '/api/nutrition-centers/check-name?name=__smoke__'],
   ['GET',  '/api/coach/attendance-report'],
   ['GET',  '/api/coach/club-attendance-report'],
-  ['GET',  '/api/coach/discipline-report'],
   ['GET',  '/api/coach/download-attendance-excel'],
   ['GET',  '/api/coach/hierarchical-club-attendance'],
   ['GET',  '/api/coach/hierarchical-clubs-overview'],

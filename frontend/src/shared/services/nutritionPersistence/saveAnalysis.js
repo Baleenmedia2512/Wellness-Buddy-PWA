@@ -23,7 +23,6 @@ const parseSaveResponse = async (res) => {
 export async function saveNutritionAnalysis({
   userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail, captureTimestamp = null, captureId = null,
   city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
-  taskTypeHint = null,
 }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
@@ -69,7 +68,6 @@ export async function saveNutritionAnalysis({
         attendanceType: attendanceType || null,
         latitude: latitude || null,
         longitude: longitude || null,
-        ...(taskTypeHint ? { taskTypeHint } : {}),
       }),
     });
 
