@@ -115,7 +115,8 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
               lineHeight: 1.4,
             }}
           >
-            Allow a few permissions so Wellness&nbsp;Valley works its best for you.
+            Allow 3 quick permissions so Wellness&nbsp;Valley works its best.
+            You’ll see <strong style={{ color: '#fff' }}>3 OS prompts</strong> — one for Camera, Notifications, and Location.
           </p>
         </div>
       </div>
@@ -247,10 +248,10 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
                   display: 'inline-block',
                 }}
               />
-              <span>Setting up…</span>
+              <span>Tap “Allow” on each of the 3 prompts…</span>
             </>
           ) : (
-            'Allow Access & Continue'
+            'Allow All 3 Permissions → Continue'
           )}
         </button>
 

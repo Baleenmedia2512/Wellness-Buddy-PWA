@@ -208,6 +208,9 @@ const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounsellingCards"),
 );
+const WellnessUniversityEnrollment = lazy(() =>
+  import("./pages/WellnessUniversityEnrollment"),
+);
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -747,6 +750,8 @@ function WellnessValleyApp() {
 
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
+  // Wellness University Enrollment state
+  const [showUniversityEnrollment, setShowUniversityEnrollment] = useState(false);
 
   // ?? Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
@@ -7424,6 +7429,18 @@ function WellnessValleyApp() {
     );
   }
 
+  // Wellness University Enrollment - Full page view
+  if (showUniversityEnrollment) {
+    return (
+      <Suspense fallback={null}>
+        <WellnessUniversityEnrollment
+          user={user}
+          onBack={() => setShowUniversityEnrollment(false)}
+        />
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <LocationGuard>
@@ -7676,7 +7693,7 @@ function WellnessValleyApp() {
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
           onShowWellnessEnrollment={() =>
-            startTransition(() => setShowWellnessCounselling(true))
+            startTransition(() => setShowUniversityEnrollment(true))
           }
           onShowWellnessCounselling={() =>
             startTransition(() => setShowWellnessCounselling(true))
@@ -7728,7 +7745,38 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* Today's Nutrition Carousel ï¿½ Calories ï¿½ Macros ï¿½ Heart Healthy ï¿½ Low Carb */}
+            {/* ── World-class greeting hero ── */}
+            {!imagePreview && !nutritionData && !educationResult && !watchResult && (
+              <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-sm border border-green-100"
+                style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 60%, #bbf7d0 100%)' }}>
+                <div className="px-4 py-3 flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-green-600 uppercase tracking-widest">
+                      {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </p>
+                    <h2 className="text-base font-bold text-gray-900 mt-0.5 truncate">
+                      {(() => {
+                        const h = new Date().getHours();
+                        const name = (savedUserName || user?.displayName || '').split(' ')[0];
+                        const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+                        return name ? `${greeting}, ${name}! 👋` : `${greeting}! 👋`;
+                      })()}
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Snap a photo to log your next meal</p>
+                  </div>
+                  <div className="shrink-0 ml-3 w-11 h-11 rounded-2xl bg-green-500 flex items-center justify-center shadow-md"
+                    onClick={() => fileInputRef.current?.openCamera?.()}
+                    role="button" aria-label="Open camera" tabIndex={0}>
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Today's Nutrition Carousel — Calories · Macros · Heart Healthy · Low Carb */}
             <HomeNutritionCarousel
               user={user}
               apiBaseUrl={apiBaseUrl}
@@ -8554,15 +8602,15 @@ function WellnessValleyApp() {
               !showWellnessCounselling &&
               !showValidateOTP &&
               !showCompleteProfile && (
-                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-30 flex gap-5 items-end pointer-events-none pb-4" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
+                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-30 flex gap-4 items-end pointer-events-none" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))' }}>
                   {/* Gallery Button */}
                   <button
                     onClick={() => fileInputRef.current?.openGallery?.()}
                     disabled={loading}
-                    className="w-14 h-14 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
+                    className="w-10 h-10 p-0 rounded-full shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
                     title="Choose from Gallery"
                     aria-label="Gallery access"
-                    style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.3))" }}
+                    style={{ filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.25))" }}
                   >
                     <img
                       src="/gallery.png"
@@ -8572,19 +8620,19 @@ function WellnessValleyApp() {
                     />
                   </button>
 
-                  {/* Camera Button ï¿½ primary, slightly larger */}
+                  {/* Camera Button — primary, slightly larger */}
                   <button
                     onClick={() => fileInputRef.current?.openCamera?.()}
                     disabled={loading}
-                    className="w-16 h-16 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
+                    className="w-12 h-12 p-0 rounded-full shadow-xl transition-all duration-200 active:scale-90 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
                     title="Take Photo"
                     aria-label="Camera access"
-                    style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.35))" }}
+                    style={{ filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.28))" }}
                   >
                     <img
                       src="/app.png"
                       alt="Camera"
-                      className="w-full h-full object-cover rounded-full scale-110 pointer-events-none select-none"
+                      className="w-full h-full object-cover rounded-full pointer-events-none select-none"
                       draggable={false}
                     />
                   </button>

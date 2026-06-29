@@ -86,7 +86,19 @@ const LoginEmailEntry = ({
             autoComplete="tel"
             name="tel"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              // Strip any non-numeric characters (except leading +) so only
+              // digits reach the normalizer. This matches the E.164 expectation
+              // in contactIdentifier.normalizePhone.
+              const raw = e.target.value;
+              const cleaned = raw.replace(/[^\d+]/g, '');
+              setEmail(cleaned);
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const pasted = (e.clipboardData || window.clipboardData).getData('text');
+              setEmail(pasted.replace(/[^\d+]/g, ''));
+            }}
             required
             disabled={loading}
             placeholder="Enter mobile number"

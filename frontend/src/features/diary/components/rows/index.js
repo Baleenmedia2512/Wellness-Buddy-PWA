@@ -15,7 +15,7 @@
  *   - Each row is stateless; delete callbacks are passed from parent DiaryFeed
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
@@ -94,19 +94,42 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const cal = p.totals?.calories ?? 0;
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
   const [isSharing, setIsSharing] = useState(false);
+  const shareCardRef = useRef(null);
 
   // Parse analysisData to extract meal name and item details
-  // This matches the display behavior of the original MealCard in NutritionDashboard
   const foodData = parseAnalysisData(p.analysisData, 'text-gray-400');
   const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
   const meal = getMealLabel(entry.capturedAt);
+  // Individual food items for the share card
+  const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
 
+  // Resolve image src for share card
+  const imgSrc = p.imageBase64 && p.imageBase64.trim() !== ''
+    ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
+    : (p.imagePath || null);
+
+  const t = p.totals || {};
+  const macros = [
+    { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
+    { label: 'Protein',  value: Math.round(t.protein  ?? 0), unit: 'g',    color: '#3b82f6' },
+    { label: 'Carbs',    value: Math.round(t.carbs    ?? 0), unit: 'g',    color: '#eab308' },
+    { label: 'Fat',      value: Math.round(t.fat      ?? 0), unit: 'g',    color: '#ef4444' },
+    { label: 'Fiber',    value: Math.round(t.fiber    ?? 0), unit: 'g',    color: '#22c55e' },
+    { label: 'Sugar',    value: Math.round(t.sugar    ?? 0), unit: 'g',    color: '#a855f7' },
+  ];
+  const shareTime = entry.capturedAt
+    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    : '';
+
+  // Share taps the full off-screen nutrition card, not the compact row
   const handleShare = async (e) => {
     e.stopPropagation();
-    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    if (swipe.dragging || swipe.leaving || isSharing) return;
+    const target = shareCardRef.current || swipe.elRef.current;
+    if (!target) return;
     setIsSharing(true);
     try {
-      await captureAndShare(swipe.elRef.current, {
+      await captureAndShare(target, {
         title: mealName,
         fileName: `wellness-food-${Date.now()}.png`,
       });
@@ -124,6 +147,52 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
+      {/* Off-screen full nutrition share card — captured by html2canvas on share tap */}
+      <div
+        ref={shareCardRef}
+        aria-hidden="true"
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: 375, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+      >
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '14px 16px 10px' }}>
+          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
+          <p style={{ fontSize: 17, fontWeight: 700, color: '#fff', margin: '3px 0 0', lineHeight: 1.2 }}>{mealName}</p>
+          {meal && <span style={{ display: 'inline-block', marginTop: 4, fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>{meal.label}</span>}
+        </div>
+        {/* Food photo */}
+        {imgSrc && (
+          <img src={imgSrc} alt="" style={{ width: '100%', height: 180, objectFit: 'cover', display: 'block' }} />
+        )}
+        {/* Macro grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>
+          {macros.map((m) => (
+            <div key={m.label} style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 6px', textAlign: 'center', border: '1px solid #f3f4f6' }}>
+              <p style={{ fontSize: 17, fontWeight: 700, color: m.color, margin: 0, lineHeight: 1 }}>
+                {m.value}<span style={{ fontSize: 10, fontWeight: 500, color: '#9ca3af' }}> {m.unit}</span>
+              </p>
+              <p style={{ fontSize: 9, color: '#6b7280', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{m.label}</p>
+            </div>
+          ))}
+        </div>
+        {/* Food items */}
+        {foodItems.length > 0 && (
+          <div style={{ padding: '0 14px 14px' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Foods Detected</p>
+            {foodItems.slice(0, 8).map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <p style={{ fontSize: 12, color: '#374151', margin: 0, flex: 1 }}>{item.name || 'Item'}</p>
+                <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 500 }}>
+                  {Math.round(item.calories ?? item.nutrition?.calories ?? 0)} kcal
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Footer */}
+        <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
+          <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
+        </div>
+      </div>
       {/* Swipe-delete background */}
       <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
         <div

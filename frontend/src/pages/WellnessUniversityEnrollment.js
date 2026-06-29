@@ -363,7 +363,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           <div className="flex justify-between items-center">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg sm:text-2xl font-bold text-white flex items-center gap-2">
-                🎓 {isEditMode ? "Edit Enrollment" : "Wellness University"}
+                🎓 {isEditMode ? "Edit Enrollment" : "Enrollment"}
               </h2>
               <p className="text-white text-xs sm:text-sm mt-1">
                 {isEditMode

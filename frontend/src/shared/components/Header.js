@@ -5,7 +5,6 @@ import {
   GraduationCap,
   Map,
   Heart,
-  X,
   Trash2,
   Camera,
   Settings,
@@ -61,31 +60,6 @@ const Header = ({
       localStorage.removeItem('deleteAccountOtpPending');
     }
   }, []);
-
-  // Auto-scale menu panel to fit screen without scroll
-  useEffect(() => {
-    if (!menuOpen) return;
-    const applyScale = () => {
-      const el = menuPanelRef.current;
-      if (!el) return;
-      // Reset first so we measure natural size
-      el.style.transform = "translateX(-50%)";
-      el.style.transformOrigin = "top center";
-      const panelH = el.scrollHeight;
-      const available = window.innerHeight - 80;
-      if (panelH > available) {
-        const s = available / panelH;
-        el.style.transform = `translateX(-50%) scale(${s})`;
-      }
-    };
-    // Use rAF to ensure DOM has fully painted before measuring
-    const raf = requestAnimationFrame(() => requestAnimationFrame(applyScale));
-    window.addEventListener("resize", applyScale);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", applyScale);
-    };
-  }, [menuOpen]);
 
   // Profile modal — only opens when user explicitly clicks "Manage your Profile"
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -279,24 +253,7 @@ const Header = ({
                 <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] right-3 w-[min(260px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transformOrigin: "top right" }}>
                   {/* Profile summary */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100">
-                    {/* Close button */}
-                    <TouchFeedbackButton
-                      onClick={closeMenu}
-                      className="absolute top-2 right-2 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                      ariaLabel="Close menu"
-                    >
-                      <X className="h-4 w-4 text-gray-700" strokeWidth={2.5} />
-                    </TouchFeedbackButton>
-
-                    {/* Compact profile row */}
-                    <TouchFeedbackButton
-                      onClick={closeMenu}
-                      className="absolute top-2 right-2 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                      ariaLabel="Close menu"
-                    >
-                      <X className="h-4 w-4 text-gray-700" strokeWidth={2.5} />
-                    </TouchFeedbackButton>
-                    <div className="flex items-center gap-3 pr-8">
+                    <div className="flex items-center gap-3">
                       {savedProfileImage || user?.photoURL ? (
                         <img
                           src={savedProfileImage || user.photoURL}
@@ -406,10 +363,10 @@ const Header = ({
             <TouchFeedbackButton
               onClick={onShowWellnessEnrollment}
               className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-emerald-50 transition-colors shrink-0 min-w-[64px]"
-              ariaLabel="University"
+              ariaLabel="Enrollment"
             >
               <GraduationCap className="h-5 w-5 text-emerald-700" />
-              <span className="text-[10px] font-semibold text-emerald-800">University</span>
+              <span className="text-[10px] font-semibold text-emerald-800">Enrollment</span>
             </TouchFeedbackButton>
           )}
           {onShowWellnessCounselling && (
