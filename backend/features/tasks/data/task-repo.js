@@ -12,7 +12,7 @@
 import { getPool } from '../../../utils/dbPool.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { isAtReminderMinute, addMinutesToTime, appendCompletionHistory, computeAverageFromHistory, resolveEffectiveReminderTime, DEFAULT_COMPLETION_TIMES } from '../domain/completion-learning.rules.js';
+import { appendCompletionHistory, computeAverageFromHistory, resolveEffectiveReminderTime, DEFAULT_COMPLETION_TIMES } from '../domain/completion-learning.rules.js';
 
 // Each call acquires a dedicated connection (has .query() and .release()).
 // getPool() returns the pool wrapper, not a connection — do NOT call it directly.
@@ -1207,18 +1207,8 @@ export {
   getTimeWindowsByUser,
   getTimeWindowsByStartTime,
   getWindowsAlreadyOpenedToday,
-  // reminder helpers
-  snoozeTask,
-  dismissTaskToday,
-  getTasksNeedingReminder,
-  getTasksAtWindowStartMinute,
-  getPendingTasksNeedingInitialNotification,
-  userHasPushToken,
   upsertTaskAverage,
-  incrementReminderCount,
-  getTasksPastAverageTime,
   getPendingTaskForUser,
-  getUserTaskAverages,
   syncPendingTaskWindowsForActivityType,
   fetchTodayFoodLogsForUser,
   fetchTodayWeightLogsForUser,

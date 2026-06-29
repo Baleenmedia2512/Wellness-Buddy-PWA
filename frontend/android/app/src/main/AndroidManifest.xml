@@ -185,50 +185,6 @@
             android:name=".services.ServiceAlarmReceiver"
             android:exported="false" />
 
-        <!-- ── Daily Activity Reminder receivers ──────────────────────── -->
-        <!-- Fires when an alarm triggers; shows notification + reschedules for next day -->
-        <receiver
-            android:name=".services.ReminderAlarmReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.wellnessvalley.app.REMINDER_WEIGHT" />
-                <action android:name="com.wellnessvalley.app.REMINDER_EDUCATION" />
-                <action android:name="com.wellnessvalley.app.REMINDER_BREAKFAST" />
-                <action android:name="com.wellnessvalley.app.REMINDER_LUNCH" />
-                <action android:name="com.wellnessvalley.app.REMINDER_DINNER" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Re-schedule reminders after device reboot -->
-        <receiver
-            android:name=".services.ReminderBootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Foreground service that plays alarm sound for 60 seconds -->
-        <service
-            android:name=".services.AlarmSoundService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
-
-        <!-- Full-screen alarm popup shown on top of lock screen when alarm fires -->
-        <activity
-            android:name=".services.AlarmFullScreenActivity"
-            android:exported="false"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:launchMode="singleInstance"
-            android:excludeFromRecents="true"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <!-- Stops the alarm sound when user taps Dismiss on the notification -->
-        <receiver
-            android:name=".services.AlarmDismissReceiver"
-            android:exported="false" />
         
     </application>
 </manifest>

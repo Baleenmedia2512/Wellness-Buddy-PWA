@@ -9,7 +9,7 @@
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, FileBarChart, Footprints, Smartphone } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
@@ -51,7 +51,7 @@ const DiaryFeed = lazy(() =>
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null, onOpenReports = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -379,15 +379,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             )}
             {diaryEnabled && (
               <div className="flex items-center gap-1">
-                {onOpenReports && (
-                  <TouchFeedbackButton
-                    onClick={() => onOpenReports(selectedMember)}
-                    className="p-2 md:p-3 hover:bg-emerald-50 rounded-xl transition-colors"
-                    ariaLabel="Open reports"
-                  >
-                    <FileBarChart className="h-5 w-5 text-emerald-700" />
-                  </TouchFeedbackButton>
-                )}
                 <TouchFeedbackButton
                   onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
                   className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"

@@ -10,13 +10,11 @@
  * Per claude.md §2.3: PascalCase for React components
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TaskCard from './TaskCard';
 import CompletedTaskCard from './CompletedTaskCard';
-import ReminderActionBar from './ReminderActionBar';
 import { useTaskData } from '../hooks/useTaskData';
-import { cancelSnooze, cancelActivityReminder } from '../../../shared/services/reminderService';
 import { debugLog } from '../../../shared/utils/logger';
 
 const TaskNotificationPanel = ({ 
@@ -27,9 +25,7 @@ const TaskNotificationPanel = ({
 }) => {
   const { tasks, loading, refresh } = useTaskData(userId);
   const [activeTab, setActiveTab] = useState('todo');
-  const [softDismissedIds, setSoftDismissedIds] = useState(() => new Set());
   const highlightedRef = useRef(null);
-  const cancelledRemindersRef = useRef(new Set());
   
   // Filter tasks by status
   const pendingTasks   = tasks.filter((t) => String(t.status).toLowerCase() === 'pending');
@@ -72,26 +68,7 @@ const TaskNotificationPanel = ({
     highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [highlightedTaskId, pendingTasks.length, loading]);
 
-  /** Called by ReminderActionBar after snooze or don't-remind-today. */
-  const handleReminderAction = useCallback((action, meta) => {
-    debugLog('[TaskPanel] Reminder action', { action, meta });
-    refresh();
-  }, [refresh]);
 
-  // Cancel native alarms / snoozes when tasks move to Completed
-  useEffect(() => {
-    completedTasks.forEach((task) => {
-      const key = String(task.task_id);
-      if (cancelledRemindersRef.current.has(key)) return;
-      cancelledRemindersRef.current.add(key);
-      cancelActivityReminder(task.task_type);
-      cancelSnooze(task.task_id);
-    });
-  }, [completedTasks]);
-
-  const handleSoftDismiss = useCallback((taskId) => {
-    setSoftDismissedIds((prev) => new Set(prev).add(String(taskId)));
-  }, []);
   
   return (
     <motion.div
@@ -208,15 +185,6 @@ const TaskNotificationPanel = ({
                         onClick={() => handleTaskClick(task)}
                         isHighlighted={String(task.task_id) === String(highlightedTaskId)}
                       />
-                      {!task.reminder_dismissed_today && (
-                        <ReminderActionBar
-                          task={task}
-                          userId={userId}
-                          onActionComplete={handleReminderAction}
-                          onSoftDismiss={handleSoftDismiss}
-                          isSoftDismissed={softDismissedIds.has(String(task.task_id))}
-                        />
-                      )}
                     </div>
                   ))
                 )}

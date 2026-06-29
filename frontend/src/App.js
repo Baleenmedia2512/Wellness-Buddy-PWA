@@ -72,7 +72,6 @@ import {
 } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
-import { TestImageGuide } from "./features/admin";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login } from "./features/user";
 import { InactiveUserModal } from "./features/user";
@@ -112,11 +111,6 @@ import {
   locationAttendanceService,
   getClubLocationIfNearby,
 } from "./features/nutrition-centers";
-import {
-  checkExactAlarmPermission,
-  openExactAlarmSettings,
-  initReminders,
-} from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -193,7 +187,7 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
-import { initializeFCM, resetFCM } from './shared/services/fcmRegistrationService';
+
 // ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
@@ -207,24 +201,6 @@ const PersonalDisciplineScore = lazy(() =>
 
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
-const WellnessReportsPage = lazy(() =>
-  import("./shell/components/WellnessReportsPage"),
-);
-const AdminDashboard = lazy(() =>
-  import("./features/admin/components/AdminDashboard"),
-);
-const DisciplineReport = lazy(() =>
-  import("./features/leaderboard/components/DisciplineReport"),
-);
-const ActivityTimeReport = lazy(() =>
-  import("./features/activity/components/ActivityTimeReport"),
-);
-const ActivityReport = lazy(() =>
-  import("./features/activity/components/ActivityReport"),
-);
-const AttendanceReport = lazy(() =>
-  import("./features/team/components/AttendanceReport"),
-);
 const NutritionCentersMap = lazy(() =>
   import("./features/nutrition-centers/components/NutritionCentersMap"),
 );
@@ -234,9 +210,6 @@ const NutritionCenterRegistration = lazy(() =>
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
-const WellnessUniversityReport = lazy(() =>
-  import("./pages/WellnessUniversityReport"),
-);
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounsellingCards"),
 );
@@ -249,8 +222,6 @@ const MarathonRecognitionSplash = lazy(() =>
 import { useMarathon } from "./features/marathon";
 // const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
 // const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
-const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
-
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -261,7 +232,6 @@ function WellnessValleyApp() {
   const [loadingState, setLoadingState] = useState("analyzing"); // 'analyzing' | 'saving'
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
-  const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   // Deep-link (App Link) seed values for Dashboard � set when the app is
@@ -785,13 +755,6 @@ function WellnessValleyApp() {
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
 
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-
-  // Discipline report state (for coaches) - with localStorage persistence
-  const [showDisciplineReport, setShowDisciplineReport] = useState(false);
-  const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
-  const [showActivityReport, setShowActivityReport] = useState(false);
-
   // Step Counter state � FEATURE DISABLED
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
   const [showStepCounter, setShowStepCounter] = useState(false);
@@ -799,15 +762,6 @@ function WellnessValleyApp() {
   // Screen Time state � FEATURE DISABLED
   const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
-
-  // Reminders state
-  const [showReminders, setShowReminders] = useState(false);
-  const showRemindersPage = useCallback(() => {
-    setShowReminders(true);
-  }, []);
-
-  // Attendance report state (for coaches)
-  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
 
   // Marathon dashboard state (for coaches)
   const [showMarathon, setShowMarathon] = useState(false);
@@ -841,14 +795,6 @@ function WellnessValleyApp() {
   // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
   // silentlyCompleteDemoSetup function are imported at the top of this file.
   // -------------------------------------------------------------------------
-
-  // Wellness University state
-  const [showWellnessReport, setShowWellnessReport] = useState(false);
-
-  // Summary + trend reports (separate from Diary log UI)
-  const [showWellnessReports, setShowWellnessReports] = useState(false);
-  const wellnessReportsReturnToRef = useRef("main");
-  const [reportsInitialMember, setReportsInitialMember] = useState(null);
 
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
@@ -934,30 +880,6 @@ function WellnessValleyApp() {
   // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
   // correctly ignores its own camera-driven state transitions.
   // ─────────────────────────────────────────────────────────────────────────
-useEffect(() => {
-  if (!user?.id) return;
-  if (!Capacitor.isNativePlatform()) return;
-
-  initializeFCM(async (token) => {
-    debugLog('🔥 FCM token received, persisting to backend', { userId: user.id });
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/user/push-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, pushToken: token }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        debugLog('❌ Failed to persist FCM token', { status: res.status, message: body?.message });
-      } else {
-        debugLog('✅ FCM token persisted', { userId: user.id });
-      }
-    } catch (err) {
-      // Non-critical: token will be retried next time PushNotifications.register() fires
-      debugLog('❌ FCM token persistence error (non-critical)', { error: err?.message });
-    }
-  });
-}, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- apiBaseUrl is build-time constant
   // ── Marathon Recognition: fetch on startup when user is ready ─────────────
   useEffect(() => {
     if (!user?.id) return;
@@ -1033,8 +955,6 @@ useEffect(() => {
       !authLoading &&
       !showDashboard &&
       !showCompleteProfile &&
-      !showActivityTimeReport &&
-      !showDisciplineReport &&
       !showMarathon &&
       !showScreenTime;
   }, [
@@ -1042,8 +962,6 @@ useEffect(() => {
     authLoading,
     showDashboard,
     showCompleteProfile,
-    showActivityTimeReport,
-    showDisciplineReport,
     showMarathon,
     showScreenTime,
   ]);
@@ -1053,8 +971,7 @@ useEffect(() => {
 
   // localStorage key: stores the IST date on which the user last manually
   // closed the panel. The auto-open gate respects this for the rest of that
-  // calendar day, resetting at IST midnight. FCM taps and bell-icon clicks
-  // always open the panel regardless of this key.
+  // calendar day, resetting at IST midnight.
   const PANEL_CLOSED_DATE_KEY = 'wv.taskPanel.closedDate';
 
   /** Return today's IST date string 'YYYY-MM-DD'. */
@@ -1065,15 +982,13 @@ useEffect(() => {
   const wasTaskPanelClosedToday = () =>
     localStorage.getItem(PANEL_CLOSED_DATE_KEY) === istToday();
 
-  /** Pending tasks that still deserve auto-open (not "don't remind again today"). */
+  /** Pending tasks eligible for auto-open. */
   const pendingTasksNeedingPanel = (tasks) =>
     (tasks || []).filter(
-      (t) =>
-        String(t.status).toLowerCase() === 'pending' &&
-        !t.reminder_dismissed_today,
+      (t) => String(t.status).toLowerCase() === 'pending',
     );
 
-  const openTaskPanelFromUserOrReminder = useCallback((taskId = null) => {
+  const openTaskPanel = useCallback((taskId = null) => {
     startTransition(() => {
       if (taskId) setHighlightedTaskId(String(taskId));
       setShowTaskPanel(true);
@@ -1254,7 +1169,7 @@ useEffect(() => {
   //    manually closed the panel yet today (IST date gate).
   //  - App resume / camera transitions: do NOT auto-open. Removing this
   //    eliminates the loop: Panel → X → camera → photo → Panel → X → …
-  //  - Bell icon / FCM tap / native alarm tap: always open (no gate).
+  //  - Bell icon: always open (no gate).
   //  - User closes with X: gate stays set until IST midnight.
   const _taskPanelLaunchDoneRef = useRef(false);
   useEffect(() => {
@@ -1264,8 +1179,6 @@ useEffect(() => {
     const isHome =
       !showDashboard &&
       !showCompleteProfile &&
-      !showActivityTimeReport &&
-      !showDisciplineReport &&
       !showMarathon &&
       !showScreenTime;
 
@@ -1298,8 +1211,6 @@ useEffect(() => {
     authLoading,
     showDashboard,
     showCompleteProfile,
-    showActivityTimeReport,
-    showDisciplineReport,
     showMarathon,
     showScreenTime,
     showTaskPanel,
@@ -1448,49 +1359,6 @@ useEffect(() => {
       return;
     } // setup wizard
   }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
-
-  // On Android, request exact alarm permission once per login session.
-  // Deferred until AFTER permissionsReady AND the camera/analysis flow has had
-  // time to settle. Guards:
-  //   - 12 s delay  →  never fires over an open camera or first food analysis
-  //   - session flag →  skipped entirely if the PermissionPrimerModal ran this
-  //                     session (user just granted 3 permissions; a 4th dialog
-  //                     would kill the experience)
-  const _hasFiredAlarmPermCheckRef = useRef(false);
-  useEffect(() => {
-    if (
-      !user ||
-      !Capacitor.isNativePlatform() ||
-      _hasFiredAlarmPermCheckRef.current
-    )
-      return;
-    if (!permissionsReady) return;
-    // Skip if primer ran this session — user has already been through setup.
-    if (sessionStorage.getItem("wv.primerDoneThisSession") === "1") return;
-    _hasFiredAlarmPermCheckRef.current = true;
-    const t = setTimeout(async () => {
-      try {
-        const { canScheduleExact } = await checkExactAlarmPermission();
-        if (!canScheduleExact) {
-          setAlertModal({
-            isOpen: true,
-            title: "⏰ Allow Exact Reminders",
-            message:
-              "To receive reminders exactly on time, tap 'Open Settings', find Wellness Valley under Alarms & Reminders, and turn it on.",
-            type: "warning",
-            confirmText: "Open Settings",
-            cancelText: "Later",
-            onConfirm: async () => {
-              try {
-                await openExactAlarmSettings();
-              } catch (_) {}
-            },
-          });
-        }
-      } catch (_) {}
-    }, 12000); // wait for camera / first analysis to fully settle
-    return () => clearTimeout(t);
-  }, [user, permissionsReady]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
@@ -1897,14 +1765,6 @@ useEffect(() => {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showActivityTimeReport) {
-        showMainPage();
-        return true;
-      }
-      if (showDisciplineReport) {
-        showMainPage();
-        return true;
-      }
       if (showMarathon) {
         showMainPage();
         return true;
@@ -1930,8 +1790,6 @@ useEffect(() => {
       goBack,
       showToast,
       !showDashboard &&
-        !showActivityTimeReport &&
-        !showDisciplineReport &&
         !showMarathon &&
         !showStepCounter &&
         !showScreenTime,
@@ -1940,8 +1798,6 @@ useEffect(() => {
   }, [
     ionRouter,
     showDashboard,
-    showActivityTimeReport,
-    showDisciplineReport,
     showMarathon,
     showStepCounter,
     showScreenTime,
@@ -2133,31 +1989,8 @@ useEffect(() => {
     ],
   );
 
-  const openWellnessReportsPage = useCallback(
-    (returnTo = "main", member = null) => {
-      wellnessReportsReturnToRef.current = returnTo;
-      setReportsInitialMember(member);
-      startTransition(() => {
-        if (returnTo === "dashboard") setShowDashboard(false);
-        setShowWellnessReports(true);
-      });
-    },
-    [],
-  );
-
-  const closeWellnessReportsPage = useCallback(() => {
-    const returnTo = wellnessReportsReturnToRef.current;
-    setShowWellnessReports(false);
-    if (returnTo === "dashboard") {
-      startTransition(() => setShowDashboard(true));
-    }
-  }, []);
-
   const showMainPage = () => {
     setShowDashboard(false);
-    setShowWellnessReports(false);
-    setShowActivityTimeReport(false);
-    setShowDisciplineReport(false);
     setShowMarathon(false);
     // setShowStepCounter(false); // feature disabled
     setShowScreenTime(false);
@@ -2452,48 +2285,6 @@ useEffect(() => {
   //   };
   //   startStepTrackingIfPermitted();
   // }, [user, isUserActive]);
-
-  // -- FCM notification tap → open TaskNotificationPanel ------------------
-  // Fires when user taps a push notification while app is in foreground,
-  // background, or cold-start. Reads data.action to decide what to open.
-  // Only registered on native (Capacitor) — no-op on web.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
-
-    let handle = null;
-    let cancelled = false;
-
-    const register = async () => {
-      try {
-        const { PushNotifications } = await import('@capacitor/push-notifications');
-        handle = await PushNotifications.addListener(
-          'pushNotificationActionPerformed',
-          (event) => {
-            const data = event?.notification?.data || {};
-            debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
-
-            if (data.action === 'openTaskPanel') {
-              openTaskPanelFromUserOrReminder(data.taskId);
-            }
-          },
-        );
-        if (cancelled) {
-          handle?.remove?.();
-          handle = null;
-        }
-      } catch (err) {
-        debugLog('[App] FCM tap listener registration failed', { err: err?.message });
-      }
-    };
-
-    register();
-
-    return () => {
-      cancelled = true;
-      try { handle?.remove?.(); } catch { /* ignore */ }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
-  }, []);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -2824,17 +2615,6 @@ useEffect(() => {
           // and the camera opening for Google/Firebase returning users.
           setUser(user);
           setAuthLoading(false);
-
-          // Initialise personalised native reminders with the user's learned
-          // average times. Fire-and-forget — never blocks the login flow.
-          if (user.id && Capacitor.isNativePlatform()) {
-            initReminders(user.id).catch((err) => {
-              debugLog(
-                "[App] initReminders failed (non-critical):",
-                err?.message,
-              );
-            });
-          }
 
           // Background validation — fire and forget. All inner awaits only
           // mutate React state (setShow*, setIsUserActive, etc.) — safe to
@@ -4392,54 +4172,6 @@ useEffect(() => {
   useEffect(() => {
     openCameraForTaskRef.current = openCameraForTask;
   }, [openCameraForTask]);
-
-  /** Native local-notification / alarm → Task Notification Panel deep link */
-  const handleNativeTaskReminderAction = useCallback((data) => {
-    if (!data || data.action !== 'openTaskPanel') return;
-    debugLog('[App] Native task reminder action', data);
-
-    startTransition(() => {
-      if (data.taskId) setHighlightedTaskId(String(data.taskId));
-      setShowTaskPanel(true);
-    });
-
-    if (data.uploadNow && data.taskType) {
-      setTimeout(() => {
-        openCameraForTaskRef.current?.({
-          task_type: data.taskType,
-          task_id: data.taskId,
-        });
-      }, 400);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
-
-    let handle = null;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { registerTaskReminderActionListener, consumePendingTaskNotification } =
-          await import('./shared/services/reminderService');
-
-        handle = await registerTaskReminderActionListener((data) => {
-          if (!cancelled) handleNativeTaskReminderAction(data);
-        });
-
-        const pending = await consumePendingTaskNotification();
-        if (!cancelled && pending) handleNativeTaskReminderAction(pending);
-      } catch (err) {
-        debugLog('[App] Native task reminder bridge failed', err?.message);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      try { handle?.remove?.(); } catch { /* ignore */ }
-    };
-  }, [handleNativeTaskReminderAction]);
 
   /**
    * Handle manual food entry from modal (used when AI is unavailable)
@@ -7343,10 +7075,6 @@ useEffect(() => {
       setUserContextLoading(false);
       debugLog("🗑️ [Sign Out] User context cache and state cleared");
 
-      // Clear FCM callback so stale token saves cannot target this user's
-      // account if a registration event fires before the next login.
-      resetFCM();
-
       // Clear userId session cache
       clearUserIdCache();
       Session.clearDbUserId();
@@ -7556,12 +7284,6 @@ useEffect(() => {
 
   // useDeferredValue for lazy pages � must be declared BEFORE any early returns (Rules of Hooks)
   const deferredShowDashboard = useDeferredValue(showDashboard);
-  const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
-  const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
-  const deferredShowActivityReport = useDeferredValue(showActivityReport);
-  const deferredShowActivityTimeReport = useDeferredValue(
-    showActivityTimeReport,
-  );
   const deferredShowMarathon = useDeferredValue(showMarathon);
   const deferredShowWellnessCounselling = useDeferredValue(
     showWellnessCounselling,
@@ -8033,24 +7755,6 @@ useEffect(() => {
     );
   }
 
-  // Summary + trend reports (nutrition / weight / education)
-  if (deferredShowWellnessReports) {
-    return (
-      <Suspense fallback={null}>
-        <WellnessReportsPage
-          user={user}
-          userRole={userRole}
-          onBack={closeWellnessReportsPage}
-          apiBaseUrl={apiBaseUrl}
-          bmrUpdateKey={bmrUpdateKey}
-          educationRefreshKey={educationRefreshKey}
-          watchBurnedCalories={watchBurnedCalories}
-          initialSelectedMember={reportsInitialMember}
-        />
-      </Suspense>
-    );
-  }
-
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
@@ -8067,9 +7771,6 @@ useEffect(() => {
           initialSelectedMember={dashboardInitialSelectedMember}
           initialDate={dashboardInitialDate}
           initialMealId={dashboardInitialMealId}
-          onOpenReports={(member) =>
-            openWellnessReportsPage("dashboard", member)
-          }
         />
       </Suspense>
     );
@@ -8092,69 +7793,6 @@ useEffect(() => {
   //     </Suspense>
   //   );
   // }
-
-  // Reminders page
-  if (showReminders) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <ReminderSettingsPage
-          onBack={() => setShowReminders(false)}
-          lastWeight={lastWeight}
-        />
-      </Suspense>
-    );
-  }
-
-  // Discipline Report for all users
-  if (deferredShowDisciplineReport) {
-    return (
-      <Suspense fallback={null}>
-        <DisciplineReport
-          user={user}
-          onBack={() => {
-            setShowDisciplineReport(false);
-            Session.setCurrentPage("main");
-          }}
-          apiBaseUrl={apiBaseUrl}
-          userRole={userRole}
-        />
-      </Suspense>
-    );
-  }
-
-  // Activity Report (Education Attendance) — full-page module
-  if (deferredShowActivityReport) {
-    return (
-      <Suspense fallback={null}>
-        <ActivityReport
-          user={user}
-          userRole={userRole}
-          apiBaseUrl={apiBaseUrl}
-          onBack={() => {
-            setShowActivityReport(false);
-            Session.setCurrentPage("main");
-          }}
-        />
-      </Suspense>
-    );
-  }
-
-  // Activity Time Report
-  if (deferredShowActivityTimeReport) {
-    return (
-      <Suspense fallback={null}>
-        <ActivityTimeReport
-          user={user}
-          onBack={() => {
-            setShowActivityTimeReport(false);
-            Session.setCurrentPage("main");
-          }}
-          apiBaseUrl={apiBaseUrl}
-          userRole={userRole}
-        />
-      </Suspense>
-    );
-  }
 
   // Wellness Counselling - Full page view
   if (deferredShowWellnessCounselling) {
@@ -8460,48 +8098,13 @@ useEffect(() => {
           user={user}
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
-          onShowWellnessReports={() => openWellnessReportsPage("main")}
           // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
           // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
-          onShowReminders={showRemindersPage}
-          onShowAdminDashboard={
-            userRole === "admin" || userRole === "developer"
-              ? () => startTransition(() => setShowAdminDashboard(true))
-              : null
-          }
-          onShowDisciplineReport={() => {
-            startTransition(() => setShowDisciplineReport(true));
-            Session.setCurrentPage("discipline-report");
-          }}
-          onShowActivityTimeReport={() => {
-            startTransition(() => setShowActivityTimeReport(true));
-            Session.setCurrentPage("activity-time-report");
-          }}
-          onShowActivityReport={
-            userRole === "admin" ||
-            userRole === "coach" ||
-            userRole === "developer"
-              ? () => {
-                  startTransition(() => setShowActivityReport(true));
-                  Session.setCurrentPage("activity-report");
-                }
-              : null
-          }
           onShowWellnessEnrollment={() =>
-            startTransition(() => setShowWellnessReport(true))
-          }
-          onShowWellnessReport={
-            userRole === "admin" ||
-            userRole === "coach" ||
-            userRole === "developer"
-              ? () => startTransition(() => setShowWellnessReport(true))
-              : null
+            startTransition(() => setShowWellnessCounselling(true))
           }
           onShowWellnessCounselling={() =>
             startTransition(() => setShowWellnessCounselling(true))
-          }
-          onShowAttendanceReport={() =>
-            startTransition(() => setShowAttendanceReport(true))
           }
           onShowMarathon={
             userRole === "coach" ||
@@ -9459,11 +9062,6 @@ useEffect(() => {
               </div>
             )}
 
-            <TestImageGuide
-              isVisible={showTestGuide}
-              onClose={() => setShowTestGuide(false)}
-            />
-
             {/* Spacer so page content isn't hidden behind the floating buttons */}
             <div className="min-h-[88px]" />
 
@@ -9474,7 +9072,6 @@ useEffect(() => {
               !profileChecking &&
               !showSetupWizard &&
               !showDashboard &&
-              !showAdminDashboard &&
               !showRegisterCenter &&
               !showWellnessCounselling &&
               !showValidateOTP &&
@@ -9960,26 +9557,6 @@ useEffect(() => {
       )}
       ------------------------------------------------------------------- */}
 
-        {/* Admin Dashboard */}
-        {showAdminDashboard && (
-          <Suspense fallback={null}>
-            <AdminDashboard
-              onClose={() => setShowAdminDashboard(false)}
-              user={user}
-            />
-          </Suspense>
-        )}
-
-        {/* Attendance Report */}
-        {showAttendanceReport && (
-          <Suspense fallback={null}>
-            <AttendanceReport
-              user={user}
-              onBack={() => setShowAttendanceReport(false)}
-            />
-          </Suspense>
-        )}
-
         {/* Nutrition Centers Map */}
         {showNutritionCentersMap && (
           <Suspense
@@ -10091,17 +9668,6 @@ useEffect(() => {
                 // Setup complete, user can now access dashboard
               }}
               onLogout={handleSignOut}
-            />
-          </Suspense>
-        )}
-
-        {/* Wellness University Report */}
-        {showWellnessReport && (
-          <Suspense fallback={<LoadingSpinner message="Loading report..." />}>
-            <WellnessUniversityReport
-              onClose={() => setShowWellnessReport(false)}
-              user={user}
-              userRole={userRole}
             />
           </Suspense>
         )}
@@ -10384,7 +9950,7 @@ useEffect(() => {
         {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
         {user && !showTaskPanel && (
           <button
-            onClick={() => openTaskPanelFromUserOrReminder()}
+            onClick={() => openTaskPanel()}
             style={{
               position: 'fixed',
               bottom: 24,
@@ -10410,7 +9976,7 @@ useEffect(() => {
           </button>
         )}
 
-        {/* Task Notification Panel — opens from bell, FCM tap, or home-screen resume */}
+        {/* Task Notification Panel — opens from bell icon or home-screen resume */}
         {showTaskPanel && user && (
           <TaskNotificationPanel
             userId={user.id || user.UserId || Session.getDbUserId()}

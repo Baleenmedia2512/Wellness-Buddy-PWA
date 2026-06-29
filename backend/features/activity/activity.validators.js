@@ -47,31 +47,4 @@ export function validateWatchCalories(query) {
   return { userId: query.userId, targetDate };
 }
 
-export function validateTimeReport(query) {
-  if (!query?.userId) throw new ValidationError(400, 'userId is required');
-  const userIdInt = parseInt(query.userId, 10);
-  if (Number.isNaN(userIdInt)) throw new ValidationError(400, 'userId must be a valid number');
-  if (!query.dateRange) throw new ValidationError(400, 'dateRange is required');
-  const VALID_RANGES = new Set(['today', 'yesterday', 'last7days', 'last30days', 'custom']);
-  if (!VALID_RANGES.has(query.dateRange)) {
-    throw new ValidationError(400, 'dateRange must be one of: today, yesterday, last7days, last30days, custom');
-  }
-  if (query.dateRange === 'custom' && (!query.startDate || !query.endDate)) {
-    throw new ValidationError(400, 'startDate and endDate are required when dateRange is "custom"');
-  }
-  const role = String(query.role || 'member').toLowerCase();
-  const VALID_ROLES = new Set(['member', 'coach', 'admin']);
-  if (!VALID_ROLES.has(role)) {
-    throw new ValidationError(400, 'role must be one of: member, coach, admin');
-  }
-  const tzOffset = query.userTimezoneOffset !== undefined
-    ? parseInt(query.userTimezoneOffset, 10) : 0;
-  return {
-    userId: userIdInt, role,
-    dateRange: query.dateRange,
-    startDate: query.startDate, endDate: query.endDate,
-    tzOffset,
-  };
-}
-
 export { toDateKey };

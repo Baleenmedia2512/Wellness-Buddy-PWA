@@ -15,7 +15,6 @@ import {
   fetchWaterIntake,
   logWaterIntake,
 } from '../services/waterStorageService';
-import { updateWaterIntakeCache } from '../../../shared/services/reminderService';
 
 const SUCCESS_TOAST_MS = 3000;
 
@@ -82,12 +81,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
           userEmail: user?.email || getCachedUserEmail(),
         });
         setSaveSuccess({ amount: ml });
-        const freshData = await refresh();
-        // Push updated totals to the native SharedPreferences cache so
-        // water alarm notifications can show a smart remaining-balance message.
-        if (freshData) {
-          updateWaterIntakeCache(freshData.totalMl ?? 0, freshData.requiredMl ?? 2500);
-        }
+        await refresh();
       } catch (err) {
         console.error('[useWaterTracker] logWater error:', err);
         setError(err.message || 'Failed to log water. Please try again.');

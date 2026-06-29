@@ -1,26 +1,18 @@
 /**
- * /api/cron/tasks — Vercel Cron handler for task scheduling and follow-up reminders.
+ * /api/cron/tasks — Vercel Cron handler for task scheduling.
  *
  * Runs every minute (schedule: "* * * * *").
  * Auth: Bearer <CRON_SECRET>
  *
  * Responsibilities:
- *  1. runDailyTaskResetIfMidnight()              — expire yesterday's pending tasks at IST midnight
- *  2. checkAndCreateTasksForCurrentTime()        — create tasks when windows open (no push)
- *  3. checkAndSendWindowStartReminders()         — window-start FCM when activity window opens
- *  4. checkAndSendPersonalisedReminders()        — reminder 1 at effective average/default time
- *  5. checkAndSendFollowUpReminders()            — reminder 2 at effective time + 30 minutes
- *  6. checkAndSendMissedInitialNotifications()   — catch-up for missed window-start pushes
+ *  1. runDailyTaskResetIfMidnight()   — expire yesterday's pending tasks at IST midnight
+ *  2. checkAndCreateTasksForCurrentTime() — create tasks when windows open
  *
  * Per claude.md §2.8: idempotent, logs with correlation ID, fails loudly.
  */
 
 import {
   checkAndCreateTasksForCurrentTime,
-  checkAndSendFollowUpReminders,
-  checkAndSendPersonalisedReminders,
-  checkAndSendWindowStartReminders,
-  checkAndSendMissedInitialNotifications,
   runDailyTaskResetIfMidnight,
 } from '../../../features/tasks/domain/task-scheduler.js';
 import logger from '../../../shared/lib/logger.js';
@@ -56,25 +48,10 @@ export default async function handler(req, res) {
 
   try {
     const dailyResetStats = await runDailyTaskResetIfMidnight();
-
-    const [createStats, windowStartStats, followUpStats, personalStats, catchUpStats] = await Promise.all([
-      checkAndCreateTasksForCurrentTime(),
-      checkAndSendWindowStartReminders(),
-      checkAndSendFollowUpReminders(),
-      checkAndSendPersonalisedReminders(),
-      checkAndSendMissedInitialNotifications(),
-    ]);
+    const createStats = await checkAndCreateTasksForCurrentTime();
 
     const durationMs = Date.now() - startTime;
-    const summary = {
-      dailyResetStats,
-      createStats,
-      windowStartStats,
-      followUpStats,
-      personalStats,
-      catchUpStats,
-      transport: 'supabase-rest',
-    };
+    const summary = { dailyResetStats, createStats };
 
     logger.info('Cron job completed: tasks', { correlationId, durationMs, summary });
 

@@ -181,7 +181,6 @@ export async function purgeUserData(userId, normalizedEmail) {
     supabase.from('weight_records_table').delete().eq('UserId', userId),
     supabase.from('education_logs_table').delete().eq('UserId', userId),
     supabase.from('daily_step_activity').delete().eq('UserId', userId),
-    supabase.from('ai_token_usage_table').delete().eq('UserId', userId),
     supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
     supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
     supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),

@@ -7,14 +7,13 @@
  * Idempotent — safe to call many times (ON CONFLICT DO NOTHING in createTask).
  *
  * Response:
- *   { ok: true, data: { createdCount, notificationsSent, notifyEligible, hasPushToken } }
+ *   { ok: true, data: { createdCount, reconciledCount } }
  *
  * Per claude.md §2.6: validate input, return { ok, data/error }, explicit status codes,
  *   log with { requestId, userId, route, durationMs }.
  */
 
-import { createMissingTasksForToday, checkAndSendMissedInitialNotifications } from '../../../features/tasks/domain/task-scheduler.js';
-import { userHasPushToken } from '../../../features/tasks/data/task-repo.js';
+import { createMissingTasksForToday } from '../../../features/tasks/domain/task-scheduler.js';
 import { reconcilePendingTasksForUser } from '../../../features/tasks/api/record-completion-learning.handler.js';
 import logger from '../../../shared/lib/logger.js';
 import { getUserIdFromSession } from '../../../shared/lib/auth-helpers.js';
@@ -48,8 +47,6 @@ export default async function handler(req, res) {
 
     const createdCount = await createMissingTasksForToday(userId);
     const reconciledCount = await reconcilePendingTasksForUser(userId);
-    const notifyStats = await checkAndSendMissedInitialNotifications(userId);
-    const hasPushToken = await userHasPushToken(userId);
 
     const durationMs = Date.now() - startTime;
     logger.info('Task catch-up completed', {
@@ -63,13 +60,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      data: {
-        createdCount,
-        reconciledCount,
-        notificationsSent: notifyStats.sent,
-        notifyEligible: notifyStats.eligible,
-        hasPushToken,
-      },
+      data: { createdCount, reconciledCount },
     });
   } catch (error) {
     const durationMs = Date.now() - startTime;
