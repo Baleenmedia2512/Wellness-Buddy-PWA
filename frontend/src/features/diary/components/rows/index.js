@@ -119,6 +119,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
     }
   };
 
+  return (
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
