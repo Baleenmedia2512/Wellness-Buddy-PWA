@@ -151,17 +151,17 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
       <div
         ref={shareCardRef}
         aria-hidden="true"
-        style={{ position: 'fixed', left: '-9999px', top: 0, width: 375, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: 500, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
       >
         {/* Header */}
-        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '14px 16px 10px' }}>
-          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <p style={{ fontSize: 17, fontWeight: 700, color: '#fff', margin: '3px 0 0', lineHeight: 1.2 }}>{mealName}</p>
-          {meal && <span style={{ display: 'inline-block', marginTop: 4, fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>{meal.label}</span>}
+        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
+          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{mealName}</p>
+          {meal && <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>{meal.label}</span>}
         </div>
-        {/* Food photo */}
+        {/* Food photo — full natural aspect ratio, no crop */}
         {imgSrc && (
-          <img src={imgSrc} alt="" style={{ width: '100%', height: 180, objectFit: 'cover', display: 'block' }} />
+          <img src={imgSrc} alt="" style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }} />
         )}
         {/* Macro grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>

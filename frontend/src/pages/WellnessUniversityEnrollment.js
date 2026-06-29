@@ -193,7 +193,6 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             await new Promise((resolve) => setTimeout(resolve, 500));
             // Refresh enrollment data with fresh fetch
             await checkExistingEnrollment();
-            setIsEditMode(false);
             setSuccess(false);
           } else {
             onClose();
@@ -221,135 +220,6 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
     );
   }
 
-  // Show existing enrollment (view or edit mode)
-  if (existingEnrollment && !isEditMode) {
-    const _rawPrograms = JSON.parse(existingEnrollment.EnrolledPrograms || "[]");
-    const enrolledPrograms = Array.isArray(_rawPrograms) ? _rawPrograms : Object.keys(_rawPrograms);
-    const enrollmentDate = new Date(
-      existingEnrollment.EnrollmentDate,
-    ).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-4"
-        >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                  Your Enrollment
-                </h2>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1">Enrolled on</p>
-              <p className="text-base sm:text-lg font-semibold text-gray-800">
-                {enrollmentDate}
-              </p>
-            </div>
-
-            {coachName && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1">Invited By</p>
-                <p className="text-base sm:text-lg font-semibold text-gray-800">
-                  {coachName}
-                </p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3 font-semibold">
-                Your Programs:
-              </p>
-              <div className="space-y-2">
-                {enrolledPrograms.map((program, index) => {
-                  const programData = PROGRAMS.find((p) => p.name === program);
-                  const iconInfo = programData ? PROGRAM_ICON_MAP[programData.id] : null;
-                  const IconComp = iconInfo?.Icon;
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 sm:gap-3 bg-gradient-to-r from-green-50 to-teal-50 p-2.5 sm:p-3 rounded-lg border border-green-200"
-                    >
-                      {isIOS ? (
-                        IconComp ? (
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconInfo.bg}`}>
-                            <IconComp className={`w-5 h-5 ${iconInfo.color}`} />
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-100">
-                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        )
-                      ) : (
-                        <span className="text-xl sm:text-2xl flex-shrink-0">
-                          {programData?.icon || "✓"}
-                        </span>
-                      )}
-                      <span className="text-sm sm:text-base text-gray-800 font-medium break-words">
-                        {program}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
-            <div className="flex gap-2 sm:gap-3">
-              <button
-                onClick={onClose}
-                className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => setIsEditMode(true)}
-                className="flex-1 bg-gradient-to-r from-green-400 to-green-400 text-white py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:shadow-lg transition-all"
-              >
-                Edit
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
   // Show enrollment form (new enrollment or edit mode)
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
@@ -363,22 +233,16 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           <div className="flex justify-between items-center">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg sm:text-2xl font-bold text-white flex items-center gap-2">
-                🎓 {isEditMode ? "Edit Enrollment" : "Enrollment"}
+                🎓 {existingEnrollment ? "Edit Enrollment" : "Enrollment"}
               </h2>
               <p className="text-white text-xs sm:text-sm mt-1">
-                {isEditMode
+                {existingEnrollment
                   ? "Update your selected programs"
                   : "Select programs you're interested in"}
               </p>
             </div>
             <button
-              onClick={() => {
-                if (isEditMode) {
-                  setIsEditMode(false);
-                } else {
-                  onClose();
-                }
-              }}
+              onClick={onClose}
               className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
             >
               <svg
@@ -515,10 +379,10 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             >
               <div className="text-4xl mb-2">🎉</div>
               <p className="text-green-800 font-semibold">
-                {isEditMode ? "Enrollment Updated!" : "Enrollment Successful!"}
+                {existingEnrollment ? "Enrollment Updated!" : "Enrollment Successful!"}
               </p>
               <p className="text-green-700 text-sm mt-1">
-                {isEditMode
+                {existingEnrollment
                   ? "Your programs have been updated."
                   : "Your coach will be notified."}
               </p>
@@ -530,13 +394,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
           <div className="flex gap-2 sm:gap-3">
             <button
-              onClick={() => {
-                if (isEditMode) {
-                  setIsEditMode(false);
-                } else {
-                  onClose();
-                }
-              }}
+              onClick={onClose}
               disabled={loading}
               className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
             >
@@ -550,9 +408,9 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  {isEditMode ? "Updating..." : "Submitting..."}
+                  {existingEnrollment ? "Updating..." : "Submitting..."}
                 </span>
-              ) : isEditMode ? (
+              ) : existingEnrollment ? (
                 `✓ Update (${selectedPrograms.length} selected)`
               ) : (
                 `Enroll (${selectedPrograms.length} selected)`
