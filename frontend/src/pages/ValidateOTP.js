@@ -1,12 +1,20 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
+import useOtpInput from '../features/user/hooks/useOtpInput';
+import useWebOtp from '../features/user/hooks/useWebOtp';
+import storage from '../shared/lib/storage';
+import { debugLog } from '../shared/utils/logger';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
 const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false }) => {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
+  const {
+    otp, refs, value: otpValue, isComplete,
+    handleChange, handleKeyDown: otpKeyDown, handlePaste: otpPaste, fillAll, reset: resetOtp,
+  } = useOtpInput(6);
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
@@ -14,19 +22,23 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
   const [requestInfo, setRequestInfo] = useState(null);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
 
-  const inputRefs = useRef([]);
-
   // Component mount/unmount logging
   useEffect(() => {
-    console.log("🟦 [ValidateOTP] Component MOUNTED", { isReactivationFlow });
+    debugLog("🟦 [ValidateOTP] Component MOUNTED", { isReactivationFlow });
     const mountTime = Date.now();
-    
     return () => {
-      const unmountTime = Date.now();
-      const duration = ((unmountTime - mountTime) / 1000).toFixed(2);
-      console.log(`🟦 [ValidateOTP] Component UNMOUNTED (was visible for ${duration}s)`);
+      const duration = ((Date.now() - mountTime) / 1000).toFixed(2);
+      debugLog(`🟦 [ValidateOTP] Component UNMOUNTED (was visible for ${duration}s)`);
     };
   }, [isReactivationFlow]);
+
+  // Auto-focus first cell on mount so the keyboard appears immediately and iOS
+  // QuickType can surface the OTP suggestion without an extra tap.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const t = setTimeout(() => refs.current[0]?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []);
 
   // Fetch request info on load
   useEffect(() => {
@@ -34,137 +46,81 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
     
     // For reactivation flow, ensure OTP is completely clear
     if (isReactivationFlow) {
-      console.log("🟦 [ValidateOTP] Reactivation flow - clearing OTP");
-      setOtp(['', '', '', '', '', '']);
+      debugLog("🟦 [ValidateOTP] Reactivation flow - clearing OTP");
+      resetOtp();
       setError('');
       setSuccess('');
     }
     
     fetchRequestInfo();
-  }, [isReactivationFlow]);
+  }, [isReactivationFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ΓöÇΓöÇ Demo account: auto-fill 000000 and submit - DISABLED for reactivation flow ΓöÇΓöÇ
+  // Demo account: auto-fill 000000 and submit — DISABLED for reactivation flow.
   useEffect(() => {
-    // Skip auto-fill for reactivation flow
-    if (isReactivationFlow) {
-      console.log("🟦 [ValidateOTP] Skipping demo auto-fill for reactivation flow");
-      return;
-    }
-    
-    const userEmail = localStorage.getItem('userEmail') || '';
+    if (isReactivationFlow) return;
+    const userEmail = storage.get('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
-
-    // Small delay so the screen renders first
     const timer = setTimeout(() => {
-      console.log("🟦 [ValidateOTP] Demo account - auto-filling OTP");
-      setOtp(['0', '0', '0', '0', '0', '0']);
+      debugLog("\ud83d\udfe6 [ValidateOTP] Demo account - auto-filling OTP");
+      const filled = fillAll('000000');
+      if (filled) validateOtp(filled);
     }, 800);
-
     return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReactivationFlow]);
+
+  // WebOTP API: auto-reads OTP from SMS on Android Chrome / Capacitor WebView.
+  // iOS uses autoComplete="one-time-code" on the first input instead.
+  const handleWebOtpReceived = useCallback((code) => {
+    if (isReactivationFlow) return;
+    const filled = fillAll(code);
+    if (filled) validateOtp(filled);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillAll, isReactivationFlow]);
+  useWebOtp(handleWebOtpReceived, !validating && !success);
   // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const fetchRequestInfo = async () => {
     try {
-      const userEmail = localStorage.getItem('userEmail');
+      const userEmail = storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
         return;
       }
 
-      console.log("🟦 [ValidateOTP] Fetching user status from API...");
+      debugLog("\ud83d\udfe6 [ValidateOTP] Fetching user status from API...");
       const response = await axios.get(
         `${API_BASE}/api/user/status?email=${encodeURIComponent(userEmail)}`
       );
 
-      console.log("🟦 [ValidateOTP] API Response:", response.data);
+      debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", response.data);
 
       if (response.data.pendingRequest) {
         const request = response.data.pendingRequest;
-        console.log("🟦 [ValidateOTP] Request info loaded:", request);
+        debugLog("\ud83d\udfe6 [ValidateOTP] Request info loaded:", request);
         setRequestInfo(request);
       } else if (isReactivationFlow) {
-        // In reactivation flow, the API may not return a pendingRequest
-        // because the request type is different (reactivation vs initial setup).
-        // Do NOT close the modal — just show it without requestInfo.
-        // The coach will provide the OTP directly.
-        console.log("🟦 [ValidateOTP] Reactivation flow — no pendingRequest returned, staying open");
+        debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 no pendingRequest returned, staying open");
       } else {
-        console.log("🟦 [ValidateOTP] No pending request found, closing modal");
+        debugLog("\ud83d\udfe6 [ValidateOTP] No pending request found, closing modal");
         if (onClose) onClose();
       }
     } catch (err) {
-      console.error("🔴 [ValidateOTP] Error fetching request info:", err);
+      console.error("\ud83d\udd34 [ValidateOTP] Error fetching request info:", err);
       if (isReactivationFlow) {
-        // Don't close on error in reactivation flow
-        console.log("🟦 [ValidateOTP] Reactivation flow — ignoring fetch error, staying open");
+        debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 ignoring fetch error, staying open");
       }
     }
   };
 
-  // Handle OTP input
-  const handleOtpChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return;
+  // Validate OTP — accepts an explicit code so WebOTP / paste / fillAll callers
+  // can pass the value synchronously without relying on async state updates.
+  const validateOtp = async (otpCodeArg) => {
+    const otpCode = typeof otpCodeArg === 'string' ? otpCodeArg : otpValue;
+    debugLog("\ud83d\udfe6 [ValidateOTP] Validating OTP (length):", otpCode.length);
 
-    const newOtp = [...otp];
-    newOtp[index] = value.slice(-1);
-    setOtp(newOtp);
-
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  // Handle backspace
-  const handleKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  // Inline keypad handlers
-  const handleKeypadDigit = (digit) => {
-    const firstEmpty = otp.findIndex((d) => d === '');
-    if (firstEmpty === -1) return;
-    const newOtp = [...otp];
-    newOtp[firstEmpty] = digit;
-    setOtp(newOtp);
-  };
-
-  const handleKeypadBackspace = () => {
-    const newOtp = [...otp];
-    for (let i = newOtp.length - 1; i >= 0; i--) {
-      if (newOtp[i] !== '') {
-        newOtp[i] = '';
-        setOtp(newOtp);
-        return;
-      }
-    }
-  };
-
-  // Handle paste
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    const newOtp = [...otp];
-    
-    for (let i = 0; i < pastedData.length; i++) {
-      newOtp[i] = pastedData[i];
-    }
-    
-    setOtp(newOtp);
-    const nextIndex = Math.min(pastedData.length, 5);
-    inputRefs.current[nextIndex]?.focus();
-  };
-
-  // Validate OTP
-  const validateOtp = async () => {
-    const otpCode = otp.join('');
-    console.log("🟦 [ValidateOTP] Validating OTP:", otpCode);
-    
     if (otpCode.length !== 6) {
       setError('Please enter all 6 digits');
-      console.log("🔴 [ValidateOTP] Validation failed: incomplete OTP");
       return;
     }
 
@@ -172,99 +128,79 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
     setError('');
 
     try {
-      const userEmail = localStorage.getItem('userEmail');
+      const userEmail = storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
-        console.log("🔴 [ValidateOTP] Validation failed: no user email");
         return;
       }
 
-      // Demo bypass for App Review - works for any user with OTP 000000
+      // Demo bypass for App Review — works for any user with OTP 000000.
       const DEMO_OTP = '000000';
       if (otpCode === DEMO_OTP) {
-        console.log("🟦 [ValidateOTP] Demo OTP used, auto-verifying");
+        debugLog("\ud83d\udfe6 [ValidateOTP] Demo OTP used, auto-verifying");
         setSuccess('Verified!');
-        localStorage.setItem('coachOtpVerified', 'true');
+        storage.set('coachOtpVerified', 'true');
         setTimeout(() => {
-          console.log("🟦 [ValidateOTP] Demo verification complete, calling onSuccess/onClose");
           if (onSuccess) onSuccess();
           else if (onClose) onClose();
         }, 1500);
         return;
       }
 
-      console.log("🟦 [ValidateOTP] Sending validation request to API...");
+      debugLog("\ud83d\udfe6 [ValidateOTP] Sending validation request to API...");
       await axios.post(
         `${API_BASE}/api/upline/validate-otp`,
         { otp: otpCode, email: userEmail }
       );
 
-      console.log("✅ [ValidateOTP] OTP verified successfully!");
+      debugLog("\u2705 [ValidateOTP] OTP verified successfully!");
       setSuccess('Verified!');
-      localStorage.setItem('coachOtpVerified', 'true');
-      
+      storage.set('coachOtpVerified', 'true');
+
       setTimeout(() => {
-        console.log("🟦 [ValidateOTP] Verification complete, calling onSuccess/onClose");
-        if (onSuccess) {
-          onSuccess();
-        } else if (onClose) {
-          onClose();
-        }
+        if (onSuccess) onSuccess();
+        else if (onClose) onClose();
       }, 1500);
     } catch (err) {
-      console.error("🔴 [ValidateOTP] Validation error:", err);
+      console.error("\ud83d\udd34 [ValidateOTP] Validation error:", err);
       const errorData = err.response?.data;
-      
+
       if (errorData?.expired) {
-        console.log("🔴 [ValidateOTP] OTP expired");
         setError('Code expired. Please request a new one.');
       } else if (errorData?.attemptsLeft !== undefined) {
-        console.log(`🔴 [ValidateOTP] Incorrect OTP, ${errorData.attemptsLeft} attempts left`);
         setAttemptsLeft(errorData.attemptsLeft);
         setError(`Incorrect code. ${errorData.attemptsLeft} attempts left.`);
       } else {
-        console.log("🔴 [ValidateOTP] Validation failed:", errorData?.error);
         setError(errorData?.error || 'Verification failed');
       }
-      
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+
+      resetOtp();
+      refs.current[0]?.focus();
     } finally {
       setValidating(false);
     }
   };
 
-  // Auto-submit — disabled for reactivation flow (coach OTP must be manually entered)
-  useEffect(() => {
-    if (isReactivationFlow) return; // Never auto-submit in reactivation flow
-    if (otp.every(digit => digit !== '')) {
-      validateOtp();
-    }
-  }, [otp, isReactivationFlow]);
-
   // Cancel verification
   const handleCancel = async () => {
     try {
-      const userEmail = localStorage.getItem('userEmail');
+      const userEmail = storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
         return;
       }
 
       setCancelling(true);
-      
+
       await axios.post(
         `${API_BASE}/api/upline/cancel-request`,
         { email: userEmail }
       );
 
-      console.log("🟦 [ValidateOTP] User clicked Cancel, closing modal");
-      // Close modal and refresh setup status
-      if (onClose) {
-        onClose();
-      }
+      debugLog("\ud83d\udfe6 [ValidateOTP] User clicked Cancel, closing modal");
+      if (onClose) onClose();
     } catch (err) {
-      console.error('🔴 [ValidateOTP] Cancel error:', err);
+      console.error('\ud83d\udd34 [ValidateOTP] Cancel error:', err);
       setError('Failed to cancel request');
     } finally {
       setCancelling(false);
@@ -318,7 +254,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
             {otp.map((digit, index) => (
               <input
                 key={index}
-                ref={el => inputRefs.current[index] = el}
+                ref={(el) => { refs.current[index] = el; }}
                 type="tel"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -330,9 +266,21 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
                   digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
                 }`}
                 value={digit}
-                onChange={(e) => handleOtpChange(index, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(index, e)}
-                onPaste={handlePaste}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // iOS autoComplete="one-time-code" delivers all digits into first cell at once.
+                  if (raw.length >= 6) {
+                    const filled = fillAll(raw);
+                    if (filled && !isReactivationFlow) validateOtp(filled);
+                    return;
+                  }
+                  handleChange(index, raw);
+                  // Auto-submit when last digit typed manually.
+                  const next = [...otp]; next[index] = raw.slice(-1);
+                  if (!isReactivationFlow && next.every((d) => d !== '')) validateOtp(next.join(''));
+                }}
+                onKeyDown={(e) => otpKeyDown(index, e)}
+                onPaste={(e) => { const v = otpPaste(e); if (v && !isReactivationFlow) validateOtp(v); }}
                 disabled={validating}
               />
             ))}
@@ -358,12 +306,12 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
 
           <button
             className={`w-full py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-              validating || otp.join('').length !== 6
+              validating || !isComplete
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
             }`}
-            onClick={validateOtp}
-            disabled={validating || otp.join('').length !== 6}
+            onClick={() => validateOtp()}
+            disabled={validating || !isComplete}
           >
             {validating ? (
               <>
@@ -383,9 +331,8 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
             <button
               className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
               onClick={() => {
-                const demoOtp = ['0','0','0','0','0','0'];
-                setOtp(demoOtp);
-                setTimeout(() => validateOtp(), 100);
+                const filled = fillAll('000000');
+                if (filled) validateOtp(filled);
               }}
               disabled={validating}
             >

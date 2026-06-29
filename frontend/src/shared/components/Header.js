@@ -2,16 +2,14 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   LogOut,
   LayoutDashboard,
-  Clock3,
-  Footprints,
   GraduationCap,
-  TrendingUp,
   Map,
-  Building2,
   Heart,
   X,
   Trash2,
   Camera,
+  Settings,
+  User,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -233,69 +231,41 @@ const Header = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* User Profile Menu */}
-          <div className="relative">
-            <div className="flex flex-col items-center gap-1">
-              <TouchFeedbackButton
-                onClick={toggleMenu}
-                className="focus:outline-none rounded-full"
-                title="User Menu"
-                ariaLabel="User Menu"
+          {/* Profile avatar — tap opens profile modal directly */}
+          <TouchFeedbackButton
+            onClick={() => setShowProfileModal(true)}
+            className="focus:outline-none rounded-full"
+            title="Manage Profile"
+            ariaLabel="Manage Profile"
+          >
+            {savedProfileImage ? (
+              <img
+                src={savedProfileImage}
+                alt="User Avatar"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
               >
-                {savedProfileImage ? (
-                  <img
-                    src={savedProfileImage}
-                    alt="User Avatar"
-                    className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div
-                    className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
-                  >
-                    {getInitial()}
-                  </div>
-                )}
-              </TouchFeedbackButton>
+                {getInitial()}
+              </div>
+            )}
+          </TouchFeedbackButton>
 
-              {/* AI/Manual mode indicator — FEATURE DISABLED */}
-              {/* <div
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
-                style={{
-                  background: manualModeActive ? "#fff7ed" : "#f0fdf4",
-                  borderColor: manualModeActive ? "#f97316" : "#16a34a",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-                  minWidth: 0,
-                }}
-              >
-                <span
-                  className="text-[9px] font-bold leading-none"
-                  style={{ color: manualModeActive ? "#ea580c" : "#15803d" }}
-                >
-                  {manualModeActive ? "Manual" : "AI"}
-                </span>
-                <span
-                  className="relative inline-flex flex-shrink-0 rounded-full transition-colors duration-200"
-                  style={{
-                    background: manualModeActive ? "#f97316" : "#16a34a",
-                    height: "12px",
-                    width: "22px",
-                  }}
-                >
-                  <span
-                    className="absolute rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{
-                      top: "2px",
-                      height: "8px",
-                      width: "8px",
-                      transform: manualModeActive ? "translateX(12px)" : "translateX(2px)",
-                    }}
-                  />
-                </span>
-              </div> */}
-            </div>
+          {/* Settings gear — opens account/settings dropdown */}
+          <div className="relative">
+            <TouchFeedbackButton
+              onClick={toggleMenu}
+              className="focus:outline-none p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+              title="Settings"
+              ariaLabel="Settings"
+            >
+              <Settings className="h-5 w-5 text-gray-600" />
+            </TouchFeedbackButton>
 
             {menuOpen && (
               <>
@@ -305,10 +275,10 @@ const Header = ({
                   onClick={closeMenu}
                 />
 
-                {/* Google-style fixed centered panel — no scroll */}
-                <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] left-1/2 w-[min(320px,calc(100vw-20px))] xs:w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
-                  {/* ── PROFILE CARD ── */}
-                  <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
+                {/* Settings panel — compact, right-aligned */}
+                <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] right-3 w-[min(260px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transformOrigin: "top right" }}>
+                  {/* Profile summary */}
+                  <div className="relative px-4 pt-3 pb-3 border-b border-gray-100">
                     {/* Close button */}
                     <TouchFeedbackButton
                       onClick={closeMenu}
@@ -318,174 +288,54 @@ const Header = ({
                       <X className="h-4 w-4 text-gray-700" strokeWidth={2.5} />
                     </TouchFeedbackButton>
 
-                    {/* Email */}
-                    <p className="text-[11px] text-gray-500 mb-1.5 truncate px-6">
-                      {userEmail}
-                    </p>
-
-                    {/* Avatar */}
-                    <div className="flex justify-center mb-1.5">
+                    {/* Compact profile row */}
+                    <TouchFeedbackButton
+                      onClick={closeMenu}
+                      className="absolute top-2 right-2 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                      ariaLabel="Close menu"
+                    >
+                      <X className="h-4 w-4 text-gray-700" strokeWidth={2.5} />
+                    </TouchFeedbackButton>
+                    <div className="flex items-center gap-3 pr-8">
                       {savedProfileImage || user?.photoURL ? (
                         <img
                           src={savedProfileImage || user.photoURL}
                           alt="User Avatar"
-                          className="h-12 w-12 rounded-full border-2 border-gray-200 shadow-sm"
+                          className="h-10 w-10 rounded-full border-2 border-gray-200 shadow-sm shrink-0"
                           loading="lazy"
                           decoding="async"
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div
-                          className={`h-12 w-12 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xl font-bold shadow-sm`}
-                        >
+                        <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-base font-bold shadow-sm shrink-0`}>
                           {getInitial()}
                         </div>
                       )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">Hi, {userName.split(" ")[0]}!</p>
+                        <p className="text-[11px] text-gray-500 truncate">{userEmail}</p>
+                      </div>
                     </div>
-
-                    {/* Greeting */}
-                    <p className="text-sm font-semibold text-gray-900 mb-1">
-                      Hi, {userName.split(" ")[0]}!
-                    </p>
-
                     {/* Role badge */}
-                    <div className="flex justify-center mb-2">
-                      {userRole === "admin" && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                          Admin
-                        </span>
-                      )}
-                      {userRole === "developer" && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                          Developer
-                        </span>
-                      )}
-                      {userRole === "coach" && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">
-                          Coach
-                        </span>
-                      )}
-                      {(!userRole || userRole === "user") && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">
-                          User
-                        </span>
-                      )}
+                    <div className="mt-2">
+                      {userRole === "admin" && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">Admin</span>}
+                      {userRole === "developer" && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">Developer</span>}
+                      {userRole === "coach" && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">Coach</span>}
+                      {(!userRole || userRole === "user") && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">User</span>}
                     </div>
-
-                    {/* Manage Profile button */}
+                    {/* Manage Profile shortcut */}
                     <TouchFeedbackButton
-                      onClick={() => {
-                        setShowProfileModal(true);
-                        closeMenu();
-                      }}
-                      className="w-full py-1.5 px-4 rounded-full border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      onClick={() => { setShowProfileModal(true); closeMenu(); }}
+                      className="mt-2 w-full py-1.5 px-4 rounded-full border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
                       ariaLabel="Manage your Profile"
                     >
-                      Manage your Profile
+                      <User className="h-3.5 w-3.5" />
+                      Manage Profile
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* ── APP GRID ── no scroll, compact tiles */}
-                  <div className="p-2">
-                    <div className="grid grid-cols-3 gap-0.5">
-                      {/* Dashboard */}
-                      <TouchFeedbackButton
-                        onClick={() => {
-                          onShowBackgroundHistory();
-                          closeMenu();
-                        }}
-                        className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                        ariaLabel="Dashboard"
-                      >
-                        <div className="h-10 w-10 rounded-2xl bg-green-100 flex items-center justify-center">
-                          <LayoutDashboard className="h-5 w-5 text-green-700" />
-                        </div>
-                        <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                          Diary
-                        </span>
-                      </TouchFeedbackButton>
-
-                      {/* Wellness University */}
-                      {onShowWellnessEnrollment && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowWellnessEnrollment();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Wellness University"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
-                            <GraduationCap className="h-5 w-5 text-emerald-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            University
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Wellness Counselling */}
-                      {onShowWellnessCounselling && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowWellnessCounselling();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Wellness Counselling"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-pink-100 flex items-center justify-center">
-                            <Heart className="h-5 w-5 text-pink-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Counselling
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Nutrition Centres Map */}
-                      {onShowNutritionCentersMap && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowNutritionCentersMap();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Nutrition Centres Map"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
-                            <Map className="h-5 w-5 text-emerald-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Physical Club
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Register Centre */}
-                      {onShowRegisterCenter && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowRegisterCenter();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Register Centre"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-amber-100 flex items-center justify-center">
-                            <Building2 className="h-5 w-5 text-amber-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Register
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ── AUTO CAMERA TOGGLE ── */}
-                  <div className="px-4 pt-2 pb-1 border-t border-gray-100">
-                    {/* ── AUTO CAMERA TOGGLE ── */}
+                  {/* Auto Camera toggle */}
+                  <div className="px-4 py-2 border-b border-gray-100">
                     <TouchFeedbackButton
                       onClick={() => {
                         const newValue = !autoCameraOnResumeEnabled;
@@ -498,61 +348,37 @@ const Header = ({
                       <div className="flex items-center gap-2">
                         <Camera className={`h-4 w-4 ${autoCameraOnResumeEnabled ? 'text-green-600' : 'text-gray-400'}`} />
                         <div className="text-left">
-                          <div className="text-xs font-medium text-gray-900">
-                            Auto Camera
-                          </div>
+                          <div className="text-xs font-medium text-gray-900">Auto Camera</div>
                           <div className="text-[10px] text-gray-500 leading-tight">
-                            {autoCameraOnResumeEnabled
-                              ? 'Camera opens on app resume'
-                              : 'Open camera manually'}
+                            {autoCameraOnResumeEnabled ? 'Opens on app resume' : 'Open manually'}
                           </div>
                         </div>
                       </div>
-                      <div
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          autoCameraOnResumeEnabled ? 'bg-green-500' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                            autoCameraOnResumeEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                          }`}
-                        />
+                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${autoCameraOnResumeEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                        <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${autoCameraOnResumeEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                       </div>
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* ── FOOTER: Sign out + Delete Account + Version ── */}
+                  {/* Footer: Sign out + Delete + Version */}
                   <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between bg-gray-50 rounded-b-2xl">
                     <TouchFeedbackButton
-                      onClick={() => {
-                        onSignOut();
-                        closeMenu();
-                      }}
+                      onClick={() => { onSignOut(); closeMenu(); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
                       ariaLabel="Sign out"
                     >
                       <LogOut className="h-3.5 w-3.5 text-red-500" />
-                      <span className="text-xs font-medium text-red-600">
-                        Sign out
-                      </span>
+                      <span className="text-xs font-medium text-red-600">Sign out</span>
                     </TouchFeedbackButton>
                     <TouchFeedbackButton
-                      onClick={() => {
-                        setShowDeleteModal(true);
-                        closeMenu();
-                      }}
+                      onClick={() => { setShowDeleteModal(true); closeMenu(); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
                       ariaLabel="Delete account"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                      <span className="text-xs font-medium text-red-600">
-                        Delete Account
-                      </span>
+                      <span className="text-xs font-medium text-red-600">Delete</span>
                     </TouchFeedbackButton>
-                    <p className="text-[10px] text-gray-400 font-medium">
-                      v{APP_VERSION.VERSION}
-                    </p>
+                    <p className="text-[10px] text-gray-400 font-medium">v{APP_VERSION.VERSION}</p>
                   </div>
                 </div>
               </>
@@ -560,6 +386,54 @@ const Header = ({
           </div>
         </div>
       </div>
+
+      {/* ── Row 2: App top navigation bar ── */}
+      <nav
+        aria-label="App navigation"
+        className="border-t border-green-100 bg-white"
+        style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}
+      >
+        <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <TouchFeedbackButton
+            onClick={onShowBackgroundHistory}
+            className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-green-50 transition-colors shrink-0 min-w-[56px]"
+            ariaLabel="Diary"
+          >
+            <LayoutDashboard className="h-5 w-5 text-green-700" />
+            <span className="text-[10px] font-semibold text-green-800">Diary</span>
+          </TouchFeedbackButton>
+          {onShowWellnessEnrollment && (
+            <TouchFeedbackButton
+              onClick={onShowWellnessEnrollment}
+              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-emerald-50 transition-colors shrink-0 min-w-[64px]"
+              ariaLabel="University"
+            >
+              <GraduationCap className="h-5 w-5 text-emerald-700" />
+              <span className="text-[10px] font-semibold text-emerald-800">University</span>
+            </TouchFeedbackButton>
+          )}
+          {onShowWellnessCounselling && (
+            <TouchFeedbackButton
+              onClick={onShowWellnessCounselling}
+              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-pink-50 transition-colors shrink-0 min-w-[72px]"
+              ariaLabel="Counselling"
+            >
+              <Heart className="h-5 w-5 text-pink-600" />
+              <span className="text-[10px] font-semibold text-pink-800">Counselling</span>
+            </TouchFeedbackButton>
+          )}
+          {onShowNutritionCentersMap && (
+            <TouchFeedbackButton
+              onClick={onShowNutritionCentersMap}
+              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-teal-50 transition-colors shrink-0 min-w-[72px]"
+              ariaLabel="Physical Club"
+            >
+              <Map className="h-5 w-5 text-teal-600" />
+              <span className="text-[10px] font-semibold text-teal-800">Physical Club</span>
+            </TouchFeedbackButton>
+          )}
+        </div>
+      </nav>
 
       {/* User Profile Modal */}
       <UserProfileModal

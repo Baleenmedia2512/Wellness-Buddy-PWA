@@ -29,6 +29,9 @@ import {
   useMealMutations,
 } from "../hooks";
 import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
+import ShakeCalculatorModal from './ShakeCalculatorModal';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -121,6 +124,10 @@ const NutritionDashboard = ({
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
   const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
+  // ff.shake-calculator — Herbalife Shake Calculator entry point.
+  // Resolved once per mount; flag change requires re-mount.
+  const shakeCalculatorEnabled = isFlagEnabled('ff.shake-calculator');
+  const [shakeOpen, setShakeOpen] = useState(false);
 
   // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
   React.useEffect(() => {
@@ -697,6 +704,19 @@ const NutritionDashboard = ({
             )}
             {/* Meals */}
             <div className="px-3 md:px-4 space-y-3">
+              {/* Shake Calculator entry point — visible only when ff.shake-calculator is ON */}
+              {shakeCalculatorEnabled && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShakeOpen(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-full transition-colors"
+                    aria-label="Open Shake Calculator"
+                  >
+                    <span>🥤</span>
+                    <span>Shake Calculator</span>
+                  </button>
+                </div>
+              )}
               <NutritionMealList
                 analyses={analyses}
                 displayedMeals={displayedMeals}
@@ -739,6 +759,26 @@ const NutritionDashboard = ({
         handleDeleteMeal={handleDeleteMeal}
         user={user}
       />
+
+      {/* Shake Calculator modal — gated by ff.shake-calculator */}
+      {shakeCalculatorEnabled && (
+        <ShakeCalculatorModal
+          isOpen={shakeOpen}
+          onClose={() => setShakeOpen(false)}
+          onLog={async (payload) => {
+            const userId = await resolveUserId();
+            if (!userId) throw new Error('User not authenticated');
+            await saveNutritionAnalysis({
+              userId,
+              analysisResult: payload,
+              userEmail: user?.email || '',
+              captureTimestamp: new Date().toISOString(),
+            });
+            // Refresh the meal list so the logged shake appears immediately.
+            await fetchDayAnalyses(selectedDate);
+          }}
+        />
+      )}
     </div>
   );
 };

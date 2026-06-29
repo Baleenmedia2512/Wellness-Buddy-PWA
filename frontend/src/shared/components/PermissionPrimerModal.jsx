@@ -262,16 +262,20 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
             width: '100%',
             padding: '12px',
             borderRadius: 12,
-            border: 'none',
-            background: 'transparent',
-            color: '#9ca3af',
-            fontSize: 14,
+            border: '1.5px solid #e5e7eb',
+            background: '#f9fafb',
+            color: '#6b7280',
+            fontSize: 13,
             fontWeight: 500,
-            cursor: 'pointer',
+            cursor: loading ? 'not-allowed' : 'pointer',
             WebkitTapHighlightColor: 'transparent',
+            lineHeight: 1.4,
           }}
         >
-          Skip for now
+          Not Now&nbsp;&nbsp;·&nbsp;&nbsp;
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+            Some features may not work without permissions
+          </span>
         </button>
       </div>
 

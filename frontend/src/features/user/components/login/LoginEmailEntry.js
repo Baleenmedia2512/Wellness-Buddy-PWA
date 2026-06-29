@@ -4,8 +4,12 @@
 //   - Country code picker defaults to India (+91).
 //   - After OTP is sent, WebOTP (useWebOtp hook) auto-reads the code from SMS
 //     on Android Chrome / Capacitor WebView — no user interaction needed.
+//   - When ff.contact-picker is ON and the Contact Picker API is available
+//     (Android Chrome 80+), a "Use saved number" button pre-fills the field.
 import React, { useEffect, useRef } from 'react';
 import { COUNTRY_CODES } from '../../domain/contactIdentifier';
+import { useContactPicker } from '../../hooks/useContactPicker';
+import { isFlagEnabled } from '../../../../config/featureFlags';
 
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -19,6 +23,9 @@ const LoginEmailEntry = ({
   countryDial, setCountryDial, errorMessage,
 }) => {
   const inputRef = useRef(null);
+  const { supported: contactPickerSupported, picking, pick } = useContactPicker();
+  // Resolve the flag once on mount — toggling at runtime requires a re-mount.
+  const contactPickerEnabled = isFlagEnabled('ff.contact-picker');
 
   // Auto-focus phone input on mount so Android keyboard + number suggestions
   // appear immediately (mirrors Swiggy/Zomato UX).
@@ -35,9 +42,28 @@ const LoginEmailEntry = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="recipient" className="block text-sm font-medium text-gray-700 mb-2">
-          Mobile Number
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label htmlFor="recipient" className="block text-sm font-medium text-gray-700">
+            Mobile Number
+          </label>
+          {/* Contact Picker shortcut — only on Android Chrome when flag is ON */}
+          {contactPickerEnabled && contactPickerSupported && (
+            <button
+              type="button"
+              onClick={() => pick(setEmail)}
+              disabled={loading || picking}
+              aria-label="Fill from contacts"
+              className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 disabled:opacity-50"
+            >
+              {picking ? (
+                <span className="inline-block w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true">📱</span>
+              )}
+              Use saved number
+            </button>
+          )}
+        </div>
         <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
           <select
             aria-label="Country code"

@@ -2538,6 +2538,16 @@ function WellnessValleyApp() {
     setPermissionsReady(true);
   }, [requestAllPermissions]);
 
+  // "Not Now" path: user acknowledges the primer but declines OS dialogs.
+  // Permissions can be granted later from device Settings.
+  // Does NOT call requestAllPermissions — no OS dialog interruption.
+  const handlePermissionsSkipped = useCallback(() => {
+    setShowPermissionPrimer(false);
+    localStorage.setItem("wv.permissionsGranted", "1");
+    sessionStorage.setItem("wv.primerDoneThisSession", "1");
+    setPermissionsReady(true);
+  }, []);
+
   // Setup for authenticated users.
   // First-install path: show PermissionPrimerModal so the user understands
   // WHY each permission is needed BEFORE the OS dialogs appear.
@@ -7432,7 +7442,7 @@ function WellnessValleyApp() {
         {showPermissionPrimer && (
           <PermissionPrimerModal
             onContinue={handlePermissionsGranted}
-            onSkip={handlePermissionsGranted}
+            onSkip={handlePermissionsSkipped}
           />
         )}
         {/* Launch overlay ï¿½ covers the home screen from app start until the

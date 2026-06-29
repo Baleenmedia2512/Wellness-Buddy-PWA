@@ -15,10 +15,11 @@
  *   - Each row is stateless; delete callbacks are passed from parent DiaryFeed
  */
 
-import React from 'react';
-import { Smartphone, GraduationCap, HelpCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { captureAndShare } from '../../../../shared/utils/shareUtils';
 
 const WeighingScaleIcon = ({ className }) => (
   <svg
@@ -92,6 +93,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const [isSharing, setIsSharing] = useState(false);
 
   // Parse analysisData to extract meal name and item details
   // This matches the display behavior of the original MealCard in NutritionDashboard
@@ -99,7 +101,24 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
   const meal = getMealLabel(entry.capturedAt);
 
-  return (
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title: mealName,
+        fileName: `wellness-food-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[FoodRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
@@ -169,6 +188,17 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
           <p className="font-bold text-base text-gray-900">{Math.round(cal)}</p>
           <p className="text-[11px] text-gray-500 -mt-0.5">kcal</p>
         </div>
+        {/* Share button — stopPropagation prevents opening the detail modal */}
+        <button
+          aria-label="Share this food entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
       </div>
     </div>
   );
@@ -179,6 +209,25 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
 export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const [isSharing, setIsSharing] = useState(false);
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title: `Weight ${p.weight} kg`,
+        fileName: `wellness-weight-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[WeightRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div
@@ -241,6 +290,17 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
           <p className="font-bold text-base text-gray-900">{p.weight}</p>
           <p className="text-[11px] text-gray-500 -mt-0.5">kg</p>
         </div>
+        {/* Share button — stopPropagation prevents opening the detail modal */}
+        <button
+          aria-label="Share this weight entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
       </div>
     </div>
   );

@@ -46,6 +46,29 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Unified activity timeline layout in Diary (replaces stacked section-dashboards).',
   },
+
+  // Herbalife Shake Calculator — combine Formula 1 + Shakemate + Protein
+  // and log the combined nutrition as a food diary entry.
+  // Default OFF until product nutrition values are verified against official
+  // Herbalife documentation. Set REACT_APP_FF_SHAKE_CALCULATOR=true or
+  // localStorage 'ff.shake-calculator'='true' to enable during QA.
+  'ff.shake-calculator': {
+    envKey:         'REACT_APP_FF_SHAKE_CALCULATOR',
+    storageKey:     'ff.shake-calculator',
+    defaultEnabled: false,
+    description:    'Herbalife Shake Nutrition Calculator entry point in NutritionDashboard.',
+  },
+
+  // Contact Picker API — one-tap pre-fill of the phone number field from the
+  // device address book. Only visible on Android Chrome / Capacitor (the API
+  // is not supported on iOS Safari or Firefox). Default OFF; enable per-device
+  // via localStorage 'ff.contact-picker'='true' for QA.
+  'ff.contact-picker': {
+    envKey:         'REACT_APP_FF_CONTACT_PICKER',
+    storageKey:     'ff.contact-picker',
+    defaultEnabled: false,
+    description:    'Contact Picker API shortcut on the phone login field.',
+  },
 });
 
 function readStorage(key) {
