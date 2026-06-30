@@ -18,6 +18,7 @@ import {
   useUserLatestWeight,
   useResolveUserId,
   useDayAnalyses,
+  useBurnedCalories,
 } from '../hooks';
 import NutritionCarousel from './dashboard/NutritionCarousel';
 
@@ -44,6 +45,14 @@ export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey =
     resolveUserId,
     nutritionRefreshKey,
   });
+  // Fetch today's watch-burned calories so the Calories card shows the correct
+  // net value (food consumed − exercise calories) even from the home screen.
+  const { burnedCalories } = useBurnedCalories({
+    user,
+    selectedDate: today,
+    apiBaseUrl,
+    resolveUserId,
+  });
 
   // Track whether the first load has completed. After that, background
   // refreshes (nutritionRefreshKey bumps) must NOT re-show the skeleton.
@@ -65,7 +74,7 @@ export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey =
     <NutritionCarousel
       calorieTarget={calorieTarget}
       consumedCalories={dailyStats.totalCalories}
-      burnedCalories={0}
+      burnedCalories={burnedCalories}
       dailyStats={dailyStats}
       latestWeight={latestWeight}
       selectedDate={today}

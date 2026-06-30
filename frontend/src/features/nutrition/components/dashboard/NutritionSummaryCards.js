@@ -1,12 +1,18 @@
 import React from 'react';
 import { TrendingUp, Beef, Wheat, Droplet, Leaf } from 'lucide-react';
+import { FIBER_TARGET_G } from '../../domain/carouselRules';
+
+// Fallback macro targets (adult male average) used when body weight is not yet recorded.
+const DEFAULT_PROTEIN_TARGET = 131;
+const DEFAULT_CARBS_TARGET   = 263;
+const DEFAULT_FAT_TARGET     = 70;
 
 const MacroTile = ({ icon: Icon, color, label, value, target }) => (
   <div className={`p-2 rounded-lg bg-${color}-50 flex flex-col items-center`}>
     <Icon className={`w-4 h-4 text-${color}-600 mb-0.5`} />
     <p className={`text-[10px] font-semibold text-${color}-600`}>{label}</p>
     <p className="text-sm font-bold text-gray-900">{value}g</p>
-    <p className="text-[10px] text-gray-500">of {target}g</p>
+    <p className="text-[10px] text-gray-500">of {target != null ? `${target}g` : '—'}</p>
   </div>
 );
 
@@ -23,8 +29,16 @@ const NutritionSummaryCards = ({
   isBalanced,
   watchBurned,
   stepsBurned,
+  // Personalised macro targets derived from user body weight (nullable)
+  proteinTarget = null,
+  fatTarget = null,
+  carbsTarget = null,
   summaryPanelRef,
 }) => {
+  // Fall back to static adult-average defaults when weight is not recorded yet.
+  const resolvedProtein = proteinTarget != null ? proteinTarget : DEFAULT_PROTEIN_TARGET;
+  const resolvedFat     = fatTarget     != null ? fatTarget     : DEFAULT_FAT_TARGET;
+  const resolvedCarbs   = carbsTarget   != null ? carbsTarget   : DEFAULT_CARBS_TARGET;
   return (
     <div ref={summaryPanelRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
       <div className="flex items-center justify-between mb-3">
@@ -98,10 +112,10 @@ const NutritionSummaryCards = ({
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <MacroTile icon={Beef} color="blue" label="Protein" value={Math.round(dailyStats.totalProtein) || 0} target={131} />
-        <MacroTile icon={Wheat} color="orange" label="Carbs" value={Math.round(dailyStats.totalCarbs) || 0} target={263} />
-        <MacroTile icon={Droplet} color="yellow" label="Fat" value={Math.round(dailyStats.totalFat) || 0} target={70} />
-        <MacroTile icon={Leaf} color="green" label="Fiber" value={Math.round(dailyStats.totalFiber) || 0} target={30} />
+        <MacroTile icon={Beef} color="blue" label="Protein" value={Math.round(dailyStats.totalProtein) || 0} target={resolvedProtein} />
+        <MacroTile icon={Wheat} color="orange" label="Carbs" value={Math.round(dailyStats.totalCarbs) || 0} target={resolvedCarbs} />
+        <MacroTile icon={Droplet} color="yellow" label="Fat" value={Math.round(dailyStats.totalFat) || 0} target={resolvedFat} />
+        <MacroTile icon={Leaf} color="green" label="Fiber" value={Math.round(dailyStats.totalFiber) || 0} target={FIBER_TARGET_G} />
       </div>
     </div>
   );

@@ -753,6 +753,53 @@ function WellnessValleyApp() {
   // Wellness University Enrollment state
   const [showUniversityEnrollment, setShowUniversityEnrollment] = useState(false);
 
+  // Navigation lock ref: prevents concurrent showDashboardPage() calls from
+  // duplicate rapid taps while the async checkUserStatus is in-flight.
+  const navLockRef = useRef(false);
+
+  // ── Browser history management ──────────────────────────────────────────────
+  // Push a new history entry when navigating to a top-level "page". This
+  // keeps the browser Back button in sync with the homemade router state.
+  // popstate re-calls the relevant show* setters so history.go(-1) works.
+  useEffect(() => {
+    const handlePopState = (event) => {
+      const page = event.state?.wvPage ?? 'main';
+      if (page === 'main') {
+        // Returning to home from any full-screen route:
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        Session.setCurrentPage('main');
+      } else if (page === 'dashboard') {
+        startTransition(() => setShowDashboard(true));
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        Session.setCurrentPage('dashboard');
+      } else if (page === 'counselling') {
+        setShowDashboard(false);
+        startTransition(() => setShowWellnessCounselling(true));
+        setShowUniversityEnrollment(false);
+        Session.setCurrentPage('main');
+      } else if (page === 'enrollment') {
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        startTransition(() => setShowUniversityEnrollment(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'physical-club') {
+        startTransition(() => setShowNutritionCentersMap(true));
+        Session.setCurrentPage('main');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    // Seed the initial history entry so the very first Back press lands on 'main'.
+    if (!window.history.state?.wvPage) {
+      window.history.replaceState({ wvPage: 'main' }, '');
+    }
+    return () => window.removeEventListener('popstate', handlePopState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; setters are stable
+  }, []);
+
   // ?? Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
@@ -1568,18 +1615,36 @@ function WellnessValleyApp() {
         showMainPage();
         return true;
       }
+      if (showWellnessCounselling) {
+        setShowWellnessCounselling(false);
+        window.history.pushState({ wvPage: 'main' }, '');
+        return true;
+      }
+      if (showUniversityEnrollment) {
+        setShowUniversityEnrollment(false);
+        window.history.pushState({ wvPage: 'main' }, '');
+        return true;
+      }
+      if (showNutritionCentersMap) {
+        setShowNutritionCentersMap(false);
+        window.history.pushState({ wvPage: 'main' }, '');
+        return true;
+      }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap,
     );
     return () => cleanupBackButton();
   }, [
     ionRouter,
     showDashboard,
+    showWellnessCounselling,
+    showUniversityEnrollment,
+    showNutritionCentersMap,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -1685,6 +1750,10 @@ function WellnessValleyApp() {
 
   const showDashboardPage = useCallback(
     async (preferredTab = null) => {
+      // Guard: prevent duplicate concurrent navigation calls.
+      if (navLockRef.current) return;
+      navLockRef.current = true;
+      try {
       // Re-check user status in real-time before opening dashboard
       if (user) {
         const isActive = await checkUserStatus(user);
@@ -1751,6 +1820,11 @@ function WellnessValleyApp() {
         setShowDashboard(true);
       });
       Session.setCurrentPage("dashboard");
+      // Push a browser history entry so the native back button can return to home.
+      window.history.pushState({ wvPage: 'dashboard' }, '');
+      } finally {
+        navLockRef.current = false;
+      }
     },
     [
       user,
@@ -1798,6 +1872,9 @@ function WellnessValleyApp() {
     }
 
     Session.setCurrentPage("main");
+    // Synchronise browser history to reflect the return to home so the native
+    // back button is not stuck on a now-invalid "dashboard" history entry.
+    window.history.pushState({ wvPage: 'main' }, '');
   };
 
   // ? NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
@@ -7423,7 +7500,10 @@ function WellnessValleyApp() {
       <Suspense fallback={null}>
         <WellnessCounselling
           user={user}
-          onBack={() => setShowWellnessCounselling(false)}
+          onBack={() => {
+            setShowWellnessCounselling(false);
+            window.history.pushState({ wvPage: 'main' }, '');
+          }}
         />
       </Suspense>
     );
@@ -7435,7 +7515,10 @@ function WellnessValleyApp() {
       <Suspense fallback={null}>
         <WellnessUniversityEnrollment
           user={user}
-          onBack={() => setShowUniversityEnrollment(false)}
+          onBack={() => {
+            setShowUniversityEnrollment(false);
+            window.history.pushState({ wvPage: 'main' }, '');
+          }}
         />
       </Suspense>
     );
@@ -7692,15 +7775,23 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
-          onShowWellnessEnrollment={() =>
-            startTransition(() => setShowUniversityEnrollment(true))
-          }
-          onShowWellnessCounselling={() =>
-            startTransition(() => setShowWellnessCounselling(true))
-          }
-          onShowNutritionCentersMap={() =>
-            startTransition(() => setShowNutritionCentersMap(true))
-          }
+          onShowWellnessEnrollment={() => {
+            if (showUniversityEnrollment) return;
+            startTransition(() => setShowUniversityEnrollment(true));
+            window.history.pushState({ wvPage: 'enrollment' }, '');
+          }}
+          onShowWellnessCounselling={() => {
+            if (showWellnessCounselling) return;
+            startTransition(() => setShowWellnessCounselling(true));
+            window.history.pushState({ wvPage: 'counselling' }, '');
+          }}
+          onShowNutritionCentersMap={() => {
+            startTransition(() => setShowNutritionCentersMap((prev) => {
+              if (!prev) window.history.pushState({ wvPage: 'physical-club' }, '');
+              return true;
+            }));
+          }}
+          activePage={showNutritionCentersMap ? 'physical-club' : null}
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}

@@ -80,7 +80,9 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onClose, user }) => {
+const WellnessUniversityEnrollment = ({ onBack, user }) => {
+  // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
+  const onClose = onBack;
   // Use SVG icons only on iOS (emoji renders as ? in iOS WebView)
   const isIOS = Capacitor.getPlatform() === "ios";
 

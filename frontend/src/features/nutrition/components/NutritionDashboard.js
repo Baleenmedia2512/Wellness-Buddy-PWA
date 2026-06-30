@@ -27,7 +27,9 @@ import {
   useInfiniteScroll,
   useSwipePanelHeight,
   useMealMutations,
+  useUserLatestWeight,
 } from "../hooks";
+import { computeMacroTargets } from '../domain/carouselRules';
 import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
@@ -169,6 +171,10 @@ const NutritionDashboard = ({
     resolveUserId,
     watchBurnedCalories,
   });
+
+  // Latest body weight for personalised macro targets on the summary panel.
+  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({ latestWeight, calorieTarget });
 
   // Multi-day calorie totals for the trend chart
   const { calorieTrendData, trendLoading, showTrendCard } = useCalorieTrend({
@@ -688,6 +694,9 @@ const NutritionDashboard = ({
                 isBalanced={isBalanced}
                 watchBurned={watchBurned}
                 stepsBurned={stepsBurned}
+                proteinTarget={proteinTarget}
+                fatTarget={fatTarget}
+                carbsTarget={carbsTarget}
                 trendPanelRef={trendPanelRef}
                 trendRangeDays={trendRangeDays}
                 setTrendRangeDays={setTrendRangeDays}

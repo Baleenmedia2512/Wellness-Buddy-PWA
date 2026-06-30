@@ -27,6 +27,10 @@ function OverviewPanels({
   isBalanced,
   watchBurned,
   stepsBurned,
+  // Personalised macro targets (null when weight unavailable)
+  proteinTarget = null,
+  fatTarget = null,
+  carbsTarget = null,
   // Trend refs + values
   trendPanelRef,
   trendRangeDays,
@@ -112,6 +116,9 @@ function OverviewPanels({
               isBalanced={isBalanced}
               watchBurned={watchBurned}
               stepsBurned={stepsBurned}
+              proteinTarget={proteinTarget}
+              fatTarget={fatTarget}
+              carbsTarget={carbsTarget}
             />
 
             <NutritionFilters

@@ -27,6 +27,7 @@ const Header = ({
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
+  activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|null
   manualModeActive = false,
   onToggleManualMode,
 }) => {
@@ -353,40 +354,48 @@ const Header = ({
         <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           <TouchFeedbackButton
             onClick={onShowBackgroundHistory}
-            className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-green-50 transition-colors shrink-0 min-w-[56px]"
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+              activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
+            }`}
             ariaLabel="Diary"
           >
-            <LayoutDashboard className="h-5 w-5 text-green-700" />
-            <span className="text-[10px] font-semibold text-green-800">Diary</span>
+            <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
           </TouchFeedbackButton>
           {onShowWellnessEnrollment && (
             <TouchFeedbackButton
               onClick={onShowWellnessEnrollment}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-emerald-50 transition-colors shrink-0 min-w-[64px]"
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[64px] ${
+                activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
+              }`}
               ariaLabel="Enrollment"
             >
-              <GraduationCap className="h-5 w-5 text-emerald-700" />
-              <span className="text-[10px] font-semibold text-emerald-800">Enrollment</span>
+              <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enrollment</span>
             </TouchFeedbackButton>
           )}
           {onShowWellnessCounselling && (
             <TouchFeedbackButton
               onClick={onShowWellnessCounselling}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-pink-50 transition-colors shrink-0 min-w-[72px]"
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
+              }`}
               ariaLabel="Counselling"
             >
-              <Heart className="h-5 w-5 text-pink-600" />
-              <span className="text-[10px] font-semibold text-pink-800">Counselling</span>
+              <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counselling</span>
             </TouchFeedbackButton>
           )}
           {onShowNutritionCentersMap && (
             <TouchFeedbackButton
               onClick={onShowNutritionCentersMap}
-              className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl hover:bg-teal-50 transition-colors shrink-0 min-w-[72px]"
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
+              }`}
               ariaLabel="Physical Club"
             >
-              <Map className="h-5 w-5 text-teal-600" />
-              <span className="text-[10px] font-semibold text-teal-800">Physical Club</span>
+              <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
             </TouchFeedbackButton>
           )}
         </div>
