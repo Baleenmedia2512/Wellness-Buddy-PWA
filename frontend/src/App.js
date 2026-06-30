@@ -61,7 +61,6 @@ import React, {
   useDeferredValue,
 } from "react";
 import ReactDOM from "react-dom";
-import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
@@ -1563,9 +1562,6 @@ function WellnessValleyApp() {
 
   // --------------------------------------------------------------------
 
-  // Navigation hook for back button handling
-  const ionRouter = useIonRouter();
-
   // Toast state for back button exit message
   const [toast, setToast] = useState({ message: "", visible: false });
 
@@ -1663,7 +1659,7 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
-      return ionRouter.canGoBack() && ionRouter.goBack();
+      return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
@@ -1674,7 +1670,6 @@ function WellnessValleyApp() {
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
-    ionRouter,
     showDashboard,
     showWellnessCounselling,
     showUniversityEnrollment,
