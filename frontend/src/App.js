@@ -2817,6 +2817,14 @@ function WellnessValleyApp() {
             Session.clearOtpUser();
             setIsOtpVerified(false);
           }
+        } else {
+          // isOtpVerified=true but no user data in localStorage — stale flag
+          // from a previous session (e.g. data was cleared while the flag
+          // remained). Clear it so the render shows Login instead of a blank page.
+          Session.clearOtpVerified();
+          Session.clearOtpUser();
+          setIsOtpVerified(false);
+          setAuthLoading(false);
         }
       }
     };
@@ -7210,9 +7218,10 @@ function WellnessValleyApp() {
     );
   }
 
-  // ? OTP user restore in progress ï¿½ stay invisible until restored.
+  // OTP user restore in progress — stay invisible on native, show Login on web.
+  // On web, returning null causes a white screen if the OTP state is stale
+  // (isOtpVerified=true in localStorage but no valid otpUser data to restore).
   if (isOtpVerified && !user) {
-    console.log("?? [RENDER] Blocked by OTP restore (isOtpVerified && !user)");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7238,12 +7247,23 @@ function WellnessValleyApp() {
         </>
       );
     }
-    return inactiveModalPortal;
+    // Web: show Login so the user is never stuck on a blank page.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
-  // ? Profile check in progress ï¿½ stay invisible until check is done.
+  // Profile check in progress — stay invisible on native, show Login on web
+  // as a safety net so non-native users never see a blank page.
   if (profileChecking) {
-    console.log("?? [RENDER] Blocked by profileChecking");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7269,7 +7289,18 @@ function WellnessValleyApp() {
         </>
       );
     }
-    return inactiveModalPortal;
+    // Web: show Login so the user is never stuck on a blank page.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
   // ? iOS Sign-out gate: user explicitly signed out ? always show Login
