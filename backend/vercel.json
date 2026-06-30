@@ -1,7 +1,6 @@
 {
   "version": 2,
   "regions": ["sin1"],
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- backend/",
   "functions": {
     "pages/api/**/*.js": {
       "maxDuration": 30,
