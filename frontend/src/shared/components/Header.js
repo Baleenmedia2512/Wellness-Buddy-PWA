@@ -9,6 +9,7 @@ import {
   Camera,
   Settings,
   User,
+  Home,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -21,6 +22,7 @@ const Header = ({
   userRole = "user",
   onSignOut,
   onShowBackgroundHistory,
+  onShowHome,
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
@@ -352,6 +354,18 @@ const Header = ({
         style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}
       >
         <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {onShowHome && (
+            <TouchFeedbackButton
+              onClick={onShowHome}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+                activePage === null ? 'bg-green-100' : 'hover:bg-green-50'
+              }`}
+              ariaLabel="Home"
+            >
+              <Home className={`h-5 w-5 ${activePage === null ? 'text-green-800' : 'text-green-700'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === null ? 'text-green-900' : 'text-green-800'}`}>Home</span>
+            </TouchFeedbackButton>
+          )}
           <TouchFeedbackButton
             onClick={onShowBackgroundHistory}
             className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${

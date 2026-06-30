@@ -184,6 +184,9 @@ export async function purgeUserData(userId, normalizedEmail) {
     supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
     supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
     supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+    // Null-out ownership before team_table row is removed — prevents the FK
+    // constraint violation on nutrition_centers_table.owner_user_id.
+    supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
   ]);
   return results;
 }

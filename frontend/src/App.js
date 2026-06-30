@@ -7874,6 +7874,7 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
+          onShowHome={showDashboard || showWellnessCounselling || showUniversityEnrollment || showNutritionCentersMap ? showMainPage : null}
           onShowWellnessEnrollment={() => {
             // Guard with a synchronous ref (not the React state) so rapid
             // double-taps are blocked even before the startTransition commits.
@@ -7896,7 +7897,13 @@ function WellnessValleyApp() {
             }
             startTransition(() => setShowNutritionCentersMap(true));
           }}
-          activePage={showNutritionCentersMap ? 'physical-club' : null}
+          activePage={
+            showDashboard ? 'dashboard' :
+            showUniversityEnrollment ? 'enrollment' :
+            showWellnessCounselling ? 'counselling' :
+            showNutritionCentersMap ? 'physical-club' :
+            null
+          }
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}
