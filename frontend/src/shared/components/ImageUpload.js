@@ -189,7 +189,9 @@ const ImageUpload = forwardRef(
           const photo = await Camera.getPhoto({
             quality: 85,
             resultType: CameraResultType.Base64,
-            source: CameraSource.Camera,
+            // Prompt shows the OS native action sheet: "Take Photo" + "Choose from Library".
+            // The user picks one source without needing a separate Gallery button in the UI.
+            source: CameraSource.Prompt,
             allowEditing: false,
             correctOrientation: true,
             width: 1280,

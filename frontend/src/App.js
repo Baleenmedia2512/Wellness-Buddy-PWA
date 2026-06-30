@@ -7852,7 +7852,8 @@ function WellnessValleyApp() {
   return (
     <LocationGuard>
       <div
-        className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden"
+        className="h-screen w-screen flex flex-col overflow-hidden"
+        style={{ background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)' }})
         style={{
           paddingLeft: "env(safe-area-inset-left)",
           paddingRight: "env(safe-area-inset-right)",
@@ -8170,16 +8171,18 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* ── World-class greeting hero ── */}
+            {/* ── Hero banner: greeting + Camera / Gallery CTAs ── */}
             {!imagePreview && !nutritionData && !educationResult && !watchResult && (
-              <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-sm border border-green-100"
-                style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 60%, #bbf7d0 100%)' }}>
-                <div className="px-4 py-3 flex items-center justify-between">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-green-600 uppercase tracking-widest">
-                      {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </p>
-                    <h2 className="text-base font-bold text-gray-900 mt-0.5 truncate">
+              <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
+                <div className="px-4 py-4">
+                  {/* Date pill */}
+                  <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-[0.18em]">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </p>
+                  {/* Greeting */}
+                  <div className="mt-1.5">
+                    <h2 className="text-xl font-extrabold text-white leading-tight">
                       {(() => {
                         const h = new Date().getHours();
                         const name = (savedUserName || user?.displayName || '').split(' ')[0];
@@ -8187,15 +8190,22 @@ function WellnessValleyApp() {
                         return name ? `${greeting}, ${name}! 👋` : `${greeting}! 👋`;
                       })()}
                     </h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Snap a photo to log your next meal</p>
+                    <p className="text-sm text-emerald-200 mt-1">Snap a photo to log your food, weight or meeting</p>
                   </div>
-                  <div className="shrink-0 ml-3 w-11 h-11 rounded-2xl bg-green-500 flex items-center justify-center shadow-md"
-                    onClick={() => fileInputRef.current?.openCamera?.()}
-                    role="button" aria-label="Open camera" tabIndex={0}>
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
+                  {/* Camera — single CTA; native OS prompt offers Take Photo + Choose from Library */}
+                  <div className="mt-4">
+                    <button
+                      onClick={() => fileInputRef.current?.openCamera?.()}
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                      aria-label="Open camera"
+                    >
+                      <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm font-bold text-emerald-700">Take Photo or Choose from Gallery</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -9013,67 +9023,10 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* Spacer so page content isn't hidden behind the floating buttons */}
-            <div className="min-h-[120px]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />
+            {/* Safe-area bottom padding */}
+            <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
 
-            {/* ?? Floating Camera & Gallery FABs ï¿½ fixed so always visible */}
-            {user &&
-              !authLoading &&
-              isOtpVerified &&
-              !profileChecking &&
-              !showSetupWizard &&
-              !showDashboard &&
-              !showRegisterCenter &&
-              !showWellnessCounselling &&
-              !showValidateOTP &&
-              !showCompleteProfile && (
-                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-30 flex gap-4 items-end pointer-events-none" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))' }}>
-                  {/* Gallery Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.openGallery?.()}
-                    disabled={loading}
-                    className="w-10 h-10 p-0 rounded-full shadow-lg transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-                    title="Choose from Gallery"
-                    aria-label="Gallery access"
-                    style={{ filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.25))" }}
-                  >
-                    <img
-                      src="/gallery.png"
-                      alt="Gallery"
-                      className="w-full h-full object-cover rounded-full pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </button>
-
-                  {/* Camera Button — primary, slightly larger */}
-                  <button
-                    onClick={() => fileInputRef.current?.openCamera?.()}
-                    disabled={loading}
-                    className="w-12 h-12 p-0 rounded-full shadow-xl transition-all duration-200 active:scale-90 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-                    title="Take Photo"
-                    aria-label="Camera access"
-                    style={{ filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.28))" }}
-                  >
-                    <img
-                      src="/app.png"
-                      alt="Camera"
-                      className="w-full h-full object-cover rounded-full pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </button>
-                </div>
-              )}
-          </div>
-        </div>
-
-        {/* Version badge - positioned in header area like web view */}
-        {/* <div className="fixed top-12 right-4 z-10">
-        <p className="text-[9px] sm:text-[10px] font-light tracking-wide opacity-50" style={{ color: '#888888' }}>
-          {getVersionString()}
-        </p>
-      </div> */}
-
-        {/* Inactive User Modal */}
+            {/* Inactive User Modal */}
         {showInactiveModal && (
           <InactiveUserModal
             userEmail={user?.email || user?.Email || "your account"}
