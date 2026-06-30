@@ -7853,8 +7853,8 @@ function WellnessValleyApp() {
     <LocationGuard>
       <div
         className="h-screen w-screen flex flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)' }})
         style={{
+          background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)',
           paddingLeft: "env(safe-area-inset-left)",
           paddingRight: "env(safe-area-inset-right)",
         }}
@@ -9026,7 +9026,10 @@ function WellnessValleyApp() {
             {/* Safe-area bottom padding */}
             <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
 
-            {/* Inactive User Modal */}
+          </div>{/* end max-w-lg inner */}
+        </div>{/* end flex-1 scroll area */}
+
+        {/* Inactive User Modal */}
         {showInactiveModal && (
           <InactiveUserModal
             userEmail={user?.email || user?.Email || "your account"}
