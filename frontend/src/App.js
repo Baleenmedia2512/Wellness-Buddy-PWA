@@ -1672,10 +1672,10 @@ function WellnessValleyApp() {
       !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap,
     );
     return () => cleanupBackButton();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
     ionRouter,
     showDashboard,
-    showMainPage,
     showWellnessCounselling,
     showUniversityEnrollment,
     showNutritionCentersMap,
