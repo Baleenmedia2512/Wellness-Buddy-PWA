@@ -501,8 +501,11 @@ const WellnessCounselling = ({ user, onBack }) => {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
-          // A-Z / Z-A name sort
+          // Counselled members always float to the top, then A-Z / Z-A by name
           if (sortBy === "name") {
+            const counselledA = assessmentData[a.userId] ? 1 : 0;
+            const counselledB = assessmentData[b.userId] ? 1 : 0;
+            if (counselledB !== counselledA) return counselledB - counselledA;
             const nameA = (a.userName || a.name || "").toLowerCase();
             const nameB = (b.userName || b.name || "").toLowerCase();
             const cmp = nameA.localeCompare(nameB);

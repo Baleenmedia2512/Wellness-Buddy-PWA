@@ -11,7 +11,11 @@ export const detectFace = async (base64String) => {
       body: JSON.stringify({ imageBase64: base64String }),
     });
     const result = await res.json();
-    return result?.result || 'detection_error';
+    // Backend returns { success: true, hasFace: true|false }
+    if (result?.success && typeof result?.hasFace === 'boolean') {
+      return result.hasFace ? 'face_found' : 'no_face';
+    }
+    return 'detection_error';
   } catch (err) {
     console.error('[faceDetection] failed:', err.message);
     return 'detection_error';

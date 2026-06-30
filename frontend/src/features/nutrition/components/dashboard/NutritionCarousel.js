@@ -224,10 +224,19 @@ const extractFoodContributions = (analyses, nutrientKey) => {
     ? nutrientKey.charAt(5).toLowerCase() + nutrientKey.slice(6) 
     : nutrientKey;
 
+  // DB column name for meal-level fallback (e.g., totalVitaminA -> TotalVitaminA)
+  const dbColKey = nutrientKey.startsWith('total')
+    ? nutrientKey.charAt(0).toUpperCase() + nutrientKey.slice(1)  // totalVitaminA -> TotalVitaminA
+    : null;
+
   analyses.forEach((analysis) => {
     if (analysis.isUndoPlaceholder) return;
     const data = parseAnalysisData(analysis.AnalysisData);
     const foodList = data.foods || [];
+
+    // Try per-food breakdown first
+    let mealFoodTotal = 0;
+    const mealFoods = [];
 
     foodList.forEach((food) => {
       const nutrition = food.nutrition || {};
@@ -273,13 +282,31 @@ const extractFoodContributions = (analyses, nutrientKey) => {
       else if (normalizedKey === 'phosphorus') amount = nutrition.phosphorus || 0;
 
       if (amount > 0) {
-        foods.push({
-          foodName: food.name || 'Unknown food',
-          amount,
-        });
-        total += amount;
+        mealFoods.push({ foodName: food.name || 'Unknown food', amount });
+        mealFoodTotal += amount;
       }
     });
+
+    if (mealFoods.length > 0) {
+      // Per-food data available — use individual entries
+      mealFoods.forEach((f) => foods.push(f));
+      total += mealFoodTotal;
+    } else if (dbColKey) {
+      // Per-food vitamin/mineral data missing — fall back to meal-level DB column
+      const mealTotal = Number(analysis[dbColKey]) || 0;
+      if (mealTotal > 0) {
+        // Derive a readable meal name from AnalysisData
+        const mealName = (() => {
+          const fl = data.foods || [];
+          if (fl.length === 1) return fl[0].name || 'Meal';
+          if (fl.length > 1) return `${fl[0].name || 'Meal'} (+${fl.length - 1} more)`;
+          // fall back to category name stored in total
+          return data.total?.category || 'Meal';
+        })();
+        foods.push({ foodName: mealName, amount: mealTotal });
+        total += mealTotal;
+      }
+    }
   });
 
   const breakdown = foods

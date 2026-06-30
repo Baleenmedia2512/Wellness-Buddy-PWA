@@ -1971,6 +1971,11 @@ function WellnessValleyApp() {
     }
 
     if (targetPage === 'dashboard') {
+      // Clear any pending AI error / photo preview so they don't linger
+      // when the user switches to the Diary tab, causing layout glitches.
+      setError(null);
+      setImagePreview(null);
+      lastImageFileRef.current = null;
       if (isOnSubPage) {
         // Close current sub-page; replace history so back still → Home.
         setShowWellnessCounselling(false);
@@ -6016,9 +6021,9 @@ function WellnessValleyApp() {
         updatePendingCaptureType(pendingSharePromise, "unknown");
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
         if (aiFailedEntirely) {
-          // Complete AI failure (network/API key/timeout) ï¿½ show error.
+          // Complete AI failure (network/API key/timeout) — show retry prompt.
           setError(
-            "?? AI analysis could not run. Please check your internet connection and try again.",
+            "AI couldn't analyse your photo right now. Please retry — if it keeps failing, try a clearer, well-lit photo.",
           );
         } else if (!isFlagEnabled("ff.diary-feed")) {
           // Legacy path (diary-feed OFF): disambiguation modal.
