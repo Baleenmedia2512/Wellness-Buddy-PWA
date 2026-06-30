@@ -11,6 +11,21 @@ import { sendMdtSms } from './data/mdt-sms.client.js';
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
+/** Returns names of missing SMTP env-vars, analogous to getMdtSmsConfigGaps(). */
+function getSmtpConfigGaps() {
+  const gaps = [];
+  if (!process.env.SMTP_USER) gaps.push('SMTP_USER');
+  if (!process.env.SMTP_PASS) gaps.push('SMTP_PASS');
+  return gaps;
+}
+
+function smtpUserHint() {
+  const u = process.env.SMTP_USER;
+  if (!u) return 'not set';
+  const at = u.indexOf('@');
+  return at > 0 ? `${u.slice(0, Math.min(3, at))}***@${u.slice(at + 1)}` : `${u.slice(0, 3)}***`;
+}
+
 function buildOtpEmailHtml(otp) {
   return `
         <!DOCTYPE html>
@@ -258,6 +273,26 @@ export async function sendOtp({ recipient, contactType }) {
     }
   }
 
+  if (contactType === 'email') {
+    const smtpGaps = getSmtpConfigGaps();
+    if (smtpGaps.length > 0) {
+      logger.warn('[sendOtp] SMTP not fully configured on server', {
+        route: 'send-otp',
+        missing: smtpGaps,
+        smtpUserHint: smtpUserHint(),
+      });
+      return {
+        httpStatus: 503,
+        body: {
+          success: false,
+          message: `Email service misconfigured: set ${smtpGaps.join(', ')} in backend env (local .env or Vercel).`,
+          missingConfig: smtpGaps,
+          smtpUserHint: smtpUserHint(),
+        },
+      };
+    }
+  }
+
   logger.info('[sendOtp] starting delivery', {
     contactType,
     recipientHint: contactType === 'phone' ? maskPhoneForLog(recipient) : recipient,
@@ -277,13 +312,27 @@ export async function sendOtp({ recipient, contactType }) {
     const templateIdHint = mdtTemplateIdHint();
     const apiKeyHint = mdtApiKeyHint(process.env.MDT_SMS_API_KEY);
     const isInvalidSender = /invalid senderid/i.test(mdtDetail) || mdtDetail.includes('code 003');
-    const userMessage = mdtDetail
-      ? (
-        isInvalidSender
-          ? `SMS could not be sent: ${mdtDetail}. Ensure MDT_SMS_API_KEY, MDT_SMS_SENDER_ID, and MDT_SMS_TEMPLATE_ID all belong to the same Baleen/MDT account.`
-          : `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
-      )
-      : 'Failed to send OTP. Please try again.';
+    let userMessage;
+    if (contactType === 'email') {
+      // Surface enough detail for operators to diagnose without exposing credentials.
+      const isAuthError = /invalid login|authentication failed|535|534|Username and Password/i.test(err.message);
+      const isConnError = /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|connect/i.test(err.message);
+      if (isAuthError) {
+        userMessage = 'Email service authentication failed. Check SMTP_USER / SMTP_PASS in backend env.';
+      } else if (isConnError) {
+        userMessage = 'Email service unreachable. Check network access to smtp.gmail.com from the server.';
+      } else {
+        userMessage = 'Failed to send verification email. Please try again.';
+      }
+    } else {
+      userMessage = mdtDetail
+        ? (
+          isInvalidSender
+            ? `SMS could not be sent: ${mdtDetail}. Ensure MDT_SMS_API_KEY, MDT_SMS_SENDER_ID, and MDT_SMS_TEMPLATE_ID all belong to the same Baleen/MDT account.`
+            : `SMS could not be sent: ${mdtDetail}. Contact My Dreams Technology to fix sender ID.`
+        )
+        : 'Failed to send OTP. Please try again.';
+    }
     logger.warn('[sendOtp] returning 502 to client', {
       contactType,
       userMessage,
@@ -291,6 +340,7 @@ export async function sendOtp({ recipient, contactType }) {
       senderIdHint,
       templateIdHint,
       apiKeyHint,
+      smtpUserHint: contactType === 'email' ? smtpUserHint() : undefined,
     });
     return {
       httpStatus: 502,
@@ -369,7 +419,7 @@ export async function verifyOtp(input) {
 
   const otpData = await repo.fetchActiveOtp(recipient, contactType);
   if (!otpData) {
-    return { httpStatus: 404, body: { message: 'No active OTP found' } };
+    return { httpStatus: 404, body: { success: false, message: 'No active OTP found' } };
   }
 
   // Compare current IST time with stored expiry time (both in IST)
@@ -378,12 +428,12 @@ export async function verifyOtp(input) {
   const currentIST = new Date(now.getTime() + istOffset);
   const expiresAt = new Date(otpData.ExpiresAt + 'Z');
   if (currentIST > expiresAt) {
-    return { httpStatus: 400, body: { message: 'OTP expired' } };
+    return { httpStatus: 400, body: { success: false, message: 'OTP expired' } };
   }
 
   const valid = await bcrypt.compare(otp, otpData.OTPHash);
   if (!valid) {
-    return { httpStatus: 400, body: { message: 'Invalid OTP' } };
+    return { httpStatus: 400, body: { success: false, message: 'Invalid OTP' } };
   }
 
   await repo.markOtpVerified(otpData.ID);
@@ -405,3 +455,16 @@ export async function verifyOtp(input) {
 // Firebase Phone Auth has been removed (no Firebase Admin SDK configured).
 // Use MDT SMS-based OTP instead: /api/auth/send-otp + /api/auth/verify-otp
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Returns true if `recipient` has a verified OTP for `contactType` within the
+ * past 15 minutes.  Called by the account-deletion endpoint to enforce that
+ * the OTP flow was completed server-side before data destruction — preventing
+ * unauthenticated DELETE calls from bypassing the OTP gate.
+ */
+export async function hasRecentlyVerifiedOtp(recipient, contactType = 'email') {
+  const normalised = contactType === 'email'
+    ? String(recipient).toLowerCase().trim()
+    : String(recipient).trim();
+  return repo.fetchRecentlyVerifiedOtp(normalised, contactType);
+}

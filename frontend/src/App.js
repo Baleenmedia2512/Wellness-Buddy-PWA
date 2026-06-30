@@ -7167,9 +7167,8 @@ function WellnessValleyApp() {
   ) : null;
 
   if (authLoading) {
-    // On native, show the logo overlay instead of a blank screen ï¿½ the native
+    // On native, show the logo overlay instead of a blank screen — the native
     // splash may have already faded, so returning null would show white.
-    console.log("?? [RENDER] Blocked by authLoading");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7195,7 +7194,20 @@ function WellnessValleyApp() {
         </>
       );
     }
-    return inactiveModalPortal;
+    // On web, show the Login page while Firebase resolves. Previously this
+    // returned `inactiveModalPortal` (null for new/signed-out users), giving
+    // a blank white screen for up to 5 seconds until the auth timeout fired.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
   // ? OTP user restore in progress ï¿½ stay invisible until restored.
