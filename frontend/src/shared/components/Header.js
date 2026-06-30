@@ -32,6 +32,11 @@ const Header = ({
   activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|null
   manualModeActive = false,
   onToggleManualMode,
+  // When true, renders ONLY the tab navigation row (Row 2) without the
+  // logo/settings row (Row 1). Used by full-page sub-views (Diary,
+  // Counselling, Enrollment) so they share the same 5-tab nav without
+  // rendering a duplicate full header above their own page header.
+  navOnly = false,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
@@ -164,10 +169,87 @@ const Header = ({
     return colors[colorIndex];
   };
 
+  // navOnly mode: render only the tab navigation row (Row 2).
+  // Used by full-page sub-views (Diary, Counselling, Enrollment) so they
+  // display the 5-tab nav without duplicating the logo/settings row on top.
+  if (navOnly) {
+    return (
+      <nav
+        aria-label="App navigation"
+        className="bg-white border-b-4 border-green-500 shadow-sm"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
+        }}
+      >
+        <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {onShowHome && (
+            <TouchFeedbackButton
+              onClick={onShowHome}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+                activePage === null ? 'bg-green-100' : 'hover:bg-green-50'
+              }`}
+              ariaLabel="Home"
+            >
+              <Home className={`h-5 w-5 ${activePage === null ? 'text-green-800' : 'text-green-700'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === null ? 'text-green-900' : 'text-green-800'}`}>Home</span>
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            onClick={onShowBackgroundHistory}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+              activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
+            }`}
+            ariaLabel="Diary"
+          >
+            <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
+          </TouchFeedbackButton>
+          {onShowWellnessEnrollment && (
+            <TouchFeedbackButton
+              onClick={onShowWellnessEnrollment}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[64px] ${
+                activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
+              }`}
+              ariaLabel="Enrollment"
+            >
+              <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enrollment</span>
+            </TouchFeedbackButton>
+          )}
+          {onShowWellnessCounselling && (
+            <TouchFeedbackButton
+              onClick={onShowWellnessCounselling}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
+              }`}
+              ariaLabel="Counselling"
+            >
+              <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counselling</span>
+            </TouchFeedbackButton>
+          )}
+          {onShowNutritionCentersMap && (
+            <TouchFeedbackButton
+              onClick={onShowNutritionCentersMap}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
+              }`}
+              ariaLabel="Physical Club"
+            >
+              <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
+            </TouchFeedbackButton>
+          )}
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
       <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
-        <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-1">
             <img
               src={wellnessValleyIcon}

@@ -1916,7 +1916,75 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- all setters are stable; refs are not reactive
   }, []);
 
-  // ? NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
+  // ── Cross-tab navigation helper ───────────────────────────────────────────
+  // Used by the persistent 5-tab nav bar rendered on every full-page view
+  // (Diary, Counselling, Enrollment, Physical Club). Handles:
+  //   • first open from Home  → pushState (adds an entry)
+  //   • tab switch from another sub-page → replaceState (keeps back → Home clean)
+  //   • go Home from sub-page → history.back() (pops the sub-page entry)
+  const navigateTo = useCallback((targetPage) => {
+    const currentWvPage = window.history.state?.wvPage;
+    const isOnSubPage = currentWvPage && currentWvPage !== 'main';
+
+    if (targetPage === 'home') {
+      // Close every sub-page and pop the current history entry.
+      setShowDashboard(false);
+      setShowWellnessCounselling(false);
+      setShowUniversityEnrollment(false);
+      setShowNutritionCentersMap(false);
+      enrollmentHistoryPushedRef.current = false;
+      Session.setCurrentPage('main');
+      if (isOnSubPage) window.history.back();
+      return;
+    }
+
+    if (targetPage === 'dashboard') {
+      if (isOnSubPage) {
+        // Close current sub-page; replace history so back still → Home.
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        enrollmentHistoryPushedRef.current = false;
+        window.history.replaceState({ wvPage: 'dashboard' }, '');
+        Session.setCurrentPage('dashboard');
+        startTransition(() => setShowDashboard(true));
+      } else {
+        showDashboardPage();
+      }
+      return;
+    }
+
+    // For counselling / enrollment / physical-club:
+    // • Clear the current sub-page.
+    // • Replace history when switching tabs; push when opening from Home.
+    setShowDashboard(false);
+    setShowWellnessCounselling(false);
+    setShowUniversityEnrollment(false);
+    setShowNutritionCentersMap(false);
+    enrollmentHistoryPushedRef.current = false;
+
+    if (isOnSubPage) {
+      window.history.replaceState({ wvPage: targetPage }, '');
+    } else {
+      window.history.pushState({ wvPage: targetPage }, '');
+    }
+
+    switch (targetPage) {
+      case 'counselling':
+        startTransition(() => setShowWellnessCounselling(true));
+        break;
+      case 'enrollment':
+        enrollmentHistoryPushedRef.current = true;
+        startTransition(() => setShowUniversityEnrollment(true));
+        break;
+      case 'physical-club':
+        startTransition(() => setShowNutritionCentersMap(true));
+        break;
+      default:
+        break;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
+  }, [showDashboardPage]);
   // App.js retains the call site (in the user-authenticated effect below) so
   // orchestration ownership stays here; only the plugin plumbing moved out.
   // Behavior, order (camera/photos ? push ? geolocation), and logging preserved
@@ -7566,60 +7634,99 @@ function WellnessValleyApp() {
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (deferredShowDashboard) {
     return (
-      <Suspense fallback={null}>
-        <Dashboard
+      <div className="flex flex-col h-screen overflow-hidden bg-[#e8f5e9]">
+        {/* 5-tab nav bar — always visible on every sub-page */}
+        <Header
+          navOnly
           user={user}
-          onBack={showMainPage}
-          apiBaseUrl={apiBaseUrl}
-          initialTab={dashboardInitialTab}
           userRole={userRole}
-          bmrUpdateKey={bmrUpdateKey}
-          educationRefreshKey={educationRefreshKey}
-          watchBurnedCalories={watchBurnedCalories}
-          initialSelectedMember={dashboardInitialSelectedMember}
-          initialDate={dashboardInitialDate}
-          initialMealId={dashboardInitialMealId}
+          activePage="dashboard"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
         />
-      </Suspense>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Suspense fallback={null}>
+            <Dashboard
+              user={user}
+              onBack={showMainPage}
+              apiBaseUrl={apiBaseUrl}
+              initialTab={dashboardInitialTab}
+              userRole={userRole}
+              bmrUpdateKey={bmrUpdateKey}
+              educationRefreshKey={educationRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
+              initialSelectedMember={dashboardInitialSelectedMember}
+              initialDate={dashboardInitialDate}
+              initialMealId={dashboardInitialMealId}
+            />
+          </Suspense>
+        </div>
+      </div>
     );
   }
 
   // Wellness Counselling - Full page view
   if (deferredShowWellnessCounselling) {
     return (
-      <Suspense fallback={null}>
-        <WellnessCounselling
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header
+          navOnly
           user={user}
-          onBack={() => {
-            setShowWellnessCounselling(false);
-            // Pop the entry pushed when counselling was opened.
-            const currentWvPage = window.history.state?.wvPage;
-            if (currentWvPage && currentWvPage !== 'main') window.history.back();
-          }}
+          userRole={userRole}
+          activePage="counselling"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
         />
-      </Suspense>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Suspense fallback={null}>
+            <WellnessCounselling
+              user={user}
+              onBack={() => {
+                setShowWellnessCounselling(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
     );
   }
 
   // Wellness University Enrollment - Full page view
   if (deferredShowUniversityEnrollment) {
     return (
-      <Suspense fallback={null}>
-        <WellnessUniversityEnrollment
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header
+          navOnly
           user={user}
-          onBack={() => {
-            enrollmentHistoryPushedRef.current = false;
-            setShowUniversityEnrollment(false);
-            // Replace the enrollment history entry with 'main' instead of
-            // calling history.back(). history.back() fires popstate which the
-            // 'enrollment' branch of handlePopState catches, and its
-            // startTransition(setShowUniversityEnrollment(true)) wins over the
-            // urgent false update — leaving enrollment perpetually re-opened.
-            // replaceState does NOT fire popstate, eliminating the race.
-            window.history.replaceState({ wvPage: 'main' }, '');
-          }}
+          userRole={userRole}
+          activePage="enrollment"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
         />
-      </Suspense>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Suspense fallback={null}>
+            <WellnessUniversityEnrollment
+              user={user}
+              onBack={() => {
+                enrollmentHistoryPushedRef.current = false;
+                setShowUniversityEnrollment(false);
+                window.history.replaceState({ wvPage: 'main' }, '');
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
     );
   }
 
