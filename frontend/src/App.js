@@ -7693,6 +7693,7 @@ function WellnessValleyApp() {
           onShowWellnessEnrollment={() => navigateTo('enrollment')}
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
         />
         <div className="flex-1 min-h-0 overflow-auto">
           <Suspense fallback={null}>
@@ -7729,6 +7730,7 @@ function WellnessValleyApp() {
           onShowWellnessEnrollment={() => navigateTo('enrollment')}
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
         />
         <div className="flex-1 min-h-0 overflow-auto">
           <Suspense fallback={null}>
@@ -7760,6 +7762,7 @@ function WellnessValleyApp() {
           onShowWellnessEnrollment={() => navigateTo('enrollment')}
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
         />
         <div className="flex-1 min-h-0 overflow-auto">
           <Suspense fallback={null}>
@@ -8096,10 +8099,8 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
-          onShowHome={showDashboard || showWellnessCounselling || showUniversityEnrollment || showNutritionCentersMap ? showMainPage : null}
+          onShowHome={showMainPage}
           onShowWellnessEnrollment={() => {
-            // Guard with a synchronous ref (not the React state) so rapid
-            // double-taps are blocked even before the startTransition commits.
             if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
             enrollmentHistoryPushedRef.current = true;
             startTransition(() => setShowUniversityEnrollment(true));
@@ -8123,7 +8124,7 @@ function WellnessValleyApp() {
             showWellnessCounselling ? 'counselling' :
             showNutritionCentersMap ? 'physical-club' :
             showActivityReport || showActivityTimeReport ? 'activity-report' :
-            null
+            'home'
           }
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}

@@ -169,7 +169,9 @@ const Header = ({
 
   // navOnly mode: render only the tab navigation row (Row 2).
   // Used by full-page sub-views (Diary, Counselling, Enrollment) so they
-  // display the 5-tab nav without duplicating the logo/settings row on top.
+  // display the full nav without duplicating the logo/settings row on top.
+  // ALL 6 tabs are ALWAYS rendered for a uniform look across every page.
+  // Tabs without a callback are rendered but non-interactive (no-op click).
   if (navOnly) {
     return (
       <nav
@@ -181,22 +183,22 @@ const Header = ({
           paddingRight: 'env(safe-area-inset-right, 0px)',
         }}
       >
-        <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {onShowHome && (
-            <TouchFeedbackButton
-              onClick={onShowHome}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
-                activePage === null ? 'bg-green-100' : 'hover:bg-green-50'
-              }`}
-              ariaLabel="Home"
-            >
-              <Home className={`h-5 w-5 ${activePage === null ? 'text-green-800' : 'text-green-700'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === null ? 'text-green-900' : 'text-green-800'}`}>Home</span>
-            </TouchFeedbackButton>
-          )}
+        <div className="max-w-lg mx-auto px-2 flex items-center justify-around" style={{ scrollbarWidth: 'none' }}>
+          {/* Home — highlighted when activePage is 'home' */}
           <TouchFeedbackButton
-            onClick={onShowBackgroundHistory}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+            onClick={onShowHome ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
+              activePage === 'home' ? 'bg-green-100' : 'hover:bg-green-50'
+            }`}
+            ariaLabel="Home"
+          >
+            <Home className={`h-5 w-5 ${activePage === 'home' ? 'text-green-800' : 'text-green-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'home' ? 'text-green-900' : 'text-green-800'}`}>Home</span>
+          </TouchFeedbackButton>
+          {/* Diary */}
+          <TouchFeedbackButton
+            onClick={onShowBackgroundHistory ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
               activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
             }`}
             ariaLabel="Diary"
@@ -204,54 +206,50 @@ const Header = ({
             <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
           </TouchFeedbackButton>
-          {onShowWellnessEnrollment && (
-            <TouchFeedbackButton
-              onClick={onShowWellnessEnrollment}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[64px] ${
-                activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
-              }`}
-              ariaLabel="Enrollment"
-            >
-              <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enrollment</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowWellnessCounselling && (
-            <TouchFeedbackButton
-              onClick={onShowWellnessCounselling}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
-              }`}
-              ariaLabel="Counselling"
-            >
-              <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counselling</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowNutritionCentersMap && (
-            <TouchFeedbackButton
-              onClick={onShowNutritionCentersMap}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
-              }`}
-              ariaLabel="Physical Club"
-            >
-              <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowActivityReport && (
-            <TouchFeedbackButton
-              onClick={onShowActivityReport}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-              }`}
-              ariaLabel="Activity Report"
-            >
-              <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
-            </TouchFeedbackButton>
-          )}
+          {/* Enrollment */}
+          <TouchFeedbackButton
+            onClick={onShowWellnessEnrollment ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
+            }`}
+            ariaLabel="Enrollment"
+          >
+            <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enroll</span>
+          </TouchFeedbackButton>
+          {/* Counselling */}
+          <TouchFeedbackButton
+            onClick={onShowWellnessCounselling ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
+            }`}
+            ariaLabel="Counselling"
+          >
+            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counsel</span>
+          </TouchFeedbackButton>
+          {/* Physical Club */}
+          <TouchFeedbackButton
+            onClick={onShowNutritionCentersMap ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
+            }`}
+            ariaLabel="Physical Club"
+          >
+            <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
+          </TouchFeedbackButton>
+          {/* Activity Report */}
+          <TouchFeedbackButton
+            onClick={onShowActivityReport ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+            }`}
+            ariaLabel="Activity Report"
+          >
+            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
+          </TouchFeedbackButton>
         </div>
       </nav>
     );
@@ -440,28 +438,28 @@ const Header = ({
         </div>
       </div>
 
-      {/* ── Row 2: App top navigation bar ── */}
+      {/* ── Row 2: App top navigation bar — always 6 tabs, always uniform ── */}
       <nav
         aria-label="App navigation"
         className="border-t border-green-100 bg-white"
         style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}
       >
-        <div className="max-w-lg mx-auto px-2 flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {onShowHome && (
-            <TouchFeedbackButton
-              onClick={onShowHome}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
-                activePage === null ? 'bg-green-100' : 'hover:bg-green-50'
-              }`}
-              ariaLabel="Home"
-            >
-              <Home className={`h-5 w-5 ${activePage === null ? 'text-green-800' : 'text-green-700'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === null ? 'text-green-900' : 'text-green-800'}`}>Home</span>
-            </TouchFeedbackButton>
-          )}
+        <div className="max-w-lg mx-auto px-2 flex items-center justify-around" style={{ scrollbarWidth: 'none' }}>
+          {/* Home */}
           <TouchFeedbackButton
-            onClick={onShowBackgroundHistory}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[56px] ${
+            onClick={onShowHome ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
+              activePage === 'home' ? 'bg-green-100' : 'hover:bg-green-50'
+            }`}
+            ariaLabel="Home"
+          >
+            <Home className={`h-5 w-5 ${activePage === 'home' ? 'text-green-800' : 'text-green-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'home' ? 'text-green-900' : 'text-green-800'}`}>Home</span>
+          </TouchFeedbackButton>
+          {/* Diary */}
+          <TouchFeedbackButton
+            onClick={onShowBackgroundHistory ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
               activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
             }`}
             ariaLabel="Diary"
@@ -469,54 +467,50 @@ const Header = ({
             <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
           </TouchFeedbackButton>
-          {onShowWellnessEnrollment && (
-            <TouchFeedbackButton
-              onClick={onShowWellnessEnrollment}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[64px] ${
-                activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
-              }`}
-              ariaLabel="Enrollment"
-            >
-              <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enrollment</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowWellnessCounselling && (
-            <TouchFeedbackButton
-              onClick={onShowWellnessCounselling}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
-              }`}
-              ariaLabel="Counselling"
-            >
-              <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counselling</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowNutritionCentersMap && (
-            <TouchFeedbackButton
-              onClick={onShowNutritionCentersMap}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
-              }`}
-              ariaLabel="Physical Club"
-            >
-              <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
-            </TouchFeedbackButton>
-          )}
-          {onShowActivityReport && (
-            <TouchFeedbackButton
-              onClick={onShowActivityReport}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
-                activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-              }`}
-              ariaLabel="Activity Report"
-            >
-              <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
-              <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
-            </TouchFeedbackButton>
-          )}
+          {/* Enrollment */}
+          <TouchFeedbackButton
+            onClick={onShowWellnessEnrollment ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
+            }`}
+            ariaLabel="Enrollment"
+          >
+            <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enroll</span>
+          </TouchFeedbackButton>
+          {/* Counselling */}
+          <TouchFeedbackButton
+            onClick={onShowWellnessCounselling ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
+            }`}
+            ariaLabel="Counselling"
+          >
+            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counsel</span>
+          </TouchFeedbackButton>
+          {/* Physical Club */}
+          <TouchFeedbackButton
+            onClick={onShowNutritionCentersMap ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
+            }`}
+            ariaLabel="Physical Club"
+          >
+            <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
+          </TouchFeedbackButton>
+          {/* Activity Report */}
+          <TouchFeedbackButton
+            onClick={onShowActivityReport ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+            }`}
+            ariaLabel="Activity Report"
+          >
+            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
+          </TouchFeedbackButton>
         </div>
       </nav>
 

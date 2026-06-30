@@ -329,19 +329,34 @@ JSON only. No markdown.`;
 
 /**
  * Returns true when the primary model should be abandoned in favour of the
- * fallback model.  Two cases:
+ * fallback model.  Triggers on:
  *   1. Circuit breaker opened after N consecutive failures — the primary is
  *      saturated; bypass immediately without waiting for more retries.
  *   2. All retries exhausted with 503 / service-unavailable errors.
+ *   3. All retries exhausted with 429 / quota-exceeded / rate-limit errors.
+ *      Google's API returns 429 with "Resource has been exhausted" when the
+ *      per-model quota is hit; switching to the fallback model (a separate
+ *      quota bucket) is the correct recovery action.
  */
 function isPrimaryOverloadedError(err) {
   if (!err) return false;
   // Circuit opened for the primary → the primary service is considered down
   if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
-  if (status === 503) return true;
+  // 503 = service unavailable (overloaded)
+  // 429 = quota exceeded / rate limited (separate quota on fallback model)
+  if (status === 503 || status === 429) return true;
   const msg = (err.message ?? '').toLowerCase();
-  return msg.includes('503') || msg.includes('service unavailable') || msg.includes('high demand');
+  return (
+    msg.includes('503')                       ||
+    msg.includes('service unavailable')       ||
+    msg.includes('high demand')               ||
+    msg.includes('429')                       ||
+    msg.includes('quota')                     ||
+    msg.includes('rate limit')                ||
+    msg.includes('resource has been exhausted') ||
+    msg.includes('too many requests')
+  );
 }
 
 // ── Internal call helper ──────────────────────────────────────────────────────
@@ -374,12 +389,16 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
       { label, service: circuitService },
     ));
   } catch (err) {
-    // Primary model saturated or circuit open → try fallback model once
+    // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
+      const status = Number(err.status);
+      const reason = err.code === 'CIRCUIT_OPEN' ? 'circuit_open'
+                   : (status === 429 || (err.message ?? '').toLowerCase().includes('quota') || (err.message ?? '').toLowerCase().includes('rate limit') || (err.message ?? '').toLowerCase().includes('too many requests')) ? '429_quota_exceeded'
+                   : '503_overload';
       logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
         label,
         fallbackModel: FALLBACK_MODEL_NAME,
-        reason:        err.code === 'CIRCUIT_OPEN' ? 'circuit_open' : '503_overload',
+        reason,
         primaryError:  err.message,
       });
       return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });
