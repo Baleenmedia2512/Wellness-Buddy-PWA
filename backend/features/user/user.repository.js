@@ -13,9 +13,9 @@ export async function findByEmail(email, columns = '"UserId", "UserName", "Email
     .from(TEAM)
     .select(columns)
     .ilike('Email', email)
-    .maybeSingle();
+    .limit(1);
   if (error) throw error;
-  return data || null;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
 export async function findByExactEmail(email, columns) {

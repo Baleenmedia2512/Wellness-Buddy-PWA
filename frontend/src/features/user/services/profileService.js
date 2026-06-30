@@ -37,7 +37,10 @@ export const saveProfile = async (payload) => {
   }
   const data = await res.json();
   if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Failed to save profile.');
+    // Never surface raw Supabase / PostgREST error strings to the user.
+    const raw = data.message || '';
+    const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist/i.test(raw);
+    throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {
