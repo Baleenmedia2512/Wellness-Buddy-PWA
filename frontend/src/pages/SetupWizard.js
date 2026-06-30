@@ -6,7 +6,7 @@ import { debugLog } from '../shared/utils/logger.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
-const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
+const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailProp = '' }) => {
   // Step 1: Coach Search, Step 2: Team ID
   const [step, setStep] = useState(1);
 
@@ -56,7 +56,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
 
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
   useEffect(() => {
-    const userEmail = localStorage.getItem('userEmail') || '';
+    const userEmail = userEmailProp || localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
 
     const autoComplete = async () => {
@@ -123,7 +123,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     setError("");
 
     try {
-      const userEmail = localStorage.getItem("userEmail");
+      const userEmail = userEmailProp || localStorage.getItem("userEmail");
       const response = await axios.get(
         `${API_BASE}/api/users/search?q=${encodeURIComponent(
           query,
@@ -155,7 +155,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     setError("");
 
     try {
-      const userEmail = localStorage.getItem("userEmail");
+      const userEmail = userEmailProp || localStorage.getItem("userEmail");
       if (!userEmail) {
         setError("Session expired. Please login again.");
         return;
@@ -192,7 +192,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     setError("");
 
     try {
-      const userEmail = localStorage.getItem("userEmail");
+      const userEmail = userEmailProp || localStorage.getItem("userEmail");
       if (!userEmail) {
         setError("Session expired. Please login again.");
         setSendingRequest(false);
@@ -248,7 +248,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     setError("");
 
     try {
-      const userEmail = localStorage.getItem("userEmail");
+      const userEmail = userEmailProp || localStorage.getItem("userEmail");
       if (!userEmail) {
         setError("Session expired. Please login again.");
         setClaimingTeamId(false);

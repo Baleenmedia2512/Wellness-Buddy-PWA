@@ -55,17 +55,18 @@ export async function insertDailyRow(payload) {
 
 export async function fetchWatchCalorieRows(userId, targetDate) {
   const supabase = getSupabaseClient();
-  const startOfDayUTC = `${targetDate}T00:00:00+05:30`;
-  const endOfDayUTC   = `${targetDate}T23:59:59+05:30`;
+  // IST-offset day bounds: education_logs_table timestamps are stored in IST.
+  const startOfDayIST = `${targetDate}T00:00:00+05:30`;
+  const endOfDayIST   = `${targetDate}T23:59:59+05:30`;
   const { data, error } = await supabase
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
-    .eq('"UserId"', userId)
-    .eq('"IsDeleted"', 0)
-    .ilike('"Topic"', 'Calories Burned:%')
-    .gte('"CreatedAt"', startOfDayUTC)
-    .lte('"CreatedAt"', endOfDayUTC)
-    .order('"CreatedAt"', { ascending: false });
+    .eq('UserId', userId)
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .ilike('Topic', 'Calories Burned:%')
+    .gte('CreatedAt', startOfDayIST)
+    .lte('CreatedAt', endOfDayIST)
+    .order('CreatedAt', { ascending: false });
   if (error) throw error;
   return data || [];
 }

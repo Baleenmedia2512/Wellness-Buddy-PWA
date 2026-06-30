@@ -119,9 +119,10 @@ const MiniProgressBar = ({ percentage, color }) => {
   );
 };
 
-const CaloriesCard = ({ target, consumed, exercise, remaining, progressPercent }) => {
+const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPercent }) => {
   const isExceed = progressPercent > 100;
-  const exceeded = Math.max(0, consumed - target);
+  // `net` = consumed − exercise; when exceeded, show net overage (not raw food overage).
+  const exceeded = Math.max(0, (net ?? Math.max(0, consumed - exercise)) - target);
 
   return (
     <div className="h-full flex items-center justify-center py-2">

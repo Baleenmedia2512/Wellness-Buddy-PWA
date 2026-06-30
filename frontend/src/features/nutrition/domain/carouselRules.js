@@ -24,15 +24,23 @@ export const CALORIES_PER_FAT_G    = 9;
 
 /**
  * @param {{ calorieTarget: number, consumedCalories: number, burnedCalories?: number }}
- * @returns {{ target: number, consumed: number, exercise: number, remaining: number, progressPercent: number }}
+ * @returns {{ target: number, consumed: number, exercise: number, net: number, remaining: number, progressPercent: number }}
+ *
+ * Formula: Net Calories = Food Calories − Exercise Calories − Smartwatch Burned Calories.
+ * Smartwatch burned calories are always treated as exercise calories (product spec).
+ *
+ * progressPercent and remaining are derived from `net`, NOT from raw `consumed`, so the
+ * circular-progress ring and the "Remaining / Exceeded" number reflect true net intake.
  */
 export function computeCaloriesCard({ calorieTarget, consumedCalories, burnedCalories = 0 }) {
   const target   = calorieTarget > 0 ? calorieTarget : 1500;
   const consumed = Math.max(0, consumedCalories || 0);
   const exercise = Math.max(0, burnedCalories || 0);
-  const remaining = Math.max(0, target - consumed + exercise);
-  const progressPercent = Math.round((consumed / target) * 100);
-  return { target, consumed, exercise, remaining, progressPercent };
+  // Net = Food − Exercise. Steps are currently disabled so exercise === watchBurned.
+  const net           = Math.max(0, consumed - exercise);
+  const remaining     = Math.max(0, target - net);
+  const progressPercent = Math.round((net / Math.max(target, 1)) * 100);
+  return { target, consumed, exercise, net, remaining, progressPercent };
 }
 
 // ─── Card 2: Macros ───────────────────────────────────────────────────────────

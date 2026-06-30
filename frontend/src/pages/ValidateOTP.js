@@ -9,7 +9,7 @@ import { debugLog } from '../shared/utils/logger';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false }) => {
+const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false, userEmail: userEmailProp = '' }) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
   const {
     otp, refs, value: otpValue, isComplete,
@@ -58,7 +58,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
   // Demo account: auto-fill 000000 and submit — DISABLED for reactivation flow.
   useEffect(() => {
     if (isReactivationFlow) return;
-    const userEmail = storage.get('userEmail') || '';
+    const userEmail = userEmailProp || storage.get('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
     const timer = setTimeout(() => {
       debugLog("\ud83d\udfe6 [ValidateOTP] Demo account - auto-filling OTP");
@@ -82,7 +82,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
 
   const fetchRequestInfo = async () => {
     try {
-      const userEmail = storage.get('userEmail');
+      const userEmail = userEmailProp || storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
         return;
@@ -128,7 +128,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
     setError('');
 
     try {
-      const userEmail = storage.get('userEmail');
+      const userEmail = userEmailProp || storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
         return;
@@ -184,7 +184,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false 
   // Cancel verification
   const handleCancel = async () => {
     try {
-      const userEmail = storage.get('userEmail');
+      const userEmail = userEmailProp || storage.get('userEmail');
       if (!userEmail) {
         setError('User email not found. Please login again.');
         return;

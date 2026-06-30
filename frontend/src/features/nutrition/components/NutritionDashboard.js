@@ -492,11 +492,17 @@ const NutritionDashboard = ({
   // handleOptimisticDelete moved to useMealMutations hook (declared above).
 
   const consumedCalories = dailyStats.totalCalories || 0;
+  // Net Calories = Food Calories - Smartwatch Burned Calories (step counter disabled).
+  // Canonical formula: Net = Food - Exercise - Smartwatch Burned.
+  // Both smartwatch and step-based burns are treated as exercise calories.
+  const netCalories = Math.max(0, consumedCalories - burnedCalories);
+
+  // Progress bar and status badge reflect NET calories against the daily target.
   const caloriesProgressPercent = Math.min(
     100,
-    (consumedCalories / Math.max(calorieTarget, 1)) * 100,
+    (netCalories / Math.max(calorieTarget, 1)) * 100,
   );
-  const caloriesDelta = consumedCalories - calorieTarget;
+  const caloriesDelta = netCalories - calorieTarget;
   const calorieStatus =
     Math.abs(caloriesDelta) <= 100
       ? {
@@ -516,13 +522,15 @@ const NutritionDashboard = ({
             hint: `${Math.abs(caloriesDelta)} kcal below target`,
           };
 
-  // â”€â”€â”€ Burn-to-Balance derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const isOverTarget   = consumedCalories > calorieTarget;
-  const extraCalories  = isOverTarget ? Math.round(consumedCalories - calorieTarget) : 0;
-  const burnProgress   = extraCalories > 0
+  // Burn-to-Balance: uses RAW food overage so the section shows how much of
+  // the food-vs-target gap has been covered by exercise.
+  const rawExcess     = Math.max(0, consumedCalories - calorieTarget);
+  const isOverTarget  = rawExcess > 0;
+  const extraCalories = rawExcess;
+  const burnProgress  = extraCalories > 0
     ? Math.min(100, Math.round((burnedCalories / extraCalories) * 100))
     : 0;
-  const isBalanced     = isOverTarget && burnedCalories >= extraCalories;
+  const isBalanced    = isOverTarget && burnedCalories >= extraCalories;
 
   const trendAverageCalories = calorieTrendData.length
     ? Math.round(
@@ -684,7 +692,7 @@ const NutritionDashboard = ({
                 summaryPanelRef={summaryPanelRef}
                 dailyStats={dailyStats}
                 calorieTarget={calorieTarget}
-                consumedCalories={consumedCalories}
+                consumedCalories={netCalories}
                 caloriesProgressPercent={caloriesProgressPercent}
                 calorieStatus={calorieStatus}
                 isOverTarget={isOverTarget}

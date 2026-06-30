@@ -464,11 +464,14 @@ function WellnessValleyApp() {
   const foodShareImageReadyAtRef = useRef(0);
 
   // Refs for analysis results - used by resume listener to check if results are visible
-  // without closure staleness issues (the effect is mount-only with [] deps)
+  // without closure staleness issues (the effect is mount-only with [] deps).
+  // imageTypeRef is also used by showDashboardPage (stable useCallback) so it
+  // can read the current imageType without capturing it as a dep.
   const nutritionDataRef = useRef(null);
   const weightResultRef = useRef(null);
   const educationResultRef = useRef(null);
   const watchResultRef = useRef(null);
+  const imageTypeRef = useRef(null);
 
   // Hook into global nutrition refresh context (replaces old nutritionRefreshKey state)
   const {
@@ -489,6 +492,9 @@ function WellnessValleyApp() {
   useEffect(() => {
     watchResultRef.current = watchResult;
   }, [watchResult]);
+  useEffect(() => {
+    imageTypeRef.current = imageType;
+  }, [imageType]);
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -1595,7 +1601,10 @@ function WellnessValleyApp() {
   // native-only gating are preserved exactly inside the service.
   useEffect(() => nativeLifecycle.scheduleSplashHide(500), []);
 
-  // Restore showDashboard from localStorage using startTransition ? avoids suspending lazy <Dashboard> on mount
+  // Restore showDashboard from localStorage using startTransition — avoids suspending lazy <Dashboard> on mount.
+  // Also push a history entry so the browser back button can return to Home
+  // from a cold-start-restored Dashboard (without this the forward button is
+  // immediately disabled and no popstate fires on the first back press).
   useEffect(() => {
     const page = Session.getCurrentPage();
     if (
@@ -1605,6 +1614,10 @@ function WellnessValleyApp() {
       page === "weight-insights"
     ) {
       startTransition(() => setShowDashboard(true));
+      // The popstate effect's replaceState('main') runs first (declared earlier),
+      // so history is [main] at this point. Push 'dashboard' on top so the
+      // browser back button pops to 'main' and fires the popstate handler.
+      window.history.pushState({ wvPage: 'dashboard' }, '');
     }
   }, []);
 
@@ -1612,22 +1625,29 @@ function WellnessValleyApp() {
   useEffect(() => {
     const goBack = () => {
       if (showDashboard) {
+        // showMainPage is now a stable useCallback([]) reference, so this
+        // closure always calls the current version without stale captures.
         showMainPage();
         return true;
       }
       if (showWellnessCounselling) {
         setShowWellnessCounselling(false);
-        window.history.pushState({ wvPage: 'main' }, '');
+        // Pop the history entry pushed when counselling was opened instead
+        // of pushing a new 'main' entry (which would bloat history).
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
       if (showUniversityEnrollment) {
         setShowUniversityEnrollment(false);
-        window.history.pushState({ wvPage: 'main' }, '');
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
       if (showNutritionCentersMap) {
         setShowNutritionCentersMap(false);
-        window.history.pushState({ wvPage: 'main' }, '');
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
@@ -1642,6 +1662,7 @@ function WellnessValleyApp() {
   }, [
     ionRouter,
     showDashboard,
+    showMainPage,
     showWellnessCounselling,
     showUniversityEnrollment,
     showNutritionCentersMap,
@@ -1765,53 +1786,56 @@ function WellnessValleyApp() {
         }
       }
 
-      // Clear nutrition data and image preview when switching to dashboard
-      if (nutritionData) setNutritionData(null);
-      if (imagePreview) setImagePreview(null);
-      if (watchResult) setWatchResult(null);
-      if (educationResult) setEducationResult(null);
-      if (weightResult) {
-        setWeightResult(null);
-        setPendingWeightImage(null);
-        setWeightEntrySaved(false);
-        setSavedWeightId(null);
-        savedWeightIdRef.current = null;
-      }
-      if (selectedImage) setSelectedImage(null);
-      if (imageType) setImageType(null);
+      // Clear transient capture/analysis state when switching to dashboard.
+      // All setters are unconditional — setState(null) when already null is
+      // a no-op in React (Object.is bail-out), so no extra render fires.
+      // This also removes nutritionData/imagePreview/etc. from the dep array
+      // below, preventing showDashboardPage from being recreated (and the
+      // gallery-monitoring effect from re-initialising) on every AI result.
+      setNutritionData(null);
+      setImagePreview(null);
+      setWatchResult(null);
+      setEducationResult(null);
+      setWeightResult(null);
+      setPendingWeightImage(null);
+      setWeightEntrySaved(false);
+      setSavedWeightId(null);
+      savedWeightIdRef.current = null;
+      setSelectedImage(null);
+      setImageType(null);
 
       // savePromiseRef guard: if a food save is in-flight, wait for it to
       // settle before opening the Dashboard so the initial fetch finds
       // committed data. Resolves immediately when no save is pending.
-      // The Promise always resolves (never rejects) ∩┐╜ errors are caught and
+      // The Promise always resolves (never rejects) — errors are caught and
       // handled inside scheduleNutritionSaveInBackground.
       const pendingSave = savePromiseRef.current;
       if (pendingSave) {
-        debugLog("? [Dashboard] Awaiting active food save...");
-        _ctLog(16, 'showDashboardPage ∩┐╜ awaiting pending save BEFORE opening', { hadPendingSave: true });
+        debugLog("✅ [Dashboard] Awaiting active food save...");
+        _ctLog(16, 'showDashboardPage — awaiting pending save BEFORE opening', { hadPendingSave: true });
         await pendingSave;
-        debugLog("? [Dashboard] Save settled ∩┐╜ opening Dashboard");
+        debugLog("✅ [Dashboard] Save settled — opening Dashboard");
       }
-      // Stage 16 (final) ∩┐╜ Dashboard about to open
-      _ctLog(16, 'showDashboardPage ∩┐╜ setShowDashboard(true) about to fire', {
+      // Stage 16 (final) — Dashboard about to open
+      _ctLog(16, 'showDashboardPage — setShowDashboard(true) about to fire', {
         hadPendingSave: !!pendingSave,
-        imageTypeInClosure: imageType,
         preferredTab,
       });
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
+      // Read imageType from ref so this callback doesn't need it as a dep.
+      const currentImageType = imageTypeRef.current;
       if (
         preferredTab === "weight" ||
         preferredTab === "nutrition" ||
         preferredTab === "education"
       ) {
         setDashboardInitialTab(preferredTab);
-      } else if (imageType === "weight") {
-        // Set the initial tab based on the last analyzed image type
+      } else if (currentImageType === "weight") {
         setDashboardInitialTab("weight");
-      } else if (imageType === "food") {
+      } else if (currentImageType === "food") {
         setDashboardInitialTab("nutrition");
-      } else if (imageType === "education") {
+      } else if (currentImageType === "education") {
         setDashboardInitialTab("education");
       } else {
         setDashboardInitialTab(null); // Use default/last used tab
@@ -1826,20 +1850,20 @@ function WellnessValleyApp() {
         navLockRef.current = false;
       }
     },
-    [
-      user,
-      checkUserStatus,
-      nutritionData,
-      imagePreview,
-      imageType,
-      watchResult,
-      educationResult,
-      weightResult,
-      selectedImage,
-    ],
+    // Only stable values in deps: user identity and its status checker.
+    // Transient capture state (nutritionData, imagePreview, weightResult, etc.)
+    // is now cleared unconditionally and read via refs, so it is NOT a dep.
+    // This keeps showDashboardPage stable across AI analysis cycles and
+    // prevents the gallery-monitoring effect from re-initialising on every result.
+    [user, checkUserStatus],
   );
 
-  const showMainPage = () => {
+  // showMainPage is stable across renders (useCallback with no deps) because
+  // all state reads inside it use the functional-updater or ref form, and
+  // all state setters are stable references from useState/useRef. Wrapping
+  // in useCallback prevents Dashboard from receiving a new onBack prop on
+  // every render and avoids stale-closure in the Android back-button effect.
+  const showMainPage = useCallback(() => {
     setShowDashboard(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
@@ -1847,19 +1871,17 @@ function WellnessValleyApp() {
     setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
-    if (weightResult) {
-      setWeightResult(null);
-      setPendingWeightImage(null);
-      setWeightEntrySaved(false);
-      setSavedWeightId(null);
-      savedWeightIdRef.current = null;
-    }
-    if (educationResult) setEducationResult(null);
-    if (watchResult) setWatchResult(null);
-    if (nutritionData) setNutritionData(null);
-    if (imagePreview) setImagePreview(null);
-    if (selectedImage) setSelectedImage(null);
-    if (imageType) setImageType(null);
+    setWeightResult(null);
+    setPendingWeightImage(null);
+    setWeightEntrySaved(false);
+    setSavedWeightId(null);
+    savedWeightIdRef.current = null;
+    setEducationResult(null);
+    setWatchResult(null);
+    setNutritionData(null);
+    setImagePreview(null);
+    setSelectedImage(null);
+    setImageType(null);
     // Clear instant-share state so stale URLs don't carry over to the next capture.
     foodCaptureIdRef.current = null;
     processedImageRef.current = null;
@@ -1872,10 +1894,19 @@ function WellnessValleyApp() {
     }
 
     Session.setCurrentPage("main");
-    // Synchronise browser history to reflect the return to home so the native
-    // back button is not stuck on a now-invalid "dashboard" history entry.
-    window.history.pushState({ wvPage: 'main' }, '');
-  };
+    // Pop the history entry that was pushed when the user navigated TO this
+    // page. Using history.back() instead of pushState({wvPage:'main'}) is
+    // critical: pushState would ADD a new 'main' entry on every back
+    // navigation, causing the browser back button to drill through N
+    // previously-visited pages instead of leaving the app.
+    // Guard: only pop if the current entry is a tracked page (not already
+    // at 'main' or an unknown external entry).
+    const currentWvPage = window.history.state?.wvPage;
+    if (currentWvPage && currentWvPage !== 'main') {
+      window.history.back();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- all setters are stable; refs are not reactive
+  }, []);
 
   // ? NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
   // App.js retains the call site (in the user-authenticated effect below) so
@@ -2935,6 +2966,10 @@ function WellnessValleyApp() {
             "?? [Setup Check] User skipped setup (database), bypassing wizard",
           );
           Session.markSetupSkipped();
+          // Profile completion must still run even when setup is skipped, so that
+          // a user who dismissed the wizard but has missing profile fields sees the gate.
+          await checkProfileCompletion(userEmail, null, { silent: true });
+          setTimeout(() => checkProfilePicture(user), 800);
           return;
         } else if (status.result === "pendingOtp") {
           if (Session.isCoachOtpVerified()) {
@@ -6984,15 +7019,16 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // Check profile completion for all users — new users will always have missing
-        // fields and the CompleteProfilePage gate will show. The SetupWizard handles
-        // coach/team linking (a separate flow), not personal detail collection.
-        if (userEmail) {
-          await checkProfileCompletion(userEmail, parsedUser);
-        } else {
+        if (!userEmail) {
           // Phone-OTP user with no email — show the email gate before anything else.
+          // After the user provides an email, the setup check useEffect re-runs and
+          // handles setup wizard → coach OTP → profile completion in the correct order.
           setShowEmailGate(true);
         }
+        // For email users: profile completion and setup wizard are handled by the
+        // setup check useEffect (fires ~1 s after user state is set). This prevents
+        // the race where CompleteProfilePage and SetupWizard both rendered within
+        // 1 s of OTP verification — SetupWizard must come before CompleteProfilePage.
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
@@ -7011,11 +7047,13 @@ function WellnessValleyApp() {
     }
   };
 
-  // useDeferredValue for lazy pages ? must be declared BEFORE any early returns (Rules of Hooks)
+  // useDeferredValue for lazy pages — must be declared BEFORE any early returns (Rules of Hooks).
+  // All three full-page routes use useDeferredValue so React can keep the
+  // current (home) UI visible while the lazy chunk loads, avoiding a white
+  // flash on every navigation.
   const deferredShowDashboard = useDeferredValue(showDashboard);
-  const deferredShowWellnessCounselling = useDeferredValue(
-    showWellnessCounselling,
-  );
+  const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
+  const deferredShowUniversityEnrollment = useDeferredValue(showUniversityEnrollment);
 
   // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
   // returning users alike fall straight through to Login / Home. The native
@@ -7378,6 +7416,7 @@ function WellnessValleyApp() {
             <ValidateOTP
               key="reactivation"
               isReactivationFlow={true}
+              userEmail={user?.email || user?.Email || Session.getUserEmail()}
               onClose={() => {
                 setShowValidateOTP(false);
                 setIsInactiveReactivationFlow(false);
@@ -7502,7 +7541,9 @@ function WellnessValleyApp() {
           user={user}
           onBack={() => {
             setShowWellnessCounselling(false);
-            window.history.pushState({ wvPage: 'main' }, '');
+            // Pop the entry pushed when counselling was opened.
+            const currentWvPage = window.history.state?.wvPage;
+            if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
         />
       </Suspense>
@@ -7510,14 +7551,16 @@ function WellnessValleyApp() {
   }
 
   // Wellness University Enrollment - Full page view
-  if (showUniversityEnrollment) {
+  if (deferredShowUniversityEnrollment) {
     return (
       <Suspense fallback={null}>
         <WellnessUniversityEnrollment
           user={user}
           onBack={() => {
             setShowUniversityEnrollment(false);
-            window.history.pushState({ wvPage: 'main' }, '');
+            // Pop the entry pushed when enrollment was opened.
+            const currentWvPage = window.history.state?.wvPage;
+            if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
         />
       </Suspense>
@@ -7786,10 +7829,13 @@ function WellnessValleyApp() {
             window.history.pushState({ wvPage: 'counselling' }, '');
           }}
           onShowNutritionCentersMap={() => {
-            startTransition(() => setShowNutritionCentersMap((prev) => {
-              if (!prev) window.history.pushState({ wvPage: 'physical-club' }, '');
-              return true;
-            }));
+            // Guard: do not push a duplicate history entry if already on the map.
+            // pushState is intentionally outside the setState updater — updater
+            // functions must be pure (React 18 calls them twice in StrictMode).
+            if (!showNutritionCentersMap) {
+              window.history.pushState({ wvPage: 'physical-club' }, '');
+            }
+            startTransition(() => setShowNutritionCentersMap(true));
           }}
           activePage={showNutritionCentersMap ? 'physical-club' : null}
           onShowRegisterCenter={null}
@@ -9007,6 +9053,19 @@ function WellnessValleyApp() {
             apiBaseUrl={apiBaseUrl}
             onComplete={(savedEmail) => {
               setShowEmailGate(false);
+              // Persist email to localStorage so SetupWizard, ValidateOTP, and
+              // all downstream session reads get a non-null value. Also patch the
+              // cached otpUser entry so a cold-restart doesn't re-trigger the gate.
+              Session.setUserEmail(savedEmail);
+              const cachedRaw = Session.getOtpUserRaw();
+              if (cachedRaw) {
+                try {
+                  const cached = JSON.parse(cachedRaw);
+                  if (!cached.email || !cached.email.trim()) {
+                    Session.setOtpUser({ ...cached, email: savedEmail });
+                  }
+                } catch { /* non-fatal */ }
+              }
               // Patch the in-memory user so the rest of the app sees the email
               setUser((prev) => prev ? { ...prev, email: savedEmail } : prev);
             }}
@@ -9176,7 +9235,15 @@ function WellnessValleyApp() {
           >
             <NutritionCentersMap
               user={user}
-              onBack={() => setShowNutritionCentersMap(false)}
+              onBack={() => {
+                setShowNutritionCentersMap(false);
+                // Pop the 'physical-club' history entry pushed when the map
+                // was opened. Without this, the browser back button would
+                // re-open the map via popstate even after the user closed it
+                // through the in-map back button.
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage === 'physical-club') window.history.back();
+              }}
               onEditCenter={(center) => {
                 setEditCenterData(center);
                 // Keep map mounted in background - don't unmount
@@ -9231,6 +9298,7 @@ function WellnessValleyApp() {
             <ValidateOTP
               key={isInactiveReactivationFlow ? "reactivation" : "setup"}
               isReactivationFlow={isInactiveReactivationFlow}
+              userEmail={user?.email || user?.Email || Session.getUserEmail()}
               onClose={() => {
                 console.log("?? [ValidateOTP onClose] User closed modal", {
                   isInactiveReactivationFlow,
@@ -9269,11 +9337,16 @@ function WellnessValleyApp() {
                     }
                   }
                 } else {
-                  // Regular login flow - only show setup wizard if user is active
-                  // If inactive, the checkUserStatus will show the inactive modal
-                  console.log(
-                    "?? [ValidateOTP onSuccess] Regular login flow, checking user status before showing setup wizard",
-                  );
+                  // Regular login flow — coach OTP verified, setup is now complete.
+                  // Run profile completion check so CompleteProfilePage appears
+                  // if height / diet / phone are still missing. Without this call
+                  // the user lands on the home screen with an incomplete profile
+                  // and nothing prompts them to fill it in.
+                  const emailAfterOtp =
+                    user?.email || user?.Email || Session.getUserEmail();
+                  if (emailAfterOtp) {
+                    checkProfileCompletion(emailAfterOtp, user);
+                  }
                 }
                 // Setup complete, user can now access dashboard
               }}

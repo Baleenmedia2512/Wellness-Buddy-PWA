@@ -43,7 +43,7 @@ const NutritionSummaryCards = ({
     <div ref={summaryPanelRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <p className="text-xs md:text-sm text-gray-500">Calories Consumed</p>
+          <p className="text-xs md:text-sm text-gray-500">Net Calories</p>
           <p className="text-xl md:text-2xl font-bold text-gray-900">
             {consumedCalories}
             <span className="text-xs md:text-sm font-normal text-gray-500"> / {calorieTarget} kcal</span>
