@@ -214,7 +214,18 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
   if (checkingEnrollment) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center relative">
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 rounded-full p-1 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
         </div>

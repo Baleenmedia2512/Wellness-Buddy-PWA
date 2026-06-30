@@ -52,9 +52,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
     return /^[a-zA-Z0-9]{10}$/.test(id);
   };
 
-  const DEMO_EMAIL = 'testereasywork@gmail.com';
-
   // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
+  const DEMO_EMAIL = 'testereasywork@gmail.com';
   useEffect(() => {
     const userEmail = userEmailProp || localStorage.getItem('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;

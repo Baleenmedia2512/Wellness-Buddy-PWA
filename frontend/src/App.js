@@ -758,6 +758,11 @@ function WellnessValleyApp() {
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
   // Wellness University Enrollment state
   const [showUniversityEnrollment, setShowUniversityEnrollment] = useState(false);
+  // Synchronous ref that tracks whether we have pushed an 'enrollment' history
+  // entry. Updated synchronously (before startTransition commits) so the guard
+  // in onShowWellnessEnrollment is accurate even when rapid taps arrive before
+  // the React state update has been committed.
+  const enrollmentHistoryPushedRef = useRef(false);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
@@ -772,6 +777,7 @@ function WellnessValleyApp() {
       const page = event.state?.wvPage ?? 'main';
       if (page === 'main') {
         // Returning to home from any full-screen route:
+        enrollmentHistoryPushedRef.current = false;
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
@@ -788,6 +794,7 @@ function WellnessValleyApp() {
         setShowUniversityEnrollment(false);
         Session.setCurrentPage('main');
       } else if (page === 'enrollment') {
+        enrollmentHistoryPushedRef.current = true;
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         startTransition(() => setShowUniversityEnrollment(true));
@@ -798,10 +805,12 @@ function WellnessValleyApp() {
       }
     };
     window.addEventListener('popstate', handlePopState);
-    // Seed the initial history entry so the very first Back press lands on 'main'.
-    if (!window.history.state?.wvPage) {
-      window.history.replaceState({ wvPage: 'main' }, '');
-    }
+    // Always seed the current history entry to 'main' on mount.
+    // React state always initialises from scratch; if the browser preserved a
+    // stale wvPage (e.g. 'enrollment') from a previous session or a page
+    // reload, we must override it so that history.back() from enrollment
+    // always lands on a 'main' entry, never on a ghost enrollment entry.
+    window.history.replaceState({ wvPage: 'main' }, '');
     return () => window.removeEventListener('popstate', handlePopState);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; setters are stable
   }, []);
@@ -1639,9 +1648,13 @@ function WellnessValleyApp() {
         return true;
       }
       if (showUniversityEnrollment) {
+        enrollmentHistoryPushedRef.current = false;
         setShowUniversityEnrollment(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        // Use replaceState instead of history.back() so no popstate fires.
+        // history.back() would trigger the handlePopState 'enrollment' branch
+        // which calls startTransition(setShowUniversityEnrollment(true)) and
+        // fights the urgent false update, leaving enrollment re-opened.
+        window.history.replaceState({ wvPage: 'main' }, '');
         return true;
       }
       if (showNutritionCentersMap) {
@@ -7557,10 +7570,15 @@ function WellnessValleyApp() {
         <WellnessUniversityEnrollment
           user={user}
           onBack={() => {
+            enrollmentHistoryPushedRef.current = false;
             setShowUniversityEnrollment(false);
-            // Pop the entry pushed when enrollment was opened.
-            const currentWvPage = window.history.state?.wvPage;
-            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+            // Replace the enrollment history entry with 'main' instead of
+            // calling history.back(). history.back() fires popstate which the
+            // 'enrollment' branch of handlePopState catches, and its
+            // startTransition(setShowUniversityEnrollment(true)) wins over the
+            // urgent false update — leaving enrollment perpetually re-opened.
+            // replaceState does NOT fire popstate, eliminating the race.
+            window.history.replaceState({ wvPage: 'main' }, '');
           }}
         />
       </Suspense>
@@ -7819,7 +7837,10 @@ function WellnessValleyApp() {
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
           onShowWellnessEnrollment={() => {
-            if (showUniversityEnrollment) return;
+            // Guard with a synchronous ref (not the React state) so rapid
+            // double-taps are blocked even before the startTransition commits.
+            if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
+            enrollmentHistoryPushedRef.current = true;
             startTransition(() => setShowUniversityEnrollment(true));
             window.history.pushState({ wvPage: 'enrollment' }, '');
           }}
