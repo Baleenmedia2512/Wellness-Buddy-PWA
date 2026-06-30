@@ -19,6 +19,12 @@ export async function saveDaily(payload) {
   return res.json();
 }
 
+export async function getTimeReport(params) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${base()}/api/activity/time-report?${qs}`);
+  return res.json();
+}
+
 export async function getWatchCalories(userId, date) {
   const params = new URLSearchParams({ userId: String(userId) });
   if (date) params.set('date', date);

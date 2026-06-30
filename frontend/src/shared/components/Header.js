@@ -10,6 +10,7 @@ import {
   Settings,
   User,
   Home,
+  BarChart2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { UserProfileModal } from "../../features/user";
@@ -26,16 +27,13 @@ const Header = ({
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
+  onShowActivityReport,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
-  activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|null
+  activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|'activity-report'|null
   manualModeActive = false,
   onToggleManualMode,
-  // When true, renders ONLY the tab navigation row (Row 2) without the
-  // logo/settings row (Row 1). Used by full-page sub-views (Diary,
-  // Counselling, Enrollment) so they share the same 5-tab nav without
-  // rendering a duplicate full header above their own page header.
   navOnly = false,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -242,6 +240,18 @@ const Header = ({
               <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
             </TouchFeedbackButton>
           )}
+          {onShowActivityReport && (
+            <TouchFeedbackButton
+              onClick={onShowActivityReport}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+              }`}
+              ariaLabel="Activity Report"
+            >
+              <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
+            </TouchFeedbackButton>
+          )}
         </div>
       </nav>
     );
@@ -250,6 +260,7 @@ const Header = ({
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
       <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-1">
             <img
               src={wellnessValleyIcon}
@@ -492,6 +503,18 @@ const Header = ({
             >
               <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
               <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Physical Club</span>
+            </TouchFeedbackButton>
+          )}
+          {onShowActivityReport && (
+            <TouchFeedbackButton
+              onClick={onShowActivityReport}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[72px] ${
+                activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+              }`}
+              ariaLabel="Activity Report"
+            >
+              <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
+              <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
             </TouchFeedbackButton>
           )}
         </div>

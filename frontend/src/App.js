@@ -210,6 +210,13 @@ const WellnessCounselling = lazy(() =>
 const WellnessUniversityEnrollment = lazy(() =>
   import("./pages/WellnessUniversityEnrollment"),
 );
+// ?? PERFORMANCE: Lazy-load Activity Report pages — coach/admin analytics views
+const ActivityReport = lazy(() =>
+  import("./features/activity/components/ActivityReport"),
+);
+const ActivityTimeReport = lazy(() =>
+  import("./features/activity/components/ActivityTimeReport"),
+);
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -763,6 +770,11 @@ function WellnessValleyApp() {
   // the React state update has been committed.
   const enrollmentHistoryPushedRef = useRef(false);
 
+  // Activity Report pages — accessible for all roles (members see own data;
+  // coaches/admins see hierarchical team view via ActivityTimeReport).
+  const [showActivityReport, setShowActivityReport] = useState(false);
+  const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
+
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
   const navLockRef = useRef(false);
@@ -906,11 +918,15 @@ function WellnessValleyApp() {
       !!user &&
       !authLoading &&
       !showDashboard &&
+      !showActivityReport &&
+      !showActivityTimeReport &&
       !showCompleteProfile;
   }, [
     user,
     authLoading,
     showDashboard,
+    showActivityReport,
+    showActivityTimeReport,
     showCompleteProfile,
   ]);
 
@@ -1659,13 +1675,25 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
+      if (showActivityReport) {
+        setShowActivityReport(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showActivityTimeReport) {
+        setShowActivityTimeReport(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
       return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -1674,6 +1702,8 @@ function WellnessValleyApp() {
     showWellnessCounselling,
     showUniversityEnrollment,
     showNutritionCentersMap,
+    showActivityReport,
+    showActivityTimeReport,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -1932,6 +1962,8 @@ function WellnessValleyApp() {
       setShowWellnessCounselling(false);
       setShowUniversityEnrollment(false);
       setShowNutritionCentersMap(false);
+      setShowActivityReport(false);
+      setShowActivityTimeReport(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
       if (isOnSubPage) window.history.back();
@@ -1944,6 +1976,8 @@ function WellnessValleyApp() {
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -1954,13 +1988,15 @@ function WellnessValleyApp() {
       return;
     }
 
-    // For counselling / enrollment / physical-club:
-    // • Clear the current sub-page.
+    // For counselling / enrollment / physical-club / activity-report:
+    // • Clear ALL current sub-pages.
     // • Replace history when switching tabs; push when opening from Home.
     setShowDashboard(false);
     setShowWellnessCounselling(false);
     setShowUniversityEnrollment(false);
     setShowNutritionCentersMap(false);
+    setShowActivityReport(false);
+    setShowActivityTimeReport(false);
     enrollmentHistoryPushedRef.current = false;
 
     if (isOnSubPage) {
@@ -1980,11 +2016,20 @@ function WellnessValleyApp() {
       case 'physical-club':
         startTransition(() => setShowNutritionCentersMap(true));
         break;
+      case 'activity-report':
+        // Coaches/admins/developers get the hierarchical team view;
+        // all other roles see their own personal activity data.
+        if (userRole === 'coach' || userRole === 'admin' || userRole === 'developer') {
+          startTransition(() => setShowActivityTimeReport(true));
+        } else {
+          startTransition(() => setShowActivityReport(true));
+        }
+        break;
       default:
         break;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
-  }, [showDashboardPage]);
+  }, [showDashboardPage, userRole]);
   // App.js retains the call site (in the user-authenticated effect below) so
   // orchestration ownership stays here; only the plugin plumbing moved out.
   // Behavior, order (camera/photos ? push ? geolocation), and logging preserved
@@ -7138,6 +7183,8 @@ function WellnessValleyApp() {
   const deferredShowDashboard = useDeferredValue(showDashboard);
   const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
   const deferredShowUniversityEnrollment = useDeferredValue(showUniversityEnrollment);
+  const deferredShowActivityReport = useDeferredValue(showActivityReport);
+  const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
 
   // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
   // returning users alike fall straight through to Login / Home. The native
@@ -7730,6 +7777,74 @@ function WellnessValleyApp() {
     );
   }
 
+  // Activity Report — member view (personal activity + education attendance data)
+  if (deferredShowActivityReport) {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="activity-report"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+        />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Suspense fallback={null}>
+            <ActivityReport
+              user={user}
+              userRole={userRole}
+              apiBaseUrl={apiBaseUrl}
+              onBack={() => {
+                setShowActivityReport(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
+  // Activity Time Report — hierarchical coach/admin view (team activity heatmap)
+  if (deferredShowActivityTimeReport) {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="activity-report"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+        />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Suspense fallback={null}>
+            <ActivityTimeReport
+              user={user}
+              userRole={userRole}
+              apiBaseUrl={apiBaseUrl}
+              onBack={() => {
+                setShowActivityTimeReport(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   // Main app interface
   return (
     <LocationGuard>
@@ -7996,19 +8111,18 @@ function WellnessValleyApp() {
             window.history.pushState({ wvPage: 'counselling' }, '');
           }}
           onShowNutritionCentersMap={() => {
-            // Guard: do not push a duplicate history entry if already on the map.
-            // pushState is intentionally outside the setState updater — updater
-            // functions must be pure (React 18 calls them twice in StrictMode).
             if (!showNutritionCentersMap) {
               window.history.pushState({ wvPage: 'physical-club' }, '');
             }
             startTransition(() => setShowNutritionCentersMap(true));
           }}
+          onShowActivityReport={() => navigateTo('activity-report')}
           activePage={
             showDashboard ? 'dashboard' :
             showUniversityEnrollment ? 'enrollment' :
             showWellnessCounselling ? 'counselling' :
             showNutritionCentersMap ? 'physical-club' :
+            showActivityReport || showActivityTimeReport ? 'activity-report' :
             null
           }
           onShowRegisterCenter={null}
