@@ -12,6 +12,7 @@ import {
   Coins,
   Briefcase,
 } from "lucide-react";
+import { TeamMemberSearch } from '../features/team';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -80,11 +81,21 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user }) => {
+const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
   // Use SVG icons only on iOS (emoji renders as ? in iOS WebView)
   const isIOS = Capacitor.getPlatform() === "ios";
+
+  // Coach/upline/admin can search for and view a team member's enrollment
+  const isCoachRole = ['coach', 'upline', 'admin', 'developer'].includes(String(userRole || '').toLowerCase());
+  const [selectedMember, setSelectedMember] = useState(null);
+
+  // The email to load enrollment for: selected member (coach view) or self
+  const viewedEmail = selectedMember && !selectedMember.isSelf
+    ? selectedMember.email
+    : user?.email;
+  const isViewingOther = Boolean(selectedMember && !selectedMember.isSelf);
 
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -96,37 +107,43 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
   const [isEditMode, setIsEditMode] = useState(false);
 
   const checkExistingEnrollment = useCallback(async () => {
-    if (!user?.email) {
+    if (!viewedEmail) {
       setCheckingEnrollment(false);
       return;
     }
 
     try {
-      // Fetch user profile to get coach name
-      const cacheBuster = Date.now();
-      const profileResponse = await fetch(
-        `${API_BASE}/api/user/profile?email=${encodeURIComponent(
-          user.email,
-        )}&_t=${cacheBuster}`,
-      );
-      const profileData = await profileResponse.json();
-
-      debugLog("🎓 [Enrollment] Profile data:", profileData);
-
-      if (profileData.success && profileData.data?.coachName) {
-        debugLog(
-          "✅ [Enrollment] Coach name found:",
-          profileData.data.coachName,
+      // Fetch user profile to get coach name (only for own profile)
+      if (!isViewingOther) {
+        const cacheBuster = Date.now();
+        const profileResponse = await fetch(
+          `${API_BASE}/api/user/profile?email=${encodeURIComponent(
+            viewedEmail,
+          )}&_t=${cacheBuster}`,
         );
-        setCoachName(profileData.data.coachName);
+        const profileData = await profileResponse.json();
+
+        debugLog("🎓 [Enrollment] Profile data:", profileData);
+
+        if (profileData.success && profileData.data?.coachName) {
+          debugLog(
+            "✅ [Enrollment] Coach name found:",
+            profileData.data.coachName,
+          );
+          setCoachName(profileData.data.coachName);
+        } else {
+          debugLog("⚠️ [Enrollment] No coach name in profile data");
+          setCoachName("");
+        }
       } else {
-        debugLog("⚠️ [Enrollment] No coach name in profile data");
+        setCoachName("");
       }
 
       // Check existing enrollment .
+      const cacheBuster = Date.now();
       const response = await fetch(
         `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
-          user.email,
+          viewedEmail,
         )}&userOnly=true&_t=${cacheBuster}`,
       );
       const data = await response.json();
@@ -138,15 +155,19 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
         const _parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
         const enrolledPrograms = Array.isArray(_parsed) ? _parsed : Object.keys(_parsed);
         setSelectedPrograms(enrolledPrograms);
+      } else {
+        setExistingEnrollment(null);
+        setSelectedPrograms([]);
       }
     } catch (err) {
       console.error("Error checking enrollment:", err);
     } finally {
       setCheckingEnrollment(false);
     }
-  }, [user]);
+  }, [viewedEmail, isViewingOther]);
 
   useEffect(() => {
+    setCheckingEnrollment(true);
     checkExistingEnrollment();
   }, [checkExistingEnrollment]);
 
@@ -176,7 +197,7 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: user.email,
+          email: viewedEmail,
           programs: selectedPrograms,
         }),
       });
@@ -277,12 +298,26 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
 
         {/* Form Content */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+          {/* Coach: member search to view a downline's enrollment */}
+          {isCoachRole && (
+            <div className="mb-4">
+              <TeamMemberSearch
+                user={user}
+                userRole={userRole}
+                selectedMember={selectedMember}
+                onMemberSelect={setSelectedMember}
+              />
+            </div>
+          )}
+
           {/* User Info */}
           <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs sm:text-sm text-gray-600 font-semibold">Name:</span>
               <span className="text-xs sm:text-sm text-gray-800 break-words">
-                {user?.displayName || user?.email?.split("@")[0]}
+                {isViewingOther
+                  ? selectedMember?.name || selectedMember?.userName || selectedMember?.email?.split("@")[0]
+                  : user?.displayName || user?.email?.split("@")[0]}
               </span>
             </div>
             {coachName && (
@@ -307,17 +342,26 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
 
           {/* Programs Grid */}
           <div className="space-y-2 sm:space-y-3">
-            <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">
-              I would like more information about:
-            </h3>
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-800">
+                I would like more information about:
+              </h3>
+              {isViewingOther && (
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                  View only
+                </span>
+              )}
+            </div>
             {PROGRAMS.map((program) => {
               const iconInfo = PROGRAM_ICON_MAP[program.id];
               const IconComp = iconInfo?.Icon;
               return (
               <div
                 key={program.id}
-                onClick={() => handleProgramToggle(program.name)}
-                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                onClick={() => !isViewingOther && handleProgramToggle(program.name)}
+                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all ${
+                  isViewingOther ? 'cursor-default' : 'cursor-pointer'
+                } ${
                   selectedPrograms.includes(program.name)
                     ? "border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md"
                     : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
@@ -405,6 +449,14 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
 
         {/* Footer */}
         <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
+          {isViewingOther ? (
+            <button
+              onClick={() => setSelectedMember(null)}
+              className="w-full bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors"
+            >
+              ← Back to My Enrollment
+            </button>
+          ) : (
           <div className="flex gap-2 sm:gap-3">
             <button
               onClick={onClose}
@@ -430,6 +482,7 @@ const WellnessUniversityEnrollment = ({ onBack, user }) => {
               )}
             </button>
           </div>
+          )}
         </div>
       </motion.div>
     </div>

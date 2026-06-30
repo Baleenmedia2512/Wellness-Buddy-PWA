@@ -47,4 +47,44 @@ export function validateWatchCalories(query) {
   return { userId: query.userId, targetDate };
 }
 
+const VALID_TIME_REPORT_DATE_RANGES = new Set(['today', 'yesterday', 'last7days', 'last30days', 'custom']);
+const VALID_TIME_REPORT_ROLES = new Set(['admin', 'coach', 'member', 'developer']);
+
+export function validateTimeReport(query) {
+  if (!query?.userId) throw new ValidationError(400, 'userId is required');
+  const userId = parseInt(query.userId, 10);
+  if (Number.isNaN(userId)) throw new ValidationError(400, 'userId must be a valid number');
+
+  const dateRange = String(query.dateRange || '').toLowerCase();
+  if (!VALID_TIME_REPORT_DATE_RANGES.has(dateRange)) {
+    throw new ValidationError(400, `dateRange must be one of: ${Array.from(VALID_TIME_REPORT_DATE_RANGES).join(', ')}`);
+  }
+
+  if (dateRange === 'custom') {
+    if (!query.startDate || !query.endDate) {
+      throw new ValidationError(400, 'startDate and endDate are required when dateRange is "custom"');
+    }
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(query.startDate) || !dateRegex.test(query.endDate)) {
+      throw new ValidationError(400, 'startDate and endDate must be in YYYY-MM-DD format');
+    }
+  }
+
+  const role = query.role ? String(query.role).toLowerCase() : 'member';
+  if (!VALID_TIME_REPORT_ROLES.has(role)) {
+    throw new ValidationError(400, `role must be one of: ${Array.from(VALID_TIME_REPORT_ROLES).join(', ')}`);
+  }
+
+  const tzOffset = query.userTimezoneOffset !== undefined ? parseInt(query.userTimezoneOffset, 10) : 0;
+
+  return {
+    userId,
+    role,
+    dateRange,
+    startDate: query.startDate,
+    endDate: query.endDate,
+    tzOffset: Number.isNaN(tzOffset) ? 0 : tzOffset,
+  };
+}
+
 export { toDateKey };
