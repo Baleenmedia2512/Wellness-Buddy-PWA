@@ -2007,22 +2007,22 @@ function WellnessValleyApp() {
 
     switch (targetPage) {
       case 'counselling':
-        startTransition(() => setShowWellnessCounselling(true));
+        setShowWellnessCounselling(true);
         break;
       case 'enrollment':
         enrollmentHistoryPushedRef.current = true;
-        startTransition(() => setShowUniversityEnrollment(true));
+        setShowUniversityEnrollment(true);
         break;
       case 'physical-club':
-        startTransition(() => setShowNutritionCentersMap(true));
+        setShowNutritionCentersMap(true);
         break;
       case 'activity-report':
         // Coaches/admins/developers get the hierarchical team view;
         // all other roles see their own personal activity data.
         if (userRole === 'coach' || userRole === 'admin' || userRole === 'developer') {
-          startTransition(() => setShowActivityTimeReport(true));
+          setShowActivityTimeReport(true);
         } else {
-          startTransition(() => setShowActivityReport(true));
+          setShowActivityReport(true);
         }
         break;
       default:
@@ -8105,19 +8105,19 @@ function WellnessValleyApp() {
           onShowWellnessEnrollment={() => {
             if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
             enrollmentHistoryPushedRef.current = true;
-            startTransition(() => setShowUniversityEnrollment(true));
+            setShowUniversityEnrollment(true);
             window.history.pushState({ wvPage: 'enrollment' }, '');
           }}
           onShowWellnessCounselling={() => {
             if (showWellnessCounselling) return;
-            startTransition(() => setShowWellnessCounselling(true));
+            setShowWellnessCounselling(true);
             window.history.pushState({ wvPage: 'counselling' }, '');
           }}
           onShowNutritionCentersMap={() => {
             if (!showNutritionCentersMap) {
               window.history.pushState({ wvPage: 'physical-club' }, '');
             }
-            startTransition(() => setShowNutritionCentersMap(true));
+            setShowNutritionCentersMap(true);
           }}
           onShowActivityReport={() => navigateTo('activity-report')}
           activePage={

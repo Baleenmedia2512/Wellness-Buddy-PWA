@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, RefreshCw, Download, Search, ChevronDown, ChevronUp,
+  ArrowLeft, RefreshCw, Download, Search,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check,
 } from 'lucide-react';
@@ -229,11 +229,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
-  // Member summary (education attendance per member ΓÇö shown on mount)
-  const [memberSummaries, setMemberSummaries] = useState([]);
-  const [memberStats, setMemberStats] = useState(null);
-  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
-  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -317,51 +312,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
 
-  const fetchMemberSummary = useCallback(async () => {
-    if (!user?.id || !apiBaseUrl) return;
-
-    setMemberSummaryLoading(true);
-    try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType: 'member-summary',
-        dateRange,
-        role: userRole || 'member',
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch member summaries');
-      }
-
-      setMemberSummaries(data.members || []);
-      setMemberStats(data.stats || null);
-    } catch (err) {
-      // Non-critical: silently log; summary tiles remain visible
-      console.warn('Member summary fetch failed:', err.message);
-    } finally {
-      setMemberSummaryLoading(false);
-    }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
-
   useEffect(() => {
     fetchSummary();
-    fetchMemberSummary();
-    // Also load detail records for the default pre-selected activity on mount.
-    // fetchDetails is the stable useCallback instance; selectedActivity is read
-    // via closure so it is NOT added as a dependency ΓÇö we only want this to
-    // re-run when the API params change (i.e. when fetchDetails is recreated).
+    // Load detail records for the pre-selected activity on mount.
     if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
+  }, [fetchSummary, fetchDetails]);
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
@@ -371,8 +326,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const handleDateRangeChange = (range) => {
     setDateRange(range);
     setDetailRecords([]);
-    setMemberSummaries([]);
-    setMemberStats(null);
     if (range === 'custom') {
       setShowDatePicker(true);
     } else {
@@ -385,19 +338,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setCustomEndDate(end);
     setShowDatePicker(false);
     setDetailRecords([]);
-    setMemberSummaries([]);
-    setMemberStats(null);
   };
-
-  // Filter member summaries by search query
-  const filteredMemberSummaries = useMemo(() => {
-    if (!memberSearchQuery) return memberSummaries;
-    const q = memberSearchQuery.toLowerCase();
-    return memberSummaries.filter(m =>
-      (m.memberName || '').toLowerCase().includes(q) ||
-      (m.coachName || '').toLowerCase().includes(q)
-    );
-  }, [memberSummaries, memberSearchQuery]);
 
   // Filter and sort records
   const filteredRecords = useMemo(() => {
@@ -570,11 +511,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
+              onClick={() => { fetchSummary(); if (selectedActivity) fetchDetails(selectedActivity); }}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading || memberSummaryLoading}
+              disabled={loading}
             >
-              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
