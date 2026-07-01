@@ -221,7 +221,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
-  const [selectedActivity, setSelectedActivity] = useState('education');
+  const [selectedActivity, setSelectedActivity] = useState(null);
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
@@ -402,7 +402,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
       // Build CSV header based on activity type
-      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Reg. Date', 'Reg. Time', 'Club Name'];
+      let headers = ['S.No', 'Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Date', 'Time', 'Club Name'];
       
       if (selectedActivity === 'weight') {
         headers.push('Weight (kg)');
@@ -418,8 +418,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       const csvRows = [headers.join(',')];
 
-      filteredRecords.forEach((record) => {
+      filteredRecords.forEach((record, index) => {
         const baseRow = [
+          index + 1,
           `"${record.memberName || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -508,10 +509,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </TouchFeedbackButton>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Attendance Report</h1>
+                <p className="text-sm text-gray-500">Track downline member activities</p>
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={() => { fetchSummary(); if (selectedActivity) fetchDetails(selectedActivity); }}
+              onClick={fetchSummary}
               className="p-2 hover:bg-gray-100 rounded-lg"
               disabled={loading}
             >
@@ -599,6 +601,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
+                  <TouchFeedbackButton
+                    onClick={() => { setSelectedActivity(null); setDetailRecords([]); setSearchQuery(''); }}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                  >
+                    Back to Overview
+                  </TouchFeedbackButton>
                   {filteredRecords.length > 0 && (
                     <TouchFeedbackButton
                       onClick={handleDownload}
@@ -623,51 +631,52 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+            <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="border-b border-gray-200 sticky top-0 z-20">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">S.No</th>
                     <th
-                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('memberName')}
                     >
-                      Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? 'Γåæ' : 'Γåô')}
+                      Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th
-                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
                     >
-                      Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? 'Γåæ' : 'Γåô')}
+                      Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
                     
                     {selectedActivity === 'weight' && (
-                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
                     {selectedActivity === 'education' && (
                       <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
                       </>
                     )}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
                       </>
                     )}
                     {selectedActivity === 'water' && (
-                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
                       <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                       </>
                     )}
                   </tr>
@@ -675,7 +684,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{display(record.memberName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{display(record.memberName)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>

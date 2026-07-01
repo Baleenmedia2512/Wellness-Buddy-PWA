@@ -58,7 +58,6 @@ import React, {
   lazy,
   Suspense,
   startTransition,
-  useDeferredValue,
 } from "react";
 import ReactDOM from "react-dom";
 import { Capacitor } from "@capacitor/core";
@@ -1873,8 +1872,7 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
-      // Urgent update — bypasses useDeferredValue's stale-value hold so the
-      // Dashboard renders immediately even when image analysis is in-flight.
+      // Urgent update — navigation flags are now used directly (no useDeferredValue),\n      // so this is an immediate render with no deferral possible.
       setShowDashboard(true);
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
@@ -7176,15 +7174,13 @@ function WellnessValleyApp() {
     }
   };
 
-  // useDeferredValue for lazy pages — must be declared BEFORE any early returns (Rules of Hooks).
-  // All three full-page routes use useDeferredValue so React can keep the
-  // current (home) UI visible while the lazy chunk loads, avoiding a white
-  // flash on every navigation.
-  const deferredShowDashboard = useDeferredValue(showDashboard);
-  const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
-  const deferredShowUniversityEnrollment = useDeferredValue(showUniversityEnrollment);
-  const deferredShowActivityReport = useDeferredValue(showActivityReport);
-  const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
+  // Navigation flags are used directly (no useDeferredValue) so that tapping
+  // any tab opens the page immediately even when image analysis is in-flight.
+  // useDeferredValue was the root cause of the "navigation blocked" bug:
+  // it always returns the stale false value first and only commits the new
+  // true value in a background render, which gets interrupted by ongoing
+  // urgent updates (setLoading, setImagePreview, setNutritionData…) and
+  // never completes while analysis runs.
 
   // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
   // returning users alike fall straight through to Login / Home. The native
@@ -7679,7 +7675,7 @@ function WellnessValleyApp() {
   }
 
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (deferredShowDashboard) {
+  if (showDashboard) {
     return (
       <div className="flex flex-col h-screen overflow-hidden bg-[#e8f5e9]">
         {/* 5-tab nav bar — always visible on every sub-page */}
@@ -7717,7 +7713,7 @@ function WellnessValleyApp() {
   }
 
   // Wellness Counselling - Full page view
-  if (deferredShowWellnessCounselling) {
+  if (showWellnessCounselling) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
         <Header
@@ -7749,7 +7745,7 @@ function WellnessValleyApp() {
   }
 
   // Wellness University Enrollment - Full page view
-  if (deferredShowUniversityEnrollment) {
+  if (showUniversityEnrollment) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
         <Header
@@ -7782,7 +7778,7 @@ function WellnessValleyApp() {
   }
 
   // Activity Report — member view (personal activity + education attendance data)
-  if (deferredShowActivityReport) {
+  if (showActivityReport) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
         <Header
@@ -7816,7 +7812,7 @@ function WellnessValleyApp() {
   }
 
   // Activity Time Report — hierarchical coach/admin view (team activity heatmap)
-  if (deferredShowActivityTimeReport) {
+  if (showActivityTimeReport) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
         <Header
