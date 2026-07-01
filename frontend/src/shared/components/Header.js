@@ -197,7 +197,7 @@ const Header = ({
           </TouchFeedbackButton>
           {/* Diary */}
           <TouchFeedbackButton
-            onClick={onShowBackgroundHistory ?? (() => {})}
+            onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
             className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
               activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
             }`}
@@ -458,7 +458,7 @@ const Header = ({
           </TouchFeedbackButton>
           {/* Diary */}
           <TouchFeedbackButton
-            onClick={onShowBackgroundHistory ?? (() => {})}
+            onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
             className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
               activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
             }`}
