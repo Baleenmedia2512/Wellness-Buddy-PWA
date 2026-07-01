@@ -1873,9 +1873,9 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
-      startTransition(() => {
-        setShowDashboard(true);
-      });
+      // Urgent update — bypasses useDeferredValue's stale-value hold so the
+      // Dashboard renders immediately even when image analysis is in-flight.
+      setShowDashboard(true);
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
       window.history.pushState({ wvPage: 'dashboard' }, '');
@@ -1981,7 +1981,7 @@ function WellnessValleyApp() {
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
-        startTransition(() => setShowDashboard(true));
+        setShowDashboard(true); // urgent — same reason as showDashboardPage
       } else {
         showDashboardPage();
       }
