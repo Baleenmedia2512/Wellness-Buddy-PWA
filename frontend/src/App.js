@@ -1808,20 +1808,24 @@ function WellnessValleyApp() {
   }, []);
 
   const showDashboardPage = useCallback(
-    async (preferredTab = null) => {
+    (preferredTab = null) => {
       // Guard: prevent duplicate concurrent navigation calls.
       if (navLockRef.current) return;
       navLockRef.current = true;
       try {
-      // Re-check user status in real-time before opening dashboard
+      // Fire status check in the background — do NOT await it.
+      // Awaiting blocked the Diary nav for ~200-500 ms on every tap, and
+      // held navLockRef=true during that window so rapid taps were silently
+      // dropped. If the account has become inactive the periodic 60-second
+      // check (or the auth-state-change IIFE) will surface the modal shortly;
+      // we don't need to gate navigation on it here.
       if (user) {
-        const isActive = await checkUserStatus(user);
-        if (!isActive) {
-          setError(
-            "Your account is inactive. Please contact support to reactivate.",
-          );
-          return;
-        }
+        checkUserStatus(user).then((isActive) => {
+          if (!isActive) {
+            // Account became inactive while dashboard was opening — close it.
+            setShowDashboard(false);
+          }
+        }).catch(() => {/* fail-open */});
       }
 
       // Clear transient capture/analysis state when switching to dashboard.
@@ -1842,21 +1846,15 @@ function WellnessValleyApp() {
       setSelectedImage(null);
       setImageType(null);
 
-      // savePromiseRef guard: if a food save is in-flight, wait for it to
-      // settle before opening the Dashboard so the initial fetch finds
-      // committed data. Resolves immediately when no save is pending.
-      // The Promise always resolves (never rejects) — errors are caught and
-      // handled inside scheduleNutritionSaveInBackground.
-      const pendingSave = savePromiseRef.current;
-      if (pendingSave) {
-        debugLog("✅ [Dashboard] Awaiting active food save...");
-        _ctLog(16, 'showDashboardPage — awaiting pending save BEFORE opening', { hadPendingSave: true });
-        await pendingSave;
-        debugLog("✅ [Dashboard] Save settled — opening Dashboard");
-      }
-      // Stage 16 (final) — Dashboard about to open
+      // Stage 16 (final) — Dashboard about to open.
+      // Any in-flight food save (savePromiseRef) continues in the background;
+      // performNutritionSave calls triggerNutritionRefresh after the DB write
+      // so the Dashboard refreshes automatically once the data is committed.
+      // Awaiting here caused the Diary nav to appear frozen for up to ~10 s
+      // (GPS timeout 5 s + DB write) when the user tapped Diary right after
+      // taking a photo.
       _ctLog(16, 'showDashboardPage — setShowDashboard(true) about to fire', {
-        hadPendingSave: !!pendingSave,
+        hadPendingSave: !!savePromiseRef.current,
         preferredTab,
       });
 
