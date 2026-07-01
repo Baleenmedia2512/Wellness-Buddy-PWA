@@ -76,13 +76,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, programs } = req.body;
+    const { email, userId, programs } = req.body;
 
-    // Validation
-    if (!email) {
+    // Validation: require email OR userId
+    if (!email && !userId) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required',
+        message: 'Email or userId is required',
       });
     }
 
@@ -93,15 +93,15 @@ export default async function handler(req, res) {
       });
     }
 
-    logger.debug('🎓 [enroll] Enrollment request:', { email, programCount: programs.length });
+    logger.debug('🎓 [enroll] Enrollment request:', { email, userId, programCount: programs.length });
 
     const supabase = getSupabaseClient();
 
-    // Get user info from team_table
+    // Look up user by userId (preferred — works even when email is empty) or email.
     const { data: user, error: userError } = await supabase
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
-      .eq('"Email"', email)
+      .eq(userId ? '"UserId"' : '"Email"', userId || email)
       .maybeSingle();
 
     if (userError) {

@@ -1861,22 +1861,19 @@ function WellnessValleyApp() {
       });
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
-      // Read imageType from ref so this callback doesn't need it as a dep.
-      const currentImageType = imageTypeRef.current;
+      // Never infer from imageTypeRef: after food/weight/education analysis the
+      // imageType ref still holds the last classification, which would force the
+      // Nutrition/Weight/Education tab even when the user explicitly taps Diary.
+      // Always defer to null so the Dashboard restores the last-used tab from
+      // localStorage — that is the correct behaviour for an explicit navigation.
       if (
         preferredTab === "weight" ||
         preferredTab === "nutrition" ||
         preferredTab === "education"
       ) {
         setDashboardInitialTab(preferredTab);
-      } else if (currentImageType === "weight") {
-        setDashboardInitialTab("weight");
-      } else if (currentImageType === "food") {
-        setDashboardInitialTab("nutrition");
-      } else if (currentImageType === "education") {
-        setDashboardInitialTab("education");
       } else {
-        setDashboardInitialTab(null); // Use default/last used tab
+        setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
       startTransition(() => {
         setShowDashboard(true);

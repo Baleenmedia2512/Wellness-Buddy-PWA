@@ -38,7 +38,31 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, userOnly } = req.query;
+    const { email, userId, userOnly } = req.query;
+
+    // Fast path: userId provided for a userOnly lookup — skip the email-based
+    // team_table scan and query the enrollment row directly by primary key.
+    // This avoids failures when a team member's Email field is empty in the DB.
+    if (userId && userOnly === 'true') {
+      logger.debug('📊 [get-enrollments] userId fast path:', { userId });
+      const supabase = getSupabaseClient();
+      const { data: enrollment, error: enrollmentError } = await supabase
+        .from('wellness_university_enrollments_table')
+        .select('*')
+        .eq('"UserId"', userId)
+        .order('"LastUpdated"', { ascending: false })
+        .limit(1);
+
+      if (enrollmentError) {
+        console.error('❌ [get-enrollments] Query error:', enrollmentError);
+        throw new Error(enrollmentError.message);
+      }
+
+      return res.status(200).json({
+        success: true,
+        enrollments: enrollment || [],
+      });
+    }
 
     if (!email) {
       return res.status(400).json({

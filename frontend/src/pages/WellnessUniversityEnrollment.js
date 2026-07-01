@@ -91,10 +91,12 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
   const isCoachRole = ['coach', 'upline', 'admin', 'developer'].includes(String(userRole || '').toLowerCase());
   const [selectedMember, setSelectedMember] = useState(null);
 
-  // The email to load enrollment for: selected member (coach view) or self
-  const viewedEmail = selectedMember && !selectedMember.isSelf
-    ? selectedMember.email
-    : user?.email;
+  // Use userId as the primary key for enrollment lookups — more reliable than
+  // email, which can be an empty string when the team hierarchy API returns no
+  // Email for the user (mapped as `member.Email || ""` in getFlatTeamList).
+  const viewedUserId = (selectedMember && !selectedMember.isSelf)
+    ? (selectedMember.id || selectedMember.userId)
+    : user?.id;
   const isViewingOther = Boolean(selectedMember && !selectedMember.isSelf);
 
   const [selectedPrograms, setSelectedPrograms] = useState([]);
@@ -107,7 +109,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
   const [isEditMode, setIsEditMode] = useState(false);
 
   const checkExistingEnrollment = useCallback(async () => {
-    if (!viewedEmail) {
+    if (!viewedUserId) {
       setCheckingEnrollment(false);
       return;
     }
@@ -118,7 +120,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
         const cacheBuster = Date.now();
         const profileResponse = await fetch(
           `${API_BASE}/api/user/profile?email=${encodeURIComponent(
-            viewedEmail,
+            user?.email || '',
           )}&_t=${cacheBuster}`,
         );
         const profileData = await profileResponse.json();
@@ -139,11 +141,11 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
         setCoachName("");
       }
 
-      // Check existing enrollment .
+      // Check existing enrollment — use userId as the primary key.
       const cacheBuster = Date.now();
       const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
-          viewedEmail,
+        `${API_BASE}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
+          viewedUserId,
         )}&userOnly=true&_t=${cacheBuster}`,
       );
       const data = await response.json();
@@ -164,7 +166,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
     } finally {
       setCheckingEnrollment(false);
     }
-  }, [viewedEmail, isViewingOther]);
+  }, [viewedUserId, isViewingOther, user?.email]);
 
   useEffect(() => {
     setCheckingEnrollment(true);
@@ -197,7 +199,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: viewedEmail,
+          userId: viewedUserId,
           programs: selectedPrograms,
         }),
       });
@@ -346,11 +348,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
               <h3 className="text-base sm:text-lg font-semibold text-gray-800">
                 I would like more information about:
               </h3>
-              {isViewingOther && (
-                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
-                  View only
-                </span>
-              )}
+
             </div>
             {PROGRAMS.map((program) => {
               const iconInfo = PROGRAM_ICON_MAP[program.id];
@@ -358,10 +356,8 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
               return (
               <div
                 key={program.id}
-                onClick={() => !isViewingOther && handleProgramToggle(program.name)}
-                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all ${
-                  isViewingOther ? 'cursor-default' : 'cursor-pointer'
-                } ${
+                onClick={() => handleProgramToggle(program.name)}
+                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all cursor-pointer ${
                   selectedPrograms.includes(program.name)
                     ? "border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md"
                     : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
@@ -449,22 +445,24 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
 
         {/* Footer */}
         <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
-          {isViewingOther ? (
-            <button
-              onClick={() => setSelectedMember(null)}
-              className="w-full bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors"
-            >
-              ← Back to My Enrollment
-            </button>
-          ) : (
           <div className="flex gap-2 sm:gap-3">
-            <button
-              onClick={onClose}
-              disabled={loading}
-              className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
+            {isViewingOther ? (
+              <button
+                onClick={() => setSelectedMember(null)}
+                disabled={loading}
+                className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
+              >
+                ← Back to My Enrollment
+              </button>
+            ) : (
+              <button
+                onClick={onClose}
+                disabled={loading}
+                className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            )}
             <button
               onClick={handleSubmit}
               disabled={loading || selectedPrograms.length === 0}
@@ -482,7 +480,6 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
               )}
             </button>
           </div>
-          )}
         </div>
       </motion.div>
     </div>
