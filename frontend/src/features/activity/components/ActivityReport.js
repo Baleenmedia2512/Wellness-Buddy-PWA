@@ -1,5 +1,5 @@
-﻿/**
- * ActivityReport.js ΓÇö Main Activity Report Component
+/**
+ * ActivityReport.js — Main Activity Report Component
  * 
  * Displays date filter, activity badges, and detailed grids for each activity type.
  * This component replaces the old Education Report and consolidates all activity tracking.
@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, RefreshCw, Download, Search,
+  ArrowLeft, RefreshCw, Download, Search, ChevronDown, ChevronUp,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check,
 } from 'lucide-react';
@@ -209,8 +209,8 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
   );
 };
 
-/** Returns 'ΓÇö' for null, undefined, empty string, or the literal string "N/A" */
-const display = (val) => (!val || val === 'N/A') ? 'ΓÇö' : val;
+/** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
+const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
@@ -221,7 +221,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
-  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
@@ -229,6 +229,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
+  // Member summary (education attendance per member — shown on mount)
+  const [memberSummaries, setMemberSummaries] = useState([]);
+  const [memberStats, setMemberStats] = useState(null);
+  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -312,11 +317,51 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
 
+  const fetchMemberSummary = useCallback(async () => {
+    if (!user?.id || !apiBaseUrl) return;
+
+    setMemberSummaryLoading(true);
+    try {
+      const params = new URLSearchParams({
+        userId: String(user.id),
+        activityType: 'member-summary',
+        dateRange,
+        role: userRole || 'member',
+      });
+
+      if (dateRange === 'custom' && customStartDate && customEndDate) {
+        params.set('startDate', formatDateForApi(customStartDate));
+        params.set('endDate', formatDateForApi(customEndDate));
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
+        cache: 'no-store',
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch member summaries');
+      }
+
+      setMemberSummaries(data.members || []);
+      setMemberStats(data.stats || null);
+    } catch (err) {
+      // Non-critical: silently log; summary tiles remain visible
+      console.warn('Member summary fetch failed:', err.message);
+    } finally {
+      setMemberSummaryLoading(false);
+    }
+  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+
   useEffect(() => {
     fetchSummary();
-    // Load detail records for the pre-selected activity on mount.
+    fetchMemberSummary();
+    // Also load detail records for the default pre-selected activity on mount.
+    // fetchDetails is the stable useCallback instance; selectedActivity is read
+    // via closure so it is NOT added as a dependency — we only want this to
+    // re-run when the API params change (i.e. when fetchDetails is recreated).
     if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [fetchSummary, fetchDetails]);
+  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
@@ -326,6 +371,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const handleDateRangeChange = (range) => {
     setDateRange(range);
     setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
     if (range === 'custom') {
       setShowDatePicker(true);
     } else {
@@ -338,7 +385,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setCustomEndDate(end);
     setShowDatePicker(false);
     setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
   };
+
+  // Filter member summaries by search query
+  const filteredMemberSummaries = useMemo(() => {
+    if (!memberSearchQuery) return memberSummaries;
+    const q = memberSearchQuery.toLowerCase();
+    return memberSummaries.filter(m =>
+      (m.memberName || '').toLowerCase().includes(q) ||
+      (m.coachName || '').toLowerCase().includes(q)
+    );
+  }, [memberSummaries, memberSearchQuery]);
 
   // Filter and sort records
   const filteredRecords = useMemo(() => {
@@ -402,7 +461,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
       // Build CSV header based on activity type
-      let headers = ['S.No', 'Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Date', 'Time', 'Club Name'];
+      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Reg. Date', 'Reg. Time', 'Club Name'];
       
       if (selectedActivity === 'weight') {
         headers.push('Weight (kg)');
@@ -418,9 +477,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       const csvRows = [headers.join(',')];
 
-      filteredRecords.forEach((record, index) => {
+      filteredRecords.forEach((record) => {
         const baseRow = [
-          index + 1,
           `"${record.memberName || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -437,7 +495,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           const attendanceLabel = record.attendanceType && record.attendanceType !== 'N/A'
             ? record.attendanceType.charAt(0).toUpperCase() + record.attendanceType.slice(1)
             : 'N/A';
-          baseRow.push(`"${attendanceLabel}"`, `"${record.topic && record.topic !== 'N/A' ? record.topic : 'ΓÇö'}"`);
+          baseRow.push(`"${attendanceLabel}"`, `"${record.topic && record.topic !== 'N/A' ? record.topic : '—'}"`);
         } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
           baseRow.push(`"${record.mealType || 'N/A'}"`, record.calories || 0);
         } else if (selectedActivity === 'water') {
@@ -509,22 +567,21 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </TouchFeedbackButton>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Attendance Report</h1>
-                <p className="text-sm text-gray-500">Track downline member activities</p>
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={fetchSummary}
+              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading}
+              disabled={loading || memberSummaryLoading}
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Date Range Filter ΓÇö single horizontal scrollable row */}
+        {/* Date Range Filter — single horizontal scrollable row */}
         <div className="mb-6">
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {DATE_RANGES.map((range) => (
@@ -563,7 +620,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           </div>
         )}
 
-        {/* Activity Type Tabs ΓÇö always visible, highlights the active type */}
+        {/* Activity Type Tabs — always visible, highlights the active type */}
         {summary && (
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-5">
             {ACTIVITY_TYPES.map((activity) => {
@@ -601,12 +658,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
-                  <TouchFeedbackButton
-                    onClick={() => { setSelectedActivity(null); setDetailRecords([]); setSearchQuery(''); }}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                  >
-                    Back to Overview
-                  </TouchFeedbackButton>
                   {filteredRecords.length > 0 && (
                     <TouchFeedbackButton
                       onClick={handleDownload}
@@ -631,52 +682,51 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">S.No</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
                     >
-                      Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
                     
                     {selectedActivity === 'weight' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
                     {selectedActivity === 'education' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
                       </>
                     )}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories</th>
                       </>
                     )}
                     {selectedActivity === 'water' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
                       <>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                       </>
                     )}
                   </tr>
@@ -684,8 +734,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-500">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{display(record.memberName)}</td>
+                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{display(record.memberName)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
@@ -710,7 +759,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                               : 'N/A'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">
-                            {record.topic && record.topic !== 'N/A' ? record.topic : 'ΓÇö'}
+                            {record.topic && record.topic !== 'N/A' ? record.topic : '—'}
                           </td>
                         </>
                       )}
