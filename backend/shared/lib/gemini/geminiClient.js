@@ -19,9 +19,9 @@ import logger from '../logger.js';
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
 
-export const MODEL_NAME          = 'gemini-2.5-flash';
+export const MODEL_NAME          = 'gemini-2.5-flash-lite';
 /** Fallback when the primary model is saturated (503 / high-demand). */
-export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash-lite';
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash';
 
 export const MODEL_CONFIGS = {
   /**
