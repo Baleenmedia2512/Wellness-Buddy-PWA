@@ -188,6 +188,12 @@ export async function retryPromotionToFood(input) {
   }
 
   // 5. Delegate to save() — owner's userId, not the viewer's.
+  //
+  // Pass the capture's own CreatedAt as clientTimestamp so the food row is
+  // anchored to the capture's original IST calendar day. Without this, save()
+  // falls back to getISTTimestamp() (= NOW), which would place the promoted
+  // food row in today's diary instead of the historical date the user is
+  // viewing (the root cause of the historical-diary retry bug).
   return save({
     userId: ownerUserId,
     imagePath: imagePath || capture.ImagePath || 'retry-promotion',
@@ -195,6 +201,7 @@ export async function retryPromotionToFood(input) {
     deviceInfo: 'Wellness Valley Diary Retry',
     ImageBase64: capture.ImageBase64 || null,
     captureId,
+    clientTimestamp: capture.CreatedAt || null,
   });
 }
 
