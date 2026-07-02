@@ -201,6 +201,38 @@ export async function fetchNutritionCenters(centerIds) {
 }
 
 /**
+ * Keep only the first log per member per calendar day (earliest CreatedAt).
+ * Used by attendance report detail so repeated uploads on the same day show once.
+ */
+export function dedupeFirstLogPerMemberPerDay(records) {
+  if (!records || records.length === 0) return [];
+
+  const sorted = [...records].sort((a, b) =>
+    String(a.CreatedAt || '').localeCompare(String(b.CreatedAt || ''))
+  );
+
+  const seen = new Set();
+  const deduped = [];
+
+  for (const record of sorted) {
+    const dateMatch = String(record.CreatedAt || '').match(/^(\d{4}-\d{2}-\d{2})/);
+    const date = dateMatch ? dateMatch[1] : 'unknown';
+    const userKey = String(record.UserID ?? record.UserId ?? '');
+    const key = `${userKey}-${date}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(record);
+    }
+  }
+
+  // Newest first for the report table
+  return deduped.sort((a, b) =>
+    String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || ''))
+  );
+}
+
+/**
  * Filter food records by meal time window
  */
 export function filterFoodByMealTime(foodRecords, mealType, timeWindows) {
