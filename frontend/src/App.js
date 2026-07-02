@@ -104,7 +104,9 @@ import {
   shareViaCapacitorAPI,
   shareTextViaWhatsApp,
   resolveShareDisplayName,
+  ensureShareDisplayName,
   cacheProfileUserName,
+  getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
 import {
   locationAttendanceService,
@@ -428,6 +430,7 @@ function WellnessValleyApp() {
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here
   const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
+  const savedUserNameRef = useRef(null);
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
   const cachedWeightShareDataUrlRef = useRef(null);
@@ -650,7 +653,15 @@ function WellnessValleyApp() {
         }ms from capture start)`,
       );
 
-      const shareDisplayName = resolveShareDisplayName(savedUserName, user);
+      const shareDisplayName = await ensureShareDisplayName(
+        savedUserNameRef.current ?? savedUserName,
+        user,
+        apiBaseUrl,
+      );
+      if (shareDisplayName && user?.email) {
+        cacheProfileUserName(user.email, shareDisplayName);
+        setSavedUserName(shareDisplayName);
+      }
       const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
@@ -3216,15 +3227,34 @@ function WellnessValleyApp() {
 
   // Fetch saved custom profile image for share card
   useEffect(() => {
-    if (!user?.email || !apiBaseUrl) {
+    savedUserNameRef.current = savedUserName;
+  }, [savedUserName]);
+
+  useEffect(() => {
+    const email = user?.email || user?.Email;
+    if (!email) return;
+    const cached = getCachedProfileUserName(email);
+    if (cached) {
+      setSavedUserName((prev) => (prev?.trim() ? prev : cached));
+      return;
+    }
+    const authName = (user?.username || user?.userName || '').trim();
+    if (authName) {
+      setSavedUserName((prev) => (prev?.trim() ? prev : authName));
+    }
+  }, [user?.email, user?.Email, user?.username, user?.userName]);
+
+  useEffect(() => {
+    const email = user?.email || user?.Email;
+    if (!email || !apiBaseUrl) {
       setSavedProfileImage(null);
       return undefined;
     }
     const { signal, cancel } = createAbortGroup();
     // Use standard caching ? no need to bust cache on every render
     fetch(
-      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`,
-      { signal },
+      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+      { signal, cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
     )
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -3234,16 +3264,20 @@ function WellnessValleyApp() {
         else setSavedProfileImage(null);
         if (data?.success && data?.data?.userName) {
           setSavedUserName(data.data.userName);
-          cacheProfileUserName(user.email, data.data.userName);
-        } else setSavedUserName(null);
+          cacheProfileUserName(email, data.data.userName);
+        } else {
+          const cached = getCachedProfileUserName(email);
+          setSavedUserName(cached);
+        }
       })
       .catch((err) => {
         if (isAbortError(err)) return;
         setSavedProfileImage(null);
-        setSavedUserName(null);
+        const cached = getCachedProfileUserName(email);
+        setSavedUserName(cached);
       });
     return cancel;
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, user?.Email, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -5160,9 +5194,7 @@ function WellnessValleyApp() {
       return out;
     };
     const instantShareCode = generateInstantShareCode();
-    const shareDisplayName = resolveShareDisplayName(savedUserName, user);
     const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
 
     // ? Kick off FileReader NOW ï¿½ before overlay paints ï¿½ so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
@@ -5219,9 +5251,22 @@ function WellnessValleyApp() {
       };
       (async () => {
         try {
+          const shareNamePromise = ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
           if (fileDataUrlPromise) {
-            // FileReader started before overlay ï¿½ usually already resolved.
-            const fileDataUrl = await fileDataUrlPromise;
+            // FileReader started before overlay — usually already resolved.
+            const [fileDataUrl, shareDisplayName] = await Promise.all([
+              fileDataUrlPromise,
+              shareNamePromise,
+            ]);
+            if (shareDisplayName && user?.email) {
+              cacheProfileUserName(user.email, shareDisplayName);
+              setSavedUserName(shareDisplayName);
+            }
+            const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
             const result = await shareViaCapacitorAPI(fileDataUrl, {
               title: shareDisplayName,
               text: shareText,
@@ -5232,13 +5277,25 @@ function WellnessValleyApp() {
               foodAutoSharedRef.current = false;
           } else {
             // Web fallback: text + URL only.
+            const shareDisplayName = await shareNamePromise;
+            if (shareDisplayName && user?.email) {
+              cacheProfileUserName(user.email, shareDisplayName);
+              setSavedUserName(shareDisplayName);
+            }
+            const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
             const ok = await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
             if (!ok) foodAutoSharedRef.current = false;
           }
         } catch (_) {
-          // Native share failed ï¿½ fall back to text-only.
+          // Native share failed — fall back to text-only.
           try {
+            const shareDisplayName = await ensureShareDisplayName(
+              savedUserNameRef.current ?? savedUserName,
+              user,
+              apiBaseUrl,
+            );
+            const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}`;
             await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
           } catch (__) {
