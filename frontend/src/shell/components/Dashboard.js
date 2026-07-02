@@ -203,6 +203,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       setUnknownFlow({
         captureId: entry.capture?.id ?? p.id,
         imageBase64: p.imageBase64,
+        // Capture the diary date at the moment the user opens the flow so that
+        // handleUnknownChanged can always reload the correct day — even in the
+        // (edge-case) scenario where selectedDate changes while the modal is open.
+        diaryDate: selectedDate,
       });
     }
     // watch: informational only (kcal already visible on card), no detail modal.
@@ -292,7 +296,17 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   };
 
   const handleUnknownChanged = (change = {}) => {
+    // Read diaryDate before clearing the flow — this is the date that was
+    // selected when the user opened the unknown entry (the single source of
+    // truth for which diary day this action belongs to).
+    const diaryDate = unknownFlow?.diaryDate;
     setUnknownFlow(null);
+    // If the user somehow navigated to a different date while the modal was
+    // open, restore the original diary date so the reload targets the correct
+    // day instead of wherever selectedDate currently points.
+    if (diaryDate && diaryDate.toDateString() !== selectedDate.toDateString()) {
+      setSelectedDate(diaryDate);
+    }
     reloadDiary();
     if (change.kind === 'food') {
       triggerNutritionRefresh({ immediate: true, source: 'unknown-flow-food' });

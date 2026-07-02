@@ -244,4 +244,56 @@ public class GalleryMonitorPlugin extends Plugin {
             call.reject("Failed to clear current user", e);
         }
     }
+
+    /**
+     * Returns whether the device's location services (GPS or Network provider)
+     * are currently enabled in Android system settings.
+     *
+     * This is distinct from the app's location *permission*: permission can be
+     * "granted" while GPS is still switched off. Use this after
+     * Geolocation.requestPermissions() to detect that case.
+     *
+     * Output: { enabled: boolean }
+     */
+    @PluginMethod
+    public void isLocationEnabled(PluginCall call) {
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager)
+                    getContext().getSystemService(Context.LOCATION_SERVICE);
+            boolean enabled = lm != null &&
+                    (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                     lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER));
+            JSObject result = new JSObject();
+            result.put("enabled", enabled);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to check location services state", e);
+            // Fail-open: assume enabled so we don't block the flow
+            JSObject result = new JSObject();
+            result.put("enabled", true);
+            call.resolve(result);
+        }
+    }
+
+    /**
+     * Opens the Android Location Source Settings screen so the user can
+     * enable GPS. Does not block or throw if settings cannot be opened.
+     *
+     * Output: { success: boolean }
+     */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            Log.d(TAG, "✅ Location Settings opened");
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to open location settings", e);
+            call.reject("Could not open location settings: " + e.getMessage());
+        }
+    }
 }

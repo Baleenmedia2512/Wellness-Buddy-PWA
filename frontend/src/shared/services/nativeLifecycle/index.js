@@ -166,32 +166,68 @@ export async function getLaunchUrl() {
  */
 /**
  * Request all required permissions in order: camera → push → geolocation.
- * Returns { locationGranted: boolean } so callers can gate app access.
+ * Each permission is wrapped in its own try/catch so a failure on one dialog
+ * never silently skips the remaining ones.
+ *
+ * After the location permission dialog resolves, the function checks whether
+ * the device's GPS hardware service is actually enabled (Android only). If
+ * permission was granted but GPS is still off, Location Settings are opened
+ * so the user can turn it on — granting the OS permission and enabling the
+ * GPS toggle are two separate steps.
+ *
  * On web always returns { locationGranted: true } (no-op).
  */
 export async function requestAllPermissions() {
   if (!Capacitor.isNativePlatform()) return { locationGranted: true };
+
+  debugLog("📱 Requesting all permissions in order: camera → push → location…");
+
+  // 1. Camera + photo library
   try {
-    debugLog("📱 Requesting all permissions at once...");
-
-    // Request camera/gallery permissions
     await Camera.requestPermissions({ permissions: ["camera", "photos"] });
+  } catch (err) {
+    console.warn("❌ Camera permission request failed:", err);
+  }
 
-    // Request push notification permissions
+  // 2. Push notifications
+  try {
     const pushPermission = await PushNotifications.requestPermissions();
-
     if (pushPermission.receive === 'granted') {
       await PushNotifications.register();
       debugLog('Push notification registration requested');
     }
-    // Request location permissions for attendance tracking
-    await Geolocation.requestPermissions();
-
-    // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
-    // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
-
-    debugLog("✅ All permissions requested");
   } catch (err) {
-    console.warn("❌ Permission request failed:", err);
+    console.warn("❌ Push notification permission request failed:", err);
   }
+
+  // 3. Location (OS permission)
+  let locationGranted = false;
+  try {
+    const locResult = await Geolocation.requestPermissions();
+    locationGranted =
+      locResult?.location === 'granted' || locResult?.coarseLocation === 'granted';
+  } catch (err) {
+    console.warn("❌ Geolocation permission request failed:", err);
+  }
+
+  // 4. GPS hardware enabled check (Android only).
+  //    Permission granted ≠ GPS toggle ON. If GPS is off, open Location
+  //    Settings so the user can enable it before continuing.
+  if (locationGranted && Capacitor.getPlatform() === 'android') {
+    try {
+      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
+      const { enabled } = await GalleryMonitorPlugin.isLocationEnabled();
+      if (!enabled) {
+        debugLog("📍 Location permission granted but GPS service is off — opening Location Settings");
+        await GalleryMonitorPlugin.openLocationSettings();
+      }
+    } catch (err) {
+      console.warn("❌ GPS state check / open settings failed:", err);
+    }
+  }
+
+  // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
+  // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
+
+  debugLog("✅ All permissions requested");
 }
