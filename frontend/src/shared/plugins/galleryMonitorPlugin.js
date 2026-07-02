@@ -122,45 +122,32 @@ const wrappedPlugin = {
     }
   },
 
+  async openLocationSettings() {
+    try {
+      await this.init();
+      return await GalleryMonitor.openLocationSettings();
+    } catch (error) {
+      console.error("Failed to open location settings:", error);
+      throw error;
+    }
+  },
+
+  async isLocationEnabled() {
+    try {
+      await this.init();
+      return await GalleryMonitor.isLocationEnabled();
+    } catch (error) {
+      console.error("Failed to check location enabled:", error);
+      throw error;
+    }
+  },
+
   addListener(eventName, listenerFunc) {
     if (!GalleryMonitor) {
       console.warn("GalleryMonitor not available for event listeners");
       return { remove: () => {} };
     }
     return GalleryMonitor.addListener(eventName, listenerFunc);
-  },
-
-  /**
-   * Check whether the device's GPS / location service is currently enabled.
-   * Returns { enabled: true } on web (no-op) and on any error (fail-open).
-   *
-   * @returns {Promise<{ enabled: boolean }>}
-   */
-  async isLocationEnabled() {
-    if (!Capacitor.isNativePlatform()) return { enabled: true };
-    try {
-      await this.init();
-      return await GalleryMonitor.isLocationEnabled();
-    } catch (error) {
-      console.warn('[GalleryMonitor] isLocationEnabled failed:', error);
-      return { enabled: true }; // fail-open so we never block the app flow
-    }
-  },
-
-  /**
-   * Open the Android Location Settings screen so the user can turn GPS on.
-   * No-op on web. Errors are swallowed (non-blocking).
-   *
-   * @returns {Promise<void>}
-   */
-  async openLocationSettings() {
-    if (!Capacitor.isNativePlatform()) return;
-    try {
-      await this.init();
-      await GalleryMonitor.openLocationSettings();
-    } catch (error) {
-      console.warn('[GalleryMonitor] openLocationSettings failed:', error);
-    }
   },
 };
 

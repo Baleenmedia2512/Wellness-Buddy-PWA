@@ -3,6 +3,7 @@ package com.wellnessvalley.app.plugins;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
@@ -209,6 +210,52 @@ public class GalleryMonitorPlugin extends Plugin {
 
 
 
+    /**
+     * Opens the Android Location Settings screen so the user can toggle GPS on.
+     * Mapped from JS: nativeLifecycle.openLocationSettings() → GalleryMonitorPlugin.openLocationSettings()
+     */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            Log.d(TAG, "✅ Location settings opened");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to open location settings", e);
+            call.reject("Failed to open location settings", e);
+        }
+    }
+
+    /**
+     * Returns { enabled: boolean } indicating whether Location Services (GPS) are
+     * currently active on the device — instant, no timeout required.
+     * API 28+ uses LocationManager.isLocationEnabled();
+     * older APIs check GPS_PROVIDER or NETWORK_PROVIDER individually.
+     */
+    @PluginMethod
+    public void isLocationEnabled(PluginCall call) {
+        try {
+            LocationManager locationManager =
+                (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            boolean isEnabled;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                isEnabled = locationManager.isLocationEnabled();
+            } else {
+                isEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                         || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            }
+            JSObject result = new JSObject();
+            result.put("enabled", isEnabled);
+            Log.d(TAG, "✅ isLocationEnabled: " + isEnabled);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to check location enabled", e);
+            call.reject("Failed to check location enabled", e);
+        }
+    }
+
     @PluginMethod
     public void getCurrentUser(PluginCall call) {
         try {
@@ -242,58 +289,6 @@ public class GalleryMonitorPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to clear current user", e);
             call.reject("Failed to clear current user", e);
-        }
-    }
-
-    /**
-     * Returns whether the device's location services (GPS or Network provider)
-     * are currently enabled in Android system settings.
-     *
-     * This is distinct from the app's location *permission*: permission can be
-     * "granted" while GPS is still switched off. Use this after
-     * Geolocation.requestPermissions() to detect that case.
-     *
-     * Output: { enabled: boolean }
-     */
-    @PluginMethod
-    public void isLocationEnabled(PluginCall call) {
-        try {
-            android.location.LocationManager lm = (android.location.LocationManager)
-                    getContext().getSystemService(Context.LOCATION_SERVICE);
-            boolean enabled = lm != null &&
-                    (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
-                     lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER));
-            JSObject result = new JSObject();
-            result.put("enabled", enabled);
-            call.resolve(result);
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to check location services state", e);
-            // Fail-open: assume enabled so we don't block the flow
-            JSObject result = new JSObject();
-            result.put("enabled", true);
-            call.resolve(result);
-        }
-    }
-
-    /**
-     * Opens the Android Location Source Settings screen so the user can
-     * enable GPS. Does not block or throw if settings cannot be opened.
-     *
-     * Output: { success: boolean }
-     */
-    @PluginMethod
-    public void openLocationSettings(PluginCall call) {
-        try {
-            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
-            Log.d(TAG, "✅ Location Settings opened");
-            JSObject result = new JSObject();
-            result.put("success", true);
-            call.resolve(result);
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to open location settings", e);
-            call.reject("Could not open location settings: " + e.getMessage());
         }
     }
 }
