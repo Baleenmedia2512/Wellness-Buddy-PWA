@@ -321,7 +321,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Don't refresh here - already refreshing in background after save
+          // Re-fetch from server when the share sheet closes so the grid
+          // always shows confirmed server data the moment it becomes visible
+          // (the background fetch started in onSaveSuccess may have been
+          // interrupted if the app went to WhatsApp and back on Android).
+          fetchData(true);
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
