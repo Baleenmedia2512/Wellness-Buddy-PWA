@@ -46,6 +46,16 @@ class LocationAttendanceService {
     };
 
     try {
+      // Ensure permission is granted before requesting position (Capacitor native API).
+      const perm = await Geolocation.checkPermissions();
+      if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
+        const requested = await Geolocation.requestPermissions();
+        if (requested.location !== 'granted' && requested.coarseLocation !== 'granted') {
+          debugLog('⚠️ GPS permission denied by user');
+          return { error: 'PERMISSION_DENIED' };
+        }
+      }
+
       const position = await Geolocation.getCurrentPosition(options);
       debugLog('✅ GPS location obtained:', {
         lat: position.coords.latitude,

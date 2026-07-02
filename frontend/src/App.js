@@ -3472,21 +3472,24 @@ function WellnessValleyApp() {
       // Fails gracefully ï¿½ weight save is never blocked by a GPS timeout.
       let attendance;
       try {
-        // Add timeout longer than the GPS getCurrentPosition timeout (10s) so
-        // the GPS call always has a chance to resolve before the race cuts it off.
-        const gpsPromise = locationAttendanceService.determineAttendance(
+        attendance = await locationAttendanceService.determineAttendance(
           apiBaseUrl,
           userId,
         );
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("GPS timeout after 15s")), 15000),
-        );
-
-        attendance = await Promise.race([gpsPromise, timeoutPromise]);
         console.log(
           "?? [performWeightSave] GPS location captured successfully",
         );
         debugLog("?? [weight] Attendance determined:", attendance);
+
+        if (attendance.locationError === "PERMISSION_DENIED") {
+          setAlertModal({
+            isOpen: true,
+            title: "Location Permission Required",
+            message:
+              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+            type: "warning",
+          });
+        }
 
         // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
@@ -4824,43 +4827,36 @@ function WellnessValleyApp() {
 
       // Capture GPS location for every food photo ï¿½ not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Hard-capped at GPS_TIMEOUT_MS so the DB write is never blocked longer than
-      // that. The internal Geolocation timeout is 15 s which is too long ï¿½ a cold GPS
-      // lock can delay triggerNutritionRefresh by 15 s and leave the Dashboard empty.
-      const GPS_TIMEOUT_MS = 5_000; // 5 s max wait; fall back to remote on timeout
+      // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
+      // caused false "Remote" saves when GPS was still acquiring a fix.
       let clubLocationFields = {};
       let attendance;
-      // Stage 10 ï¿½ GPS started
+      // Stage 10 — GPS started
       const _gpsStart = Date.now();
-      _ctLog(10, 'GPS started', { GPS_TIMEOUT_MS });
+      _ctLog(10, 'GPS started', {});
       try {
-        attendance = await Promise.race([
-          locationAttendanceService.determineAttendance(
-            apiBaseUrl,
-            saveData.userId,
-          ),
-          new Promise((resolve) =>
-            setTimeout(
-              () =>
-                resolve({
-                  attendanceType: "remote",
-                  latitude: null,
-                  longitude: null,
-                  nutritionCenterId: null,
-                  nearbyCenters: [],
-                }),
-              GPS_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-        // Stage 11 ï¿½ GPS finished
+        attendance = await locationAttendanceService.determineAttendance(
+          apiBaseUrl,
+          saveData.userId,
+        );
+        // Stage 11 — GPS finished
         _ctLog(11, 'GPS finished', {
           attendanceType: attendance?.attendanceType,
           hasCoords: !!(attendance?.latitude && attendance?.longitude),
           gpsLatencyMs: Date.now() - _gpsStart,
-          timedOut: (Date.now() - _gpsStart) >= GPS_TIMEOUT_MS,
+          locationError: attendance?.locationError || null,
         });
         debugLog("?? [nutrition] Attendance determined:", attendance);
+
+        if (attendance.locationError === "PERMISSION_DENIED") {
+          setAlertModal({
+            isOpen: true,
+            title: "Location Permission Required",
+            message:
+              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+            type: "warning",
+          });
+        }
 
         // If multiple clubs detected, auto-select the closest one (first in array)
         if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
