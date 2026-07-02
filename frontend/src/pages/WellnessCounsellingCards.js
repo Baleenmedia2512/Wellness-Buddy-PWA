@@ -1,5 +1,5 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Search, Plus, RefreshCw, FileHeart, Edit2, ChevronLeft } from "lucide-react";
 import {
   BodyParamsForm,
@@ -28,6 +28,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
 
+  // Fetch generation counter — incremented before every new fetch, checked
+  // inside async bodies before calling setState so that an older in-flight
+  // request that resolves after a newer one never overwrites fresh data.
+  const fetchGenerationRef = useRef(0);
+
   // Warm share-card images
   useEffect(() => {
     if (!isBodyParamsFormOpen) return;
@@ -54,6 +59,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
       return;
     }
 
+    // Capture this fetch's generation. Any concurrent or older fetch that resolves
+    // after us will see its generation doesn't match and will silently bail out,
+    // preventing it from overwriting the fresh data we are about to write.
+    const myGeneration = ++fetchGenerationRef.current;
+
     if (!isBackground) setLoading(true);
     else setRefreshing(true);
     setError(null);
@@ -61,24 +71,33 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     try {
       console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
       const userId = await getUserId(user.email);
+
+      // Guard: bail out if a newer fetch has already started (component navigated
+      // away and back, or the user hit Refresh while this was in-flight).
+      if (myGeneration !== fetchGenerationRef.current) return;
+
       console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
       
       debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
       console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
       
       const cards = await listBodyParamsCards(userId);
+
+      // Guard again after second await — another fetch may have fired in between.
+      if (myGeneration !== fetchGenerationRef.current) return;
+
       console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
-      console.log('📦 [WellnessCounselling] Cards data:', JSON.stringify(cards, null, 2));
-      
       debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
       
       setBodyParamsCards(cards || []);
       console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
     } catch (err) {
+      if (myGeneration !== fetchGenerationRef.current) return; // stale — discard error
       console.error("💥 [WellnessCounselling] Error fetching cards:", err);
       console.error("💥 Error details:", err.message, err.stack);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
+      if (myGeneration !== fetchGenerationRef.current) return; // stale — skip loading state
       if (!isBackground) setLoading(false);
       else setRefreshing(false);
     }
@@ -86,6 +105,10 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
+    // Cancel any in-flight fetch when the component unmounts or user changes.
+    // Incrementing the generation makes every pending setBodyParamsCards a no-op.
+    return () => { fetchGenerationRef.current++; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user is the only meaningful dep
   }, [user]);
 
   const handleRefresh = () => fetchData(true);
