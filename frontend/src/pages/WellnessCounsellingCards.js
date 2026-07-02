@@ -296,7 +296,13 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
 
-          // Keep list in sync — update existing row when create path reused a card id.
+          // Optimistic update — new card appears in the grid immediately.
+          // Do NOT call fetchData here: a background fetch that completes while
+          // the native share sheet is open can overwrite this optimistic state
+          // with a server snapshot that may not yet include the new record,
+          // causing the card to disappear from the UI mid-share.
+          // The authoritative re-sync happens in BodyParamsShareSheet.onClose
+          // below, once the user is back and looking at the grid.
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
             if (idx >= 0) {
@@ -309,9 +315,6 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
 
           setSelectedCard(null);
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
-
-          // Reload from server so refresh shows the same persisted measurements.
-          fetchData(true);
         }}
       />
 

@@ -5,6 +5,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
 
 // --- Single Day Picker ---
@@ -108,28 +109,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
       return;
     }
 
-    if (!window.google || !window.google.maps) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        // Double-check that google.maps is available
-        if (window.google && window.google.maps) {
-          setMapLoaded(true);
-        } else {
-          setError('Google Maps failed to initialize properly');
-          setLoading(false);
-        }
-      };
-      script.onerror = () => {
-        setError('Failed to load Google Maps. Please check your internet connection and API key.');
+    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then(() => setMapLoaded(true))
+      .catch((err) => {
+        setError(err.message);
         setLoading(false);
-      };
-      document.head.appendChild(script);
-    } else {
-      setMapLoaded(true);
-    }
+      });
 
     return () => {
       // Cleanup markers safely
