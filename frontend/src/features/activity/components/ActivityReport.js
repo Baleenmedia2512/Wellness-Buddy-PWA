@@ -1,9 +1,3 @@
-/**
- * ActivityReport.js — Main Activity Report Component
- * 
- * Displays date filter, activity badges, and detailed grids for each activity type.
- * This component replaces the old Education Report and consolidates all activity tracking.
- */
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -349,7 +343,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
     } catch (err) {
-      // Non-critical: silently log; summary tiles remain visible
       console.warn('Member summary fetch failed:', err.message);
     } finally {
       setMemberSummaryLoading(false);
@@ -359,10 +352,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   useEffect(() => {
     fetchSummary();
     fetchMemberSummary();
-    // Also load detail records for the default pre-selected activity on mount.
-    // fetchDetails is the stable useCallback instance; selectedActivity is read
-    // via closure so it is NOT added as a dependency — we only want this to
-    // re-run when the API params change (i.e. when fetchDetails is recreated).
     if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
   }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
@@ -467,48 +456,58 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
-      // Build CSV header based on activity type
-      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Reg. Date', 'Reg. Time', 'Club Name'];
+      // 1. Base headers re-ordered to match your new UI table
+      let headers = [
+        'Member Name',
+        // Dynamic columns will go here (index 1)
+        'Club',
+        'Reg. Date',
+        'Reg. Time',
+        'Coach Name',
+        'Phone Number',
+        'City',
+        'Village'
+      ];
       
+      // 2. Insert dynamic headers (Education has NO extra columns)
       if (selectedActivity === 'weight') {
-        headers.push('Weight (kg)');
-      } else if (selectedActivity === 'education') {
-        headers.push('Attendance Type', 'Topic');
+        headers.splice(1, 0, 'Weight (kg)');
       } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        headers.push('Meal Type', 'Calories');
+        headers.splice(1, 0, 'Meal Type', 'Calories');
       } else if (selectedActivity === 'water') {
-        headers.push('Water (L)');
+        headers.splice(1, 0, 'Water (L)');
       } else if (selectedActivity === 'calories') {
-        headers.push('Steps', 'Calories Burned');
+        headers.splice(1, 0, 'Steps', 'Calories Burned');
       }
 
       const csvRows = [headers.join(',')];
 
       filteredRecords.forEach((record) => {
+        // Handle "Remote" logic for Club Name
+        const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
+
+        // 3. Base row data matching the new re-ordered headers
         const baseRow = [
           `"${record.memberName || 'N/A'}"`,
-          `"${record.city || 'N/A'}"`,
-          `"${record.village || 'N/A'}"`,
-          `"${record.phone || 'N/A'}"`,
-          `"${record.coachName || 'N/A'}"`,
+          // Dynamic data will go here (index 1)
+          `"${displayClub}"`,
           record.date || 'N/A',
           record.time || 'N/A',
-          `"${record.clubName || 'N/A'}"`,
+          `"${record.coachName || 'N/A'}"`,
+          `"${record.phone || 'N/A'}"`,
+          `"${record.city || 'N/A'}"`,
+          `"${record.village || 'N/A'}"`,
         ];
 
+        // 4. Insert dynamic data into the row
         if (selectedActivity === 'weight') {
-          baseRow.push(record.weight || 'N/A');
-        } else if (selectedActivity === 'education') {
-          const attendanceLabel = record.attendanceType && record.attendanceType !== 'N/A'
-            ? record.attendanceType.charAt(0).toUpperCase() + record.attendanceType.slice(1)
-            : 'N/A';
-          baseRow.push(`"${attendanceLabel}"`, `"${record.topic && record.topic !== 'N/A' ? record.topic : '—'}"`);
+          baseRow.splice(1, 0, record.weight || 'N/A');
         } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-          baseRow.push(`"${record.mealType || 'N/A'}"`, record.calories || 0);
+          baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
         } else if (selectedActivity === 'water') {
-          baseRow.push(record.waterLiters || 0);
+          baseRow.splice(1, 0, record.waterLiters || 0);
         } else if (selectedActivity === 'calories') {
-          baseRow.push(record.steps || 0, record.caloriesBurned || 0);
+          baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
         }
 
         csvRows.push(baseRow.join(','));
@@ -592,7 +591,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Date Range Filter — single horizontal scrollable row */}
+        {/* Date Range Filter */}
         <div className="mb-6">
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {DATE_RANGES.map((range) => (
@@ -631,7 +630,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           </div>
         )}
 
-        {/* Activity Type Tabs — always visible, highlights the active type */}
+        {/* Activity Type Tabs */}
         {summary && (
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-5">
             {ACTIVITY_TYPES.map((activity) => {
@@ -708,7 +707,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                     {selectedActivity === 'weight' && (
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
-                    {/* Education columns (Topic/Type) removed as requested */}
+                    {/* Education columns (Topic/Type) removed */}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
                         <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
@@ -751,7 +750,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                       {selectedActivity === 'weight' && (
                         <td className="px-4 py-3 text-sm font-semibold text-blue-600">{record.weight}</td>
                       )}
-                      {/* Education data (Topic/Type) removed as requested */}
+                      {/* Education data (Topic/Type) removed */}
                       {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                         <>
                           <td className="px-4 py-3 text-sm capitalize text-gray-600">{record.mealType}</td>
