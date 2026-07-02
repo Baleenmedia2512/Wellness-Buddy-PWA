@@ -104,6 +104,7 @@ import {
   shareViaCapacitorAPI,
   shareTextViaWhatsApp,
   resolveShareDisplayName,
+  cacheProfileUserName,
 } from "./shared/utils/shareUtils";
 import {
   locationAttendanceService,
@@ -3231,9 +3232,10 @@ function WellnessValleyApp() {
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
-        if (data?.success && data?.data?.userName)
+        if (data?.success && data?.data?.userName) {
           setSavedUserName(data.data.userName);
-        else setSavedUserName(null);
+          cacheProfileUserName(user.email, data.data.userName);
+        } else setSavedUserName(null);
       })
       .catch((err) => {
         if (isAbortError(err)) return;
@@ -8131,6 +8133,10 @@ function WellnessValleyApp() {
             const email = user?.email || Session.getUserEmail() || "";
             profileCompletedRef.current = false;
             checkProfileCompletion(email, null, { afterSave: true });
+            if (profileData?.name?.trim()) {
+              setSavedUserName(profileData.name.trim());
+              cacheProfileUserName(email, profileData.name);
+            }
             // If a new BMR was saved, force NutritionDashboard to re-fetch it
             if (profileData?.bmr) {
               setBmrUpdateKey((prev) => prev + 1);

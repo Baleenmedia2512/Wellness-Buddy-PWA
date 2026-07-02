@@ -6,32 +6,65 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
 
+const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
+
+/** Persist profile UserName locally so instant share can read it synchronously. */
+export function cacheProfileUserName(email, userName) {
+  if (!email || !userName?.trim()) return;
+  try {
+    localStorage.setItem(`${PROFILE_USER_NAME_KEY}.${email}`, userName.trim());
+  } catch {
+    /* quota / private mode — non-fatal */
+  }
+}
+
+/** Best-effort sync read of the last known profile UserName for this email. */
+export function getCachedProfileUserName(email) {
+  if (!email) return null;
+  try {
+    const cached = localStorage.getItem(`${PROFILE_USER_NAME_KEY}.${email}`);
+    return cached?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve the best display name for a user in share text / cards.
  *
  * Priority order:
  *   1. savedUserName — the username the user explicitly set in the app profile
  *      (loaded from /api/user/profile → data.userName).
- *   2. user.displayName — Firebase Auth display name (rarely populated for
+ *   2. Cached profile UserName — last successful /api/user/profile fetch.
+ *   3. user.displayName — Firebase Auth display name (rarely populated for
  *      email+password accounts).
- *   3. user.name — generic name field on the session object.
- *   4. Email prefix (user.email split at '@') — last resort only; this is
+ *   4. user.name — generic name field on the session object.
+ *   5. Email prefix (user.email split at '@') — last resort only; this is
  *      a technical identifier, NOT a display name.
- *   5. fallback string (default: 'Wellness Valley').
- *
- * Pure function — no side-effects, no I/O.
+ *   6. fallback string (default: 'Wellness User').
  *
  * @param {string|null}  savedUserName   App-profile username from state.
  * @param {object|null}  user            Session user object.
  * @param {string}       [fallback]      Used when every field is falsy.
  * @returns {string}
  */
-export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness Valley') {
-  return (
-    (savedUserName && savedUserName.trim()) ||
-    (user?.email ? user.email.split('@')[0] : null) ||
-    fallback
-  );
+export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness User') {
+  const trimmedSaved = savedUserName?.trim();
+  if (trimmedSaved) return trimmedSaved;
+
+  const cached = user?.email ? getCachedProfileUserName(user.email) : null;
+  if (cached) return cached;
+
+  const displayName = user?.displayName?.trim();
+  if (displayName) return displayName;
+
+  const name = user?.name?.trim();
+  if (name) return name;
+
+  const emailPrefix = user?.email?.split('@')[0]?.trim();
+  if (emailPrefix) return emailPrefix;
+
+  return fallback;
 }
 
 /**

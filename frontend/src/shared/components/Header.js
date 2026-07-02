@@ -13,6 +13,7 @@ import {
   BarChart2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
+import { cacheProfileUserName } from "../utils/shareUtils.js";
 import { UserProfileModal } from "../../features/user";
 import { DeleteAccountModal } from "../../features/user";
 import TouchFeedbackButton from "./TouchFeedbackButton";
@@ -101,6 +102,7 @@ const Header = ({
           if (data.success && data.data) {
             if (data.data.userName) {
               setSavedUserName(data.data.userName);
+              cacheProfileUserName(user.email, data.data.userName);
             }
             if (data.data.profileImage) {
               setSavedProfileImage(data.data.profileImage);
@@ -119,6 +121,7 @@ const Header = ({
   const handleProfileUpdate = (profileData) => {
     if (profileData?.name) {
       setSavedUserName(profileData.name);
+      if (user?.email) cacheProfileUserName(user.email, profileData.name);
     }
     if (profileData?.profileImage) {
       setSavedProfileImage(profileData.profileImage);
