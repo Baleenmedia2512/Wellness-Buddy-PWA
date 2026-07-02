@@ -244,6 +244,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
   const fetchSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
     setError('');
@@ -281,6 +282,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
   const fetchDetails = useCallback(async (activityType) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
     setError('');
@@ -319,6 +321,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
   const fetchMemberSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setMemberSummaryLoading(true);
     try {
@@ -373,8 +376,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
+    setError('');
     if (range === 'custom') {
       setShowDatePicker(true);
+      if (!customStartDate || !customEndDate) {
+        setSummary(null);
+      }
     } else {
       setShowDatePicker(false);
     }
@@ -570,7 +577,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
+              onClick={() => {
+                fetchSummary();
+                fetchMemberSummary();
+                if (selectedActivity) fetchDetails(selectedActivity);
+              }}
               className="p-2 hover:bg-gray-100 rounded-lg"
               disabled={loading || memberSummaryLoading}
             >

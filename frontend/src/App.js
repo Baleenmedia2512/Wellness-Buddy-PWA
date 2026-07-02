@@ -769,8 +769,8 @@ function WellnessValleyApp() {
   // the React state update has been committed.
   const enrollmentHistoryPushedRef = useRef(false);
 
-  // Activity Report pages — accessible for all roles (members see own data;
-  // coaches/admins see hierarchical team view via ActivityTimeReport).
+  // Activity Report (Attendance Report) — all roles; Education Attendance selected by default.
+  // Activity Time Report — separate hierarchical heatmap view (coach/admin tools).
   const [showActivityReport, setShowActivityReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
@@ -2015,13 +2015,11 @@ function WellnessValleyApp() {
         setShowNutritionCentersMap(true);
         break;
       case 'activity-report':
-        // Coaches/admins/developers get the hierarchical team view;
-        // all other roles see their own personal activity data.
-        if (userRole === 'coach' || userRole === 'admin' || userRole === 'developer') {
-          setShowActivityTimeReport(true);
-        } else {
-          setShowActivityReport(true);
-        }
+        // Merged Attendance Report (ActivityReport): education attendance default tab.
+        setShowActivityReport(true);
+        break;
+      case 'activity-time-report':
+        setShowActivityTimeReport(true);
         break;
       default:
         break;
