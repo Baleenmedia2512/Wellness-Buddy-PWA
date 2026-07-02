@@ -8229,9 +8229,8 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* ── Hero banner: greeting + Camera / Gallery CTAs ── */}
-            {!imagePreview && !nutritionData && !educationResult && !watchResult && (
-              <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
+            {/* ── Hero banner: greeting + Camera / Gallery CTAs (always visible) ── */}
+            <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
                 <div className="px-4 py-4">
                   {/* Date pill */}
@@ -8278,7 +8277,6 @@ function WellnessValleyApp() {
                   </div>
                 </div>
               </div>
-            )}
 
             {/* Today's Nutrition Carousel — Calories · Macros · Heart Healthy · Low Carb */}
             <HomeNutritionCarousel
