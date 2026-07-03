@@ -209,6 +209,17 @@ const Header = ({
             <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
           </TouchFeedbackButton>
+          {/* Activity Report */}
+          <TouchFeedbackButton
+            onClick={onShowActivityReport ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+            }`}
+            ariaLabel="Activity Report"
+          >
+            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
+          </TouchFeedbackButton>
           {/* Enrollment */}
           <TouchFeedbackButton
             onClick={onShowWellnessEnrollment ?? (() => {})}
@@ -241,17 +252,6 @@ const Header = ({
           >
             <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
-          </TouchFeedbackButton>
-          {/* Activity Report — HIDDEN from nav (access via coach menu) */}
-          <TouchFeedbackButton
-            onClick={onShowActivityReport ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-            }`}
-            ariaLabel="Activity Report"
-          >
-            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
           </TouchFeedbackButton>
         </div>
       </nav>
@@ -470,6 +470,17 @@ const Header = ({
             <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
           </TouchFeedbackButton>
+          {/* Activity Report */}
+          <TouchFeedbackButton
+            onClick={onShowActivityReport ?? (() => {})}
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
+              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
+            }`}
+            ariaLabel="Activity Report"
+          >
+            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
+          </TouchFeedbackButton>
           {/* Enrollment */}
           <TouchFeedbackButton
             onClick={onShowWellnessEnrollment ?? (() => {})}
@@ -502,17 +513,6 @@ const Header = ({
           >
             <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
             <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
-          </TouchFeedbackButton>
-          {/* Activity Report — HIDDEN from nav (access via coach menu) */}
-          <TouchFeedbackButton
-            onClick={onShowActivityReport ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-            }`}
-            ariaLabel="Activity Report"
-          >
-            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
           </TouchFeedbackButton>
         </div>
       </nav>
