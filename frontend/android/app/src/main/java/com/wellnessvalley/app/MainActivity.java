@@ -297,9 +297,19 @@ public class MainActivity extends BridgeActivity {
                 settings.setLoadsImagesAutomatically(true);
                 
                 // Optimize for mobile
-                settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+                // ✅ FONT SCALE FIX: Use NORMAL layout algorithm — TEXT_AUTOSIZING
+                // compounds the OS font-scale problem by additionally resizing text.
+                settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
                 settings.setUseWideViewPort(true);
                 settings.setLoadWithOverviewMode(true);
+
+                // ✅ FONT SCALE FIX: Lock WebView text zoom to 100% so system
+                // Accessibility → Font Size changes do not scale the app's UI.
+                // Android WebView defaults textZoom to the OS font scale (e.g. 130
+                // for "Large"). Pinning it to 100 makes the app the sole authority
+                // over its own font sizes, matching iOS WKWebView behaviour and the
+                // CSS text-size-adjust:100% rule already set on <html>.
+                settings.setTextZoom(100);
                 
                 // Enable zoom for image viewing
                 settings.setSupportZoom(false);

@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+ * FONT SCALE LOCK
+ * Prevents the OS Accessibility → Font Size setting from
+ * scaling the app's text on all platforms:
+ *
+ *   iOS WKWebView       — -webkit-text-size-adjust: 100%
+ *   Android WebView     — setTextZoom(100) in MainActivity.java
+ *                         (CSS alone cannot override WebSettings.textZoom)
+ *   Mobile browsers     — text-size-adjust: 100% (all prefixes)
+ *   Desktop / tablet    — no effect; desktop OSes do not apply
+ *                         text zoom to web views
+ *
+ * Value is 100% (not none) so the browser can still honour
+ * author-specified rem/em sizes and pinch-to-zoom remains
+ * functional for accessibility on the web PWA surface.
+ * ============================================================ */
+html {
+  -webkit-text-size-adjust: 100%; /* iOS Safari / Chrome iOS / Android Chrome */
+  -moz-text-size-adjust: 100%;    /* Firefox (older) */
+  -ms-text-size-adjust: 100%;     /* IE / Edge legacy */
+  text-size-adjust: 100%;         /* Unprefixed standard */
+}
+
 @keyframes fadeSlideDown {
   from { opacity: 0; transform: translate(-50%, -12px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
@@ -290,12 +313,11 @@ img[class*="logo"],
   /* Prevent touch callout on iOS/Android */
   -webkit-touch-callout: none !important;
   
-  /* Disable drag */
+  /* Disable drag (vendor prefixes cover all browsers; no unprefixed standard exists) */
   -webkit-user-drag: none;
   -khtml-user-drag: none;
   -moz-user-drag: none;
   -o-user-drag: none;
-  user-drag: none;
   
   /* Prevent image from being copied */
   -webkit-user-modify: read-only;
