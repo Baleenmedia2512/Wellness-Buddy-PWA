@@ -242,10 +242,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Marquee Animation with manual scroll capability
   return (
     <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
-      <div className="py-1 px-2 sm:px-3">
-        <div className="relative h-[54px] sm:h-[58px] overflow-hidden">
-          <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
-            <div className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm px-3 py-1.5 text-center text-[8px] sm:text-[9px] font-semibold leading-tight text-purple-700">
+      <div className="py-0 px-0">
+        <div className="relative h-[42px] sm:h-[44px] overflow-hidden">
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <div className="inline-flex items-center justify-center rounded-none border-r border-gray-200 bg-white shadow-sm px-1.5 py-0.5 text-center text-[8px] sm:text-[9px] font-semibold leading-tight text-purple-700">
               Last 10<br />Days
             </div>
           </div>

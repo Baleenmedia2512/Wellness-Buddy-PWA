@@ -255,11 +255,11 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 shadow-sm">
-      <div className="py-1 px-2 sm:px-3">
-        <div className="relative h-[54px] sm:h-[58px] overflow-hidden">
-          <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
-            <div className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm px-3 py-1.5 text-center text-[9px] sm:text-[10px] font-medium text-green-700 leading-tight">
+    <div className="w-full bg-white shadow-sm">
+      <div className="py-0 px-0">
+        <div className="relative h-[42px] sm:h-[44px] overflow-hidden">
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <div className="inline-flex items-center justify-center rounded-none border-r border-gray-200 bg-white shadow-sm px-1.5 py-0.5 text-center text-[9px] sm:text-[10px] font-medium text-green-700 leading-tight">
               Today vs<br />Yesterday
             </div>
           </div>
