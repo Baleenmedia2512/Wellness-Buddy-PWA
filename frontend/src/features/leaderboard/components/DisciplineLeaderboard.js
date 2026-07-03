@@ -242,41 +242,37 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Marquee Animation with manual scroll capability
   return (
     <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
-      <div className="py-1 px-2 sm:px-3 relative">
-        {/* Fixed label overlay */}
-        <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-          <div className="inline-flex items-center justify-center px-2 sm:px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
-            <span className="text-[9px] sm:text-[11px] font-medium text-purple-700 whitespace-nowrap">
-              (Last 10 Days)
-            </span>
+      <div className="py-1 px-2 sm:px-3">
+        <div className="relative h-[54px] sm:h-[58px] overflow-hidden">
+          <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <div className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm px-3 py-1.5 text-center text-[8px] sm:text-[9px] font-semibold leading-tight text-purple-700">
+              Last 10<br />Days
+            </div>
           </div>
-        </div>
-        
-        <div
-          className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
-          onClick={() => setIsPaused(!isPaused)}
-        >
-          <div
-            className="animate-smooth-marquee whitespace-nowrap inline-flex items-center"
-            style={{
-              animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-              animationPlayState: isPaused ? "paused" : "running",
-              WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-              WebkitAnimationPlayState: isPaused ? "paused" : "running",
-            }}
-          >
-            {/* Spacer to avoid overlap with fixed label */}
-            <div className="w-32 sm:w-40 flex-shrink-0"></div>
-            
-            {/* First set of items */}
-            {leaderboardData.map((user) =>
-              renderLeaderboardCard(user, `first-${user.userId}`),
-            )}
 
-            {/* Duplicate set for seamless loop */}
-            {leaderboardData.map((user) =>
-              renderLeaderboardCard(user, `second-${user.userId}`),
-            )}
+          <div
+            className="h-full overflow-hidden cursor-pointer"
+            onClick={() => setIsPaused(!isPaused)}
+          >
+            <div
+              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
+              style={{
+                animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+                animationPlayState: isPaused ? "paused" : "running",
+                WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+                WebkitAnimationPlayState: isPaused ? "paused" : "running",
+              }}
+            >
+              {/* First set of items */}
+              {leaderboardData.map((user) =>
+                renderLeaderboardCard(user, `first-${user.userId}`),
+              )}
+
+              {/* Duplicate set for seamless loop */}
+              {leaderboardData.map((user) =>
+                renderLeaderboardCard(user, `second-${user.userId}`),
+              )}
+            </div>
           </div>
         </div>
       </div>
