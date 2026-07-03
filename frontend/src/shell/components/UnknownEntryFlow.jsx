@@ -70,6 +70,20 @@ function buildAnalysisFromManualFood(m) {
   return { foods: [item], total: item.nutrition, confidence: 'high' };
 }
 
+/**
+ * Build an ISO timestamp for noon on the given Date, used to anchor weight /
+ * education saves to the diary's selected date instead of the current time.
+ * Noon is chosen to land safely within all activity time windows.
+ * Returns undefined when no date is provided so callers fall through to
+ * their own default (backend getISTTimestamp).
+ */
+function buildNoonTimestamp(date) {
+  if (!date) return undefined;
+  const d = new Date(date);
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString();
+}
+
 export default function UnknownEntryFlow({
   open,
   captureId,
@@ -90,6 +104,8 @@ export default function UnknownEntryFlow({
    *     platform: string, topic: string }      → edu / watch detected
    */
   initialAiResult = null,
+  /** The diary date selected in Dashboard — saves are anchored to this day. */
+  diaryDate = null,
   canMutate = true,
   userId,
   apiBaseUrl,
@@ -293,6 +309,8 @@ export default function UnknownEntryFlow({
         bmr,
         captureId,
         imageBase64ToSave: imageBase64,
+        // Anchor the record to the diary's selected date, not the current time.
+        clientTimestamp: buildNoonTimestamp(diaryDate),
       });
       finish({ kind: 'weight', captureId });
     } catch {
@@ -309,6 +327,8 @@ export default function UnknownEntryFlow({
         topic,
         captureId,
         imageBase64,
+        // Anchor the record to the diary's selected date, not the current time.
+        imageTimestamp: buildNoonTimestamp(diaryDate),
       });
       finish({ kind: 'education', captureId });
     } catch {

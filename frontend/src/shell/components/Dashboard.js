@@ -902,6 +902,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         captureId={unknownFlow.captureId}
         imageBase64={unknownFlow.imageBase64}
         initialAiResult={unknownFlow.initialAiResult ?? null}
+        diaryDate={unknownFlow.diaryDate ?? null}
         canMutate={viewingSelf}
         userId={ownerId}
         apiBaseUrl={apiBaseUrl}
