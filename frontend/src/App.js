@@ -2137,7 +2137,14 @@ function WellnessValleyApp() {
 
   /**
    * Called when user taps "Allow Again" in PermissionBlockedDialog.
-   * Invokes the OS dialog for this specific type, then re-evaluates the flow.
+   *
+   * Behaviour:
+   *   • Calls requestPermission() — the OS either shows a system dialog or
+   *     silently returns 'denied' (permanent denial / "Don't ask again").
+   *   • Granted          → reset the flow lock, continue with remaining permissions.
+   *   • Denied, can ask  → update dialog (canRequest: true, user can retry).
+   *   • Denied, permanent → open App Settings automatically, because requestPermission
+   *     will never show an OS dialog again and Settings is the only path forward.
    */
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
@@ -2145,14 +2152,21 @@ function WellnessValleyApp() {
       const { granted } = await PermissionManager.requestPermission(type);
       if (granted) {
         setActivePermission(null);
+        // Reset the concurrent-run guard before resuming the flow so
+        // advancePermissionFlow can proceed to check the remaining permissions.
+        _permissionFlowRunningRef.current = false;
         await advancePermissionFlow();
       } else {
-        // Denied again — re-check whether it became permanently denied.
         const { canRequest } = await PermissionManager.checkPermission(type);
+        if (!canRequest) {
+          // Permanently denied — OS will never show a dialog again.
+          // Open App Settings automatically; user can re-enable there.
+          await PermissionManager.openAppSettings();
+        }
         setActivePermission({ type, canRequest });
       }
     } catch {
-      const { canRequest } = await PermissionManager.checkPermission(type);
+      const { canRequest } = await PermissionManager.checkPermission(type).catch(() => ({ canRequest: false }));
       setActivePermission({ type, canRequest });
     } finally {
       setPermissionDialogLoading(false);
@@ -3137,16 +3151,15 @@ function WellnessValleyApp() {
   //
   //   Case A: showGpsRequired — re-check GPS; dismiss when enabled.
   //
-  //   Case B: activePermission?.canRequest === false (permanent denial dialog
-  //           is showing) — user may have gone to device Settings manually and
-  //           granted the permission. Re-run advancePermissionFlow to detect.
+  //   Case B: a PermissionBlockedDialog is visible (activePermission != null).
+  //           The user may have gone to device Settings and granted the permission.
+  //           Re-check the specific permission only; clear the dialog if now granted.
+  //           Do NOT call requestPermission() here — that would show the OS dialog
+  //           unexpectedly on every resume while the custom dialog is visible.
   //
-  //   Case C: activePermission === null and permissionsReady — re-validate in
-  //           case a permission was revoked mid-session from device Settings.
-  //
-  //   NOT re-triggered when activePermission?.canRequest === true: the
-  //   "Allow Again" dialog is already showing and the user should tap it.
-  //   Re-requesting immediately on every resume would feel aggressive.
+  //   Case C: no dialog, permissions already verified (permissionsReady) —
+  //           a permission may have been revoked from Settings mid-session.
+  //           Re-run advancePermissionFlow to detect and handle it.
   //
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -3169,10 +3182,19 @@ function WellnessValleyApp() {
           return;
         }
 
-        // Skip re-trigger when "Allow Again" dialog is open (canRequest: true).
-        if (activePermission?.canRequest === true) return;
+        // Case B: dialog is visible — check if user granted from Settings.
+        if (activePermission !== null) {
+          const { granted } = await PermissionManager.checkPermission(activePermission.type);
+          if (!cancelled && granted) {
+            setActivePermission(null);
+            // Reset lock so advancePermissionFlow can continue with remaining perms.
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
+          }
+          return;
+        }
 
-        // Case B + C: re-validate permissions.
+        // Case C: no dialog — full re-validation in case a permission was revoked.
         if (!cancelled) {
           await advancePermissionFlow();
         }
