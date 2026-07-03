@@ -8078,6 +8078,7 @@ function WellnessValleyApp() {
           <PermissionBlockedDialog
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+            canRequest={activePermission.canRequest}
             onAllow={() => handlePermissionAllow(activePermission.type)}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
             loading={permissionDialogLoading}

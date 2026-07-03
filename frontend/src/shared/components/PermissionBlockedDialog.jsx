@@ -11,6 +11,8 @@
  * Props:
  *   type       {string}   'camera' | 'location' | 'notifications'
  *   config     {object}   Entry from PERMISSION_CONFIG for this type.
+ *   canRequest {boolean}  true  → OS can still show a system dialog — show [Allow Again][Exit App].
+ *                         false → permanently denied (Android "Don\'t ask again") — show [Exit App] only.
  *   onAllow    {function} Called when user taps "Allow Again".
  *   onExit     {function} Called when user taps "Exit App".
  *   loading    {boolean}  True while the OS dialog is open.
@@ -26,6 +28,7 @@ const ACCENT = {
 export default function PermissionBlockedDialog({
   type,
   config,
+  canRequest,
   onAllow,
   onExit,
   loading = false,
@@ -79,28 +82,30 @@ export default function PermissionBlockedDialog({
           {config.label} is required to continue.
         </p>
 
-        {/* Allow Again */}
-        <button
-            type="button"
-            onClick={onAllow}
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '15px',
-              borderRadius: 14,
-              border: 'none',
-              background: loading ? '#d1fae5' : accent,
-              color: '#ffffff',
-              fontSize: 15,
-              fontWeight: 700,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              marginBottom: 10,
-              WebkitTapHighlightColor: 'transparent',
-              transition: 'opacity 0.15s',
-            }}
-          >
-            {loading ? 'Requesting…' : 'Allow Again'}
-          </button>
+        {/* Allow Again — only when OS can still present a system dialog */}
+        {canRequest && (
+          <button
+              type="button"
+              onClick={onAllow}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '15px',
+                borderRadius: 14,
+                border: 'none',
+                background: loading ? '#d1fae5' : accent,
+                color: '#ffffff',
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                marginBottom: 10,
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'opacity 0.15s',
+              }}
+            >
+              {loading ? 'Requesting…' : 'Allow Again'}
+            </button>
+        )}
 
         {/* Exit App */}
         <button
