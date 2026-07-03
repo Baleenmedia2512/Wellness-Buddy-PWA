@@ -5506,6 +5506,10 @@ function WellnessValleyApp() {
       return;
     }
 
+    // TODO: Re-enable gallery date restrictions before production release.
+    // TEMPORARILY DISABLED: web image freshness validation is commented out to allow users
+    // to select images from WhatsApp, older gallery photos, and any available folder.
+    /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
     // ?? FRAUD PREVENTION: On web only ? native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
@@ -5525,6 +5529,7 @@ function WellnessValleyApp() {
       }
       debugLog("? Image validated:", validation.message);
     }
+    GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
     setSelectedImage(file);
     setError(null);

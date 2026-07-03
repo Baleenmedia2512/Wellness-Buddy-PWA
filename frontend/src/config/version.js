@@ -74,25 +74,26 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.2.4',
+  VERSION: '1.0.0',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
+  // NOTE: versionCode must never decrease for Play Store compatibility.
   VERSION_CODE: 44,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
   IOS_BUILD_NUMBER: 44,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Major change for app',
+  RELEASE_NAME: 'Version  1.0.0',
   
   // Build date
   BUILD_DATE: '2026-07-03',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 44, versionName: '3.2.4' },
-    IOS: { buildNumber: 44, versionName: '3.2.4' },
+    ANDROID: { versionCode: 44, versionName: '1.0.0' },
+    IOS: { buildNumber: 44, versionName: '1.0.0' },
   },
 };
 

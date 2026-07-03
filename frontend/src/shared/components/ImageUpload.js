@@ -437,6 +437,12 @@ const ImageUpload = forwardRef(
             // Non-education native gallery: extract EXIF for accurate timestamp + validate same-day
             let galleryTimestamp = null;
 
+            // TODO: Re-enable gallery date restrictions before production release.
+            // TEMPORARILY DISABLED: same-day validation is commented out to allow users
+            // to select images from WhatsApp, older gallery photos, and any available folder.
+            // The original restriction logic is preserved below inside the disabled block.
+            const GALLERY_DATE_RESTRICTION_ENABLED = false; // eslint-disable-line no-unused-vars -- temporary flag
+
             // Try EXIF first
             if (photo.exif) {
               const exifDateStr =
@@ -451,6 +457,7 @@ const ImageUpload = forwardRef(
                 );
                 const parsed = new Date(iso);
                 if (!isNaN(parsed.getTime())) {
+                  /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
                   // Validate photo is from today
                   const now = new Date();
                   const isSameDay =
@@ -467,6 +474,7 @@ const ImageUpload = forwardRef(
                     });
                     return;
                   }
+                  GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
                   galleryTimestamp = toLocalISOString(parsed);
                   debugLog(
@@ -483,6 +491,7 @@ const ImageUpload = forwardRef(
                 "⚠️ No EXIF metadata, checking Filesystem.stat() for non-education image",
               );
 
+              /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
               // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
               if (!photo.path) {
                 console.warn(
@@ -532,6 +541,14 @@ const ImageUpload = forwardRef(
                 });
                 return;
               }
+              GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
+
+              // When restrictions are disabled: fall back to current time as timestamp
+              // (base64ToFile always gives lastModified=now, so file date is unreliable here)
+              galleryTimestamp = toLocalISOString(new Date());
+              debugLog(
+                "⚠️ Gallery date restriction disabled — using current time as fallback timestamp",
+              );
             }
 
             onImageSelect(file, galleryTimestamp);

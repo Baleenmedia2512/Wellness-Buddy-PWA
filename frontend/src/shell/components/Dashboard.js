@@ -481,7 +481,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 every stacked dashboard (Nutrition's own strip is suppressed). */}
             {(activeTab === 'screen') && (
               <TouchFeedbackButton 
-                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
+                onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
                 ariaLabel="Toggle calendar"
               >
@@ -491,7 +491,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             {diaryEnabled && (
               <div className="flex items-center gap-1">
                 <TouchFeedbackButton
-                  onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }}
+                  onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }}
                   className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
                   ariaLabel="Open date picker"
                 >
@@ -526,7 +526,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           (disabled) steps/screen tabs AND the single-page Diary. */}
       {(activeTab === 'screen' || diaryEnabled) && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
-          showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
+          showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
         }`}>
         <div className={`max-w-md mx-auto p-0 md:p-4 transform transition-transform duration-300 ease-in-out ${
           showCalendar ? 'translate-y-0' : '-translate-y-4'
