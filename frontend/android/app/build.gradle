@@ -8,8 +8,8 @@ android {
         applicationId "com.wellnessvalley.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 43
-        versionName "3.2.3"
+        versionCode 44
+        versionName "3.2.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // Inject Gemini API key from environment variable or gradle.properties
