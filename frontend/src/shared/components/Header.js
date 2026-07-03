@@ -228,8 +228,8 @@ const Header = ({
             }`}
             ariaLabel="Counselling"
           >
-            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-pink-700' : 'text-pink-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-pink-900' : 'text-pink-800'}`}>Counsel</span>
+            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-teal-900' : 'text-teal-800'}`}>Counsel</span>
           </TouchFeedbackButton>
           {/* Physical Club */}
           <TouchFeedbackButton
@@ -250,8 +250,8 @@ const Header = ({
             }`}
             ariaLabel="Activity Report"
           >
-            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-violet-700' : 'text-violet-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-violet-900' : 'text-violet-800'}`}>Activity</span>
+            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
+            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
           </TouchFeedbackButton>
         </div>
       </nav>
