@@ -1,53 +1,106 @@
 /**
  * WeightProgressTipsModal.jsx
  *
- * Shown automatically when a weight upload results in reverse progress
- * (user gained weight in loss-mode or lost weight in gain-mode).
- *
- * Sections:
- *   1. Personalised header — goal, weight change, explanation
- *   2. Yesterday's analysis — calories, protein, carbs, fat, water
- *   3. Footer — OK (close) / NO (open gallery)
+ * Pure presentation layer for weight-progress insights.
+ * All reasoning lives in services/weightInsightEngine.js.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, AlertCircle, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  generateWeightInsightsFromComparison,
+  INSIGHT_DISCLAIMER,
+} from '../services/weightInsightEngine.js';
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Display helpers (presentation only) ─────────────────────────────────────
 
-/**
- * Single row in the "Yesterday's Analysis" table.
- * Shows consumed vs target (e.g. "1340 vs 1200 kcal").
- */
-function AnalysisRow({ label, icon, target, consumed, unit }) {
-  const consumedNum = consumed != null && Number.isFinite(consumed) ? consumed : 0;
+const ANALYSIS_GRID_CLASS =
+  'grid w-full min-w-0 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto_minmax(0,1.05fr)] gap-x-1 xs:gap-x-1.5 sm:gap-x-2 items-center';
+
+/** >= 1000 ml → liters; below → ml */
+function formatWaterDisplay(value) {
+  const num = value ?? 0;
+  if (num >= 1000) {
+    return {
+      display: (num / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 }),
+      unit: 'L',
+    };
+  }
+  return { display: Math.round(num).toLocaleString(), unit: 'ml' };
+}
+
+const DISPLAY_VARIANT_CLASS = {
+  surplus: 'text-red-600',
+  deficit: 'text-orange-600',
+  positive: 'text-green-600',
+};
+
+function formatConsumedTarget(reason) {
+  const consumedNum = reason.consumed ?? 0;
+  const target = reason.target;
   const hasTarget = target != null && Number.isFinite(target) && target > 0;
-  const consumedDisplay = Math.round(consumedNum).toLocaleString();
-  const targetDisplay = hasTarget ? Math.round(target).toLocaleString() : '—';
 
-  const diff = hasTarget ? consumedNum - target : null;
-  const consumedClass =
-    diff == null ? 'text-gray-700' :
-    diff > 0     ? 'text-red-600' :
-    diff < 0     ? 'text-orange-600' :
-                   'text-green-600';
+  if (reason.formatType === 'water') {
+    const consumedFmt = formatWaterDisplay(consumedNum);
+    const targetFmt = hasTarget ? formatWaterDisplay(target) : null;
+    return {
+      consumedDisplay: consumedFmt.display,
+      targetDisplay: targetFmt ? targetFmt.display : '—',
+      targetUnit: targetFmt ? targetFmt.unit : reason.unit,
+      hasTarget,
+    };
+  }
+
+  return {
+    consumedDisplay: Math.round(consumedNum).toLocaleString(),
+    targetDisplay: hasTarget ? Math.round(target).toLocaleString() : '—',
+    targetUnit: reason.unit,
+    hasTarget,
+  };
+}
+
+function AnalysisHeader() {
+  return (
+    <div className={`${ANALYSIS_GRID_CLASS} pt-2 pb-1`}>
+      <span aria-hidden="true" />
+      <span className="text-[10px] xs:text-xs font-medium text-gray-500 text-right leading-tight">
+        Consumed
+      </span>
+      <span className="text-[10px] xs:text-xs font-medium text-gray-500 text-center px-0.5 xs:px-1 leading-tight">
+        vs
+      </span>
+      <span className="text-[10px] xs:text-xs font-medium text-gray-500 text-right leading-tight">
+        Target
+      </span>
+    </div>
+  );
+}
+
+/** Renders a single engine reason — no business logic */
+function AnalysisReasonRow({ reason }) {
+  const { consumedDisplay, targetDisplay, targetUnit, hasTarget } = formatConsumedTarget(reason);
+  const consumedClass = DISPLAY_VARIANT_CLASS[reason.displayVariant] || 'text-gray-700';
 
   return (
-    <div className="flex items-center py-3 border-b border-gray-100 last:border-0 min-w-0">
-      {/* Col 1: icon + label */}
-      <span className="flex items-center gap-1 text-sm font-semibold text-gray-700 w-[120px] xs:w-[150px] shrink-0 min-w-0 truncate">
-        {icon && <span className="shrink-0">{icon}</span>}
-        <span className="truncate">{label}</span>
+    <div className={`${ANALYSIS_GRID_CLASS} py-2 xs:py-2.5 sm:py-3 border-b border-gray-100 last:border-0`}>
+      <span className="flex items-center gap-0.5 xs:gap-1 text-[11px] xs:text-xs sm:text-sm font-semibold text-gray-700 min-w-0">
+        {reason.icon && <span className="shrink-0 text-xs xs:text-sm">{reason.icon}</span>}
+        <span className="truncate min-w-0">{reason.label}</span>
       </span>
-      {/* Col 2: consumed */}
-      <strong className={`${consumedClass} text-base font-bold w-[56px] text-right shrink-0`}>
+      <strong
+        className={`${consumedClass} text-xs xs:text-sm sm:text-base font-bold text-right tabular-nums leading-tight min-w-0 truncate`}
+      >
         {consumedDisplay}
       </strong>
-      {/* Col 3: vs */}
-      <span className="text-gray-400 font-medium w-[30px] text-center shrink-0">vs</span>
-      {/* Col 4: target + unit */}
-      <span className="min-w-0">
-        <strong className="text-gray-700 text-base font-bold">{targetDisplay}</strong>
-        <span className="text-gray-500 text-xs ml-1">{unit}</span>
+      <span className="text-gray-400 font-medium text-[10px] xs:text-xs text-center px-0.5 xs:px-1 shrink-0">
+        vs
+      </span>
+      <span className="min-w-0 text-right leading-tight">
+        <strong className="text-gray-700 text-xs xs:text-sm sm:text-base font-bold tabular-nums">
+          {targetDisplay}
+        </strong>
+        {hasTarget && targetUnit && (
+          <span className="text-gray-500 text-[10px] xs:text-xs ml-0.5 xs:ml-1">{targetUnit}</span>
+        )}
       </span>
     </div>
   );
@@ -65,17 +118,23 @@ export function WeightProgressTipsModal({
   followedPlanCorrectly = false,
   coachPhone = null,
 }) {
+  const insight = useMemo(
+    () => generateWeightInsightsFromComparison(comparison, goalMode),
+    [comparison, goalMode]
+  );
+
   if (!isOpen || !comparison) return null;
 
-  const isFirstUpload  = comparison.weight.direction === 'first';
-  const displayName    = userName || 'there';
-  const goalLabel      = goalMode === 'loss' ? 'Weight Loss'
-                       : goalMode === 'gain' ? 'Weight Gain'
-                       : 'Weight Management';
-  const weightChange   = comparison.weight.change ?? 0;
-  const prevWeight     = comparison.weight.previous;
-  const currWeight     = comparison.weight.current;
-  const weightWentUp   = currWeight > prevWeight;   // true = increased, false = decreased
+  const isFirstUpload = insight.status === 'first_upload';
+  const displayName = userName || 'there';
+  const goalLabel =
+    insight.goal === 'loss' ? 'Weight Loss'
+    : insight.goal === 'gain' ? 'Weight Gain'
+    : 'Weight Management';
+
+  const prevWeight = comparison.weight?.previous;
+  const currWeight = comparison.weight?.current;
+  const weightWentUp = insight.weightTrend === 'increase';
 
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
@@ -85,26 +144,18 @@ export function WeightProgressTipsModal({
     ? `Your weight is higher than your previous weight.`
     : `Your weight is lower than your previous weight.`;
 
-  const handleNoOpenGallery = () => {
-    onClose();
-    onOpenGallery?.();
-  };
-
   const handleContactCoach = () => {
     if (coachPhone) {
-      // _system opens the native phone dialer on Android/iOS via Capacitor
       window.open(`tel:${coachPhone}`, '_system');
     }
   };
 
-  const yNutrition = comparison.nutrition?.yesterday  || {};
-  const targets    = comparison.targets               || {};
-  const water      = comparison.water                 || {};
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 px-4 py-4">
-      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto overflow-x-hidden bg-white rounded-2xl shadow-2xl flex flex-col" style={{ maxWidth: 'min(32rem, calc(100vw - 2rem))' }}>
-
+      <div
+        className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto overflow-x-hidden bg-white rounded-2xl shadow-2xl flex flex-col"
+        style={{ maxWidth: 'min(32rem, calc(100vw - 2rem))' }}
+      >
         {/* ── Header ───────────────────────────────────────────────────── */}
         <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500 to-teal-500 text-white p-6 rounded-t-2xl">
           <button
@@ -116,12 +167,18 @@ export function WeightProgressTipsModal({
           </button>
 
           <div className="flex items-start gap-3 pr-10">
-            {isFirstUpload ? <CheckCircle size={32} className="shrink-0 mt-0.5" /> : <AlertCircle size={32} className="shrink-0 mt-0.5" />}
+            {isFirstUpload ? (
+              <CheckCircle size={32} className="shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle size={32} className="shrink-0 mt-0.5" />
+            )}
             <div>
               <h2 className="text-xl font-bold leading-tight">
                 {isFirstUpload ? '🎉 Welcome to Your Journey!' : 'Weight Update'}
               </h2>
-              <p className="text-sm opacity-90 mt-0.5">Hello, <strong>{displayName}</strong></p>
+              <p className="text-sm opacity-90 mt-0.5">
+                Hello, <strong>{displayName}</strong>
+              </p>
               <p className="text-sm opacity-90">
                 Your Goal: <strong>{goalLabel}</strong>
               </p>
@@ -130,9 +187,7 @@ export function WeightProgressTipsModal({
         </div>
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 p-6 space-y-6">
-
-          {/* Weight Change Card */}
+        <div className="flex-1 p-4 xs:p-5 sm:p-6 space-y-4 xs:space-y-5 sm:space-y-6">
           {!isFirstUpload && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
               <div className="flex items-center justify-between gap-4">
@@ -141,19 +196,18 @@ export function WeightProgressTipsModal({
                   <p className="text-2xl font-bold text-gray-800">{prevWeight} kg</p>
                 </div>
                 <div className="flex flex-col items-center">
-                  {weightWentUp
-                    ? <TrendingUp className="text-red-500" size={28} />
-                    : <TrendingDown className="text-green-500" size={28} />
-                  }
+                  {weightWentUp ? (
+                    <TrendingUp className="text-red-500" size={28} />
+                  ) : (
+                    <TrendingDown className="text-green-500" size={28} />
+                  )}
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-1">Today</p>
                   <p className="text-2xl font-bold text-orange-600">{currWeight} kg</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-700 mt-3 text-center font-medium">
-                {explanation}
-              </p>
+              <p className="text-sm text-gray-700 mt-3 text-center font-medium">{explanation}</p>
             </div>
           )}
 
@@ -165,52 +219,31 @@ export function WeightProgressTipsModal({
             </div>
           )}
 
-          {/* Yesterday's Analysis */}
-          {!isFirstUpload && (
+          {!isFirstUpload && insight.sectionTitle && (
             <section>
               <h3 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span>📊</span> Daily Summary
+                <span>📊</span>
+                {insight.sectionTitle}
               </h3>
-              <div className="bg-gray-50 rounded-xl px-4 py-1 divide-y divide-gray-100">
-                <AnalysisRow
-                  label="Calories"
-                  icon="🔥"
-                  target={targets.calories ?? null}
-                  consumed={yNutrition.calories ?? 0}
-                  unit="kcal"
-                />
-                <AnalysisRow
-                  label="Protein"
-                  icon="🥩"
-                  target={targets.protein ?? null}
-                  consumed={yNutrition.protein ?? 0}
-                  unit="g"
-                />
-                <AnalysisRow
-                  label="Carbohydrates"
-                  icon="🍞"
-                  target={targets.carbs ?? null}
-                  consumed={yNutrition.carbs ?? 0}
-                  unit="g"
-                />
-                <AnalysisRow
-                  label="Fat"
-                  icon="🥑"
-                  target={targets.fat ?? null}
-                  consumed={yNutrition.fat ?? 0}
-                  unit="g"
-                />
-                <AnalysisRow
-                  label="Water"
-                  icon="💧"
-                  target={targets.water ?? water.target ?? null}
-                  consumed={water.yesterday ?? 0}
-                  unit="ml"
-                />
+              <div className="bg-gray-50 rounded-xl px-2 xs:px-3 sm:px-4 py-1 divide-y divide-gray-100 min-w-0">
+                {insight.reasons.length > 0 ? (
+                  <>
+                    <AnalysisHeader />
+                    {insight.reasons.map((reason) => (
+                      <AnalysisReasonRow key={reason.parameter} reason={reason} />
+                    ))}
+                  </>
+                ) : (
+                  <p className="py-4 px-2 text-sm text-gray-600 text-center leading-relaxed">
+                    {insight.emptyMessage}
+                  </p>
+                )}
               </div>
+              {/* <p className="mt-2 text-[11px] xs:text-xs text-gray-500 leading-relaxed px-1">
+                {insight.disclaimer || INSIGHT_DISCLAIMER}
+              </p> */}
             </section>
           )}
-
         </div>
 
         {/* ── Footer ───────────────────────────────────────────────────── */}
@@ -237,7 +270,6 @@ export function WeightProgressTipsModal({
             )
           ) : null}
         </div>
-
       </div>
     </div>
   );
