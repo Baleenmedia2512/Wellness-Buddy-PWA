@@ -132,6 +132,21 @@ const wrappedPlugin = {
     }
   },
 
+  /**
+   * Opens this app's own Settings page on Android
+   * (Settings → Apps → Wellness Valley → Permissions).
+   * Calls the native ACTION_APPLICATION_DETAILS_SETTINGS intent.
+   */
+  async openAppSettings() {
+    try {
+      await this.init();
+      return await GalleryMonitor.openAppSettings();
+    } catch (error) {
+      console.error("Failed to open app settings:", error);
+      throw error;
+    }
+  },
+
   async isLocationEnabled() {
     try {
       await this.init();

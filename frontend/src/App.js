@@ -160,7 +160,8 @@ import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 import * as PermissionManager from "./shared/services/permissionManager";
-import PermissionBlockedDialog from "./shared/components/PermissionBlockedDialog";
+import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
+import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
 import * as authFsm from "./shared/services/auth/fsm";
 import {
@@ -2136,15 +2137,15 @@ function WellnessValleyApp() {
   }, []);
 
   /**
-   * Called when user taps "Allow Again" in PermissionBlockedDialog.
+   * Called when user taps "Allow Again" in PermissionDeniedModal.
    *
-   * Behaviour:
-   *   • Calls requestPermission() — the OS either shows a system dialog or
-   *     silently returns 'denied' (permanent denial / "Don't ask again").
-   *   • Granted          → reset the flow lock, continue with remaining permissions.
-   *   • Denied, can ask  → update dialog (canRequest: true, user can retry).
-   *   • Denied, permanent → open App Settings automatically, because requestPermission
-   *     will never show an OS dialog again and Settings is the only path forward.
+   * Invokes the native OS permission dialog directly (canRequest is true at
+   * this point — the modal is only shown while the OS can still prompt).
+   *   • Granted          → reset flow lock, continue with remaining permissions.
+   *   • Denied, can ask  → keep PermissionDeniedModal visible (stay requestable).
+   *   • Denied, permanent → canRequest flips to false → React automatically
+   *                         switches from PermissionDeniedModal to
+   *                         PermissionBlockedPage (no explicit navigation needed).
    */
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
@@ -2157,12 +2158,9 @@ function WellnessValleyApp() {
         _permissionFlowRunningRef.current = false;
         await advancePermissionFlow();
       } else {
+        // Re-check canRequest after denial. If it flipped to false (permanent)
+        // React will switch the rendered component to PermissionBlockedPage.
         const { canRequest } = await PermissionManager.checkPermission(type);
-        if (!canRequest) {
-          // Permanently denied — OS will never show a dialog again.
-          // Open App Settings automatically; user can re-enable there.
-          await PermissionManager.openAppSettings();
-        }
         setActivePermission({ type, canRequest });
       }
     } catch {
@@ -8070,18 +8068,36 @@ function WellnessValleyApp() {
           paddingRight: "env(safe-area-inset-right)",
         }}
       >
-        {/* Permission blocked dialog — shown only after the OS denied a
-          required permission. canRequest: true → [Allow Again][Exit App].
-          canRequest: false → [Exit App] only (permanently denied).
-          No onboarding pages, no instructional text, no Open Settings. */}
-        {activePermission && (
-          <PermissionBlockedDialog
+        {/* ── Permission denied modal (canRequest: true) ─────────────────────
+          Shown after a first denial when the OS can still present a dialog.
+          Small overlay card: "<Perm> permission is required to continue."
+          [ Allow Again ] immediately re-invokes the native OS dialog.
+          [ Exit ] closes the app.
+          When the user denies a second time (Android "Don't ask again") the
+          state flips to canRequest: false and React automatically unmounts
+          this modal and mounts PermissionBlockedPage instead. */}
+        {activePermission?.canRequest === true && (
+          <PermissionDeniedModal
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            canRequest={activePermission.canRequest}
             onAllow={() => handlePermissionAllow(activePermission.type)}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
             loading={permissionDialogLoading}
+          />
+        )}
+
+        {/* ── Permission blocked page (canRequest: false) ──────────────────────
+          Full-screen page for permanently denied permissions.
+          Shown when Android reports "Don't ask again" or iOS denies (permanent).
+          Provides per-permission title + description + "Open App Settings".
+          The resume listener (above) auto-dismisses this page when the user
+          grants the permission from device Settings and returns to the app. */}
+        {activePermission?.canRequest === false && (
+          <PermissionBlockedPage
+            type={activePermission.type}
+            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+            onOpenSettings={() => PermissionManager.openAppSettings()}
+            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
 

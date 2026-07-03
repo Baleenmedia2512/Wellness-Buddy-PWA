@@ -229,6 +229,29 @@ public class GalleryMonitorPlugin extends Plugin {
     }
 
     /**
+     * Opens this app's own Settings page (Permissions, Notifications, etc.).
+     * Uses ACTION_APPLICATION_DETAILS_SETTINGS with the app's package name.
+     * Called from permissionManager.openAppSettings() on Android when a
+     * permission is permanently denied and the user taps "Open App Settings".
+     */
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + getContext().getPackageName())
+            );
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            Log.d(TAG, "✅ App settings opened");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to open app settings", e);
+            call.reject("Failed to open app settings", e);
+        }
+    }
+
+    /**
      * Returns { enabled: boolean } indicating whether Location Services (GPS) are
      * currently active on the device — instant, no timeout required.
      * API 28+ uses LocationManager.isLocationEnabled();

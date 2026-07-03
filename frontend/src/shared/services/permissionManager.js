@@ -47,31 +47,28 @@ import { PushNotifications } from '@capacitor/push-notifications';
 
 /**
  * Static configuration for each permission.
- * icon: emoji used in dialog UI.
- * label: human-readable name.
- * reason: one-sentence explanation shown in the in-app dialog.
- * required: true = blocks app access; false = user may skip.
+ * icon     : emoji for modals / pages.
+ * label    : human-readable short name.
+ * reason   : one-sentence use-case (inline prompt copy).
+ * required : true = blocks app access; false = silently skipped on denial.
  */
 export const PERMISSION_CONFIG = {
   camera: {
     label: 'Camera',
     icon: '📷',
     reason: 'Snap your meal and get instant AI nutrition analysis.',
-    settingsHint: 'Open App Settings and enable Camera access to continue.',
     required: true,
   },
   location: {
     label: 'Location',
     icon: '📍',
     reason: 'Auto-check in at your nearest wellness center and track your attendance.',
-    settingsHint: 'Open App Settings and enable Location access to continue.',
     required: true,
   },
   notifications: {
     label: 'Notifications',
     icon: '🔔',
     reason: "We'll remind you to log meals, water, and your daily weight on time.",
-    settingsHint: 'Open App Settings and enable Notifications to receive daily reminders.',
     required: false,
   },
 };
@@ -174,16 +171,24 @@ export async function requestPermission(type) {
 /**
  * Open this app's entry in the OS Settings app.
  *
- * Use this when a permission is permanently denied ('canRequest: false').
- * The user can re-enable any permission from the app's Settings page.
- *
- * Works on both Android (app-settings:) and iOS (app-settings:).
- * On web: no-op.
+ * Android: calls GalleryMonitorPlugin.openAppSettings() which fires
+ *          ACTION_APPLICATION_DETAILS_SETTINGS — opens the app's own
+ *          Permissions page directly. `app-settings:` is iOS-only and
+ *          silently fails on Android.
+ * iOS:     uses the `app-settings:` URL scheme via CapacitorApp.openUrl().
+ * Web:     no-op.
  */
 export async function openAppSettings() {
   if (!Capacitor.isNativePlatform()) return;
+  const platform = Capacitor.getPlatform();
   try {
-    await CapacitorApp.openUrl({ url: 'app-settings:' });
+    if (platform === 'android') {
+      const { GalleryMonitorPlugin } = await import('../plugins/galleryMonitorPlugin.js');
+      await GalleryMonitorPlugin.openAppSettings();
+    } else {
+      // iOS: app-settings: opens this app's Settings entry.
+      await CapacitorApp.openUrl({ url: 'app-settings:' });
+    }
   } catch (err) {
     console.warn('[PermissionManager] openAppSettings failed:', err);
   }
