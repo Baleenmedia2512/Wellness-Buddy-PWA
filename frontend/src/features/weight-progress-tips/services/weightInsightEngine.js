@@ -527,21 +527,10 @@ function resolveStatus(goal, weightTrend) {
   return unfavorable ? 'reverse_progress' : 'favorable_progress';
 }
 
-function resolveSectionTitle(goal, weightTrend) {
+function resolveSectionTitle(_goal, weightTrend) {
   if (weightTrend === 'first') return null;
-
-  if (goal === 'loss' && weightTrend === 'increase') {
-    return 'Possible contributors to weight gain';
-  }
-  if (goal === 'loss' && weightTrend === 'decrease') {
-    return 'What likely supported your weight loss';
-  }
-  if (goal === 'gain' && weightTrend === 'decrease') {
-    return 'Possible reasons you did not gain weight';
-  }
-  if (goal === 'gain' && weightTrend === 'increase') {
-    return 'What likely supported your weight gain';
-  }
+  if (weightTrend === 'increase') return 'Reason for weight gain';
+  if (weightTrend === 'decrease') return 'Reason for weight loss';
   return 'Nutrition insights';
 }
 
