@@ -243,9 +243,9 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   return (
     <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
       <div className="py-0 px-0">
-        <div className="relative h-[42px] sm:h-[44px] overflow-hidden">
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 pointer-events-none z-10">
-            <div className="inline-flex items-center justify-center rounded-none border-r border-gray-200 bg-white shadow-sm px-1.5 py-0.5 text-center text-[8px] sm:text-[9px] font-semibold leading-tight text-purple-700">
+        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
+            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
               Last 10<br />Days
             </div>
           </div>
