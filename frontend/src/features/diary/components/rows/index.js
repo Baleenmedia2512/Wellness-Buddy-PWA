@@ -514,68 +514,116 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
 }
 
 // ─── kind: unknown (the "Other" card) ───────────────────────────────────────
-// Supports both swipe-to-delete (quick removal) and tap-to-open
-// (UnknownEntryFlow for Retry / Edit).
+// Supports both swipe-to-delete (quick removal) and tap-to-open.
+//
+// When `isAnalyzing` is true (Dashboard is running AI before opening the
+// modal) the card displays an inline loading state, disables tap, and
+// prevents duplicate AI requests. Swipe-to-delete is also disabled during
+// analysis to avoid race conditions with the pending AI request.
 
-export function OtherRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
   return (
     <div
       className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
+      style={{ touchAction: (swipe.dragging && !isAnalyzing) ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {/* Swipe-delete background — hidden while analyzing */}
+      {!isAnalyzing && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div
         ref={swipe.elRef}
         role="button"
-        tabIndex={0}
-        onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
+        tabIndex={isAnalyzing ? -1 : 0}
+        aria-disabled={isAnalyzing}
+        aria-label={
+          isAnalyzing
+            ? 'AI is analysing this photo — please wait'
+            : 'Unrecognised capture, tap to identify or swipe to delete'
+        }
+        data-testid="diary-row-unknown"
+        onClick={() => {
+          if (isAnalyzing) return;
+          if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry);
+        }}
         onKeyDown={(e) => {
-          if (swipe.leaving) return;
+          if (isAnalyzing || swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
         }}
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
-        aria-label="Unrecognised capture, tap to identify or swipe to delete"
-        data-testid="diary-row-unknown"
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        {...(isAnalyzing ? {} : swipe.touchHandlers)}
+        {...(isAnalyzing ? {} : swipe.pointerHandlers)}
+        className={[
+          'relative z-10 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden transition-shadow',
+          isAnalyzing
+            ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
+            : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
+        ].join(' ')}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: isAnalyzing ? 'none' : `translateX(${swipe.dx}px) scale(${swipe.scale})`,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
           willChange: 'transform',
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {/* Swipe progress bar */}
+        {!isAnalyzing && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
+
+        {/* AI analysis indeterminate progress bar across the card top */}
+        {isAnalyzing && (
+          <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl overflow-hidden bg-emerald-100" aria-hidden="true">
+            <div className="h-full bg-emerald-500 w-2/5 animate-shimmer" />
+          </div>
+        )}
 
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
+
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-gray-900 truncate">Other</h4>
-          <p className="text-xs text-gray-500">
-            {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
-          </p>
+          {isAnalyzing ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">Detecting entry…</h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt)} · AI is analysing`}
+              </p>
+            </>
+          ) : (
+            <>
+              <h4 className="font-semibold text-gray-900 truncate">Other</h4>
+              <p className="text-xs text-gray-500">
+                {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
+              </p>
+            </>
+          )}
         </div>
-        <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+
+        {isAnalyzing ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+        )}
       </div>
     </div>
   );

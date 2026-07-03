@@ -6,7 +6,7 @@ import { Flame, Utensils, User } from 'lucide-react';
  * Shows Remaining (Goal - Food + Exercise), Base Goal, Food, Exercise.
  * Formula: Remaining = Goal - Food + Exercise
  * 
- * Design: Compact, mobile-optimized with circular progress.
+ * Design: Compact, mobile-optimized with circular progress.....
  */
 
 // Compact Circular Progress for mobile (green up to 100%, solid red when over)
