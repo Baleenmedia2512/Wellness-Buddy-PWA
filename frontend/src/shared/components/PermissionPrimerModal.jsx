@@ -2,23 +2,20 @@
  * PermissionPrimerModal.jsx
  *
  * Shown ONCE on first native install, after the user authenticates.
- * Explains the permissions Wellness Valley needs - and WHY -
- * before the OS system dialogs appear.
+ * Explains the permissions Wellness Valley needs — and WHY — before the
+ * sequential per-permission OS dialogs appear.
  *
  * Industry pattern: Instagram / Headspace / Duolingo "permission primer".
  * - Never show OS system dialogs without context.
  * - One screen, one CTA, no friction.
  *
- * Location and Camera are MANDATORY. The "Not Now" skip path has been removed
- * because the application cannot function without these permissions.
+ * This component is ONLY used as the first-install intro screen. It is NOT
+ * shown on permission denial or revocation — those cases are handled by
+ * PermissionRequestDialog (canRequest: true) and PermissionSettingsGuide
+ * (canRequest: false / permanently denied).
  *
  * Props:
- *   onContinue    - async fn: runs requestAllPermissions() then resolves.
- *   error         - optional string: shown when a mandatory permission was
- *                   denied, explaining what went wrong.
- *   onOpenSettings - optional fn: when provided, the CTA changes to
- *                   "Open App Settings" so permanently-denied users can
- *                   fix the permission in the OS settings screen.
+ *   onContinue  - async fn: starts the sequential per-permission flow.
  */
 import React, { useState } from 'react';
 import wellnessValleyIcon from '../../assets/wellness-valley-icon.png';
@@ -46,7 +43,7 @@ const PERMISSIONS = [
 
 const ICON_MAP = { CAMERA: String.fromCodePoint(0x1F4F8), PIN: String.fromCodePoint(0x1F4CD), BELL: String.fromCodePoint(0x1F514) };
 
-export default function PermissionPrimerModal({ onContinue, error, onOpenSettings }) {
+export default function PermissionPrimerModal({ onContinue }) {
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
@@ -125,35 +122,10 @@ export default function PermissionPrimerModal({ onContinue, error, onOpenSetting
               lineHeight: 1.4,
             }}
           >
-            {error
-              ? 'Some required permissions are missing. Camera and Location are mandatory to use Wellness Valley.'
-              : 'Allow permissions so Wellness Valley works its best. You will see OS prompts for Camera, Location, and Notifications.'
-            }
+            Allow permissions so Wellness Valley works its best. You will see OS prompts for Camera, Location, and Notifications.
           </p>
         </div>
       </div>
-
-      {error && (
-        <div
-          role="alert"
-          style={{
-            margin: '16px 20px 0',
-            padding: '14px 16px',
-            borderRadius: 14,
-            background: '#fef2f2',
-            border: '1.5px solid #fca5a5',
-            display: 'flex',
-            gap: 10,
-            alignItems: 'flex-start',
-            flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-          <p style={{ margin: 0, fontSize: 13.5, color: '#b91c1c', lineHeight: 1.45 }}>
-            {error}
-          </p>
-        </div>
-      )}
 
       <div
         style={{
@@ -258,80 +230,50 @@ export default function PermissionPrimerModal({ onContinue, error, onOpenSetting
           flexShrink: 0,
         }}
       >
-        {onOpenSettings ? (
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: 16,
-              border: 'none',
-              background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-              color: '#ffffff',
-              fontSize: 16,
-              fontWeight: 700,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              boxShadow: '0 4px 14px rgba(220,38,38,0.35)',
-              transition: 'all 0.15s ease',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            Open App Settings - Enable Location
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: 16,
-              border: 'none',
-              background: loading
-                ? '#86efac'
-                : 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
-              color: '#ffffff',
-              fontSize: 16,
-              fontWeight: 700,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              boxShadow: loading ? 'none' : '0 4px 14px rgba(22,163,74,0.35)',
-              transition: 'all 0.15s ease',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            {loading ? (
-              <>
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    border: '2.5px solid rgba(255,255,255,0.4)',
-                    borderTopColor: '#ffffff',
-                    borderRadius: '50%',
-                    animation: '_primer_spin 0.7s linear infinite',
-                    display: 'inline-block',
-                  }}
-                />
-                <span>Tap Allow on each OS prompt...</span>
-              </>
-            ) : error ? (
-              'Try Again - Grant Permissions'
-            ) : (
-              'Allow Permissions - Continue'
-            )}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleContinue}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: 16,
+            border: 'none',
+            background: loading
+              ? '#86efac'
+              : 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+            color: '#ffffff',
+            fontSize: 16,
+            fontWeight: 700,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            boxShadow: loading ? 'none' : '0 4px 14px rgba(22,163,74,0.35)',
+            transition: 'all 0.15s ease',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          {loading ? (
+            <>
+              <span
+                style={{
+                  width: 18,
+                  height: 18,
+                  border: '2.5px solid rgba(255,255,255,0.4)',
+                  borderTopColor: '#ffffff',
+                  borderRadius: '50%',
+                  animation: '_primer_spin 0.7s linear infinite',
+                  display: 'inline-block',
+                }}
+              />
+              <span>Starting permission setup…</span>
+            </>
+          ) : (
+            'Allow Permissions - Continue'
+          )}
+        </button>
       </div>
 
       <style>{`

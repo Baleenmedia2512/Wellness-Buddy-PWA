@@ -320,3 +320,56 @@ export async function checkLocationPermission() {
     return 'unknown';
   }
 }
+
+/**
+ * Check the current status of the camera permission without prompting the user.
+ * 'limited' (iOS partial photos) is mapped to 'granted'.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unknown'>}
+ */
+export async function checkCameraPermission() {
+  if (!Capacitor.isNativePlatform()) return 'granted';
+  try {
+    const result = await Camera.checkPermissions();
+    const status = result?.camera;
+    if (status === 'granted' || status === 'limited') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'prompt';
+  } catch (err) {
+    console.warn('Failed to check camera permission:', err);
+    return 'unknown';
+  }
+}
+
+/**
+ * Check the current status of the push-notification permission without prompting.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unknown'>}
+ */
+export async function checkNotificationPermission() {
+  if (!Capacitor.isNativePlatform()) return 'granted';
+  try {
+    const result = await PushNotifications.checkPermissions();
+    const status = result?.receive;
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'prompt';
+  } catch (err) {
+    console.warn('Failed to check notification permission:', err);
+    return 'unknown';
+  }
+}
+
+/**
+ * Open this app's entry in the OS Settings app.
+ * Used when a permission is permanently denied and cannot be re-requested.
+ * On web: no-op.
+ */
+export async function openAppSettings() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await CapacitorApp.openUrl({ url: 'app-settings:' });
+  } catch (err) {
+    console.warn('Failed to open App Settings:', err);
+  }
+}

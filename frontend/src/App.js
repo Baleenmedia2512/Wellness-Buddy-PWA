@@ -159,7 +159,8 @@ import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
-import PermissionPrimerModal from "./shared/components/PermissionPrimerModal";
+import * as PermissionManager from "./shared/services/permissionManager";
+import PermissionBlockedDialog from "./shared/components/PermissionBlockedDialog";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
 import * as authFsm from "./shared/services/auth/fsm";
 import {
@@ -311,18 +312,16 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return true;
     return localStorage.getItem("wv.permissionsGranted") === "1";
   });
-  // Permission primer: shown once on first native install after authentication.
-  // Blocks the OS system dialogs until the user has read WHY they are needed.
-  const [showPermissionPrimer, setShowPermissionPrimer] = useState(false);
-  // GPS required modal: shown when location permission was granted but GPS/Location
+  // GPS required modal: shown when location permission is granted but GPS/Location
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
-  // Error message displayed inside PermissionPrimerModal when a mandatory
-  // permission (Camera or Location) was denied.
-  const [permissionError, setPermissionError] = useState('');
-  // When true, the PermissionPrimerModal shows "Open App Settings" instead of
-  // "Allow Permissions" — used when location was permanently denied.
-  const [permissionNeedsSettings, setPermissionNeedsSettings] = useState(false);
+  // Active per-permission gate. null = no gate active.
+  // { type: 'camera'|'location'|'notifications', canRequest: boolean }
+  // canRequest: true  → OS can re-prompt — show [Allow Again] [Exit App]
+  // canRequest: false → permanently denied — show [Exit App] only
+  const [activePermission, setActivePermission] = useState(null);
+  // True while a native OS permission dialog is pending ("Allow Again" spinner).
+  const [permissionDialogLoading, setPermissionDialogLoading] = useState(false);
   // Full-screen branded overlay that bridges the native splash ? camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
@@ -2048,11 +2047,94 @@ function WellnessValleyApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
   }, [showDashboardPage, userRole]);
-  // App.js retains the call site (in the user-authenticated effect below) so
-  // orchestration ownership stays here; only the plugin plumbing moved out.
-  // Behavior, order (camera/photos ? push ? geolocation), and logging preserved
-  // exactly inside the service.
-  const requestAllPermissions = nativeLifecycle.requestAllPermissions;
+  // ── Permission flow ──────────────────────────────────────────────────────
+  //
+  // Design: zero custom screens before OS dialogs. Permissions are requested
+  // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
+  // prompt has been denied, as a last-resort block. Required permissions
+  // (camera, location) block the app entirely; optional ones (notifications)
+  // are silently skipped on denial.
+  //
+  // States
+  //   activePermission = null          → no gate, home accessible
+  //   activePermission.canRequest=true → [Allow Again] [Exit App]
+  //   activePermission.canRequest=false→ [Exit App] only (permanent)
+
+  /**
+   * Walk [camera → location → notifications] in order:
+   *   • 'granted'  → skip.
+   *   • 'prompt'   → call requestPermission() immediately (no pre-dialog).
+   *                  If granted: continue. If denied + required: show dialog.
+   *                  If denied + optional: skip silently.
+   *   • 'denied'   → if required: show [Exit App] dialog. If optional: skip.
+   * When all permissions are resolved, validate GPS then unlock home.
+   */
+  const advancePermissionFlow = useCallback(async () => {
+    const PERMISSIONS = ['camera', 'location', 'notifications'];
+
+    for (const type of PERMISSIONS) {
+      const config = PermissionManager.PERMISSION_CONFIG[type];
+      const { canRequest, granted } = await PermissionManager.checkPermission(type);
+
+      if (granted) continue;
+
+      if (canRequest) {
+        // Immediately invoke the native OS permission dialog — no pre-screen.
+        const { granted: nowGranted } = await PermissionManager.requestPermission(type);
+
+        if (nowGranted) continue;
+
+        // OS dialog was denied.
+        if (!config.required) continue; // Optional → skip silently.
+
+        // Required and denied — check updated state (may now be permanent).
+        const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
+        setActivePermission({ type, canRequest: canRequestNow });
+        return;
+      }
+
+      // Permanently denied (status === 'denied', canRequest === false).
+      if (!config.required) continue; // Optional → skip silently.
+      setActivePermission({ type, canRequest: false });
+      return;
+    }
+
+    // All permissions satisfied — check GPS before unlocking home.
+    const gpsOn = await nativeLifecycle.checkGpsEnabled();
+    if (!gpsOn) {
+      setShowGpsRequired(true);
+      return;
+    }
+
+    setActivePermission(null);
+    localStorage.setItem('wv.permissionsGranted', '1');
+    setPermissionsReady(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Called when user taps "Allow Again" in PermissionBlockedDialog.
+   * Invokes the OS dialog for this specific type, then re-evaluates the flow.
+   */
+  const handlePermissionAllow = useCallback(async (type) => {
+    setPermissionDialogLoading(true);
+    try {
+      const { granted } = await PermissionManager.requestPermission(type);
+      if (granted) {
+        setActivePermission(null);
+        await advancePermissionFlow();
+      } else {
+        // Denied again — re-check whether it became permanently denied.
+        const { canRequest } = await PermissionManager.checkPermission(type);
+        setActivePermission({ type, canRequest });
+      }
+    } catch {
+      const { canRequest } = await PermissionManager.checkPermission(type);
+      setActivePermission({ type, canRequest });
+    } finally {
+      setPermissionDialogLoading(false);
+    }
+  }, [advancePermissionFlow]);
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
@@ -2771,133 +2853,27 @@ function WellnessValleyApp() {
     return unsubscribe;
   }, [user?.id, forceLoggedOut]);
 
-  // Called when the user taps "Allow Permissions" in PermissionPrimerModal.
-  //
-  // Fix (root causes #1–#6):
-  //   - Requests permissions via the fixed requestAllPermissions() which uses
-  //     per-step try/catches and the correct order (Camera → Location → Notifications).
-  //   - Checks the returned { locationGranted } to enforce the Location gate.
-  //   - If location was denied: re-shows the primer with an error message and
-  //     does NOT set permissionsReady (home is blocked).
-  //   - If location was granted: checks GPS/Location Services via checkGpsEnabled().
-  //   - If GPS is off: shows GpsRequiredModal and does NOT set permissionsReady.
-  //   - Only sets permissionsReady(true) when ALL mandatory checks pass.
-  const handlePermissionsGranted = useCallback(async () => {
-    setShowPermissionPrimer(false);
-    setPermissionError('');
-    setPermissionNeedsSettings(false);
-    // Mark granted BEFORE the async OS dialogs so the effect can't re-show
-    // the primer if it re-runs while the OS dialogs are open.
-    localStorage.setItem("wv.permissionsGranted", "1");
-    // Mark that the primer ran this session — exact-alarm check must not
-    // interrupt the very next screen (first camera / food analysis).
-    sessionStorage.setItem("wv.primerDoneThisSession", "1");
-
-    let locationGranted = false;
-    try {
-      const result = await requestAllPermissions();
-      locationGranted = result?.locationGranted ?? false;
-    } catch (_) {
-      // requestAllPermissions has per-step try/catches internally; this outer
-      // catch should never fire, but keeps handlePermissionsGranted non-throwing.
-    }
-
-    if (!locationGranted) {
-      // Location denied — must NOT proceed to home screen.
-      // Clear the "granted" flag so the primer is shown again on next cold start.
-      localStorage.removeItem("wv.permissionsGranted");
-      // Check if it was permanently denied (can't re-request) or just denied once.
-      const locationStatus = await nativeLifecycle.checkLocationPermission();
-      const isPermanentlyDenied = locationStatus === 'denied';
-      setPermissionError(
-        isPermanentlyDenied
-          ? 'Location permission was permanently denied. Please enable it in App Settings to continue.'
-          : 'Location permission is required to use Wellness Valley. Please allow it to continue.',
-      );
-      setPermissionNeedsSettings(isPermanentlyDenied);
-      setShowPermissionPrimer(true);
-      return; // Do NOT set permissionsReady.
-    }
-
-    // Location granted — verify GPS / Location Services are actually ON.
-    const gpsOn = await nativeLifecycle.checkGpsEnabled();
-    if (!gpsOn) {
-      // GPS off — show the blocking GPS required modal.
-      // permissionsReady stays false until GPS is confirmed on (see resume listener below).
-      setShowGpsRequired(true);
-      return; // Do NOT set permissionsReady.
-    }
-
-    // All mandatory checks passed — unlock home screen.
-    setPermissionsReady(true);
-  }, [requestAllPermissions]);
-
   // Setup for authenticated users.
-  // First-install path: show PermissionPrimerModal so the user understands
-  // WHY each permission is needed BEFORE the OS dialogs appear.
-  // Returning-user path: silently re-check / re-register push token.
+  // First-install AND returning-user path: run advancePermissionFlow immediately.
+  // No intro/primer screens — permissions are requested natively on the spot.
+  // For returning users, permissionsReady starts true (fast launch); if any
+  // permission was revoked, advancePermissionFlow sets activePermission which
+  // blocks interaction via PermissionBlockedDialog (zIndex 99999).
   useEffect(() => {
     if (!user) return;
     let mounted = true;
     handleSaveUserCache(user);
 
-    const isFirstInstall =
-      Capacitor.isNativePlatform() &&
-      localStorage.getItem("wv.permissionsGranted") !== "1";
-
-    if (isFirstInstall) {
-      // Show primer ï¿½ handlePermissionsGranted fires when user taps Allow/Skip
-      setShowPermissionPrimer(true);
-      return () => { mounted = false; };
-    }
-
-    // Returning user — request silently (dialogs are no-ops when already granted)
-    // Fix (root cause #8): check actual per-permission result and GPS.
-    // For returning users, permissionsReady already started as true (Snapchat-like
-    // instant camera open). The GPS check runs in the background; if GPS is off,
-    // the GpsRequiredModal appears on top of the home screen, blocking usage.
-    requestAllPermissions()
-      .then(async (result) => {
-        if (!mounted) return;
-        const locationGranted = result?.locationGranted ?? false;
-
-        if (!locationGranted) {
-          // Location was revoked from Settings — show primer with error.
-          localStorage.removeItem("wv.permissionsGranted");
-          const locationStatus = await nativeLifecycle.checkLocationPermission();
-          const isPermanentlyDenied = locationStatus === 'denied';
-          if (!mounted) return;
-          setPermissionError(
-            isPermanentlyDenied
-              ? 'Location permission was revoked. Please re-enable it in App Settings to continue.'
-              : 'Location permission is required. Please grant it to continue.',
-          );
-          setPermissionNeedsSettings(isPermanentlyDenied);
-          setPermissionsReady(false);
-          setShowPermissionPrimer(true);
-          return;
-        }
-
-        // Location ok — quick GPS check (instant on Android via native plugin).
-        const gpsOn = await nativeLifecycle.checkGpsEnabled();
-        if (!mounted) return;
-        if (!gpsOn) {
-          setShowGpsRequired(true);
-          // permissionsReady stays true (it was already true for returning users),
-          // but GpsRequiredModal has z-index 99999 and blocks all interaction.
-          return;
-        }
-
-        localStorage.setItem("wv.permissionsGranted", "1");
-        if (mounted) setPermissionsReady(true);
-      })
-      .catch(() => {
-        // fail-open for unexpected plugin errors only — not for denied permissions.
+    if (Capacitor.isNativePlatform()) {
+      advancePermissionFlow().catch(() => {
+        // Fail-open for unexpected plugin errors only.
         if (mounted) setPermissionsReady(true);
       });
+    }
+
     return () => { mounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- handlePermissionsGranted is not used inside this effect body; it is wired via onContinue prop on the modal
-  }, [user, requestAllPermissions, handleSaveUserCache]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, advancePermissionFlow, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
   useEffect(() => {
@@ -3134,19 +3110,21 @@ function WellnessValleyApp() {
     return () => clearInterval(statusCheckInterval);
   }, [user, checkUserStatus, isInactiveReactivationFlow]);
 
-  // Permission resume listener — detects two scenarios when the app returns
-  // from background:
+  // Permission resume listener — fires whenever the app returns from background.
   //
-  //   Case A: showGpsRequired is true (user went to Location Settings).
-  //           Re-check GPS; if now enabled, dismiss modal and unlock home.
+  //   Case A: showGpsRequired — re-check GPS; dismiss when enabled.
   //
-  //   Case B: permissionsReady is true but location was revoked from Settings.
-  //           Re-check location permission; if denied, clear the granted flag
-  //           and re-show the permission primer so the user must re-grant.
+  //   Case B: activePermission?.canRequest === false (permanent denial dialog
+  //           is showing) — user may have gone to device Settings manually and
+  //           granted the permission. Re-run advancePermissionFlow to detect.
   //
-  // This is a SEPARATE appStateChange listener — Capacitor supports multiple
-  // listeners on the same event. Each has its own PluginListenerHandle and
-  // removes only itself on cleanup.
+  //   Case C: activePermission === null and permissionsReady — re-validate in
+  //           case a permission was revoked mid-session from device Settings.
+  //
+  //   NOT re-triggered when activePermission?.canRequest === true: the
+  //   "Allow Again" dialog is already showing and the user should tap it.
+  //   Re-requesting immediately on every resume would feel aggressive.
+  //
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
     if (!user) return undefined;
@@ -3158,7 +3136,7 @@ function WellnessValleyApp() {
       nativeLifecycle.addAppStateListener(async ({ isActive }) => {
         if (!isActive || cancelled) return;
 
-        // Case A: GPS required modal is visible — re-check GPS on every resume.
+        // Case A.
         if (showGpsRequired) {
           const gpsOn = await nativeLifecycle.checkGpsEnabled();
           if (!cancelled && gpsOn) {
@@ -3168,40 +3146,27 @@ function WellnessValleyApp() {
           return;
         }
 
-        // Case B: past onboarding — check that location wasn't revoked.
-        if (!permissionsReady) return;
-        const locationStatus = await nativeLifecycle.checkLocationPermission();
-        if (!cancelled && locationStatus === 'denied') {
-          localStorage.removeItem('wv.permissionsGranted');
-          setPermissionsReady(false);
-          setPermissionError(
-            'Location permission was revoked from Settings. Please re-enable it to continue.',
-          );
-          setPermissionNeedsSettings(true);
-          setShowPermissionPrimer(true);
+        // Skip re-trigger when "Allow Again" dialog is open (canRequest: true).
+        if (activePermission?.canRequest === true) return;
+
+        // Case B + C: re-validate permissions.
+        if (!cancelled) {
+          await advancePermissionFlow();
         }
       }),
     )
       .then((h) => {
-        if (cancelled) {
-          h?.remove?.();
-        } else {
-          handle = h;
-        }
+        if (cancelled) h?.remove?.();
+        else handle = h;
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
-      try {
-        handle?.remove?.();
-      } catch {
-        /* ignore */
-      }
+      try { handle?.remove?.(); } catch { /* ignore */ }
     };
-  // Intentional: re-register listener when showGpsRequired or permissionsReady changes
-  // so the handler closes over the latest values.
-  }, [user, showGpsRequired, permissionsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-register when any of these change so the handler has fresh closure values.
+  }, [user, showGpsRequired, activePermission, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check setup wizard status whenever user is set/updated
   useEffect(() => {
@@ -8060,18 +8025,21 @@ function WellnessValleyApp() {
           paddingRight: "env(safe-area-inset-right)",
         }}
       >
-        {/* Permission primer — shown once on first install after auth.
-          Appears on top of the launch overlay so the transition is seamless:
-          white launch overlay → primer → OS dialogs → camera.
-          After the user grants all mandatory permissions, handlePermissionsGranted
-          verifies location + GPS before setting permissionsReady → camera opens. */}
-        {showPermissionPrimer && (
-          <PermissionPrimerModal
-            onContinue={handlePermissionsGranted}
-            error={permissionError}
-            onOpenSettings={permissionNeedsSettings ? () => nativeLifecycle.openLocationSettings() : undefined}
+        {/* Permission blocked dialog — shown only after the OS denied a
+          required permission. canRequest: true → [Allow Again][Exit App].
+          canRequest: false → [Exit App] only (permanently denied).
+          No onboarding pages, no instructional text, no Open Settings. */}
+        {activePermission && (
+          <PermissionBlockedDialog
+            type={activePermission.type}
+            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+            canRequest={activePermission.canRequest}
+            onAllow={() => handlePermissionAllow(activePermission.type)}
+            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+            loading={permissionDialogLoading}
           />
         )}
+
         {/* GPS required — shown when location permission is granted but Location
           Services (GPS) are off. Blocks all app usage until GPS is enabled.
           App.js permission resume listener re-checks GPS on every app-foreground
