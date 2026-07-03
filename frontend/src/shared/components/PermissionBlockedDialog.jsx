@@ -2,36 +2,15 @@
  * PermissionBlockedDialog.jsx
  *
  * Minimal blocking overlay shown ONLY after a native permission request was
- * denied. It never appears before an OS prompt; it is the last resort after
- * the OS dialog has already fired.
+ * denied. It never appears before an OS prompt.
  *
- * Two modes driven by `canRequest`:
- *
- *   canRequest: true  — OS can still present a system dialog.
- *   ┌───────────────────────────────────────────┐
- *   │  📷  Camera is required to continue.      │
- *   │  [ Allow Again ]                          │
- *   │  [ Exit App    ]                          │
- *   └───────────────────────────────────────────┘
- *
- *   canRequest: false — OS permanently blocked (Android "Don't ask again" /
- *                       any iOS denial). The only action is to exit.
- *   ┌───────────────────────────────────────────┐
- *   │  📷  Camera is required to use            │
- *   │       Wellness Valley.                    │
- *   │  [ Exit App ]                             │
- *   └───────────────────────────────────────────┘
- *
- * Design principles:
- *   - No instructional text.
- *   - No "Open Settings" button — that adds unnecessary steps.
- *   - No navigation to another screen.
- *   - Minimum possible taps.
+ * Always shows both actions:
+ *   [ Allow Again ]  — triggers the native OS permission request again.
+ *   [ Exit App    ]  — exits the application.
  *
  * Props:
  *   type       {string}   'camera' | 'location' | 'notifications'
  *   config     {object}   Entry from PERMISSION_CONFIG for this type.
- *   canRequest {boolean}  Whether the OS will show a dialog on re-request.
  *   onAllow    {function} Called when user taps "Allow Again".
  *   onExit     {function} Called when user taps "Exit App".
  *   loading    {boolean}  True while the OS dialog is open.
@@ -47,7 +26,6 @@ const ACCENT = {
 export default function PermissionBlockedDialog({
   type,
   config,
-  canRequest,
   onAllow,
   onExit,
   loading = false,
@@ -98,13 +76,11 @@ export default function PermissionBlockedDialog({
             lineHeight: 1.4,
           }}
         >
-          {config.label} is required to{' '}
-          {canRequest ? 'continue' : 'use Wellness Valley'}.
+          {config.label} is required to continue.
         </p>
 
-        {/* Allow Again — only when re-requestable */}
-        {canRequest && (
-          <button
+        {/* Allow Again */}
+        <button
             type="button"
             onClick={onAllow}
             disabled={loading}
@@ -125,7 +101,6 @@ export default function PermissionBlockedDialog({
           >
             {loading ? 'Requesting…' : 'Allow Again'}
           </button>
-        )}
 
         {/* Exit App */}
         <button

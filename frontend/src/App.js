@@ -306,12 +306,13 @@ function WellnessValleyApp() {
   }, [isWaitingForCoachOTP]);
 
   // For returning users who already granted permissions, start as true so the
-  // camera opens immediately (Snapchat-like). Fresh installs start as false
-  // and wait for the permission dialogs to complete before opening camera.
-  const [permissionsReady, setPermissionsReady] = useState(() => {
-    if (!Capacitor.isNativePlatform()) return true;
-    return localStorage.getItem("wv.permissionsGranted") === "1";
-  });
+  // camera opens immediately (Snapchat-like). ALWAYS false on native so the
+  // camera-open effect cannot race ahead of the permission flow. Set to true
+  // only by advancePermissionFlow after every required permission is confirmed.
+  // On web there are no native permissions — start true immediately.
+  const [permissionsReady, setPermissionsReady] = useState(
+    () => !Capacitor.isNativePlatform(),
+  );
   // GPS required modal: shown when location permission is granted but GPS/Location
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
@@ -2060,55 +2061,77 @@ function WellnessValleyApp() {
   //   activePermission.canRequest=true → [Allow Again] [Exit App]
   //   activePermission.canRequest=false→ [Exit App] only (permanent)
 
+  // Guard: prevents advancePermissionFlow from running concurrently.
+  // Without this, the appStateChange listener could kick off a second run
+  // while a native OS permission dialog is still open in the first run,
+  // causing duplicate requests and unpredictable state.
+  const _permissionFlowRunningRef = useRef(false);
+
   /**
-   * Walk [camera → location → notifications] in order:
-   *   • 'granted'  → skip.
-   *   • 'prompt'   → call requestPermission() immediately (no pre-dialog).
-   *                  If granted: continue. If denied + required: show dialog.
-   *                  If denied + optional: skip silently.
-   *   • 'denied'   → if required: show [Exit App] dialog. If optional: skip.
-   * When all permissions are resolved, validate GPS then unlock home.
+   * Walk [camera → location → notifications] in order.
+   *
+   * For every non-granted permission, requestPermission() is called
+   * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
+   *
+   * Why skip the initial canRequest check?
+   * Capacitor's checkPermissions() maps Android permission state via
+   * shouldShowRequestPermissionRationale(). On a fresh install that method
+   * returns false (never-asked), which Capacitor maps to 'denied', making
+   * canRequest === false. Gating requestPermission on that value would show
+   * the blocking dialog before the OS prompt ever fired.
+   *
+   * The OS itself is the arbiter:
+   *   • First-time / 'prompt' → OS shows the system dialog.
+   *   • Permanent denial    → OS silently returns 'denied'; no dialog shown.
+   *
+   * After requestPermission returns we re-check canRequest to decide whether
+   * to offer "Allow Again" (still requestable) or just "Exit App" (permanent).
    */
   const advancePermissionFlow = useCallback(async () => {
-    const PERMISSIONS = ['camera', 'location', 'notifications'];
+    // Prevent concurrent runs (e.g. setup effect + appStateChange firing together).
+    if (_permissionFlowRunningRef.current) return;
+    _permissionFlowRunningRef.current = true;
 
-    for (const type of PERMISSIONS) {
-      const config = PermissionManager.PERMISSION_CONFIG[type];
-      const { canRequest, granted } = await PermissionManager.checkPermission(type);
+    try {
+      const PERMISSIONS = ['camera', 'location', 'notifications'];
 
-      if (granted) continue;
+      for (const type of PERMISSIONS) {
+        const config = PermissionManager.PERMISSION_CONFIG[type];
 
-      if (canRequest) {
-        // Immediately invoke the native OS permission dialog — no pre-screen.
+        // Fast path: already granted — skip without touching the OS.
+        const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
+        if (alreadyGranted) continue;
+
+        // Not granted — request directly. The OS either shows a dialog
+        // (first-time or 'prompt') or silently returns denied (permanent).
+        // We never show a custom screen before this call.
         const { granted: nowGranted } = await PermissionManager.requestPermission(type);
-
         if (nowGranted) continue;
 
-        // OS dialog was denied.
-        if (!config.required) continue; // Optional → skip silently.
+        // Request returned denied.
+        if (!config.required) continue; // Notifications is optional — skip.
 
-        // Required and denied — check updated state (may now be permanent).
+        // Required permission denied. Re-check canRequest NOW — this
+        // post-request value is accurate: Capacitor correctly maps 'prompt'
+        // (Android first-denial, can ask again) vs 'denied' (permanent).
         const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
         setActivePermission({ type, canRequest: canRequestNow });
+        return; // Hold here; user action (Allow Again / Exit) resumes flow.
+      }
+
+      // All permissions satisfied — verify GPS is enabled.
+      const gpsOn = await nativeLifecycle.checkGpsEnabled();
+      if (!gpsOn) {
+        setShowGpsRequired(true);
         return;
       }
 
-      // Permanently denied (status === 'denied', canRequest === false).
-      if (!config.required) continue; // Optional → skip silently.
-      setActivePermission({ type, canRequest: false });
-      return;
+      setActivePermission(null);
+      localStorage.setItem('wv.permissionsGranted', '1');
+      setPermissionsReady(true);
+    } finally {
+      _permissionFlowRunningRef.current = false;
     }
-
-    // All permissions satisfied — check GPS before unlocking home.
-    const gpsOn = await nativeLifecycle.checkGpsEnabled();
-    if (!gpsOn) {
-      setShowGpsRequired(true);
-      return;
-    }
-
-    setActivePermission(null);
-    localStorage.setItem('wv.permissionsGranted', '1');
-    setPermissionsReady(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -8033,7 +8056,6 @@ function WellnessValleyApp() {
           <PermissionBlockedDialog
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            canRequest={activePermission.canRequest}
             onAllow={() => handlePermissionAllow(activePermission.type)}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
             loading={permissionDialogLoading}
