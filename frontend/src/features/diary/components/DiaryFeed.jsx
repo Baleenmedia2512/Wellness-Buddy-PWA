@@ -214,6 +214,9 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {boolean} [props.showTimeline]  when true the feed is rendered as a
  *        vertical activity timeline with a date-group header and left-side
  *        time labels (ff.diary-timeline). Default false (flat card list).
+ * @param {Set<string>} [props.analyzingCaptureIds]  set of capture IDs whose
+ *        AI analysis is currently in flight. Passed to OtherRow so the card
+ *        shows an inline loading state and disables further taps/swipes.
  */
 export default function DiaryFeed({
   ownerUserId,
@@ -224,6 +227,7 @@ export default function DiaryFeed({
   onEntryDelete,
   filterKinds = null,
   showTimeline = false,
+  analyzingCaptureIds = null,
 }) {
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
@@ -237,6 +241,13 @@ export default function DiaryFeed({
   const renderRow = useMemo(
     () => (entry, { hideTime = false } = {}) => {
       const Row = ROWS_BY_KIND[entry.kind] || OtherRow;
+      // Resolve the capture ID the same way Dashboard.js does so the
+      // Set lookup always matches (entry.capture?.id takes precedence).
+      const captureId = entry.capture?.id ?? entry.payload?.id;
+      const isAnalyzing =
+        entry.kind === 'unknown' &&
+        analyzingCaptureIds != null &&
+        analyzingCaptureIds.has(captureId);
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -244,10 +255,11 @@ export default function DiaryFeed({
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
           hideTime={hideTime}
+          {...(entry.kind === 'unknown' ? { isAnalyzing } : {})}
         />
       );
     },
-    [onEntryOpen, onEntryDelete],
+    [onEntryOpen, onEntryDelete, analyzingCaptureIds],
   );
 
   if (loading && !data) return <FeedSkeleton />;

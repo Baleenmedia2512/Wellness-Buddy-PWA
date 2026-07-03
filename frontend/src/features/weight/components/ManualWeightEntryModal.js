@@ -11,8 +11,8 @@ import ManualEntryTypeSelect from './ManualEntryTypeSelect';
 import ManualEntryHeader from './ManualEntryHeader';
 import WeightFormFields from './WeightFormFields';
 
-const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack, lastWeight }) => {
-  const vm = useWeightForm({ onSave, onClose });
+const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack, lastWeight, initialWeightValue = null, initialWeightUnit = null }) => {
+  const vm = useWeightForm({ onSave, onClose, initialWeightValue, initialWeightUnit });
   if (!isOpen) return null;
 
   const showImage =

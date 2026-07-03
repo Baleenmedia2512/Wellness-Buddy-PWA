@@ -21,7 +21,8 @@ import DashboardTabs from './DashboardTabs';
 import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
 import DiaryEntryUndoBanner, { DIARY_UNDO_SECONDS } from './DiaryEntryUndoBanner';
-import { undoDeleteCapture } from '../../features/captures';
+import { undoDeleteCapture, hasRecognizedFood, buildAnalysisFromGeminiAnalysis } from '../../features/captures';
+import { analyzeImage } from '../../shared/services/orchestratorService';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { deleteWeight, undoDeleteWeight } from '../../features/weight';
 import {
@@ -153,6 +154,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const [diaryEducationRefreshKey, setDiaryEducationRefreshKey] = useState(0);
   // Unknown ("Other") row flow: image viewer + Retry / Edit → respective vertical.
   const [unknownFlow, setUnknownFlow] = useState(null);
+
+  // Set of capture IDs whose AI analysis is currently in flight.
+  // Passed to DiaryFeed → OtherRow so the card shows an inline loading state
+  // and prevents duplicate taps while the analysis runs.
+  const [analyzingCaptureIds, setAnalyzingCaptureIds] = useState(() => new Set());
+  // Ref prevents a second tap from firing a duplicate request for the same ID.
+  const analyzingRef = useRef(new Set());
+
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
   // Undo banner after diary timeline swipe-delete (food / weight / education / watch).
@@ -184,7 +193,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   }, [nutritionContextRefreshKey]);
 
   // Tap handler for timeline entries: dispatches to the matching imperative
-  // handle (food/weight/education) or opens the unknown capture flow.
+  // handle (food/weight/education) or starts the pre-flight AI run for unknown.
   const handleEntryOpen = (entry) => {
     if (entry.kind === 'food') {
       nutritionOpenRef.current?.(entry.payload?.id);
@@ -200,14 +209,103 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
     if (entry.kind === 'unknown') {
       const p = entry.payload || {};
-      setUnknownFlow({
-        captureId: entry.capture?.id ?? p.id,
-        imageBase64: p.imageBase64,
-        // Capture the diary date at the moment the user opens the flow so that
-        // handleUnknownChanged can always reload the correct day — even in the
-        // (edge-case) scenario where selectedDate changes while the modal is open.
-        diaryDate: selectedDate,
-      });
+      const captureId = entry.capture?.id ?? p.id;
+
+      // Guard: only one AI run per capture at a time.
+      if (analyzingRef.current.has(captureId)) return;
+
+      // When the user cannot mutate (viewing someone else's diary), skip AI
+      // and open the modal immediately in read-only view mode.
+      if (!viewingSelf || !captureId || !p.imageBase64 || !ownerId) {
+        setUnknownFlow({
+          captureId,
+          imageBase64: p.imageBase64,
+          diaryDate: selectedDate,
+          initialAiResult: null,
+        });
+        return;
+      }
+
+      // Mark this capture as in-flight so the card shows its loading state.
+      analyzingRef.current.add(captureId);
+      setAnalyzingCaptureIds((prev) => new Set([...prev, captureId]));
+
+      const imageBase64 = p.imageBase64;
+      const diaryDate = selectedDate;
+
+      // Run AI analysis on the stored image BEFORE opening the modal so the
+      // user sees a clear loading state on the card, not a modal immediately.
+      // We intentionally do NOT pass captureId to analyzeImage to bypass the
+      // backend idempotency guard that would return the cached "other" result.
+      (async () => {
+        let initialAiResult = null;
+        try {
+          const file = (() => {
+            const dataUrl = imageBase64.startsWith('data:')
+              ? imageBase64
+              : `data:image/jpeg;base64,${imageBase64}`;
+            const [meta, content] = dataUrl.split(',');
+            const mime = (meta.match(/data:(.*?);/) || [, 'image/jpeg'])[1]; // eslint-disable-line no-sparse-arrays
+            const bin = atob(content);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new File([bytes], 'capture.jpg', { type: mime });
+          })();
+
+          const detectedType = await analyzeImage(file, { userId: ownerId });
+
+          if (detectedType.type === 'food' && hasRecognizedFood(detectedType.details)) {
+            initialAiResult = {
+              status: 'success',
+              type: 'food',
+              analysisResult: buildAnalysisFromGeminiAnalysis(detectedType.details),
+              raw: detectedType.details,
+            };
+          } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+            initialAiResult = {
+              status: 'success',
+              type: 'weight',
+              weightValue: detectedType.details.weightValue,
+              unit: detectedType.details.unit || 'kg',
+            };
+          } else if (detectedType.type === 'education') {
+            initialAiResult = {
+              status: 'success',
+              type: 'education',
+              platform: detectedType.details?.platform || 'Online Meeting',
+              topic: detectedType.details?.topic || 'Education Meeting',
+            };
+          } else if (detectedType.type === 'smartwatch') {
+            initialAiResult = {
+              status: 'success',
+              type: 'smartwatch',
+              platform: detectedType.details?.source || 'Smartwatch',
+              topic: `Calories Burned: ${detectedType.details?.caloriesBurned || 0} kcal`,
+            };
+          } else {
+            initialAiResult = {
+              status: 'failed',
+              error: "We couldn't identify this item from the photo. You can try AI again or enter the details manually."
+            };
+          }
+        } catch {
+          initialAiResult = {
+            status: 'failed',
+            error: "We couldn't identify this item from the photo. You can try AI again or enter the details manually.",
+          };
+        } finally {
+          // Clear loading state on the card.
+          analyzingRef.current.delete(captureId);
+          setAnalyzingCaptureIds((prev) => {
+            const next = new Set(prev);
+            next.delete(captureId);
+            return next;
+          });
+        }
+
+        // Now open the modal with the result so the user can review or retry.
+        setUnknownFlow({ captureId, imageBase64, diaryDate, initialAiResult });
+      })();
     }
     // watch: informational only (kcal already visible on card), no detail modal.
   };
@@ -614,6 +712,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   date={selectedDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  analyzingCaptureIds={analyzingCaptureIds}
                 />
               </div>
 
@@ -724,6 +823,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  analyzingCaptureIds={analyzingCaptureIds}
                 />
               </div>
             </div>
@@ -801,6 +901,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         open
         captureId={unknownFlow.captureId}
         imageBase64={unknownFlow.imageBase64}
+        initialAiResult={unknownFlow.initialAiResult ?? null}
         canMutate={viewingSelf}
         userId={ownerId}
         apiBaseUrl={apiBaseUrl}
