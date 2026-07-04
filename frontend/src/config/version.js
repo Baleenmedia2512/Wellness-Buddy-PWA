@@ -79,27 +79,30 @@ export const APP_VERSION = {
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 44,
+  VERSION_CODE: 46,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 44,
+  IOS_BUILD_NUMBER: 46,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  1.0.0',
   
   // Build date
-  BUILD_DATE: '2026-07-03',
+  BUILD_DATE: '2026-07-04',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 44, versionName: '1.0.0' },
-    IOS: { buildNumber: 44, versionName: '1.0.0' },
+    ANDROID: { versionCode: 46, versionName: '1.0.0' },
+    IOS: { buildNumber: 46, versionName: '1.0.0' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.2.5 (Code 46) - 2026-07-04 [ANDROID RELEASE]
+ *   🐛 Production API URL fix — OTP/auth requests no longer hit double-slash redirect
+ *
  * Version 3.2.4 (Code 44) - 2026-07-03 [ANDROID + iOS RELEASE]
  *   🚀 Major change for app
  *
