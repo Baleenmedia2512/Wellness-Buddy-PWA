@@ -1,8 +1,9 @@
 // Auth REST helpers — OTP send/verify, account deletion.
 import * as Session from '../../../shared/services/sessionStorage';
+import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
-const API = process.env.REACT_APP_API_BASE_URL;
+const API = getApiBaseUrl();
 
 const post = async (path, body) => {
   const res = await fetch(`${API}${path}`, {
