@@ -23,6 +23,7 @@ const Header = ({
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowActivityReport,
+  onShowTestimonials,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
@@ -183,6 +184,7 @@ const Header = ({
           onShowWellnessEnrollment={onShowWellnessEnrollment}
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
+          onShowTestimonials={onShowTestimonials}
         />
       </nav>
     );
@@ -371,6 +373,7 @@ const Header = ({
           onShowWellnessEnrollment={onShowWellnessEnrollment}
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
+          onShowTestimonials={onShowTestimonials}
         />
       </nav>
 

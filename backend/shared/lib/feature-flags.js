@@ -143,3 +143,12 @@ registerFlag({
   description:    'Unified activity timeline layout in Diary: replaces stacked section-dashboards (NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)) with a single chronological DiaryFeed covering all entry kinds (food, weight, education, watch, unknown) for the selected IST day. Requires ff.diary-feed=ON. Toggle FF_DIARY_TIMELINE=false to revert to the stacked layout.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.testimonials',
+  owner:          '@testimonials-team',
+  createdAt:      '2026-07-06',
+  removeBy:       '2027-01-06',
+  description:    'Before/after testimonial upload for members + coach OTP verification flow. Members upload photos + weights; coach receives email with OTP to verify. Coach dashboard shows team upload status.',
+  defaultEnabled: true,
+});

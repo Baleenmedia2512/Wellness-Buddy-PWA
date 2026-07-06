@@ -1,4 +1,4 @@
-// Six-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// Seven-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
 import React from 'react';
 import {
   Home,
@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Heart,
   Map,
+  Trophy,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 
@@ -18,6 +19,7 @@ export default function AppNavTabs({
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
+  onShowTestimonials,
 }) {
   return (
     <div
@@ -87,6 +89,19 @@ export default function AppNavTabs({
         labelClass="text-teal-800"
         label="Club"
         ariaLabel="Physical Club"
+      />
+      <NavTabButton
+        onClick={onShowTestimonials ?? (() => {})}
+        active={activePage === 'testimonials'}
+        activeBg="bg-yellow-100"
+        hoverBg="hover:bg-yellow-50"
+        icon={Trophy}
+        iconActiveClass="text-yellow-700"
+        iconClass="text-yellow-600"
+        labelActiveClass="text-yellow-900"
+        labelClass="text-yellow-800"
+        label="Results"
+        ariaLabel="Testimonials"
       />
     </div>
   );

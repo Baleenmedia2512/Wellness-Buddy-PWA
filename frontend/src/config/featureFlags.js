@@ -69,6 +69,17 @@ const REGISTRY = Object.freeze({
     defaultEnabled: false,
     description:    'Contact Picker API shortcut on the phone login field.',
   },
+
+  // Testimonials — before/after Herbalife transformation photos with
+  // coach OTP verification. Members upload; coach verifies via emailed OTP.
+  // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
+  // localStorage 'ff.testimonials'='false' to disable.
+  'ff.testimonials': {
+    envKey:         'REACT_APP_FF_TESTIMONIALS',
+    storageKey:     'ff.testimonials',
+    defaultEnabled: true,
+    description:    'Before/after testimonial upload + coach OTP verification flow.',
+  },
 });
 
 function readStorage(key) {

@@ -223,6 +223,10 @@ const ActivityReport = lazy(() =>
 const ActivityTimeReport = lazy(() =>
   import("./features/activity/components/ActivityTimeReport"),
 );
+// Testimonials — before/after transformation results with coach OTP verification
+const TestimonialsPage = lazy(() =>
+  import("./features/testimonials").then((m) => ({ default: m.TestimonialsPage })),
+);
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -797,6 +801,8 @@ function WellnessValleyApp() {
   // Activity Time Report — separate hierarchical heatmap view (coach/admin tools).
   const [showActivityReport, setShowActivityReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
+  // Testimonials page — member upload + coach verification
+  const [showTestimonials, setShowTestimonials] = useState(false);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
@@ -816,6 +822,7 @@ function WellnessValleyApp() {
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
+        setShowTestimonials(false);
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
         startTransition(() => setShowDashboard(true));
@@ -835,6 +842,9 @@ function WellnessValleyApp() {
         Session.setCurrentPage('main');
       } else if (page === 'physical-club') {
         startTransition(() => setShowNutritionCentersMap(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'testimonials') {
+        startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       }
     };
@@ -1716,7 +1726,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -1727,6 +1737,7 @@ function WellnessValleyApp() {
     showNutritionCentersMap,
     showActivityReport,
     showActivityTimeReport,
+    showTestimonials,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -1981,6 +1992,7 @@ function WellnessValleyApp() {
       setShowNutritionCentersMap(false);
       setShowActivityReport(false);
       setShowActivityTimeReport(false);
+      setShowTestimonials(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
       if (isOnSubPage) window.history.back();
@@ -2000,6 +2012,7 @@ function WellnessValleyApp() {
         setShowNutritionCentersMap(false);
         setShowActivityReport(false);
         setShowActivityTimeReport(false);
+        setShowTestimonials(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -2019,6 +2032,7 @@ function WellnessValleyApp() {
     setShowNutritionCentersMap(false);
     setShowActivityReport(false);
     setShowActivityTimeReport(false);
+    setShowTestimonials(false);
     enrollmentHistoryPushedRef.current = false;
 
     if (isOnSubPage) {
@@ -2044,6 +2058,9 @@ function WellnessValleyApp() {
         break;
       case 'activity-time-report':
         setShowActivityTimeReport(true);
+        break;
+      case 'testimonials':
+        setShowTestimonials(true);
         break;
       default:
         break;
@@ -7903,6 +7920,7 @@ function WellnessValleyApp() {
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7940,6 +7958,7 @@ function WellnessValleyApp() {
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -7972,6 +7991,7 @@ function WellnessValleyApp() {
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8006,6 +8026,7 @@ function WellnessValleyApp() {
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8040,6 +8061,7 @@ function WellnessValleyApp() {
           onShowWellnessCounselling={() => navigateTo('counselling')}
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8075,6 +8097,7 @@ function WellnessValleyApp() {
             onShowWellnessCounselling={() => navigateTo('counselling')}
             onShowNutritionCentersMap={() => navigateTo('physical-club')}
             onShowActivityReport={() => navigateTo('activity-report')}
+            onShowTestimonials={() => navigateTo('testimonials')}
           />
           <div className="ios-scroll-body">
             <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
@@ -8111,6 +8134,40 @@ function WellnessValleyApp() {
           </Suspense>
         )}
       </>
+    );
+  }
+
+  // Testimonials — full page view (member submit + coach team list)
+  if (showTestimonials) {
+    return (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="testimonials"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading testimonials…" />}>
+            <TestimonialsPage
+              user={userContext ?? { userId: null }}
+              userRole={userRole}
+              onBack={() => {
+                setShowTestimonials(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
     );
   }
 
@@ -8415,12 +8472,14 @@ function WellnessValleyApp() {
             setShowNutritionCentersMap(true);
           }}
           onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
           activePage={
             showDashboard ? 'dashboard' :
             showUniversityEnrollment ? 'enrollment' :
             showWellnessCounselling ? 'counselling' :
             showNutritionCentersMap ? 'physical-club' :
             showActivityReport || showActivityTimeReport ? 'activity-report' :
+            showTestimonials ? 'testimonials' :
             'home'
           }
           onShowRegisterCenter={null}
@@ -10202,3 +10261,5 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
+
+
