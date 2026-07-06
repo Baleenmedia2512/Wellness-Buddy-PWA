@@ -7,7 +7,6 @@ import {
   Heart,
   Trash2,
   Camera,
-  Settings,
   User,
   Home,
   BarChart2,
@@ -302,40 +301,30 @@ const Header = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Profile avatar — tap opens profile modal directly */}
-          <TouchFeedbackButton
-            onClick={() => setShowProfileModal(true)}
-            className="focus:outline-none rounded-full"
-            title="Manage Profile"
-            ariaLabel="Manage Profile"
-          >
-            {savedProfileImage ? (
-              <img
-                src={savedProfileImage}
-                alt="User Avatar"
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
-              >
-                {getInitial()}
-              </div>
-            )}
-          </TouchFeedbackButton>
-
-          {/* Settings gear — opens account/settings dropdown */}
           <div className="relative">
+            {/* Profile avatar — opens the existing account popup */}
             <TouchFeedbackButton
               onClick={toggleMenu}
-              className="focus:outline-none p-1.5 rounded-full hover:bg-gray-100 transition-colors"
-              title="Settings"
-              ariaLabel="Settings"
+              className="focus:outline-none rounded-full"
+              title="Profile"
+              ariaLabel="Profile"
             >
-              <Settings className="h-5 w-5 text-gray-600" />
+              {savedProfileImage ? (
+                <img
+                  src={savedProfileImage}
+                  alt="User Avatar"
+                  className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div
+                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+                >
+                  {getInitial()}
+                </div>
+              )}
             </TouchFeedbackButton>
 
             {menuOpen && (
