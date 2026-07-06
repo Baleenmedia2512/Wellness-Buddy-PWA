@@ -210,7 +210,7 @@ export function validateMyTestimonial(query) {
     goalType,
     durationText: String(durationText).trim(),
   };
-}
+
 
 /**
  * Validate payload for POST /api/testimonials/verify-otp
