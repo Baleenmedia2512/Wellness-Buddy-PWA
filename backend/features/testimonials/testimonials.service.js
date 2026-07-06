@@ -37,108 +37,165 @@ function storagePath(userId, side, timestamp) {
 // ─── Email ────────────────────────────────────────────────────────────────────
 
 function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeUrl, afterUrl }) {
-  const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
+  const goalLabel  = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   const weightDiff = Math.abs(afterWeight - beforeWeight).toFixed(1);
   const arrow      = goalType === 'loss' ? '↓' : '↑';
 
-  return `
-<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>Testimonial Verification — Wellness Valley</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
-    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 36px 24px; text-align: center; }
-    .header h1 { color: #fff; margin: 0; font-size: 26px; font-weight: 700; }
-    .header p  { color: #d1fae5; margin: 6px 0 0; font-size: 15px; }
-    .body { padding: 40px 32px; }
-    .subtitle { color: #374151; font-size: 18px; font-weight: 600; margin: 0 0 8px; }
-    .intro { color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 28px; }
-    .stats-grid { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-    .stat-box { flex: 1; min-width: 120px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px; text-align: center; }
-    .stat-label { color: #6b7280; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
-    .stat-value { color: #047857; font-size: 20px; font-weight: 700; margin-top: 4px; }
-    .photos { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-    .photo-box { flex: 1; min-width: 120px; text-align: center; }
-    .photo-box img { width: 100%; max-width: 220px; border-radius: 10px; border: 2px solid #e5e7eb; }
-    .photo-label { color: #6b7280; font-size: 12px; font-weight: 600; margin-top: 6px; }
-    .otp-section { background: #f0fdf4; border: 2px dashed #6ee7b7; border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 24px; }
-    .otp-label { color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
-    .otp-code  { font-size: 40px; font-weight: 700; color: #047857; letter-spacing: 8px; font-family: 'Courier New', monospace; margin: 10px 0 0; }
-    .otp-expiry { color: #9ca3af; font-size: 13px; margin-top: 8px; }
-    .instructions { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 18px 20px; color: #92400e; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
-    .footer { background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 24px 32px; text-align: center; color: #6b7280; font-size: 13px; line-height: 1.6; }
+    body,table,td,p,a,li { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+    table,td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    img { -ms-interpolation-mode:bicubic; border:0; outline:none; text-decoration:none; display:block; }
+    body { margin:0; padding:0; background:#f3f4f6; }
+    @media only screen and (max-width:600px) {
+      .wrapper   { width:100% !important; }
+      .stat-row td { display:block !important; width:50% !important; float:left; box-sizing:border-box; }
+      .photo-td  { display:block !important; width:100% !important; padding-bottom:12px !important; }
+      .body-pad  { padding:24px 16px !important; }
+      .otp-code  { font-size:36px !important; letter-spacing:6px !important; }
+    }
   </style>
 </head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>🌿 Wellness Valley</h1>
-    <p>Member Testimonial — Verification Required</p>
-  </div>
-  <div class="body">
-    <p class="subtitle">Your member has submitted a testimonial!</p>
-    <p class="intro">
-      <strong>${memberName}</strong> has completed their ${goalLabel.toLowerCase()} journey and submitted a before &amp; after testimonial.
-      Please review the details below and enter the OTP in your app to verify it.
-    </p>
-    <div class="stats-grid">
-      <div class="stat-box">
-        <div class="stat-label">Before</div>
-        <div class="stat-value">${beforeWeight} kg</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">After</div>
-        <div class="stat-value">${afterWeight} kg</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Change ${arrow}</div>
-        <div class="stat-value">${weightDiff} kg</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Duration</div>
-        <div class="stat-value" style="font-size:15px;">${durationText}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Goal</div>
-        <div class="stat-value" style="font-size:15px;">${goalLabel}</div>
-      </div>
-    </div>
-    ${beforeUrl && afterUrl ? `
-    <div class="photos">
-      <div class="photo-box">
-        <img src="${beforeUrl}" alt="Before photo" />
-        <div class="photo-label">BEFORE</div>
-      </div>
-      <div class="photo-box">
-        <img src="${afterUrl}" alt="After photo" />
-        <div class="photo-label">AFTER</div>
-      </div>
-    </div>` : ''}
-    <div class="otp-section">
-      <div class="otp-label">Verification OTP</div>
-      <div class="otp-code">${otp}</div>
-      <div class="otp-expiry">⏰ Valid for 24 hours</div>
-    </div>
-    <div class="instructions">
-      <strong>How to verify your member:</strong><br>
-      1. Review the before &amp; after photos above<br>
-      2. If you approve, <strong>share the 6-digit OTP</strong> with <strong>${memberName}</strong> via WhatsApp or phone<br>
-      3. Your member enters the OTP in the Wellness Valley app to get their testimonial verified<br>
-      4. If you don't approve, simply don't share the OTP
-    </div>
-  </div>
-  <div class="footer">
-    <strong>Wellness Valley Team</strong><br>
-    This is an automated message. Please do not reply to this email.<br>
-    Questions? Contact us at easy2work.india@gmail.com
-  </div>
-</div>
+<body style="margin:0;padding:0;background:#f3f4f6;">
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background:#f3f4f6;">
+  <tr><td align="center" style="padding:20px 10px;">
+
+    <!-- Wrapper -->
+    <table class="wrapper" role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:32px 24px;text-align:center;">
+          <p style="margin:0;color:#ffffff;font-size:26px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">🌿 Wellness Valley</p>
+          <p style="margin:8px 0 0;color:#d1fae5;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Member Testimonial — Verification Required</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td class="body-pad" style="padding:32px 28px;">
+
+          <!-- Intro -->
+          <p style="margin:0 0 6px;color:#111827;font-size:18px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Your member has submitted a testimonial!</p>
+          <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+            <strong style="color:#111827;">${memberName}</strong> has completed their ${goalLabel.toLowerCase()} journey.
+            Review the details below, then share the OTP with your member to verify.
+          </p>
+
+          <!-- Stats — 2-column table, wraps on mobile -->
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;">
+            <tr class="stat-row">
+              <td width="33%" style="padding:0 6px 10px 0;vertical-align:top;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 8px;text-align:center;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">Before</p>
+                    <p style="margin:4px 0 0;color:#047857;font-size:20px;font-weight:700;font-family:sans-serif;">${beforeWeight} kg</p>
+                  </td></tr>
+                </table>
+              </td>
+              <td width="33%" style="padding:0 6px 10px;vertical-align:top;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 8px;text-align:center;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">After</p>
+                    <p style="margin:4px 0 0;color:#047857;font-size:20px;font-weight:700;font-family:sans-serif;">${afterWeight} kg</p>
+                  </td></tr>
+                </table>
+              </td>
+              <td width="33%" style="padding:0 0 10px 6px;vertical-align:top;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 8px;text-align:center;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">Change ${arrow}</p>
+                    <p style="margin:4px 0 0;color:#047857;font-size:20px;font-weight:700;font-family:sans-serif;">${weightDiff} kg</p>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr class="stat-row">
+              <td width="50%" style="padding:0 6px 0 0;vertical-align:top;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 8px;text-align:center;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">Duration</p>
+                    <p style="margin:4px 0 0;color:#047857;font-size:15px;font-weight:700;font-family:sans-serif;">${durationText}</p>
+                  </td></tr>
+                </table>
+              </td>
+              <td width="50%" style="padding:0 0 0 6px;vertical-align:top;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                  <tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 8px;text-align:center;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">Goal</p>
+                    <p style="margin:4px 0 0;color:#047857;font-size:15px;font-weight:700;font-family:sans-serif;">${goalLabel}</p>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          ${beforeUrl && afterUrl ? `
+          <!-- Photos -->
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;">
+            <tr>
+              <td class="photo-td" width="50%" style="padding-right:8px;vertical-align:top;text-align:center;">
+                <img src="${beforeUrl}" alt="Before" width="240" style="width:100%;max-width:240px;border-radius:10px;border:2px solid #e5e7eb;" />
+                <p style="margin:6px 0 0;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">BEFORE</p>
+              </td>
+              <td class="photo-td" width="50%" style="padding-left:8px;vertical-align:top;text-align:center;">
+                <img src="${afterUrl}" alt="After" width="240" style="width:100%;max-width:240px;border-radius:10px;border:2px solid #e5e7eb;" />
+                <p style="margin:6px 0 0;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:sans-serif;">AFTER</p>
+              </td>
+            </tr>
+          </table>` : ''}
+
+          <!-- OTP box -->
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:20px;">
+            <tr>
+              <td style="background:#f0fdf4;border:2px dashed #6ee7b7;border-radius:12px;padding:28px 20px;text-align:center;">
+                <p style="margin:0;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:sans-serif;">Verification OTP</p>
+                <p class="otp-code" style="margin:10px 0 0;color:#047857;font-size:44px;font-weight:700;letter-spacing:10px;font-family:'Courier New',Courier,monospace;">${otp}</p>
+                <p style="margin:8px 0 0;color:#9ca3af;font-size:13px;font-family:sans-serif;">⏰ Valid for 24 hours</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Instructions -->
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:18px 20px;color:#92400e;font-size:14px;line-height:1.7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+                <strong>How to verify your member:</strong><br>
+                1. Review the before &amp; after photos above<br>
+                2. If you approve, <strong>share the OTP</strong> with <strong>${memberName}</strong> via WhatsApp or phone<br>
+                3. Your member enters the OTP in the Wellness Valley app to get verified<br>
+                4. If you don't approve, simply don't share the OTP
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 28px;text-align:center;color:#6b7280;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <strong style="color:#374151;">Wellness Valley Team</strong><br>
+          This is an automated message. Please do not reply to this email.<br>
+          Questions? Contact us at easy2work.india@gmail.com
+        </td>
+      </tr>
+
+    </table>
+    <!-- /Wrapper -->
+
+  </td></tr>
+</table>
 </body>
 </html>`;
+}
 }
 
 async function sendCoachEmail({ coachEmail, coachName, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath }) {
@@ -255,39 +312,6 @@ export async function submitTestimonial(rawBody) {
   return {
     httpStatus: 200,
     body: { success: true, message, testimonialId: row.id, status: newStatus },
-  };
-}
-      afterImagePath:  afterPath,
-      beforeWeightKg:  payload.beforeWeightKg,
-      afterWeightKg:   payload.afterWeightKg,
-      goalType:        payload.goalType,
-      durationText:    payload.durationText,
-      otpHash,
-      otpExpiresAt:    otpExpiry,
-    });
-  }
-
-  // Send verification email to coach
-  await sendCoachEmail({
-    coachEmail:    coachInfo.email,
-    coachName:     coachInfo.name,
-    memberName:    userInfo.userName,
-    goalType:      payload.goalType,
-    beforeWeight:  payload.beforeWeightKg,
-    afterWeight:   payload.afterWeightKg,
-    durationText:  payload.durationText,
-    otp,
-    beforeImagePath: beforePath,
-    afterImagePath:  afterPath,
-  });
-
-  return {
-    httpStatus: 200,
-    body: {
-      success: true,
-      message: 'Testimonial submitted. A verification email has been sent to your coach.',
-      testimonialId: row.id,
-    },
   };
 }
 

@@ -1,6 +1,6 @@
-/**
- * useTestimonial.js — State and lifecycle for the member testimonial form.
- * Handles image picking (file input → base64), form state, submit, and edit mode.
+﻿/**
+ * useTestimonial.js â€” State and lifecycle for the member testimonial form.
+ * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
 import { useState, useCallback, useEffect } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
@@ -14,7 +14,7 @@ const INITIAL_FORM = {
 
 // Target binary size after compression: 900 KB (leaves headroom for base64 overhead)
 const TARGET_BYTES = 900 * 1024;
-// Max canvas dimension — keeps resolution reasonable while shrinking file size
+// Max canvas dimension â€” keeps resolution reasonable while shrinking file size
 const MAX_DIM = 1200;
 
 /**
@@ -45,7 +45,7 @@ function compressImage(file) {
       canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
 
-      // base64 string length × 0.75 ≈ binary bytes (base64 overhead is ~33%)
+      // base64 string length Ã— 0.75 â‰ˆ binary bytes (base64 overhead is ~33%)
       const maxBase64Len = Math.ceil(TARGET_BYTES / 0.75);
       let quality = 0.85;
       let dataUrl;
@@ -84,7 +84,7 @@ export function useTestimonial({ userId }) {
   const [error,      setError]      = useState(null);
   const [success,    setSuccess]    = useState(null);
 
-  // ── Load / reload existing testimonial ──────────────────────────────────────
+  // â”€â”€ Load / reload existing testimonial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const reload = useCallback(() => {
     if (!userId) return;
     getMyTestimonial(userId)
@@ -108,7 +108,7 @@ export function useTestimonial({ userId }) {
     }
   }, [isEditMode, isCompletingMode, existing]);
 
-  // ── Field handlers ───────────────────────────────────────────────────────────
+  // â”€â”€ Field handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const setField = useCallback((field, value) => {
     setForm((f) => ({ ...f, [field]: value }));
     setError(null);
@@ -132,7 +132,7 @@ export function useTestimonial({ userId }) {
   const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
   const handleAfterImageChange  = useCallback(makeImageHandler(setAfterImage),  [makeImageHandler]);
 
-  // ── Submit ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSubmit = useCallback(async () => {
     setError(null);
     setSuccess(null);
@@ -147,13 +147,13 @@ export function useTestimonial({ userId }) {
         setError('Enter a valid after weight'); return;
       }
     } else {
-      // New submission or full edit — before is always required
+      // New submission or full edit â€” before is always required
       if (!beforeImage) { setError('Please upload your Before photo'); return; }
       if (!form.beforeWeightKg || isNaN(parseFloat(form.beforeWeightKg))) {
         setError('Enter a valid before weight'); return;
       }
       if (!form.durationText.trim()) { setError('Enter the duration'); return; }
-      // After photo is optional here — backend handles incomplete state
+      // After photo is optional here â€” backend handles incomplete state
       if (afterImage && (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg)))) {
         setError('Enter your after weight'); return;
       }
@@ -238,132 +238,6 @@ export function useTestimonial({ userId }) {
     handleSubmit,
     startEdit,
     startCompleting,
-    cancelEdit,
-  };
-}
-
-  // ── Load existing testimonial on mount ──────────────────────────────────────
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    getMyTestimonial(userId)
-      .then((data) => { if (!cancelled) setExisting(data); })
-      .catch(() => { if (!cancelled) setExisting(null); });
-    return () => { cancelled = true; };
-  }, [userId]);
-
-  // Populate form when entering edit mode
-  useEffect(() => {
-    if (isEditMode && existing) {
-      setForm({
-        beforeWeightKg: String(existing.beforeWeightKg ?? ''),
-        afterWeightKg:  String(existing.afterWeightKg  ?? ''),
-        goalType:       existing.goalType  ?? 'loss',
-        durationText:   existing.durationText ?? '',
-      });
-      // Clear image previews so user can re-upload if they want
-      setBeforeImage(null);
-      setAfterImage(null);
-    }
-  }, [isEditMode, existing]);
-
-  // ── Field handlers ───────────────────────────────────────────────────────────
-  const setField = useCallback((field, value) => {
-    setForm((f) => ({ ...f, [field]: value }));
-    setError(null);
-  }, []);
-
-  const handleBeforeImageChange = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const result = await compressImage(file);
-      setBeforeImage(result);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
-
-  const handleAfterImageChange = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const result = await compressImage(file);
-      setAfterImage(result);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
-
-  // ── Submit ───────────────────────────────────────────────────────────────────
-  const handleSubmit = useCallback(async () => {
-    setError(null);
-    setSuccess(null);
-
-    if (!beforeImage) { setError('Please upload your Before photo'); return; }
-    if (!afterImage)  { setError('Please upload your After photo');  return; }
-    if (!form.beforeWeightKg || isNaN(parseFloat(form.beforeWeightKg))) {
-      setError('Enter a valid before weight'); return;
-    }
-    if (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg))) {
-      setError('Enter a valid after weight'); return;
-    }
-    if (!form.durationText.trim()) { setError('Enter the duration'); return; }
-
-    setSubmitting(true);
-    try {
-      const fn = isEditMode ? editTestimonial : submitTestimonial;
-      await fn({
-        userId:              userId,
-        beforeImageBase64:   beforeImage.base64,
-        afterImageBase64:    afterImage.base64,
-        beforeWeightKg:      parseFloat(form.beforeWeightKg),
-        afterWeightKg:       parseFloat(form.afterWeightKg),
-        goalType:            form.goalType,
-        durationText:        form.durationText.trim(),
-      });
-      setSuccess(isEditMode
-        ? 'Testimonial updated! A new verification email has been sent to your coach.'
-        : 'Testimonial submitted! Your coach will receive a verification email.'
-      );
-      setIsEditMode(false);
-      // Reload the testimonial so status card reflects changes
-      const updated = await getMyTestimonial(userId);
-      setExisting(updated);
-    } catch (err) {
-      setError(err.message || 'Submission failed. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [userId, form, beforeImage, afterImage, isEditMode]);
-
-  const startEdit = useCallback(() => {
-    setSuccess(null);
-    setError(null);
-    setIsEditMode(true);
-  }, []);
-
-  const cancelEdit = useCallback(() => {
-    setIsEditMode(false);
-    setError(null);
-  }, []);
-
-  return {
-    form,
-    setField,
-    beforeImage,
-    afterImage,
-    handleBeforeImageChange,
-    handleAfterImageChange,
-    existing,
-    isEditMode,
-    submitting,
-    error,
-    success,
-    handleSubmit,
-    startEdit,
     cancelEdit,
   };
 }
