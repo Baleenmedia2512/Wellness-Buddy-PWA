@@ -1,6 +1,6 @@
-/**
- * testimonials.service.js — Business logic for the testimonials feature.
- * Orchestrates validation → permissions → data → side-effects (email).
+﻿/**
+ * testimonials.service.js â€” Business logic for the testimonials feature.
+ * Orchestrates validation â†’ permissions â†’ data â†’ side-effects (email).
  * Zero HTTP concerns.
  */
 import bcrypt from 'bcryptjs';
@@ -17,7 +17,7 @@ import {
 } from './testimonials.validators.js';
 import { getISTTimestamp } from '../../utils/supabaseClient.js';
 
-// ─── OTP helpers ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ OTP helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -34,12 +34,12 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
-// ─── Email ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeUrl, afterUrl }) {
   const goalLabel  = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   const weightDiff = Math.abs(afterWeight - beforeWeight).toFixed(1);
-  const arrow      = goalType === 'loss' ? '↓' : '↑';
+  const arrow      = goalType === 'loss' ? 'â†“' : 'â†‘';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -47,7 +47,7 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Testimonial Verification — Wellness Valley</title>
+  <title>Testimonial Verification â€” Wellness Valley</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
     body,table,td,p,a,li { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
@@ -73,8 +73,8 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
       <!-- Header -->
       <tr>
         <td style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:32px 24px;text-align:center;">
-          <p style="margin:0;color:#ffffff;font-size:26px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">🌿 Wellness Valley</p>
-          <p style="margin:8px 0 0;color:#d1fae5;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Member Testimonial — Verification Required</p>
+          <p style="margin:0;color:#ffffff;font-size:26px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">ðŸŒ¿ Wellness Valley</p>
+          <p style="margin:8px 0 0;color:#d1fae5;font-size:14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Member Testimonial â€” Verification Required</p>
         </td>
       </tr>
 
@@ -89,7 +89,7 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
             Review the details below, then share the OTP with your member to verify.
           </p>
 
-          <!-- Stats — 2-column table, wraps on mobile -->
+          <!-- Stats â€” 2-column table, wraps on mobile -->
           <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;">
             <tr class="stat-row">
               <td width="33%" style="padding:0 6px 10px 0;vertical-align:top;">
@@ -158,7 +158,7 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
               <td style="background:#f0fdf4;border:2px dashed #6ee7b7;border-radius:12px;padding:28px 20px;text-align:center;">
                 <p style="margin:0;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:sans-serif;">Verification OTP</p>
                 <p class="otp-code" style="margin:10px 0 0;color:#047857;font-size:44px;font-weight:700;letter-spacing:10px;font-family:'Courier New',Courier,monospace;">${otp}</p>
-                <p style="margin:8px 0 0;color:#9ca3af;font-size:13px;font-family:sans-serif;">⏰ Valid for 24 hours</p>
+                <p style="margin:8px 0 0;color:#9ca3af;font-size:13px;font-family:sans-serif;">â° Valid for 24 hours</p>
               </td>
             </tr>
           </table>
@@ -196,7 +196,6 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
 </body>
 </html>`;
 }
-}
 
 async function sendCoachEmail({ coachEmail, coachName, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath }) {
   const [beforeUrl, afterUrl] = await Promise.all([
@@ -212,19 +211,19 @@ async function sendCoachEmail({ coachEmail, coachName, memberName, goalType, bef
   await transporter.sendMail({
     from:    '"Wellness Valley" <easy2work.india@gmail.com>',
     to:      coachEmail,
-    subject: `🏆 Testimonial Submitted by ${memberName} — Verify Now`,
+    subject: `ðŸ† Testimonial Submitted by ${memberName} â€” Verify Now`,
     html:    buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeUrl, afterUrl }),
   });
 
   logger.info('[testimonials.service] Coach email dispatched', { coachEmail, memberName });
 }
 
-// ─── Service functions ────────────────────────────────────────────────────────
+// â”€â”€â”€ Service functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Submit a new testimonial (or update an existing one) for a member.
- * If no after photo is provided → status: 'incomplete' (no email sent).
- * If after photo is present    → status: 'pending'    (email + OTP sent to coach).
+ * If no after photo is provided â†’ status: 'incomplete' (no email sent).
+ * If after photo is present    â†’ status: 'pending'    (email + OTP sent to coach).
  */
 export async function submitTestimonial(rawBody) {
   const payload = validateSubmitTestimonial(rawBody);
@@ -279,7 +278,7 @@ export async function submitTestimonial(rawBody) {
     row = await repo.insertTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
-      // Placeholder paths for incomplete — will be replaced on completion
+      // Placeholder paths for incomplete â€” will be replaced on completion
       afterImagePath: afterPath ?? beforePath,
       afterWeightKg:  payload.afterWeightKg ?? payload.beforeWeightKg,
       ...rowData,
@@ -323,7 +322,7 @@ export async function verifyOtp(rawBody) {
 
   const row = await repo.findById(testimonialId);
   if (!row) throw new ValidationError(404, 'Testimonial not found');
-  if (row.status === 'incomplete') throw new ValidationError(422, 'Testimonial is incomplete — after photo not yet added');
+  if (row.status === 'incomplete') throw new ValidationError(422, 'Testimonial is incomplete â€” after photo not yet added');
   if (row.status === 'verified')   throw new ValidationError(409, 'This testimonial is already verified');
 
   if (!row.otp_hash) throw new ValidationError(422, 'No OTP is set for this testimonial');
@@ -347,7 +346,7 @@ export async function verifyOtp(rawBody) {
 }
 
 /**
- * Member edits their testimonial — resets to pending and re-emails coach.
+ * Member edits their testimonial â€” resets to pending and re-emails coach.
  */
 export async function editTestimonial(rawBody) {
   const payload = validateEditTestimonial(rawBody);
@@ -383,7 +382,7 @@ export async function editTestimonial(rawBody) {
   const isNowComplete  = !!(updates.afterImagePath) || existing.status !== 'incomplete';
 
   if (isNowComplete) {
-    // Full testimonial — reset to pending and issue new OTP
+    // Full testimonial â€” reset to pending and issue new OTP
     const otp       = generateOtp();
     const otpHash   = await bcrypt.hash(otp, 10);
     const otpExpiry = otpExpiryIst(24);
@@ -421,7 +420,7 @@ export async function editTestimonial(rawBody) {
     };
   }
 
-  // Still incomplete — just save changes, no email
+  // Still incomplete â€” just save changes, no email
   updates.status = 'incomplete';
   await repo.updateTestimonial(existing.id, updates);
 
@@ -475,7 +474,7 @@ export async function getMyTestimonial(rawQuery) {
 
 /**
  * List direct-downline testimonials for a coach.
- * Members with no testimonial are included (testimonial = null → red in UI).
+ * Members with no testimonial are included (testimonial = null â†’ red in UI).
  */
 export async function listForCoach(rawQuery) {
   const { coachId } = validateListForCoach(rawQuery);
