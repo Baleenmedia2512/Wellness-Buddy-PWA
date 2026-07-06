@@ -13,10 +13,11 @@ import CompletePictureSection from './complete/CompletePictureSection';
 const PHONE_REGEX = /^\+?\d[\d\s\-]{8,18}\d$/;
 
 const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection = false }) => {
+  const [name, setName] = useState('');
   const [height, setHeight] = useState('');
   const [phone, setPhone] = useState('');
   const [dietType, setDietType] = useState('');
-  const [missing, setMissing] = useState({ height: true, phoneNumber: true, dietType: true });
+  const [missing, setMissing] = useState({ name:true, height: true, phoneNumber: true, dietType: true });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -38,12 +39,21 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         if (!mounted) return;
         const profile = result?.data;
         if (!profile) { setMissing({ height: true, phoneNumber: true, dietType: true }); return; }
+        const hasName =typeof profile.userName === 'string' &&profile.userName.trim() !== '';
         const hasH = typeof profile.height === 'number' && profile.height >= 50 && profile.height <= 250;
         const hasP = typeof profile.phoneNumber === 'string' && profile.phoneNumber.trim() !== '';
         const hasD = typeof profile.dietType === 'string' && profile.dietType.trim() !== '';
-        const next = { height: !hasH, phoneNumber: !hasP, dietType: !hasD };
+        const next = { name: !hasName,height: !hasH, phoneNumber: !hasP, dietType: !hasD };
         setMissing(next);
-        if (!next.height && !next.phoneNumber && !next.dietType) { onComplete(profile); return; }
+        if (
+            !next.name &&
+            !next.height &&
+            !next.phoneNumber &&
+            !next.dietType
+        ) {
+            onComplete(profile);
+            return;
+        }
       } catch (e) {
         if (mounted) setError(e.message || 'Failed to load profile.');
       } finally { if (mounted) setLoading(false); }
@@ -52,16 +62,41 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   }, [apiBaseUrl, onComplete, user]);
 
   const heightNum = parseFloat(height);
-  const heightValid = !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
+  const nameValid = name.trim().length > 0;
+  const heightValid =
+    !Number.isNaN(heightNum) &&
+    heightNum >= 50 &&
+    heightNum <= 250;
   const phoneValid = PHONE_REGEX.test(phone.trim());
   const dietValid = !!dietType;
   const formValid =
-    (!missing.height || heightValid) && (!missing.phoneNumber || phoneValid) && (!missing.dietType || dietValid);
+    ( (!missing.name || nameValid) &&!missing.height || heightValid) && (!missing.phoneNumber || phoneValid) && (!missing.dietType || dietValid);
 
   const checks = [];
-  if (missing.height) checks.push({ label: 'Height', done: heightValid });
-  if (missing.phoneNumber) checks.push({ label: 'Phone Number', done: phoneValid });
-  if (missing.dietType) checks.push({ label: 'Diet Preference', done: dietValid });
+
+      if (missing.name)
+          checks.push({
+              label: 'Name',
+              done: nameValid,
+          });
+
+      if (missing.height)
+          checks.push({
+              label: 'Height',
+              done: heightValid,
+          });
+
+      if (missing.phoneNumber)
+          checks.push({
+              label: 'Phone Number',
+              done: phoneValid,
+          });
+
+      if (missing.dietType)
+          checks.push({
+              label: 'Diet Preference',
+              done: dietValid,
+          });
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -74,6 +109,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     setSaving(true);
     try {
       const payload = { email: user.email || user.Email };
+      if (missing.name) payload.name = name.trim();
       if (missing.height) payload.height = heightNum;
       if (missing.phoneNumber) payload.phoneNumber = phone.trim();
       if (missing.dietType) payload.dietType = dietType;
@@ -106,7 +142,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       <div className="max-w-md mx-auto p-5 space-y-5">
         <CompleteProfileChecklist loading={loading} checks={checks} />
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-4">
-          <CompleteRequiredFields missing={missing} height={height} setHeight={setHeight}
+          <CompleteRequiredFields missing={missing} name={name} setName={setName}height={height} setHeight={setHeight}
             heightValid={heightValid} phone={phone} setPhone={setPhone} phoneValid={phoneValid}
             dietType={dietType} setDietType={setDietType} />
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-sm text-red-600">{error}</p></div>}

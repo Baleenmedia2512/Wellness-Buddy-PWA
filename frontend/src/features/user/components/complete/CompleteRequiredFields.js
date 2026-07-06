@@ -1,6 +1,6 @@
 // Height + Phone + Diet input fields used by CompleteProfilePage.
 import React from 'react';
-import { Phone, Ruler } from 'lucide-react';
+import { Phone, Ruler, User } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
 
 const inputCls = (invalid) =>
@@ -9,10 +9,35 @@ const inputCls = (invalid) =>
   }`;
 
 const CompleteRequiredFields = ({
-  missing, height, setHeight, heightValid,
+  missing, name, setName, height, setHeight, heightValid,
   phone, setPhone, phoneValid, dietType, setDietType,
 }) => (
   <>
+    {missing.name && (
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Name <span className="text-red-500">*</span>
+        </label>
+
+        <div className="relative">
+          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter your full name"
+            className={inputCls(name && !name.trim())}
+            style={{ fontSize: '16px' }}
+          />
+        </div>
+
+        <p className="text-xs text-gray-400 mt-1">
+          Please enter your full name.
+        </p>
+      </div>
+    )}
+    
     {missing.height && (
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
