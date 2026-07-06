@@ -164,14 +164,19 @@ function _normalise(data, duration) {
       }
 
       // Ensure details.total exists (App.js uses aggregateFoodTotals(foods) but
-      // also reads details.total in legacy paths).
+      // also reads details.total in legacy paths). Include all nutrition fields
+      // so sugar/sodium/cholesterol/GI are available without enrichment.
       if (!details.total) {
         details.total = {
-          calories: fn.calories ?? 0,
-          protein:  fn.protein  ?? 0,
-          carbs:    fn.carbs    ?? 0,
-          fat:      fn.fat      ?? 0,
-          fiber:    fn.fiber    ?? 0,
+          calories:    fn.calories    ?? 0,
+          protein:     fn.protein     ?? 0,
+          carbs:       fn.carbs       ?? 0,
+          fat:         fn.fat         ?? 0,
+          fiber:       fn.fiber       ?? 0,
+          sugar:       fn.sugar       ?? 0,
+          sodium:      fn.sodium      ?? 0,
+          cholesterol: fn.cholesterol ?? 0,
+          glycemic_index: fn.glycemic_index ?? null,
         };
       }
     }
@@ -224,11 +229,15 @@ function _normalise(data, duration) {
  */
 function _aggregateToFoodItem(fastNutrition) {
   const n = {
-    calories: Math.round(fastNutrition.calories ?? 0),
-    protein:  Math.round(fastNutrition.protein  ?? 0),
-    carbs:    Math.round(fastNutrition.carbs    ?? 0),
-    fat:      Math.round(fastNutrition.fat      ?? 0),
-    fiber:    Math.round(fastNutrition.fiber    ?? 0),
+    calories:       Math.round(fastNutrition.calories       ?? 0),
+    protein:        Math.round(fastNutrition.protein        ?? 0),
+    carbs:          Math.round(fastNutrition.carbs          ?? 0),
+    fat:            Math.round(fastNutrition.fat            ?? 0),
+    fiber:          Math.round(fastNutrition.fiber          ?? 0),
+    sugar:          Math.round(fastNutrition.sugar          ?? 0),
+    sodium:         Math.round(fastNutrition.sodium         ?? 0),
+    cholesterol:    Math.round(fastNutrition.cholesterol    ?? 0),
+    glycemic_index: fastNutrition.glycemic_index != null ? Math.round(fastNutrition.glycemic_index) : null,
   };
   return {
     name:     'Meal',

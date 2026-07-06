@@ -126,8 +126,16 @@ public class MainActivity extends BridgeActivity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
 
-        // Request runtime permissions
-        requestAllPermissions();
+        // NOTE: Runtime permissions are no longer requested here.
+        // Requesting permissions at cold-start (before React/Capacitor loads) caused a
+        // "permission storm" on first install — 4 OS dialogs appeared before the user
+        // had any context, and the camera auto-open raced against the dialogs, causing
+        // the first food-photo analysis to fail silently.
+        //
+        // Permissions are now requested by the JS layer (PermissionPrimerModal → App.js
+        // → nativeLifecycle.requestAllPermissions) AFTER the user has seen the "why we
+        // need these" screen. This is the industry-standard pattern used by Instagram,
+        // Snapchat, and Headspace.
 
         // Request battery optimization exemption (deferred to avoid blocking cold start)
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {

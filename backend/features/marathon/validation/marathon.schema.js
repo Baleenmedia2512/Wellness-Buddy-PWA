@@ -5,7 +5,7 @@
  * All validators throw ValidationError on bad input.
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
-import { CARD_TYPES, MARATHON_STATUS, LAP_ROLES } from '../domain/marathon.rules.js';
+import { CARD_TYPES, MARATHON_STATUS, LAP_ROLES, computeAllowedWeightDates } from '../domain/marathon.rules.js';
 
 const VALID_CARD_TYPES  = Object.values(CARD_TYPES);
 const VALID_STATUSES    = Object.values(MARATHON_STATUS);
@@ -76,7 +76,62 @@ export function validateCreateMarathon(body) {
     participants: resolvedParticipants,
     // legacy compat
     participantUserIds: resolvedParticipants.map(p => p.userId),
+    captainWeights: null, // populated below if provided
   };
+}
+
+/**
+ * Validate the optional captainWeights payload once the marathon cycle dates
+ * are known (after resolvedStartedAt is determined in the handler).
+ *
+ * @param {Array} captainWeights  — raw value from request body
+ * @param {number[]} participantIds — resolved participant userIds
+ * @param {string} marathonStartDate — "YYYY-MM-DD"
+ * @param {Date}   todayIST          — IST-shifted Date
+ * @returns {Array<{ userId: number, entries: Array<{ date: string, weightKg: number }> }>}
+ */
+export function validateCaptainWeights(captainWeights, participantIds, marathonStartDate, todayIST) {
+  if (!captainWeights) return [];
+  if (!Array.isArray(captainWeights)) {
+    throw new ValidationError(400, 'captainWeights must be an array');
+  }
+  if (captainWeights.length === 0) return [];
+
+  const participantSet  = new Set(participantIds);
+  const allowedDates    = computeAllowedWeightDates(marathonStartDate, todayIST);
+
+  const validated = [];
+  for (const item of captainWeights) {
+    if (!item.userId || isNaN(Number(item.userId))) {
+      throw new ValidationError(400, 'Each captainWeights entry must have a valid userId');
+    }
+    const uid = Number(item.userId);
+    if (!participantSet.has(uid)) {
+      throw new ValidationError(400, `captainWeights userId ${uid} is not a participant in this marathon`);
+    }
+    if (!Array.isArray(item.entries) || item.entries.length === 0) {
+      throw new ValidationError(400, `captainWeights userId ${uid}: entries must be a non-empty array`);
+    }
+    const validatedEntries = [];
+    for (const entry of item.entries) {
+      if (!entry.date || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
+        throw new ValidationError(400, `captainWeights userId ${uid}: each entry must have a date (YYYY-MM-DD)`);
+      }
+      if (!allowedDates.has(entry.date)) {
+        throw new ValidationError(
+          400,
+          `captainWeights userId ${uid}: date ${entry.date} is outside the marathon period (${marathonStartDate} to today)`,
+        );
+      }
+      const kg = Number(entry.weightKg);
+      if (isNaN(kg) || kg < 20 || kg > 300) {
+        throw new ValidationError(400, `captainWeights userId ${uid}: weightKg must be between 20 and 300`);
+      }
+      validatedEntries.push({ date: entry.date, weightKg: kg });
+    }
+    validated.push({ userId: uid, entries: validatedEntries });
+  }
+  return validated;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

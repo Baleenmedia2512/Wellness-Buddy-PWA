@@ -165,6 +165,7 @@ import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
+import PermissionPrimerModal from "./shared/components/PermissionPrimerModal";
 import * as authFsm from "./shared/services/auth/fsm";
 import {
   fetchProfileCompletion,
@@ -343,6 +344,9 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return true;
     return localStorage.getItem("wv.permissionsGranted") === "1";
   });
+  // Permission primer: shown once on first native install after authentication.
+  // Blocks the OS system dialogs until the user has read WHY they are needed.
+  const [showPermissionPrimer, setShowPermissionPrimer] = useState(false);
   // Full-screen branded overlay that bridges the native splash → camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
@@ -1446,7 +1450,12 @@ useEffect(() => {
   }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
 
   // On Android, request exact alarm permission once per login session.
-  // Fires after permissionsReady so it doesn't collide with camera/push/location dialogs.
+  // Deferred until AFTER permissionsReady AND the camera/analysis flow has had
+  // time to settle. Guards:
+  //   - 12 s delay  →  never fires over an open camera or first food analysis
+  //   - session flag →  skipped entirely if the PermissionPrimerModal ran this
+  //                     session (user just granted 3 permissions; a 4th dialog
+  //                     would kill the experience)
   const _hasFiredAlarmPermCheckRef = useRef(false);
   useEffect(() => {
     if (
@@ -1456,6 +1465,8 @@ useEffect(() => {
     )
       return;
     if (!permissionsReady) return;
+    // Skip if primer ran this session — user has already been through setup.
+    if (sessionStorage.getItem("wv.primerDoneThisSession") === "1") return;
     _hasFiredAlarmPermCheckRef.current = true;
     const t = setTimeout(async () => {
       try {
@@ -1477,7 +1488,7 @@ useEffect(() => {
           });
         }
       } catch (_) {}
-    }, 2000); // slight delay so the home screen has settled
+    }, 12000); // wait for camera / first analysis to fully settle
     return () => clearTimeout(t);
   }, [user, permissionsReady]);
 
@@ -2994,26 +3005,53 @@ useEffect(() => {
     return unsubscribe;
   }, [user?.id, forceLoggedOut]);
 
+  // Called when the user taps "Allow Access & Continue" OR "Skip" in the
+  // PermissionPrimerModal. Runs the actual OS permission dialogs, marks the
+  // session so the exact-alarm check is deferred, then sets permissionsReady.
+  const handlePermissionsGranted = useCallback(async () => {
+    setShowPermissionPrimer(false);
+    // Mark that the primer ran this session — exact-alarm check must not
+    // interrupt the very next screen (first camera / food analysis).
+    sessionStorage.setItem("wv.primerDoneThisSession", "1");
+    try {
+      await requestAllPermissions();
+    } catch (_) {
+      // fail-open — camera still opens
+    }
+    localStorage.setItem("wv.permissionsGranted", "1");
+    setPermissionsReady(true);
+  }, [requestAllPermissions]);
+
   // Setup for authenticated users.
-  // requestAllPermissions() is awaited so permissionsReady is only set true
-  // after all three dialogs (camera ? push ? geolocation) have resolved.
-  // This prevents the camera auto-open from firing mid-permission-flow.
+  // First-install path: show PermissionPrimerModal so the user understands
+  // WHY each permission is needed BEFORE the OS dialogs appear.
+  // Returning-user path: silently re-check / re-register push token.
   useEffect(() => {
     if (!user) return;
     let mounted = true;
+    handleSaveUserCache(user);
+
+    const isFirstInstall =
+      Capacitor.isNativePlatform() &&
+      localStorage.getItem("wv.permissionsGranted") !== "1";
+
+    if (isFirstInstall) {
+      // Show primer — handlePermissionsGranted fires when user taps Allow/Skip
+      setShowPermissionPrimer(true);
+      return () => { mounted = false; };
+    }
+
+    // Returning user — request silently (dialogs are no-ops when already granted)
     requestAllPermissions()
       .then(() => {
-        localStorage.setItem("wv.permissionsGranted", "1"); // cache for instant-ready on next launch
+        localStorage.setItem("wv.permissionsGranted", "1");
         if (mounted) setPermissionsReady(true);
       })
       .catch(() => {
         if (mounted) setPermissionsReady(true);
-      }); // fail-open: dialogs already swallow errors
-    handleSaveUserCache(user);
-    return () => {
-      mounted = false;
-    };
-  }, [user, requestAllPermissions, handleSaveUserCache]);
+      });
+    return () => { mounted = false; };
+  }, [user, requestAllPermissions, handleSaveUserCache, handlePermissionsGranted]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
   useEffect(() => {
@@ -6360,7 +6398,7 @@ useEffect(() => {
           // Retry (re-run AI), Edit (manual entry), or Delete.
           // Reset to camera so the user can take the next photo immediately;
           // they find the unidentified entry in the diary.
-          showToast("📷 Saved as 'Other' in diary — tap it to identify");
+          showToast("📷 Couldn't identify — find it in Diary → tap to fix");
           resetCaptureUiOnly();
         }
         setLoading(false);
@@ -8181,6 +8219,17 @@ useEffect(() => {
             />
           </Suspense>
         )}
+        {/* Permission primer — shown once on first install after auth.
+          Appears on top of the launch overlay so the transition is seamless:
+          white launch overlay → primer → OS dialogs → camera.
+          After the user taps Allow (or Skip), handlePermissionsGranted fires
+          permissionsReady → camera auto-opens → launch overlay closes. */}
+        {showPermissionPrimer && (
+          <PermissionPrimerModal
+            onContinue={handlePermissionsGranted}
+            onSkip={handlePermissionsGranted}
+          />
+        )}
         {/* Launch overlay — covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
           (white + centred logo) so the transition is seamless: native splash
@@ -8653,6 +8702,7 @@ useEffect(() => {
             {imageType === "food" && nutritionData && (
               <NutritionCard
                 data={nutritionData}
+                onDataUpdate={(updatedData) => setNutritionData((prev) => ({ ...prev, ...updatedData }))}
                 user={user}
                 savedUserName={savedUserName}
                 savedProfileImage={savedProfileImage}

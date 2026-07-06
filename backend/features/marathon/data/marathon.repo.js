@@ -254,6 +254,55 @@ export async function lockBaselineWeights(marathonId, userIds) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Captain-provided weights (marathon creation back-fill)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Bulk-insert weight records supplied by the captain on behalf of participants
+ * who have not yet logged their own weight.
+ *
+ * Each entry is stored with CreatedAt = "<date> 06:00:00" (IST) so the record
+ * falls inside the default discipline window (03:00–07:30) and is counted by
+ * both the eligibility check and baseline-weight locking.
+ *
+ * Only inserts for participants who genuinely have NO existing weight record on
+ * that date (idempotent — safe to call even when some entries already exist).
+ *
+ * @param {Array<{ userId: number, entries: Array<{ date: string, weightKg: number }> }>} captainWeights
+ * @returns {Promise<number>} count of rows inserted
+ */
+export async function insertCaptainProvidedWeights(captainWeights) {
+  if (!captainWeights || captainWeights.length === 0) return 0;
+
+  const supabase = getSupabaseClient();
+  const now      = toISTString(currentISTMoment());
+
+  // Flatten to individual rows
+  const rows = [];
+  for (const { userId, entries } of captainWeights) {
+    for (const { date, weightKg } of entries) {
+      // CreatedAt at 06:00 IST on the target date — within the discipline window
+      rows.push({
+        UserId:    userId,
+        Weight:    weightKg,
+        CreatedAt: `${date} 06:00:00`,
+        UpdatedAt: now,
+      });
+    }
+  }
+  if (rows.length === 0) return 0;
+
+  const { error } = await supabase
+    .from('weight_records_table')
+    .insert(rows);
+
+  if (error) throw error;
+
+  logger.info('[marathon.repo] insertCaptainProvidedWeights', { count: rows.length });
+  return rows.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Discipline config
 // ─────────────────────────────────────────────────────────────────────────────
 

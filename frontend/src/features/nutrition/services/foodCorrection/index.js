@@ -3,6 +3,8 @@ export {
   saveFoodCorrection,
   getUserCorrections,
   reverseLookupOriginalAiName,
+  searchFoods,
+  toFoodSearchItem,
 } from './correctionApi';
 
 export {

@@ -27,7 +27,7 @@
  */
 
 import logger from '../logger.js';
-import { getModel, imageInlinePart, SchemaType } from '../gemini/geminiClient.js';
+import { getModel, imageInlinePart, SchemaType, FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
 import { withEnterpriseRetry } from './RetryPolicy.js';
 
@@ -37,11 +37,16 @@ const SERVICE = 'gemini';
 
 /** Fast macros: returned inline on every food analysis. */
 const FAST_NUTRITION_PROPS = {
-  calories: { type: SchemaType.NUMBER },
-  protein:  { type: SchemaType.NUMBER },
-  carbs:    { type: SchemaType.NUMBER },
-  fat:      { type: SchemaType.NUMBER },
-  fiber:    { type: SchemaType.NUMBER },
+  calories:    { type: SchemaType.NUMBER },
+  protein:     { type: SchemaType.NUMBER },
+  carbs:       { type: SchemaType.NUMBER },
+  fat:         { type: SchemaType.NUMBER },
+  fiber:       { type: SchemaType.NUMBER },
+  // Include these in fast path so carousel cards are populated without waiting for enrichment
+  sugar:       { type: SchemaType.NUMBER },
+  sodium:      { type: SchemaType.NUMBER },
+  cholesterol: { type: SchemaType.NUMBER },
+  glycemic_index: { type: SchemaType.NUMBER },
 };
 
 /** Enrichment micros: vitamins + minerals returned by background job. */
@@ -68,6 +73,9 @@ const ENRICHMENT_PROPS = {
   zinc:           { type: SchemaType.NUMBER },
   phosphorus:     { type: SchemaType.NUMBER },
 };
+
+/** Full nutrition: all 26 fields returned per-food item in the unified call. */
+const FULL_NUTRITION_PROPS = { ...FAST_NUTRITION_PROPS, ...ENRICHMENT_PROPS };
 
 // ── Structured response schemas (module-level singletons) ─────────────────────
 
@@ -99,15 +107,11 @@ const UNIFIED_SCHEMA = {
               isLiquid:  { type: SchemaType.BOOLEAN }, // true for water, tea, shakes, etc.
               nutrition: {
                 type: SchemaType.OBJECT,
-                properties: {
-                  calories: { type: SchemaType.NUMBER },
-                  protein:  { type: SchemaType.NUMBER },
-                  carbs:    { type: SchemaType.NUMBER },
-                  fat:      { type: SchemaType.NUMBER },
-                  fiber:    { type: SchemaType.NUMBER },
-                },
-                // Force Gemini to always provide all macro values (use 0 not null)
-                required: ['calories', 'protein', 'carbs', 'fat', 'fiber'],
+                properties: FULL_NUTRITION_PROPS,
+                // Require macros + sugar/sodium/cholesterol/GI so carousel cards
+                // are always populated from the initial call (no enrichment needed).
+                required: ['calories', 'protein', 'carbs', 'fat', 'fiber',
+                           'sugar', 'sodium', 'cholesterol', 'glycemic_index'],
               },
             },
             // Minimum required per item so food lists are never empty/nutrition-less
@@ -116,13 +120,7 @@ const UNIFIED_SCHEMA = {
         },
         total: {
           type: SchemaType.OBJECT,
-          properties: {
-            calories: { type: SchemaType.NUMBER },
-            protein:  { type: SchemaType.NUMBER },
-            carbs:    { type: SchemaType.NUMBER },
-            fat:      { type: SchemaType.NUMBER },
-            fiber:    { type: SchemaType.NUMBER },
-          },
+          properties: FULL_NUTRITION_PROPS,
         },
         // ── WEIGHT ─────────────────────────────────────────────
         weightValue: { type: SchemaType.NUMBER },
@@ -143,7 +141,8 @@ const UNIFIED_SCHEMA = {
     fastNutrition: {
       type:       SchemaType.OBJECT,
       properties: FAST_NUTRITION_PROPS,
-      required:   Object.keys(FAST_NUTRITION_PROPS),
+      required:   ['calories', 'protein', 'carbs', 'fat', 'fiber',
+                   'sugar', 'sodium', 'cholesterol', 'glycemic_index'],
     },
     weightReading: {
       type: SchemaType.OBJECT,
@@ -190,243 +189,167 @@ const ENRICHMENT_SCHEMA = {
 
 // ── Prompts (module-level constants) ──────────────────────────────────────────
 
-const UNIFIED_PROMPT = `Analyze this image in a single pass. Return one JSON object matching the schema exactly.
+const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
 
-=== imageType — pick the BEST match ===
+=== imageType ===
 
-"food"
-  ANY edible item: meals, snacks, ALL drinks (water, tea, coffee, juice, milk,
-  protein shakes, Herbalife shakes, energy drinks), raw ingredients, packaged food,
-  nutrition supplements (powder sachets, capsules, bottles with nutritional content).
-  RULE: when in doubt between "food" and "other", ALWAYS choose "food".
+"food" — DEFAULT. Any edible item, drink, supplement, raw ingredient, or packaged food.
+  Includes: meals, snacks, water, tea, coffee, juices, shakes, protein powders, pills, sauces.
+  BIAS: If there is ANY reasonable chance this is food, return "food". When in doubt → "food".
 
-"weight"
-  A weighing scale with a VISIBLE NUMERIC weight reading on its display.
-  Must show actual digits (kg or lbs). No visible number → "other".
+"weight" — Weighing scale with a VISIBLE numeric reading (kg or lbs). No digits visible → "other".
 
-"smartwatch"
-  A fitness tracker or smartwatch screen showing activity/health data:
-  steps, calories burned, heart rate, distance, active minutes.
-  Examples: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band, Google Fit,
-  Samsung Health app (phone screenshot showing daily summary).
-  KEY RULE: activity data on any screen → "smartwatch". NEVER classify as "education".
+"smartwatch" — Device or phone screen showing activity data: steps, calories, heart rate, distance.
+  Devices: Apple Watch, Garmin, Fitbit, Samsung Galaxy Watch, Mi Band, Google Fit, Samsung Health.
+  Activity data on any screen → "smartwatch", never "education".
 
-"education"
-  ONLY a live video-call screenshot with ALL THREE visible:
-    1. Participant video tiles (faces in boxes)
-    2. Meeting toolbar (mute/camera/end-call buttons)
-    3. Platform UI: Google Meet, Zoom, or Microsoft Teams
-  Missing any one of those three → NOT education.
+"education" — Video-call screenshot with ALL THREE present:
+  (1) participant video tiles  (2) meeting toolbar  (3) Google Meet / Zoom / Teams UI.
+  Any element missing → NOT education.
 
-"other" — use ONLY when the image is clearly NOT food, NOT a scale, NOT a fitness
-  screen, and NOT a video call. Examples: random landscape, text document, animal
-  photo with no food. If you have ANY reasonable chance it is food, choose "food".
+"other" — Only when clearly none of the above. When in doubt → use "food".
 
 === confidence ===
-  Report how confident you are: 0.0 – 1.0.
-  CRITICAL: confidence is ONLY a score to report — it does NOT change your imageType.
-  Never downgrade imageType to "other" just because confidence is < 0.8.
-  A blurry food photo is still "food" at confidence 0.55.
+Score 0.0–1.0. Reports certainty only — never changes imageType.
+A blurry food photo = "food" at 0.55, not "other".
 
-=== Per-type fields to populate ===
+=== Herbalife products ===
+This app serves Herbalife Wellness community members. Recognize on sight:
 
-FOOD — populate ALL nutrition fields for every detected food or beverage.
+Meal-replacement shakes (isLiquid: true, complete meal, ~250–300 ml):
+- "Herbalife Formula 1 Shake" — powder sachet or shaker bottle. ~200–260 kcal, 9 g protein, 36 g carbs, 1 g fat. Adjust if prepared with plant milk.
+- "Herbalife Protein Drink Mix (PDM)" — added to F1 shake.
+- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink.
 
-fastNutrition:
+Hydration beverages (isLiquid: true, NOT a meal):
+- "Herbalife Afresh Energy Drink" — yellow/orange powder or prepared cup. ~10–20 kcal.
+- "Herbalife Herbal Tea Concentrate" — small sachet or bottle. ~5–10 kcal.
+
+Supplements (isLiquid: false, near-zero calories):
+- "Herbalife Formula 2 Multivitamin" | "Herbalife Formula 3 Cell Activator"
+- "Herbalife NightWorks / Niteworks" | "Herbalife Xtra-Cal"
+- Any other labelled Herbalife supplement bottle or packet.
+
+=== Tamil Nadu foods ===
+Most users are from Tamil Nadu, India. Use these specific names:
+
+Breakfast:  Idli, Dosa, Uthappam, Pongal (sweet/savoury), Appam, Puttu, Idiyappam
+Rice:       Curd Rice, Lemon Rice, Puliyodarai, Tomato Rice, Coconut Rice,
+            Sambar Rice, Rasam Rice, Chicken Biryani, Mutton Biryani, Seeraga Samba Biryani
+Breads:     Parotta, Kothu Parotta, Veechu Parotta, Chapati, Phulka, Roti
+Curries:    Sambar, Rasam, Poriyal, Kootu, Avial, Moru Kuzhambu, Vatha Kuzhambu,
+            Chicken Chettinad, Mutton Kuzhambu, Meen Kuzhambu, Egg Curry, Egg Bhurji,
+            Paneer Butter Masala, Dal Tadka
+Sides:      Coconut Chutney, Tomato Chutney, Onion Chutney
+Snacks:     Murukku, Seedai, Sundal, Bonda, Bajji, Mixture, Omapodi, Kara Sev
+Beverages:  Filter Coffee, Masala Chai, Ginger Tea, Buttermilk (Moru), Tender Coconut Water, Sugarcane Juice
+Sweets:     Sweet Pongal (Sakkarai Pongal), Payasam, Mysore Pak, Adhirasam, Laddu, Halwa, Jangiri, Badusha
+
+=== isLiquid ===
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea)
+         and Herbalife meal-replacement shakes (also count as complete meals)
+false → all solid foods (rice, bread, curry, snacks, idli, etc.)
+
+=== FOOD output ===
+
+fastNutrition — 9-field aggregate totals:
+{ calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index }
+
+details.foods — one object per visible edible item or beverage:
 {
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber
-}
-← Aggregate totals across all detected foods and drinks.
-
-details.foods:
-Array of all detected food and beverage items.
-
-Each item MUST contain:
-
-{
-  name,
-  portion,
-  weight_g,
-  volume_ml,
+  name,       ← specific only: "Idli" / "Masala Chai" / "Plain Water" — never "Food"/"Drink"/"Meal"/"Snack"
+  portion,    ← realistic serving size string
+  weight_g,   ← solids (g)
+  volume_ml,  ← liquids (ml); provide both when estimable
   isLiquid,
-
   nutrition: {
-    calories,
-    protein,
-    carbs,
-    fat,
-    fiber,
-
-    glycemic_index,
-    glycemic_load,
-
-    micronutrients: {
-      vitamins: {
-        vitamin_a,
-        vitamin_b1,
-        vitamin_b2,
-        vitamin_b3,
-        vitamin_b5,
-        vitamin_b6,
-        vitamin_b7,
-        vitamin_b9,
-        vitamin_b12,
-        vitamin_c,
-        vitamin_d,
-        vitamin_e,
-        vitamin_k
-      },
-
-      minerals: {
-        calcium,
-        iron,
-        magnesium,
-        phosphorus,
-        potassium,
-        sodium,
-        zinc,
-        copper,
-        manganese,
-        selenium,
-        chromium,
-        iodine,
-        molybdenum
-      },
-
-      lipids: {
-        cholesterol,
-        omega3,
-        omega6,
-        saturated_fat,
-        monounsaturated_fat,
-        polyunsaturated_fat,
-        trans_fat
-      },
-
-      carbohydrates: {
-        sugar,
-        added_sugar,
-        starch,
-        net_carbs
-      }
-    }
+    calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
+    vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
+    vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
+    calcium, iron, magnesium, potassium, zinc, phosphorus
   }
 }
 
-Food Identification Rules:
-- Use specific food names whenever possible.
-- Examples:
-  - "Herbalife Formula 1 Shake"
-  - "Masala Chai"
-  - "Idli"
-  - "Chapati"
-  - "Paneer Butter Masala"
-  - "Plain Water"
-  - "Black Coffee"
-- Never use generic names such as:
-  - "Food"
-  - "Meal"
-  - "Drink"
-  - "Snack"
-  - "Item"
+Nutrition rules:
+- All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
+- vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
+- Plain water: all nutrients 0.
+- Estimate using USDA FoodData Central or equivalent.
 
-Portion Estimation Rules:
-- Estimate realistic serving sizes using visible context.
-- Provide weight_g for solids.
-- Provide volume_ml for liquids.
-- If both can be reasonably estimated, provide both.
+details.total — same 26 flat fields, sum of all foods:
+{ calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
+  vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
+  vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
+  calcium, iron, magnesium, potassium, zinc, phosphorus }
 
-Drink Rules:
-- All beverages MUST have:
-  isLiquid: true
-- Provide volume_ml whenever possible.
-- Plain water:
-  calories = 0
-  protein = 0
-  carbs = 0
-  fat = 0
-  fiber = 0
-- Black coffee and unsweetened plain tea may legitimately contain near-zero calories.
+Consistency:
+- Detect EVERY visible edible item: main dish, sides, chutneys, sauces, condiments, beverages, water. Each = separate object in details.foods. Do NOT stop at the dominant dish.
+- fastNutrition MUST equal details.total for all 9 shared fields.
+- details.total MUST equal the sum of all details.foods items.
 
-Nutrition Rules:
-- Estimate nutrients using USDA FoodData Central or equivalent standard nutrition databases.
-- Never omit nutrition fields.
-- If a nutrient is genuinely absent, return 0.
-- If a nutrient cannot be reasonably estimated, return null.
-- All nutrient values must be numeric where available.
+=== WEIGHT output ===
+weightReading: { value: <kg; convert lbs>, unit: "kg" }
+details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not on display
 
-details.total:
-Must contain aggregated totals for ALL detected food and beverage items.
+=== SMARTWATCH output ===
+smartwatchData: { caloriesBurned, steps, source }  ← source = brand e.g. "Apple Watch"
+details: { caloriesBurned, steps, source }
 
-{
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber,
+=== EDUCATION output ===
+educationData: { isMeeting: true, platform }  ← "Google Meet" | "Zoom" | "Teams"
+details: { platform, participantCount }
 
-  glycemic_load,
-
-  micronutrients: {
-    vitamins,
-    minerals,
-    lipids,
-    carbohydrates
-  }
-}
-
-Consistency Rules:
-- Detect ALL visible edible items and beverages in the image.
-- Do NOT stop after identifying the dominant dish.
-- Each visible food/drink must appear as a separate object in details.foods.
-- Include side dishes, beverages, sauces, condiments, toppings, and water.
-- details.total MUST equal the sum of all food items.
-- fastNutrition MUST match the total calories, protein, carbs, fat, and fiber values from details.total.
-- Every detected food or beverage must appear in details.foods.
-- Return valid JSON only.
-- No markdown.
-- No explanations.
-
-WEIGHT — populate ALL:
-  weightReading: { value: number in kg (convert lbs if shown), unit: "kg" }
-  details: { weightValue, unit:"kg", bmi, bodyFat, muscleMass, bmr } — null if not visible
-
-SMARTWATCH — populate ALL:
-  smartwatchData: { caloriesBurned, steps, source }  (source = brand e.g. "Apple Watch")
-  details: { caloriesBurned, steps, source }
-
-EDUCATION — populate ALL:
-  educationData: { isMeeting: true, platform }  ("Google Meet" / "Zoom" / "Teams")
-  details: { platform, participantCount }
-
-Omit or set null for fields not relevant to the detected imageType.
+Omit or null fields not relevant to the detected imageType.
 JSON only. No markdown. No explanation.`;
 
 /**
- * Build an enrichment prompt with fast-nutrition context to avoid re-analysing macros.
+ * Build an enrichment prompt with fast-nutrition context and food item names.
  * @param {{ calories, protein, carbs, fat } | null} fastCtx
+ * @param {string[]} [foodItems]  Names of identified food items (e.g. ['Filter Coffee'])
  * @returns {string}
  */
-function buildEnrichmentPrompt(fastCtx) {
+function buildEnrichmentPrompt(fastCtx, foodItems) {
   const ctx = fastCtx
     ? `calories=${fastCtx.calories ?? '?'} kcal, protein=${fastCtx.protein ?? '?'} g, carbs=${fastCtx.carbs ?? '?'} g, fat=${fastCtx.fat ?? '?'} g`
     : 'macros unknown';
-  return `This food image was already analysed: ${ctx}.
+  const foodLabel = Array.isArray(foodItems) && foodItems.length > 0
+    ? foodItems.join(', ')
+    : 'the food item in the image';
+  return `This food image was already analysed (${foodLabel}): ${ctx}.
 
 Provide ONLY the 21 micronutrient enrichment values — do NOT re-estimate macros.
 Return JSON matching the schema exactly (all enrichment fields required).
-Estimate values conservatively; never return 0 unless the nutrient is genuinely absent.
+Use USDA FoodData Central reference values. Only return 0 when a nutrient is genuinely absent (e.g. vitamin D in a plant food with no fortification).
+
+Reference values for common Tamil Nadu beverages when made with cow's milk:
+- Filter Coffee / Masala Chai / Tea with milk (per ~150–200 ml cup): calcium 100–150 mg, potassium 180–250 mg, phosphorus 90–120 mg, vitamin_b2 0.15–0.25 mg, vitamin_b12 0.4–0.6 µg, magnesium 12–20 mg, vitamin_a 40–60 µg, vitamin_b1 0.04–0.07 mg.
+
 JSON only. No markdown.`;
+}
+
+/**
+ * Returns true when the primary model should be abandoned in favour of the
+ * fallback model.  Two cases:
+ *   1. Circuit breaker opened after N consecutive failures — the primary is
+ *      saturated; bypass immediately without waiting for more retries.
+ *   2. All retries exhausted with 503 / service-unavailable errors.
+ */
+function isPrimaryOverloadedError(err) {
+  if (!err) return false;
+  // Circuit opened for the primary → the primary service is considered down
+  if (err.code === 'CIRCUIT_OPEN') return true;
+  const status = Number(err.status);
+  if (status === 503) return true;
+  const msg = (err.message ?? '').toLowerCase();
+  return msg.includes('503') || msg.includes('service unavailable') || msg.includes('high demand');
 }
 
 // ── Internal call helper ──────────────────────────────────────────────────────
 
 /**
  * Call a Gemini model with enterprise retry + optional trace instrumentation.
+ * On persistent 503 overload the call is automatically retried once on
+ * FALLBACK_MODEL_NAME so callers remain resilient during peak load spikes.
  *
  * @param {'classify'|'nutrition'|'unified'} configKey
  * @param {Array}   parts        [imagePart, promptString]
@@ -434,15 +357,35 @@ JSON only. No markdown.`;
  * @param {object}  opts
  * @param {string}  opts.label
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
+ * @param {string|null} [opts.modelOverride]  Internal: set by fallback path.
  * @returns {Promise<{ rawText: string, attempts: number, latencyMs: number }>}
  */
-async function callModel(configKey, parts, schema, { label, trace = null }) {
-  const model = getModel(configKey, schema);
+async function callModel(configKey, parts, schema, { label, trace = null, modelOverride = null }) {
+  const model = getModel(configKey, schema, modelOverride);
 
-  const { result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-    () => model.generateContent(parts),
-    { label, service: SERVICE },
-  );
+  // The fallback model uses its own independent circuit breaker so an opened
+  // primary breaker does not also block the fallback.
+  const circuitService = modelOverride ? `${SERVICE}-fallback` : SERVICE;
+
+  let result, attempts, totalLatencyMs;
+  try {
+    ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
+      () => model.generateContent(parts),
+      { label, service: circuitService },
+    ));
+  } catch (err) {
+    // Primary model saturated or circuit open → try fallback model once
+    if (!modelOverride && isPrimaryOverloadedError(err)) {
+      logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
+        label,
+        fallbackModel: FALLBACK_MODEL_NAME,
+        reason:        err.code === 'CIRCUIT_OPEN' ? 'circuit_open' : '503_overload',
+        primaryError:  err.message,
+      });
+      return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });
+    }
+    throw err;
+  }
 
   // Propagate retries into trace
   if (trace && attempts > 1) {
@@ -470,11 +413,10 @@ const TYPE_ALIAS = Object.freeze({ weight_scale: 'weight', meeting: 'education' 
 
 function normaliseType(raw, confidence) {
   // Trust Gemini's self-reported imageType when confidence is reasonable.
-  // The prompt already instructs Gemini to return 'other' when uncertain
-  // (0.6–0.79 range), so double-filtering at 0.80 here was incorrectly
-  // discarding valid education / smartwatch detections on the first attempt.
-  // Only override as a last-resort sanity check at 0.50.
-  if (!raw || confidence < 0.50) return 'other';
+  // The prompt already instructs Gemini to ALWAYS choose "food" over "other"
+  // when there is ANY reasonable chance it is food. Only override as a last-
+  // resort sanity check at 0.10 (practically zero confidence).
+  if (!raw || confidence < 0.10) return 'other';
   return TYPE_ALIAS[raw] ?? raw;
 }
 
@@ -576,19 +518,30 @@ export async function classifyImage(imageBuffer, mimeType, { trace = null } = {}
  * @param {Buffer} imageBuffer
  * @param {string} mimeType
  * @param {{ calories, protein, carbs, fat } | null} fastContext  Fast-analysis context.
+ * @param {string[]} [foodItems]  Names of identified food items for context.
  * @param {object} [opts]
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<{ enrichment: object, confidence: string, latencyMs: number }>}
  */
-export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trace = null } = {}) {
+export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodItems, { trace = null } = {}) {
+  // Support legacy call signature where foodItems was omitted (foodItems = opts object)
+  let resolvedFoodItems = foodItems;
+  let resolvedOpts = { trace };
+  if (foodItems && !Array.isArray(foodItems) && typeof foodItems === 'object') {
+    resolvedOpts = foodItems;
+    resolvedFoodItems = [];
+  }
+
   const label      = 'enrichment';
   const imagePart  = imageInlinePart(imageBuffer, mimeType);
-  const prompt     = buildEnrichmentPrompt(fastContext);
+  const prompt     = buildEnrichmentPrompt(fastContext, resolvedFoodItems);
   const stageStart = Date.now();
+
+  const { trace: resolvedTrace = null } = resolvedOpts;
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
-      'nutrition', [imagePart, prompt], ENRICHMENT_SCHEMA, { label, trace },
+      'nutrition', [imagePart, prompt], ENRICHMENT_SCHEMA, { label, trace: resolvedTrace },
     );
 
     const parsed = safeParseJson(rawText, { label });
@@ -597,8 +550,8 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trac
       return { enrichment: {}, confidence: 'low', latencyMs, attempts };
     }
 
-    if (trace) {
-      trace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
     }
 
     return {
@@ -608,9 +561,9 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, { trac
       attempts,
     };
   } catch (err) {
-    if (trace) {
-      trace.addStage({ name: label, latencyMs: Date.now() - stageStart, success: false, extra: { error: err.message } });
-      trace.error({ stage: label, message: err.message, code: err.code });
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs: Date.now() - stageStart, success: false, extra: { error: err.message } });
+      resolvedTrace.error({ stage: label, message: err.message, code: err.code });
     }
     // Enrichment failures are non-fatal — return empty rather than crashing
     logger.warn('AIGateway.enrichNutrition: failed, returning empty enrichment', { error: err.message });
@@ -632,8 +585,9 @@ export async function analyzeNutrition(imageBuffer, mimeType, { trace = null } =
   const unified = await analyzeUnified(imageBuffer, mimeType, { trace });
   const fast    = unified.fastNutrition ?? {};
 
-  // Run enrichment in parallel (same image, context-aware prompt)
-  const enriched = await enrichNutrition(imageBuffer, mimeType, fast, { trace });
+  // Run enrichment in parallel (same image, context-aware prompt with food names)
+  const foodItems = (unified.details?.foods ?? []).map(f => f.name).filter(Boolean);
+  const enriched = await enrichNutrition(imageBuffer, mimeType, fast, foodItems, { trace });
   const micro    = enriched.enrichment ?? {};
 
   return {

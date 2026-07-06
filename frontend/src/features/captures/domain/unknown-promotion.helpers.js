@@ -80,6 +80,9 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
     return {
       foods,
       total: {
+        // Spread all fields from total first (includes micronutrients when present)
+        ...total,
+        // Then enforce required macros so they are never undefined
         calories: total.calories ?? 0,
         protein: total.protein ?? 0,
         carbs: total.carbs ?? 0,
@@ -101,6 +104,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
   return {
     foods,
     total: {
+      ...total,
       calories: total.calories ?? resolveGeminiCalories(analysis),
       protein: total.protein ?? 0,
       carbs: total.carbs ?? 0,

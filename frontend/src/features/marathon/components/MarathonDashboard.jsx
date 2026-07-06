@@ -448,13 +448,7 @@ const result = await createMarathon({
           </button>
 
          <button
-  onClick={async () => {
-    const valid = await validateParticipants();
-
-    if (valid) {
-      setStep(2);
-    }
-  }}
+  onClick={() => setStep(2)}
   disabled={
     selectedMembers.length !== LAP_SIZE
   }

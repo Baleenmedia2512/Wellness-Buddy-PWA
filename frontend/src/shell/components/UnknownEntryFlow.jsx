@@ -19,8 +19,6 @@ import React, { useState } from 'react';
 import { analyzeImage } from '../../shared/services/orchestratorService';
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
-  UnknownShareViewer,
-  UnknownCaptureModal,
   promoteUnknownToFood,
   deleteCapture,
   buildAnalysisFromGeminiAnalysis,
@@ -88,6 +86,19 @@ export default function UnknownEntryFlow({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Auto-run AI retry in background when the viewer opens.
+  // This way the user sees the image + type picker immediately while AI is working.
+  const hasAutoRetried = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!open || !canMutate || !captureId || !imageBase64 || !userId) return;
+    if (hasAutoRetried.current) return;
+    hasAutoRetried.current = true;
+    // Kick off AI analysis silently without blocking the UI
+    runAiRetry({ silent: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   if (!open) return null;
 
   const close = () => {
@@ -95,6 +106,7 @@ export default function UnknownEntryFlow({
     setRetrying(false);
     setDeleting(false);
     setError(null);
+    hasAutoRetried.current = false;
     onClose?.();
   };
 
@@ -112,23 +124,27 @@ export default function UnknownEntryFlow({
     });
   };
 
-  const handleRetry = async () => {
-    if (!captureId || !imageBase64 || !userId) return;
-    setRetrying(true);
-    setError(null);
+  /**
+   * Run the AI analysis on the stored image.
+   * IMPORTANT: we do NOT pass captureId to analyzeImage here so the
+   * backend idempotency guard doesn't return the cached "other" result
+   * from the original failed classification.
+   *
+   * @param {{ silent?: boolean }} opts  When silent=true, errors are swallowed
+   *   (used for the background auto-retry on modal open).
+   */
+  const runAiRetry = async ({ silent = false } = {}) => {
+    if (!imageBase64 || !userId) return;
+    if (!silent) { setRetrying(true); setError(null); }
     try {
       const file = base64ToImageFile(imageBase64);
-
-      // Use the unified orchestrator (single Gemini call) so weight, education,
-      // and smartwatch captures are re-classified consistently with the main
-      // capture flow — replaces the old two-step imageTypeDetector chain.
-      const detectedType = await analyzeImage(file, { userId, captureId });
+      // Do NOT pass captureId — avoids idempotency guard returning cached "other"
+      const detectedType = await analyzeImage(file, { userId });
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
         if (!hasRecognizedFood(analysis)) {
-          setRetrying(false);
-          setError("Still couldn't recognise it — try Edit instead.");
+          if (!silent) { setRetrying(false); setError("Still couldn't recognise it — choose a category below."); }
           return;
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
@@ -137,7 +153,6 @@ export default function UnknownEntryFlow({
         finish({ kind: 'food', captureId });
 
       } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
-        // Save weight entry to DB, then retag capture
         await saveWeight({
           userId,
           weightValue: detectedType.details.weightValue,
@@ -150,7 +165,6 @@ export default function UnknownEntryFlow({
         finish({ kind: 'weight', captureId });
 
       } else if (detectedType.type === 'education') {
-        // Save education log to DB, then retag capture
         await saveLog({
           userId,
           platform: detectedType.details.platform || 'Online Meeting',
@@ -163,7 +177,6 @@ export default function UnknownEntryFlow({
         finish({ kind: 'education', captureId });
 
       } else if (detectedType.type === 'smartwatch') {
-        // Save watch activity via education log (same table), then retag capture
         await saveLog({
           userId,
           platform: detectedType.details.source || 'Smartwatch',
@@ -176,14 +189,22 @@ export default function UnknownEntryFlow({
         finish({ kind: 'smartwatch', captureId });
 
       } else {
-        setRetrying(false);
-        setError("Still couldn't recognise it — try Edit instead.");
+        // AI returned "other" — show the category picker so user can manually classify
+        if (!silent) {
+          setRetrying(false);
+          setError("Still couldn't identify it. Please choose a category:");
+          setStage('view'); // Stay on view so category buttons are visible
+        }
       }
     } catch {
-      setRetrying(false);
-      setError("Couldn't analyse the photo — try Edit instead.");
+      if (!silent) {
+        setRetrying(false);
+        setError("Analysis failed — please choose a category manually:");
+      }
     }
   };
+
+  const handleRetry = () => runAiRetry({ silent: false });
 
   const handleDelete = async () => {
     if (!captureId || !userId) return;
@@ -263,24 +284,113 @@ export default function UnknownEntryFlow({
 
   return (
     <>
-      <UnknownShareViewer
-        isOpen={stage === 'view'}
-        imageBase64={imageBase64}
-        canMutate={canMutate}
-        retrying={retrying || deleting}
-        error={error}
-        onRetry={handleRetry}
-        onEdit={() => { setError(null); setStage('pick'); }}
-        onDelete={handleDelete}
-        onClose={close}
-      />
+      {/* ── View stage: image + AI retry indicator + inline category picks ── */}
+      {stage === 'view' && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70"
+          onClick={close}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white shadow-xl overflow-y-auto max-h-[90vh] pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-2">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Unrecognised photo</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {retrying ? 'AI is re-analysing…' : 'Help us classify this capture.'}
+                </p>
+              </div>
+              <button type="button" onClick={close} aria-label="Close"
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100">✕</button>
+            </div>
 
-      <UnknownCaptureModal
-        isOpen={stage === 'pick'}
-        onClose={() => setStage('view')}
-        onPick={(type) => setStage(type)}
-      />
+            {/* Image */}
+            <div className="px-5 pb-3">
+              {imageBase64 ? (
+                <img
+                  src={imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`}
+                  alt="Captured photo"
+                  className="w-full rounded-xl object-cover max-h-56"
+                />
+              ) : (
+                <div className="flex h-40 items-center justify-center rounded-xl bg-gray-100 text-sm text-gray-400">
+                  Image unavailable
+                </div>
+              )}
+            </div>
 
+            {/* AI status strip */}
+            {retrying && (
+              <div className="mx-5 mb-3 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                <span className="text-sm text-blue-700 font-medium">AI is re-analysing — you can also pick below…</span>
+              </div>
+            )}
+
+            {/* Error / hint */}
+            {error && !retrying && (
+              <div className="mx-5 mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            {/* ── Inline category quick-picks (always visible) ── */}
+            {canMutate && (
+              <div className="px-5 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  What is this photo?
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { type: 'food',      icon: '🍽️', label: 'Food / Drink',    sub: 'Meal, shake, tea, etc.' },
+                    { type: 'weight',    icon: '⚖️',  label: 'Weight Scale',   sub: 'Scale with reading' },
+                    { type: 'education', icon: '🎓',  label: 'Education',      sub: 'Meeting screenshot' },
+                    { type: 'smartwatch',icon: '⌚',  label: 'Smartwatch',     sub: 'Steps / calories' },
+                  ].map(({ type, icon, label, sub }) => (
+                    <button
+                      key={type}
+                      type="button"
+                      disabled={retrying || deleting}
+                      onClick={() => { setError(null); setStage(type); }}
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
+                    >
+                      <span className="text-2xl">{icon}</span>
+                      <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
+                      <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Retry AI button — secondary action */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={retrying || deleting}
+                    onClick={handleRetry}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {retrying ? 'Analysing…' : '🔄 Retry AI'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={retrying || deleting}
+                    onClick={handleDelete}
+                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting…' : '🗑️ Delete'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Category modals ── */}
       <SmartFoodSearchModal
         isOpen={stage === 'food'}
         onClose={() => setStage('view')}
@@ -290,15 +400,15 @@ export default function UnknownEntryFlow({
         timeLabel="What food was in this photo?"
         skipTypeSelect={true}
         altSwitchButtons={[
-          { label: 'Weight', icon: '⚖️', sub: 'It\'s a scale photo', onClick: () => setStage('weight') },
-          { label: 'Education', icon: '🎓', sub: 'It\'s a meeting screen', onClick: () => setStage('education') },
+          { label: 'Weight', icon: '⚖️', sub: "It's a scale photo", onClick: () => setStage('weight') },
+          { label: 'Education', icon: '🎓', sub: "It's a meeting screen", onClick: () => setStage('education') },
         ]}
       />
 
       <ManualWeightEntryModal
         isOpen={stage === 'weight'}
         onClose={() => setStage('view')}
-        onBack={() => setStage('pick')}
+        onBack={() => setStage('view')}
         onSave={handleWeightSave}
         imagePreview={imageBase64}
       />
@@ -306,7 +416,7 @@ export default function UnknownEntryFlow({
       <ManualEducationEntryModal
         isOpen={stage === 'education'}
         onClose={() => setStage('view')}
-        onBack={() => setStage('pick')}
+        onBack={() => setStage('view')}
         onSave={handleEducationSave}
       />
     </>

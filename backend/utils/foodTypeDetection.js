@@ -45,11 +45,14 @@ function getFoodTypeByName(name) {
   
   // Liquid keywords
   const liquidKeywords = [
-    'milk', 'tea', 'coffee', 'juice', 'shake', 'smoothie', 
+    'milk', 'tea', 'coffee', 'juice', 'shake', 'smoothie',
     'lassi', 'water', 'soup', 'broth', 'drink', 'beverage',
     'formula 1', 'afresh', 'lemonade', 'buttermilk', 'yogurt drink',
     'energy drink', 'soda', 'cola', 'beer', 'wine', 'cocktail',
-    'syrup', 'sauce (liquid)', 'gravy', 'dal (liquid)'
+    'syrup', 'sauce (liquid)', 'gravy', 'dal (liquid)',
+    // Indian beverages
+    'chai', 'kaapi', 'kappi', 'moru', 'chaas', 'nimbu pani',
+    'tender coconut', 'coconut water', 'sugarcane juice',
   ];
   
   if (liquidKeywords.some(keyword => nameLower.includes(keyword))) {
@@ -63,7 +66,17 @@ function getFoodTypeByName(name) {
     'salad', 'egg', 'paneer', 'dal', 'sambar', 'pasta',
     'noodles', 'meat', 'mutton', 'beef', 'pork', 'prawn',
     'cake', 'cookie', 'biscuit', 'chocolate', 'sweet',
-    'pickle', 'chutney', 'powder', 'flour'
+    'pickle', 'chutney', 'powder', 'flour',
+    // Tamil Nadu foods
+    'pongal', 'uthappam', 'vada', 'appam', 'idiyappam', 'puttu',
+    'parotta', 'kothu parotta', 'rasam', 'kuzhambu', 'kootu',
+    'poriyal', 'avial', 'thayir sadam', 'curd rice', 'puliyodarai',
+    'elumichai sadam', 'thengai sadam', 'tomato rice', 'murukku',
+    'seedai', 'sundal', 'bonda', 'bajji', 'mixture', 'halwa',
+    'payasam', 'laddu', 'mysore pak',
+    // Herbalife solid supplements
+    'formula 2', 'multivitamin', 'cell activator', 'nightworks', 'niteworks',
+    'herbalife tablet', 'herbalife capsule', 'xtra-cal',
   ];
   
   if (solidKeywords.some(keyword => nameLower.includes(keyword))) {
@@ -93,7 +106,12 @@ function identifyFoodType(food) {
     'milkshake', 'milk shake', 'smoothie', 'juice', 'lassi',
     'tea', 'coffee', 'shake', 'beverage', 'drink', 'soup',
     'broth', 'formula 1', 'afresh', 'water', 'lemonade',
-    'buttermilk', 'energy drink', 'soda', 'cola', 'cocktail'
+    'buttermilk', 'energy drink', 'soda', 'cola', 'cocktail',
+    // Indian beverages
+    'chai', 'kaapi', 'kappi', 'moru', 'chaas',
+    'tender coconut', 'nimbu pani', 'shikanji',
+    // Herbalife non-meal beverages
+    'afresh energy drink', 'herbal tea concentrate', 'herbalife tea',
   ];
   
   if (name) {
@@ -186,9 +204,29 @@ function validateCorrectionByType(aiFood, savedCorrection) {
  * If a record contains at least one non-exempted food, it still counts.
  */
 const EXEMPTED_MEAL_FOODS = [
-  'water', 'coffee', 'tea', 'afresh', 'black tea', 'green tea',
-  'black coffee', 'herbal tea', 'lemon water', 'hot water',
-  'cold water', 'sparkling water', 'mineral water',
+  // Plain water variants
+  'water', 'lemon water', 'hot water', 'cold water', 'sparkling water',
+  'mineral water', 'coconut water', 'tender coconut water',
+
+  // Coffee variants (English + Indian)
+  'coffee', 'black coffee', 'filter coffee', 'south indian coffee',
+  'kaapi', 'kappi', 'kumbakonam coffee', 'instant coffee', 'espresso',
+
+  // Tea variants (English + Indian — 'chai' must be explicit for Tamil Nadu users)
+  'tea', 'black tea', 'green tea', 'herbal tea', 'masala tea',
+  'chai', 'masala chai', 'ginger chai', 'cutting chai', 'milk tea',
+  'kadak chai', 'adrak chai', 'elaichi chai', 'kulhad chai',
+  'chamomile tea', 'peppermint tea', 'lemon tea',
+  'herbalife herbal tea concentrate', 'herbalife tea', 'herbal tea concentrate',
+
+  // Herbalife non-meal beverages (Afresh is an energy drink, NOT meal replacement)
+  'afresh', 'afresh energy drink', 'herbalife afresh',
+
+  // Indian dairy beverages (plain, unsweetened variants)
+  'buttermilk', 'moru', 'chaas', 'lassi',
+
+  // Other non-meal beverages
+  'lemonade', 'nimbu pani', 'shikanji',
 ];
 
 /**

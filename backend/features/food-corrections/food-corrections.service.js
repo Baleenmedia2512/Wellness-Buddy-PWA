@@ -146,17 +146,48 @@ export async function searchFoodHistory({ userId, searchTerm }) {
 
 // ─── update meal analysis ───────────────────────────────────────────────────
 export async function updateAnalysis(input) {
-  const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = input;
+  const {
+    id, userId, analysisData,
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol, glycemicIndex,
+    totalVitaminA, totalVitaminC, totalVitaminD, totalVitaminE, totalVitaminK,
+    totalVitaminB1, totalVitaminB2, totalVitaminB3, totalVitaminB6, totalVitaminB9, totalVitaminB12,
+    totalCalcium, totalIron, totalMagnesium, totalPotassium, totalZinc, totalPhosphorus,
+  } = input;
   const currentTime = getISTTimestamp();
-  const data = await repo.updateMealAnalysis(id, userId, {
+  const updatePayload = {
     AnalysisData: JSON.stringify(analysisData),
-    TotalCalories: totalCalories || 0,
-    TotalProtein: totalProtein || 0,
-    TotalCarbs: totalCarbs || 0,
-    TotalFat: totalFat || 0,
-    TotalFiber: totalFiber || 0,
-    UpdatedAt: currentTime,
-  });
+    TotalCalories:    totalCalories    || 0,
+    TotalProtein:     totalProtein     || 0,
+    TotalCarbs:       totalCarbs       || 0,
+    TotalFat:         totalFat         || 0,
+    TotalFiber:       totalFiber       || 0,
+    UpdatedAt:        currentTime,
+  };
+  // Only update extended fields when provided (undefined = not edited, keep existing DB value)
+  if (totalSugar       != null) updatePayload.TotalSugar       = totalSugar;
+  if (totalSodium      != null) updatePayload.TotalSodium      = totalSodium;
+  if (totalCholesterol != null) updatePayload.TotalCholesterol  = totalCholesterol;
+  if (glycemicIndex    != null) updatePayload.GlycemicIndex     = glycemicIndex;
+  if (totalVitaminA    != null) updatePayload.TotalVitaminA     = totalVitaminA;
+  if (totalVitaminC    != null) updatePayload.TotalVitaminC     = totalVitaminC;
+  if (totalVitaminD    != null) updatePayload.TotalVitaminD     = totalVitaminD;
+  if (totalVitaminE    != null) updatePayload.TotalVitaminE     = totalVitaminE;
+  if (totalVitaminK    != null) updatePayload.TotalVitaminK     = totalVitaminK;
+  if (totalVitaminB1   != null) updatePayload.TotalVitaminB1    = totalVitaminB1;
+  if (totalVitaminB2   != null) updatePayload.TotalVitaminB2    = totalVitaminB2;
+  if (totalVitaminB3   != null) updatePayload.TotalVitaminB3    = totalVitaminB3;
+  if (totalVitaminB6   != null) updatePayload.TotalVitaminB6    = totalVitaminB6;
+  if (totalVitaminB9   != null) updatePayload.TotalVitaminB9    = totalVitaminB9;
+  if (totalVitaminB12  != null) updatePayload.TotalVitaminB12   = totalVitaminB12;
+  if (totalCalcium     != null) updatePayload.TotalCalcium      = totalCalcium;
+  if (totalIron        != null) updatePayload.TotalIron         = totalIron;
+  if (totalMagnesium   != null) updatePayload.TotalMagnesium    = totalMagnesium;
+  if (totalPotassium   != null) updatePayload.TotalPotassium    = totalPotassium;
+  if (totalZinc        != null) updatePayload.TotalZinc         = totalZinc;
+  if (totalPhosphorus  != null) updatePayload.TotalPhosphorus   = totalPhosphorus;
+
+  const data = await repo.updateMealAnalysis(id, userId, updatePayload);
   if (data.length === 0) {
     return { httpStatus: 403, body: { success: false, message: 'Unauthorized or meal not found' } };
   }
