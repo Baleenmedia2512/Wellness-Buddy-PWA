@@ -226,9 +226,10 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {boolean} [props.showTimeline]  when true the feed is rendered as a
  *        vertical activity timeline with a date-group header and left-side
  *        time labels (ff.diary-timeline). Default false (flat card list).
- * @param {Set<string>} [props.analyzingCaptureIds]  set of capture IDs whose
- *        AI analysis is currently in flight. Passed to OtherRow so the card
- *        shows an inline loading state and disables further taps/swipes.
+ * @param {Set<string>} [props.analyzingCaptureIds]  capture IDs with a
+ *        user-initiated pre-flight AI run (handleEntryOpen). Locks tap/swipe.
+ * @param {Map<string, { imageBase64?: string, imagePath?: string, capturedAt?: string }>} [props.pendingCaptureMeta]
+ *        optimistic diary rows for in-flight background analysis (Phase 2).
  */
 export default function DiaryFeed({
   ownerUserId,
@@ -240,6 +241,7 @@ export default function DiaryFeed({
   filterKinds = null,
   showTimeline = false,
   analyzingCaptureIds = null,
+  pendingCaptureMeta = null,
 }) {
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
@@ -268,7 +270,10 @@ export default function DiaryFeed({
         analyzingCaptureIds.has(captureIdStr);
       const isBackgroundPending =
         entry.kind === 'unknown' &&
-        entry.payload?.isPendingAnalysis === true &&
+        (entry.payload?.isPendingAnalysis === true ||
+          (captureIdStr !== '' &&
+            pendingCaptureMeta != null &&
+            pendingCaptureMeta.has(captureIdStr))) &&
         !isAnalyzing;
       return (
         <Row
@@ -283,12 +288,64 @@ export default function DiaryFeed({
         />
       );
     },
-    [onEntryOpen, onEntryDelete, analyzingCaptureIds],
+    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta],
   );
 
-  if (loading && !data) return <FeedSkeleton />;
-  if (error && !data)   return <FeedError error={error} onRetry={refresh} />;
-  if (!data)            return <FeedSkeleton />;
+  /** Build optimistic unknown rows for captures still being classified. */
+  const withOptimisticEntries = useMemo(() => {
+    const base = Array.isArray(data?.entries) ? data.entries : [];
+    if (!pendingCaptureMeta || pendingCaptureMeta.size === 0) return base;
+
+    const existingIds = new Set(
+      base
+        .map((e) => e.capture?.id ?? e.payload?.id)
+        .filter((id) => id != null && id !== '')
+        .map(String),
+    );
+
+    const optimistic = [];
+    pendingCaptureMeta.forEach((meta, captureId) => {
+      if (existingIds.has(captureId)) return;
+      optimistic.push({
+        kind: 'unknown',
+        capturedAt: meta.capturedAt || new Date().toISOString(),
+        capture: { id: captureId, type: 'pending' },
+        payload: {
+          id: captureId,
+          imageBase64: meta.imageBase64 ?? null,
+          imagePath: meta.imagePath ?? null,
+          isPendingAnalysis: true,
+        },
+      });
+    });
+
+    if (optimistic.length === 0) return base;
+    return [...optimistic, ...base].sort(
+      (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+    );
+  }, [data?.entries, pendingCaptureMeta]);
+
+  if (loading && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+    return <FeedSkeleton />;
+  }
+  if (error && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+    return <FeedError error={error} onRetry={refresh} />;
+  }
+  if (!data && pendingCaptureMeta && pendingCaptureMeta.size > 0) {
+    const optimisticOnly = withOptimisticEntries;
+    const visibleOnly = Array.isArray(filterKinds)
+      ? optimisticOnly.filter((e) => filterKinds.includes(e.kind))
+      : optimisticOnly;
+    if (visibleOnly.length === 0) return <FeedSkeleton />;
+    return (
+      <div data-testid="diary-feed">
+        <div className="space-y-3">
+          {visibleOnly.map(renderRow)}
+        </div>
+      </div>
+    );
+  }
+  if (!data) return <FeedSkeleton />;
 
   const { entries = [], date: dateStr, isSelf } = data;
 
@@ -296,8 +353,8 @@ export default function DiaryFeed({
   // tab only renders `unknown` rows). When no filter is supplied the full
   // merged feed is shown (backward-compatible default).
   const visibleEntries = Array.isArray(filterKinds)
-    ? entries.filter((e) => filterKinds.includes(e.kind))
-    : entries;
+    ? withOptimisticEntries.filter((e) => filterKinds.includes(e.kind))
+    : withOptimisticEntries;
 
   if (visibleEntries.length === 0) {
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;

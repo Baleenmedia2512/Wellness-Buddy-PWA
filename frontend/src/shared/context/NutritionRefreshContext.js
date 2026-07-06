@@ -22,16 +22,29 @@ const NutritionRefreshContext = createContext(null);
 export function NutritionRefreshProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingRefresh, setPendingRefresh] = useState(false);
-  /** Capture IDs whose AI analysis is in-flight (home → diary "Analyzing…"). */
+  /** Capture IDs whose background AI analysis is in-flight. */
   const [analyzingCaptureIds, setAnalyzingCaptureIds] = useState(() => new Set());
+  /** Optimistic diary metadata keyed by capture ID (image shown before list refetch). */
+  const [pendingCaptureMeta, setPendingCaptureMeta] = useState(() => new Map());
 
-  const markCaptureAnalyzing = useCallback((captureId) => {
+  const markCaptureAnalyzing = useCallback((captureId, meta = {}) => {
     if (captureId == null || captureId === '') return;
     const id = String(captureId);
     setAnalyzingCaptureIds((prev) => {
       if (prev.has(id)) return prev;
       return new Set([...prev, id]);
     });
+    if (meta && (meta.imageBase64 || meta.imagePath || meta.capturedAt)) {
+      setPendingCaptureMeta((prev) => {
+        const next = new Map(prev);
+        next.set(id, {
+          imageBase64: meta.imageBase64 ?? null,
+          imagePath: meta.imagePath ?? null,
+          capturedAt: meta.capturedAt ?? new Date().toISOString(),
+        });
+        return next;
+      });
+    }
   }, []);
 
   const clearCaptureAnalyzing = useCallback((captureId) => {
@@ -40,6 +53,12 @@ export function NutritionRefreshProvider({ children }) {
     setAnalyzingCaptureIds((prev) => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setPendingCaptureMeta((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
       next.delete(id);
       return next;
     });
@@ -96,6 +115,7 @@ export function NutritionRefreshProvider({ children }) {
     triggerRefresh,
     pendingRefresh,
     analyzingCaptureIds,
+    pendingCaptureMeta,
     markCaptureAnalyzing,
     clearCaptureAnalyzing,
   };

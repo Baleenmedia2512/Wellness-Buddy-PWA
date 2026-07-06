@@ -146,7 +146,7 @@ export async function fetchWatchForDay(ownerUserId, date) {
  */
 export async function fetchUnknownCapturesForDay(ownerUserId, date) {
   const supabase = getSupabaseClient();
-  const { start, end } = istDayBounds(date);
+  const { start, end } = istDayBoundsWithOffset(date);
   const { data, error } = await supabase
     .from('captures_table')
     .select('"ID", "UserID", "ImageType", "ImageBase64", "ImagePath", "PublicShareToken", "CreatedAt"')
@@ -168,7 +168,7 @@ export async function fetchUnknownCapturesForDay(ownerUserId, date) {
  */
 export async function fetchPendingCapturesForDay(ownerUserId, date) {
   const supabase = getSupabaseClient();
-  const { start, end } = istDayBounds(date);
+  const { start, end } = istDayBoundsWithOffset(date);
   const { data, error } = await supabase
     .from('captures_table')
     .select('"ID", "UserID", "ImageType", "ImageBase64", "ImagePath", "PublicShareToken", "CreatedAt"')

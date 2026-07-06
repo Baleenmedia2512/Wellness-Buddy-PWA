@@ -560,7 +560,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
           isAnalyzing
             ? 'AI is analysing this photo — please wait'
             : showBackgroundHint
-            ? 'Photo saved — tap to identify while analysis runs in background'
+            ? 'Photo uploaded — AI analysis in progress'
             : 'Unrecognised capture, tap to identify or swipe to delete'
         }
         data-testid="diary-row-unknown"
@@ -578,6 +578,8 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
           'relative z-10 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden transition-shadow',
           isAnalyzing
             ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
+            : showBackgroundHint
+            ? 'bg-emerald-50/80 border border-emerald-200 cursor-pointer hover:shadow-md'
             : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
         ].join(' ')}
         style={{
@@ -593,7 +595,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
         )}
 
         {/* AI analysis indeterminate progress bar across the card top */}
-        {isAnalyzing && (
+        {(isAnalyzing || showBackgroundHint) && (
           <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl overflow-hidden bg-emerald-100" aria-hidden="true">
             <div className="h-full bg-emerald-500 w-2/5 animate-shimmer" />
           </div>
@@ -611,11 +613,11 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
             </>
           ) : showBackgroundHint ? (
             <>
-              <h4 className="font-semibold text-emerald-700 truncate">Photo saved</h4>
+              <h4 className="font-semibold text-emerald-700 truncate">Analyzing…</h4>
               <p className="text-xs text-emerald-600/80">
                 {hideTime
-                  ? 'Analyzing — results will appear shortly'
-                  : `${formatTime(entry.capturedAt)} · Analyzing…`}
+                  ? 'Your photo is being analyzed'
+                  : `${formatTime(entry.capturedAt)} · AI analysis in progress`}
               </p>
             </>
           ) : (
