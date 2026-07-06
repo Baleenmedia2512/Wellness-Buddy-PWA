@@ -80,6 +80,18 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Before/after testimonial upload + coach OTP verification flow.',
   },
+
+  // Reports module — coach/upline analytics.
+  // Currently: direct-downline weight status (current vs BMI 19–23 ideal range).
+  // Tab is only shown to coach / upline / admin / developer roles.
+  // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
+  // localStorage 'ff.reports-module'='false' to disable.
+  'ff.reports-module': {
+    envKey:         'REACT_APP_FF_REPORTS_MODULE',
+    storageKey:     'ff.reports-module',
+    defaultEnabled: true,
+    description:    'Reports module with downline weight status report for coaches.',
+  },
 });
 
 function readStorage(key) {

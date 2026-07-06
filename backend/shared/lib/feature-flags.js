@@ -152,3 +152,12 @@ registerFlag({
   description:    'Before/after testimonial upload for members + coach OTP verification flow. Members upload photos + weights; coach receives email with OTP to verify. Coach dashboard shows team upload status.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.reports-module',
+  owner:          '@reports-team',
+  createdAt:      '2026-07-06',
+  removeBy:       '2026-12-31',
+  description:    'Reports module: coach/upline analytics starting with the direct-downline weight status report (current vs BMI 19–23 ideal range). Tab visible only to coach/upline/admin/developer roles.',
+  defaultEnabled: true,
+});

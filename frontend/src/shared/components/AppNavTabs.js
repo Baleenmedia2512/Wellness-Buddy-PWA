@@ -1,4 +1,5 @@
-// Seven-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// Eight-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
 import React from 'react';
 import {
   Home,
@@ -8,6 +9,7 @@ import {
   Heart,
   Map,
   Trophy,
+  FileBarChart,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 
@@ -20,6 +22,8 @@ export default function AppNavTabs({
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowTestimonials,
+  onShowReports,
+  reportsEnabled = false,
 }) {
   return (
     <div
@@ -103,6 +107,21 @@ export default function AppNavTabs({
         label="Results"
         ariaLabel="Testimonials"
       />
+      {reportsEnabled && (
+        <NavTabButton
+          onClick={onShowReports ?? (() => {})}
+          active={activePage === 'reports'}
+          activeBg="bg-indigo-100"
+          hoverBg="hover:bg-indigo-50"
+          icon={FileBarChart}
+          iconActiveClass="text-indigo-700"
+          iconClass="text-indigo-600"
+          labelActiveClass="text-indigo-900"
+          labelClass="text-indigo-800"
+          label="Reports"
+          ariaLabel="Reports"
+        />
+      )}
     </div>
   );
 }

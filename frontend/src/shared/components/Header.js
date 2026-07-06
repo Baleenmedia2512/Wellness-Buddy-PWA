@@ -24,10 +24,11 @@ const Header = ({
   onShowNutritionCentersMap,
   onShowActivityReport,
   onShowTestimonials,
+  onShowReports,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
-  activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|'activity-report'|null
+  activePage = null, // 'dashboard'|'enrollment'|'counselling'|'physical-club'|'activity-report'|'reports'|null
   manualModeActive = false,
   onToggleManualMode,
   navOnly = false,
@@ -185,6 +186,8 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowReports={onShowReports}
+          reportsEnabled={['coach', 'upline', 'admin', 'developer'].includes(userRole)}
         />
       </nav>
     );
@@ -374,6 +377,8 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowReports={onShowReports}
+          reportsEnabled={['coach', 'upline', 'admin', 'developer'].includes(userRole)}
         />
       </nav>
 
