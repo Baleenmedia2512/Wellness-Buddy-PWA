@@ -22,6 +22,28 @@ const NutritionRefreshContext = createContext(null);
 export function NutritionRefreshProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingRefresh, setPendingRefresh] = useState(false);
+  /** Capture IDs whose AI analysis is in-flight (home → diary "Analyzing…"). */
+  const [analyzingCaptureIds, setAnalyzingCaptureIds] = useState(() => new Set());
+
+  const markCaptureAnalyzing = useCallback((captureId) => {
+    if (captureId == null || captureId === '') return;
+    const id = String(captureId);
+    setAnalyzingCaptureIds((prev) => {
+      if (prev.has(id)) return prev;
+      return new Set([...prev, id]);
+    });
+  }, []);
+
+  const clearCaptureAnalyzing = useCallback((captureId) => {
+    if (captureId == null || captureId === '') return;
+    const id = String(captureId);
+    setAnalyzingCaptureIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   /**
    * Trigger a global nutrition data refresh.
@@ -73,6 +95,9 @@ export function NutritionRefreshProvider({ children }) {
     refreshKey,
     triggerRefresh,
     pendingRefresh,
+    analyzingCaptureIds,
+    markCaptureAnalyzing,
+    clearCaptureAnalyzing,
   };
 
   return (

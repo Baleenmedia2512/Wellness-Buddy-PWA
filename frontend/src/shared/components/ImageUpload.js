@@ -594,100 +594,7 @@ const ImageUpload = forwardRef(
       isCameraActive: () => cameraActiveRef.current,
     }));
 
-    // Taglines for loading overlay based on state and image type
-    const getTaglines = () => {
-      if (loadingState === "saving") {
-        if (imageType === "weight") {
-          return [
-            "Saving your progress...",
-            "Updating your wellness journey...",
-            "Recording your achievement...",
-            "Your transformation is being tracked...",
-            "Almost there...",
-          ];
-        }
-        if (imageType === "education") {
-          return [
-            "Logging your learning session...",
-            "Recording your education time...",
-            "Saving your study progress...",
-            "Updating your education log...",
-            "Almost done...",
-          ];
-        }
-        return [
-          "Saving your delicious meal...",
-          "Recording your nutrition...",
-          "Updating your food diary...",
-          "Your healthy choice is being saved...",
-          "Almost there...",
-        ];
-      }
-
-      // When image type is not yet detected
-      if (!imageType) {
-        return [
-          "Discovering what you've got...",
-          "AI magic in progress...",
-          "Smart detection underway...",
-          "Let's see what we have here...",
-          "Analyzing your image...",
-        ];
-      }
-
-      if (imageType === "weight") {
-        return [
-          "Reading your scale...",
-          "Tracking your body metrics...",
-          "Calculating your progress...",
-          "Measuring your transformation...",
-          "Your wellness data is loading...",
-        ];
-      }
-
-      if (imageType === "education") {
-        return [
-          "Detecting your learning session...",
-          "Recognizing your study platform...",
-          "Identifying your meeting...",
-          "Logging your education time...",
-          "Processing your study session...",
-        ];
-      }
-
-      return [
-        "Analyzing your delicious meal...",
-        "Discovering ingredients...",
-        "Calculating your nutrition...",
-        "Breaking down macros & calories...",
-        "Smart portion sizing...",
-        "AI-powered food recognition...",
-        "Your healthy choice matters...",
-        "Nutrition facts loading...",
-        "USDA database lookup...",
-        "Creating your meal summary...",
-      ];
-    };
-
-    const taglines = getTaglines();
-
-    const [currentTaglineIndex, setCurrentTaglineIndex] = useState(0);
-
-    // Reset tagline index when loading state or image type changes
-    useEffect(() => {
-      setCurrentTaglineIndex(0);
-    }, [loadingState, imageType]);
-
-    useEffect(() => {
-      if (loading) {
-        const interval = setInterval(() => {
-          setCurrentTaglineIndex(
-            (prevIndex) => (prevIndex + 1) % taglines.length,
-          );
-        }, 2500);
-        return () => clearInterval(interval);
-      }
-    }, [loading, taglines.length, loadingState, imageType]);
+    // Taglines removed — Home only shows upload/saved states; AI runs in Diary.
 
     return (
       <>
@@ -730,8 +637,8 @@ const ImageUpload = forwardRef(
                   title="Click to view full size"
                 />
 
-                {/* Non-Blocking Loading Indicator - Top Right Corner */}
-                {loading && (
+                {/* Upload in progress — only while persisting the capture row */}
+                {loading && loadingState === "uploading" && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -741,25 +648,29 @@ const ImageUpload = forwardRef(
                       <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
                     </div>
                     <span className="text-[10px] sm:text-xs font-semibold">
-                      {loadingState === "saving" ? "Saving..." : "Analyzing..."}
+                      Saving...
                     </span>
                   </motion.div>
                 )}
 
-                {/* Success Badge — only when analysis produced a recognised type.
-                    When imageType is null (analysis failed / FALLBACK) we show
-                    nothing here; App.js surfaces an error message instead. */}
-                {!loading && imageType && (
+                {/* Saved badge — image persisted; analysis runs in Diary only */}
+                {!loading && loadingState === "saved" && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-green-500 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-semibold shadow-lg flex items-center gap-1"
+                    className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-emerald-600 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-semibold shadow-lg flex items-center gap-1"
                   >
                     <span>✓</span>
-                    <span>Ready</span>
+                    <span>Photo Saved</span>
                   </motion.div>
                 )}
               </div>
+
+              {!loading && loadingState === "saved" && (
+                <p className="text-center text-sm text-emerald-700 font-medium">
+                  Results will appear in your diary shortly.
+                </p>
+              )}
 
               {/* Camera access moved to floating button - no UI shown here */}
             </div>

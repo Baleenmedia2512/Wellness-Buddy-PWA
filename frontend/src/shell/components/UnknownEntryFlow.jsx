@@ -119,8 +119,7 @@ export default function UnknownEntryFlow({
     if (!r || r.status !== 'success') return 'view';
     if (r.type === 'food') return 'ai-review-food';
     if (r.type === 'weight') return 'weight';
-    if (r.type === 'education') return 'education';
-    if (r.type === 'smartwatch') return 'smartwatch';
+    if (r.type === 'education' || r.type === 'smartwatch') return 'ai-review-education';
     return 'view';
   }
 
@@ -141,6 +140,17 @@ export default function UnknownEntryFlow({
   const [aiWeight, setAiWeight] = useState(
     initialAiResult?.status === 'success' && initialAiResult.type === 'weight'
       ? { weightValue: initialAiResult.weightValue, unit: initialAiResult.unit }
+      : null,
+  );
+  // AI-detected education / smartwatch data for the review screen.
+  const [aiEducation, setAiEducation] = useState(
+    initialAiResult?.status === 'success'
+      && (initialAiResult.type === 'education' || initialAiResult.type === 'smartwatch')
+      ? {
+          platform: initialAiResult.platform,
+          topic: initialAiResult.topic,
+          captureKind: initialAiResult.type,
+        }
       : null,
   );
 
@@ -225,11 +235,21 @@ export default function UnknownEntryFlow({
 
       } else if (detectedType.type === 'education') {
         setRetrying(false);
-        setStage('education');
+        setAiEducation({
+          platform: detectedType.details?.platform || 'Online Meeting',
+          topic: detectedType.details?.topic || 'Education Meeting',
+          captureKind: 'education',
+        });
+        setStage('ai-review-education');
 
       } else if (detectedType.type === 'smartwatch') {
         setRetrying(false);
-        setStage('smartwatch');
+        setAiEducation({
+          platform: detectedType.details?.source || 'Smartwatch',
+          topic: `Calories Burned: ${detectedType.details?.caloriesBurned || 0} kcal`,
+          captureKind: 'smartwatch',
+        });
+        setStage('ai-review-education');
 
       } else {
         // AI returned "other" — show the category picker so user can manually classify.
@@ -319,7 +339,11 @@ export default function UnknownEntryFlow({
     }
   };
 
-  const handleEducationSave = async ({ platform, topic }) => {
+  const handleEducationSave = async (
+    { platform, topic },
+    captureKind = 'education',
+    { errorStage = 'view' } = {},
+  ) => {
     try {
       await saveLog({
         userId,
@@ -327,14 +351,26 @@ export default function UnknownEntryFlow({
         topic,
         captureId,
         imageBase64,
-        // Anchor the record to the diary's selected date, not the current time.
         imageTimestamp: buildNoonTimestamp(diaryDate),
       });
+      await retagCapture(captureKind);
       finish({ kind: 'education', captureId });
     } catch {
       setError("Couldn't save — please try again.");
-      setStage('view');
+      setStage(errorStage);
     }
+  };
+
+  const handleAiEducationConfirm = async () => {
+    if (!aiEducation?.platform) return;
+    await handleEducationSave(
+      {
+        platform: aiEducation.platform,
+        topic: aiEducation.topic || 'Education Meeting',
+      },
+      aiEducation.captureKind || 'education',
+      { errorStage: 'ai-review-education' },
+    );
   };
 
   return (
@@ -424,6 +460,87 @@ export default function UnknownEntryFlow({
               <button
                 type="button"
                 onClick={() => { setError(null); setStage('food'); }}
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Edit Manually
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ai-review-education stage: review AI-detected meeting before saving ── */}
+      {stage === 'ai-review-education' && aiEducation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-review-edu-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70"
+          onClick={close}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white shadow-xl overflow-y-auto max-h-[90vh] pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-2">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-emerald-500 text-lg" aria-hidden="true">✓</span>
+                  <h2 id="ai-review-edu-title" className="text-lg font-semibold text-gray-900">
+                    {aiEducation.captureKind === 'smartwatch' ? 'AI detected activity' : 'AI detected education'}
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-500 mt-0.5">Review and save, or edit manually.</p>
+              </div>
+              <button type="button" onClick={close} aria-label="Close"
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100">✕</button>
+            </div>
+
+            <div className="px-5 pb-3">
+              {imageBase64 && (
+                <img
+                  src={imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`}
+                  alt="Captured photo"
+                  className="w-full rounded-xl object-cover max-h-48"
+                />
+              )}
+            </div>
+
+            <div className="px-5">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 space-y-1">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Platform</span>
+                  <span className="text-gray-900 font-medium">{aiEducation.platform}</span>
+                </div>
+                {aiEducation.topic && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Topic</span>
+                    <span className="text-gray-900 font-medium text-right max-w-[60%]">{aiEducation.topic}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mx-5 mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            <div className="px-5 mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={handleAiEducationConfirm}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-colors"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setStage(aiEducation.captureKind === 'smartwatch' ? 'smartwatch' : 'education');
+                }}
                 className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 Edit Manually
@@ -566,9 +683,15 @@ export default function UnknownEntryFlow({
 
       <ManualEducationEntryModal
         isOpen={stage === 'education' || stage === 'smartwatch'}
+        skipTypeSelect={true}
+        initialPlatform={aiEducation?.platform}
+        initialTopic={aiEducation?.topic}
         onClose={() => setStage('view')}
         onBack={() => setStage('view')}
-        onSave={handleEducationSave}
+        onSave={(data) => handleEducationSave(
+          data,
+          stage === 'smartwatch' ? 'smartwatch' : 'education',
+        )}
       />
     </>
   );
