@@ -8421,21 +8421,35 @@ function WellnessValleyApp() {
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
                 <div className="px-4 py-4">
                   {/* Date pill */}
-                  <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-[0.18em]">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                  </p>
-                  {/* Greeting */}
-                  <div className="mt-1.5">
-                    <h2 className="text-xl font-extrabold text-white leading-tight">
+                  <div className="flex items-center justify-between gap-2">
+                    {/* Date */}
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300 whitespace-nowrap">
+                      {new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+
+                    {/* Greeting */}
+                    <h2 className="text-base font-semibold text-white leading-tight text-right">
                       {(() => {
                         const h = new Date().getHours();
                         const name = (savedUserName || user?.displayName || '').split(' ')[0];
-                        const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-                        return name ? `${greeting}, ${name}! 👋` : `${greeting}! 👋`;
+                        const greeting =
+                          h < 12
+                            ? 'Good morning'
+                            : h < 17
+                            ? 'Good afternoon'
+                            : 'Good evening';
+
+                        return name
+                          ? `${greeting}, ${name}! 👋`
+                          : `${greeting}! 👋`;
                       })()}
                     </h2>
-                    <p className="text-sm text-emerald-200 mt-1">Snap a photo to log your food, weight or meeting</p>
                   </div>
+
                   {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
                   <div className="mt-4 flex gap-2">
                     <button
