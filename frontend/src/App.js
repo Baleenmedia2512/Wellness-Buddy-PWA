@@ -8474,31 +8474,35 @@ function WellnessValleyApp() {
             {/* ── Hero banner: greeting + Camera / Gallery CTAs (always visible) ── */}
             <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
-                <div className="px-4 py-4">
+                <div className="px-2 py-3">
                   {/* Date pill */}
-                  <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-[0.18em]">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                  </p>
-                  {/* Greeting */}
-                  <div className="mt-1.5">
-                    <h2 className="text-xl font-extrabold text-white leading-tight flex items-center flex-wrap gap-1">
+                  <div className="flex items-center justify-between">
+                    {/* Date */}
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
+                      {new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+
+                    {/* Greeting */}
+                    <h2 className="text-xs font-bold text-white text-right">
                       {(() => {
                         const h = new Date().getHours();
                         const name = (savedUserName || user?.displayName || '').split(' ')[0];
-                        const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-                        const text = name ? `${greeting}, ${name}!` : `${greeting}!`;
-                        return (
-                          <>
-                            <span>{text}</span>
-                            <EmojiOrNative emoji="👋" className="w-6 h-6" nativeClassName="text-xl" />
-                          </>
-                        );
+                        const greeting =
+                          h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+
+                        return name
+                          ? `${greeting}, ${name}! 👋`
+                          : `${greeting}! 👋`;
                       })()}
                     </h2>
-                    <p className="text-sm text-emerald-200 mt-1">Snap a photo to log your food, weight or meeting</p>
                   </div>
+
                   {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-5 flex gap-3">
                     <button
                       onClick={() => fileInputRef.current?.openCamera?.()}
                       disabled={loading}
