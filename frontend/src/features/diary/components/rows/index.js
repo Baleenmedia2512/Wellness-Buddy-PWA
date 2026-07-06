@@ -521,9 +521,10 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
 // prevents duplicate AI requests. Swipe-to-delete is also disabled during
 // analysis to avoid race conditions with the pending AI request.
 
-export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTime = false }) {
+export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackgroundPending = false, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const showBackgroundHint = isBackgroundPending && !isAnalyzing;
 
   return (
     <div
@@ -558,6 +559,8 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
         aria-label={
           isAnalyzing
             ? 'AI is analysing this photo — please wait'
+            : showBackgroundHint
+            ? 'Photo saved — tap to identify while analysis runs in background'
             : 'Unrecognised capture, tap to identify or swipe to delete'
         }
         data-testid="diary-row-unknown"
@@ -610,7 +613,13 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
             <>
               <h4 className="font-semibold text-gray-900 truncate">Other</h4>
               <p className="text-xs text-gray-500">
-                {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
+                {hideTime
+                  ? showBackgroundHint
+                    ? "analyzing · tap to fix"
+                    : "couldn't identify"
+                  : showBackgroundHint
+                  ? `${formatTime(entry.capturedAt)} · analyzing · tap to fix`
+                  : `${formatTime(entry.capturedAt)} · couldn't identify`}
               </p>
             </>
           )}

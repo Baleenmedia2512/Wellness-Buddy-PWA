@@ -23,6 +23,7 @@ import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBann
 import DiaryEntryUndoBanner, { DIARY_UNDO_SECONDS } from './DiaryEntryUndoBanner';
 import { undoDeleteCapture, hasRecognizedFood, buildAnalysisFromGeminiAnalysis } from '../../features/captures';
 import { analyzeImage } from '../../shared/services/orchestratorService';
+import { saveLog } from '../../features/education';
 import { deleteMealById, undoMealDelete } from '../../features/nutrition';
 import { deleteWeight, undoDeleteWeight } from '../../features/weight';
 import {
@@ -41,6 +42,23 @@ const EducationDashboard = lazy(() => import('../../features/education/component
 const DiaryFeed = lazy(() =>
   import('../../features/diary').then((m) => ({ default: m.DiaryFeed })),
 );
+
+/** Noon on the diary day — keeps saves inside activity windows. */
+function buildNoonTimestamp(date) {
+  if (!date) return undefined;
+  const d = new Date(date);
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString();
+}
+
+async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
+  if (!captureId || !userId || !apiBaseUrl) return;
+  await fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: captureId, userId, imageType }),
+  });
+}
 // FEATURE DISABLED: const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
 /**
@@ -209,10 +227,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
     if (entry.kind === 'unknown') {
       const p = entry.payload || {};
-      const captureId = entry.capture?.id ?? p.id;
+      const captureIdRaw = entry.capture?.id ?? p.id;
+      const captureId =
+        captureIdRaw != null && captureIdRaw !== ''
+          ? String(captureIdRaw)
+          : '';
 
       // Guard: only one AI run per capture at a time.
-      if (analyzingRef.current.has(captureId)) return;
+      if (captureId && analyzingRef.current.has(captureId)) return;
 
       // When the user cannot mutate (viewing someone else's diary), skip AI
       // and open the modal immediately in read-only view mode.
@@ -269,18 +291,74 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               unit: detectedType.details.unit || 'kg',
             };
           } else if (detectedType.type === 'education') {
+            const platform = detectedType.details?.platform || 'Online Meeting';
+            const topic = detectedType.details?.topic || 'Education Meeting';
+
+            if (detectedType.confidence > 0.7) {
+              try {
+                await saveLog({
+                  userId: ownerId,
+                  platform,
+                  topic,
+                  captureId,
+                  imageBase64,
+                  imageTimestamp: buildNoonTimestamp(diaryDate),
+                  confidence: detectedType.confidence,
+                });
+                await retagCaptureType({
+                  apiBaseUrl,
+                  captureId,
+                  userId: ownerId,
+                  imageType: 'education',
+                });
+                setDiaryEducationRefreshKey((k) => k + 1);
+                reloadDiary();
+                return;
+              } catch {
+                // Fall through to review modal if auto-save fails.
+              }
+            }
+
             initialAiResult = {
               status: 'success',
               type: 'education',
-              platform: detectedType.details?.platform || 'Online Meeting',
-              topic: detectedType.details?.topic || 'Education Meeting',
+              platform,
+              topic,
             };
           } else if (detectedType.type === 'smartwatch') {
+            const platform = detectedType.details?.source || 'Smartwatch';
+            const topic = `Calories Burned: ${detectedType.details?.caloriesBurned || 0} kcal`;
+
+            if (detectedType.confidence > 0.7) {
+              try {
+                await saveLog({
+                  userId: ownerId,
+                  platform,
+                  topic,
+                  captureId,
+                  imageBase64,
+                  imageTimestamp: buildNoonTimestamp(diaryDate),
+                  confidence: detectedType.confidence,
+                });
+                await retagCaptureType({
+                  apiBaseUrl,
+                  captureId,
+                  userId: ownerId,
+                  imageType: 'smartwatch',
+                });
+                setDiaryEducationRefreshKey((k) => k + 1);
+                reloadDiary();
+                return;
+              } catch {
+                // Fall through to review modal if auto-save fails.
+              }
+            }
+
             initialAiResult = {
               status: 'success',
               type: 'smartwatch',
-              platform: detectedType.details?.source || 'Smartwatch',
-              topic: `Calories Burned: ${detectedType.details?.caloriesBurned || 0} kcal`,
+              platform,
+              topic,
             };
           } else {
             initialAiResult = {
