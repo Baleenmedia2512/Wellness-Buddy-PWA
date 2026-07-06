@@ -433,7 +433,6 @@ export async function editTestimonial(rawBody) {
       status: 'incomplete',
     },
   };
-  };
 }
 
 /**
