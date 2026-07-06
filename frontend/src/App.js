@@ -8157,7 +8157,7 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials…" />}>
             <TestimonialsPage
-              user={userContext ?? { userId: null }}
+              user={{ userId: user?.id ?? userContext?.userId ?? null }}
               userRole={userRole}
               onBack={() => {
                 setShowTestimonials(false);

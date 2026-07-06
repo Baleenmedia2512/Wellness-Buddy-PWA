@@ -1,13 +1,9 @@
 -- Migration: create_testimonials_table
 -- Run this SQL in the Supabase SQL editor before deploying the testimonials feature.
 --
--- Also create the Supabase Storage bucket manually (or via the dashboard):
---   1. Go to Storage > New Bucket
---   2. Name: testimonials
---   3. Public: OFF (private)
---   4. Max file size: 1 MB (1048576 bytes)
---   5. Allowed MIME types: image/jpeg, image/png, image/webp
--- Then add RLS policies to the bucket per section below.
+-- STORAGE BUCKET (create manually in Supabase dashboard first):
+--   Name: testimonials  |  Public: OFF  |  Max file size: 1 MB
+--   Then run the storage policies section below.
 
 -- ─── 1. Table ─────────────────────────────────────────────────────────────────
 
@@ -21,8 +17,8 @@ CREATE TABLE IF NOT EXISTS testimonials_table (
   after_weight_kg   numeric(5, 2)  NOT NULL,
   goal_type         text           NOT NULL CHECK (goal_type IN ('loss', 'gain')),
   duration_text     text           NOT NULL,
-  status            text           NOT NULL DEFAULT 'pending'
-                                   CHECK (status IN ('pending', 'verified')),
+  status            text           NOT NULL DEFAULT 'incomplete'
+                                   CHECK (status IN ('incomplete', 'pending', 'verified')),
   otp_hash          text,
   otp_expires_at    timestamp,
   verified_at       timestamp,
@@ -34,14 +30,31 @@ CREATE TABLE IF NOT EXISTS testimonials_table (
 CREATE INDEX IF NOT EXISTS idx_testimonials_user_id   ON testimonials_table (user_id);
 CREATE INDEX IF NOT EXISTS idx_testimonials_coach_id  ON testimonials_table (coach_id);
 
--- ─── 2. Row-Level Security ────────────────────────────────────────────────────
--- Enable RLS so the anon/service keys only access allowed rows.
--- Adjust policies to match your Supabase auth setup.
+-- ─── 2. Table permissions (no RLS — auth enforced at API layer) ───────────────
 
-ALTER TABLE testimonials_table ENABLE ROW LEVEL SECURITY;
+ALTER TABLE testimonials_table DISABLE ROW LEVEL SECURITY;
 
--- Service-role key (used by the Next.js API) bypasses RLS — no policy needed.
--- If using anon key add granular policies here.
+GRANT ALL ON testimonials_table                    TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE testimonials_table_id_seq TO anon, authenticated;
+
+-- ─── 3. Fix existing table (if already created with old CHECK constraint) ────
+-- ALTER TABLE testimonials_table DROP CONSTRAINT IF EXISTS testimonials_table_status_check;
+-- ALTER TABLE testimonials_table ADD CONSTRAINT testimonials_table_status_check
+--   CHECK (status IN ('incomplete', 'pending', 'verified'));
+-- ALTER TABLE testimonials_table ALTER COLUMN status SET DEFAULT 'incomplete';
+
+-- ─── 4. Storage bucket policies ───────────────────────────────────────────────
+-- The `storage.objects` table has its own RLS. With 0 bucket policies the
+-- anon key is denied and Postgres throws "new row violates row-level security
+-- policy". Add a single permissive policy for the testimonials bucket:
+
+CREATE POLICY "testimonials_bucket_all"
+  ON storage.objects
+  FOR ALL
+  TO anon, authenticated
+  USING     (bucket_id = 'testimonials')
+  WITH CHECK (bucket_id = 'testimonials');
+
 
 -- ─── 3. Supabase Storage bucket RLS policies ──────────────────────────────────
 -- Run these AFTER creating the `testimonials` bucket in the Supabase dashboard.

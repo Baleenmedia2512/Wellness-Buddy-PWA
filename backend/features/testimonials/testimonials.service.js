@@ -124,11 +124,11 @@ function buildTestimonialEmailHtml({ memberName, goalType, beforeWeight, afterWe
       <div class="otp-expiry">⏰ Valid for 24 hours</div>
     </div>
     <div class="instructions">
-      <strong>How to verify:</strong><br>
-      1. Open the Wellness Valley app<br>
-      2. Tap the <strong>Results</strong> tab in the navigation bar<br>
-      3. Find <strong>${memberName}</strong> in your team list<br>
-      4. Tap <strong>Verify Testimonial</strong> and enter the 6-digit OTP above
+      <strong>How to verify your member:</strong><br>
+      1. Review the before &amp; after photos above<br>
+      2. If you approve, <strong>share the 6-digit OTP</strong> with <strong>${memberName}</strong> via WhatsApp or phone<br>
+      3. Your member enters the OTP in the Wellness Valley app to get their testimonial verified<br>
+      4. If you don't approve, simply don't share the OTP
     </div>
   </div>
   <div class="footer">
@@ -165,59 +165,98 @@ async function sendCoachEmail({ coachEmail, coachName, memberName, goalType, bef
 // ─── Service functions ────────────────────────────────────────────────────────
 
 /**
- * Submit a new testimonial (or replace an existing one) for a member.
+ * Submit a new testimonial (or update an existing one) for a member.
+ * If no after photo is provided → status: 'incomplete' (no email sent).
+ * If after photo is present    → status: 'pending'    (email + OTP sent to coach).
  */
 export async function submitTestimonial(rawBody) {
   const payload = validateSubmitTestimonial(rawBody);
 
-  logger.info('[testimonials] submit', { userId: payload.userId });
+  logger.info('[testimonials] submit', { userId: payload.userId, hasAfter: payload.hasAfter });
 
-  // Resolve coach
   const userInfo = await repo.findCoachIdForUser(payload.userId);
   if (!userInfo || !userInfo.coachId) {
     throw new ValidationError(400, 'User has no coach assigned. Cannot submit testimonial.');
   }
 
-  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
-  if (!coachInfo || !coachInfo.email) {
-    throw new ValidationError(400, 'Coach email not found. Cannot send verification email.');
-  }
-
   const ts = Date.now();
   const beforePath = storagePath(payload.userId, 'before', ts);
-  const afterPath  = storagePath(payload.userId, 'after', ts);
 
-  // Upload images
   await repo.uploadImage(payload.beforeImageBase64, beforePath);
-  await repo.uploadImage(payload.afterImageBase64, afterPath);
 
-  // Generate OTP
-  const otp      = generateOtp();
-  const otpHash  = await bcrypt.hash(otp, 10);
-  const otpExpiry = otpExpiryIst(24);
+  let afterPath = null;
+  if (payload.hasAfter) {
+    afterPath = storagePath(payload.userId, 'after', ts);
+    await repo.uploadImage(payload.afterImageBase64, afterPath);
+  }
 
-  // Soft-delete any existing testimonial so the new one is canonical
-  const existing = await repo.findByUserId(payload.userId);
+  // Generate OTP only when after photo is present (complete submission)
+  let otpHash = null;
+  let otpExpiry = null;
+  let otp = null;
+  if (payload.hasAfter) {
+    otp       = generateOtp();
+    otpHash   = await bcrypt.hash(otp, 10);
+    otpExpiry = otpExpiryIst(24);
+  }
+
+  const newStatus = payload.hasAfter ? 'pending' : 'incomplete';
+  const existing  = await repo.findByUserId(payload.userId);
 
   let row;
+  const rowData = {
+    beforeImagePath: beforePath,
+    beforeWeightKg:  payload.beforeWeightKg,
+    goalType:        payload.goalType,
+    durationText:    payload.durationText,
+    status:          newStatus,
+    otpHash,
+    otpExpiresAt:    otpExpiry,
+    verifiedAt:      null,
+    ...(afterPath ? { afterImagePath: afterPath, afterWeightKg: payload.afterWeightKg } : {}),
+  };
+
   if (existing) {
-    row = await repo.updateTestimonial(existing.id, {
-      beforeImagePath: beforePath,
-      afterImagePath:  afterPath,
-      beforeWeightKg:  payload.beforeWeightKg,
-      afterWeightKg:   payload.afterWeightKg,
-      goalType:        payload.goalType,
-      durationText:    payload.durationText,
-      status:          'pending',
-      otpHash,
-      otpExpiresAt:    otpExpiry,
-      verifiedAt:      null,
-    });
+    row = await repo.updateTestimonial(existing.id, rowData);
   } else {
     row = await repo.insertTestimonial({
-      userId:          payload.userId,
-      coachId:         userInfo.coachId,
-      beforeImagePath: beforePath,
+      userId:  payload.userId,
+      coachId: userInfo.coachId,
+      // Placeholder paths for incomplete — will be replaced on completion
+      afterImagePath: afterPath ?? beforePath,
+      afterWeightKg:  payload.afterWeightKg ?? payload.beforeWeightKg,
+      ...rowData,
+    });
+  }
+
+  // Only email coach when the testimonial is complete
+  if (payload.hasAfter) {
+    const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+    if (coachInfo?.email) {
+      await sendCoachEmail({
+        coachEmail:    coachInfo.email,
+        coachName:     coachInfo.name,
+        memberName:    userInfo.userName,
+        goalType:      payload.goalType,
+        beforeWeight:  payload.beforeWeightKg,
+        afterWeight:   payload.afterWeightKg,
+        durationText:  payload.durationText,
+        otp,
+        beforeImagePath: beforePath,
+        afterImagePath:  afterPath,
+      });
+    }
+  }
+
+  const message = payload.hasAfter
+    ? 'Testimonial submitted! Your coach will receive a verification email with the OTP.'
+    : 'Before photo saved! Come back later to add your after photo and complete your testimonial.';
+
+  return {
+    httpStatus: 200,
+    body: { success: true, message, testimonialId: row.id, status: newStatus },
+  };
+}
       afterImagePath:  afterPath,
       beforeWeightKg:  payload.beforeWeightKg,
       afterWeightKg:   payload.afterWeightKg,
@@ -260,7 +299,8 @@ export async function verifyOtp(rawBody) {
 
   const row = await repo.findById(testimonialId);
   if (!row) throw new ValidationError(404, 'Testimonial not found');
-  if (row.status === 'verified') throw new ValidationError(409, 'This testimonial is already verified');
+  if (row.status === 'incomplete') throw new ValidationError(422, 'Testimonial is incomplete — after photo not yet added');
+  if (row.status === 'verified')   throw new ValidationError(409, 'This testimonial is already verified');
 
   if (!row.otp_hash) throw new ValidationError(422, 'No OTP is set for this testimonial');
 
@@ -312,42 +352,64 @@ export async function editTestimonial(rawBody) {
   if (payload.goalType       !== undefined) updates.goalType       = payload.goalType;
   if (payload.durationText   !== undefined) updates.durationText   = payload.durationText;
 
-  // Always reset to pending and issue a new OTP
-  const otp       = generateOtp();
-  const otpHash   = await bcrypt.hash(otp, 10);
-  const otpExpiry = otpExpiryIst(24);
-  updates.status      = 'pending';
-  updates.otpHash     = otpHash;
-  updates.otpExpiresAt = otpExpiry;
-  updates.verifiedAt  = null;
+  // Determine if after photo is now present (either just uploaded or already stored)
+  const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
+  // Only treat as "has after" if it's a real after path (not the before-placeholder used for incomplete)
+  const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
+  const isNowComplete  = !!(updates.afterImagePath) || existing.status !== 'incomplete';
 
-  await repo.updateTestimonial(existing.id, updates);
+  if (isNowComplete) {
+    // Full testimonial — reset to pending and issue new OTP
+    const otp       = generateOtp();
+    const otpHash   = await bcrypt.hash(otp, 10);
+    const otpExpiry = otpExpiryIst(24);
+    updates.status       = 'pending';
+    updates.otpHash      = otpHash;
+    updates.otpExpiresAt = otpExpiry;
+    updates.verifiedAt   = null;
 
-  // Re-email coach with new OTP
-  if (coachInfo?.email && userInfo?.userName) {
-    const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
-    const currentAfterPath  = updates.afterImagePath  ?? existing.after_image_path;
-    await sendCoachEmail({
-      coachEmail:    coachInfo.email,
-      coachName:     coachInfo.name,
-      memberName:    userInfo.userName,
-      goalType:      updates.goalType     ?? existing.goal_type,
-      beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
-      afterWeight:   updates.afterWeightKg  ?? existing.after_weight_kg,
-      durationText:  updates.durationText ?? existing.duration_text,
-      otp,
-      beforeImagePath: currentBeforePath,
-      afterImagePath:  currentAfterPath,
-    });
+    await repo.updateTestimonial(existing.id, updates);
+
+    if (coachInfo?.email && userInfo?.userName) {
+      const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
+      await sendCoachEmail({
+        coachEmail:    coachInfo.email,
+        coachName:     coachInfo.name,
+        memberName:    userInfo.userName,
+        goalType:      updates.goalType    ?? existing.goal_type,
+        beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeight:   afterWeightNow,
+        durationText:  updates.durationText ?? existing.duration_text,
+        otp,
+        beforeImagePath: currentBeforePath,
+        afterImagePath:  afterPathNow,
+      });
+    }
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'Testimonial updated! A new verification email has been sent to your coach.',
+        testimonialId: existing.id,
+        status: 'pending',
+      },
+    };
   }
+
+  // Still incomplete — just save changes, no email
+  updates.status = 'incomplete';
+  await repo.updateTestimonial(existing.id, updates);
 
   return {
     httpStatus: 200,
     body: {
       success: true,
-      message: 'Testimonial updated. A new verification email has been sent to your coach.',
+      message: 'Before photo updated. Add your after photo when you\'re ready to complete your testimonial.',
       testimonialId: existing.id,
+      status: 'incomplete',
     },
+  };
   };
 }
 

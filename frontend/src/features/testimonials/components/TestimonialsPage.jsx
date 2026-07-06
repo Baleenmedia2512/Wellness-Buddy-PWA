@@ -16,79 +16,84 @@ import TestimonialStatusCard from './TestimonialStatusCard';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
 
 function MemberView({ userId }) {
-  const beforeInputRef = useRef(null);
-  const afterInputRef  = useRef(null);
+  const beforeCameraRef  = useRef(null);
+  const beforeGalleryRef = useRef(null);
+  const afterCameraRef   = useRef(null);
+  const afterGalleryRef  = useRef(null);
 
   const {
-    form,
-    setField,
-    beforeImage,
-    afterImage,
-    handleBeforeImageChange,
-    handleAfterImageChange,
-    existing,
-    isEditMode,
-    submitting,
-    error,
-    success,
-    handleSubmit,
-    startEdit,
-    cancelEdit,
+    form, setField,
+    beforeImage, afterImage,
+    handleBeforeImageChange, handleAfterImageChange,
+    existing, reload,
+    isEditMode, isCompletingMode,
+    submitting, error, success,
+    handleSubmit, startEdit, startCompleting, cancelEdit,
   } = useTestimonial({ userId });
 
-  // Still loading existing testimonial
   if (existing === undefined) {
     return <LoadingSpinner message="Loading your testimonial…" />;
   }
 
+  // Show form when: no existing record, or in full-edit mode, or in completing mode
+  const showForm = !existing || isEditMode || isCompletingMode;
+
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
-      {/* Page title */}
       <div className="flex items-center gap-2">
         <Trophy className="h-5 w-5 text-green-600" />
         <h1 className="text-lg font-bold text-gray-900">My Transformation</h1>
       </div>
 
-      {/* Success banner */}
       {success && (
         <div className="bg-green-50 border border-green-300 rounded-2xl px-4 py-3 text-sm text-green-800 font-medium">
           {success}
         </div>
       )}
 
-      {/* Show status card when there's an existing testimonial and not in edit mode */}
-      {existing && !isEditMode && (
-        <TestimonialStatusCard testimonial={existing} onEdit={startEdit} />
+      {/* Status card — shown when there's an existing record and not in edit mode */}
+      {existing && !isEditMode && !isCompletingMode && (
+        <TestimonialStatusCard
+          testimonial={existing}
+          onEdit={startEdit}
+          onAddAfter={existing.status === 'incomplete' ? startCompleting : null}
+          onVerified={reload}
+        />
       )}
 
-      {/* Show form when there's no existing testimonial OR we're in edit mode */}
-      {(!existing || isEditMode) && (
+      {/* Form — new submission, full edit, or completing incomplete */}
+      {showForm && (
         <TestimonialForm
           form={form}
           setField={setField}
           beforeImage={beforeImage}
           afterImage={afterImage}
-          beforeInputRef={beforeInputRef}
-          afterInputRef={afterInputRef}
-          onBeforeChange={handleBeforeImageChange}
-          onAfterChange={handleAfterImageChange}
+          beforeCameraRef={beforeCameraRef}
+          beforeGalleryRef={beforeGalleryRef}
+          afterCameraRef={afterCameraRef}
+          afterGalleryRef={afterGalleryRef}
+          onBeforeCameraChange={handleBeforeImageChange}
+          onBeforeGalleryChange={handleBeforeImageChange}
+          onAfterCameraChange={handleAfterImageChange}
+          onAfterGalleryChange={handleAfterImageChange}
           onSubmit={handleSubmit}
           submitting={submitting}
           error={error}
           isEditMode={isEditMode}
+          isIncomplete={isCompletingMode}
           onCancel={existing ? cancelEdit : null}
         />
       )}
 
-      {/* Info box — explain the flow to the member */}
-      {!existing && (
+      {/* How it works — only for fresh users */}
+      {!existing && !showForm && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 text-sm text-blue-800 space-y-1">
           <p className="font-bold">How it works</p>
           <ol className="list-decimal list-inside space-y-1 text-xs leading-5">
-            <li>Upload your before &amp; after photos.</li>
-            <li>Fill in your starting weight, final weight, goal type, and duration.</li>
-            <li>Tap <strong>Submit to Coach</strong> — your coach gets an email with the photos and a 6-digit OTP.</li>
-            <li>Your coach enters the OTP in the app to officially verify your testimonial.</li>
+            <li>Upload your <strong>Before</strong> photo now — After photo is optional at this step.</li>
+            <li>When you have your results, come back and add the <strong>After</strong> photo.</li>
+            <li>Your coach receives an email with the OTP — they share it with you.</li>
+            <li>Enter the OTP in the app to get your testimonial officially verified.</li>
           </ol>
         </div>
       )}

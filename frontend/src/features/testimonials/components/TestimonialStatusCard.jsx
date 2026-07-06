@@ -1,11 +1,13 @@
 /**
  * TestimonialStatusCard.jsx
  * Shows the member's current testimonial summary + status badge.
- * Provides an Edit button that triggers the parent to enter edit mode.
+ * When status is "pending", the member enters the OTP that their coach
+ * shared with them (coach received it by email after submission).
  */
-import React from 'react';
-import { CheckCircle, Clock, Pencil } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle, Clock, Pencil, ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { verifyTestimonialOtp } from '../services/testimonialApi.js';
 
 function StatusBadge({ status }) {
   if (status === 'verified') {
@@ -22,12 +24,36 @@ function StatusBadge({ status }) {
   );
 }
 
-export default function TestimonialStatusCard({ testimonial, onEdit }) {
+export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter, onVerified }) {
+  const [otp,        setOtp]        = useState('');
+  const [verifying,  setVerifying]  = useState(false);
+  const [otpError,   setOtpError]   = useState(null);
+  const [showOtpBox, setShowOtpBox] = useState(false);
+
   if (!testimonial) return null;
 
-  const diff = Math.abs(testimonial.afterWeightKg - testimonial.beforeWeightKg).toFixed(1);
-  const arrow = testimonial.goalType === 'loss' ? '↓' : '↑';
+  const diff      = Math.abs(testimonial.afterWeightKg - testimonial.beforeWeightKg).toFixed(1);
+  const arrow     = testimonial.goalType === 'loss' ? '↓' : '↑';
   const goalLabel = testimonial.goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
+
+  const handleVerify = async () => {
+    setOtpError(null);
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setOtpError('Enter the 6-digit OTP your coach shared with you');
+      return;
+    }
+    setVerifying(true);
+    try {
+      await verifyTestimonialOtp({ testimonialId: testimonial.id, otp: otp.trim() });
+      setShowOtpBox(false);
+      setOtp('');
+      if (onVerified) onVerified();
+    } catch (err) {
+      setOtpError(err.message || 'Invalid OTP. Ask your coach to share it again.');
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
@@ -92,7 +118,71 @@ export default function TestimonialStatusCard({ testimonial, onEdit }) {
         </p>
       )}
 
-      {/* Edit button — always available, always requires re-verification */}
+      {/* ── Incomplete: prompt to add after photo ─────────────────────────── */}
+      {testimonial.status === 'incomplete' && onAddAfter && (
+        <TouchFeedbackButton
+          onClick={onAddAfter}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors"
+        >
+          <CheckCircle className="h-4 w-4" />
+          Add After Photo &amp; Complete
+        </TouchFeedbackButton>
+      )}
+
+      {/* ── OTP section — member enters OTP shared by coach ─────────────── */}
+      {testimonial.status === 'pending' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+          <p className="text-sm text-amber-800 font-medium">
+            📧 Your coach received a verification email with a 6-digit OTP.
+            Ask them to share it with you, then enter it below.
+          </p>
+          {!showOtpBox ? (
+            <TouchFeedbackButton
+              onClick={() => setShowOtpBox(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              I have the OTP — Enter it now
+            </TouchFeedbackButton>
+          ) : (
+            <div className="space-y-3">
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="_ _ _ _ _ _"
+                value={otp}
+                onChange={(e) => {
+                  setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  setOtpError(null);
+                }}
+                className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                autoFocus
+              />
+              {otpError && (
+                <p className="text-xs text-red-600 text-center">{otpError}</p>
+              )}
+              <div className="flex gap-2">
+                <TouchFeedbackButton
+                  onClick={() => { setShowOtpBox(false); setOtp(''); setOtpError(null); }}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-gray-300 text-gray-600 text-sm font-semibold"
+                >
+                  Cancel
+                </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  onClick={handleVerify}
+                  disabled={verifying || otp.length !== 6}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors disabled:opacity-60"
+                >
+                  {verifying ? 'Verifying…' : 'Verify'}
+                </TouchFeedbackButton>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit button — always available, resets to pending + new OTP to coach */}
       <TouchFeedbackButton
         onClick={onEdit}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold hover:border-green-400 hover:text-green-700 transition-colors"
@@ -102,8 +192,8 @@ export default function TestimonialStatusCard({ testimonial, onEdit }) {
       </TouchFeedbackButton>
 
       {testimonial.status === 'pending' && (
-        <p className="text-xs text-amber-600 text-center">
-          After editing, your coach will receive a new verification email.
+        <p className="text-xs text-gray-400 text-center">
+          Editing resets verification — your coach gets a new OTP by email.
         </p>
       )}
     </div>

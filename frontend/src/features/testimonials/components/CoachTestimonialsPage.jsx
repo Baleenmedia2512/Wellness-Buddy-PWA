@@ -1,18 +1,18 @@
 /**
  * CoachTestimonialsPage.jsx
- * Coach's view of all direct-downline testimonials.
+ * Coach's read-only view of all direct-downline testimonials.
  * - Members with no testimonial are highlighted in red.
- * - Members with a pending testimonial show an orange badge + Verify button.
+ * - Members with a pending testimonial show an amber badge + reminder to share the OTP.
  * - Members with a verified testimonial show a green badge + before/after photos.
+ * OTP is entered by the MEMBER (not coach) after the coach shares it via WhatsApp/phone.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, Users } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import VerifyOtpModal from './VerifyOtpModal';
 import { listForCoach } from '../services/testimonialApi.js';
 
-function MemberRow({ user, testimonial, onVerifyClick }) {
+function MemberRow({ user, testimonial }) {
   const missing  = !testimonial;
   const pending  = testimonial?.status === 'pending';
   const verified = testimonial?.status === 'verified';
@@ -120,12 +120,9 @@ function MemberRow({ user, testimonial, onVerifyClick }) {
           </div>
 
           {pending && (
-            <TouchFeedbackButton
-              onClick={() => onVerifyClick({ id: testimonial.id, memberName: user.userName })}
-              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors"
-            >
-              Enter OTP to Verify
-            </TouchFeedbackButton>
+            <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center">
+              📧 OTP sent to your email — share it with {user.userName} to verify
+            </p>
           )}
 
           {verified && testimonial.verifiedAt && (
@@ -143,7 +140,8 @@ export default function CoachTestimonialsPage({ user }) {
   const [rows,    setRows]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
-  const [verifyTarget, setVerifyTarget] = useState(null); // { id, memberName }
+  // Coach view is read-only — OTP is entered by the member
+  // after the coach shares it with them via WhatsApp/phone.
 
   const coachId = user?.userId || user?.id;
 
@@ -221,22 +219,10 @@ export default function CoachTestimonialsPage({ user }) {
           key={member.userId}
           user={member}
           testimonial={testimonial}
-          onVerifyClick={setVerifyTarget}
         />
       ))}
 
-      {/* OTP verification modal */}
-      {verifyTarget && (
-        <VerifyOtpModal
-          testimonialId={verifyTarget.id}
-          memberName={verifyTarget.memberName}
-          onVerified={() => {
-            setVerifyTarget(null);
-            load(); // refresh list
-          }}
-          onClose={() => setVerifyTarget(null)}
-        />
-      )}
+
     </div>
   );
 }
