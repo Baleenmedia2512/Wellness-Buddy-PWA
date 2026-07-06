@@ -244,10 +244,20 @@ export default function DiaryFeed({
       // Resolve the capture ID the same way Dashboard.js does so the
       // Set lookup always matches (entry.capture?.id takes precedence).
       const captureId = entry.capture?.id ?? entry.payload?.id;
+      const captureIdStr =
+        captureId != null && captureId !== '' ? String(captureId) : '';
+      // Only lock tap while Dashboard is running a user-initiated pre-flight AI
+      // (handleEntryOpen). Background analysis from the capture flow must NOT
+      // block tap-to-fix — the user can always tap to re-run detection.
       const isAnalyzing =
         entry.kind === 'unknown' &&
+        captureIdStr !== '' &&
         analyzingCaptureIds != null &&
-        analyzingCaptureIds.has(captureId);
+        analyzingCaptureIds.has(captureIdStr);
+      const isBackgroundPending =
+        entry.kind === 'unknown' &&
+        entry.payload?.isPendingAnalysis === true &&
+        !isAnalyzing;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -255,7 +265,9 @@ export default function DiaryFeed({
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
           hideTime={hideTime}
-          {...(entry.kind === 'unknown' ? { isAnalyzing } : {})}
+          {...(entry.kind === 'unknown'
+            ? { isAnalyzing, isBackgroundPending }
+            : {})}
         />
       );
     },

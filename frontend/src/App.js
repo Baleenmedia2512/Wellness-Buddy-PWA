@@ -497,6 +497,8 @@ function WellnessValleyApp() {
   const {
     refreshKey: nutritionRefreshKey,
     triggerRefresh: triggerNutritionRefresh,
+    markCaptureAnalyzing,
+    clearCaptureAnalyzing,
   } = useNutritionRefresh();
 
   // Keep refs in sync with state for resume listener (avoids stale closures)
@@ -4581,6 +4583,38 @@ function WellnessValleyApp() {
   };
 
   /**
+   * Persist smartwatch / fitness-app screenshot activity without mounting UI.
+   */
+  const saveWatchActivityLog = async ({
+    userId,
+    imageBase64,
+    caloriesBurned,
+    source,
+    captureId,
+  }) => {
+    const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        imageBase64,
+        platform: source || "Smartwatch",
+        topic: `Calories Burned: ${caloriesBurned || 0} kcal`,
+        confidence: 0.9,
+        deviceInfo: window.navigator.userAgent,
+        clientTimestamp: new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset(),
+        captureId: captureId || undefined,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Failed to save activity log");
+    }
+    return data;
+  };
+
+  /**
    * Save education meeting log to database (AUTO-SAVE)
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
@@ -4593,6 +4627,7 @@ function WellnessValleyApp() {
     selectedClub = null,
     captureTimestamp = null,
     captureId = null,
+    { silent = false } = {},
   ) => {
     try {
       debugLog("?? Auto-saving education log:", educationData);
@@ -4752,9 +4787,11 @@ function WellnessValleyApp() {
       setLoadingState("idle");
     } catch (error) {
       console.error("? Failed to auto-save education log:", error);
-      setError(
-        error.message || "Failed to save education log. Please try again.",
-      );
+      if (!silent) {
+        setError(
+          error.message || "Failed to save education log. Please try again.",
+        );
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     }
@@ -4945,7 +4982,7 @@ function WellnessValleyApp() {
   };
 
   // Helper function to perform nutrition save
-  const performNutritionSave = async (saveData) => {
+  const performNutritionSave = async (saveData, { silent = false } = {}) => {
     const saveStart = Date.now();
     try {
       debugLog("?? [App] Starting nutrition save:", {
@@ -4953,8 +4990,8 @@ function WellnessValleyApp() {
         imagePath: saveData.imagePath,
         hasImageBase64: !!saveData.imageBase64,
       });
-      setSaveLoading(true);
-      // Stage 8 ï¿½ performNutritionSave entered
+      if (!silent) setSaveLoading(true);
+      // Stage 8 — performNutritionSave entered
       _ctLog(8, 'performNutritionSave entered', {
         userId: saveData.userId,
         hasImageBase64: !!saveData.imageBase64,
@@ -5002,7 +5039,7 @@ function WellnessValleyApp() {
         });
         debugLog("?? [nutrition] Attendance determined:", attendance);
 
-        if (attendance.locationError === "PERMISSION_DENIED") {
+        if (!silent && attendance.locationError === "PERMISSION_DENIED") {
           setAlertModal({
             isOpen: true,
             title: "Location Permission Required",
@@ -5108,10 +5145,10 @@ function WellnessValleyApp() {
       console.error("? [App] Error message:", err.message);
       console.error("? [App] Error stack:", err.stack);
       const friendlySaveError = getFriendlyErrorMessage(err);
-      setSaveError(friendlySaveError);
+      if (!silent) setSaveError(friendlySaveError);
       throw err;
     } finally {
-      setSaveLoading(false);
+      if (!silent) setSaveLoading(false);
       debugLog("? [App] Save loading finished");
     }
   };
@@ -5124,8 +5161,9 @@ function WellnessValleyApp() {
     processedImage: saveProcessedImage,
     analysisResult,
     exifTimestamp: saveExifTimestamp,
+    silent = false,
   }) => {
-    setLoadingState("saving");
+    if (!silent) setLoadingState("saving");
 
     // Return the Promise so callers can store it in savePromiseRef and await
     // it before opening the Dashboard. The IIFE catches all errors internally,
@@ -5169,7 +5207,7 @@ function WellnessValleyApp() {
             "Duplicate check failed, proceeding with save:",
             duplicateError,
           );
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, { silent });
           return;
         }
 
@@ -5177,7 +5215,7 @@ function WellnessValleyApp() {
           console.warn(
             "Invalid duplicate check response, proceeding with save",
           );
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, { silent });
           return;
         }
 
@@ -5188,12 +5226,12 @@ function WellnessValleyApp() {
           setShowDuplicateModal(true);
           setSaveLoading(false);
         } else {
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, { silent });
         }
       } catch (err) {
         console.error("? Save failed:", err?.message || err);
-        setSaveError(getFriendlyErrorMessage(err));
-        setSaveLoading(false);
+        if (!silent) setSaveError(getFriendlyErrorMessage(err));
+        if (!silent) setSaveLoading(false);
         // Trigger a refresh even on failure: a partial write (food row inserted
         // but capture promotion failed) leaves data in DB that the Dashboard
         // should discover. If nothing was written the fetch returns the same
@@ -5483,26 +5521,39 @@ function WellnessValleyApp() {
     }
 
     if (!user) {
-      setError("Please sign in to analyze food images");
+      setAlertModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Please sign in to save photos.",
+        type: "warning",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
 
-    // Re-check user status in real-time before analysis
+    // Re-check user status in real-time before upload
     const isActive = await checkUserStatus(user);
     if (!isActive) {
-      setError(
-        "Your account is inactive. Please contact support to reactivate.",
-      );
+      setAlertModal({
+        isOpen: true,
+        title: "Account inactive",
+        message:
+          "Your account is inactive. Please contact support to reactivate.",
+        type: "warning",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
-      setError(
-        "?? Image file is too large. Please choose a smaller image (max 10MB).",
-      );
+      setAlertModal({
+        isOpen: true,
+        title: "File too large",
+        message:
+          "Image file is too large. Please choose a smaller image (max 10MB).",
+        type: "error",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
@@ -5549,9 +5600,9 @@ function WellnessValleyApp() {
     savedWeightIdRef.current = null;
     setImageType(null);
     setSaveError(null);
-    setDetectedFoodNames([]); // Clear previous detection
-    setLoadingState("analyzing"); // Reset to analyzing state
-    lastImageFileRef.current = file; // Store for retry
+    setDetectedFoodNames([]);
+    setLoadingState("uploading");
+    lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
     // Stage 1 ï¿½ handleImageSelect entered
@@ -5563,6 +5614,7 @@ function WellnessValleyApp() {
     // ? PERFORMANCE TRACKING
     const perfStart = Date.now();
     debugLog("?? [PERF] ?? Image processing started");
+    let capturePersisted = false;
 
     // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -5613,140 +5665,158 @@ function WellnessValleyApp() {
         debugLog(`?? [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
       }
 
-      // Set preview and loading together to ensure overlay shows
+      // Set preview and uploading state while the capture row is persisted.
       setImagePreview(processedImage);
-      setLoading(true); // Ensure loading is true when preview shows
+      setLoading(true);
+      setLoadingState("uploading");
 
-      // ?? [Share] Pre-create the public-share row IN PARALLEL with Gemini
-      // detection. By the time we know the image is food, the share token is
-      // typically already returned, so the share button appears the same
-      // instant NutritionCard renders ? not several hundred ms later.
-      // If the image turns out to be weight/education/smartwatch, the row is
-      // simply left as a pending capture (auto-expires in 30 days) ? we never
-      // surface its URL to the user.
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
-      // Note: foodAutoSharedRef.current is already true (set above when share
-      // fired instantly after overlay). Do not reset it here ï¿½ that would allow
-      // the classification-gated share below to double-fire.
 
+      // ── Phase 1 (critical): persist image + capture row BEFORE any AI work ──
       const captureApiStart = Date.now();
       debugLog(
         `?? [PERF] ? POST /captures started (+${
           captureApiStart - perfStart
         }ms from capture start)`,
       );
-      const pendingSharePromise = (async () => {
-        try {
-          const capUserId = user?.id || (await getUserId(user));
-          if (!capUserId) return null;
-          const capRes = await fetch(
-            `${apiBaseUrl}/api/background-analysis/captures`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                userId: capUserId,
-                imageBase64: processedImage,
-                token: instantToken,
-                shareCode: instantShareCode,
-              }),
-            },
-          );
-          if (!capRes.ok) {
-            debugLog(
-              `?? [PERF] ? POST /captures FAILED in ${
-                Date.now() - captureApiStart
-              }ms (status ${capRes.status})`,
-            );
-            return null;
-          }
-          const capData = await capRes.json();
-          const capDuration = Date.now() - captureApiStart;
-          if (capData.ok && capData.data?.id) {
-            debugLog(
-              `?? [PERF] ? POST /captures: ${capDuration}ms (+${
-                Date.now() - perfStart
-              }ms from capture start) ? token ready`,
-            );
-            // Stage 2 ï¿½ capture row created
-            _ctLog(2, 'capture row created', { captureRowId: capData.data.id, shareCode: capData.data.shareCode || capData.data.token, latencyMs: capDuration });
-            return {
-              id: capData.data.id,
-              url: `${apiBaseUrl}/share/${
-                capData.data.shareCode || capData.data.token
-              }`,
-            };
-          }
-          debugLog(
-            `?? [PERF] ? POST /captures responded ok=false in ${capDuration}ms`,
-          );
-          return null;
-        } catch (err) {
-          debugLog(
-            `?? [PERF] ? POST /captures THREW after ${
-              Date.now() - captureApiStart
-            }ms: ${err?.message || err}`,
-          );
-          console.warn("[Share] pre-capture failed:", err);
-          return null;
+
+      let captureShare = null;
+      try {
+        const capUserId = user?.id || (await getUserId(user));
+        if (!capUserId) {
+          throw new Error("Unable to resolve user account");
         }
-      })();
-      // Store a reference so performNutritionSave can await this promise
-      // and guarantee captureId is set before the save request goes out.
-      pendingSharePromiseRef.current = pendingSharePromise;
-
-      // -- PHASE 3 MIGRATION: single orchestrator call replaces the old
-      // classifyImageTypeFast() + detectImageType() two-step chain.
-      // Both calls ran 2ï¿½3 Gemini requests; orchestrate runs exactly 1.
-      // The captures POST runs in parallel (pendingSharePromise above), so
-      // captureId is available from foodCaptureIdRef.current by the time
-      // orchestrate returns (~2 s AI latency >> ~0.3 s captures latency).
-
-      const apiStart = Date.now();
-      debugLog(
-        `?? [PERF] ? Orchestrate started (+${apiStart - perfStart}ms from capture start)`,
-      );
-
-      // Resolve user ID once for the orchestrate request.
-      let resolvedUserIdForOrchestrate = user?.id;
-      if (!resolvedUserIdForOrchestrate) {
-        try { resolvedUserIdForOrchestrate = await getUserId(user); } catch (_) {}
+        const capRes = await fetch(
+          `${apiBaseUrl}/api/background-analysis/captures`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: capUserId,
+              imageBase64: processedImage,
+              token: instantToken,
+              shareCode: instantShareCode,
+            }),
+          },
+        );
+        if (!capRes.ok) {
+          throw new Error(`Capture save failed (${capRes.status})`);
+        }
+        const capData = await capRes.json();
+        const capDuration = Date.now() - captureApiStart;
+        if (!capData.ok || !capData.data?.id) {
+          throw new Error("Capture save returned no id");
+        }
+        captureShare = {
+          id: capData.data.id,
+          url: `${apiBaseUrl}/share/${
+            capData.data.shareCode || capData.data.token
+          }`,
+        };
+        debugLog(
+          `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+            Date.now() - perfStart
+          }ms from capture start) ? token ready`,
+        );
+        _ctLog(2, 'capture row created', {
+          captureRowId: captureShare.id,
+          shareCode: capData.data.shareCode || capData.data.token,
+          latencyMs: capDuration,
+        });
+      } catch (capErr) {
+        debugLog(
+          `?? [PERF] ? POST /captures FAILED after ${
+            Date.now() - captureApiStart
+          }ms: ${capErr?.message || capErr}`,
+        );
+        setAlertModal({
+          isOpen: true,
+          title: "Photo not saved",
+          message:
+            "Could not save your photo. Please check your connection and try again.",
+          type: "error",
+        });
+        setLoading(false);
+        setImagePreview(null);
+        imageProcessingInProgress.current = false;
+        return;
       }
 
-      // Stage 3 ï¿½ orchestrate request started
-      _ctLog(3, 'orchestrate request started', { apiStart, userId: resolvedUserIdForOrchestrate ?? null });
+      foodCaptureIdRef.current = captureShare.id;
+      pendingSharePromiseRef.current = Promise.resolve(captureShare);
 
-      // ? PERFORMANCE: send the already-compressed image to the orchestrator
-      // instead of the original camera file. On Android the original image
-      // can be 4ï¿½8 MB; the compressed version is 150ï¿½300 KB ï¿½ a 10ï¿½20ï¿½
-      // reduction in upload size ? the single biggest latency win available.
+      // Phase 1 complete — image is safe; user can leave immediately.
+      capturePersisted = true;
+      setLoadingState("saved");
+      setLoading(false);
+      setImageType(null);
+      setNutritionData(null);
+      setWeightResult(null);
+      setEducationResult(null);
+      setWatchResult(null);
+      setError(null);
+      markCaptureAnalyzing(captureShare.id);
+      triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
+      navigateTo("home");
+      imageProcessingInProgress.current = false;
+
+      debugLog(
+        `?? [PERF] ? Phase 1 complete (+${
+          Date.now() - perfStart
+        }ms) — starting background AI`,
+      );
+
+      // Build compressed file for orchestrator (same as before).
       let fileForOrchestrate = file;
       try {
         const compressedBlob = await fetch(processedImage).then((r) => r.blob());
         fileForOrchestrate = new File(
           [compressedBlob],
-          file.name || 'capture.jpg',
-          { type: 'image/jpeg' },
-        );
-        debugLog(
-          `?? [PERF] ? Using compressed file for orchestrate: ${(fileForOrchestrate.size / 1024).toFixed(0)} KB` +
-          ` (original: ${(file.size / 1024).toFixed(0)} KB)`,
+          file.name || "capture.jpg",
+          { type: "image/jpeg" },
         );
       } catch (_) {
-        // Fallback to original file if blob conversion fails.
+        /* use original file */
       }
 
-      // Start orchestrate in parallel with the already-running captures POST.
-      // captureId will be read from foodCaptureIdRef.current after both settle.
-      const detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
-        userId: resolvedUserIdForOrchestrate ?? null,
-        // captureId intentionally omitted here ï¿½ pendingSharePromise resolves
-        // concurrently; idempotency is enforced at the save layer instead.
-      });
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try {
+          resolvedUserIdForOrchestrate = await getUserId(user);
+        } catch (_) {}
+      }
 
-      debugLog(
+      const pendingSharePromise = Promise.resolve(captureShare);
+      const bg = true; // background mode: never block home on AI; no result cards
+
+      // ── Phase 2: AI analysis runs asynchronously after persistence ──
+      void (async () => {
+        const apiStart = Date.now();
+        _ctLog(3, "orchestrate request started (background)", {
+          apiStart,
+          userId: resolvedUserIdForOrchestrate ?? null,
+          captureId: captureShare.id,
+        });
+
+        let detectedType;
+        try {
+          detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
+            userId: resolvedUserIdForOrchestrate ?? null,
+            captureId: String(captureShare.id),
+          });
+        } catch (orchErr) {
+          console.error("[Background AI] orchestrate failed:", orchErr);
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({
+            immediate: true,
+            source: "capture-analysis-failed",
+          });
+          clearCaptureAnalyzing(captureShare.id);
+          return;
+        }
+        debugLog(
         `?? [PERF] ? Orchestrate: ${Date.now() - apiStart}ms (+${
           Date.now() - perfStart
         }ms from capture start) ? type=${detectedType?.type}` +
@@ -5760,7 +5830,7 @@ function WellnessValleyApp() {
         (detectedType?.enrichmentJobId ? ` | enrichmentJobId=${detectedType.enrichmentJobId}` : ''),
       );
 
-      // Stage 4 ï¿½ orchestrate response received
+      // Stage 4 — orchestrate response received
       if (captureTraceRef.current) captureTraceRef.current.traceId = detectedType?.traceId ?? null;
       _ctLog(4, 'orchestrate response received', {
         latencyMs: Date.now() - apiStart,
@@ -5772,7 +5842,7 @@ function WellnessValleyApp() {
         foodCount: detectedType?.details?.foods?.length ?? 0,
         defaulted: detectedType?.details?.defaulted ?? false,
       });
-      // Stage 5 ï¿½ detectedType result (type routing decision)
+      // Stage 5 — detectedType result (type routing decision)
       _ctLog(5, 'detectedType routing', {
         routedTo: detectedType?.type === 'food' ? 'FOOD' : detectedType?.type === 'weight' ? 'WEIGHT' : detectedType?.type === 'education' ? 'EDUCATION' : detectedType?.type === 'smartwatch' ? 'SMARTWATCH' : 'OTHER',
         willEnterFoodBranch: detectedType?.type === 'food' && !( detectedType?.type === 'other' || (detectedType?.confidence < 0.6) ),
@@ -5786,40 +5856,27 @@ function WellnessValleyApp() {
         fullResponse: detectedType,
       });
 
-      // Surface the share URL now that we know the image type.
-      // pendingSharePromise has almost certainly resolved by now (captures POST
-      // is ~200-500 ms, orchestrate is ~2 s), so this .then() fires synchronously.
-      if (detectedType.type === "food") {
+      if (!bg && detectedType.type === "food") {
         pendingSharePromise.then((share) => {
           if (share) {
             foodCaptureIdRef.current = share.id;
             setFoodShareUrl(share.url);
-            debugLog(
-              `?? [PERF] ? Share URL surfaced to UI (+${
-                Date.now() - perfStart
-              }ms from capture start)`,
-            );
           }
         });
       }
 
-      // ??? Early detection: If food items detected, show them immediately
       if (
+        !bg &&
         detectedType.details?.foods &&
         detectedType.details.foods.length > 0
       ) {
         const foodNames = detectedType.details.foods.map((f) => f.name);
-        debugLog(
-          "??? [AI-DETECTED] Food items identified:",
-          foodNames.join(", "),
-        );
-        setDetectedFoodNames(foodNames); // Show detected names in UI immediately
+        setDetectedFoodNames(foodNames);
       }
 
-      // ? PRIORITY 0: Smartwatch / fitness app screenshot ? show activity card
+      // ? PRIORITY 0: Smartwatch / fitness app screenshot
       if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
-        debugLog("? Smartwatch image detected ? showing watch activity card.");
-        // Resolve the real DB userId now (same pattern used everywhere in App.js)
+        debugLog("? Smartwatch image detected.");
         let resolvedUserId = user?.id;
         if (!resolvedUserId) {
           try {
@@ -5830,9 +5887,30 @@ function WellnessValleyApp() {
             });
           }
         }
+        let watchCaptureId = captureShare.id;
+        if (bg) {
+          try {
+            if (resolvedUserId) {
+              await saveWatchActivityLog({
+                userId: resolvedUserId,
+                imageBase64: processedImage,
+                caloriesBurned: detectedType.details?.caloriesBurned || 0,
+                source: detectedType.details?.source || "Smartwatch",
+                captureId: watchCaptureId,
+              });
+            }
+            updatePendingCaptureType(pendingSharePromise, "smartwatch");
+            triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch" });
+          } catch (watchErr) {
+            console.error("[Background AI] smartwatch save failed:", watchErr);
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch-failed" });
+          }
+          clearCaptureAnalyzing(captureShare.id);
+          return;
+        }
         // Resolve captureId before mounting WatchActivityCard so the education
         // log row links back to the captures row (same pattern as education branch).
-        let watchCaptureId = null;
         try {
           const capShare = await pendingSharePromise;
           if (capShare?.id) {
@@ -5840,16 +5918,13 @@ function WellnessValleyApp() {
             if (!foodCaptureIdRef.current)
               foodCaptureIdRef.current = capShare.id;
           }
-          // Auto-share to WhatsApp once the share URL is resolved.
           const autoShareEnabled =
             localStorage.getItem("autoShareOnCapture") !== "false";
           if (autoShareEnabled && capShare?.url && !foodAutoSharedRef.current) {
             foodAutoSharedRef.current = true;
             shareTextViaWhatsApp(capShare.url).then((ok) => {
-              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-              if (!ok) {
-                foodAutoSharedRef.current = false;
-              }
+              _hasCompletedFirstShareRef.current = true;
+              if (!ok) foodAutoSharedRef.current = false;
             });
           }
         } catch (_) {}
@@ -5858,7 +5933,7 @@ function WellnessValleyApp() {
           caloriesBurned: detectedType.details?.caloriesBurned || 0,
           source: detectedType.details?.source || "Smartwatch",
           loggedAt: new Date().toISOString(),
-          userId: resolvedUserId, // ? real DB id, not Firebase uid
+          userId: resolvedUserId,
           captureId: watchCaptureId || undefined,
         });
         // Tag the pending capture as 'smartwatch' so it is excluded from the
@@ -5872,10 +5947,9 @@ function WellnessValleyApp() {
       // ? PRIORITY 1: Check for education meeting (AUTO-SAVE)
       if (detectedType.type === "education" && detectedType.confidence > 0.7) {
         debugLog("?? Education meeting detected, analyzing...");
-        setImageType("education");
+        if (!bg) setImageType("education");
 
         try {
-          // Use data from unified detection (no second API call needed)
           const educationData = {
             success: true,
             platform: detectedType.details.platform || "Online Meeting",
@@ -5885,52 +5959,48 @@ function WellnessValleyApp() {
           };
 
           if (educationData && educationData.success) {
-            debugLog("? Education data extracted:", educationData);
-
-            setEducationResult({
-              platform: educationData.platform,
-              topic: educationData.topic,
-              confidence: educationData.confidence,
-              participantCount: educationData.participantCount,
-              loggedAt: exifTimestamp || new Date().toISOString(),
-            });
-
-            // AUTO-SAVE to database immediately
-            setLoadingState("saving");
-            setSaveLoading(true);
-            // Resolve the captures row BEFORE saving so captureId is ready.
-            // We pass it as an explicit parameter instead of relying on
-            // foodCaptureIdRef.current, which can be overwritten by other
-            // async paths (GPS check, geocoding) between here and the fetch.
-            let educationCaptureId = null;
-            try {
-              const capShare = await pendingSharePromise;
-              if (capShare?.id) {
-                educationCaptureId = capShare.id;
-                // Also keep the ref in sync for other consumers.
-                if (!foodCaptureIdRef.current)
-                  foodCaptureIdRef.current = capShare.id;
-              }
-            } catch (_) {}
-            // Pass exifTimestamp directly as captureTimestamp to avoid stale state read
+            if (!bg) {
+              setEducationResult({
+                platform: educationData.platform,
+                topic: educationData.topic,
+                confidence: educationData.confidence,
+                participantCount: educationData.participantCount,
+                loggedAt: exifTimestamp || new Date().toISOString(),
+              });
+              setLoadingState("saving");
+              setSaveLoading(true);
+            }
+            const educationCaptureId = captureShare.id;
+            if (!foodCaptureIdRef.current)
+              foodCaptureIdRef.current = educationCaptureId;
             await saveEducationLog(
               educationData,
               processedImage,
               null,
               exifTimestamp,
               educationCaptureId,
+              { silent: true },
             );
-          } else {
+            if (bg) {
+              updatePendingCaptureType(pendingSharePromise, "education");
+              triggerNutritionRefresh({ immediate: true, source: "capture-education" });
+              clearCaptureAnalyzing(captureShare.id);
+              return;
+            }
+          } else if (!bg) {
             setError("Unable to analyze meeting screenshot. Please try again.");
           }
         } catch (err) {
           console.error("? Education analysis failed:", err);
+          if (bg) {
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-education-failed" });
+            clearCaptureAnalyzing(captureShare.id);
+            return;
+          }
           setError("Failed to analyze meeting screenshot: " + err.message);
         }
 
-        // Tag the pending capture as 'education' so it is excluded from the
-        // nutrition dashboard (ImageType='food' filter) but the share link
-        // still resolves and routes to the education dashboard tab.
         updatePendingCaptureType(pendingSharePromise, "education");
         // Auto-share to WhatsApp immediately ? same as food flow.
         const autoShareEnabled1 =
@@ -5954,17 +6024,13 @@ function WellnessValleyApp() {
 
       // ? PRIORITY 2: Check for weight scale
       if (detectedType.type === "weight" && detectedType.confidence > 0.6) {
-        // It's a weight scale - try to extract weight
         debugLog("?? Weight scale detected, extracting metrics...");
-        setImageType("weight");
+        if (!bg) setImageType("weight");
 
-        // Use weight data from unified detection (no second API call needed)
         let detectedWeight;
 
         if (detectedType.details?.weightValue) {
-          // Weight was already extracted in the unified detection call
           debugLog("? Using weight data from unified detection");
-          // Normalize BMR - AI may return different casing or include units
           const rawBmr =
             detectedType.details?.bmr ??
             detectedType.details?.Bmr ??
@@ -5972,7 +6038,6 @@ function WellnessValleyApp() {
             null;
           let normalizedBmr = null;
           if (rawBmr !== undefined && rawBmr !== null) {
-            // Strip non-digits and parse integer (e.g., "1500 kcal" -> 1500)
             const digits = String(rawBmr).replace(/[^0-9]/g, "");
             const parsed = digits ? parseInt(digits, 10) : NaN;
             normalizedBmr = !isNaN(parsed) && parsed > 0 ? parsed : null;
@@ -5988,8 +6053,12 @@ function WellnessValleyApp() {
             muscleMass: detectedType.details.muscleMass,
             bmr: normalizedBmr,
           };
+        } else if (bg) {
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({ immediate: true, source: "capture-weight-unclear" });
+          clearCaptureAnalyzing(captureShare.id);
+          return;
         } else {
-          // Fallback: Weight value not extracted ? prompt user to retake
           debugLog(
             "?? Weight value not detected in unified call, prompting retake",
           );
@@ -6007,35 +6076,41 @@ function WellnessValleyApp() {
         }
 
         if (detectedWeight.success && detectedWeight.weightValue) {
-          // Successfully detected weight - save to database AND show result
-          // debugLog('? Weight detected:', detectedWeight);
-
-          // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
           if (detectedWeight.unit === "lbs") {
-            debugLog(
-              `?? Converting ${detectedWeight.weightValue} lbs to kg...`,
-            );
             weightToSave.weightValue = weightDetectionService.convertWeight(
               detectedWeight.weightValue,
               "lbs",
               "kg",
             );
             weightToSave.unit = "kg";
-            debugLog(`? Converted to ${weightToSave.weightValue} kg`);
           }
 
-          // Don't display weight result yet - wait for successful save
+          if (bg) {
+            try {
+              if (!foodCaptureIdRef.current)
+                foodCaptureIdRef.current = captureShare.id;
+              await saveWeightEntry(
+                weightToSave,
+                processedImage,
+                exifTimestamp || null,
+              );
+              updatePendingCaptureType(pendingSharePromise, "weight");
+              triggerNutritionRefresh({ immediate: true, source: "capture-weight" });
+            } catch (weightSaveErr) {
+              console.error("[Background AI] weight save failed:", weightSaveErr);
+              updatePendingCaptureType(pendingSharePromise, "unknown");
+              triggerNutritionRefresh({ immediate: true, source: "capture-weight-failed" });
+            }
+            clearCaptureAnalyzing(captureShare.id);
+            return;
+          }
+
           setWeightEntrySaved(false);
           setWeightDiff(null);
           setLoadingState("saving");
-          setSaveLoading(true); // Show saving overlay
+          setSaveLoading(true);
 
-          // ? FIX: Set weightResult BEFORE save so card appears even if save fails
-          console.log(
-            "?? [DEBUG] Setting weightResult before save:",
-            weightToSave,
-          );
           setWeightResult({
             ...weightToSave,
             loggedAt: exifTimestamp || new Date().toISOString(),
@@ -6213,7 +6288,7 @@ function WellnessValleyApp() {
       // Also handle explicit 'other' type returned when AI fails entirely.
       if (detectedType.type === "other" || isLowConfidenceFood(detectedType)) {
         debugLog(
-          "? [Image Detection] Low-confidence food ï¿½ opening unknown picker",
+          "? [Image Detection] Low-confidence — tagging as unknown",
           {
             confidence: detectedType?.confidence,
             defaulted: detectedType?.details?.defaulted,
@@ -6221,24 +6296,20 @@ function WellnessValleyApp() {
             totalCalories: detectedType?.details?.total?.calories || 0,
           },
         );
-        // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
-        // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, "unknown");
+        triggerNutritionRefresh({ immediate: true, source: "capture-unknown" });
+        if (bg) {
+          clearCaptureAnalyzing(captureShare.id);
+          return;
+        }
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
         if (aiFailedEntirely) {
-          // Complete AI failure (network/API key/timeout) — show retry prompt.
           setError(
             "AI couldn't analyse your photo right now. Please retry — if it keeps failing, try a clearer, well-lit photo.",
           );
         } else if (!isFlagEnabled("ff.diary-feed")) {
-          // Legacy path (diary-feed OFF): disambiguation modal.
           setUnknownCaptureModal({ open: true, pendingSharePromise });
         } else {
-          // Diary-feed ON: capture is already tagged 'unknown' above.
-          // It surfaces in the diary as an "Other" row where the user can
-          // Retry (re-run AI), Edit (manual entry), or Delete.
-          // Reset to camera so the user can take the next photo immediately;
-          // they find the unidentified entry in the diary.
           showToast("?? Couldn't identify ï¿½ find it in Diary ? tap to fix");
           resetCaptureUiOnly();
         }
@@ -6247,14 +6318,10 @@ function WellnessValleyApp() {
       }
 
       // It's a food image - use nutrition data from unified detection
-      console.log("??? [Food Detection] Setting imageType to food");
-      setImageType("food");
-      // Phase 3: share URL already surfaced by the .then() registered at the
-      // detectedType.type === "food" guard above (line ~5447). A second
-      // .then() here is redundant ï¿½ pendingSharePromise has already resolved,
-      // so both callbacks fire synchronously on the microtask queue, writing
-      // foodCaptureIdRef.current twice and racing with performNutritionSave's
-      // null-reset. Removed to eliminate the double-write race.
+      if (!bg) {
+        console.log("??? [Food Detection] Setting imageType to food");
+        setImageType("food");
+      }
       debugLog("??? [DEBUG] Processing as FOOD image");
       debugLog("??? [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
@@ -6275,10 +6342,12 @@ function WellnessValleyApp() {
 
           let foods = detectedType.details.foods;
 
-          // ?? Update detected food names for display
-          const foodNames = foods.map((f) => f.name);
-          setDetectedFoodNames(foodNames);
-          debugLog("??? [AI-DETECTED] Food names:", foodNames.join(", "));
+          // ?? Update detected food names for display (home UI only — not in async capture flow)
+          if (!bg) {
+            const foodNames = foods.map((f) => f.name);
+            setDetectedFoodNames(foodNames);
+          }
+          debugLog("??? [AI-DETECTED] Food names:", foods.map((f) => f.name).join(", "));
 
           // ?? CRITICAL: Preserve original AI-detected names BEFORE any corrections
           // This ensures we always know what the AI originally detected, even after auto-corrections
@@ -6595,39 +6664,41 @@ function WellnessValleyApp() {
               "? Could not detect the image. Please take a clear photo and try again.";
           }
 
-          setError(errorMessage);
-          // Clear share state ? the Share button must not linger when AI
-          // yields no food data (e.g. Gemini quota exhausted for the day).
+          if (!bg) setError(errorMessage);
+          if (bg) {
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-food-failed" });
+            clearCaptureAnalyzing(captureShare.id);
+            return;
+          }
           setFoodShareUrl(null);
           setImageType(null);
           foodCaptureIdRef.current = null;
           pendingSharePromiseRef.current = null;
-          // ? "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
         }
 
-        setNutritionData({
-          ...result,
-          loggedAt: exifTimestamp || new Date().toISOString(),
-        });
-        // Stage 6 ï¿½ setNutritionData called (UI card about to render)
-        _ctLog(6, 'setNutritionData called', {
-          calories: result?.nutrition?.calories ?? null,
-          itemCount: result?.itemCount ?? null,
-          confidence: result?.confidence ?? null,
-          source: result?.source ?? null,
-        });
+        if (!bg) {
+          setNutritionData({
+            ...result,
+            loggedAt: exifTimestamp || new Date().toISOString(),
+          });
+          _ctLog(6, 'setNutritionData called', {
+            calories: result?.nutrition?.calories ?? null,
+            itemCount: result?.itemCount ?? null,
+            confidence: result?.confidence ?? null,
+            source: result?.source ?? null,
+          });
+          setLoading(false);
+        }
 
-        // Analysis done ï¿½ unlock Share immediately; club/GPS + DB save in bg.
-        // Capture the returned Promise so showDashboardPage can await it.
-        setLoading(false);
-        // Stage 7 ï¿½ scheduleNutritionSaveInBackground about to start
         _ctLog(7, 'scheduleNutritionSaveInBackground starting', {
           hasUser: !!user,
           userId: user?.id ?? null,
           hasFile: !!file,
           hasProcessedImage: !!processedImage,
+          silent: bg,
         });
         const _saveP = scheduleNutritionSaveInBackground({
           user,
@@ -6635,22 +6706,35 @@ function WellnessValleyApp() {
           processedImage,
           analysisResult: result,
           exifTimestamp,
+          silent: bg,
         });
         savePromiseRef.current = _saveP;
-        // Clear the ref when this specific save settles (handles rapid captures).
         _saveP.finally(() => {
-          // Stage 15 ï¿½ savePromise resolved (IIFE settled)
-          _ctLog(15, '_saveP.finally ï¿½ savePromise settled', {
+          _ctLog(15, '_saveP.finally — savePromise settled', {
             isCurrentSave: savePromiseRef.current === _saveP,
             clearingRef: savePromiseRef.current === _saveP,
           });
           if (savePromiseRef.current === _saveP) savePromiseRef.current = null;
+          if (bg) {
+            clearCaptureAnalyzing(captureShare.id);
+            triggerNutritionRefresh({ immediate: true, source: "capture-food-saved" });
+          }
         });
       } catch (err) {
-        const friendlyMessage = getFriendlyErrorMessage(err);
-        setError(friendlyMessage);
-        console.error("? Gemini analysis error:", err);
+        if (!bg) {
+          const friendlyMessage = getFriendlyErrorMessage(err);
+          setError(friendlyMessage);
+          console.error("? Gemini analysis error:", err);
+        } else {
+          console.error("[Background AI] food processing failed:", err);
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({ immediate: true, source: "capture-food-error" });
+          clearCaptureAnalyzing(captureShare.id);
+        }
       }
+      })();
+
+      return;
     } catch (err) {
       // Better error handling for undefined or missing error messages
       let errorMessage = "Unknown error occurred";
@@ -6673,34 +6757,36 @@ function WellnessValleyApp() {
           "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
 
-      // Handle iOS "Load failed" network error
+      // Handle iOS "Load failed" network error — use alert modal, not home error banner
       if (
         errorMessage.toLowerCase() === "load failed" ||
         errorMessage.includes("Failed to fetch")
       ) {
-        setError(
-          "?? Please check your internet connection (WiFi or mobile data) and try again.",
-        );
+        setAlertModal({
+          isOpen: true,
+          title: "Connection problem",
+          message:
+            "Please check your internet connection (WiFi or mobile data) and try again.",
+          type: "error",
+        });
       } else {
-        // Don't show error box for weight validation failures (already showing custom modal)
-        setError("Failed to process image: " + errorMessage);
+        setAlertModal({
+          isOpen: true,
+          title: "Could not process photo",
+          message: errorMessage,
+          type: "error",
+        });
       }
       console.error("? Image processing error:", err);
     } finally {
-      setLoading(false);
-      imageProcessingInProgress.current = false;
+      if (!capturePersisted) {
+        setLoading(false);
+        imageProcessingInProgress.current = false;
+      }
       debugLog(
         `?? [PERF] ? TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
       );
       debugLog("????????????????????????????????????????????");
-    }
-  };
-
-  // ?? Retry food analysis with the last image
-  const handleRetryAnalysis = () => {
-    if (lastImageFileRef.current) {
-      setError(null);
-      handleImageSelect(lastImageFileRef.current);
     }
   };
 
@@ -8486,71 +8572,6 @@ function WellnessValleyApp() {
               onCameraStateChange={handleCameraStateChange}
             />
 
-            {/* No inline buttons here anymore - moved to sticky footer at bottom */}
-
-            {error &&
-              (() => {
-                const isAiUnavailable = error.includes(
-                  "AI model is temporarily unavailable",
-                );
-
-                if (isAiUnavailable) {
-                  // Silently clear the error ? no modal shown
-                  setTimeout(() => {
-                    setError(null);
-                    setImagePreview(null);
-                    lastImageFileRef.current = null;
-                  }, 0);
-                  return null;
-                }
-
-                return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl shadow-sm overflow-hidden">
-                    <div className="flex items-start gap-2 px-4 pt-3 pb-2">
-                      <span className="text-lg leading-none flex-shrink-0 mt-0.5">
-                        ??
-                      </span>
-                      <p className="text-sm text-amber-800 leading-relaxed break-words flex-1">
-                        {error.replace(/^[?????????????]\s*/, "")}
-                      </p>
-                      <button
-                        onClick={() => {
-                          setError(null);
-                          setImagePreview(null);
-                          lastImageFileRef.current = null;
-                        }}
-                        className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600 mt-0.5"
-                        aria-label="Dismiss"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2.5}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                    {lastImageFileRef.current && (
-                      <div className="px-4 pb-3">
-                        <TouchFeedbackButton
-                          onClick={handleRetryAnalysis}
-                          className="w-full bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors text-center"
-                        >
-                          Retry
-                        </TouchFeedbackButton>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
             {/* Share Image + Link button removed: auto-share fires directly
               to WhatsApp as soon as food is identified (see auto-share
               useEffect above). The analysis stays visible after the user
@@ -9205,8 +9226,8 @@ function WellnessValleyApp() {
               </>
             )}
 
-            {/* Saving Toast */}
-            {saveLoading && (
+            {/* Saving Toast — hidden during async capture (photo already saved) */}
+            {saveLoading && loadingState !== "saved" && (
               <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
                 <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
                   {imageType === "weight"
@@ -9218,8 +9239,8 @@ function WellnessValleyApp() {
               </div>
             )}
 
-            {/* Error Toast */}
-            {saveError && (
+            {/* Error Toast — hidden during async capture; analysis errors live in Diary only */}
+            {saveError && loadingState !== "saved" && (
               <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
                 <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
                   {saveError}
