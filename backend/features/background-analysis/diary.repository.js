@@ -10,6 +10,8 @@
  *   - education_logs_table             (education rows — Topic NOT LIKE 'Calories Burned:%')
  *   - education_logs_table             (watch rows    — Topic LIKE 'Calories Burned:%')
  *   - captures_table                   (unknown rows  — ImageType = 'unknown', flag-gated)
+ *   - captures_table                   (pending rows  — ImageType = 'pending', flag-gated;
+ *                                       shown immediately after Phase-1 capture save)
  *
  * Each query is scoped to one user + one IST calendar day. Today's date
  * window matches the existing convention in
@@ -151,6 +153,28 @@ export async function fetchUnknownCapturesForDay(ownerUserId, date) {
     .eq('"UserID"', String(ownerUserId))
     .eq('"IsDeleted"', 0)
     .eq('"ImageType"', 'unknown')
+    .gte('"CreatedAt"', start)
+    .lte('"CreatedAt"', end)
+    .order('"CreatedAt"', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * In-flight captures for the day (`ImageType = 'pending'`).
+ * Surfaced in the Diary feed immediately after Phase-1 POST /captures so
+ * the user sees their photo while background AI runs. Once classified, the
+ * row is promoted to a terminal type and disappears from this query.
+ */
+export async function fetchPendingCapturesForDay(ownerUserId, date) {
+  const supabase = getSupabaseClient();
+  const { start, end } = istDayBounds(date);
+  const { data, error } = await supabase
+    .from('captures_table')
+    .select('"ID", "UserID", "ImageType", "ImageBase64", "ImagePath", "PublicShareToken", "CreatedAt"')
+    .eq('"UserID"', String(ownerUserId))
+    .eq('"IsDeleted"', 0)
+    .eq('"ImageType"', 'pending')
     .gte('"CreatedAt"', start)
     .lte('"CreatedAt"', end)
     .order('"CreatedAt"', { ascending: false });

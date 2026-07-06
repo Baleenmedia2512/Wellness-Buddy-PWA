@@ -609,16 +609,21 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
                 {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt)} · AI is analysing`}
               </p>
             </>
+          ) : showBackgroundHint ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">Photo saved</h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime
+                  ? 'Analyzing — results will appear shortly'
+                  : `${formatTime(entry.capturedAt)} · Analyzing…`}
+              </p>
+            </>
           ) : (
             <>
               <h4 className="font-semibold text-gray-900 truncate">Other</h4>
               <p className="text-xs text-gray-500">
                 {hideTime
-                  ? showBackgroundHint
-                    ? "analyzing · tap to fix"
-                    : "couldn't identify"
-                  : showBackgroundHint
-                  ? `${formatTime(entry.capturedAt)} · analyzing · tap to fix`
+                  ? "couldn't identify"
                   : `${formatTime(entry.capturedAt)} · couldn't identify`}
               </p>
             </>
@@ -626,6 +631,11 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
         </div>
 
         {isAnalyzing ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            aria-hidden="true"
+          />
+        ) : showBackgroundHint ? (
           <div
             className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
             aria-hidden="true"

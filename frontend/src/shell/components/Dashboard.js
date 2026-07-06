@@ -8,7 +8,7 @@
 // (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
@@ -81,7 +81,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // entry kinds (food, weight, education, watch, unknown) for the selected IST day.
   // Set REACT_APP_FF_DIARY_TIMELINE=false to revert to the stacked layout.
   const timelineEnabled = diaryEnabled && isFlagEnabled('ff.diary-timeline');
-  const { triggerRefresh: triggerNutritionRefresh, refreshKey: nutritionContextRefreshKey } = useNutritionRefresh();
+  const { triggerRefresh: triggerNutritionRefresh, refreshKey: nutritionContextRefreshKey, analyzingCaptureIds: contextAnalyzingIds } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
@@ -179,6 +179,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const [analyzingCaptureIds, setAnalyzingCaptureIds] = useState(() => new Set());
   // Ref prevents a second tap from firing a duplicate request for the same ID.
   const analyzingRef = useRef(new Set());
+
+  // Merge capture-flow analyzing IDs (App.js Phase 2) with tap-to-fix pre-flight IDs.
+  const mergedAnalyzingCaptureIds = useMemo(() => {
+    const merged = new Set(contextAnalyzingIds ?? []);
+    analyzingCaptureIds.forEach((id) => merged.add(id));
+    return merged;
+  }, [contextAnalyzingIds, analyzingCaptureIds]);
 
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
@@ -790,7 +797,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   date={selectedDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                 />
               </div>
 
@@ -901,7 +908,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                 />
               </div>
             </div>
