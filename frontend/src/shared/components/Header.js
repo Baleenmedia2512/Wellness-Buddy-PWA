@@ -1,22 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   LogOut,
-  LayoutDashboard,
-  GraduationCap,
-  Map,
-  Heart,
   Trash2,
   Camera,
   Settings,
   User,
-  Home,
-  BarChart2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
 import { UserProfileModal } from "../../features/user";
 import { DeleteAccountModal } from "../../features/user";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 
 const Header = ({
@@ -179,87 +174,23 @@ const Header = ({
     return (
       <nav
         aria-label="App navigation"
-        className="bg-white border-b-4 border-green-500 shadow-sm"
-        style={{
-          paddingTop: 'env(safe-area-inset-top, 0px)',
-          paddingLeft: 'env(safe-area-inset-left, 0px)',
-          paddingRight: 'env(safe-area-inset-right, 0px)',
-        }}
+        className="bg-white border-b-4 border-green-500 shadow-sm safe-top safe-left safe-right"
       >
-        <div className="max-w-lg mx-auto px-2 flex items-center justify-around" style={{ scrollbarWidth: 'none' }}>
-          {/* Home — highlighted when activePage is 'home' */}
-          <TouchFeedbackButton
-            onClick={onShowHome ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
-              activePage === 'home' ? 'bg-green-100' : 'hover:bg-green-50'
-            }`}
-            ariaLabel="Home"
-          >
-            <Home className={`h-5 w-5 ${activePage === 'home' ? 'text-green-800' : 'text-green-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'home' ? 'text-green-900' : 'text-green-800'}`}>Home</span>
-          </TouchFeedbackButton>
-          {/* Diary */}
-          <TouchFeedbackButton
-            onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
-              activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
-            }`}
-            ariaLabel="Diary"
-          >
-            <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
-          </TouchFeedbackButton>
-          {/* Activity Report */}
-          <TouchFeedbackButton
-            onClick={onShowActivityReport ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-            }`}
-            ariaLabel="Activity Report"
-          >
-            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
-          </TouchFeedbackButton>
-          {/* Enrollment */}
-          <TouchFeedbackButton
-            onClick={onShowWellnessEnrollment ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
-            }`}
-            ariaLabel="Enrollment"
-          >
-            <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enroll</span>
-          </TouchFeedbackButton>
-          {/* Counselling */}
-          <TouchFeedbackButton
-            onClick={onShowWellnessCounselling ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
-            }`}
-            ariaLabel="Counselling"
-          >
-            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-teal-900' : 'text-teal-800'}`}>Counsel</span>
-          </TouchFeedbackButton>
-          {/* Physical Club */}
-          <TouchFeedbackButton
-            onClick={onShowNutritionCentersMap ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
-            }`}
-            ariaLabel="Physical Club"
-          >
-            <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
-          </TouchFeedbackButton>
-        </div>
+        <AppNavTabs
+          activePage={activePage}
+          onShowHome={onShowHome}
+          onShowBackgroundHistory={onShowBackgroundHistory}
+          onShowActivityReport={onShowActivityReport}
+          onShowWellnessEnrollment={onShowWellnessEnrollment}
+          onShowWellnessCounselling={onShowWellnessCounselling}
+          onShowNutritionCentersMap={onShowNutritionCentersMap}
+        />
       </nav>
     );
   }
 
   return (
-    <header className="bg-white shadow-lg border-b-4 border-green-500" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+    <header className="bg-white shadow-lg border-b-4 border-green-500 safe-top safe-left safe-right">
       <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-1">
@@ -442,79 +373,16 @@ const Header = ({
       </div>
 
       {/* ── Row 2: App top navigation bar — always 6 tabs, always uniform ── */}
-      <nav
-        aria-label="App navigation"
-        className="border-t border-green-100 bg-white"
-        style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}
-      >
-        <div className="max-w-lg mx-auto px-2 flex items-center justify-around" style={{ scrollbarWidth: 'none' }}>
-          {/* Home */}
-          <TouchFeedbackButton
-            onClick={onShowHome ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
-              activePage === 'home' ? 'bg-green-100' : 'hover:bg-green-50'
-            }`}
-            ariaLabel="Home"
-          >
-            <Home className={`h-5 w-5 ${activePage === 'home' ? 'text-green-800' : 'text-green-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'home' ? 'text-green-900' : 'text-green-800'}`}>Home</span>
-          </TouchFeedbackButton>
-          {/* Diary */}
-          <TouchFeedbackButton
-            onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[48px] ${
-              activePage === 'dashboard' ? 'bg-green-100' : 'hover:bg-green-50'
-            }`}
-            ariaLabel="Diary"
-          >
-            <LayoutDashboard className={`h-5 w-5 ${activePage === 'dashboard' ? 'text-green-800' : 'text-green-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'dashboard' ? 'text-green-900' : 'text-green-800'}`}>Diary</span>
-          </TouchFeedbackButton>
-          {/* Activity Report */}
-          <TouchFeedbackButton
-            onClick={onShowActivityReport ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'activity-report' ? 'bg-violet-100' : 'hover:bg-violet-50'
-            }`}
-            ariaLabel="Activity Report"
-          >
-            <BarChart2 className={`h-5 w-5 ${activePage === 'activity-report' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'activity-report' ? 'text-teal-900' : 'text-teal-800'}`}>Activity</span>
-          </TouchFeedbackButton>
-          {/* Enrollment */}
-          <TouchFeedbackButton
-            onClick={onShowWellnessEnrollment ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'enrollment' ? 'bg-emerald-100' : 'hover:bg-emerald-50'
-            }`}
-            ariaLabel="Enrollment"
-          >
-            <GraduationCap className={`h-5 w-5 ${activePage === 'enrollment' ? 'text-emerald-800' : 'text-emerald-700'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'enrollment' ? 'text-emerald-900' : 'text-emerald-800'}`}>Enroll</span>
-          </TouchFeedbackButton>
-          {/* Counselling */}
-          <TouchFeedbackButton
-            onClick={onShowWellnessCounselling ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'counselling' ? 'bg-pink-100' : 'hover:bg-pink-50'
-            }`}
-            ariaLabel="Counselling"
-          >
-            <Heart className={`h-5 w-5 ${activePage === 'counselling' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'counselling' ? 'text-teal-900' : 'text-teal-800'}`}>Counsel</span>
-          </TouchFeedbackButton>
-          {/* Physical Club */}
-          <TouchFeedbackButton
-            onClick={onShowNutritionCentersMap ?? (() => {})}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors shrink-0 min-w-[52px] ${
-              activePage === 'physical-club' ? 'bg-teal-100' : 'hover:bg-teal-50'
-            }`}
-            ariaLabel="Physical Club"
-          >
-            <Map className={`h-5 w-5 ${activePage === 'physical-club' ? 'text-teal-700' : 'text-teal-600'}`} />
-            <span className={`text-[10px] font-semibold ${activePage === 'physical-club' ? 'text-teal-900' : 'text-teal-800'}`}>Club</span>
-          </TouchFeedbackButton>
-        </div>
+      <nav aria-label="App navigation" className="border-t border-green-100 bg-white safe-left safe-right">
+        <AppNavTabs
+          activePage={activePage}
+          onShowHome={onShowHome}
+          onShowBackgroundHistory={onShowBackgroundHistory}
+          onShowActivityReport={onShowActivityReport}
+          onShowWellnessEnrollment={onShowWellnessEnrollment}
+          onShowWellnessCounselling={onShowWellnessCounselling}
+          onShowNutritionCentersMap={onShowNutritionCentersMap}
+        />
       </nav>
 
       {/* User Profile Modal */}

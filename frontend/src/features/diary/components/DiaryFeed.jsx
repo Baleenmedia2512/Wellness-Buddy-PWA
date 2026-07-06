@@ -27,6 +27,7 @@ import React, { useMemo } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 
 const SKELETON_ROWS = 6;
 
@@ -161,17 +162,25 @@ function FeedError({ error, onRetry }) {
 }
 
 function FeedEmpty({ date, isSelf, filterKinds }) {
-  // The "Other" tab (filterKinds === ['unknown']) gets its own copy so an
-  // empty list doesn't read like the whole day is empty.
   const isUnknownOnly =
     Array.isArray(filterKinds) &&
     filterKinds.length === 1 &&
     filterKinds[0] === 'unknown';
 
+  const emptyEmoji = isUnknownOnly ? '🗂️' : '📔';
+  const emptyIcon = (
+    <div className="flex justify-center mb-4">
+      <EmojiOrNative emoji={emptyEmoji} className="w-14 h-14" nativeClassName="text-5xl" />
+    </div>
+  );
+
   if (isUnknownOnly) {
     return (
-      <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-        <p className="text-5xl mb-4" aria-hidden="true">🗂️</p>
+      <div
+        className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+        data-testid="diary-feed-empty"
+      >
+        {emptyIcon}
         <p className="text-base font-semibold text-gray-900 mb-1">
           No unrecognised captures
         </p>
@@ -185,8 +194,11 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
   }
 
   return (
-    <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-      <p className="text-5xl mb-4" aria-hidden="true">📔</p>
+    <div
+      className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+      data-testid="diary-feed-empty"
+    >
+      {emptyIcon}
       <p className="text-base font-semibold text-gray-900 mb-1">
         {isSelf ? 'No entries yet for this day' : 'Nothing logged on this day'}
       </p>

@@ -19,7 +19,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
   return (
     <>
-      <div className="relative w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-4 py-3 bg-white border-b border-gray-200">
+      <div className="relative w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-2 xxs:px-3 xs:px-4 py-2 xs:py-3 bg-white border-b border-gray-200">
         <div className="relative">
           <TeamSearchInput
             inputRef={vm.searchRef}

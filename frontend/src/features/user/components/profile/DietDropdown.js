@@ -2,8 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, CheckCircle } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
-
-const findIcon = (v) => DIET_OPTIONS.find((o) => o.value === v)?.icon || '';
+import DietIcon from '../../../../shared/components/icons/DietIcon';
 
 const DietDropdown = ({ value, onChange }) => {
   const [open, setOpen] = useState(false);
@@ -24,7 +23,7 @@ const DietDropdown = ({ value, onChange }) => {
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-left flex items-center justify-between">
         <span className={`flex items-center gap-2 ${value ? 'text-gray-900' : 'text-gray-400'}`}>
-          {value && <span>{findIcon(value)}</span>}
+          {value && <DietIcon value={value} className="w-6 h-6" />}
           {value || 'Select diet preference'}
         </span>
         <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -38,7 +37,7 @@ const DietDropdown = ({ value, onChange }) => {
               className={`w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center gap-2 ${
                 value === opt.value ? 'bg-green-50 text-green-900' : 'text-gray-700'
               }`}>
-              <span className="text-lg">{opt.icon}</span>
+              <DietIcon value={opt.value} className="w-6 h-6" />
               <span>{opt.label}</span>
               {value === opt.value && <CheckCircle className="w-4 h-4 text-green-600 ml-auto" />}
             </button>

@@ -1,31 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Capacitor } from "@capacitor/core";
 import { debugLog } from '../shared/utils/logger.js';
-import {
-  Salad,
-  TrendingDown,
-  TrendingUp,
-  Baby,
-  Dumbbell,
-  Target,
-  Coins,
-  Briefcase,
-} from "lucide-react";
 import { TeamMemberSearch } from '../features/team';
+import { EmojiOrNative } from '../shared/components/icons/EmojiImage';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
-
-const PROGRAM_ICON_MAP = {
-  "family-breakfast":  { Icon: Salad,        color: "text-green-500",  bg: "bg-green-50"  },
-  "weight-loss":       { Icon: TrendingDown,  color: "text-red-500",    bg: "bg-red-50"    },
-  "weight-gain":       { Icon: TrendingUp,    color: "text-blue-500",   bg: "bg-blue-50"   },
-  "kids-nutrition":    { Icon: Baby,          color: "text-yellow-500", bg: "bg-yellow-50" },
-  "sports-nutrition":  { Icon: Dumbbell,      color: "text-orange-500", bg: "bg-orange-50" },
-  "targeted-nutrition":{ Icon: Target,        color: "text-purple-500", bg: "bg-purple-50" },
-  "earn-product-cost": { Icon: Coins,         color: "text-amber-500",  bg: "bg-amber-50"  },
-  "extra-income":      { Icon: Briefcase,     color: "text-teal-500",   bg: "bg-teal-50"   },
-};
 
 const PROGRAMS = [
   {
@@ -81,11 +60,9 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
+const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false }) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
-  // Use SVG icons only on iOS (emoji renders as ? in iOS WebView)
-  const isIOS = Capacitor.getPlatform() === "ios";
 
   // Coach/upline/admin can search for and view a team member's enrollment
   const isCoachRole = ['coach', 'upline', 'admin', 'developer'].includes(String(userRole || '').toLowerCase());
@@ -257,29 +234,34 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
   }
 
   // Show enrollment form (new enrollment or edit mode)
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-8"
-      >
+  const panelClass = embedded
+    ? 'bg-white w-full min-h-full flex flex-col'
+    : 'bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1rem)] overflow-hidden flex flex-col my-2 sm:my-8';
+
+  const formPanel = (
+    <motion.div
+      initial={embedded ? false : { opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={panelClass}
+    >
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
-          <div className="flex justify-between items-center">
+        <div className="bg-gradient-to-r from-green-400 to-green-400 p-3 xs:p-4 sm:p-6 rounded-t-2xl flex-shrink-0 safe-top">
+          <div className="flex justify-between items-start gap-2">
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg sm:text-2xl font-bold text-white flex items-center gap-2">
-                🎓 {existingEnrollment ? "Edit Enrollment" : "Enrollment"}
+              <h2 className="text-base xs:text-lg sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
+                <EmojiOrNative emoji="🎓" className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7 flex-shrink-0" nativeClassName="text-base xs:text-lg sm:text-2xl" />
+                <span className="break-words">{existingEnrollment ? "Edit Enrollment" : "Enrollment"}</span>
               </h2>
-              <p className="text-white text-xs sm:text-sm mt-1">
+              <p className="text-white text-[11px] xs:text-xs sm:text-sm mt-1">
                 {existingEnrollment
                   ? "Update your selected programs"
                   : "Select programs you're interested in"}
               </p>
             </div>
+            {!embedded && (
             <button
               onClick={onClose}
-              className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
+              className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors flex-shrink-0"
             >
               <svg
                 className="w-6 h-6"
@@ -295,11 +277,12 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
                 />
               </svg>
             </button>
+            )}
           </div>
         </div>
 
         {/* Form Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+        <div className="p-3 xs:p-4 sm:p-6 overflow-y-auto flex-1 ios-scroll-body">
           {/* Coach: member search to view a downline's enrollment */}
           {isCoachRole && (
             <div className="mb-4">
@@ -350,14 +333,11 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
               </h3>
 
             </div>
-            {PROGRAMS.map((program) => {
-              const iconInfo = PROGRAM_ICON_MAP[program.id];
-              const IconComp = iconInfo?.Icon;
-              return (
+            {PROGRAMS.map((program) => (
               <div
                 key={program.id}
                 onClick={() => handleProgramToggle(program.name)}
-                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                className={`ios-list-row p-2.5 xs:p-3 sm:p-4 rounded-xl border-2 transition-all cursor-pointer ${
                   selectedPrograms.includes(program.name)
                     ? "border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md"
                     : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
@@ -386,34 +366,23 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
                     </svg>
                   )}
                 </div>
-                {isIOS ? (
-                  IconComp ? (
-                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconInfo.bg}`}>
-                      <IconComp className={`w-5 h-5 sm:w-6 sm:h-6 ${iconInfo.color}`} />
-                    </div>
-                  ) : (
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-50">
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  )
-                ) : (
-                  <span className="text-xl sm:text-2xl flex-shrink-0">{program.icon}</span>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm sm:text-base text-gray-800 font-medium break-words">
+                <EmojiOrNative
+                  emoji={program.icon}
+                  className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7"
+                  nativeClassName="text-lg xs:text-xl sm:text-2xl"
+                />
+                <div className="min-w-0">
+                  <div className="text-[13px] xs:text-sm sm:text-base text-gray-800 font-medium break-words leading-snug">
                     {program.name}
                   </div>
                   {program.description && (
-                    <div className="text-xs text-gray-500 mt-0.5 break-words">
+                    <div className="text-[11px] xs:text-xs text-gray-500 mt-0.5 break-words leading-snug">
                       {program.description}
                     </div>
                   )}
                 </div>
               </div>
-              );
-            })}
+            ))}
           </div>
 
           {/* Error Message ,*/}
@@ -444,8 +413,8 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
-          <div className="flex gap-2 sm:gap-3">
+        <div className="p-3 xs:p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0 safe-bottom">
+          <div className="flex flex-col xxs:flex-row gap-2 sm:gap-3">
             {isViewingOther ? (
               <button
                 onClick={() => setSelectedMember(null)}
@@ -482,6 +451,15 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole }) => {
           </div>
         </div>
       </motion.div>
+  );
+
+  if (embedded) {
+    return formPanel;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 xs:p-4 overflow-y-auto safe-top safe-bottom">
+      {formPanel}
     </div>
   );
 };

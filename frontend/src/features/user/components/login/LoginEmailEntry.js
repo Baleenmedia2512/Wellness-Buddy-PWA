@@ -7,9 +7,12 @@
 //   - When ff.contact-picker is ON and the Contact Picker API is available
 //     (Android Chrome 80+), a "Use saved number" button pre-fills the field.
 import React, { useEffect, useRef } from 'react';
-import { COUNTRY_CODES } from '../../domain/contactIdentifier';
+import { Smartphone } from 'lucide-react';
+import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../domain/contactIdentifier';
 import { useContactPicker } from '../../hooks/useContactPicker';
 import { isFlagEnabled } from '../../../../config/featureFlags';
+import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
+import { isIOS } from '../../../../shared/utils/platform';
 
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -26,6 +29,8 @@ const LoginEmailEntry = ({
   const { supported: contactPickerSupported, picking, pick } = useContactPicker();
   // Resolve the flag once on mount — toggling at runtime requires a re-mount.
   const contactPickerEnabled = isFlagEnabled('ff.contact-picker');
+  const ios = isIOS();
+  const selectedCountry = COUNTRY_CODES.find((c) => c.dial === countryDial) || DEFAULT_COUNTRY;
 
   // Auto-focus phone input on mount so Android keyboard + number suggestions
   // appear immediately (mirrors Swiggy/Zomato UX).
@@ -57,6 +62,8 @@ const LoginEmailEntry = ({
             >
               {picking ? (
                 <span className="inline-block w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+              ) : ios ? (
+                <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />
               ) : (
                 <span aria-hidden="true">📱</span>
               )}
@@ -65,19 +72,24 @@ const LoginEmailEntry = ({
           )}
         </div>
         <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
-          <select
-            aria-label="Country code"
-            value={countryDial}
-            onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
-            className="bg-gray-50 border-r border-gray-200 px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
-            style={{ minWidth: '90px' }}
-          >
-            {COUNTRY_CODES.map((c) => (
-              <option key={`${c.code}-${c.dial}`} value={c.dial}>
-                {c.flag} {c.dial}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center bg-gray-50 border-r border-gray-200 flex-shrink-0">
+            {ios && (
+              <CountryFlagIcon code={selectedCountry.code} className="w-5 h-4 ml-2" />
+            )}
+            <select
+              aria-label="Country code"
+              value={countryDial}
+              onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
+              className="bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
+              style={{ minWidth: ios ? '72px' : '90px' }}
+            >
+              {COUNTRY_CODES.map((c) => (
+                <option key={`${c.code}-${c.dial}`} value={c.dial}>
+                  {ios ? c.dial : `${c.flag} ${c.dial}`}
+                </option>
+              ))}
+            </select>
+          </div>
           <input
             ref={inputRef}
             id="recipient"

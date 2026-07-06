@@ -6,7 +6,8 @@ module.exports = {
   ],
   theme: {
     screens: {
-      'xs': '375px',   // Small phones (iPhone SE, small Android)
+      'xxs': '320px',  // iPhone SE (1st/2nd gen), narrow Android
+      'xs': '375px',   // iPhone SE 3, iPhone mini, standard phones
       'sm': '640px',   // Large phones / Small tablets
       'md': '768px',   // Tablets
       'lg': '1024px',  // Laptops

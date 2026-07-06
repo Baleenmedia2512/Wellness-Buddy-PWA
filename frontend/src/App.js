@@ -177,6 +177,7 @@ import {
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
+import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
 import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
   signInWithGoogle,
@@ -7889,7 +7890,7 @@ function WellnessValleyApp() {
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (showDashboard) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden bg-[#e8f5e9]">
+      <div className="ios-full-page bg-[#e8f5e9]">
         {/* 5-tab nav bar — always visible on every sub-page */}
         <Header
           navOnly
@@ -7903,7 +7904,7 @@ function WellnessValleyApp() {
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="ios-scroll-body">
           <Suspense fallback={null}>
             <Dashboard
               user={user}
@@ -7927,7 +7928,7 @@ function WellnessValleyApp() {
   // Wellness Counselling - Full page view
   if (showWellnessCounselling) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="ios-full-page">
         <Header
           navOnly
           user={user}
@@ -7940,7 +7941,7 @@ function WellnessValleyApp() {
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="ios-scroll-body">
           <Suspense fallback={null}>
             <WellnessCounselling
               user={user}
@@ -7959,7 +7960,7 @@ function WellnessValleyApp() {
   // Wellness University Enrollment - Full page view
   if (showUniversityEnrollment) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="ios-full-page">
         <Header
           navOnly
           user={user}
@@ -7972,9 +7973,10 @@ function WellnessValleyApp() {
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="ios-scroll-body">
           <Suspense fallback={null}>
             <WellnessUniversityEnrollment
+              embedded
               user={user}
               userRole={userRole}
               onBack={() => {
@@ -7992,7 +7994,7 @@ function WellnessValleyApp() {
   // Activity Report — member view (personal activity + education attendance data)
   if (showActivityReport) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="ios-full-page">
         <Header
           navOnly
           user={user}
@@ -8005,7 +8007,7 @@ function WellnessValleyApp() {
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="ios-scroll-body">
           <Suspense fallback={null}>
             <ActivityReport
               user={user}
@@ -8026,7 +8028,7 @@ function WellnessValleyApp() {
   // Activity Time Report — hierarchical coach/admin view (team activity heatmap)
   if (showActivityTimeReport) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="ios-full-page">
         <Header
           navOnly
           user={user}
@@ -8039,7 +8041,7 @@ function WellnessValleyApp() {
           onShowNutritionCentersMap={() => navigateTo('physical-club')}
           onShowActivityReport={() => navigateTo('activity-report')}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="ios-scroll-body">
           <Suspense fallback={null}>
             <ActivityTimeReport
               user={user}
@@ -8057,15 +8059,68 @@ function WellnessValleyApp() {
     );
   }
 
+  // Physical Club — full page view
+  if (showNutritionCentersMap) {
+    return (
+      <>
+        <div className="ios-full-page bg-[#e8f5e9]">
+          <Header
+            navOnly
+            user={user}
+            userRole={userRole}
+            activePage="physical-club"
+            onShowHome={() => navigateTo('home')}
+            onShowBackgroundHistory={() => navigateTo('dashboard')}
+            onShowWellnessEnrollment={() => navigateTo('enrollment')}
+            onShowWellnessCounselling={() => navigateTo('counselling')}
+            onShowNutritionCentersMap={() => navigateTo('physical-club')}
+            onShowActivityReport={() => navigateTo('activity-report')}
+          />
+          <div className="ios-scroll-body">
+            <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
+              <NutritionCentersMap
+                embedded
+                user={user}
+                onBack={() => {
+                  setShowNutritionCentersMap(false);
+                  const currentWvPage = window.history.state?.wvPage;
+                  if (currentWvPage && currentWvPage !== 'main') window.history.back();
+                }}
+                onEditCenter={(center) => {
+                  setEditCenterData(center);
+                  setShowRegisterCenter(true);
+                }}
+                onRegisterCenter={() => {
+                  setEditCenterData(null);
+                  setShowRegisterCenter(true);
+                }}
+              />
+            </Suspense>
+          </div>
+        </div>
+        {showRegisterCenter && (
+          <Suspense fallback={null}>
+            <NutritionCenterRegistration
+              user={user}
+              initialCenter={editCenterData}
+              onBack={() => {
+                setShowRegisterCenter(false);
+                setEditCenterData(null);
+              }}
+            />
+          </Suspense>
+        )}
+      </>
+    );
+  }
+
   // Main app interface
   return (
     <LocationGuard>
       <div
-        className="h-screen w-screen flex flex-col overflow-hidden"
+        className="ios-full-page"
         style={{
           background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)',
-          paddingLeft: "env(safe-area-inset-left)",
-          paddingRight: "env(safe-area-inset-right)",
         }}
       >
         {/* ── Permission denied modal (canRequest: true) ─────────────────────
@@ -8426,12 +8481,18 @@ function WellnessValleyApp() {
                   </p>
                   {/* Greeting */}
                   <div className="mt-1.5">
-                    <h2 className="text-xl font-extrabold text-white leading-tight">
+                    <h2 className="text-xl font-extrabold text-white leading-tight flex items-center flex-wrap gap-1">
                       {(() => {
                         const h = new Date().getHours();
                         const name = (savedUserName || user?.displayName || '').split(' ')[0];
                         const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-                        return name ? `${greeting}, ${name}! 👋` : `${greeting}! 👋`;
+                        const text = name ? `${greeting}, ${name}!` : `${greeting}!`;
+                        return (
+                          <>
+                            <span>{text}</span>
+                            <EmojiOrNative emoji="👋" className="w-6 h-6" nativeClassName="text-xl" />
+                          </>
+                        );
                       })()}
                     </h2>
                     <p className="text-sm text-emerald-200 mt-1">Snap a photo to log your food, weight or meeting</p>
@@ -9724,40 +9785,7 @@ function WellnessValleyApp() {
       )}
       ------------------------------------------------------------------- */}
 
-        {/* Nutrition Centers Map */}
-        {showNutritionCentersMap && (
-          <Suspense
-            fallback={
-              <LoadingSpinner message="Loading nutrition centers map..." />
-            }
-          >
-            <NutritionCentersMap
-              user={user}
-              onBack={() => {
-                setShowNutritionCentersMap(false);
-                // Pop the 'physical-club' history entry pushed when the map
-                // was opened. Without this, the browser back button would
-                // re-open the map via popstate even after the user closed it
-                // through the in-map back button.
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage === 'physical-club') window.history.back();
-              }}
-              onEditCenter={(center) => {
-                setEditCenterData(center);
-                // Keep map mounted in background - don't unmount
-                // setShowNutritionCentersMap(false);
-                setShowRegisterCenter(true);
-              }}
-              onRegisterCenter={() => {
-                setEditCenterData(null);
-                setShowNutritionCentersMap(false);
-                setShowRegisterCenter(true);
-              }}
-            />
-          </Suspense>
-        )}
-
-        {/* Register Nutrition Center */}
+        {/* Register Nutrition Center (main app — when not on Physical Club full page) */}
         {showRegisterCenter && (
           <Suspense fallback={null}>
             <NutritionCenterRegistration

@@ -2,6 +2,7 @@
 import React from 'react';
 import { Phone, Ruler } from 'lucide-react';
 import { DIET_OPTIONS } from '../../services/dietOptions';
+import DietIcon from '../../../../shared/components/icons/DietIcon';
 
 const inputCls = (invalid) =>
   `w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white ${
@@ -55,7 +56,7 @@ const CompleteRequiredFields = ({
                   ? 'border-green-500 bg-green-50 text-green-700'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'
               }`}>
-              <span style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", sans-serif', fontSize: '1.1em' }}>{opt.icon}</span>
+              <DietIcon value={opt.value} emojiClassName="text-lg" />
               {opt.label}
             </button>
           ))}

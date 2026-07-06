@@ -102,13 +102,73 @@ button, a, [role="button"] {
 }
 
 /* Full-bleed iOS safe area helper */
-.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-top    { padding-top:    max(env(safe-area-inset-top, 0px), 8px); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
 .safe-left   { padding-left:   env(safe-area-inset-left, 0px); }
 .safe-right  { padding-right:  env(safe-area-inset-right, 0px); }
 
 /* Margin equivalents */
 .safe-mb { margin-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ── iOS full-page shell (SE → Pro Max) ─────────────────────────────────── */
+.ios-full-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  height: 100vh; /* fallback for older WebViews */
+  overflow: hidden;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.ios-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Compact tap targets — overrides global 44px min-height for pill buttons */
+.compact-touch {
+  min-height: auto !important;
+}
+
+/* Responsive action grid: 2 cols on narrow phones, 4 cols on wider iPhones */
+.ios-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (min-width: 375px) {
+  .ios-action-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ios-action-grid > * {
+  min-width: 0;
+}
+
+/* Program / list row: checkbox + icon + text — scales on all iPhone widths */
+.ios-list-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  column-gap: 0.625rem;
+}
+
+@media (min-width: 375px) {
+  .ios-list-row {
+    column-gap: 0.875rem;
+  }
+}
+
+@media (min-width: 390px) {
+  .ios-list-row {
+    column-gap: 1rem;
+  }
+}
 
 /* ── Leaflet route labels (Start / End) ─────────────────────────────────── */
 .leaflet-label-start,
