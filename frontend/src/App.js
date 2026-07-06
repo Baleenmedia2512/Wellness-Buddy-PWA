@@ -8419,11 +8419,11 @@ function WellnessValleyApp() {
             {/* ── Hero banner: greeting + Camera / Gallery CTAs (always visible) ── */}
             <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
-                <div className="px-4 py-4">
+                <div className="px-2 py-3">
                   {/* Date pill */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between">
                     {/* Date */}
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300 whitespace-nowrap">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
                       {new Date().toLocaleDateString('en-US', {
                         weekday: 'long',
                         month: 'long',
@@ -8432,16 +8432,12 @@ function WellnessValleyApp() {
                     </p>
 
                     {/* Greeting */}
-                    <h2 className="text-base font-semibold text-white leading-tight text-right">
+                    <h2 className="text-xs font-bold text-white text-right">
                       {(() => {
                         const h = new Date().getHours();
                         const name = (savedUserName || user?.displayName || '').split(' ')[0];
                         const greeting =
-                          h < 12
-                            ? 'Good morning'
-                            : h < 17
-                            ? 'Good afternoon'
-                            : 'Good evening';
+                          h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 
                         return name
                           ? `${greeting}, ${name}! 👋`
@@ -8451,7 +8447,7 @@ function WellnessValleyApp() {
                   </div>
 
                   {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-5 flex gap-3">
                     <button
                       onClick={() => fileInputRef.current?.openCamera?.()}
                       disabled={loading}
