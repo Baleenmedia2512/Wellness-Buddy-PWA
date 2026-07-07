@@ -1917,7 +1917,8 @@ function WellnessValleyApp() {
       if (
         preferredTab === "weight" ||
         preferredTab === "nutrition" ||
-        preferredTab === "education"
+        preferredTab === "education" ||
+        preferredTab === "diary"
       ) {
         setDashboardInitialTab(preferredTab);
       } else {
@@ -5795,9 +5796,13 @@ function WellnessValleyApp() {
       setEducationResult(null);
       setWatchResult(null);
       setError(null);
-      markCaptureAnalyzing(captureShare.id);
+      markCaptureAnalyzing(captureShare.id, {
+        imageBase64: processedImage,
+        capturedAt: new Date().toISOString(),
+      });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
-      navigateTo("home");
+      setDashboardInitialDate(null);
+      showDashboardPage(isFlagEnabled("ff.diary-feed") ? "diary" : null);
       imageProcessingInProgress.current = false;
 
       debugLog(

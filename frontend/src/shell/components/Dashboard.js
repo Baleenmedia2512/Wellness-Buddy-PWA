@@ -8,7 +8,7 @@
 // (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
@@ -81,7 +81,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // entry kinds (food, weight, education, watch, unknown) for the selected IST day.
   // Set REACT_APP_FF_DIARY_TIMELINE=false to revert to the stacked layout.
   const timelineEnabled = diaryEnabled && isFlagEnabled('ff.diary-timeline');
-  const { triggerRefresh: triggerNutritionRefresh, refreshKey: nutritionContextRefreshKey } = useNutritionRefresh();
+  const { triggerRefresh: triggerNutritionRefresh, refreshKey: nutritionContextRefreshKey, analyzingCaptureIds: contextAnalyzingIds, pendingCaptureMeta } = useNutritionRefresh();
 
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
@@ -180,6 +180,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Ref prevents a second tap from firing a duplicate request for the same ID.
   const analyzingRef = useRef(new Set());
 
+  // Stable key for polling while background AI runs (App.js Phase 2).
+  const backgroundAnalyzingKey = useMemo(
+    () => [...(contextAnalyzingIds ?? [])].sort().join(','),
+    [contextAnalyzingIds],
+  );
+
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
   // Undo banner after diary timeline swipe-delete (food / weight / education / watch).
@@ -209,6 +215,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable (closure over setState)
   }, [nutritionContextRefreshKey]);
+
+  // Poll the diary feed while background AI is in flight so the card
+  // auto-upgrades from "Analyzing…" to food / weight / education rows.
+  useEffect(() => {
+    if (!backgroundAnalyzingKey) return undefined;
+    const intervalId = setInterval(() => reloadDiary(), 2500);
+    return () => clearInterval(intervalId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
+  }, [backgroundAnalyzingKey]);
 
   // Tap handler for timeline entries: dispatches to the matching imperative
   // handle (food/weight/education) or starts the pre-flight AI run for unknown.
@@ -791,6 +806,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   analyzingCaptureIds={analyzingCaptureIds}
+                  pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>
 
@@ -902,6 +918,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   analyzingCaptureIds={analyzingCaptureIds}
+                  pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>
             </div>
