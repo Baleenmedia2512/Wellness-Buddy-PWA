@@ -70,10 +70,15 @@ export async function verifyTestimonialOtp(payload) {
 /**
  * Coach: list direct-downline testimonials.
  * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
  */
-export async function listForCoach(coachId) {
+export async function listForCoach(coachId, scope = 'direct') {
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+  });
+  if (scope === 'full') params.set('scope', 'full');
   const res = await CapacitorHttp.get({
-    url: `${base()}/list-for-coach?coachId=${encodeURIComponent(coachId)}`,
+    url: `${base()}/list-for-coach?${params.toString()}`,
   });
   const result = res.data;
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonials');

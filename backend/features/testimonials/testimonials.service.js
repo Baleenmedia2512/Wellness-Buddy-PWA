@@ -476,8 +476,8 @@ export async function getMyTestimonial(rawQuery) {
  * Members with no testimonial are included (testimonial = null â†’ red in UI).
  */
 export async function listForCoach(rawQuery) {
-  const { coachId } = validateListForCoach(rawQuery);
-  const rows = await repo.listForCoach(coachId);
+  const { coachId, scope } = validateListForCoach(rawQuery);
+  const rows = await repo.listForCoach(coachId, scope);
 
   // Generate signed URLs in parallel for members who have testimonials
   const enriched = await Promise.all(
@@ -519,5 +519,6 @@ function sanitizeUser(user) {
     userId:       user.UserId,
     userName:     user.UserName,
     profileImage: user.ProfileImage ?? null,
+    phoneNumber:  user.PhoneNumber ?? null,
   };
 }

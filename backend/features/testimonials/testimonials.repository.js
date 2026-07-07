@@ -171,23 +171,46 @@ export async function updateTestimonial(id, payload) {
 }
 
 /**
- * Fetch all direct team members for a coach alongside their testimonial status.
- * Returns team_table rows with a nullable testimonials_table row joined in.
+ * Fetch team members for a coach alongside their testimonial status.
+ * scope:
+ *   - direct (default): immediate downline only (CoachId = coachId)
+ *   - full: every member in the coach hierarchy recursively
  *
  * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
  * @returns {Array<{ user: object, testimonial: object|null }>}
  */
-export async function listForCoach(coachId) {
+export async function listForCoach(coachId, scope = 'direct') {
   const supabase = getSupabaseClient();
 
-  // 1. Fetch direct members
-  const { data: members, error: membersErr } = await supabase
-    .from('team_table')
-    .select('"UserId", "UserName", "Email", "ProfileImage"')
-    .eq('"CoachId"', coachId)
-    .eq('"Status"', 'Active')
-    .order('"UserName"', { ascending: true });
-  if (membersErr) throw membersErr;
+  let members;
+  if (scope === 'full') {
+    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+    const memberIds = (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== coachId);
+    if (memberIds.length === 0) return [];
+
+    const { data, error: membersErr } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
+      .in('"UserId"', memberIds)
+      .eq('"Status"', 'Active')
+      .order('"UserName"', { ascending: true });
+    if (membersErr) throw membersErr;
+    members = data || [];
+  } else {
+    const { data, error: membersErr } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
+      .eq('"CoachId"', coachId)
+      .eq('"Status"', 'Active')
+      .order('"UserName"', { ascending: true });
+    if (membersErr) throw membersErr;
+    members = data || [];
+  }
+
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);

@@ -8,6 +8,16 @@ import { debugLog } from './logger.js';
 
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
+/** UTF-8 middle dot separator for share captions: "Name · Wellness Valley v X.Y.Z" */
+export const SHARE_TEXT_SEPARATOR = '\u00B7';
+
+/** Build the standard Quick Share caption line. */
+export function buildQuickShareText(displayName, versionString) {
+  const name = (displayName || 'Wellness User').trim();
+  const version = (versionString || '').trim();
+  return `${name} ${SHARE_TEXT_SEPARATOR} Wellness Valley ${version}`.replace(/\uFFFD/g, '');
+}
+
 /** Persist profile UserName locally so instant share can read it synchronously. */
 export function cacheProfileUserName(email, userName) {
   if (!email || !userName?.trim()) return;

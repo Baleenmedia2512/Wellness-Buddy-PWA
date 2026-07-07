@@ -6,11 +6,63 @@
  * - Members with a verified testimonial show a green badge + before/after photos.
  * OTP is entered by the MEMBER (not coach) after the coach shares it via WhatsApp/phone.
  */
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, Users } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial } from '../services/testimonialApi.js';
+import TestimonialSearchBar from './TestimonialSearchBar.jsx';
+import {
+  STATUS_FILTERS,
+  TEAM_SCOPES,
+  filterRowsByStatus,
+  countRowsByStatus,
+  toggleStatusFilter,
+} from '../utils/testimonialFilters.js';
+import {
+  buildSearchSuggestions,
+  filterRowsBySearch,
+  normalizeSearchQuery,
+} from '../utils/testimonialSearch.js';
+
+const STATUS_CHIP_STYLES = {
+  [STATUS_FILTERS.VERIFIED]: {
+    base: 'bg-green-100 text-green-800',
+    active: 'bg-green-600 text-white shadow-sm ring-2 ring-green-300',
+  },
+  [STATUS_FILTERS.PENDING]: {
+    base: 'bg-amber-100 text-amber-800',
+    active: 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300',
+  },
+  [STATUS_FILTERS.MISSING]: {
+    base: 'bg-red-100 text-red-800',
+    active: 'bg-red-600 text-white shadow-sm ring-2 ring-red-300',
+  },
+};
+
+const TEAM_SCOPE_OPTIONS = [
+  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
+  { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
+  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
+];
+
+function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
+  const isActive = activeFilter === filterKey;
+  const styles = STATUS_CHIP_STYLES[filterKey];
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(filterKey)}
+      aria-pressed={isActive}
+      className={`rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer ${
+        isActive ? styles.active : styles.base
+      }`}
+    >
+      {label}: {count}
+    </button>
+  );
+}
 
 function MemberRow({ user, testimonial }) {
   const missing  = !testimonial;
@@ -137,34 +189,187 @@ function MemberRow({ user, testimonial }) {
 }
 
 export default function CoachTestimonialsPage({ user }) {
-  const [rows,    setRows]    = useState([]);
+  const [directRows, setDirectRows] = useState([]);
+  const [fullRows, setFullRows] = useState([]);
+  const [mineRow, setMineRow] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
-  // Coach view is read-only — OTP is entered by the member
-  // after the coach shares it with them via WhatsApp/phone.
+  const [fullLoading, setFullLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.ALL);
+  const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
   const coachId = user?.userId || user?.id;
+
+  const buildMineRow = useCallback(async () => {
+    if (!coachId) return null;
+    try {
+      const testimonial = await getMyTestimonial(coachId);
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+          phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+        },
+        testimonial: testimonial || null,
+      };
+    } catch {
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+          phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+        },
+        testimonial: null,
+      };
+    }
+  }, [coachId, user]);
 
   const load = useCallback(async () => {
     if (!coachId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await listForCoach(coachId);
-      setRows(data || []);
+      const requests = [
+        listForCoach(coachId, TEAM_SCOPES.DIRECT),
+        buildMineRow(),
+      ];
+      if (teamScope === TEAM_SCOPES.FULL) {
+        requests.push(listForCoach(coachId, TEAM_SCOPES.FULL));
+      }
+      const results = await Promise.all(requests);
+      setDirectRows(results[0] || []);
+      setMineRow(results[1]);
+      if (teamScope === TEAM_SCOPES.FULL) {
+        setFullRows(results[2] || []);
+      } else {
+        setFullRows([]);
+      }
     } catch (err) {
       setError(err.message || 'Failed to load testimonials');
     } finally {
       setLoading(false);
     }
-  }, [coachId]);
+  }, [coachId, buildMineRow, teamScope]);
+
+  const loadFullTeam = useCallback(async () => {
+    if (!coachId || fullRows.length > 0) return;
+    setFullLoading(true);
+    try {
+      const data = await listForCoach(coachId, TEAM_SCOPES.FULL);
+      setFullRows(data || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load full team testimonials');
+    } finally {
+      setFullLoading(false);
+    }
+  }, [coachId, fullRows.length]);
 
   useEffect(() => { load(); }, [load]);
 
-  const uploadedCount  = rows.filter((r) => r.testimonial).length;
-  const verifiedCount  = rows.filter((r) => r.testimonial?.status === 'verified').length;
-  const pendingCount   = rows.filter((r) => r.testimonial?.status === 'pending').length;
-  const missingCount   = rows.filter((r) => !r.testimonial).length;
+  useEffect(() => {
+    if (teamScope === TEAM_SCOPES.FULL) {
+      loadFullTeam();
+    }
+  }, [teamScope, loadFullTeam]);
+
+  useEffect(() => {
+    setSearchQuery('');
+    setIsSearchOpen(false);
+    setHighlightedSuggestion(-1);
+  }, [teamScope]);
+
+  const scopeRows = useMemo(() => {
+    if (teamScope === TEAM_SCOPES.MINE) {
+      return mineRow ? [mineRow] : [];
+    }
+    if (teamScope === TEAM_SCOPES.FULL) {
+      return fullRows;
+    }
+    return directRows;
+  }, [teamScope, mineRow, directRows, fullRows]);
+
+  const statusCounts = useMemo(() => countRowsByStatus(scopeRows), [scopeRows]);
+
+  const statusFilteredRows = useMemo(
+    () => filterRowsByStatus(scopeRows, statusFilter),
+    [scopeRows, statusFilter],
+  );
+
+  const suggestions = useMemo(
+    () => buildSearchSuggestions(statusFilteredRows, searchQuery),
+    [statusFilteredRows, searchQuery],
+  );
+
+  const filteredRows = useMemo(
+    () => filterRowsBySearch(statusFilteredRows, searchQuery),
+    [statusFilteredRows, searchQuery],
+  );
+
+  const handleStatusToggle = useCallback((next) => {
+    setStatusFilter((current) => toggleStatusFilter(current, next));
+  }, []);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setIsSearchOpen(true);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSelectSuggestion = useCallback((row) => {
+    setSearchQuery(row.user?.userName || '');
+    setIsSearchOpen(false);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSearchKeyDown = useCallback((event) => {
+    const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
+    if (!hasQuery) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (suggestions.length === 0) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (
+        prev < suggestions.length - 1 ? prev + 1 : 0
+      ));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (suggestions.length === 0) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (
+        prev > 0 ? prev - 1 : suggestions.length - 1
+      ));
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
+        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      } else {
+        setIsSearchOpen(false);
+        setHighlightedSuggestion(-1);
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      setIsSearchOpen(false);
+      setHighlightedSuggestion(-1);
+    }
+  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+
+  const showScopeLoading = loading || (teamScope === TEAM_SCOPES.FULL && fullLoading && fullRows.length === 0);
+  const hasScopeData = scopeRows.length > 0;
+  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -184,22 +389,78 @@ export default function CoachTestimonialsPage({ user }) {
         </TouchFeedbackButton>
       </div>
 
-      {/* Summary chips */}
-      {!loading && rows.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          <span className="bg-green-100 text-green-800 rounded-full px-3 py-1 text-xs font-bold">
-            ✅ Verified: {verifiedCount}
-          </span>
-          <span className="bg-amber-100 text-amber-800 rounded-full px-3 py-1 text-xs font-bold">
-            🕐 Pending: {pendingCount}
-          </span>
-          <span className="bg-red-100 text-red-800 rounded-full px-3 py-1 text-xs font-bold">
-            ⚠️ Not Uploaded: {missingCount}
-          </span>
+      {/* Team scope filter */}
+      {!loading && (
+        <div
+          className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1"
+          role="group"
+          aria-label="Team scope filter"
+        >
+          {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+            const isActive = teamScope === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTeamScope(value)}
+                aria-pressed={isActive}
+                className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
+                  isActive
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-green-800 hover:bg-green-50'
+                }`}
+              >
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{short}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {loading && <LoadingSpinner message="Loading team testimonials…" />}
+      {/* Smart search */}
+      {!loading && hasScopeData && (
+        <TestimonialSearchBar
+          value={searchQuery}
+          onChange={handleSearchChange}
+          suggestions={suggestions}
+          isOpen={isSearchOpen}
+          onOpenChange={setIsSearchOpen}
+          highlightedIndex={highlightedSuggestion}
+          onHighlightChange={setHighlightedSuggestion}
+          onSelectSuggestion={handleSelectSuggestion}
+          onKeyDown={handleSearchKeyDown}
+        />
+      )}
+
+      {/* Summary chips — clickable status filters */}
+      {!loading && hasScopeData && (
+        <div className="flex gap-2 flex-wrap" role="group" aria-label="Status filter">
+          <StatusFilterChip
+            filterKey={STATUS_FILTERS.VERIFIED}
+            label="✅ Verified"
+            count={statusCounts.verified}
+            activeFilter={statusFilter}
+            onToggle={handleStatusToggle}
+          />
+          <StatusFilterChip
+            filterKey={STATUS_FILTERS.PENDING}
+            label="🕐 Pending"
+            count={statusCounts.pending}
+            activeFilter={statusFilter}
+            onToggle={handleStatusToggle}
+          />
+          <StatusFilterChip
+            filterKey={STATUS_FILTERS.MISSING}
+            label="⚠️ Not Uploaded"
+            count={statusCounts.missing}
+            activeFilter={statusFilter}
+            onToggle={handleStatusToggle}
+          />
+        </div>
+      )}
+
+      {showScopeLoading && <LoadingSpinner message="Loading team testimonials…" />}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
@@ -207,22 +468,28 @@ export default function CoachTestimonialsPage({ user }) {
         </div>
       )}
 
-      {!loading && !error && rows.length === 0 && (
+      {!showScopeLoading && !error && !hasScopeData && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No team members found</p>
         </div>
       )}
 
-      {!loading && rows.map(({ user: member, testimonial }) => (
+      {!showScopeLoading && !error && hasScopeData && filteredRows.length === 0 && (
+        <div className="text-center py-8 text-gray-400">
+          <p className="font-medium text-sm">
+            {hasActiveSearch ? 'No matching users found.' : 'No records match the selected filters.'}
+          </p>
+        </div>
+      )}
+
+      {!showScopeLoading && filteredRows.map(({ user: member, testimonial }) => (
         <MemberRow
           key={member.userId}
           user={member}
           testimonial={testimonial}
         />
       ))}
-
-
     </div>
   );
 }

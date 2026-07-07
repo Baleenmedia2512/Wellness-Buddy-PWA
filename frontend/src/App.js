@@ -105,6 +105,7 @@ import {
   shareTextViaWhatsApp,
   resolveShareDisplayName,
   ensureShareDisplayName,
+  buildQuickShareText,
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
@@ -684,7 +685,7 @@ function WellnessValleyApp() {
         cacheProfileUserName(user.email, shareDisplayName);
         setSavedUserName(shareDisplayName);
       }
-      const shareText = `${shareDisplayName} � Wellness Valley ${getVersionString()}`;
+      const shareText = buildQuickShareText(shareDisplayName, getVersionString());
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
@@ -5491,7 +5492,7 @@ function WellnessValleyApp() {
               cacheProfileUserName(user.email, shareDisplayName);
               setSavedUserName(shareDisplayName);
             }
-            const shareText = `${shareDisplayName} � Wellness Valley ${getVersionString()}`;
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
             const result = await shareViaCapacitorAPI(fileDataUrl, {
               title: shareDisplayName,
               text: shareText,
@@ -5507,7 +5508,7 @@ function WellnessValleyApp() {
               cacheProfileUserName(user.email, shareDisplayName);
               setSavedUserName(shareDisplayName);
             }
-            const shareText = `${shareDisplayName} � Wellness Valley ${getVersionString()}`;
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
             const ok = await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
             if (!ok) foodAutoSharedRef.current = false;
@@ -5520,7 +5521,7 @@ function WellnessValleyApp() {
               user,
               apiBaseUrl,
             );
-            const shareText = `${shareDisplayName} � Wellness Valley ${getVersionString()}`;
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
             await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
           } catch (__) {
@@ -8702,8 +8703,8 @@ function WellnessValleyApp() {
                           h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 
                         return name
-                          ? `${greeting}, ${name}! ??`
-                          : `${greeting}! ??`;
+                          ? `${greeting}, ${name}! \uD83D\uDC4B`
+                          : `${greeting}! \uD83D\uDC4B`;
                       })()}
                     </h2>
                   </div>
