@@ -3,7 +3,11 @@
  * Zero HTTP concerns. Orchestrates: validation → data → domain → response shape.
  */
 import { validateDownlineWeightStatus } from './reports.validators.js';
-import { getDirectDownline, getLatestWeightsForUsers } from './reports.repository.js';
+import {
+  getCoachMember,
+  getFullTeamMembers,
+  getLatestWeightsForUsers,
+} from './reports.repository.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
 
 /**
@@ -22,8 +26,27 @@ function classifyStatus(currentWeight, idealRange) {
 
 const STATUS_ORDER = { above_ideal: 0, below_ideal: 1, on_track: 2, no_weight: 3, no_height: 4 };
 
+function buildWeightRow(member, weightMap) {
+  const currentWeight = weightMap.get(member.UserId) ?? null;
+  const idealRange = computeIdealWeightRange(member.Height);
+  const status = classifyStatus(currentWeight, idealRange);
+
+  return {
+    userId: member.UserId,
+    userName: member.UserName,
+    heightCm: member.Height ? parseFloat(member.Height) : null,
+    currentWeight,
+    idealMin: idealRange?.idealMin ?? null,
+    idealMax: idealRange?.idealMax ?? null,
+    status,
+  };
+}
+
 /**
  * GET /api/reports/downline-weight-status
+ *
+ * Returns the coach's own row plus every descendant's weight status so the
+ * client can filter by Mine / Direct Team / Full Team without extra requests.
  *
  * @param {{ coachId: string }} rawQuery
  * @returns {{ httpStatus: number, body: object }}
@@ -31,41 +54,33 @@ const STATUS_ORDER = { above_ideal: 0, below_ideal: 1, on_track: 2, no_weight: 3
 export async function getDownlineWeightStatus(rawQuery) {
   const { coachId } = validateDownlineWeightStatus(rawQuery);
 
-  // 1. Fetch direct downline
-  const members = await getDirectDownline(coachId);
-  if (members.length === 0) {
-    return {
-      httpStatus: 200,
-      body: { success: true, data: [] },
-    };
-  }
+  const [coachMember, fullTeamMembers] = await Promise.all([
+    getCoachMember(coachId),
+    getFullTeamMembers(coachId),
+  ]);
 
-  // 2. Fetch latest weight for each member in one round-trip
-  const userIds = members.map((m) => m.UserId);
+  const userIds = [
+    coachId,
+    ...fullTeamMembers.map((m) => m.UserId),
+  ];
   const weightMap = await getLatestWeightsForUsers(userIds);
 
-  // 3. Build response rows
-  const rows = members.map((m) => {
-    const currentWeight = weightMap.get(m.UserId) ?? null;
-    const idealRange = computeIdealWeightRange(m.Height);
-    const status = classifyStatus(currentWeight, idealRange);
+  const selfMember = coachMember || {
+    UserId: coachId,
+    UserName: 'You',
+    Height: null,
+  };
+  const self = buildWeightRow(selfMember, weightMap);
 
-    return {
-      userId:        m.UserId,
-      userName:      m.UserName,
-      heightCm:      m.Height ? parseFloat(m.Height) : null,
-      currentWeight,
-      idealMin:      idealRange?.idealMin ?? null,
-      idealMax:      idealRange?.idealMax ?? null,
-      status,
-    };
-  });
+  const members = fullTeamMembers.map((m) => ({
+    ...buildWeightRow(m, weightMap),
+    isDirect: m.CoachId === coachId,
+  }));
 
-  // 4. Sort: off-track first (above/below), then on_track, then no data
-  rows.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
+  members.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
 
   return {
     httpStatus: 200,
-    body: { success: true, data: rows },
+    body: { success: true, data: { self, members } },
   };
 }

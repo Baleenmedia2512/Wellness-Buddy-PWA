@@ -10,18 +10,30 @@ function base() {
 }
 
 /**
- * Fetch the direct-downline weight status list for a coach.
+ * Fetch weight status for the coach and every descendant in one request.
  *
  * @param {number} coachId
- * @returns {Promise<Array<{
- *   userId: number,
- *   userName: string,
- *   heightCm: number|null,
- *   currentWeight: number|null,
- *   idealMin: number|null,
- *   idealMax: number|null,
- *   status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height'
- * }>>}
+ * @returns {Promise<{
+ *   self: {
+ *     userId: number,
+ *     userName: string,
+ *     heightCm: number|null,
+ *     currentWeight: number|null,
+ *     idealMin: number|null,
+ *     idealMax: number|null,
+ *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height'
+ *   },
+ *   members: Array<{
+ *     userId: number,
+ *     userName: string,
+ *     heightCm: number|null,
+ *     currentWeight: number|null,
+ *     idealMin: number|null,
+ *     idealMax: number|null,
+ *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height',
+ *     isDirect: boolean
+ *   }>
+ * }>}
  */
 export async function fetchDownlineWeightStatus(coachId) {
   const res = await CapacitorHttp.get({

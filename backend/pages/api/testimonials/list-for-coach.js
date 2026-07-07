@@ -1,5 +1,5 @@
 /**
- * GET /api/testimonials/list-for-coach?coachId=<id>
+ * GET /api/testimonials/list-for-coach?coachId=<id>&scope=<direct|full>
  * Returns all direct downline members with their testimonial status.
  * Members without a testimonial have testimonial=null (rendered red in UI).
  */

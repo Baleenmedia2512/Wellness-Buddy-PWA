@@ -5,6 +5,48 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
+ * Fetch the coach's own team_table row (for the "Mine" scope).
+ *
+ * @param {number} coachId
+ * @returns {Promise<{ UserId: number, UserName: string, Height: string|null }|null>}
+ */
+export async function getCoachMember(coachId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName", "Height"')
+    .eq('"UserId"', coachId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * Fetch every Active descendant in the coach hierarchy (excludes the coach).
+ *
+ * @param {number} coachId
+ * @returns {Promise<Array<{ UserId: number, UserName: string, Height: string|null, CoachId: number }>>}
+ */
+export async function getFullTeamMembers(coachId) {
+  const supabase = getSupabaseClient();
+  const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+  const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+  const memberIds = (allMembers || [])
+    .map((m) => m.UserId)
+    .filter((id) => id !== coachId);
+  if (memberIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName", "Height", "CoachId"')
+    .in('"UserId"', memberIds)
+    .eq('"Status"', 'Active')
+    .order('"UserName"', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
  * Fetch direct-downline members for a given coach.
  * Returns UserId, UserName, Height for every Active member whose CoachId matches.
  *
