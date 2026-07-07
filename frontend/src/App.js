@@ -5802,7 +5802,7 @@ function WellnessValleyApp() {
       });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
       setDashboardInitialDate(null);
-      showDashboardPage(isFlagEnabled("ff.diary-feed") ? "diary" : null);
+      // Stay on home — ImageUpload shows the saved photo + diary-update message.
       imageProcessingInProgress.current = false;
 
       debugLog(

@@ -668,7 +668,7 @@ const ImageUpload = forwardRef(
 
               {!loading && loadingState === "saved" && (
                 <p className="text-center text-sm text-emerald-700 font-medium">
-                  Results will appear in your diary shortly.
+                  Image saved — your diary will update shortly.
                 </p>
               )}
 

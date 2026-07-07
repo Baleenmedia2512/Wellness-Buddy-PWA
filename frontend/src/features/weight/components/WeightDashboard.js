@@ -6,8 +6,9 @@
  * `WeightSummaryCards` and `WeightChart`, dot navigator, history list and
  * the lazy `WeightCardModal`. Both `hideHeader` branches are preserved.
  */
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useRef } from 'react';
 import { useWeightDashboard } from '../hooks/useWeightDashboard';
+import { weightEntryFromDiaryRow } from '../services/weightDashboardFormatter';
 import WeightSummaryCards from './WeightSummaryCards';
 import WeightChart from './WeightChart';
 import WeightHistoryList from './WeightHistoryList';
@@ -139,12 +140,40 @@ const WeightDashboard = ({
   onAfterModalClose = null,
 }) => {
   const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
+  const pendingOpenIdRef = useRef(null);
+
+  // If history was stale when the user tapped a diary row, open once fetch catches up.
+  useEffect(() => {
+    const pendingId = pendingOpenIdRef.current;
+    if (!pendingId || vm.loading) return;
+    const entry = (vm.weightHistory || []).find((e) => String(e.ID) === String(pendingId));
+    if (entry) {
+      pendingOpenIdRef.current = null;
+      vm.handleViewEntry(entry);
+    }
+  }, [vm.loading, vm.weightHistory, vm.handleViewEntry]);
 
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
-    openRef.current = (entryId) => {
+    openRef.current = (entryOrId) => {
+      if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'weight') {
+        const p = entryOrId.payload || {};
+        const found = (vm.weightHistory || []).find((e) => String(e.ID) === String(p.id));
+        const row = found || weightEntryFromDiaryRow(entryOrId);
+        if (row) {
+          pendingOpenIdRef.current = null;
+          vm.handleViewEntry(row);
+        }
+        return;
+      }
+      const entryId = entryOrId;
       const entry = (vm.weightHistory || []).find((e) => String(e.ID) === String(entryId));
-      if (entry) vm.handleViewEntry(entry);
+      if (entry) {
+        pendingOpenIdRef.current = null;
+        vm.handleViewEntry(entry);
+      } else if (entryId != null && entryId !== '') {
+        pendingOpenIdRef.current = String(entryId);
+      }
     };
   }
 
