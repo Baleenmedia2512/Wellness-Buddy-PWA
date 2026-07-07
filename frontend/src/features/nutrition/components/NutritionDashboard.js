@@ -206,6 +206,7 @@ const NutritionDashboard = ({
   const {
     isSaving,
     setIsSaving,
+    persistMealItems,
     handleFoodUpdate,
     handleDeleteFoodItem,
     handleRestoreFoodItem,
@@ -775,6 +776,9 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        persistMealItems={persistMealItems}
+        setLocalDetailedItems={setLocalDetailedItems}
+        setLocalNutrition={setLocalNutrition}
       />
 
       {/* Shake Calculator modal — gated by ff.shake-calculator */}
