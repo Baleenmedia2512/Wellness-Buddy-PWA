@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import { WEIGHT_PAGE_SIZE } from '../services/weightDashboardFormatter';
+import { computeIdealWeightRange } from '../services/weightFormService';
 
 export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
   const [weightHistory, setWeightHistory] = useState([]);
@@ -20,6 +21,7 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [idealWeight, setIdealWeight] = useState(null);
 
   const userIdRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
@@ -87,6 +89,7 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
         if (d.success && d.data) {
           if (d.data.userName) setSavedUserName(d.data.userName);
           if (d.data.profileImage) setSavedProfileImage(d.data.profileImage);
+          setIdealWeight(computeIdealWeightRange(d.data.height));
         }
       } catch (err) { console.error('Error fetching profile for WeightDashboard:', err); }
     };
@@ -119,7 +122,7 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
   return {
     weightHistory, setWeightHistory, globalStats,
     loading, loadingMore, hasMoreWeights,
-    savedUserName, savedProfileImage,
+    savedUserName, savedProfileImage, idealWeight,
     userIdRef, loadMoreSentinelRef,
   };
 }

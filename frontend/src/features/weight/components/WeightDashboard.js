@@ -123,6 +123,8 @@ const Modal = ({ vm }) => (
       apiBaseUrl={vm.apiBaseUrl}
       userId={vm.userIdRef.current}
       previousWeight={vm.modalPreviousWeight()}
+      previousEntry={vm.modalPreviousEntry()}
+      idealWeight={vm.idealWeight}
     />
   </Suspense>
 );

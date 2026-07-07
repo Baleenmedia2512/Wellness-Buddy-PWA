@@ -11,6 +11,26 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
 const MAX_BASE64_SIZE = 1.5 * 1024 * 1024; // 1.5 MB base64 â‰ˆ 1 MB binary
+const DURATION_PATTERN = /^(\d+)\s+(days|months)$/i;
+const MAX_DURATION_AMOUNT = 9999;
+
+function validateDurationText(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) throw new ValidationError(400, 'durationText is required');
+  const match = trimmed.match(DURATION_PATTERN);
+  if (!match) {
+    throw new ValidationError(422, 'durationText must be a number followed by "days" or "months" (e.g. "3 months")');
+  }
+  const amount = parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount < 1 || amount > MAX_DURATION_AMOUNT) {
+    throw new ValidationError(422, `duration must be between 1 and ${MAX_DURATION_AMOUNT}`);
+  }
+  const normalized = `${amount} ${match[2].toLowerCase()}`;
+  if (normalized.length > MAX_DURATION_LEN) {
+    throw new ValidationError(422, `durationText must be <= ${MAX_DURATION_LEN} characters`);
+  }
+  return normalized;
+}
 
 function validateBase64Image(value, fieldName) {
   if (!value || typeof value !== 'string') throw new ValidationError(400, `${fieldName} is required`);
@@ -54,10 +74,7 @@ export function validateSubmitTestimonial(body) {
   if (!goalType || !GOAL_TYPES.includes(goalType)) {
     throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
   }
-  if (!durationText || String(durationText).trim() === '') throw new ValidationError(400, 'durationText is required');
-  if (String(durationText).trim().length > MAX_DURATION_LEN) {
-    throw new ValidationError(422, `durationText must be â‰¤ ${MAX_DURATION_LEN} characters`);
-  }
+  const normalizedDuration = validateDurationText(durationText);
 
   return {
     userId:              userIdN,
@@ -66,7 +83,7 @@ export function validateSubmitTestimonial(body) {
     beforeWeightKg:      before,
     afterWeightKg:       after,
     goalType,
-    durationText:        String(durationText).trim(),
+    durationText:        normalizedDuration,
     hasAfter,
   };
 }
@@ -120,9 +137,7 @@ export function validateEditTestimonial(body) {
     result.goalType = goalType;
   }
   if (durationText !== undefined) {
-    if (String(durationText).trim() === '') throw new ValidationError(422, 'durationText cannot be empty');
-    if (String(durationText).trim().length > MAX_DURATION_LEN) throw new ValidationError(422, `durationText must be â‰¤ ${MAX_DURATION_LEN} characters`);
-    result.durationText = String(durationText).trim();
+    result.durationText = validateDurationText(durationText);
   }
 
   return result;

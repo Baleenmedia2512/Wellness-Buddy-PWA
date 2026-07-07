@@ -13,6 +13,7 @@ import { useWeightUndoActions } from './useWeightUndoActions';
 import {
   buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries, filterHistoryByDay,
 } from '../services/weightDashboardFormatter';
+import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
 
 export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
   const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
@@ -121,10 +122,16 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
 
   const modalPreviousWeight = () => {
     if (!selectedEntry) return null;
-    const idx = data.weightHistory.findIndex((e) => e.ID === selectedEntry.ID);
-    const prev = idx > 0 && idx + 1 < data.weightHistory.length
-      ? data.weightHistory[idx + 1] : null;
-    return prev && prev.Weight ? prev.Weight : null;
+    return previousWeightMap.get(selectedEntry.ID) ?? null;
+  };
+
+  const modalPreviousEntry = () => {
+    if (!selectedEntry) return null;
+    const sorted = data.weightHistory
+      .filter((e) => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
+      .sort((a, b) => istToLocalDate(b.CreatedAt) - istToLocalDate(a.CreatedAt));
+    const idx = sorted.findIndex((e) => e.ID === selectedEntry.ID);
+    return idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
   };
 
   return {
@@ -136,7 +143,7 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
     weightSummaryRef, weightTrendRef, weightTrendChartRef,
     selectedEntry, showModal,
     onPointerDown, onPointerMove, onPointerEnd,
-    handleViewEntry, closeModal, modalPreviousWeight,
+    handleViewEntry, closeModal, modalPreviousWeight, modalPreviousEntry,
     ...undo,
   };
 }

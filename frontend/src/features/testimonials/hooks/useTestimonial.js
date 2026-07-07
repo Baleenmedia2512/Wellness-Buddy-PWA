@@ -4,12 +4,17 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
+import {
+  formatDurationText,
+  parseDurationText,
+} from '../services/testimonialFormUtils.js';
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
   afterWeightKg:  '',
   goalType:       'loss',
-  durationText:   '',
+  durationUnit:   'months',
+  durationValue:  '',
 };
 
 // Target binary size after compression: 900 KB (leaves headroom for base64 overhead)
@@ -33,6 +38,10 @@ function compressImage(file) {
       URL.revokeObjectURL(objectUrl);
 
       let { width, height } = img;
+      if (height <= width) {
+        reject(new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.'));
+        return;
+      }
       // Scale down large images proportionally
       if (width > MAX_DIM || height > MAX_DIM) {
         const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
@@ -97,11 +106,13 @@ export function useTestimonial({ userId }) {
   // Populate form when entering edit mode
   useEffect(() => {
     if ((isEditMode || isCompletingMode) && existing) {
+      const duration = parseDurationText(existing.durationText);
       setForm({
         beforeWeightKg: String(existing.beforeWeightKg ?? ''),
         afterWeightKg:  '',
-        goalType:       existing.goalType    ?? 'loss',
-        durationText:   existing.durationText ?? '',
+        goalType:       existing.goalType ?? 'loss',
+        durationUnit:   duration.durationUnit,
+        durationValue:  duration.durationValue,
       });
       setBeforeImage(null);
       setAfterImage(null);
@@ -147,12 +158,18 @@ export function useTestimonial({ userId }) {
         setError('Enter a valid after weight'); return;
       }
     } else {
-      // New submission or full edit â€” before is always required
-      if (!beforeImage) { setError('Please upload your Before photo'); return; }
+      // New submission or full edit — before required unless edit keeps existing photo
+      if (!beforeImage && !(isEditing && existing?.beforeImageUrl)) {
+        setError('Please upload your Before photo');
+        return;
+      }
       if (!form.beforeWeightKg || isNaN(parseFloat(form.beforeWeightKg))) {
         setError('Enter a valid before weight'); return;
       }
-      if (!form.durationText.trim()) { setError('Enter the duration'); return; }
+      if (!formatDurationText(form.durationUnit, form.durationValue)) {
+        setError('Enter a valid duration (numbers only)');
+        return;
+      }
       // After photo is optional here â€” backend handles incomplete state
       if (afterImage && (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg)))) {
         setError('Enter your after weight'); return;
@@ -170,10 +187,10 @@ export function useTestimonial({ userId }) {
         await editTestimonial(payload);
       } else {
         // New or full edit
-        payload.beforeImageBase64 = beforeImage.base64;
-        payload.beforeWeightKg    = parseFloat(form.beforeWeightKg);
-        payload.goalType          = form.goalType;
-        payload.durationText      = form.durationText.trim();
+        if (beforeImage) payload.beforeImageBase64 = beforeImage.base64;
+        payload.beforeWeightKg = parseFloat(form.beforeWeightKg);
+        payload.goalType       = form.goalType;
+        payload.durationText   = formatDurationText(form.durationUnit, form.durationValue);
         if (afterImage) {
           payload.afterImageBase64 = afterImage.base64;
           payload.afterWeightKg    = parseFloat(form.afterWeightKg);
@@ -199,7 +216,7 @@ export function useTestimonial({ userId }) {
     } finally {
       setSubmitting(false);
     }
-  }, [userId, form, beforeImage, afterImage, isEditMode, isCompletingMode]);
+  }, [userId, form, beforeImage, afterImage, isEditMode, isCompletingMode, existing]);
 
   const startEdit = useCallback(() => {
     setSuccess(null);

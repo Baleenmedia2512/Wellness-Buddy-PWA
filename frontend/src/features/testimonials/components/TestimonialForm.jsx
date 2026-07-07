@@ -11,6 +11,24 @@
 import React from 'react';
 import { Camera, Images, CheckCircle, Plus } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import {
+  PORTRAIT_IMAGE_CLASS,
+  sanitizeDurationDigits,
+} from '../services/testimonialFormUtils.js';
+
+const PORTRAIT_PLACEHOLDER_CLASS =
+  'w-full max-w-[180px] mx-auto aspect-[9/16] rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400';
+
+function blockNonNumericKeyDown(e) {
+  const allowed = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+  if (allowed.includes(e.key) || e.ctrlKey || e.metaKey) return;
+  if (!/^\d$/.test(e.key)) e.preventDefault();
+}
+
+function handleDurationPaste(e, setField) {
+  e.preventDefault();
+  setField('durationValue', sanitizeDurationDigits(e.clipboardData.getData('text')));
+}
 
 /**
  * Single image picker with two tap targets: Camera and Gallery.
@@ -29,7 +47,7 @@ function ImagePicker({ label, image, cameraRef, galleryRef, onCameraChange, onGa
           <img
             src={image.preview}
             alt={`${label} preview`}
-            className="w-full h-36 object-cover rounded-2xl border-2 border-green-400"
+            className={`${PORTRAIT_IMAGE_CLASS} max-w-[180px] mx-auto border-green-400`}
           />
           <div className="flex gap-1">
             <TouchFeedbackButton
@@ -54,7 +72,7 @@ function ImagePicker({ label, image, cameraRef, galleryRef, onCameraChange, onGa
       ) : (
         /* Upload prompt — camera + gallery side by side */
         <div className="w-full space-y-2">
-          <div className="w-full h-32 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400">
+          <div className={PORTRAIT_PLACEHOLDER_CLASS}>
             <Plus className="h-8 w-8 opacity-40" />
           </div>
           <div className="flex gap-2">
@@ -163,17 +181,44 @@ export default function TestimonialForm({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">
-              Duration <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text" placeholder="e.g. 3 months, 12 weeks" maxLength={100}
-              value={form.durationText}
-              onChange={(e) => setField('durationText', e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Duration <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                placeholder="e.g. 3"
+                maxLength={4}
+                value={form.durationValue}
+                onChange={(e) => setField('durationValue', sanitizeDurationDigits(e.target.value))}
+                onKeyDown={blockNonNumericKeyDown}
+                onPaste={(e) => handleDurationPaste(e, setField)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setField('durationValue', sanitizeDurationDigits(e.dataTransfer.getData('text')));
+                }}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Unit <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={form.durationUnit}
+                onChange={(e) => setField('durationUnit', e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+              >
+                <option value="days">Days</option>
+                <option value="months">Months</option>
+              </select>
+            </div>
           </div>
+          <p className="text-xs text-gray-400">Portrait photos only (vertical). Duration accepts numbers only.</p>
         </>
       )}
 
