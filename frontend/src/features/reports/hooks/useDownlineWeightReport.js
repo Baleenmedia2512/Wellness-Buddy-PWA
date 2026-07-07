@@ -3,26 +3,39 @@
  * Downline Weight Status report.
  *
  * Exposes:
- *   rows       — full sorted array from the API
- *   filter     — active status filter ('all'|'off_track'|'on_track'|'no_data')
- *   setFilter  — change active filter
- *   filtered   — rows after applying `filter`
- *   counts     — { above_ideal, below_ideal, on_track, no_data }
- *   loading    — true while the first fetch is in flight
- *   error      — string error message or null
- *   refresh    — function to re-fetch data
+ *   self            — logged-in coach's weight row
+ *   members         — full descendant list from the API (pre-sorted)
+ *   teamScope       — active team scope filter
+ *   setTeamScope    — change team scope
+ *   statusFilter    — active status filter
+ *   setStatusFilter — change status filter
+ *   searchQuery     — active search string
+ *   setSearchQuery  — change search string
+ *   statusCounts    — counts scoped to teamScope (before status/search filters)
+ *   filtered        — rows after team scope + status + search filters
+ *   loading         — true while fetch is in flight
+ *   error           — string error message or null
+ *   refresh         — function to re-fetch data
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchDownlineWeightStatus } from '../services/reportsApi.js';
-
-const NO_DATA_STATUSES = new Set(['no_weight', 'no_height']);
-const OFF_TRACK_STATUSES = new Set(['above_ideal', 'below_ideal']);
+import {
+  TEAM_SCOPES,
+  STATUS_FILTERS,
+  countRowsByStatus,
+  filterRowsByStatus,
+  getScopeRows,
+} from '../utils/reportFilters.js';
+import { filterRowsBySearch } from '../utils/reportSearch.js';
 
 export function useDownlineWeightReport({ coachId }) {
-  const [rows, setRows]       = useState([]);
-  const [filter, setFilter]   = useState('off_track'); // default: show problem members
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
+  const [self, setSelf]               = useState(null);
+  const [members, setMembers]         = useState([]);
+  const [teamScope, setTeamScope]     = useState(TEAM_SCOPES.DIRECT);
+  const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.OFF_TRACK);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState(null);
 
   const fetch = useCallback(async () => {
     if (!coachId) return;
@@ -30,7 +43,8 @@ export function useDownlineWeightReport({ coachId }) {
     setError(null);
     try {
       const data = await fetchDownlineWeightStatus(coachId);
-      setRows(data);
+      setSelf(data?.self ?? null);
+      setMembers(Array.isArray(data?.members) ? data.members : []);
     } catch (err) {
       setError(err.message || 'Failed to load report');
     } finally {
@@ -40,26 +54,43 @@ export function useDownlineWeightReport({ coachId }) {
 
   useEffect(() => { fetch(); }, [fetch]);
 
-  // Derived counts
-  const counts = rows.reduce(
-    (acc, r) => {
-      if (r.status === 'above_ideal') acc.above_ideal += 1;
-      else if (r.status === 'below_ideal') acc.below_ideal += 1;
-      else if (r.status === 'on_track') acc.on_track += 1;
-      else acc.no_data += 1;
-      return acc;
-    },
-    { above_ideal: 0, below_ideal: 0, on_track: 0, no_data: 0 },
+  useEffect(() => {
+    setSearchQuery('');
+  }, [teamScope]);
+
+  const scopeRows = useMemo(
+    () => getScopeRows(self, members, teamScope),
+    [self, members, teamScope],
   );
 
-  // Filtered view
-  const filtered = rows.filter((r) => {
-    if (filter === 'all')       return true;
-    if (filter === 'off_track') return OFF_TRACK_STATUSES.has(r.status);
-    if (filter === 'on_track')  return r.status === 'on_track';
-    if (filter === 'no_data')   return NO_DATA_STATUSES.has(r.status);
-    return true;
-  });
+  const statusCounts = useMemo(
+    () => countRowsByStatus(scopeRows),
+    [scopeRows],
+  );
 
-  return { rows, filter, setFilter, filtered, counts, loading, error, refresh: fetch };
+  const statusFilteredRows = useMemo(
+    () => filterRowsByStatus(scopeRows, statusFilter),
+    [scopeRows, statusFilter],
+  );
+
+  const filtered = useMemo(
+    () => filterRowsBySearch(statusFilteredRows, searchQuery),
+    [statusFilteredRows, searchQuery],
+  );
+
+  return {
+    self,
+    members,
+    teamScope,
+    setTeamScope,
+    statusFilter,
+    setStatusFilter,
+    searchQuery,
+    setSearchQuery,
+    statusCounts,
+    filtered,
+    loading,
+    error,
+    refresh: fetch,
+  };
 }

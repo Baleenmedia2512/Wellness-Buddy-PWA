@@ -1,134 +1,144 @@
 /**
- * DownlineWeightReport.js — Full-page report: direct downline weight status.
+ * DownlineWeightReport.js — Full-page report: team weight status with filters.
  *
- * Shows each direct-downline member's current weight vs their ideal range
- * (BMI 19–23 × height²). Supports filter tabs: Off-Track · On Track · No Data · All.
+ * Shows each member's current weight vs their ideal range (BMI 19–23 × height²).
+ * Supports search, team scope (Mine / Direct / Full), and status filter chips.
  *
  * Props:
  *   user      — { id } from App.js session
  *   onBack    — navigate back handler
  */
 import React from 'react';
-import { ArrowLeft, RefreshCw, TrendingUp, TrendingDown, CheckCircle, HelpCircle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
 import { useDownlineWeightReport } from '../hooks/useDownlineWeightReport';
 import WeightStatusRow from './WeightStatusRow';
+import ReportSearchBar from './ReportSearchBar';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import {
+  STATUS_FILTERS,
+  STATUS_FILTER_OPTIONS,
+  TEAM_SCOPE_OPTIONS,
+} from '../utils/reportFilters.js';
 
-const FILTERS = [
-  { key: 'off_track', label: 'Off Track' },
-  { key: 'on_track',  label: 'On Track'  },
-  { key: 'no_data',   label: 'No Data'   },
-  { key: 'all',       label: 'All'       },
-];
-
-function SummaryPill({ icon: Icon, count, label, colour }) {
-  return (
-    <div className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl ${colour}`}>
-      <Icon className="h-4 w-4" />
-      <span className="text-lg font-bold leading-tight">{count}</span>
-      <span className="text-[10px] font-medium leading-tight">{label}</span>
-    </div>
-  );
+function getStatusCountKey(filterKey) {
+  if (filterKey === STATUS_FILTERS.OFF_TRACK) return 'off_track';
+  if (filterKey === STATUS_FILTERS.ON_TRACK) return 'on_track';
+  if (filterKey === STATUS_FILTERS.NO_DATA) return 'no_data';
+  return 'all';
 }
 
 export default function DownlineWeightReport({ user, onBack }) {
   const coachId = user?.id ?? null;
-  const { filter, setFilter, filtered, counts, loading, error, refresh } =
-    useDownlineWeightReport({ coachId });
-
-  const offTrackCount = counts.above_ideal + counts.below_ideal;
+  const {
+    teamScope,
+    setTeamScope,
+    statusFilter,
+    setStatusFilter,
+    searchQuery,
+    setSearchQuery,
+    statusCounts,
+    filtered,
+    loading,
+    error,
+    refresh,
+  } = useDownlineWeightReport({ coachId });
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-full bg-gray-50">
       {/* Page header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <TouchFeedbackButton
-            onClick={onBack}
-            className="flex-shrink-0 p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
-            ariaLabel="Go back"
-          >
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </TouchFeedbackButton>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold text-gray-900 leading-tight">Weight Status Report</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Direct downline · ideal weight tracking</p>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+        <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <TouchFeedbackButton
+              onClick={onBack}
+              className="flex-shrink-0 p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
+              ariaLabel="Go back"
+            >
+              <ArrowLeft className="h-5 w-5 text-gray-600" />
+            </TouchFeedbackButton>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                Weight Status Report
+              </h1>
+              <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
+                Team weight · ideal range tracking
+              </p>
+            </div>
+            <TouchFeedbackButton
+              onClick={refresh}
+              disabled={loading}
+              className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+              ariaLabel="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+            </TouchFeedbackButton>
           </div>
-          <TouchFeedbackButton
-            onClick={refresh}
-            disabled={loading}
-            className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
-            ariaLabel="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-          </TouchFeedbackButton>
         </div>
       </div>
 
-      {/* Summary pills */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex gap-2 justify-around bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
-          <SummaryPill
-            icon={TrendingUp}
-            count={counts.above_ideal}
-            label="Above"
-            colour="text-orange-600"
-          />
-          <div className="w-px bg-gray-100" />
-          <SummaryPill
-            icon={TrendingDown}
-            count={counts.below_ideal}
-            label="Below"
-            colour="text-blue-600"
-          />
-          <div className="w-px bg-gray-100" />
-          <SummaryPill
-            icon={CheckCircle}
-            count={counts.on_track}
-            label="On Track"
-            colour="text-green-600"
-          />
-          <div className="w-px bg-gray-100" />
-          <SummaryPill
-            icon={HelpCircle}
-            count={counts.no_data}
-            label="No Data"
-            colour="text-gray-400"
-          />
-        </div>
-      </div>
+      <div className="max-w-lg mx-auto w-full px-4 sm:px-6 pt-4 pb-24 space-y-3">
+        {/* Search */}
+        <ReportSearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          disabled={loading}
+        />
 
-      {/* Filter tabs */}
-      <div className="px-4 pb-3">
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-          {FILTERS.map(({ key, label }) => {
-            const isActive = filter === key;
+        {/* Team scope segmented control */}
+        <div
+          className="bg-white rounded-xl border border-gray-200 shadow-sm px-1 py-1 flex gap-1 w-full"
+          role="group"
+          aria-label="Team scope filter"
+        >
+          {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+            const isActive = teamScope === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTeamScope(value)}
+                disabled={loading}
+                aria-pressed={isActive}
+                className={`flex-1 min-w-0 py-2 sm:py-2.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer px-1 sm:px-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isActive
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-green-800 hover:bg-green-50'
+                }`}
+              >
+                <span className="hidden sm:inline truncate">{label}</span>
+                <span className="sm:hidden truncate">{short}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Status filter chips — horizontal scroll on mobile, wrap on larger screens */}
+        <div
+          className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
+          role="group"
+          aria-label="Status filter"
+        >
+          {STATUS_FILTER_OPTIONS.map(({ key, label }) => {
+            const isActive = statusFilter === key;
+            const count = statusCounts[getStatusCountKey(key)];
             return (
               <TouchFeedbackButton
                 key={key}
-                onClick={() => setFilter(key)}
-                className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                onClick={() => setStatusFilter(key)}
+                className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-green-600 text-white'
                     : 'bg-white text-gray-600 border border-gray-200 hover:border-green-300'
                 }`}
               >
-                {label}
-                {key === 'off_track' && offTrackCount > 0 && (
-                  <span className={`ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full text-[9px] font-bold ${
-                    isActive ? 'bg-white text-green-700' : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {offTrackCount}
-                  </span>
-                )}
+                {label} ({count})
               </TouchFeedbackButton>
             );
           })}
         </div>
-      </div>
 
-      {/* Body */}
-      <div className="px-4 pb-8 space-y-3">
+        {/* Body */}
+        <div className="space-y-3">
         {/* Loading skeleton */}
         {loading && filtered.length === 0 && (
           <div className="space-y-3">
@@ -167,12 +177,14 @@ export default function DownlineWeightReport({ user, onBack }) {
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <CheckCircle className="h-12 w-12 text-green-400 mb-3" />
             <p className="text-sm font-semibold text-gray-700">
-              {filter === 'off_track'
+              {statusFilter === STATUS_FILTERS.OFF_TRACK && !searchQuery.trim()
                 ? 'All members are at their ideal weight!'
-                : 'No members in this category.'}
+                : 'No members match the current filters.'}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              {filter === 'off_track' ? 'Great work, coach.' : 'Try a different filter.'}
+              {statusFilter === STATUS_FILTERS.OFF_TRACK && !searchQuery.trim()
+                ? 'Great work, coach.'
+                : 'Try adjusting your search or filters.'}
             </p>
           </div>
         )}
@@ -181,6 +193,7 @@ export default function DownlineWeightReport({ user, onBack }) {
         {!error && filtered.map((row) => (
           <WeightStatusRow key={row.userId} row={row} />
         ))}
+        </div>
       </div>
     </div>
   );
