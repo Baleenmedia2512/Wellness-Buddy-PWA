@@ -271,6 +271,9 @@ function extractFoodItemsFromAnalysis(parsed) {
 
   return items;
 }
+
+/**
+ * List of beverage/drink keywords that should NOT count as a meal
  * (breakfast, lunch, or dinner) when they are the ONLY items logged.
  * If a record contains at least one non-exempted food, it still counts.
  */
