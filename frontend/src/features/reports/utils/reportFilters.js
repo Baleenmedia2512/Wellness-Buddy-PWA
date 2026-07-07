@@ -52,7 +52,8 @@ export function getScopeRows(self, members, teamScope) {
     return self ? [self] : [];
   }
   if (teamScope === TEAM_SCOPES.DIRECT) {
-    return members.filter((row) => row.isDirect);
+    // isDirect omitted in legacy flat-array API responses — treat as direct.
+    return members.filter((row) => row.isDirect !== false);
   }
   return members;
 }
