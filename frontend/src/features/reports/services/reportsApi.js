@@ -10,18 +10,45 @@ function base() {
 }
 
 /**
- * Fetch the direct-downline weight status list for a coach.
+ * Normalise API payload to { self, members }.
+ * Supports current shape ({ self, members }) and legacy flat-array responses.
+ */
+export function normalizeDownlineWeightPayload(data) {
+  if (!data) return { self: null, members: [] };
+  if (Array.isArray(data)) {
+    return { self: null, members: data };
+  }
+  return {
+    self: data.self ?? null,
+    members: Array.isArray(data.members) ? data.members : [],
+  };
+}
+
+/**
+ * Fetch weight status for the coach and every descendant in one request.
  *
  * @param {number} coachId
- * @returns {Promise<Array<{
- *   userId: number,
- *   userName: string,
- *   heightCm: number|null,
- *   currentWeight: number|null,
- *   idealMin: number|null,
- *   idealMax: number|null,
- *   status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height'
- * }>>}
+ * @returns {Promise<{
+ *   self: {
+ *     userId: number,
+ *     userName: string,
+ *     heightCm: number|null,
+ *     currentWeight: number|null,
+ *     idealMin: number|null,
+ *     idealMax: number|null,
+ *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height'
+ *   },
+ *   members: Array<{
+ *     userId: number,
+ *     userName: string,
+ *     heightCm: number|null,
+ *     currentWeight: number|null,
+ *     idealMin: number|null,
+ *     idealMax: number|null,
+ *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height',
+ *     isDirect: boolean
+ *   }>
+ * }>}
  */
 export async function fetchDownlineWeightStatus(coachId) {
   const res = await CapacitorHttp.get({
@@ -31,5 +58,5 @@ export async function fetchDownlineWeightStatus(coachId) {
   if (!result?.success) {
     throw new Error(result?.message || 'Failed to fetch downline weight status');
   }
-  return result.data;
+  return normalizeDownlineWeightPayload(result.data);
 }

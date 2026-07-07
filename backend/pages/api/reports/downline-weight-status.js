@@ -1,8 +1,9 @@
 /**
  * GET /api/reports/downline-weight-status?coachId=<id>
  *
- * Returns the weight status of every direct-downline member for the given
- * coach: current weight, ideal range (BMI 19–23), and a status classification.
+ * Returns the weight status of the coach and every descendant: current weight,
+ * ideal range (BMI 19–23), and a status classification. The client filters by
+ * Mine / Direct Team / Full Team without additional requests.
  *
  * Authorization: coachId is supplied by the authenticated client. The field is
  * validated as a positive integer; in future this should be re-derived from the

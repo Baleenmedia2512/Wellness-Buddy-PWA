@@ -147,11 +147,12 @@ export function validateEditTestimonial(body) {
  * Validate query params for GET /api/testimonials/list-for-coach
  */
 export function validateListForCoach(query) {
-  const { coachId } = query || {};
+  const { coachId, scope } = query || {};
   if (!coachId) throw new ValidationError(400, 'coachId is required');
   const coachIdN = parseInt(coachId, 10);
   if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
-  return { coachId: coachIdN };
+  const normalizedScope = scope === 'full' ? 'full' : 'direct';
+  return { coachId: coachIdN, scope: normalizedScope };
 }
 
 /**
