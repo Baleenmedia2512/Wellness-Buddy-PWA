@@ -14,6 +14,8 @@
 import {
   isExemptedBeverageOnly,
   isExemptedFood,
+  extractFoodItemsFromAnalysis,
+  getFoodItemName,
 } from '../../../utils/foodTypeDetection.js';
 
 /** Default daily requirement (ml) when user has no recorded weight. */
@@ -65,11 +67,11 @@ export function parseAnalysisData(value) {
  */
 export function extractWaterFromRecord(record) {
   const ad = parseAnalysisData(record.AnalysisData);
-  const foods = Array.isArray(ad?.foods) ? ad.foods : [];
+  const foods = extractFoodItemsFromAnalysis(ad || {});
   let recordMl = 0;
   const items = [];
   for (const food of foods) {
-    if (!isExemptedFood(food?.name)) continue;
+    if (!isExemptedFood(getFoodItemName(food))) continue;
     const ml =
       parseFloat(food.volume_ml) ||
       parseFloat(food.weight_g) ||
@@ -77,7 +79,7 @@ export function extractWaterFromRecord(record) {
       0;
     if (ml > 0) {
       recordMl += ml;
-      items.push({ name: food.name, volumeMl: ml });
+      items.push({ name: getFoodItemName(food), volumeMl: ml });
     }
   }
   return { recordMl, items };
