@@ -13,6 +13,8 @@
  *    without re-showing the skeleton, so the carousel transitions smoothly.
  */
 import React, { useMemo, useRef } from 'react';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import WellnessScoreCarouselCard from '../../wellness-score-sheet/components/WellnessScoreCarouselCard';
 import {
   useUserCalorieTarget,
   useUserLatestWeight,
@@ -22,7 +24,13 @@ import {
 } from '../hooks';
 import NutritionCarousel from './dashboard/NutritionCarousel';
 
-export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey = 0, nutritionRefreshKey = 0 }) {
+export default function HomeNutritionCarousel({
+  user,
+  apiBaseUrl,
+  bmrUpdateKey = 0,
+  nutritionRefreshKey = 0,
+  onOpenWellnessScore,
+}) {
   // "today" in local time — stable reference re-computed only when the date changes.
   const today = useMemo(() => {
     const d = new Date();
@@ -59,6 +67,18 @@ export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey =
   const hasLoadedOnce = useRef(false);
   if (!bmrLoading && !loading) hasLoadedOnce.current = true;
 
+  const wellnessScoreCard = useMemo(() => {
+    if (!user || !isFlagEnabled('ff.wellness-score-sheet') || !onOpenWellnessScore) return null;
+    return (
+      <WellnessScoreCarouselCard
+        key="wellness-score"
+        user={user}
+        apiBaseUrl={apiBaseUrl}
+        onOpen={onOpenWellnessScore}
+      />
+    );
+  }, [user, apiBaseUrl, onOpenWellnessScore]);
+
   if (!user) return null;
 
   // Show skeleton only on the very first paint, not on background refreshes.
@@ -79,6 +99,7 @@ export default function HomeNutritionCarousel({ user, apiBaseUrl, bmrUpdateKey =
       latestWeight={latestWeight}
       selectedDate={today}
       analyses={analyses}
+      leadingCard={wellnessScoreCard}
     />
   );
 }

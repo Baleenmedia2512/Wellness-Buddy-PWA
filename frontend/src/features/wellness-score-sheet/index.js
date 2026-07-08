@@ -1,4 +1,4 @@
-export { default as WellnessScoreHomeTile } from './components/WellnessScoreHomeTile';
+export { default as WellnessScoreCarouselCard } from './components/WellnessScoreCarouselCard';
 export { default as WellnessScoreSheet } from './components/WellnessScoreSheet';
 export { default as WellnessScorePage } from './components/WellnessScorePage';
 export { default as WellnessScoreSetup } from './components/WellnessScoreSetup';

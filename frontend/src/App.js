@@ -68,7 +68,6 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
-import { WellnessScoreHomeTile } from "./features/wellness-score-sheet";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -8934,20 +8933,13 @@ function WellnessValleyApp() {
                 </div>
               </div>
 
-            {isFlagEnabled('ff.wellness-score-sheet') && (
-              <WellnessScoreHomeTile
-                user={user}
-                apiBaseUrl={apiBaseUrl}
-                onOpen={() => navigateTo('wellness-score')}
-              />
-            )}
-
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel
               user={user}
               apiBaseUrl={apiBaseUrl}
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
+              onOpenWellnessScore={() => navigateTo('wellness-score')}
             />
 
             <ImageUpload
