@@ -3,6 +3,7 @@
  * Owns: team_table (direct-downline lookup) + weight_records_table (latest weight).
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 /**
  * Walk the hierarchy tree and derive each member's parent coach plus
@@ -67,15 +68,17 @@ export async function getFullTeamMembers(coachId) {
     .from('team_table')
     .select('"UserId", "UserName", "Height", "CoachId"')
     .in('"UserId"', memberIds)
-    .eq('"Status"', 'Active')
+    .ilike('"Status"', 'active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
 
-  return (data || []).map((member) => ({
-    ...member,
-    HierarchyParent: parentByUserId.get(member.UserId) ?? member.CoachId,
-    isDirectToRoot: directToRoot.has(member.UserId),
-  }));
+  return (data || [])
+    .filter((member) => isActiveTeamStatus(member.Status))
+    .map((member) => ({
+      ...member,
+      HierarchyParent: parentByUserId.get(member.UserId) ?? member.CoachId,
+      isDirectToRoot: directToRoot.has(member.UserId),
+    }));
 }
 
 /**
@@ -91,10 +94,10 @@ export async function getDirectDownline(coachId) {
     .from('team_table')
     .select('"UserId", "UserName", "Height"')
     .eq('"CoachId"', coachId)
-    .eq('"Status"', 'Active')
+    .ilike('"Status"', 'active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).filter((member) => isActiveTeamStatus(member.Status));
 }
 
 /**

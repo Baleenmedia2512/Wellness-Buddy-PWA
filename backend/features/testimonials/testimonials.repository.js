@@ -3,6 +3,7 @@
  * The ONLY place in this feature that talks to the database or storage.
  */
 import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import logger from '../../shared/lib/logger.js';
 
 const TABLE = 'testimonials_table';
@@ -252,19 +253,19 @@ export async function listForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .in('"UserId"', memberIds)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = data || [];
+    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
   } else {
     const { data, error: membersErr } = await supabase
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .eq('"CoachId"', coachId)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = data || [];
+    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
   }
 
   if (!members || members.length === 0) return [];
@@ -352,19 +353,19 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage"')
       .in('"UserId"', memberIds)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = data || [];
+    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
   } else {
     const { data, error: membersErr } = await supabase
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage"')
       .eq('"CoachId"', coachId)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = data || [];
+    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
   }
 
   if (!members || members.length === 0) return [];
