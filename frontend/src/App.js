@@ -8754,18 +8754,27 @@ function WellnessValleyApp() {
                     </p>
 
                     {/* Greeting */}
-                    <h2 className="text-xs font-bold text-white text-right">
-                      {(() => {
-                        const h = new Date().getHours();
-                        const name = (savedUserName || user?.displayName || '').split(' ')[0];
-                        const greeting =
-                          h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+                   <h2 className="text-xs font-bold text-white text-right">
+  {(() => {
+    const h = new Date().getHours();
+    const firstName = (savedUserName || user?.displayName || '').split(' ')[0];
 
-                        return name
-                          ? `${greeting}, ${name}! \uD83D\uDC4B`
-                          : `${greeting}! \uD83D\uDC4B`;
-                      })()}
-                    </h2>
+    const name = firstName
+      ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+      : '';
+
+    const greeting =
+      h < 12
+        ? 'Good Morning'
+        : h < 17
+        ? 'Good Afternoon'
+        : 'Good Evening';
+
+    return name
+      ? `${greeting}, ${name}! 👋`
+      : `${greeting}! 👋`;
+  })()}
+</h2>
                   </div>
 
                   {/* Camera � primary CTA opens camera directly; gallery icon for choosing existing photo */}
