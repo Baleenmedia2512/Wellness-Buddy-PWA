@@ -476,6 +476,10 @@ export async function prepareVideoUpload(rawBody) {
   };
 }
 
+function tmpChunkPath(userId, sessionId, chunkIndex) {
+  return `${userId}/tmp_${sessionId}_chunk_${chunkIndex}.part`;
+}
+
 /**
  * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
  */
@@ -493,8 +497,20 @@ export async function uploadVideoChunk(rawBody) {
 
   const cleaned = payload.chunkBase64.replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(cleaned, 'base64');
-  const tmpPath = `${payload.userId}/tmp/${payload.sessionId}/chunk_${payload.chunkIndex}`;
+  if (!buffer.length) {
+    throw new ValidationError(422, 'Video chunk data is empty. Please retry the upload.');
+  }
 
+  // Single-chunk videos upload directly — avoids tmp write/read race on small files.
+  if (payload.totalChunks === 1) {
+    await repo.uploadBuffer(payload.finalPath, buffer, 'video/mp4');
+    return {
+      httpStatus: 200,
+      body: { success: true, complete: true, path: payload.finalPath },
+    };
+  }
+
+  const tmpPath = tmpChunkPath(payload.userId, payload.sessionId, payload.chunkIndex);
   await repo.uploadBuffer(tmpPath, buffer, 'application/octet-stream');
 
   if (payload.chunkIndex !== payload.totalChunks - 1) {
@@ -507,7 +523,7 @@ export async function uploadVideoChunk(rawBody) {
   const tmpPaths = [];
   const parts = [];
   for (let i = 0; i < payload.totalChunks; i++) {
-    const chunkPath = `${payload.userId}/tmp/${payload.sessionId}/chunk_${i}`;
+    const chunkPath = tmpChunkPath(payload.userId, payload.sessionId, i);
     tmpPaths.push(chunkPath);
     parts.push(await repo.downloadBuffer(chunkPath));
   }

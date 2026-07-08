@@ -4,16 +4,11 @@
  * Keeps each request under Vercel's serverless body limit (~4.5 MB).
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
+import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
 import { uploadVideoChunk } from '../../../features/testimonials/testimonials.service.js';
 import logger from '../../../shared/lib/logger.js';
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '4mb',
-    },
-  },
-};
+export { config };
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;

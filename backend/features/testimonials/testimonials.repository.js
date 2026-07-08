@@ -106,6 +106,16 @@ export async function objectExists(path) {
   return (data || []).some((entry) => entry.name === filename);
 }
 
+function throwStorageError(operation, path, error) {
+  logger.error(`[testimonials.repo] Storage ${operation} failed`, { path, error });
+  const err = new Error(error?.message || `Video storage ${operation} failed`);
+  const statusCode = Number(error?.statusCode);
+  err.status = Number.isFinite(statusCode) && statusCode >= 400 && statusCode < 600
+    ? statusCode
+    : 502;
+  throw err;
+}
+
 /**
  * Upload a raw buffer to storage.
  * @param {string} path
@@ -114,30 +124,37 @@ export async function objectExists(path) {
  */
 export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
   const supabase = getSupabaseClient();
+  const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(path, buffer, { contentType, upsert: true });
+    .upload(path, body, { contentType, upsert: true });
 
-  if (error) {
-    logger.error('[testimonials.repo] Buffer upload failed', { path, error });
-    throw error;
-  }
+  if (error) throwStorageError('upload', path, error);
   return path;
 }
 
 /**
  * Download a storage object as a Buffer.
  * @param {string} path
+ * @param {{ retries?: number }} [opts]
  * @returns {Promise<Buffer>}
  */
-export async function downloadBuffer(path) {
+export async function downloadBuffer(path, { retries = 3 } = {}) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage.from(BUCKET).download(path);
-  if (error) {
-    logger.error('[testimonials.repo] Buffer download failed', { path, error });
-    throw error;
+  let lastError;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const { data, error } = await supabase.storage.from(BUCKET).download(path);
+    if (!error && data) {
+      return Buffer.from(await data.arrayBuffer());
+    }
+    lastError = error;
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
   }
-  return Buffer.from(await data.arrayBuffer());
+
+  throwStorageError('download', path, lastError);
 }
 
 /**
