@@ -15,6 +15,10 @@ function resolveUserEmail(user) {
   );
 }
 
+function resolveUserPhone(user) {
+  return user?.phone || user?.PhoneNumber || null;
+}
+
 async function resolveDbUserId(user) {
   const cached = Session.getDbUserId();
   if (cached) return cached;
@@ -51,6 +55,13 @@ function mapCoachResponse(json) {
   return { coachId, coachName };
 }
 
+async function fetchCoachByQuery(apiBaseUrl, query) {
+  const res = await fetch(`${apiBaseUrl}/api/user/get-active-coach?${query}`);
+  const json = await res.json();
+  if (!res.ok || !json?.ok) return null;
+  return mapCoachResponse(json);
+}
+
 /**
  * @param {{ apiBaseUrl: string, user?: object|null }} params
  * @returns {Promise<{ coachId: string|number|null, coachName: string|null }>}
@@ -60,22 +71,27 @@ export async function fetchInactiveCoachInfo({ apiBaseUrl, user }) {
 
   const userId = await resolveDbUserId(user);
   const email = resolveUserEmail(user);
+  const phone = resolveUserPhone(user);
 
-  if (!userId && !email) {
+  if (!userId && !email && !phone) {
     return { coachId: null, coachName: null };
   }
 
-  const query = userId
-    ? `userId=${encodeURIComponent(userId)}`
-    : `email=${encodeURIComponent(email)}`;
+  const attempts = [];
+  if (userId) attempts.push(`userId=${encodeURIComponent(userId)}`);
+  if (email) attempts.push(`email=${encodeURIComponent(email)}`);
+  if (phone) attempts.push(`phone=${encodeURIComponent(phone)}`);
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/get-active-coach?${query}`);
-    const json = await res.json();
-    if (!res.ok || !json?.ok) {
-      return { coachId: null, coachName: null };
+    for (const query of attempts) {
+      const result = await fetchCoachByQuery(apiBaseUrl, query);
+      if (result?.coachId || result?.coachName) return result;
     }
-    return mapCoachResponse(json);
+    if (attempts.length > 0) {
+      const last = await fetchCoachByQuery(apiBaseUrl, attempts[0]);
+      if (last) return last;
+    }
+    return { coachId: null, coachName: null };
   } catch {
     return { coachId: null, coachName: null };
   }

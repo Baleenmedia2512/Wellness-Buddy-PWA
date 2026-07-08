@@ -2301,6 +2301,17 @@ function WellnessValleyApp() {
         user?.email ||
         user?.Email ||
         Session.getUserEmail();
+      const userPhone =
+        storedUser?.phone ||
+        storedUser?.PhoneNumber ||
+        user?.phone ||
+        user?.PhoneNumber;
+      const userId =
+        storedUser?.id ||
+        storedUser?.UserId ||
+        user?.id ||
+        user?.UserId ||
+        Session.getDbUserId();
 
       let coachId = inactiveCoachIdRef.current;
       let coachName = inactiveCoachName;
@@ -2316,24 +2327,50 @@ function WellnessValleyApp() {
         if (coachName) setInactiveCoachName(coachName);
       }
 
-      if (coachId && userEmail) {
+      if (userEmail || userPhone || userId) {
         const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, coachId }),
+          body: JSON.stringify({
+            email: userEmail || undefined,
+            phone: userPhone || undefined,
+            userId: userId || undefined,
+            coachId: coachId || undefined,
+          }),
         });
         const otpJson = await otpRes.json();
 
         if (otpRes.ok && otpJson.success !== false) {
           if (userEmail) Session.setUserEmail(userEmail);
           if (otpJson.coachName) setInactiveCoachName(otpJson.coachName);
-          // Atomic transition: dismiss waiting overlay and show ValidateOTP full-screen.
           flushSync(() => {
             setIsWaitingForCoachOTP(false);
             setShowValidateOTP(true);
           });
           return;
         }
+
+        const errMsg =
+          otpJson.message ||
+          otpJson.error ||
+          "Could not reach your coach. Please try again.";
+        setAlertModal({
+          isOpen: true,
+          title: "Unable to contact coach",
+          message:
+            otpJson.error === "NO_COACH_ASSIGNED"
+              ? "No coach is assigned to your account. Please ask your wellness center to link you to a coach first."
+              : errMsg,
+          type: "warning",
+        });
+      } else {
+        setAlertModal({
+          isOpen: true,
+          title: "Unable to contact coach",
+          message:
+            "Your account is missing contact details. Please sign in again or contact support.",
+          type: "warning",
+        });
       }
     } catch (_err) {
       console.error("[handleContactCoach] Error:", _err);
@@ -7577,7 +7614,9 @@ function WellnessValleyApp() {
   // -------------------------------------------------------------------------
   if (isWaitingForCoachOTP) {
     return (
-      <div
+      <>
+        {alertModalPortal}
+        <div
         data-waiting-modal="true"
         style={{
           position: "fixed",
@@ -7643,6 +7682,7 @@ function WellnessValleyApp() {
         </div>
         <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
+      </>
     );
   }
   // -------------------------------------------------------------------------
@@ -7651,7 +7691,9 @@ function WellnessValleyApp() {
   // Must replace Login entirely; overlay-on-Login was hidden behind lazy Suspense.
   if (showValidateOTP && isInactiveReactivationFlow) {
     return (
-      <Suspense
+      <>
+        {alertModalPortal}
+        <Suspense
         fallback={
           <div
             className="fixed inset-0 z-[999999] flex items-center justify-center bg-white"
@@ -7679,6 +7721,7 @@ function WellnessValleyApp() {
           onLogout={handleSignOut}
         />
       </Suspense>
+      </>
     );
   }
   // -------------------------------------------------------------------------
@@ -7695,6 +7738,19 @@ function WellnessValleyApp() {
       onContactCoach={handleContactCoach}
     />
   ) : null;
+
+  const alertModalPortal = (
+    <CustomAlertModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal((prev) => ({ ...prev, isOpen: false }))}
+      title={alertModal.title}
+      message={alertModal.message}
+      type={alertModal.type}
+      confirmText={alertModal.confirmText}
+      cancelText={alertModal.cancelText}
+      onConfirm={alertModal.onConfirm}
+    />
+  );
 
   if (authLoading) {
     // On native, show the logo overlay instead of a blank screen � the native
@@ -7964,6 +8020,7 @@ function WellnessValleyApp() {
     );
     return (
       <>
+        {alertModalPortal}
         <Login
           onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
           loading={loading}

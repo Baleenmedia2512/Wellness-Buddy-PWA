@@ -17,34 +17,62 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId: userIdQuery, email: emailQuery } = req.query;
+    const { userId: userIdQuery, email: emailQuery, phone: phoneQuery } = req.query;
 
-    if (!userIdQuery && !emailQuery) {
+    if (!userIdQuery && !emailQuery && !phoneQuery) {
       return res.status(400).json({
         ok: false,
         error: {
           code: 'MISSING_IDENTIFIER',
-          message: 'userId or email is required',
+          message: 'userId, email, or phone is required',
         },
       });
     }
 
     const supabase = getSupabaseClient();
 
-    // Get user's basic info
-    let userQuery = supabase
-      .from('team_table')
-      .select('UserId, UserName, CoachId, Status');
+    let user = null;
 
     if (userIdQuery) {
-      userQuery = userQuery.eq('UserId', userIdQuery);
-    } else {
-      userQuery = userQuery.eq('Email', String(emailQuery).trim());
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('UserId', userIdQuery)
+        .single();
+      if (!userError && data) user = data;
     }
 
-    const { data: user, error: userError } = await userQuery.single();
+    if (!user && emailQuery) {
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .ilike('Email', String(emailQuery).trim())
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+    }
 
-    if (userError || !user) {
+    if (!user && phoneQuery) {
+      const normalized = String(phoneQuery).trim();
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('PhoneNumber', normalized)
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+      if (!user) {
+        const digits = normalized.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          const { data: bySuffix, error: suffixErr } = await supabase
+            .from('team_table')
+            .select('UserId, UserName, CoachId, Status')
+            .ilike('PhoneNumber', `%${digits.slice(-10)}`)
+            .limit(1);
+          if (!suffixErr && bySuffix?.[0]) user = bySuffix[0];
+        }
+      }
+    }
+
+    if (!user) {
       return res.status(404).json({
         ok: false,
         error: {
