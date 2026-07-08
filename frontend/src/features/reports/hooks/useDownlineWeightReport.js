@@ -13,6 +13,7 @@
  *   setSearchQuery  — change search string
  *   statusCounts    — counts scoped to teamScope (before status/search filters)
  *   filtered        — rows after team scope + status + search filters
+ *   teamPerformanceByUserId — direct coaches with downline → summary stats
  *   loading         — true while fetch is in flight
  *   error           — string error message or null
  *   refresh         — function to re-fetch data
@@ -28,6 +29,7 @@ import {
   getScopeRows,
 } from '../utils/reportFilters.js';
 import { filterRowsBySearch } from '../utils/reportSearch.js';
+import { buildTeamPerformanceByUserId } from '../utils/reportTeamPerformance.js';
 
 export function useDownlineWeightReport({ coachId }) {
   const [self, setSelf]               = useState(null);
@@ -84,6 +86,11 @@ export function useDownlineWeightReport({ coachId }) {
     [statusFilteredRows, searchQuery],
   );
 
+  const teamPerformanceByUserId = useMemo(
+    () => buildTeamPerformanceByUserId(members),
+    [members],
+  );
+
   return {
     self,
     members,
@@ -96,6 +103,7 @@ export function useDownlineWeightReport({ coachId }) {
     teamScopeCounts,
     statusCounts,
     filtered,
+    teamPerformanceByUserId,
     loading,
     error,
     refresh: fetch,

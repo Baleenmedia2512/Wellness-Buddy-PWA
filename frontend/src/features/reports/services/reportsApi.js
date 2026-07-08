@@ -46,7 +46,8 @@ export function normalizeDownlineWeightPayload(data) {
  *     idealMin: number|null,
  *     idealMax: number|null,
  *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height',
- *     isDirect: boolean
+ *     isDirect: boolean,
+ *     coachId: number
  *   }>
  * }>}
  */

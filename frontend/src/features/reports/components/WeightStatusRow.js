@@ -21,7 +21,7 @@ function getBarProps(currentWeight, idealMin, idealMax) {
   return { pct, idealStartPct, idealEndPct };
 }
 
-export default function WeightStatusRow({ row }) {
+export default function WeightStatusRow({ row, teamPerformance = null }) {
   const { userName, currentWeight, idealMin, idealMax, status } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
 
@@ -98,7 +98,22 @@ export default function WeightStatusRow({ row }) {
               {deltaLabel}
             </p>
           )}
+          {teamPerformance && (
+            <p className="mt-1.5 text-xs font-medium">
+              <span className="text-orange-600">{teamPerformance.offTrackPct}% off track</span>
+              <span className="text-gray-300 mx-1.5">|</span>
+              <span className="text-green-600">{teamPerformance.onTrackPct}% on track</span>
+            </p>
+          )}
         </div>
+      )}
+
+      {!bar && teamPerformance && (
+        <p className="mt-3 text-xs font-medium">
+          <span className="text-orange-600">{teamPerformance.offTrackPct}% off track</span>
+          <span className="text-gray-300 mx-1.5">|</span>
+          <span className="text-green-600">{teamPerformance.onTrackPct}% on track</span>
+        </p>
       )}
     </div>
   );

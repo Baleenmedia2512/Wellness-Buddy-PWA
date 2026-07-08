@@ -74,7 +74,8 @@ export async function getDownlineWeightStatus(rawQuery) {
 
   const members = fullTeamMembers.map((m) => ({
     ...buildWeightRow(m, weightMap),
-    isDirect: m.CoachId === coachId,
+    isDirect: m.isDirectToRoot ?? m.CoachId === coachId,
+    coachId: m.HierarchyParent ?? m.CoachId,
   }));
 
   members.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));

@@ -5,6 +5,32 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
+ * Walk the hierarchy tree and derive each member's parent coach plus
+ * which users are direct children of the logged-in coach.
+ */
+function extractHierarchyMeta(hierarchy, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  const parentByUserId = new Map();
+  const directToRoot = new Set();
+
+  function walk(node) {
+    if (!node?.teamMembers?.length) return;
+    for (const child of node.teamMembers) {
+      const childId = child.userId;
+      const parentId = node.userId;
+      if (childId != null && parentId != null) {
+        parentByUserId.set(childId, parentId);
+        if (Number(parentId) === rootId) directToRoot.add(childId);
+      }
+      walk(child);
+    }
+  }
+
+  if (hierarchy) walk(hierarchy);
+  return { parentByUserId, directToRoot };
+}
+
+/**
  * Fetch the coach's own team_table row (for the "Mine" scope).
  *
  * @param {number} coachId
@@ -30,7 +56,8 @@ export async function getCoachMember(coachId) {
 export async function getFullTeamMembers(coachId) {
   const supabase = getSupabaseClient();
   const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-  const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, coachId);
+  const { parentByUserId, directToRoot } = extractHierarchyMeta(hierarchy, coachId);
   const memberIds = (allMembers || [])
     .map((m) => m.UserId)
     .filter((id) => id !== coachId);
@@ -43,7 +70,12 @@ export async function getFullTeamMembers(coachId) {
     .eq('"Status"', 'Active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
-  return data || [];
+
+  return (data || []).map((member) => ({
+    ...member,
+    HierarchyParent: parentByUserId.get(member.UserId) ?? member.CoachId,
+    isDirectToRoot: directToRoot.has(member.UserId),
+  }));
 }
 
 /**

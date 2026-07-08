@@ -20,6 +20,7 @@ import {
   TEAM_SCOPES,
   TEAM_SCOPE_OPTIONS,
 } from '../utils/reportFilters.js';
+import { normalizeUserId } from '../utils/reportTeamPerformance.js';
 
 function getStatusCountKey(filterKey) {
   if (filterKey === STATUS_FILTERS.OFF_TRACK) return 'off_track';
@@ -40,6 +41,7 @@ export default function DownlineWeightReport({ user, onBack }) {
     teamScopeCounts,
     statusCounts,
     filtered,
+    teamPerformanceByUserId,
     loading,
     error,
     refresh,
@@ -197,7 +199,11 @@ export default function DownlineWeightReport({ user, onBack }) {
 
         {/* Member rows */}
         {!error && filtered.map((row) => (
-          <WeightStatusRow key={row.userId} row={row} />
+          <WeightStatusRow
+            key={row.userId}
+            row={row}
+            teamPerformance={teamPerformanceByUserId[normalizeUserId(row.userId)] ?? null}
+          />
         ))}
         </div>
       </div>
