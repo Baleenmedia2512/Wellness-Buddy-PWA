@@ -37,6 +37,35 @@ export async function uploadImage(base64, path) {
 }
 
 /**
+ * Upload a base64-encoded video to the testimonials Supabase Storage bucket.
+ * Supports mp4 / mov / quicktime — content-type is set based on the data-URI prefix
+ * or defaults to video/mp4.
+ * @param {string} base64 - raw base64 string (with or without data-URI prefix)
+ * @param {string} path   - storage object path, e.g. "42/health_video_1720000000000.mp4"
+ * @returns {string} path stored
+ */
+export async function uploadVideo(base64, path) {
+  const supabase = getSupabaseClient();
+
+  // Detect MIME type from data-URI prefix, fallback to video/mp4
+  const mimeMatch = base64.match(/^data:([^;]+);base64,/);
+  const mimeType  = mimeMatch ? mimeMatch[1] : 'video/mp4';
+
+  const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
+  const buffer  = Buffer.from(cleaned, 'base64');
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, buffer, { contentType: mimeType, upsert: true });
+
+  if (error) {
+    logger.error('[testimonials.repo] Video upload failed', { path, error });
+    throw error;
+  }
+  return path;
+}
+
+/**
  * Generate a short-lived signed URL for in-app display.
  * @param {string} path
  * @returns {string|null} signed URL or null on error
@@ -171,6 +200,33 @@ export async function updateTestimonial(id, payload) {
 }
 
 /**
+ * Update the video-related columns of a testimonial row.
+ * Only fields present on the payload object are written.
+ * @param {number} id
+ * @param {object} payload - partial video fields
+ * @returns {object} updated row
+ */
+export async function updateTestimonialVideos(id, payload) {
+  const supabase = getSupabaseClient();
+  const updates  = { updated_at: getISTTimestamp() };
+  if (payload.healthVideoPath    !== undefined) updates.health_video_path      = payload.healthVideoPath;
+  if (payload.businessVideoPath  !== undefined) updates.business_video_path    = payload.businessVideoPath;
+  if (payload.videoStatus        !== undefined) updates.video_status           = payload.videoStatus;
+  if (payload.videoOtpHash       !== undefined) updates.video_otp_hash         = payload.videoOtpHash;
+  if (payload.videoOtpExpiresAt  !== undefined) updates.video_otp_expires_at   = payload.videoOtpExpiresAt;
+  if (payload.videoVerifiedAt    !== undefined) updates.video_verified_at      = payload.videoVerifiedAt;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Fetch team members for a coach alongside their testimonial status.
  * scope:
  *   - direct (default): immediate downline only (CoachId = coachId)
@@ -196,7 +252,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .in('"UserId"', memberIds)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
@@ -205,7 +261,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .eq('"CoachId"', coachId)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
@@ -271,4 +327,72 @@ export async function findCoachIdForUser(userId) {
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
   return { coachId: data[0].CoachId, userName: data[0].UserName };
+}
+
+/**
+ * Fetch team members for a coach with their video upload/verification status.
+ * Used by the video report endpoint.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Array<{ user: object, videoStatus: string, hasHealthVideo: boolean, hasBusinessVideo: boolean, videoVerifiedAt: string|null }>}
+ */
+export async function listVideoReportForCoach(coachId, scope = 'direct') {
+  const supabase = getSupabaseClient();
+
+  let members;
+  if (scope === 'full') {
+    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+    const memberIds = (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== coachId);
+    if (memberIds.length === 0) return [];
+
+    const { data, error: membersErr } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "ProfileImage"')
+      .in('"UserId"', memberIds)
+      .ilike('"Status"', 'active')
+      .order('"UserName"', { ascending: true });
+    if (membersErr) throw membersErr;
+    members = data || [];
+  } else {
+    const { data, error: membersErr } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "ProfileImage"')
+      .eq('"CoachId"', coachId)
+      .ilike('"Status"', 'active')
+      .order('"UserName"', { ascending: true });
+    if (membersErr) throw membersErr;
+    members = data || [];
+  }
+
+  if (!members || members.length === 0) return [];
+
+  const memberIds = members.map((m) => m.UserId);
+
+  const { data: testimonials, error: testErr } = await supabase
+    .from(TABLE)
+    .select('user_id, video_status, health_video_path, business_video_path, video_verified_at')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (testErr) throw testErr;
+
+  // Most recent testimonial per user
+  const testimonialMap = {};
+  for (const t of (testimonials || [])) {
+    if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
+  }
+
+  return members.map((m) => {
+    const t = testimonialMap[m.UserId];
+    return {
+      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: m.ProfileImage },
+      videoStatus:      t?.video_status      ?? 'none',
+      hasHealthVideo:   !!(t?.health_video_path),
+      hasBusinessVideo: !!(t?.business_video_path),
+      videoVerifiedAt:  t?.video_verified_at ?? null,
+    };
+  });
 }

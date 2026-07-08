@@ -1,0 +1,87 @@
+/**
+ * VerifyVideoOtpModal.jsx
+ * Member enters the 6-digit OTP (shared by coach from email) to verify their video testimonial.
+ * Mirrors VerifyOtpModal but calls the video OTP endpoint.
+ */
+import React, { useState } from 'react';
+import { Video, X } from 'lucide-react';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
+
+export default function VerifyVideoOtpModal({ testimonialId, onVerified, onClose }) {
+  const [otp,        setOtp]        = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error,      setError]      = useState(null);
+
+  const handleVerify = async () => {
+    setError(null);
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError('Please enter the 6-digit OTP from your coach');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await verifyTestimonialVideoOtp({ testimonialId, otp: otp.trim() });
+      onVerified();
+    } catch (err) {
+      setError(err.message || 'Verification failed. Please check the OTP and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 space-y-5 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Video className="h-5 w-5 text-green-600" />
+            <h2 className="text-base font-bold text-gray-800">Verify Video Testimonial</h2>
+          </div>
+          <TouchFeedbackButton
+            onClick={onClose}
+            className="p-1.5 rounded-full text-gray-500 hover:text-gray-700"
+            ariaLabel="Close"
+          >
+            <X className="h-5 w-5" />
+          </TouchFeedbackButton>
+        </div>
+
+        <p className="text-sm text-gray-600">
+          Your coach received a verification email. Ask them for the 6-digit OTP and enter it below.
+        </p>
+
+        {/* OTP input */}
+        <input
+          type="tel"
+          inputMode="numeric"
+          maxLength={6}
+          placeholder="_ _ _ _ _ _"
+          value={otp}
+          onChange={(e) => {
+            const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+            setOtp(v);
+            setError(null);
+          }}
+          className="w-full text-center text-3xl font-bold tracking-[0.5em] border-2 border-gray-300 rounded-2xl py-4 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-400"
+          autoFocus
+        />
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <TouchFeedbackButton
+          onClick={handleVerify}
+          disabled={submitting || otp.length !== 6}
+          className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors disabled:opacity-60"
+        >
+          {submitting ? 'Verifying…' : 'Verify Videos'}
+        </TouchFeedbackButton>
+      </div>
+    </div>
+  );
+}

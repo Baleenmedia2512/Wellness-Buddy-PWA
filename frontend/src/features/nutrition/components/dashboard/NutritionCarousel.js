@@ -3,14 +3,14 @@
  *
  * Cards (in order):
  *   0 — Calories       (BMR target, consumed, exercise=0, remaining)
- *   1 — Macros         (GI, fat, protein with weight-derived targets)
+ *   1 — Macros         (protein/fat/carbs with weight-derived targets)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
- *   3 — Low Carb       (carbs, sugar ≤50g, fiber ≥25g)
+ *   3 — Low Carb       (GI, sugar ≤50g, fiber ≥25g; carbs in footer)
  *   4 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
  *   5 — B Vitamins     (B1, B2, B3, B6, B9, B12 vs. adult RDA)
  *   6 — Minerals       (Ca, Fe, Mg, K, Zn, P vs. adult RDA)
  *
- * (Glycemic Index carousel card disabled — GI is on the Macros card instead.
+ * (Glycemic Index carousel card disabled — GI is on the Low Carb card instead.
  *  To re-enable: uncomment GICard import/usage below and add 'Glycemic Index' to CARD_LABELS.)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
@@ -22,7 +22,7 @@ import {
   computeMacroTargets,
   computeHeartHealthyCard,
   computeLowCarbCard,
-  // computeGICard, // disabled — GI moved to Macros card
+  // computeGICard, // disabled — GI moved to Low Carb card
 } from '../../domain/carouselRules';
 import {
   computeVitaminsFatSolubleCard,
@@ -34,7 +34,7 @@ import CaloriesCard   from './carousel/CaloriesCard';
 import MacrosCard     from './carousel/MacrosCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
 import LowCarbCard    from './carousel/LowCarbCard';
-// import GICard         from './carousel/GICard'; // disabled — GI moved to Macros card
+// import GICard         from './carousel/GICard'; // disabled — GI moved to Low Carb card
 import VitaminsFatSolubleCard from './carousel/VitaminsFatSolubleCard';
 import VitaminsBComplexCard   from './carousel/VitaminsBComplexCard';
 import MineralsCard           from './carousel/MineralsCard';
@@ -43,7 +43,6 @@ import GlycemicIndexModal from '../GlycemicIndexModal';
 
 const CARD_LABELS = [
   'Calories', 'Macros', 'Heart Healthy', 'Low Carb',
-  // 'Glycemic Index', // disabled — GI moved to Macros card
   'Vitamins A-K', 'B Vitamins', 'Minerals',
 ];
 
@@ -95,11 +94,6 @@ const NutritionCarousel = ({
     calorieTarget,
   });
 
-  // const giCard = computeGICard({
-  //   averageGlycemicIndex: dailyStats?.averageGlycemicIndex ?? null,
-  //   mealCount: dailyStats?.mealCount || 0,
-  // });
-
   const vitFatTiles  = computeVitaminsFatSolubleCard(dailyStats || {});
   const vitBTiles    = computeVitaminsBComplexCard(dailyStats || {});
   const mineralTiles = computeMineralsCard(dailyStats || {});
@@ -117,14 +111,21 @@ const NutritionCarousel = ({
         key="macros"
         consumedProtein={dailyStats?.totalProtein || 0}
         consumedFat={dailyStats?.totalFat        || 0}
+        consumedCarbs={dailyStats?.totalCarbs    || 0}
         proteinTarget={proteinTarget}
         fatTarget={fatTarget}
-        glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+        carbsTarget={carbsTarget}
         onOpenModal={handleOpenModal}
       />,
       <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} onOpenModal={handleOpenModal} />,
-      <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} onOpenModal={handleOpenModal} />,
-      // <GICard key="gi" averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
+      <LowCarbCard
+        key="lowcarb"
+        carbs={lowCarbCard.carbs}
+        sugar={lowCarbCard.sugar}
+        fiber={lowCarbCard.fiber}
+        glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+        onOpenModal={handleOpenModal}
+      />,
       <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} onOpenModal={handleOpenModal} />,
       <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} onOpenModal={handleOpenModal} />,
       <MineralsCard           key="minerals" tiles={mineralTiles} onOpenModal={handleOpenModal} />,
@@ -132,13 +133,11 @@ const NutritionCarousel = ({
     [
       calCard.target, calCard.consumed, calCard.exercise, calCard.remaining,
       proteinTarget, fatTarget, carbsTarget,
-      dailyStats?.totalProtein, dailyStats?.totalFat,
+      dailyStats?.totalProtein, dailyStats?.totalFat, dailyStats?.totalCarbs,
       dailyStats?.averageGlycemicIndex,
       heartCard.fat, heartCard.sodium, heartCard.cholesterol,
       lowCarbCard.carbs, lowCarbCard.sugar, lowCarbCard.fiber,
-      // giCard.averageGI, giCard.mealCount,
       vitFatTiles, vitBTiles, mineralTiles,
-      analyses,
     ],
   );
 
@@ -183,7 +182,7 @@ const NutritionCarousel = ({
         </div>
       </div>
 
-      {/* Food Breakdown Modal - rendered at carousel level for full-screen bottom sheet */}
+      {/* Food Breakdown / GI Modal - rendered at carousel level for full-screen bottom sheet */}
       {modalState.nutrient === 'glycemicIndex' ? (
         <GlycemicIndexModal
           isOpen={modalState.isOpen}

@@ -11,9 +11,12 @@ import { ArrowLeft, Trophy } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { useTestimonial } from '../hooks/useTestimonial.js';
+import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
 import TestimonialForm from './TestimonialForm';
 import TestimonialStatusCard from './TestimonialStatusCard';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
+import TestimonialVideoForm from './TestimonialVideoForm';
+import VerifyVideoOtpModal from './VerifyVideoOtpModal';
 
 function MemberView({ userId }) {
   const beforeCameraRef  = useRef(null);
@@ -30,6 +33,25 @@ function MemberView({ userId }) {
     submitting, error, success,
     handleSubmit, startEdit, startCompleting, cancelEdit,
   } = useTestimonial({ userId });
+
+  const testimonialId = existing?.id ?? null;
+
+  const {
+    healthVideo,
+    businessVideo,
+    handleHealthVideoChange,
+    handleBusinessVideoChange,
+    removeHealthVideo,
+    removeBusinessVideo,
+    submitting:    videoSubmitting,
+    error:         videoError,
+    success:       videoSuccess,
+    showOtpModal,
+    setShowOtpModal,
+    handleSubmit:  handleVideoSubmit,
+    handleVideoVerified,
+    reset:         resetVideo,
+  } = useTestimonialVideo({ userId, testimonialId });
 
   if (existing === undefined) {
     return <LoadingSpinner message="Loading your testimonial…" />;
@@ -51,6 +73,12 @@ function MemberView({ userId }) {
         </div>
       )}
 
+      {videoSuccess && !showOtpModal && (
+        <div className="bg-green-50 border border-green-300 rounded-2xl px-4 py-3 text-sm text-green-800 font-medium">
+          {videoSuccess}
+        </div>
+      )}
+
       {/* Status card — shown when there's an existing record and not in edit mode */}
       {existing && !isEditMode && !isCompletingMode && (
         <TestimonialStatusCard
@@ -61,7 +89,7 @@ function MemberView({ userId }) {
         />
       )}
 
-      {/* Form — new submission, full edit, or completing incomplete */}
+      {/* Photo form — new submission, full edit, or completing incomplete */}
       {showForm && (
         <TestimonialForm
           form={form}
@@ -85,6 +113,31 @@ function MemberView({ userId }) {
         />
       )}
 
+      {/* Video upload section — always shown (locked when no photo testimonial yet) */}
+      {!isEditMode && !isCompletingMode && (
+        <TestimonialVideoForm
+          healthVideo={healthVideo}
+          businessVideo={businessVideo}
+          handleHealthVideoChange={handleHealthVideoChange}
+          handleBusinessVideoChange={handleBusinessVideoChange}
+          onRemoveHealth={removeHealthVideo}
+          onRemoveBusiness={removeBusinessVideo}
+          onSubmit={handleVideoSubmit}
+          submitting={videoSubmitting}
+          error={videoError}
+          locked={!existing}
+        />
+      )}
+
+      {/* Video OTP modal — shown after a successful video upload */}
+      {showOtpModal && testimonialId && (
+        <VerifyVideoOtpModal
+          testimonialId={testimonialId}
+          onVerified={handleVideoVerified}
+          onClose={() => setShowOtpModal(false)}
+        />
+      )}
+
       {/* How it works — only for fresh users */}
       {!existing && !showForm && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 text-sm text-blue-800 space-y-1">
@@ -94,6 +147,7 @@ function MemberView({ userId }) {
             <li>When you have your results, come back and add the <strong>After</strong> photo.</li>
             <li>Your coach receives an email with the OTP — they share it with you.</li>
             <li>Enter the OTP in the app to get your testimonial officially verified.</li>
+            <li>Optionally upload a <strong>Health</strong> or <strong>Business</strong> results video — your coach verifies with a separate OTP.</li>
           </ol>
         </div>
       )}

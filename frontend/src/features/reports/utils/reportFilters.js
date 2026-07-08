@@ -58,6 +58,15 @@ export function getScopeRows(self, members, teamScope) {
   return members;
 }
 
+/** Member counts per team scope tab (for segmented control labels). */
+export function countRowsByTeamScope(self, members) {
+  return {
+    [TEAM_SCOPES.MINE]: getScopeRows(self, members, TEAM_SCOPES.MINE).length,
+    [TEAM_SCOPES.DIRECT]: getScopeRows(self, members, TEAM_SCOPES.DIRECT).length,
+    [TEAM_SCOPES.FULL]: getScopeRows(self, members, TEAM_SCOPES.FULL).length,
+  };
+}
+
 export const STATUS_FILTER_OPTIONS = [
   { key: STATUS_FILTERS.OFF_TRACK, label: 'Off Track' },
   { key: STATUS_FILTERS.ON_TRACK, label: 'On Track' },

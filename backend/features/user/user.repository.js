@@ -128,7 +128,7 @@ export async function setUserStatus(userId, status) {
 }
 
 export async function getStatusFields(email) {
-  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped"');
+  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
 export async function getPendingApproval(userId) {

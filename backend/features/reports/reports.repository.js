@@ -5,6 +5,43 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
+ * Walk the hierarchy tree and derive each member's parent coach plus
+ * which users are direct children of the logged-in coach.
+ */
+function extractHierarchyMeta(hierarchy, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  const parentByUserId = new Map();
+  const childrenByParentId = new Map();
+  const directToRoot = new Set();
+
+  function addChild(parentId, childId) {
+    const parent = Number(parentId);
+    const child = Number(childId);
+    if (!Number.isFinite(parent) || !Number.isFinite(child)) return;
+    parentByUserId.set(child, parent);
+    if (!childrenByParentId.has(parent)) childrenByParentId.set(parent, []);
+    const siblings = childrenByParentId.get(parent);
+    if (!siblings.includes(child)) siblings.push(child);
+  }
+
+  function walk(node) {
+    if (!node?.teamMembers?.length) return;
+    for (const child of node.teamMembers) {
+      const childId = child.userId;
+      const parentId = node.userId;
+      if (childId != null && parentId != null) {
+        addChild(parentId, childId);
+        if (Number(parentId) === rootId) directToRoot.add(Number(childId));
+      }
+      walk(child);
+    }
+  }
+
+  if (hierarchy) walk(hierarchy);
+  return { parentByUserId, childrenByParentId, directToRoot };
+}
+
+/**
  * Fetch the coach's own team_table row (for the "Mine" scope).
  *
  * @param {number} coachId
@@ -25,25 +62,73 @@ export async function getCoachMember(coachId) {
  * Fetch every Active descendant in the coach hierarchy (excludes the coach).
  *
  * @param {number} coachId
- * @returns {Promise<Array<{ UserId: number, UserName: string, Height: string|null, CoachId: number }>>}
+ * @returns {Promise<{
+ *   rawMembers: Array<{ UserId: number, UserName: string, Height: string|null, CoachId: number, HierarchyParent: number, isDirectToRoot: boolean }>,
+ *   childrenByParentId: Map<number, number[]>
+ * }>}
  */
 export async function getFullTeamMembers(coachId) {
   const supabase = getSupabaseClient();
   const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-  const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, coachId);
+  const { parentByUserId, childrenByParentId, directToRoot } = extractHierarchyMeta(hierarchy, coachId);
   const memberIds = (allMembers || [])
     .map((m) => m.UserId)
     .filter((id) => id !== coachId);
-  if (memberIds.length === 0) return [];
+  if (memberIds.length === 0) {
+    return { rawMembers: [], childrenByParentId };
+  }
 
   const { data, error } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Height", "CoachId"')
+    .select('"UserId", "UserName", "Height", "CoachId", "Role"')
     .in('"UserId"', memberIds)
-    .eq('"Status"', 'Active')
+    .ilike('"Status"', 'active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
-  return data || [];
+
+  const rawMembers = (data || []).map((member) => ({
+    ...member,
+    HierarchyParent: parentByUserId.get(Number(member.UserId)) ?? member.CoachId,
+    isDirectToRoot: directToRoot.has(Number(member.UserId)),
+  }));
+
+  const augmentedChildren = await augmentChildrenFromDirectReports(
+    supabase,
+    rawMembers,
+    childrenByParentId,
+  );
+
+  return { rawMembers, childrenByParentId: augmentedChildren };
+}
+
+/**
+ * Merge DB direct-report links (CoachId) into the hierarchy children map.
+ * Ensures sub-coach cards get team stats even when tree walk missed an edge.
+ */
+async function augmentChildrenFromDirectReports(supabase, rawMembers, childrenByParentId) {
+  const memberIdSet = new Set(rawMembers.map((m) => Number(m.UserId)));
+  const coachIds = rawMembers.map((m) => Number(m.UserId)).filter(Number.isFinite);
+  if (coachIds.length === 0) return childrenByParentId;
+
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId", "CoachId"')
+    .in('"CoachId"', coachIds)
+    .ilike('"Status"', 'active');
+  if (error) throw error;
+
+  const merged = new Map(childrenByParentId);
+  for (const row of data || []) {
+    const parent = Number(row.CoachId);
+    const child = Number(row.UserId);
+    if (!Number.isFinite(parent) || !Number.isFinite(child)) continue;
+    if (!memberIdSet.has(child)) continue;
+    if (!merged.has(parent)) merged.set(parent, []);
+    const bucket = merged.get(parent);
+    if (!bucket.includes(child)) bucket.push(child);
+  }
+  return merged;
 }
 
 /**
@@ -59,7 +144,7 @@ export async function getDirectDownline(coachId) {
     .from('team_table')
     .select('"UserId", "UserName", "Height"')
     .eq('"CoachId"', coachId)
-    .eq('"Status"', 'Active')
+    .ilike('"Status"', 'active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
   return data || [];
