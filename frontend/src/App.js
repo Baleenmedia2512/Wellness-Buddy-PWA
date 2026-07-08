@@ -8417,37 +8417,17 @@ function WellnessValleyApp() {
 
   if (showWellnessScoreSetup && isFlagEnabled('ff.wellness-score-sheet') && adminLikeRole) {
     return (
-      <div className="ios-full-page bg-gray-50">
-        <Header
-          navOnly
+      <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Setup..." />}>
+        <WellnessScoreSetup
           user={user}
-          userRole={userRole}
-          activePage="wellness-score-setup"
-          onShowHome={() => navigateTo('home')}
-          onShowBackgroundHistory={() => navigateTo('dashboard')}
-          onShowWellnessEnrollment={() => navigateTo('enrollment')}
-          onShowWellnessCounselling={() => navigateTo('counselling')}
-          onShowNutritionCentersMap={() => navigateTo('physical-club')}
-          onShowActivityReport={() => navigateTo('activity-report')}
-          onShowTestimonials={() => navigateTo('testimonials')}
-          onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
-          wellnessScoreSetupEnabled={adminLikeRole && isFlagEnabled('ff.wellness-score-sheet')}
+          apiBaseUrl={apiBaseUrl}
+          onBack={() => {
+            setShowWellnessScoreSetup(false);
+            const currentWvPage = window.history.state?.wvPage;
+            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+          }}
         />
-        <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Setup..." />}>
-            <WellnessScoreSetup
-              user={user}
-              apiBaseUrl={apiBaseUrl}
-              onBack={() => {
-                setShowWellnessScoreSetup(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
-            />
-          </Suspense>
-        </div>
-      </div>
+      </Suspense>
     );
   }
 

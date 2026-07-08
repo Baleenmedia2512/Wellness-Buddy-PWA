@@ -59,15 +59,17 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
             {onOpenSetup ? (
               <button
                 type="button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.preventDefault();
                   onOpenSetup();
                 }}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 data-testid="wellness-score-setup-button"
                 aria-label="Configure wellness score"
               >
-                <Settings className="h-4 w-4" aria-hidden />
+                <Settings className="h-4 w-4 pointer-events-none" aria-hidden />
               </button>
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
