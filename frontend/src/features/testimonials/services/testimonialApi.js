@@ -84,3 +84,50 @@ export async function listForCoach(coachId, scope = 'direct') {
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonials');
   return result.data; // Array<{ user, testimonial }>
 }
+
+/**
+ * Member submits health/business result videos for their testimonial.
+ * At least one of healthVideoBase64 / businessVideoBase64 must be provided.
+ * @param {{ userId, healthVideoBase64?, businessVideoBase64? }} payload
+ */
+export async function submitTestimonialVideo(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/submit-video`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to upload video testimonial');
+  return result;
+}
+
+/**
+ * Member verifies their video testimonial using the OTP shared by the coach.
+ * @param {{ testimonialId, otp }} payload
+ */
+export async function verifyTestimonialVideoOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/verify-video-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Video OTP verification failed');
+  return result;
+}
+
+/**
+ * Coach: get the video upload/verification report for their team.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ */
+export async function getTestimonialVideoReport(coachId, scope = 'direct') {
+  const params = new URLSearchParams({ coachId: String(coachId) });
+  if (scope === 'full') params.set('scope', 'full');
+  const res = await CapacitorHttp.get({
+    url: `${base()}/video-report?${params.toString()}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch video report');
+  return result.data; // Array<{ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt }>
+}

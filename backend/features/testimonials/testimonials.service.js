@@ -14,12 +14,18 @@ import {
   validateEditTestimonial,
   validateListForCoach,
   validateMyTestimonial,
+  validateSubmitVideo,
+  validateVerifyVideoOtp,
+  validateVideoReport,
 } from './testimonials.validators.js';
 import { getISTTimestamp } from '../../utils/supabaseClient.js';
 import {
   buildTestimonialCoachEmailHtml,
   buildTestimonialCoachEmailText,
   buildTestimonialCoachEmailSubject,
+  buildVideoCoachEmailHtml,
+  buildVideoCoachEmailText,
+  buildVideoCoachEmailSubject,
 } from './testimonialCoachEmail.template.js';
 
 // â”€â”€â”€ OTP helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -383,5 +389,152 @@ function sanitizeUser(user) {
     userName:     user.UserName,
     profileImage: user.ProfileImage ?? null,
     phoneNumber:  user.PhoneNumber ?? null,
+  };
+}
+
+// ─── Video email helper ───────────────────────────────────────────────────────
+
+async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPath, businessVideoPath }) {
+  // Generate 7-day signed URLs so coach can watch the videos directly from their email client
+  const [healthVideoUrl, businessVideoUrl] = await Promise.all([
+    repo.getEmailSignedUrl(healthVideoPath   ?? null),
+    repo.getEmailSignedUrl(businessVideoPath ?? null),
+  ]);
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+
+  const emailParams = { memberName, otp, healthVideoUrl, businessVideoUrl };
+
+  await transporter.sendMail({
+    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
+    to:      coachEmail,
+    subject: buildVideoCoachEmailSubject({ memberName }),
+    text:    { content: buildVideoCoachEmailText(emailParams),  charset: 'utf-8' },
+    html:    { content: buildVideoCoachEmailHtml(emailParams),  charset: 'utf-8' },
+    headers: { 'Content-Language': 'en' },
+  });
+
+  logger.info('[testimonials.service] Video coach email dispatched', { coachEmail, memberName });
+}
+
+// ─── Video service functions ──────────────────────────────────────────────────
+
+/**
+ * Upload health/business result videos for a member's testimonial.
+ * Requires the member to have an existing testimonial record (photos uploaded first).
+ * Always sends an OTP email to the coach for video verification.
+ * Both videos are optional — at least one must be provided.
+ */
+export async function submitVideo(rawBody) {
+  const payload = validateSubmitVideo(rawBody);
+
+  logger.info('[testimonials] submitVideo', { userId: payload.userId });
+
+  const existing = await repo.findByUserId(payload.userId);
+  if (!existing) {
+    throw new ValidationError(400, 'Please submit your photo testimonial (before/after photos) before uploading result videos.');
+  }
+
+  const userInfo = await repo.findCoachIdForUser(payload.userId);
+  if (!userInfo || !userInfo.coachId) {
+    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
+  }
+
+  const ts      = Date.now();
+  const uploads = {};
+
+  if (payload.healthVideoBase64) {
+    const path = `${payload.userId}/health_video_${ts}.mp4`;
+    await repo.uploadVideo(payload.healthVideoBase64, path);
+    uploads.healthVideoPath = path;
+  }
+  if (payload.businessVideoBase64) {
+    const path = `${payload.userId}/business_video_${ts}.mp4`;
+    await repo.uploadVideo(payload.businessVideoBase64, path);
+    uploads.businessVideoPath = path;
+  }
+
+  const otp       = generateOtp();
+  const otpHash   = await bcrypt.hash(otp, 10);
+  const otpExpiry = otpExpiryIst(24);
+
+  await repo.updateTestimonialVideos(existing.id, {
+    ...uploads,
+    videoStatus:       'pending',
+    videoOtpHash:      otpHash,
+    videoOtpExpiresAt: otpExpiry,
+    videoVerifiedAt:   null,
+  });
+
+  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  if (coachInfo?.email) {
+    await sendVideoCoachEmail({
+      coachEmail:        coachInfo.email,
+      memberName:        userInfo.userName,
+      otp,
+      healthVideoPath:   uploads.healthVideoPath   ?? null,
+      businessVideoPath: uploads.businessVideoPath ?? null,
+    });
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: 'Videos uploaded! Your coach will receive a verification email with the OTP.',
+      testimonialId: existing.id,
+      videoStatus:   'pending',
+    },
+  };
+}
+
+/**
+ * Coach verifies the video testimonial using the emailed OTP.
+ */
+export async function verifyVideoOtp(rawBody) {
+  const { testimonialId, otp } = validateVerifyVideoOtp(rawBody);
+
+  const row = await repo.findById(testimonialId);
+  if (!row) throw new ValidationError(404, 'Testimonial not found');
+  if (row.video_status === 'none')     throw new ValidationError(422, 'No videos have been uploaded for this testimonial');
+  if (row.video_status === 'verified') throw new ValidationError(409, 'Videos are already verified');
+
+  if (!row.video_otp_hash) throw new ValidationError(422, 'No video OTP is set for this testimonial');
+
+  const now    = new Date();
+  const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const expiry = new Date(row.video_otp_expires_at);
+  if (istNow > expiry) {
+    throw new ValidationError(422, 'OTP has expired. Ask the member to re-upload their videos.');
+  }
+
+  const valid = await bcrypt.compare(otp, row.video_otp_hash);
+  if (!valid) throw new ValidationError(422, 'Invalid OTP');
+
+  const videoVerifiedAt = getISTTimestamp();
+  await repo.updateTestimonialVideos(testimonialId, {
+    videoStatus:     'verified',
+    videoVerifiedAt,
+    videoOtpHash:    null,
+  });
+
+  return {
+    httpStatus: 200,
+    body: { success: true, message: 'Video testimonial verified successfully.' },
+  };
+}
+
+/**
+ * Coach: get video upload/verification report for their team.
+ */
+export async function getVideoReport(rawQuery) {
+  const { coachId, scope } = validateVideoReport(rawQuery);
+  const rows = await repo.listVideoReportForCoach(coachId, scope);
+  return {
+    httpStatus: 200,
+    body: { success: true, data: rows },
   };
 }
