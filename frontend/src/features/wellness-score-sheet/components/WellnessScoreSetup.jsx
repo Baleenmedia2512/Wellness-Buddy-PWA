@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, RotateCcw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, Loader2, Settings2 } from 'lucide-react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import {
   DEFAULT_PARAMETER_CONFIG,
   PARAMETER_SECTIONS,
   WELLNESS_PARAMETERS,
 } from '../domain/parameterRegistry';
+import { getSectionIcon } from '../domain/parameterIcons';
 import {
   fetchWellnessScoreAdminConfig,
   saveWellnessScoreAdminConfig,
@@ -13,7 +14,7 @@ import {
 import WellnessScoreSetupRow from './WellnessScoreSetupRow';
 
 /**
- * Admin / developer Wellness Score Setup — 34 parameters.
+ * Admin / developer Wellness Score Setup — enterprise layout.
  */
 export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
   const [config, setConfig] = useState(DEFAULT_PARAMETER_CONFIG);
@@ -87,101 +88,135 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-gray-100">
-      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm safe-top">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+    <div className="min-h-screen bg-[#f4f7f5]">
+      <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
+        <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
+              className="-ml-2 rounded-lg p-2 transition-colors hover:bg-gray-100"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-700" />
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
             </button>
           )}
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-gray-900">Wellness Score Setup</h1>
-            <p className="text-xs text-gray-500">Configure max points per parameter (34 total)</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="flex items-center gap-2 text-base font-bold text-gray-900">
+              <Settings2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+              Wellness Score Setup
+            </h1>
+            <p className="text-xs text-gray-500">Platform-wide scoring configuration</p>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-lg mx-auto px-4 py-4 pb-32 space-y-4">
+      <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-32">
         {loading && (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" aria-label="Loading" />
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-label="Loading" />
           </div>
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {!loading && (
           <>
-            <div className="bg-emerald-600 text-white rounded-2xl p-4 shadow-md">
-              <p className="text-sm font-medium opacity-90">Total possible per day</p>
-              <p className="text-3xl font-bold mt-1">
-                {totals.points.toLocaleString()}
-                <span className="text-base font-medium opacity-80"> pts</span>
-              </p>
-              <p className="text-xs opacity-80 mt-1">{totals.count} active parameters</p>
-            </div>
-
-            {PARAMETER_SECTIONS.map((section) => (
-              <div key={section.id} className="space-y-2">
-                <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 px-1">
-                  {section.label}
-                </h2>
-                {WELLNESS_PARAMETERS.filter((p) => p.section === section.id).map((param) => {
-                  const cfg = config.find((c) => c.key === param.key) || {
-                    key: param.key,
-                    maxPoints: 100,
-                    enabled: true,
-                  };
-                  return (
-                    <WellnessScoreSetupRow
-                      key={param.key}
-                      category={param}
-                      config={cfg}
-                      onChange={(next) => updateParam(param.key, next)}
-                    />
-                  );
-                })}
+            <section className="overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm">
+              <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-4 text-white">
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
+                  Total daily capacity
+                </p>
+                <p className="mt-1 text-3xl font-bold tabular-nums">
+                  {totals.points.toLocaleString()}
+                  <span className="ml-1 text-base font-medium opacity-80">pts</span>
+                </p>
+                <p className="mt-1 text-xs opacity-90">{totals.count} active parameters</p>
               </div>
-            ))}
+              <div className="px-4 py-3">
+                <p className="text-xs leading-relaxed text-gray-600">
+                  Changes apply globally to all users. Each parameter awards up to its configured max when scoring rules are met.
+                </p>
+              </div>
+            </section>
+
+            {PARAMETER_SECTIONS.map((section) => {
+              const SectionIcon = getSectionIcon(section.id);
+              const sectionParams = WELLNESS_PARAMETERS.filter((p) => p.section === section.id);
+              const sectionPoints = sectionParams.reduce((sum, p) => {
+                const cfg = config.find((c) => c.key === p.key);
+                return cfg?.enabled !== false ? sum + (Number(cfg?.maxPoints) || 0) : sum;
+              }, 0);
+
+              return (
+                <section
+                  key={section.id}
+                  className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm"
+                >
+                  <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <SectionIcon className="h-4 w-4 text-emerald-600" aria-hidden />
+                      <h2 className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                        {section.label}
+                      </h2>
+                    </div>
+                    <span className="text-xs font-semibold tabular-nums text-gray-600">
+                      {sectionPoints.toLocaleString()} pts
+                    </span>
+                  </div>
+                  <div className="space-y-2 p-3">
+                    {sectionParams.map((param) => {
+                      const cfg = config.find((c) => c.key === param.key) || {
+                        key: param.key,
+                        maxPoints: 100,
+                        enabled: true,
+                      };
+                      return (
+                        <WellnessScoreSetupRow
+                          key={param.key}
+                          category={param}
+                          config={cfg}
+                          onChange={(next) => updateParam(param.key, next)}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
           </>
         )}
-      </div>
+      </main>
 
       {!loading && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 safe-bottom">
-          <div className="max-w-lg mx-auto px-4 py-3 flex gap-3">
+        <footer className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur safe-bottom">
+          <div className="mx-auto flex max-w-lg gap-3 px-4 py-3">
             <button
               type="button"
               onClick={handleReset}
               disabled={saving}
-              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
-              <RotateCcw className="w-4 h-4" aria-hidden />
+              <RotateCcw className="h-4 w-4" aria-hidden />
               Reset
             </button>
             <button
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-colors shadow-md disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
               {saving
-                ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                : <Save className="w-4 h-4" aria-hidden />}
-              {savedFlash ? 'Saved!' : 'Save configuration'}
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                : <Save className="h-4 w-4" aria-hidden />}
+              {savedFlash ? 'Saved' : 'Save configuration'}
             </button>
           </div>
-        </div>
+        </footer>
       )}
     </div>
   );

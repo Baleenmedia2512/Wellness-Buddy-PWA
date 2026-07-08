@@ -161,6 +161,7 @@ export function calculateLimitNutrient({
   consumed,
   limit,
   unit = '',
+  lowerIsBetter = false,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const lim = Number(limit);
@@ -175,7 +176,29 @@ export function calculateLimitNutrient({
       calculationReason: 'Limit unavailable',
     });
   }
-  if (actual <= lim) {
+  if (lowerIsBetter) {
+    if (actual <= 0) {
+      return buildParameterScore({
+        key,
+        label,
+        section: 'nutrition',
+        scoringMode: 'limit',
+        maxPoints,
+        earnedPoints: 0,
+        calculationReason: 'No GI data logged',
+      });
+    }
+    if (actual > lim) {
+      return buildParameterScore({
+        key,
+        label,
+        section: 'nutrition',
+        scoringMode: 'limit',
+        maxPoints,
+        earnedPoints: 0,
+        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+      });
+    }
     return buildParameterScore({
       key,
       label,
@@ -186,14 +209,37 @@ export function calculateLimitNutrient({
       calculationReason: `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
     });
   }
+  if (actual > lim) {
+    return buildParameterScore({
+      key,
+      label,
+      section: 'nutrition',
+      scoringMode: 'limit',
+      maxPoints,
+      earnedPoints: 0,
+      calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+    });
+  }
+  if (actual <= 0) {
+    return buildParameterScore({
+      key,
+      label,
+      section: 'nutrition',
+      scoringMode: 'limit',
+      maxPoints,
+      earnedPoints: 0,
+      calculationReason: `0${unit} / ${lim}${unit}`,
+    });
+  }
+  const earned = roundEarned(actual / lim, maxPoints);
   return buildParameterScore({
     key,
     label,
     section: 'nutrition',
     scoringMode: 'limit',
     maxPoints,
-    earnedPoints: 0,
-    calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+    earnedPoints: earned,
+    calculationReason: `${actual}${unit} / ${lim}${unit}`,
   });
 }
 
@@ -358,6 +404,7 @@ export function calculateGi({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: '',
+    lowerIsBetter: true,
   });
 }
 

@@ -78,8 +78,18 @@ describe('water quantity', () => {
 });
 
 describe('nutrition parameters', () => {
-  it('calories — full when within limit', () => {
-    const r = calculateCalories({ maxPoints: 100, consumed: 1400, limit: 1500 });
+  it('calories — proportional below limit', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 750, limit: 1500 });
+    assert.equal(r.earnedPoints, 50);
+  });
+
+  it('calories — 0 when no intake', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 0, limit: 1500 });
+    assert.equal(r.earnedPoints, 0);
+  });
+
+  it('calories — full at limit', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 1500, limit: 1500 });
     assert.equal(r.earnedPoints, 100);
   });
 
@@ -93,12 +103,17 @@ describe('nutrition parameters', () => {
     assert.equal(r.earnedPoints, 80);
   });
 
-  it('sodium — full when within limit', () => {
-    const r = calculateSodium({ maxPoints: 100, consumed: 2000, limit: 2300 });
+  it('sodium — proportional below limit', () => {
+    const r = calculateSodium({ maxPoints: 100, consumed: 1150, limit: 2300 });
+    assert.equal(r.earnedPoints, 50);
+  });
+
+  it('gi — full when within low-GI limit', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 45, limit: 55 });
     assert.equal(r.earnedPoints, 100);
   });
 
-  it('gi — 0 when no data', () => {
+  it('gi — 0 when above limit', () => {
     const r = calculateGi({ maxPoints: 100, consumed: 70, limit: 55 });
     assert.equal(r.earnedPoints, 0);
   });
