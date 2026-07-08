@@ -1,5 +1,9 @@
 import { getTimeWindows } from '../../../utils/disciplineCalculationsSupabase.js';
 import { computeDailyIntake } from '../../water/domain/intake.rules.js';
+import * as waterRepo from '../../water/data/water.repo.js';
+import { fetchMealsForDate } from '../../food-corrections/food-corrections.repository.js';
+import { getUserWeightGoal } from '../../weight-progress-tips/data/weight-progress.repo.js';
+import * as activityRepo from '../../activity/activity.repository.js';
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
 import {
@@ -8,19 +12,36 @@ import {
 } from '../domain/score.rules.js';
 import * as repo from '../data/wellness-score.repo.js';
 
-function pickBmr(teamRow) {
-  const b = parseFloat(teamRow?.Bmr);
+function pickBmr(userGoal) {
+  const b = parseFloat(userGoal?.Bmr);
   return Number.isFinite(b) && b > 0 ? b : 0;
 }
 
-function pickCurrentWeight(weightRecords, teamRow) {
+function parseWeightKg(row) {
+  const w = parseFloat(row?.Weight);
+  return Number.isFinite(w) && w > 0 ? w : null;
+}
+
+function pickCurrentWeight(weightRecords, latestWeightRow) {
   if (weightRecords?.length) {
     const sorted = [...weightRecords].sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)));
-    const w = parseFloat(sorted[0]?.Weight);
-    if (Number.isFinite(w) && w > 0) return w;
+    const w = parseWeightKg(sorted[0]);
+    if (w != null) return w;
   }
-  const tw = parseFloat(teamRow?.Weight);
-  return Number.isFinite(tw) && tw > 0 ? tw : null;
+  return parseWeightKg(latestWeightRow);
+}
+
+function sumStepCalories(stepRows = []) {
+  return stepRows.reduce((sum, row) => sum + (Number(row.CaloriesBurned) || 0), 0);
+}
+
+function sumWatchCalories(watchRows = []) {
+  let total = 0;
+  for (const row of watchRows) {
+    const match = String(row.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+    if (match) total += Math.round(parseFloat(match[1]));
+  }
+  return total;
 }
 
 /**
@@ -29,28 +50,28 @@ function pickCurrentWeight(weightRecords, teamRow) {
 export async function getDailyScore({ userId, date }) {
   const [
     configRow,
-    teamRow,
+    userGoal,
     timeWindowsRaw,
     educationLogs,
     weightRecords,
     previousWeightRow,
     foodRecords,
-    latestWeightKg,
+    latestWeightRow,
     waterFoodRows,
-    stepCalories,
-    watchCalories,
+    stepRows,
+    watchRows,
   ] = await Promise.all([
     repo.getLatestConfig(),
-    repo.getUserTeamRow(userId),
+    getUserWeightGoal(userId),
     getTimeWindows(),
     repo.getEducationLogsForDate(userId, date),
     repo.getWeightRecordsForDate(userId, date),
     repo.getPreviousWeightBeforeDate(userId, date),
-    repo.getFoodRecordsForDate(userId, date),
-    repo.getLatestWeightKg(userId),
-    repo.getFoodRowsForWater(userId, date),
-    repo.getStepCaloriesForDate(userId, date),
-    repo.getWatchCaloriesForDate(userId, date),
+    fetchMealsForDate(userId, date),
+    waterRepo.getLatestWeight(userId),
+    waterRepo.getFoodRowsForDate(userId, date),
+    activityRepo.fetchDailyRows(userId, date, date),
+    activityRepo.fetchWatchCalorieRows(userId, date),
   ]);
 
   const parameterConfig = normalizeParameterConfig(configRow?.parameters ?? DEFAULT_PARAMETER_CONFIG);
@@ -62,19 +83,20 @@ export async function getDailyScore({ userId, date }) {
     education: timeWindowsRaw?.education,
   };
 
+  const latestWeightKg = parseWeightKg(latestWeightRow);
   const waterIntake = computeDailyIntake({
     userId,
     date,
-    latestWeightKg,
+    latestWeightKg: latestWeightRow?.Weight ?? null,
     foodRows: waterFoodRows,
   });
 
-  const bmr = pickBmr(teamRow);
-  const weightKg = latestWeightKg ?? pickCurrentWeight(weightRecords, teamRow);
+  const bmr = pickBmr(userGoal);
+  const weightKg = latestWeightKg;
   const dailyStats = aggregateDailyFoodStats(foodRecords);
   const nutritionTargets = computeNutritionTargets({ bmr, weightKg });
-  const exerciseCalories = stepCalories + watchCalories;
-  const currentWeight = pickCurrentWeight(weightRecords, teamRow);
+  const exerciseCalories = sumStepCalories(stepRows) + sumWatchCalories(watchRows);
+  const currentWeight = pickCurrentWeight(weightRecords, latestWeightRow);
   const previousWeight = previousWeightRow ? parseFloat(previousWeightRow.Weight) : null;
 
   const scores = calculateWellnessScore({
@@ -89,7 +111,7 @@ export async function getDailyScore({ userId, date }) {
     nutritionTargets,
     currentWeight,
     previousWeight,
-    goalMode: teamRow?.WeightGoalMode,
+    goalMode: userGoal?.WeightGoalMode,
     exerciseCalories,
     bmr,
   });

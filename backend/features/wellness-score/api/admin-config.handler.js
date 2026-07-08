@@ -4,7 +4,7 @@ import * as repo from '../data/wellness-score.repo.js';
 import * as userRepo from '../../user/user.repository.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
-const REQUESTER_COLUMNS = '"UserId", "Role", "Bmr", "WeightGoalMode", "Weight"';
+const REQUESTER_COLUMNS = '"UserId", "Role"';
 
 async function resolveRequester({ requesterUserId, requesterEmail }) {
   if (requesterEmail) {
