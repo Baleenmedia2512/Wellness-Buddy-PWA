@@ -147,7 +147,7 @@ export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber
   return { carbs, sugar, fiber };
 }
 
-// ─── Card 5: Glycemic Index ───────────────────────────────────────────────────
+// ─── Card 5: Glycemic Index (disabled — GI now shown on Low Carb card) ────────
 
 /**
  * @param {{ averageGlycemicIndex: number|null, mealCount: number }}

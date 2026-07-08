@@ -58,7 +58,7 @@ export default function DownlineWeightReport({ user, onBack }) {
             </TouchFeedbackButton>
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                Weight Status Report
+                Ideal Weight Report
               </h1>
               <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 Team weight · ideal range tracking

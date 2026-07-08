@@ -13,20 +13,9 @@ const MacrosCard = ({
   proteinTarget, 
   fatTarget, 
   carbsTarget, 
-  glycemicIndex,
-  analyses = [],
   onOpenModal,
 }) => {
   const hasTargets = proteinTarget != null;
-
-  const giLabel = glycemicIndex == null ? null
-    : glycemicIndex <= 55 ? 'Low'
-    : glycemicIndex <= 69 ? 'Medium'
-    : 'High';
-  const giColors = glycemicIndex == null ? null
-    : glycemicIndex <= 55 ? 'bg-green-100 text-green-700'
-    : glycemicIndex <= 69 ? 'bg-amber-100 text-amber-700'
-    : 'bg-red-100 text-red-700';
   
   const proteinPct = hasTargets && proteinTarget > 0 ? Math.round((consumedProtein / proteinTarget) * 100) : null;
   const fatPct = hasTargets && fatTarget > 0 ? Math.round((consumedFat / fatTarget) * 100) : null;
@@ -139,16 +128,6 @@ const MacrosCard = ({
           <p className="text-[9px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
             Targets based on your weight
           </p>
-        )}
-
-        {/* Glycemic Index row */}
-        {glycemicIndex != null && (
-          <div className={`flex items-center justify-between mt-1.5 pt-1.5 ${hasTargets ? '' : 'border-t border-gray-100'}` }>
-            <span className="text-[9px] text-gray-500">Avg. Glycemic Index</span>
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${giColors}`}>
-              {glycemicIndex} · {giLabel}
-            </span>
-          </div>
         )}
       </div>
     </div>
