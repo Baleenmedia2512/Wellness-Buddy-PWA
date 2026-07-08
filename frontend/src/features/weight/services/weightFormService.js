@@ -78,3 +78,48 @@ export function formatWeightImageSrc(raw) {
   if (!raw) return null;
   return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
 }
+
+/**
+ * Ideal weight range from profile height (BMI 19–23, WHO normal band).
+ * Matches App.js `refreshIdealWeight` and profile IdealWeightCards.
+ */
+export function computeIdealWeightRange(heightCm) {
+  const h = parseFloat(heightCm);
+  if (!h || h < 50 || h > 250) return null;
+  const heightM = h / 100;
+  const idealMin = 19 * heightM * heightM;
+  const idealMax = 23 * heightM * heightM;
+  return {
+    min: Math.round(idealMin * 10) / 10,
+    value: Math.round(idealMax * 10) / 10,
+    unit: 'kg',
+    heightCm: Math.round(h),
+  };
+}
+
+/** Pick the display target for the user's current weight vs ideal range. */
+export function pickIdealWeightDisplay(currentKg, idealWeight) {
+  if (!idealWeight || currentKg == null || Number.isNaN(Number(currentKg))) {
+    return idealWeight ? `${idealWeight.value} ${idealWeight.unit}` : null;
+  }
+  const current = parseFloat(currentKg);
+  if (current > idealWeight.value + 0.5) {
+    return `${idealWeight.value} ${idealWeight.unit}`;
+  }
+  if (current < idealWeight.min - 0.5) {
+    return `${idealWeight.min} ${idealWeight.unit}`;
+  }
+  return `${idealWeight.value} ${idealWeight.unit}`;
+}
+
+/** Human-readable delta since the prior weight log. */
+export function formatWeightChangeLabel(current, previous) {
+  const diff = computeWeightDiff(current, previous);
+  if (!diff) return null;
+  const signed = diff.gained ? `+${diff.abs.toFixed(2)}` : `−${diff.abs.toFixed(2)}`;
+  return {
+    ...diff,
+    signedLabel: `${signed} kg`,
+    previousLabel: `${parseFloat(previous).toFixed(2)} kg`,
+  };
+}

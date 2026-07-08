@@ -68,6 +68,7 @@ import {
   FoodImageShareCard,
   HomeNutritionCarousel,
 } from "./features/nutrition";
+import { WellnessScoreHomeTile } from "./features/wellness-score-sheet";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
@@ -231,6 +232,9 @@ const TestimonialsPage = lazy(() =>
 // Reports � coach-only analytics (e.g. downline weight status)
 const DownlineWeightReport = lazy(() =>
   import("./features/reports").then((m) => ({ default: m.DownlineWeightReport })),
+);
+const CoachScoreConfig = lazy(() =>
+  import("./features/wellness-score-sheet").then((m) => ({ default: m.CoachScoreConfig })),
 );
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
@@ -812,6 +816,7 @@ function WellnessValleyApp() {
   const [showTestimonials, setShowTestimonials] = useState(false);
   // Reports page � coach/upline analytics (downline weight status, etc.)
   const [showReports, setShowReports] = useState(false);
+  const [showCoachScoreConfig, setShowCoachScoreConfig] = useState(false);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
@@ -1735,13 +1740,19 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
+      if (showCoachScoreConfig) {
+        setShowCoachScoreConfig(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
       return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showCoachScoreConfig,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -1754,6 +1765,7 @@ function WellnessValleyApp() {
     showActivityTimeReport,
     showTestimonials,
     showReports,
+    showCoachScoreConfig,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -2011,6 +2023,7 @@ function WellnessValleyApp() {
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
       setShowReports(false);
+      setShowCoachScoreConfig(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
       if (isOnSubPage) window.history.back();
@@ -2032,6 +2045,7 @@ function WellnessValleyApp() {
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
         setShowReports(false);
+        setShowCoachScoreConfig(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -2053,6 +2067,7 @@ function WellnessValleyApp() {
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
     setShowReports(false);
+    setShowCoachScoreConfig(false);
     enrollmentHistoryPushedRef.current = false;
 
     if (isOnSubPage) {
@@ -2084,6 +2099,11 @@ function WellnessValleyApp() {
         break;
       case 'reports':
         setShowReports(true);
+        break;
+      case 'coach-score-config':
+        if (['coach', 'upline', 'admin', 'developer'].includes(userRole)) {
+          setShowCoachScoreConfig(true);
+        }
         break;
       default:
         break;
@@ -5802,7 +5822,7 @@ function WellnessValleyApp() {
       });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
       setDashboardInitialDate(null);
-      showDashboardPage(isFlagEnabled("ff.diary-feed") ? "diary" : null);
+      // Stay on home — ImageUpload shows the saved photo + diary-update message.
       imageProcessingInProgress.current = false;
 
       debugLog(
@@ -8289,6 +8309,40 @@ function WellnessValleyApp() {
     );
   }
 
+  const coachLikeRole = ['coach', 'upline', 'admin', 'developer'].includes(userRole);
+
+  if (showCoachScoreConfig && isFlagEnabled('ff.wellness-score-sheet') && coachLikeRole) {
+    return (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="main"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading scoring setup..." />}>
+            <CoachScoreConfig
+              onBack={() => {
+                setShowCoachScoreConfig(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   // Reports � full page view (coach/upline analytics)
   if (showReports && isFlagEnabled('ff.reports-module')) {
     return (
@@ -8751,6 +8805,13 @@ function WellnessValleyApp() {
                   </div>
                 </div>
               </div>
+
+            {isFlagEnabled('ff.wellness-score-sheet') && (
+              <WellnessScoreHomeTile
+                showCoachConfigLink={coachLikeRole}
+                onOpenCoachConfig={() => navigateTo('coach-score-config')}
+              />
+            )}
 
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel

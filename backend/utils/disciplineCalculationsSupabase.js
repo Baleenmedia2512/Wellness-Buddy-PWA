@@ -7,7 +7,7 @@ import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
-import { isExemptedBeverageOnly, isExemptedFood } from './foodTypeDetection.js';
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from './foodTypeDetection.js';
 
 // Default required water when no weight is recorded (2.5 L)
 const DEFAULT_WATER_REQUIRED_ML = 2500;
@@ -362,8 +362,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       const analysisData = typeof r.AnalysisData === 'string'
         ? JSON.parse(r.AnalysisData)
         : r.AnalysisData;
-      (analysisData?.foods || []).forEach(food => {
-        if (isExemptedFood(food.name)) {
+      extractFoodItemsFromAnalysis(analysisData).forEach(food => {
+        if (isExemptedFood(getFoodItemName(food))) {
           // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
           const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
           waterVolumeByDate[date] += ml;

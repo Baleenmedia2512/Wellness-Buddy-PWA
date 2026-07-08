@@ -225,6 +225,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
   }, [backgroundAnalyzingKey]);
 
+  // Refresh hidden weight/education dashboards when background AI finishes so
+  // timeline tap-to-open finds the new row without leaving the diary tab.
+  const prevBackgroundAnalyzingKeyRef = useRef('');
+  useEffect(() => {
+    const prev = prevBackgroundAnalyzingKeyRef.current;
+    prevBackgroundAnalyzingKeyRef.current = backgroundAnalyzingKey;
+    if (prev && !backgroundAnalyzingKey) {
+      setWeightReloadKey((k) => k + 1);
+      setDiaryEducationRefreshKey((k) => k + 1);
+    }
+  }, [backgroundAnalyzingKey]);
+
   // Tap handler for timeline entries: dispatches to the matching imperative
   // handle (food/weight/education) or starts the pre-flight AI run for unknown.
   const handleEntryOpen = (entry) => {
@@ -233,7 +245,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       return;
     }
     if (entry.kind === 'weight') {
-      weightOpenRef.current?.(entry.payload?.id);
+      weightOpenRef.current?.(entry);
       return;
     }
     if (entry.kind === 'education') {

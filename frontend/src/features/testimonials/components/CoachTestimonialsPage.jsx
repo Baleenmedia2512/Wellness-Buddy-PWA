@@ -24,6 +24,7 @@ import {
   filterRowsBySearch,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
+import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 
 const STATUS_CHIP_STYLES = {
   [STATUS_FILTERS.VERIFIED]: {
@@ -132,7 +133,7 @@ function MemberRow({ user, testimonial }) {
                   <img
                     src={testimonial.beforeImageUrl}
                     alt="Before"
-                    className="w-full h-24 object-cover rounded-xl border border-gray-200"
+                    className={PORTRAIT_IMAGE_CLASS_SM}
                     loading="lazy"
                   />
                   <p className="text-[10px] text-gray-400 mt-1 font-semibold">BEFORE</p>
@@ -143,7 +144,7 @@ function MemberRow({ user, testimonial }) {
                   <img
                     src={testimonial.afterImageUrl}
                     alt="After"
-                    className="w-full h-24 object-cover rounded-xl border border-gray-200"
+                    className={PORTRAIT_IMAGE_CLASS_SM}
                     loading="lazy"
                   />
                   <p className="text-[10px] text-gray-400 mt-1 font-semibold">AFTER</p>

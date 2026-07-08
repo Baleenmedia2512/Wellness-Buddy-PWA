@@ -1,5 +1,5 @@
 ﻿import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
-import { isExemptedBeverageOnly, isExemptedFood } from '../../utils/foodTypeDetection.js';
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 import {
   parseDateRangeIST, formatDateIST, buildDateList,
   groupRecordsByDate, pickEarliestRecordPerActivity,
@@ -109,8 +109,8 @@ function buildWaterAndCalorieMaps(uid, indexed, tzOffset) {
     if (!waterLastTimeByDate[dateStr] || hhmm > waterLastTimeByDate[dateStr]) waterLastTimeByDate[dateStr] = hhmm;
     try {
       const analysisData = typeof r.AnalysisData === 'string' ? JSON.parse(r.AnalysisData) : r.AnalysisData;
-      (analysisData?.foods || []).forEach((food) => {
-        if (isExemptedFood(food.name)) {
+      extractFoodItemsFromAnalysis(analysisData).forEach((food) => {
+        if (isExemptedFood(getFoodItemName(food))) {
           const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
           waterVolumeByDate[dateStr] += ml;
         }

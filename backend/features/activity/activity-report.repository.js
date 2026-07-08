@@ -3,7 +3,7 @@
  * Fetches activity records and member details for downline users
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { isExemptedBeverageOnly, isExemptedFood } from '../../utils/foodTypeDetection.js';
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 
 /**
  * Fetch ALL active members (used by admin role)
@@ -271,8 +271,8 @@ export function calculateWaterVolume(record) {
       : record.AnalysisData;
     
     let totalMl = 0;
-    (analysisData?.foods || []).forEach(food => {
-      if (isExemptedFood(food.name)) {
+    extractFoodItemsFromAnalysis(analysisData).forEach(food => {
+      if (isExemptedFood(getFoodItemName(food))) {
         const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
         totalMl += ml;
       }

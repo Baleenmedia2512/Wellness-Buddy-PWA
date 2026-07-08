@@ -199,6 +199,80 @@ function validateCorrectionByType(aiFood, savedCorrection) {
 }
 
 /**
+ * Normalize food name for pattern matching (lowercase, collapse whitespace).
+ * @param {string} name
+ * @returns {string}
+ */
+function normalizeFoodName(name) {
+  return String(name ?? '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Read display name from a food row in any persisted analysis shape.
+ * @param {object} food
+ * @returns {string}
+ */
+function getFoodItemName(food) {
+  if (!food || typeof food !== 'object') return '';
+  return String(food.name || food.Name || food.foodName || '').trim();
+}
+
+/**
+ * Herbalife / Herbal Life Afresh — refresh energy drink, NOT breakfast/lunch/dinner.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isAfreshEnergyDrink(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  if (n.includes('afresh') || n.includes('a fresh')) return true;
+  const isHerbalBrand =
+    n.includes('herbalife') || n.includes('herbal life') || n.includes('herballife');
+  const isEnergyRefresh =
+    n.includes('energy drink') ||
+    n.includes('energy mix') ||
+    n.includes('refresh drink') ||
+    (n.includes('energy') && n.includes('drink'));
+  const isMealShake =
+    n.includes('formula 1') ||
+    n.includes('formula1') ||
+    n.includes('f1 shake') ||
+    n.includes('meal replacement');
+  return isHerbalBrand && isEnergyRefresh && !isMealShake;
+}
+
+/**
+ * Extract food item objects from any AnalysisData JSON shape.
+ * @param {object} parsed
+ * @returns {object[]}
+ */
+function extractFoodItemsFromAnalysis(parsed) {
+  if (!parsed || typeof parsed !== 'object') return [];
+
+  const items = [];
+  const push = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const f of arr) {
+      if (f && typeof f === 'object') items.push(f);
+    }
+  };
+
+  push(parsed.foods);
+  push(parsed.detailedItems);
+  push(parsed.details?.foods);
+
+  if (items.length === 0 && parsed.category?.name) {
+    items.push({ name: parsed.category.name });
+  }
+
+  return items;
+}
+
+/**
  * List of beverage/drink keywords that should NOT count as a meal
  * (breakfast, lunch, or dinner) when they are the ONLY items logged.
  * If a record contains at least one non-exempted food, it still counts.
@@ -220,7 +294,8 @@ const EXEMPTED_MEAL_FOODS = [
   'herbalife herbal tea concentrate', 'herbalife tea', 'herbal tea concentrate',
 
   // Herbalife non-meal beverages (Afresh is an energy drink, NOT meal replacement)
-  'afresh', 'afresh energy drink', 'herbalife afresh',
+  'afresh', 'afresh energy drink', 'herbalife afresh', 'herbal life afresh',
+  'herbalife afresh energy drink', 'herbal life afresh energy drink',
 
   // Indian dairy beverages (plain, unsweetened variants)
   'buttermilk', 'moru', 'chaas', 'lassi',
@@ -236,8 +311,12 @@ const EXEMPTED_MEAL_FOODS = [
  */
 function isExemptedFood(name) {
   if (!name) return false;
-  const n = name.toLowerCase().trim();
-  return EXEMPTED_MEAL_FOODS.some(exempt => n === exempt || n.includes(exempt));
+  if (isAfreshEnergyDrink(name)) return true;
+  const n = normalizeFoodName(name);
+  return EXEMPTED_MEAL_FOODS.some((exempt) => {
+    const e = exempt.toLowerCase();
+    return n === e || n.includes(e);
+  });
 }
 
 /**
@@ -253,11 +332,10 @@ function isExemptedBeverageOnly(analysisData) {
     const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
     if (!parsed) return false;
 
-    // Unified format: { foods: [...] }
-    const foods = parsed.foods || parsed.detailedItems || [];
+    const foods = extractFoodItemsFromAnalysis(parsed);
     if (foods.length === 0) return false;
 
-    return foods.every(f => isExemptedFood(f.name));
+    return foods.every((f) => isExemptedFood(getFoodItemName(f)));
   } catch {
     return false;
   }
@@ -271,5 +349,8 @@ module.exports = {
   validateCorrectionByType,
   isExemptedBeverageOnly,
   isExemptedFood,
+  isAfreshEnergyDrink,
+  extractFoodItemsFromAnalysis,
+  getFoodItemName,
   EXEMPTED_MEAL_FOODS
 };
