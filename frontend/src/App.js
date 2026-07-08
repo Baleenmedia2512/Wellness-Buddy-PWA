@@ -7608,6 +7608,32 @@ function WellnessValleyApp() {
   // directly to the correct route. Background auth/profile checks continue
   // silently � they just don't show a UI spinner.
 
+  // silently they just don't show a UI spinner.
+
+  const inactiveModalPortal = showInactiveModal ? (
+    <InactiveUserModal
+      userEmail={
+        user?.email || user?.Email || Session.getUserEmail() || "your account"
+      }
+      coachName={inactiveCoachName}
+      onClose={handleInactiveModalClose}
+      onContactCoach={handleContactCoach}
+    />
+  ) : null;
+
+  const alertModalPortal = (
+    <CustomAlertModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal((prev) => ({ ...prev, isOpen: false }))}
+      title={alertModal.title}
+      message={alertModal.message}
+      type={alertModal.type}
+      confirmText={alertModal.confirmText}
+      cancelText={alertModal.cancelText}
+      onConfirm={alertModal.onConfirm}
+    />
+  );
+
   // -------------------------------------------------------------------------
   // HIGHEST PRIORITY: Show waiting modal if contacting coach
   // This MUST be before ALL other render branches so nothing can block it
@@ -7725,32 +7751,6 @@ function WellnessValleyApp() {
     );
   }
   // -------------------------------------------------------------------------
-
-  // CRITICAL: Render Inactive User Modal at the TOP, before any early returns
-  // This ensures it shows even if we're stuck in a loading state
-  const inactiveModalPortal = showInactiveModal ? (
-    <InactiveUserModal
-      userEmail={
-        user?.email || user?.Email || Session.getUserEmail() || "your account"
-      }
-      coachName={inactiveCoachName}
-      onClose={handleInactiveModalClose}
-      onContactCoach={handleContactCoach}
-    />
-  ) : null;
-
-  const alertModalPortal = (
-    <CustomAlertModal
-      isOpen={alertModal.isOpen}
-      onClose={() => setAlertModal((prev) => ({ ...prev, isOpen: false }))}
-      title={alertModal.title}
-      message={alertModal.message}
-      type={alertModal.type}
-      confirmText={alertModal.confirmText}
-      cancelText={alertModal.cancelText}
-      onConfirm={alertModal.onConfirm}
-    />
-  );
 
   if (authLoading) {
     // On native, show the logo overlay instead of a blank screen � the native

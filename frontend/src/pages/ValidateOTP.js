@@ -22,6 +22,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   const [requestInfo, setRequestInfo] = useState(null);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const isReactivationFlowRef = useRef(isReactivationFlow);
+  const validatingRef = useRef(false);
 
   useEffect(() => {
     isReactivationFlowRef.current = isReactivationFlow;
@@ -60,15 +61,14 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
     fetchRequestInfo();
   }, [isReactivationFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Demo account: auto-fill 000000 and submit — DISABLED for reactivation flow.
+  // Demo account: auto-fill 000000 — verification runs via isComplete effect below.
   useEffect(() => {
     if (isReactivationFlow) return;
     const userEmail = userEmailProp || storage.get('userEmail') || '';
     if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
     const timer = setTimeout(() => {
       debugLog("\ud83d\udfe6 [ValidateOTP] Demo account - auto-filling OTP");
-      const filled = fillAll('000000');
-      if (filled) validateOtp(filled);
+      fillAll('000000');
     }, 800);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,11 +77,8 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   // WebOTP API: auto-reads OTP from SMS on Android Chrome / Capacitor WebView.
   // iOS uses autoComplete="one-time-code" on the first input instead.
   const handleWebOtpReceived = useCallback((code) => {
-    if (isReactivationFlow) return;
-    const filled = fillAll(code);
-    if (filled) validateOtp(filled);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fillAll, isReactivationFlow]);
+    fillAll(code);
+  }, [fillAll]);
   useWebOtp(handleWebOtpReceived, !validating && !success);
   // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
@@ -126,6 +123,8 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   // Validate OTP — accepts an explicit code so WebOTP / paste / fillAll callers
   // can pass the value synchronously without relying on async state updates.
   const validateOtp = async (otpCodeArg) => {
+    if (validatingRef.current) return;
+
     const otpCode = typeof otpCodeArg === 'string' ? otpCodeArg : otpValue;
     debugLog("\ud83d\udfe6 [ValidateOTP] Validating OTP (length):", otpCode.length);
 
@@ -134,6 +133,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       return;
     }
 
+    validatingRef.current = true;
     setValidating(true);
     setError('');
 
@@ -187,9 +187,17 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       resetOtp();
       refs.current[0]?.focus();
     } finally {
+      validatingRef.current = false;
       setValidating(false);
     }
   };
+
+  // Auto-verify as soon as all 6 digits are entered (typing, paste, SMS autofill).
+  useEffect(() => {
+    if (!isComplete || validating || success) return;
+    validateOtp(otpValue);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete, otpValue, validating, success]);
 
   // Cancel verification
   const handleCancel = async () => {
@@ -280,17 +288,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
                   const raw = e.target.value;
                   // iOS autoComplete="one-time-code" delivers all digits into first cell at once.
                   if (raw.length >= 6) {
-                    const filled = fillAll(raw);
-                    if (filled && !isReactivationFlow) validateOtp(filled);
+                    fillAll(raw);
                     return;
                   }
                   handleChange(index, raw);
-                  // Auto-submit when last digit typed manually.
-                  const next = [...otp]; next[index] = raw.slice(-1);
-                  if (!isReactivationFlow && next.every((d) => d !== '')) validateOtp(next.join(''));
                 }}
                 onKeyDown={(e) => otpKeyDown(index, e)}
-                onPaste={(e) => { const v = otpPaste(e); if (v && !isReactivationFlow) validateOtp(v); }}
+                onPaste={otpPaste}
                 disabled={validating}
               />
             ))}
