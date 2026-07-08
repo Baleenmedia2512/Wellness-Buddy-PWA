@@ -281,20 +281,26 @@ export default async function handler(req, res) {
     let coachTeamIdValue = coachTeamId; // For now, store the TeamId string
 
     // STEP 3: NOW update team_table
-    // Store CoachId, CoachTeamId and reactivate user if they were Inactive
+    // Store CoachId, CoachTeamId and reactivate user if they were Inactive.
+    // LastActiveAt MUST be refreshed on reactivation — lookup.service auto-
+    // deactivates Active users whose LastActiveAt is >= 31 days old.
+    const reactivatedAt = getISTTimestamp();
     const updateData = {
-      CoachId: request.UplineCoachId, // User's chosen referrer/coach
-      CoachTeamId: coachTeamIdValue, // TEMPORARY: Storing TeamId string until schema migration
-      Status: 'Active', // Reactivate user — covers both new setup and inactive-reactivation flow
+      CoachId: request.UplineCoachId,
+      CoachTeamId: coachTeamIdValue,
+      Status: 'Active',
+      LastActiveAt: reactivatedAt,
     };
-    
-    // NOTE: CoCoachId is NOT stored here - it's derived dynamically from coach_teams_table
-    // by looking up coach_teams_table WHERE TeamId = CoachTeamId (after migration: WHERE id = CoachTeamId)
 
-    await supabase
+    const { error: statusUpdateError } = await supabase
       .from("team_table")
       .update(updateData)
       .eq("UserId", requesterId);
+
+    if (statusUpdateError) {
+      console.error("❌ [validate-otp] Failed to reactivate user:", statusUpdateError);
+      throw statusUpdateError;
+    }
 
     // STEP 4: Mark request as approved
     const processedAt = getISTTimestamp();

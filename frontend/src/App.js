@@ -2251,16 +2251,38 @@ function WellnessValleyApp() {
     setIsUserActive(true);
     setIsOtpVerified(true);
     Session.markOtpVerified();
+    Session.clearUserSignedOut();
+    setForceLoggedOut(false);
 
     const storedUserRaw = Session.getOtpUserRaw();
     if (storedUserRaw) {
       try {
-        await checkUserStatus(JSON.parse(storedUserRaw), true);
+        const parsedUser = JSON.parse(storedUserRaw);
+        const reactivated = {
+          ...parsedUser,
+          status: "Active",
+          Status: "Active",
+        };
+        Session.setOtpUser(reactivated);
+        if (!reactivated.id && !reactivated.UserId) {
+          const dbUserId = await getUserId(reactivated);
+          if (dbUserId) {
+            reactivated.id = dbUserId;
+            Session.setDbUserId(dbUserId);
+          }
+        }
+        clearUserIdCache();
+        setUser(reactivated);
+        setAuthLoading(false);
+        // Re-check status in background after DB commit — do not block entry.
+        checkUserStatus(reactivated, true).catch(() => {});
       } catch {
         /* ignore */
       }
+    } else if (user) {
+      setUser({ ...user, status: "Active", Status: "Active" });
     }
-  }, [checkUserStatus]);
+  }, [checkUserStatus, user]);
 
   const handleContactCoach = async () => {
     // Lock reactivation flow first so background setup/status effects cannot
