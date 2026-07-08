@@ -1,19 +1,13 @@
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
+import * as userRepo from '../../user/user.repository.js';
 
 export async function getUserTeamRow(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, Role, Bmr, WeightGoalMode, Weight')
-    .eq('UserId', userId)
-    .maybeSingle();
-  if (error) {
-    logger.error('[wellness-score.repo] team row fetch failed', { userId, err: error.message });
-    return null;
-  }
-  return data;
+  return userRepo.findByUserId(
+    userId,
+    '"UserId", "Role", "Bmr", "WeightGoalMode", "Weight"',
+  );
 }
 
 export async function getLatestConfig() {

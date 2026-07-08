@@ -28,10 +28,11 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
       setLoading(true);
       setError(null);
       try {
-        const userId = user?.id || (await getUserId(user));
-        if (!userId) throw new Error('Unable to resolve user');
+        const userId = (await getUserId(user)) || user?.id;
+        if (!userId && !user?.email) throw new Error('Unable to resolve user');
         const data = await fetchWellnessScoreAdminConfig({
           requesterUserId: userId,
+          requesterEmail: user?.email || null,
           apiBaseUrl,
         });
         if (!cancelled && data?.parameters) {
@@ -63,9 +64,10 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
     setSaving(true);
     setError(null);
     try {
-      const userId = user?.id || (await getUserId(user));
+      const userId = (await getUserId(user)) || user?.id;
       const data = await saveWellnessScoreAdminConfig({
         requesterUserId: userId,
+        requesterEmail: user?.email || null,
         parameters: config,
         apiBaseUrl,
       });

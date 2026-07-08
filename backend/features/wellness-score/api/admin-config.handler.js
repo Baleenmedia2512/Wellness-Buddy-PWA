@@ -1,10 +1,25 @@
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
 import { assertWellnessScoreAdmin } from '../domain/permissions/score.policy.js';
 import * as repo from '../data/wellness-score.repo.js';
+import * as userRepo from '../../user/user.repository.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
-export async function getAdminConfig({ requesterUserId }) {
-  const requester = await repo.getUserTeamRow(requesterUserId);
+const REQUESTER_COLUMNS = '"UserId", "Role", "Bmr", "WeightGoalMode", "Weight"';
+
+async function resolveRequester({ requesterUserId, requesterEmail }) {
+  if (requesterEmail) {
+    const byEmail = await userRepo.findByEmail(requesterEmail, REQUESTER_COLUMNS);
+    if (byEmail) return byEmail;
+  }
+  if (requesterUserId != null && requesterUserId !== '') {
+    const byId = await userRepo.findByUserId(requesterUserId, REQUESTER_COLUMNS);
+    if (byId) return byId;
+  }
+  return null;
+}
+
+export async function getAdminConfig({ requesterUserId, requesterEmail }) {
+  const requester = await resolveRequester({ requesterUserId, requesterEmail });
   if (!requester) throw new ValidationError(404, 'Requester not found');
   assertWellnessScoreAdmin(requester);
 
@@ -24,15 +39,15 @@ export async function getAdminConfig({ requesterUserId }) {
   };
 }
 
-export async function putAdminConfig({ requesterUserId, parameters }) {
-  const requester = await repo.getUserTeamRow(requesterUserId);
+export async function putAdminConfig({ requesterUserId, requesterEmail, parameters }) {
+  const requester = await resolveRequester({ requesterUserId, requesterEmail });
   if (!requester) throw new ValidationError(404, 'Requester not found');
   assertWellnessScoreAdmin(requester);
 
   const normalized = normalizeParameterConfig(parameters);
   const saved = await repo.insertConfig({
     parameters: normalized,
-    updatedByUserId: requesterUserId,
+    updatedByUserId: requester.UserId,
   });
 
   return {

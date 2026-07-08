@@ -23,22 +23,34 @@ export function validateGetDailyScore(query) {
 
 export function validateAdminConfigGet(query) {
   const requesterUserId = query?.requesterUserId ?? query?.userId;
-  if (requesterUserId == null || requesterUserId === '') {
-    throw new ValidationError(400, 'requesterUserId is required');
+  const requesterEmail = query?.requesterEmail ?? query?.email;
+  if (
+    (requesterUserId == null || requesterUserId === '')
+    && (requesterEmail == null || requesterEmail === '')
+  ) {
+    throw new ValidationError(400, 'requesterUserId or requesterEmail is required');
   }
-  return { requesterUserId: String(requesterUserId) };
+  return {
+    requesterUserId: requesterUserId != null && requesterUserId !== '' ? String(requesterUserId) : null,
+    requesterEmail: requesterEmail ? String(requesterEmail).trim() : null,
+  };
 }
 
 export function validateAdminConfigPut(body) {
   const requesterUserId = body?.requesterUserId ?? body?.userId;
-  if (requesterUserId == null || requesterUserId === '') {
-    throw new ValidationError(400, 'requesterUserId is required');
+  const requesterEmail = body?.requesterEmail ?? body?.email;
+  if (
+    (requesterUserId == null || requesterUserId === '')
+    && (requesterEmail == null || requesterEmail === '')
+  ) {
+    throw new ValidationError(400, 'requesterUserId or requesterEmail is required');
   }
   if (!Array.isArray(body?.parameters)) {
     throw new ValidationError(400, 'parameters array is required');
   }
   return {
-    requesterUserId: String(requesterUserId),
+    requesterUserId: requesterUserId != null && requesterUserId !== '' ? String(requesterUserId) : null,
+    requesterEmail: requesterEmail ? String(requesterEmail).trim() : null,
     parameters: body.parameters,
   };
 }

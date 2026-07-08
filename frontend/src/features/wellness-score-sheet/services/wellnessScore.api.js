@@ -19,18 +19,27 @@ export async function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
   return payload?.data ?? payload;
 }
 
-export async function fetchWellnessScoreAdminConfig({ requesterUserId, apiBaseUrl }) {
-  const params = new URLSearchParams({ requesterUserId });
+export async function fetchWellnessScoreAdminConfig({ requesterUserId, requesterEmail, apiBaseUrl }) {
+  const params = new URLSearchParams();
+  if (requesterUserId != null && requesterUserId !== '') {
+    params.set('requesterUserId', String(requesterUserId));
+  }
+  if (requesterEmail) params.set('requesterEmail', requesterEmail);
   const res = await fetch(`${base(apiBaseUrl)}/api/wellness-score/admin-config?${params.toString()}`);
   const payload = await readJsonResponse(res);
   return payload?.data ?? payload;
 }
 
-export async function saveWellnessScoreAdminConfig({ requesterUserId, parameters, apiBaseUrl }) {
+export async function saveWellnessScoreAdminConfig({
+  requesterUserId,
+  requesterEmail,
+  parameters,
+  apiBaseUrl,
+}) {
   const res = await fetch(`${base(apiBaseUrl)}/api/wellness-score/admin-config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requesterUserId, parameters }),
+    body: JSON.stringify({ requesterUserId, requesterEmail, parameters }),
   });
   const payload = await readJsonResponse(res);
   return payload?.data ?? payload;

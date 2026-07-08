@@ -29,6 +29,23 @@ export async function findByExactEmail(email, columns) {
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
+/**
+ * @param {string|number} userId
+ * @param {string} [columns]
+ */
+export async function findByUserId(userId, columns = '"UserId", "Role"') {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select(columns)
+    .eq('"UserId"', uid)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
 export async function findByUsername(username) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
