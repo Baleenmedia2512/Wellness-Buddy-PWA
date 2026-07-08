@@ -179,7 +179,7 @@ function validateOptionalVideoPath(value, fieldName, userId, slot) {
   const prefix = slot === 'health'
     ? `${userId}/health_video_`
     : `${userId}/business_video_`;
-  const pattern = new RegExp(`^${prefix}\\d+\\.mp4$`);
+  const pattern = new RegExp(`^${prefix}[\\w-]+\\.mp4$`);
   if (!pattern.test(value)) {
     throw new ValidationError(422, `${fieldName} is invalid`);
   }
@@ -229,6 +229,80 @@ export function validateSubmitVideo(body) {
   }
 
   return { userId: userIdN, healthVideoPath: health, businessVideoPath: business };
+}
+
+// ~2 MB binary chunk → ~2.7 MB base64, safely under Vercel's ~4.5 MB body limit
+const MAX_CHUNK_BASE64_LEN = 3.5 * 1024 * 1024;
+
+/**
+ * Validate payload for POST /api/testimonials/upload-video-chunk
+ */
+export function validateUploadVideoChunk(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const {
+    userId,
+    sessionId,
+    slot,
+    chunkIndex,
+    totalChunks,
+    chunkBase64,
+    finalPath,
+  } = body;
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    throw new ValidationError(400, 'sessionId is required');
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) {
+    throw new ValidationError(422, 'sessionId is invalid');
+  }
+
+  if (slot !== 'health' && slot !== 'business') {
+    throw new ValidationError(422, 'slot must be "health" or "business"');
+  }
+
+  const chunkIndexN = parseInt(chunkIndex, 10);
+  const totalChunksN = parseInt(totalChunks, 10);
+  if (!Number.isFinite(chunkIndexN) || chunkIndexN < 0) {
+    throw new ValidationError(422, 'chunkIndex must be a non-negative integer');
+  }
+  if (!Number.isFinite(totalChunksN) || totalChunksN < 1) {
+    throw new ValidationError(422, 'totalChunks must be at least 1');
+  }
+  if (chunkIndexN >= totalChunksN) {
+    throw new ValidationError(422, 'chunkIndex must be less than totalChunks');
+  }
+
+  if (!chunkBase64 || typeof chunkBase64 !== 'string') {
+    throw new ValidationError(400, 'chunkBase64 is required');
+  }
+  if (chunkBase64.length > MAX_CHUNK_BASE64_LEN) {
+    throw new ValidationError(422, 'Video chunk is too large. Please retry the upload.');
+  }
+
+  const validatedPath = validateOptionalVideoPath(finalPath, 'finalPath', userIdN, slot);
+  if (!validatedPath) {
+    throw new ValidationError(400, 'finalPath is required');
+  }
+
+  const expectedPath = `${userIdN}/${slot === 'health' ? 'health' : 'business'}_video_${sessionId}.mp4`;
+  if (validatedPath !== expectedPath) {
+    throw new ValidationError(422, 'finalPath does not match upload session');
+  }
+
+  return {
+    userId: userIdN,
+    sessionId,
+    slot,
+    chunkIndex: chunkIndexN,
+    totalChunks: totalChunksN,
+    chunkBase64,
+    finalPath: validatedPath,
+  };
 }
 
 /**

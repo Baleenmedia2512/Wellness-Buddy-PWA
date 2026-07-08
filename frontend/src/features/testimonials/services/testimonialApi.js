@@ -96,31 +96,20 @@ export async function prepareTestimonialVideoUpload(payload) {
     data:    payload,
   });
   const result = res.data;
-  if (!result?.success) throw new Error(result?.message || 'Failed to prepare video upload');
+  if (res.status < 200 || res.status >= 300 || !result?.success) {
+    throw new Error(result?.message || 'Failed to prepare video upload');
+  }
   return result.uploads;
 }
 
 /**
- * Upload a video file directly to Supabase Storage via a signed URL.
+ * Upload a video file in chunks via the backend (Capacitor-safe, no direct Supabase fetch).
  * @param {File} file
- * @param {{ signedUrl: string, path: string }} uploadInfo
+ * @param {{ path: string, sessionId: string }} uploadInfo
+ * @param {'health'|'business'} slot
+ * @param {number} userId
  */
-export async function uploadTestimonialVideoFile(file, uploadInfo) {
-  const response = await fetch(uploadInfo.signedUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'video/mp4',
-      'x-upsert': 'true',
-    },
-    body: file,
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to upload video. Please check your connection and try again.');
-  }
-
-  return uploadInfo.path;
-}
+export { uploadTestimonialVideoInChunks as uploadTestimonialVideoFile } from './testimonialVideoUpload.js';
 
 /**
  * Member finalises health/business result videos after direct storage upload.

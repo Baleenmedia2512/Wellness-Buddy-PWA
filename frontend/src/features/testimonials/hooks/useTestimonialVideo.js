@@ -149,10 +149,20 @@ export function useTestimonialVideo({ userId, testimonialId }) {
       let businessVideoPath;
 
       if (healthVideo) {
-        healthVideoPath = await uploadTestimonialVideoFile(healthVideo.file, uploads.health);
+        healthVideoPath = await uploadTestimonialVideoFile(
+          healthVideo.file,
+          uploads.health,
+          'health',
+          userId,
+        );
       }
       if (businessVideo) {
-        businessVideoPath = await uploadTestimonialVideoFile(businessVideo.file, uploads.business);
+        businessVideoPath = await uploadTestimonialVideoFile(
+          businessVideo.file,
+          uploads.business,
+          'business',
+          userId,
+        );
       }
 
       await submitTestimonialVideo({
@@ -163,7 +173,12 @@ export function useTestimonialVideo({ userId, testimonialId }) {
       setSuccess('Videos uploaded! Share the OTP your coach receives to complete verification.');
       setShowOtpModal(true);
     } catch (err) {
-      setError(err.message || 'Upload failed. Please try again.');
+      const message = err?.message || 'Upload failed. Please try again.';
+      setError(
+        message.toLowerCase().includes('failed to fetch')
+          ? 'Upload failed — please check your internet connection and try again.'
+          : message,
+      );
     } finally {
       setSubmitting(false);
     }

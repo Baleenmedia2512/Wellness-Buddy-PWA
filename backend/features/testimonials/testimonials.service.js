@@ -4,6 +4,7 @@
  * Zero HTTP concerns.
  */
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
 import logger from '../../shared/lib/logger.js';
@@ -16,6 +17,7 @@ import {
   validateMyTestimonial,
   validatePrepareVideoUpload,
   validateSubmitVideo,
+  validateUploadVideoChunk,
   validateVerifyVideoOtp,
   validateVideoReport,
 } from './testimonials.validators.js';
@@ -438,8 +440,8 @@ async function assertVideoUploadEligible(userId) {
 }
 
 /**
- * Issue signed Supabase Storage upload URLs for direct client-side video upload.
- * Bypasses Vercel's ~4.5 MB serverless request-body limit.
+ * Reserve storage paths + session IDs for chunked client video upload.
+ * Each chunk is posted separately to stay under Vercel's ~4.5 MB body limit.
  */
 export async function prepareVideoUpload(rawBody) {
   const payload = validatePrepareVideoUpload(rawBody);
@@ -448,16 +450,21 @@ export async function prepareVideoUpload(rawBody) {
 
   await assertVideoUploadEligible(payload.userId);
 
-  const ts = Date.now();
   const uploads = {};
 
   if (payload.uploadHealth) {
-    const path = `${payload.userId}/health_video_${ts}.mp4`;
-    uploads.health = await repo.createSignedUploadUrl(path);
+    const sessionId = crypto.randomUUID();
+    uploads.health = {
+      path: `${payload.userId}/health_video_${sessionId}.mp4`,
+      sessionId,
+    };
   }
   if (payload.uploadBusiness) {
-    const path = `${payload.userId}/business_video_${ts}.mp4`;
-    uploads.business = await repo.createSignedUploadUrl(path);
+    const sessionId = crypto.randomUUID();
+    uploads.business = {
+      path: `${payload.userId}/business_video_${sessionId}.mp4`,
+      sessionId,
+    };
   }
 
   return {
@@ -466,6 +473,51 @@ export async function prepareVideoUpload(rawBody) {
       success: true,
       uploads,
     },
+  };
+}
+
+/**
+ * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
+ */
+export async function uploadVideoChunk(rawBody) {
+  const payload = validateUploadVideoChunk(rawBody);
+
+  logger.info('[testimonials] uploadVideoChunk', {
+    userId: payload.userId,
+    sessionId: payload.sessionId,
+    chunkIndex: payload.chunkIndex,
+    totalChunks: payload.totalChunks,
+  });
+
+  await assertVideoUploadEligible(payload.userId);
+
+  const cleaned = payload.chunkBase64.replace(/^data:[^;]+;base64,/, '');
+  const buffer = Buffer.from(cleaned, 'base64');
+  const tmpPath = `${payload.userId}/tmp/${payload.sessionId}/chunk_${payload.chunkIndex}`;
+
+  await repo.uploadBuffer(tmpPath, buffer, 'application/octet-stream');
+
+  if (payload.chunkIndex !== payload.totalChunks - 1) {
+    return {
+      httpStatus: 200,
+      body: { success: true, complete: false },
+    };
+  }
+
+  const tmpPaths = [];
+  const parts = [];
+  for (let i = 0; i < payload.totalChunks; i++) {
+    const chunkPath = `${payload.userId}/tmp/${payload.sessionId}/chunk_${i}`;
+    tmpPaths.push(chunkPath);
+    parts.push(await repo.downloadBuffer(chunkPath));
+  }
+
+  await repo.uploadBuffer(payload.finalPath, Buffer.concat(parts), 'video/mp4');
+  await repo.removePaths(tmpPaths);
+
+  return {
+    httpStatus: 200,
+    body: { success: true, complete: true, path: payload.finalPath },
   };
 }
 

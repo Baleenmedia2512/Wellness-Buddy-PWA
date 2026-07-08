@@ -107,6 +107,53 @@ export async function objectExists(path) {
 }
 
 /**
+ * Upload a raw buffer to storage.
+ * @param {string} path
+ * @param {Buffer} buffer
+ * @param {string} [contentType='video/mp4']
+ */
+export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, buffer, { contentType, upsert: true });
+
+  if (error) {
+    logger.error('[testimonials.repo] Buffer upload failed', { path, error });
+    throw error;
+  }
+  return path;
+}
+
+/**
+ * Download a storage object as a Buffer.
+ * @param {string} path
+ * @returns {Promise<Buffer>}
+ */
+export async function downloadBuffer(path) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error) {
+    logger.error('[testimonials.repo] Buffer download failed', { path, error });
+    throw error;
+  }
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Remove one or more objects from storage.
+ * @param {string[]} paths
+ */
+export async function removePaths(paths) {
+  if (!paths?.length) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    logger.warn('[testimonials.repo] Failed to remove storage paths', { paths, error });
+  }
+}
+
+/**
  * Generate a short-lived signed URL for in-app display.
  * @param {string} path
  * @returns {string|null} signed URL or null on error
