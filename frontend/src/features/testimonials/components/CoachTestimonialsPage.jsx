@@ -24,6 +24,7 @@ import {
   filterRowsBySearch,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
+import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 
 const STATUS_CHIP_STYLES = {
   [STATUS_FILTERS.VERIFIED]: {

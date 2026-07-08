@@ -92,6 +92,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Reports module with downline weight status report for coaches.',
   },
+
+  // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
+  // Default ON for UI preview. Set REACT_APP_FF_WELLNESS_SCORE_SHEET=false or
+  // localStorage 'ff.wellness-score-sheet'='false' to hide.
+  'ff.wellness-score-sheet': {
+    envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
+    storageKey:     'ff.wellness-score-sheet',
+    defaultEnabled: true,
+    description:    'Wellness Score Sheet home tile, member score view, and coach scoring config.',
+  },
 });
 
 function readStorage(key) {
