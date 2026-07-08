@@ -10,6 +10,21 @@ function base() {
 }
 
 /**
+ * Normalise API payload to { self, members }.
+ * Supports current shape ({ self, members }) and legacy flat-array responses.
+ */
+export function normalizeDownlineWeightPayload(data) {
+  if (!data) return { self: null, members: [] };
+  if (Array.isArray(data)) {
+    return { self: null, members: data };
+  }
+  return {
+    self: data.self ?? null,
+    members: Array.isArray(data.members) ? data.members : [],
+  };
+}
+
+/**
  * Fetch weight status for the coach and every descendant in one request.
  *
  * @param {number} coachId
@@ -43,5 +58,5 @@ export async function fetchDownlineWeightStatus(coachId) {
   if (!result?.success) {
     throw new Error(result?.message || 'Failed to fetch downline weight status');
   }
-  return result.data;
+  return normalizeDownlineWeightPayload(result.data);
 }
