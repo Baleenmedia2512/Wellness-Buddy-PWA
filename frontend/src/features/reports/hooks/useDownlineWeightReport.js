@@ -23,6 +23,7 @@ import {
   TEAM_SCOPES,
   STATUS_FILTERS,
   countRowsByStatus,
+  countRowsByTeamScope,
   filterRowsByStatus,
   getScopeRows,
 } from '../utils/reportFilters.js';
@@ -63,6 +64,11 @@ export function useDownlineWeightReport({ coachId }) {
     [self, members, teamScope],
   );
 
+  const teamScopeCounts = useMemo(
+    () => countRowsByTeamScope(self, members),
+    [self, members],
+  );
+
   const statusCounts = useMemo(
     () => countRowsByStatus(scopeRows),
     [scopeRows],
@@ -87,6 +93,7 @@ export function useDownlineWeightReport({ coachId }) {
     setStatusFilter,
     searchQuery,
     setSearchQuery,
+    teamScopeCounts,
     statusCounts,
     filtered,
     loading,

@@ -17,6 +17,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import {
   STATUS_FILTERS,
   STATUS_FILTER_OPTIONS,
+  TEAM_SCOPES,
   TEAM_SCOPE_OPTIONS,
 } from '../utils/reportFilters.js';
 
@@ -36,6 +37,7 @@ export default function DownlineWeightReport({ user, onBack }) {
     setStatusFilter,
     searchQuery,
     setSearchQuery,
+    teamScopeCounts,
     statusCounts,
     filtered,
     loading,
@@ -92,6 +94,10 @@ export default function DownlineWeightReport({ user, onBack }) {
         >
           {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
             const isActive = teamScope === value;
+            const count = teamScopeCounts[value] ?? 0;
+            const showCount = value !== TEAM_SCOPES.MINE;
+            const desktopLabel = showCount ? `${label} (${count})` : label;
+            const mobileLabel = showCount ? `${short} (${count})` : short;
             return (
               <button
                 key={value}
@@ -105,8 +111,8 @@ export default function DownlineWeightReport({ user, onBack }) {
                     : 'text-green-800 hover:bg-green-50'
                 }`}
               >
-                <span className="hidden sm:inline truncate">{label}</span>
-                <span className="sm:hidden truncate">{short}</span>
+                <span className="hidden sm:inline truncate">{desktopLabel}</span>
+                <span className="sm:hidden truncate">{mobileLabel}</span>
               </button>
             );
           })}

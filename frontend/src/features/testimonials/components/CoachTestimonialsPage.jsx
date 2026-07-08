@@ -17,6 +17,7 @@ import {
   TEAM_SCOPES,
   filterRowsByStatus,
   countRowsByStatus,
+  countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
 import {
@@ -56,11 +57,11 @@ function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
       type="button"
       onClick={() => onToggle(filterKey)}
       aria-pressed={isActive}
-      className={`rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer ${
+      className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
         isActive ? styles.active : styles.base
       }`}
     >
-      {label}: {count}
+      {label} ({count})
     </button>
   );
 }
@@ -194,7 +195,6 @@ export default function CoachTestimonialsPage({ user }) {
   const [fullRows, setFullRows] = useState([]);
   const [mineRow, setMineRow] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [fullLoading, setFullLoading] = useState(false);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.ALL);
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
@@ -235,48 +235,22 @@ export default function CoachTestimonialsPage({ user }) {
     setLoading(true);
     setError(null);
     try {
-      const requests = [
+      const [direct, mine, full] = await Promise.all([
         listForCoach(coachId, TEAM_SCOPES.DIRECT),
         buildMineRow(),
-      ];
-      if (teamScope === TEAM_SCOPES.FULL) {
-        requests.push(listForCoach(coachId, TEAM_SCOPES.FULL));
-      }
-      const results = await Promise.all(requests);
-      setDirectRows(results[0] || []);
-      setMineRow(results[1]);
-      if (teamScope === TEAM_SCOPES.FULL) {
-        setFullRows(results[2] || []);
-      } else {
-        setFullRows([]);
-      }
+        listForCoach(coachId, TEAM_SCOPES.FULL),
+      ]);
+      setDirectRows(direct || []);
+      setMineRow(mine);
+      setFullRows(full || []);
     } catch (err) {
       setError(err.message || 'Failed to load testimonials');
     } finally {
       setLoading(false);
     }
-  }, [coachId, buildMineRow, teamScope]);
-
-  const loadFullTeam = useCallback(async () => {
-    if (!coachId || fullRows.length > 0) return;
-    setFullLoading(true);
-    try {
-      const data = await listForCoach(coachId, TEAM_SCOPES.FULL);
-      setFullRows(data || []);
-    } catch (err) {
-      setError(err.message || 'Failed to load full team testimonials');
-    } finally {
-      setFullLoading(false);
-    }
-  }, [coachId, fullRows.length]);
+  }, [coachId, buildMineRow]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (teamScope === TEAM_SCOPES.FULL) {
-      loadFullTeam();
-    }
-  }, [teamScope, loadFullTeam]);
 
   useEffect(() => {
     setSearchQuery('');
@@ -293,6 +267,11 @@ export default function CoachTestimonialsPage({ user }) {
     }
     return directRows;
   }, [teamScope, mineRow, directRows, fullRows]);
+
+  const teamScopeCounts = useMemo(
+    () => countRowsByTeamScope(mineRow, directRows, fullRows),
+    [mineRow, directRows, fullRows],
+  );
 
   const statusCounts = useMemo(() => countRowsByStatus(scopeRows), [scopeRows]);
 
@@ -368,7 +347,7 @@ export default function CoachTestimonialsPage({ user }) {
     }
   }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
 
-  const showScopeLoading = loading || (teamScope === TEAM_SCOPES.FULL && fullLoading && fullRows.length === 0);
+  const showScopeLoading = loading;
   const hasScopeData = scopeRows.length > 0;
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
 
@@ -399,6 +378,10 @@ export default function CoachTestimonialsPage({ user }) {
         >
           {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
             const isActive = teamScope === value;
+            const count = teamScopeCounts[value] ?? 0;
+            const showCount = value !== TEAM_SCOPES.MINE;
+            const desktopLabel = showCount ? `${label} (${count})` : label;
+            const mobileLabel = showCount ? `${short} (${count})` : short;
             return (
               <button
                 key={value}
@@ -411,8 +394,8 @@ export default function CoachTestimonialsPage({ user }) {
                     : 'text-green-800 hover:bg-green-50'
                 }`}
               >
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{short}</span>
+                <span className="hidden sm:inline">{desktopLabel}</span>
+                <span className="sm:hidden">{mobileLabel}</span>
               </button>
             );
           })}
@@ -436,7 +419,11 @@ export default function CoachTestimonialsPage({ user }) {
 
       {/* Summary chips — clickable status filters */}
       {!loading && hasScopeData && (
-        <div className="flex gap-2 flex-wrap" role="group" aria-label="Status filter">
+        <div
+          className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
+          role="group"
+          aria-label="Status filter"
+        >
           <StatusFilterChip
             filterKey={STATUS_FILTERS.VERIFIED}
             label="✅ Verified"
@@ -446,7 +433,7 @@ export default function CoachTestimonialsPage({ user }) {
           />
           <StatusFilterChip
             filterKey={STATUS_FILTERS.PENDING}
-            label="🕐 Pending"
+            label="🕐 Awaiting Approval"
             count={statusCounts.pending}
             activeFilter={statusFilter}
             onToggle={handleStatusToggle}

@@ -41,6 +41,15 @@ export function countRowsByStatus(rows) {
   );
 }
 
+/** Member counts per team scope tab (for segmented control labels). */
+export function countRowsByTeamScope(mineRow, directRows, fullRows) {
+  return {
+    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+    [TEAM_SCOPES.DIRECT]: directRows.length,
+    [TEAM_SCOPES.FULL]: fullRows.length,
+  };
+}
+
 /** Toggle a status chip: clicking the active chip resets to All. */
 export function toggleStatusFilter(current, next) {
   return current === next ? STATUS_FILTERS.ALL : next;
