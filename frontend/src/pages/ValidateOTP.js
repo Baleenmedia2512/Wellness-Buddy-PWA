@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
@@ -9,7 +9,7 @@ import { debugLog } from '../shared/utils/logger';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false, userEmail: userEmailProp = '' }) => {
+const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false, userEmail: userEmailProp = '', coachName: coachNameProp = '' }) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
   const {
     otp, refs, value: otpValue, isComplete,
@@ -21,6 +21,11 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   const [success, setSuccess] = useState('');
   const [requestInfo, setRequestInfo] = useState(null);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
+  const isReactivationFlowRef = useRef(isReactivationFlow);
+
+  useEffect(() => {
+    isReactivationFlowRef.current = isReactivationFlow;
+  }, [isReactivationFlow]);
 
   // Component mount/unmount logging
   useEffect(() => {
@@ -81,6 +86,11 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const fetchRequestInfo = async () => {
+    if (isReactivationFlowRef.current) {
+      debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow — skipping status pre-check");
+      return;
+    }
+
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
       if (!userEmail) {
@@ -99,7 +109,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
         const request = response.data.pendingRequest;
         debugLog("\ud83d\udfe6 [ValidateOTP] Request info loaded:", request);
         setRequestInfo(request);
-      } else if (isReactivationFlow) {
+      } else if (isReactivationFlowRef.current) {
         debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 no pendingRequest returned, staying open");
       } else {
         debugLog("\ud83d\udfe6 [ValidateOTP] No pending request found, closing modal");
@@ -107,7 +117,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       }
     } catch (err) {
       console.error("\ud83d\udd34 [ValidateOTP] Error fetching request info:", err);
-      if (isReactivationFlow) {
+      if (isReactivationFlowRef.current) {
         debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 ignoring fetch error, staying open");
       }
     }
@@ -243,7 +253,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
           
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-left">
             <p className="text-blue-800 text-sm leading-relaxed">
-              We've sent a request to <span className="font-bold">{requestInfo?.coachName || 'your coach'}</span>. 
+              We've sent a request to <span className="font-bold">{requestInfo?.coachName || coachNameProp || 'your coach'}</span>. 
               Please contact them to approve your request and provide your 6-digit verification code.
             </p>
           </div>

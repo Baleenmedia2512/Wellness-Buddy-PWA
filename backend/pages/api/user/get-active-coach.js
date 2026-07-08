@@ -17,14 +17,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId } = req.query;
+    const { userId: userIdQuery, email: emailQuery } = req.query;
 
-    if (!userId) {
+    if (!userIdQuery && !emailQuery) {
       return res.status(400).json({
         ok: false,
         error: {
-          code: 'MISSING_USER_ID',
-          message: 'userId is required',
+          code: 'MISSING_IDENTIFIER',
+          message: 'userId or email is required',
         },
       });
     }
@@ -32,11 +32,17 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Get user's basic info
-    const { data: user, error: userError } = await supabase
+    let userQuery = supabase
       .from('team_table')
-      .select('UserId, UserName, CoachId, Status')
-      .eq('UserId', userId)
-      .single();
+      .select('UserId, UserName, CoachId, Status');
+
+    if (userIdQuery) {
+      userQuery = userQuery.eq('UserId', userIdQuery);
+    } else {
+      userQuery = userQuery.eq('Email', String(emailQuery).trim());
+    }
+
+    const { data: user, error: userError } = await userQuery.single();
 
     if (userError || !user) {
       return res.status(404).json({
@@ -57,6 +63,8 @@ export default async function handler(req, res) {
           userName: user.UserName,
           coachId: null,
           coachName: null,
+          originalCoachId: null,
+          originalCoachName: null,
           coachStatus: null,
           isOriginalCoach: true,
           message: 'User has no coach (top-level)',
@@ -64,12 +72,20 @@ export default async function handler(req, res) {
       });
     }
 
+    const { data: originalCoachRow } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, Status')
+      .eq('UserId', user.CoachId)
+      .single();
+
+    const originalCoachName = originalCoachRow?.UserName || null;
+
     // Resolve the active coach
     const {
       coachId,
       coachName,
       isOriginalCoach,
-    } = await resolveActiveCoach(userId, supabase);
+    } = await resolveActiveCoach(user.UserId, supabase);
 
     // Get coach status for additional info
     let coachStatus = 'Active';
@@ -89,9 +105,10 @@ export default async function handler(req, res) {
         userName: user.UserName,
         coachId,
         coachName,
+        originalCoachId: user.CoachId,
+        originalCoachName,
         coachStatus,
         isOriginalCoach,
-        originalCoachId: user.CoachId,
         message: !isOriginalCoach
           ? `Your original coach is inactive. You are now managed by ${coachName}.`
           : null,
