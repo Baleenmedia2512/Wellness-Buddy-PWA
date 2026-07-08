@@ -70,16 +70,20 @@ export default function WellnessScoreSetupRow({ category, config, onChange }) {
           role="switch"
           aria-checked={enabled}
           onClick={handleToggle}
-          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-            enabled ? 'bg-emerald-600' : 'bg-gray-300'
-          }`}
-          aria-label={`Enable ${category.label}`}
+          className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
+          aria-label={`${enabled ? 'Disable' : 'Enable'} ${category.label}`}
         >
           <span
-            className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-              enabled ? 'translate-x-5' : ''
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
+              enabled ? 'bg-emerald-500' : 'bg-gray-300'
             }`}
-          />
+          >
+            <span
+              className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                enabled ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </span>
         </button>
       </div>
 

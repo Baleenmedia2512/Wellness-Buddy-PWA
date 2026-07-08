@@ -8940,6 +8940,11 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
               onOpenWellnessScore={() => navigateTo('wellness-score')}
+              onOpenWellnessScoreSetup={
+                ['admin', 'developer'].includes(userRole)
+                  ? () => navigateTo('wellness-score-setup')
+                  : undefined
+              }
             />
 
             <ImageUpload

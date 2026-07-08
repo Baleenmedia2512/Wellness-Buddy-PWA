@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChevronRight, Percent, Target, Trophy } from 'lucide-react';
+import { ChevronRight, Percent, Settings, Target, Trophy } from 'lucide-react';
 import CircularProgress from '../../nutrition/components/dashboard/carousel/CircularProgress';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
@@ -11,8 +11,9 @@ function statusBadge(pct) {
 
 /**
  * First card in the home nutrition carousel — matches CaloriesCard footprint.
+ * Admins/developers get a settings control (onOpenSetup) instead of chevron.
  */
-export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen }) {
+export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup }) {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
 
@@ -24,13 +25,21 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen }) 
 
   if (!user) return null;
 
+  const handleCardKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen?.();
+    }
+  };
+
   return (
     <div className="h-full flex items-center justify-center py-2">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onOpen}
-        disabled={loading && !data}
-        className="w-full rounded-xl bg-white p-3 text-left shadow-lg transition-all active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-70"
+        onKeyDown={handleCardKeyDown}
+        className="w-full rounded-xl bg-white p-3 text-left shadow-lg transition-all active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
         data-testid="wellness-score-home-tile"
         aria-label={`Wellness score ${displayScore === '—' ? 0 : displayScore} out of 100. Tap for details.`}
       >
@@ -47,7 +56,22 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen }) 
                 {badge.label}
               </span>
             ) : null}
-            <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+            {onOpenSetup ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenSetup();
+                }}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                data-testid="wellness-score-setup-button"
+                aria-label="Configure wellness score"
+              >
+                <Settings className="h-4 w-4" aria-hidden />
+              </button>
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+            )}
           </div>
         </div>
 
@@ -100,7 +124,7 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen }) 
             </p>
           </div>
         </div>
-      </button>
+      </div>
     </div>
   );
 }

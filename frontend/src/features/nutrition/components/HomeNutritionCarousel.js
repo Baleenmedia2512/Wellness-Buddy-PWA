@@ -30,6 +30,7 @@ export default function HomeNutritionCarousel({
   bmrUpdateKey = 0,
   nutritionRefreshKey = 0,
   onOpenWellnessScore,
+  onOpenWellnessScoreSetup,
 }) {
   // "today" in local time — stable reference re-computed only when the date changes.
   const today = useMemo(() => {
@@ -75,9 +76,10 @@ export default function HomeNutritionCarousel({
         user={user}
         apiBaseUrl={apiBaseUrl}
         onOpen={onOpenWellnessScore}
+        onOpenSetup={onOpenWellnessScoreSetup}
       />
     );
-  }, [user, apiBaseUrl, onOpenWellnessScore]);
+  }, [user, apiBaseUrl, onOpenWellnessScore, onOpenWellnessScoreSetup]);
 
   if (!user) return null;
 
