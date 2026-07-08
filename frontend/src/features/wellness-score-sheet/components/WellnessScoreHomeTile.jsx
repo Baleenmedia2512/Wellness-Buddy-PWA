@@ -1,51 +1,39 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ChevronRight, Trophy } from 'lucide-react';
-import { buildMockDailyScore } from '../domain/mockScoreData';
+import { useWellnessScore } from '../hooks/useWellnessScore';
 import ScoreCircularProgress from './ScoreCircularProgress';
-import WellnessScoreSheet from './WellnessScoreSheet';
 
 /**
- * Home screen tile — first wellness score card with tap-to-expand sheet.
+ * Home screen tile — tap opens full Wellness Score page via onOpen.
  */
-export default function WellnessScoreHomeTile({
-  onOpenCoachConfig,
-  showCoachConfigLink = false,
-}) {
-  const [sheetOpen, setSheetOpen] = useState(false);
+export default function WellnessScoreHomeTile({ user, apiBaseUrl, onOpen }) {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const scoreData = useMemo(() => buildMockDailyScore(today), [today]);
+  const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
 
-  const topParams = useMemo(
-    () => [...scoreData.parameters]
-      .filter((p) => p.enabled && p.scoringType !== 'deferred')
-      .sort((a, b) => (b.earnedMark / b.maxMark) - (a.earnedMark / a.maxMark))
-      .slice(0, 3),
-    [scoreData.parameters],
-  );
+  const overallScore = data?.percentage ?? 0;
+  const topParameters = useMemo(() => {
+    if (!data?.parameters) return [];
+    return [...data.parameters]
+      .filter((p) => (p.maxPoints ?? 0) > 0)
+      .sort((a, b) => (b.percentage ?? 0) - (a.percentage ?? 0))
+      .slice(0, 3);
+  }, [data?.parameters]);
 
-  if (sheetOpen) {
-    return (
-      <WellnessScoreSheet
-        onBack={() => setSheetOpen(false)}
-        onOpenCoachConfig={onOpenCoachConfig}
-        showCoachConfigLink={showCoachConfigLink}
-        date={today}
-      />
-    );
-  }
+  if (!user) return null;
 
   return (
     <div className="px-2 md:px-3 mb-2">
       <button
         type="button"
-        onClick={() => setSheetOpen(true)}
-        className="w-full max-w-md mx-auto block text-left bg-white/80 backdrop-blur-xl border-2 border-emerald-200/90 rounded-xl shadow-md p-4 active:scale-[0.99] transition-transform hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        onClick={onOpen}
+        disabled={loading && !data}
+        className="w-full max-w-md mx-auto block text-left bg-white/80 backdrop-blur-xl border-2 border-emerald-200/90 rounded-xl shadow-md p-4 active:scale-[0.99] transition-transform hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-70"
         data-testid="wellness-score-home-tile"
-        aria-label={`Wellness score ${scoreData.overallScore} out of 100. Tap for full score sheet.`}
+        aria-label={`Wellness score ${Math.round(overallScore)} out of 100. Tap for details.`}
       >
         <div className="flex items-center gap-3">
           <ScoreCircularProgress
-            percentage={scoreData.overallScore}
+            percentage={loading && !data ? 0 : overallScore}
             size={80}
             subtitle="Score"
           />
@@ -57,30 +45,32 @@ export default function WellnessScoreHomeTile({
               </span>
             </div>
             <p className="text-lg font-bold text-gray-900 mt-0.5">
-              {scoreData.overallScore}
+              {loading && !data ? '—' : Math.round(overallScore)}
               <span className="text-sm font-medium text-gray-400">/100</span>
             </p>
             <p className="text-[11px] text-gray-500">
-              {scoreData.totalEarned} pts · 34 parameters
+              {data
+                ? `${Math.round(data.totalEarned)} / ${data.totalPossible} pts`
+                : 'Loading score…'}
             </p>
             <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
-                style={{ width: `${scoreData.overallScore}%` }}
+                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all"
+                style={{ width: `${Math.min(100, overallScore)}%` }}
               />
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" aria-hidden />
         </div>
 
-        {topParams.length > 0 && (
+        {topParameters.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-2">
-            {topParams.map((p) => (
+            {topParameters.map((p) => (
               <div key={p.key} className="text-center min-w-0">
                 <p className="text-[10px] text-gray-500 truncate">{p.label}</p>
                 <p className="text-xs font-bold text-gray-800">
-                  {p.earnedMark}
-                  <span className="text-gray-400 font-normal">/{p.maxMark}</span>
+                  {Math.round(p.earnedPoints)}
+                  <span className="text-gray-400 font-normal">/{p.maxPoints}</span>
                 </p>
               </div>
             ))}

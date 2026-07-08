@@ -4,6 +4,7 @@ import {
   Trash2,
   Camera,
   User,
+  Settings2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
@@ -25,6 +26,8 @@ const Header = ({
   onShowActivityReport,
   onShowTestimonials,
   onShowReports,
+  onShowWellnessScoreSetup,
+  wellnessScoreSetupEnabled = false,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
@@ -311,6 +314,16 @@ const Header = ({
                       <User className="h-3.5 w-3.5" />
                       Manage Profile
                     </TouchFeedbackButton>
+                    {wellnessScoreSetupEnabled && onShowWellnessScoreSetup && (
+                      <TouchFeedbackButton
+                        onClick={() => { onShowWellnessScoreSetup(); closeMenu(); }}
+                        className="mt-2 w-full py-1.5 px-4 rounded-full border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5"
+                        ariaLabel="Wellness Score Setup"
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                        Wellness Score Setup
+                      </TouchFeedbackButton>
+                    )}
                   </div>
 
                   {/* Auto Camera toggle */}

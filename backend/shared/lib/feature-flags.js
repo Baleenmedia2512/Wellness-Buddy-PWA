@@ -161,3 +161,12 @@ registerFlag({
   description:    'Reports module: coach/upline analytics starting with the direct-downline weight status report (current vs BMI 19–23 ideal range). Tab visible only to coach/upline/admin/developer roles.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.wellness-score-sheet',
+  owner:          '@wellness-score-team',
+  createdAt:      '2026-07-08',
+  removeBy:       '2027-01-08',
+  description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+  defaultEnabled: true,
+});

@@ -1,93 +1,79 @@
 /**
- * Wellness Score Sheet — parameter registry (UI + future API contract).
- *
- * scoringType:
- *   binary       — on-time / done → maxMark, else 0
- *   limit        — exceed 100% of target → 0; else proportional
- *   proportional — no upper penalty; mark ∝ min(consumed/target, 1)
- *   deferred     — not scored yet (physical activity)
+ * 34 wellness score parameters — mirrors backend parameter-registry.js.
  */
-
-export const SCORING_TYPES = Object.freeze({
-  BINARY: 'binary',
-  LIMIT: 'limit',
-  PROPORTIONAL: 'proportional',
-  DEFERRED: 'deferred',
-});
 
 export const PARAMETER_SECTIONS = Object.freeze([
-  { id: 'posts', label: 'Daily posts', description: 'On-time upload earns full mark' },
-  { id: 'limits', label: 'Within limits', description: 'Over limit → 0 marks' },
-  { id: 'goals', label: 'Nutrition goals', description: 'Proportional to target' },
-  { id: 'vitamins', label: 'Vitamins', description: 'Proportional to RDA' },
-  { id: 'minerals', label: 'Minerals', description: 'Proportional to RDA' },
-  { id: 'progress', label: 'Progress', description: 'Weight & activity' },
+  { id: 'logging', label: 'Activity / Logging' },
+  { id: 'nutrition', label: 'Nutrition' },
+  { id: 'progress', label: 'Progress' },
 ]);
 
-/** @typedef {'binary'|'limit'|'proportional'|'deferred'} ScoringType */
-
-/**
- * @type {Array<{
- *   key: string,
- *   label: string,
- *   section: string,
- *   scoringType: ScoringType,
- *   defaultMaxMark: number,
- *   defaultEnabled: boolean,
- *   unit?: string,
- * }>}
- */
 export const WELLNESS_PARAMETERS = Object.freeze([
-  { key: 'weight_post', label: 'Weight post', section: 'posts', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
-  { key: 'edu_post', label: 'Edu post', section: 'posts', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
-  { key: 'breakfast_post', label: 'Breakfast post', section: 'posts', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
-  { key: 'lunch_post', label: 'Lunch post', section: 'posts', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
-  { key: 'dinner_post', label: 'Dinner post', section: 'posts', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
+  { key: 'weight_post', label: 'Weight Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'edu_post', label: 'Education Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary' },
+  { key: 'water_qty', label: 'Water Quantity', section: 'logging', scoringMode: 'proportional' },
 
-  { key: 'water_pct', label: 'Water qty %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'calorie_pct', label: 'Calorie qty %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'carbs_pct', label: 'Carbs %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'fat_pct', label: 'Fat %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'sodium_pct', label: 'Sodium %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'cholesterol_pct', label: 'Cholesterol %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'sugar_pct', label: 'Sugar %', section: 'limits', scoringType: 'limit', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
+  { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'protein', label: 'Protein', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'sodium', label: 'Sodium', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'cholesterol', label: 'Cholesterol', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'sugar', label: 'Sugar', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'fiber', label: 'Fiber', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'gi', label: 'GI', section: 'nutrition', scoringMode: 'limit' },
 
-  { key: 'protein_pct', label: 'Protein %', section: 'goals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'fiber_pct', label: 'Fiber %', section: 'goals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'gi', label: 'GI', section: 'goals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true },
+  { key: 'vitamin_a', label: 'Vitamin A', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_c', label: 'Vitamin C', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_d', label: 'Vitamin D', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_e', label: 'Vitamin E', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_k', label: 'Vitamin K', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b1', label: 'Vitamin B1', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b2', label: 'Vitamin B2', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b3', label: 'Vitamin B3', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b6', label: 'Vitamin B6', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b9', label: 'Vitamin B9', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'vitamin_b12', label: 'Vitamin B12', section: 'nutrition', scoringMode: 'proportional' },
 
-  { key: 'vit_a', label: 'Vit A %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_c', label: 'Vit C %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_d', label: 'Vit D %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_e', label: 'Vit E %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_k', label: 'Vit K %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b1', label: 'Vit B1 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b2', label: 'Vit B2 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b3', label: 'Vit B3 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b6', label: 'Vit B6 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b9', label: 'Vit B9 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'vit_b12', label: 'Vit B12 %', section: 'vitamins', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
+  { key: 'calcium', label: 'Calcium', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'iron', label: 'Iron', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'magnesium', label: 'Magnesium', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'potassium', label: 'Potassium', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'zinc', label: 'Zinc', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'phosphorus', label: 'Phosphorus', section: 'nutrition', scoringMode: 'proportional' },
 
-  { key: 'calcium', label: 'Calcium %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'iron', label: 'Iron %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'magnesium', label: 'Magnesium %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'potassium', label: 'Potass %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'zinc', label: 'Zinc %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-  { key: 'phosphorus', label: 'Phos %', section: 'minerals', scoringType: 'proportional', defaultMaxMark: 100, defaultEnabled: true, unit: '%' },
-
-  { key: 'weight_improvement', label: 'Weight improvement', section: 'progress', scoringType: 'binary', defaultMaxMark: 100, defaultEnabled: true },
-  { key: 'physical_activity', label: 'Physical activity', section: 'progress', scoringType: 'deferred', defaultMaxMark: 100, defaultEnabled: false },
+  { key: 'weight_improvement', label: 'Weight Improvement', section: 'progress', scoringMode: 'binary' },
+  { key: 'physical_activity', label: 'Physical Activity', section: 'progress', scoringMode: 'proportional' },
 ]);
 
-export function getParametersBySection(sectionId) {
-  return WELLNESS_PARAMETERS.filter((p) => p.section === sectionId);
+export const DEFAULT_PARAMETER_CONFIG = Object.freeze(
+  WELLNESS_PARAMETERS.map((p) => ({
+    key: p.key,
+    label: p.label,
+    section: p.section,
+    scoringMode: p.scoringMode,
+    maxPoints: 100,
+    enabled: true,
+  })),
+);
+
+export function getParameterMeta(key) {
+  return WELLNESS_PARAMETERS.find((p) => p.key === key) || null;
 }
 
-export function buildDefaultCoachConfig() {
-  return WELLNESS_PARAMETERS.map((p) => ({
-    key: p.key,
-    enabled: p.defaultEnabled,
-    maxMark: p.defaultMaxMark,
-    scoringType: p.scoringType,
-  }));
+export function parametersBySection(parameters = []) {
+  const grouped = {};
+  for (const section of PARAMETER_SECTIONS) {
+    grouped[section.id] = {
+      ...section,
+      parameters: parameters.filter((p) => {
+        const meta = getParameterMeta(p.key);
+        return meta?.section === section.id;
+      }),
+    };
+  }
+  return grouped;
 }

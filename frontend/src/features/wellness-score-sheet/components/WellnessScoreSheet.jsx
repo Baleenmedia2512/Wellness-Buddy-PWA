@@ -1,9 +1,8 @@
-import React, { useMemo } from 'react';
-import { ArrowLeft, Settings2, ClipboardList } from 'lucide-react';
-import { PARAMETER_SECTIONS } from '../domain/parameterRegistry';
-import { buildMockDailyScore } from '../domain/mockScoreData';
+import React from 'react';
+import { ArrowLeft, ClipboardList, Loader2 } from 'lucide-react';
 import ScoreCircularProgress from './ScoreCircularProgress';
-import ScoreParameterRow from './ScoreParameterRow';
+import ScoreCategoryRow from './ScoreCategoryRow';
+import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 
 function formatDateLabel(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -17,27 +16,19 @@ function formatDateLabel(dateStr) {
 }
 
 /**
- * Full wellness score sheet — 34 parameters grouped by section.
+ * Full wellness score sheet — 34 individual parameters from backend API.
  */
 export default function WellnessScoreSheet({
   onBack,
-  onOpenCoachConfig,
-  showCoachConfigLink = false,
-  date,
+  scoreData,
+  loading = false,
+  error = null,
+  onRetry,
 }) {
-  const dateStr = date || new Date().toISOString().slice(0, 10);
-  const scoreData = useMemo(() => buildMockDailyScore(dateStr), [dateStr]);
-
-  const bySection = useMemo(() => {
-    const map = new Map();
-    for (const section of PARAMETER_SECTIONS) {
-      map.set(section.id, {
-        ...section,
-        items: scoreData.parameters.filter((p) => p.section === section.id),
-      });
-    }
-    return [...map.values()].filter((s) => s.items.length > 0);
-  }, [scoreData.parameters]);
+  const dateStr = scoreData?.date || new Date().toISOString().slice(0, 10);
+  const parameters = scoreData?.parameters || [];
+  const grouped = parametersBySection(parameters);
+  const overallScore = scoreData?.percentage ?? 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-green-50">
@@ -58,67 +49,71 @@ export default function WellnessScoreSheet({
               <ClipboardList className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden />
               Wellness Score
             </h1>
-            <p className="text-xs text-gray-500">{formatDateLabel(scoreData.date)}</p>
+            <p className="text-xs text-gray-500">{formatDateLabel(dateStr)}</p>
           </div>
-          {showCoachConfigLink && onOpenCoachConfig && (
-            <button
-              type="button"
-              onClick={onOpenCoachConfig}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold hover:bg-emerald-200 transition-colors"
-            >
-              <Settings2 className="w-3.5 h-3.5" aria-hidden />
-              Setup
-            </button>
-          )}
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-4 pb-28 space-y-5">
-        {/* Overall summary */}
-        <div className="bg-white/90 backdrop-blur border border-emerald-200/80 rounded-2xl p-4 shadow-md flex items-center gap-4">
-          <ScoreCircularProgress
-            percentage={scoreData.overallScore}
-            size={96}
-            subtitle="Score"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-emerald-800">Overall wellness score</p>
-            <p className="text-2xl font-bold text-gray-900 mt-0.5">
-              {scoreData.overallScore}
-              <span className="text-base font-medium text-gray-400">/100</span>
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {scoreData.totalEarned.toLocaleString()} / {scoreData.totalPossible.toLocaleString()} points earned
-            </p>
-            <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-700"
-                style={{ width: `${scoreData.overallScore}%` }}
-              />
-            </div>
+      <div className="max-w-lg mx-auto px-4 py-4 pb-28 space-y-4">
+        {loading && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" aria-label="Loading" />
           </div>
-        </div>
+        )}
 
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-          Preview UI — scores use sample data until backend is connected.
-        </p>
+        {error && !loading && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-red-700">{error}</p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-2 text-sm font-semibold text-red-800 underline"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
 
-        {/* Sections */}
-        {bySection.map((section) => (
-          <section key={section.id} aria-labelledby={`section-${section.id}`}>
-            <div className="mb-2 px-1">
-              <h2 id={`section-${section.id}`} className="text-sm font-bold text-gray-800">
-                {section.label}
-              </h2>
-              <p className="text-[11px] text-gray-500">{section.description}</p>
+        {!loading && !error && scoreData && (
+          <>
+            <div className="bg-white/90 backdrop-blur border border-emerald-200/80 rounded-2xl p-4 shadow-md flex items-center gap-4">
+              <ScoreCircularProgress percentage={overallScore} size={96} subtitle="Score" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-emerald-800">Overall wellness score</p>
+                <p className="text-2xl font-bold text-gray-900 mt-0.5">
+                  {Math.round(overallScore)}
+                  <span className="text-base font-medium text-gray-400">/100</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {Math.round(scoreData.totalEarned)} / {scoreData.totalPossible} points earned
+                </p>
+                <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
+                    style={{ width: `${Math.min(100, overallScore)}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              {section.items.map((param) => (
-                <ScoreParameterRow key={param.key} param={param} />
-              ))}
-            </div>
-          </section>
-        ))}
+
+            {PARAMETER_SECTIONS.map((section) => {
+              const block = grouped[section.id];
+              if (!block?.parameters?.length) return null;
+              return (
+                <div key={section.id} className="space-y-2">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 px-1">
+                    {section.label}
+                  </h2>
+                  {block.parameters.map((param) => (
+                    <ScoreCategoryRow key={param.key} category={param} />
+                  ))}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );
