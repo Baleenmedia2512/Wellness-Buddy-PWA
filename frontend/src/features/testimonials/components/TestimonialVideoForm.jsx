@@ -63,11 +63,11 @@ function VideoPicker({ label, description, video, inputRef, onChange, onRemove }
         </TouchFeedbackButton>
       )}
 
-      {/* Hidden file input — accept common mobile video formats */}
+      {/* Hidden file input — MP4, MOV, QT, 3GP (common mobile camera formats) */}
       <input
         ref={inputRef}
         type="file"
-        accept="video/mp4,video/quicktime,video/3gpp,.mp4,.mov,.3gp"
+        accept="video/mp4,video/quicktime,video/3gpp,.mp4,.mov,.qt,.3gp"
         className="hidden"
         onChange={onChange}
       />

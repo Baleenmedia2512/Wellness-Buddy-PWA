@@ -15,8 +15,8 @@ import {
 import { resolveVideoDuration } from '../utils/getVideoMetadata.js';
 
 // Server-side binary limits — mirrors backend validator constants
-const MAX_HEALTH_VIDEO_MB   = 20;
-const MAX_BUSINESS_VIDEO_MB = 40;
+const MAX_HEALTH_VIDEO_MB   = 50;
+const MAX_BUSINESS_VIDEO_MB = 50;
 const MAX_HEALTH_DURATION_S   = 60;   // 1 min
 const MAX_BUSINESS_DURATION_S = 120;  // 2 min
 

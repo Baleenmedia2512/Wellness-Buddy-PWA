@@ -12,7 +12,7 @@ const ALLOWED_VIDEO_TYPES = new Set([
   'video/mpeg',
 ]);
 
-const ALLOWED_VIDEO_EXTENSION = /\.(mp4|mov|3gp|m4v)$/i;
+const ALLOWED_VIDEO_EXTENSION = /\.(mp4|mov|qt|3gp|m4v)$/i;
 
 /**
  * @param {File} file
@@ -36,7 +36,7 @@ function formatMediaError(video) {
     case 3:
       return 'This video uses a codec your device cannot preview. Save it as MP4 (H.264) and try again.';
     case 4:
-      return 'This video format is not supported. Please use MP4, MOV, or 3GP from your camera app.';
+      return 'This video format is not supported. Please use MP4, MOV, QT, or 3GP from your camera app.';
     default:
       return null;
   }
@@ -120,7 +120,7 @@ export async function resolveVideoDuration(file) {
       throw new Error(
         err.message.includes('format') || err.message.includes('codec')
           ? err.message
-          : 'Please choose an MP4, MOV, or 3GP video file.',
+          : 'Please choose an MP4, MOV, QT, or 3GP video file.',
       );
     }
     return { duration: null, durationVerified: false };
