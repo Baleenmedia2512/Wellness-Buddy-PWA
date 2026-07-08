@@ -3,7 +3,6 @@
  * The ONLY place in this feature that talks to the database or storage.
  */
 import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
-import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import logger from '../../shared/lib/logger.js';
 
 const TABLE = 'testimonials_table';
@@ -256,7 +255,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
+    members = data || [];
   } else {
     const { data, error: membersErr } = await supabase
       .from('team_table')
@@ -265,7 +264,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
+    members = data || [];
   }
 
   if (!members || members.length === 0) return [];
@@ -356,7 +355,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
+    members = data || [];
   } else {
     const { data, error: membersErr } = await supabase
       .from('team_table')
@@ -365,7 +364,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
-    members = (data || []).filter((member) => isActiveTeamStatus(member.Status));
+    members = data || [];
   }
 
   if (!members || members.length === 0) return [];

@@ -3,7 +3,6 @@
  * Owns: team_table (direct-downline lookup) + weight_records_table (latest weight).
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 /**
  * Walk the hierarchy tree and derive each member's parent coach plus
@@ -72,13 +71,11 @@ export async function getFullTeamMembers(coachId) {
     .order('"UserName"', { ascending: true });
   if (error) throw error;
 
-  return (data || [])
-    .filter((member) => isActiveTeamStatus(member.Status))
-    .map((member) => ({
-      ...member,
-      HierarchyParent: parentByUserId.get(member.UserId) ?? member.CoachId,
-      isDirectToRoot: directToRoot.has(member.UserId),
-    }));
+  return (data || []).map((member) => ({
+    ...member,
+    HierarchyParent: parentByUserId.get(member.UserId) ?? member.CoachId,
+    isDirectToRoot: directToRoot.has(member.UserId),
+  }));
 }
 
 /**
@@ -97,7 +94,7 @@ export async function getDirectDownline(coachId) {
     .ilike('"Status"', 'active')
     .order('"UserName"', { ascending: true });
   if (error) throw error;
-  return (data || []).filter((member) => isActiveTeamStatus(member.Status));
+  return data || [];
 }
 
 /**
