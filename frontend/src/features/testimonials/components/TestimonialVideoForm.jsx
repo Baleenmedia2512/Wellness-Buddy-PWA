@@ -28,7 +28,10 @@ function VideoPicker({ label, description, video, inputRef, onChange, onRemove }
             <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
             <div className="min-w-0">
               <p className="text-xs font-semibold text-green-800 truncate">{video.name}</p>
-              <p className="text-[11px] text-green-600">{video.sizeLabel}</p>
+              <p className="text-[11px] text-green-600">
+                {video.sizeLabel}
+                {video.durationUnverified ? ' · length not verified on this device' : ''}
+              </p>
             </div>
           </div>
           <div className="flex gap-1 shrink-0 ml-2">
@@ -82,6 +85,7 @@ export default function TestimonialVideoForm({
   onSubmit,
   submitting,
   error,
+  warning,
   locked,        // true when no photo testimonial exists yet
 }) {
   const healthRef   = useRef(null);
@@ -129,6 +133,12 @@ export default function TestimonialVideoForm({
             onChange={handleBusinessVideoChange}
             onRemove={onRemoveBusiness}
           />
+
+          {warning && !error && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+              {warning}
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">

@@ -14,6 +14,7 @@ import {
   validateEditTestimonial,
   validateListForCoach,
   validateMyTestimonial,
+  validatePrepareVideoUpload,
   validateSubmitVideo,
   validateVerifyVideoOtp,
   validateVideoReport,
@@ -422,8 +423,54 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 
 // ─── Video service functions ──────────────────────────────────────────────────
 
+async function assertVideoUploadEligible(userId) {
+  const existing = await repo.findByUserId(userId);
+  if (!existing) {
+    throw new ValidationError(400, 'Please submit your photo testimonial (before/after photos) before uploading result videos.');
+  }
+
+  const userInfo = await repo.findCoachIdForUser(userId);
+  if (!userInfo || !userInfo.coachId) {
+    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
+  }
+
+  return { existing, userInfo };
+}
+
 /**
- * Upload health/business result videos for a member's testimonial.
+ * Issue signed Supabase Storage upload URLs for direct client-side video upload.
+ * Bypasses Vercel's ~4.5 MB serverless request-body limit.
+ */
+export async function prepareVideoUpload(rawBody) {
+  const payload = validatePrepareVideoUpload(rawBody);
+
+  logger.info('[testimonials] prepareVideoUpload', { userId: payload.userId });
+
+  await assertVideoUploadEligible(payload.userId);
+
+  const ts = Date.now();
+  const uploads = {};
+
+  if (payload.uploadHealth) {
+    const path = `${payload.userId}/health_video_${ts}.mp4`;
+    uploads.health = await repo.createSignedUploadUrl(path);
+  }
+  if (payload.uploadBusiness) {
+    const path = `${payload.userId}/business_video_${ts}.mp4`;
+    uploads.business = await repo.createSignedUploadUrl(path);
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      uploads,
+    },
+  };
+}
+
+/**
+ * Finalise health/business result videos after direct storage upload.
  * Requires the member to have an existing testimonial record (photos uploaded first).
  * Always sends an OTP email to the coach for video verification.
  * Both videos are optional — at least one must be provided.
@@ -433,28 +480,23 @@ export async function submitVideo(rawBody) {
 
   logger.info('[testimonials] submitVideo', { userId: payload.userId });
 
-  const existing = await repo.findByUserId(payload.userId);
-  if (!existing) {
-    throw new ValidationError(400, 'Please submit your photo testimonial (before/after photos) before uploading result videos.');
-  }
+  const { existing, userInfo } = await assertVideoUploadEligible(payload.userId);
 
-  const userInfo = await repo.findCoachIdForUser(payload.userId);
-  if (!userInfo || !userInfo.coachId) {
-    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
-  }
-
-  const ts      = Date.now();
   const uploads = {};
 
-  if (payload.healthVideoBase64) {
-    const path = `${payload.userId}/health_video_${ts}.mp4`;
-    await repo.uploadVideo(payload.healthVideoBase64, path);
-    uploads.healthVideoPath = path;
+  if (payload.healthVideoPath) {
+    const exists = await repo.objectExists(payload.healthVideoPath);
+    if (!exists) {
+      throw new ValidationError(422, 'Health video upload was not found. Please upload again.');
+    }
+    uploads.healthVideoPath = payload.healthVideoPath;
   }
-  if (payload.businessVideoBase64) {
-    const path = `${payload.userId}/business_video_${ts}.mp4`;
-    await repo.uploadVideo(payload.businessVideoBase64, path);
-    uploads.businessVideoPath = path;
+  if (payload.businessVideoPath) {
+    const exists = await repo.objectExists(payload.businessVideoPath);
+    if (!exists) {
+      throw new ValidationError(422, 'Business video upload was not found. Please upload again.');
+    }
+    uploads.businessVideoPath = payload.businessVideoPath;
   }
 
   const otp       = generateOtp();

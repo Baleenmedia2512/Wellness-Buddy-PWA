@@ -45,6 +45,7 @@ function MemberView({ userId }) {
     removeBusinessVideo,
     submitting:    videoSubmitting,
     error:         videoError,
+    warning:       videoWarning,
     success:       videoSuccess,
     showOtpModal,
     setShowOtpModal,
@@ -125,6 +126,7 @@ function MemberView({ userId }) {
           onSubmit={handleVideoSubmit}
           submitting={videoSubmitting}
           error={videoError}
+          warning={videoWarning}
           locked={!existing}
         />
       )}

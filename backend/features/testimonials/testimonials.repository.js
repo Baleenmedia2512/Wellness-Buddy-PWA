@@ -66,6 +66,47 @@ export async function uploadVideo(base64, path) {
 }
 
 /**
+ * Create a short-lived signed URL for direct client-side video upload (bypasses API payload limits).
+ * @param {string} path
+ * @returns {Promise<{ path: string, token: string, signedUrl: string }>}
+ */
+export async function createSignedUploadUrl(path) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+
+  if (error) {
+    logger.error('[testimonials.repo] Signed upload URL failed', { path, error });
+    throw error;
+  }
+  return data;
+}
+
+/**
+ * Check whether a storage object exists at the given path.
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+export async function objectExists(path) {
+  if (!path) return false;
+  const slash = path.lastIndexOf('/');
+  const folder = slash >= 0 ? path.slice(0, slash) : '';
+  const filename = slash >= 0 ? path.slice(slash + 1) : path;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .list(folder, { search: filename, limit: 1 });
+
+  if (error) {
+    logger.warn('[testimonials.repo] Storage list failed', { path, error });
+    return false;
+  }
+  return (data || []).some((entry) => entry.name === filename);
+}
+
+/**
  * Generate a short-lived signed URL for in-app display.
  * @param {string} path
  * @returns {string|null} signed URL or null on error

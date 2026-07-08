@@ -86,9 +86,46 @@ export async function listForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Member submits health/business result videos for their testimonial.
- * At least one of healthVideoBase64 / businessVideoBase64 must be provided.
- * @param {{ userId, healthVideoBase64?, businessVideoBase64? }} payload
+ * Request signed Supabase Storage upload URLs for testimonial videos.
+ * @param {{ userId, uploadHealth?: boolean, uploadBusiness?: boolean }} payload
+ */
+export async function prepareTestimonialVideoUpload(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/prepare-video-upload`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to prepare video upload');
+  return result.uploads;
+}
+
+/**
+ * Upload a video file directly to Supabase Storage via a signed URL.
+ * @param {File} file
+ * @param {{ signedUrl: string, path: string }} uploadInfo
+ */
+export async function uploadTestimonialVideoFile(file, uploadInfo) {
+  const response = await fetch(uploadInfo.signedUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type || 'video/mp4',
+      'x-upsert': 'true',
+    },
+    body: file,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to upload video. Please check your connection and try again.');
+  }
+
+  return uploadInfo.path;
+}
+
+/**
+ * Member finalises health/business result videos after direct storage upload.
+ * At least one of healthVideoPath / businessVideoPath must be provided.
+ * @param {{ userId, healthVideoPath?, businessVideoPath? }} payload
  */
 export async function submitTestimonialVideo(payload) {
   const res = await CapacitorHttp.post({

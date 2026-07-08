@@ -168,57 +168,67 @@ export function validateMyTestimonial(query) {
 
 // ─── Video validators ─────────────────────────────────────────────────────────
 
-// 1 min ≈ 15 MB binary → base64 overhead ×1.33 ≈ 20 MB base64
-const MAX_HEALTH_VIDEO_BASE64  = 20 * 1024 * 1024;
-// 2 min ≈ 30 MB binary → base64 overhead ×1.33 ≈ 40 MB base64
-const MAX_BUSINESS_VIDEO_BASE64 = 40 * 1024 * 1024;
+// Binary size limits for direct storage uploads (not base64)
+export const MAX_HEALTH_VIDEO_BYTES   = 20 * 1024 * 1024;
+export const MAX_BUSINESS_VIDEO_BYTES = 40 * 1024 * 1024;
 
-const ALLOWED_VIDEO_PREFIXES = [
-  'data:video/mp4',
-  'data:video/quicktime',
-  'data:video/mov',
-  'data:video/mpeg',
-  'data:video/3gpp',
-];
-
-function validateOptionalBase64Video(value, fieldName, maxSize) {
+function validateOptionalVideoPath(value, fieldName, userId, slot) {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'string') throw new ValidationError(422, `${fieldName} must be a string`);
-  // Accept raw base64 or data-URI prefixed
-  if (value.startsWith('data:')) {
-    const hasAllowedPrefix = ALLOWED_VIDEO_PREFIXES.some((p) => value.startsWith(p));
-    if (!hasAllowedPrefix) {
-      throw new ValidationError(422, `${fieldName} must be a video file (mp4, mov, quicktime)`);
-    }
-  }
-  if (value.length > maxSize) {
-    const limitMb = Math.round(maxSize / (1024 * 1024));
-    throw new ValidationError(422, `${fieldName} exceeds ${limitMb} MB limit`);
+
+  const prefix = slot === 'health'
+    ? `${userId}/health_video_`
+    : `${userId}/business_video_`;
+  const pattern = new RegExp(`^${prefix}\\d+\\.mp4$`);
+  if (!pattern.test(value)) {
+    throw new ValidationError(422, `${fieldName} is invalid`);
   }
   return value;
 }
 
 /**
- * Validate payload for POST /api/testimonials/submit-video
- * At least one of healthVideoBase64 / businessVideoBase64 must be present.
+ * Validate payload for POST /api/testimonials/prepare-video-upload
  */
-export function validateSubmitVideo(body) {
+export function validatePrepareVideoUpload(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, healthVideoBase64, businessVideoBase64 } = body;
+  const { userId, uploadHealth, uploadBusiness } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
-  const health   = validateOptionalBase64Video(healthVideoBase64,   'healthVideoBase64',   MAX_HEALTH_VIDEO_BASE64);
-  const business = validateOptionalBase64Video(businessVideoBase64, 'businessVideoBase64', MAX_BUSINESS_VIDEO_BASE64);
+  const wantsHealth = uploadHealth === true;
+  const wantsBusiness = uploadBusiness === true;
+  if (!wantsHealth && !wantsBusiness) {
+    throw new ValidationError(400, 'At least one video slot must be requested');
+  }
+
+  return { userId: userIdN, uploadHealth: wantsHealth, uploadBusiness: wantsBusiness };
+}
+
+/**
+ * Validate payload for POST /api/testimonials/submit-video
+ * At least one of healthVideoPath / businessVideoPath must be present.
+ * Videos are uploaded directly to storage; this endpoint only finalises paths + OTP.
+ */
+export function validateSubmitVideo(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, healthVideoPath, businessVideoPath } = body;
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const health = validateOptionalVideoPath(healthVideoPath, 'healthVideoPath', userIdN, 'health');
+  const business = validateOptionalVideoPath(businessVideoPath, 'businessVideoPath', userIdN, 'business');
 
   if (!health && !business) {
     throw new ValidationError(400, 'At least one video (health or business results) must be provided');
   }
 
-  return { userId: userIdN, healthVideoBase64: health, businessVideoBase64: business };
+  return { userId: userIdN, healthVideoPath: health, businessVideoPath: business };
 }
 
 /**
