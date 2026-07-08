@@ -13,7 +13,7 @@
  *   setSearchQuery  — change search string
  *   statusCounts    — counts scoped to teamScope (before status/search filters)
  *   filtered        — rows after team scope + status + search filters
- *   teamPerformanceByUserId — direct coaches with downline → summary stats
+ *   teamPerformanceByUserId — coaches with downline → per-coach summary stats
  *   loading         — true while fetch is in flight
  *   error           — string error message or null
  *   refresh         — function to re-fetch data

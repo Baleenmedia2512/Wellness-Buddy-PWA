@@ -1,10 +1,13 @@
 /**
- * reportTeamPerformance.js — Team performance summaries for coach cards
- * in the Ideal Weight Report (Direct tab coaches with downline).
+ * reportTeamPerformance.js — Team performance summaries on coach cards
+ * in the Ideal Weight Report.
+ *
+ * - Mine tab: logged-in coach card shows full-team score (all active downline).
+ * - Direct / Full: only coaches who manage a team show a score on their card.
  *
  * Uses the full members payload from a single API fetch; no extra requests.
  */
-import { countRowsByStatus } from './reportFilters.js';
+import { countRowsByStatus, TEAM_SCOPES } from './reportFilters.js';
 
 /** Normalise user ids so map lookups work across string/number API values. */
 export function normalizeUserId(id) {
@@ -17,7 +20,10 @@ export function normalizeUserId(id) {
 export function buildChildrenIndex(members) {
   const index = new Map();
   for (const row of members) {
-    const parentId = normalizeUserId(row?.coachId ?? row?.CoachId);
+    // Hierarchy parent for scope filters; DB CoachId for team-performance fallback.
+    const parentId = normalizeUserId(
+      row?.coachId ?? row?.reportsToCoachId ?? row?.CoachId,
+    );
     const userId = normalizeUserId(row?.userId ?? row?.UserId);
     if (parentId == null || userId == null) continue;
     if (!index.has(parentId)) index.set(parentId, []);
@@ -80,8 +86,8 @@ export function computeTeamPerformanceSummary(rows) {
 }
 
 /**
- * Map direct coach userId → team performance summary for coaches with downline.
- * Only direct members of the logged-in coach are included (isDirect !== false).
+ * Map coach userId → team performance summary for every member who has downline.
+ * Includes nested coaches on the Full Team tab, not only direct-to-root coaches.
  */
 export function buildTeamPerformanceByUserId(members) {
   if (!Array.isArray(members) || members.length === 0) return {};
@@ -90,8 +96,6 @@ export function buildTeamPerformanceByUserId(members) {
   const summaries = {};
 
   for (const member of members) {
-    if (member?.isDirect === false) continue;
-
     const memberId = normalizeUserId(member?.userId ?? member?.UserId);
     if (memberId == null) continue;
 
@@ -101,4 +105,30 @@ export function buildTeamPerformanceByUserId(members) {
   }
 
   return summaries;
+}
+
+/**
+ * Resolve the team score to render on a member card for the active scope.
+ *
+ * Mine  → logged-in coach card only; score covers the entire active downline.
+ * Direct / Full → score only when this row manages a team (has downline).
+ */
+export function resolveRowTeamPerformance({
+  row,
+  teamScope,
+  self,
+  loggedInCoachId,
+  teamPerformanceByUserId = {},
+}) {
+  const rowId = normalizeUserId(row?.userId ?? row?.UserId);
+  const coachId = normalizeUserId(loggedInCoachId);
+  if (rowId == null) return null;
+
+  const fromRow = row?.teamPerformance ?? teamPerformanceByUserId[rowId] ?? null;
+
+  if (teamScope === TEAM_SCOPES.MINE && rowId === coachId) {
+    return self?.teamPerformance ?? fromRow;
+  }
+
+  return fromRow;
 }

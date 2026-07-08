@@ -47,7 +47,17 @@ export function normalizeDownlineWeightPayload(data) {
  *     idealMax: number|null,
  *     status: 'above_ideal'|'below_ideal'|'on_track'|'no_weight'|'no_height',
  *     isDirect: boolean,
- *     coachId: number
+ *     coachId: number,
+ *     reportsToCoachId: number,
+ *     teamPerformance: {
+ *       totalMembers: number,
+ *       onTrack: number,
+ *       onTrackPct: number,
+ *       offTrack: number,
+ *       offTrackPct: number,
+ *       noData: number,
+ *       noDataPct: number
+ *     }|null
  *   }>
  * }>}
  */

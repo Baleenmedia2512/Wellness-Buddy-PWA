@@ -98,21 +98,19 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
               {deltaLabel}
             </p>
           )}
-          {teamPerformance && (
-            <p className="mt-1.5 text-xs font-medium">
-              <span className="text-orange-600">{teamPerformance.offTrackPct}% off track</span>
-              <span className="text-gray-300 mx-1.5">|</span>
-              <span className="text-green-600">{teamPerformance.onTrackPct}% on track</span>
-            </p>
-          )}
         </div>
       )}
 
-      {!bar && teamPerformance && (
-        <p className="mt-3 text-xs font-medium">
+      {teamPerformance && (
+        <p className={`text-xs font-medium ${bar ? 'mt-1.5' : 'mt-3'}`}>
           <span className="text-orange-600">{teamPerformance.offTrackPct}% off track</span>
           <span className="text-gray-300 mx-1.5">|</span>
           <span className="text-green-600">{teamPerformance.onTrackPct}% on track</span>
+          {teamPerformance.totalMembers > 0 && (
+            <span className="text-gray-400 ml-1.5">
+              ({teamPerformance.totalMembers} active)
+            </span>
+          )}
         </p>
       )}
     </div>
