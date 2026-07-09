@@ -1,6 +1,6 @@
 // Editable name / height / phone / BMR / communityId fields + read-only email.
 import React from 'react';
-import { Flame, Mail } from 'lucide-react';
+import { Flame, Hash, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
 
 const inputCls =
