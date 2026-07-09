@@ -21,7 +21,7 @@ function getBarProps(currentWeight, idealMin, idealMax) {
   return { pct, idealStartPct, idealEndPct };
 }
 
-export default function WeightStatusRow({ row }) {
+export default function WeightStatusRow({ row, teamPerformance = null }) {
   const { userName, currentWeight, idealMin, idealMax, status } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
 
@@ -99,6 +99,19 @@ export default function WeightStatusRow({ row }) {
             </p>
           )}
         </div>
+      )}
+
+      {teamPerformance && (
+        <p className={`text-xs font-medium ${bar ? 'mt-1.5' : 'mt-3'}`}>
+          <span className="text-orange-600">{teamPerformance.offTrackPct}% off track</span>
+          <span className="text-gray-300 mx-1.5">|</span>
+          <span className="text-green-600">{teamPerformance.onTrackPct}% on track</span>
+          {teamPerformance.totalMembers > 0 && (
+            <span className="text-gray-400 ml-1.5">
+              ({teamPerformance.totalMembers} active)
+            </span>
+          )}
+        </p>
       )}
     </div>
   );

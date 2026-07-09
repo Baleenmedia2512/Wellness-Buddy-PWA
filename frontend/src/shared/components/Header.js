@@ -4,6 +4,7 @@ import {
   Trash2,
   Camera,
   User,
+  Settings2,
 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
@@ -25,6 +26,8 @@ const Header = ({
   onShowActivityReport,
   onShowTestimonials,
   onShowReports,
+  onShowWellnessScoreSetup,
+  wellnessScoreSetupEnabled = false,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
@@ -311,6 +314,7 @@ const Header = ({
                       <User className="h-3.5 w-3.5" />
                       Manage Profile
                     </TouchFeedbackButton>
+                    {/* Wellness Score Setup removed from profile menu */}
                   </div>
 
                   {/* Auto Camera toggle */}

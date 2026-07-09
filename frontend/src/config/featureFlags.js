@@ -100,7 +100,7 @@ const REGISTRY = Object.freeze({
     envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
     storageKey:     'ff.wellness-score-sheet',
     defaultEnabled: true,
-    description:    'Wellness Score Sheet home tile, member score view, and coach scoring config.',
+    description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
   },
 });
 

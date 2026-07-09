@@ -1,66 +1,25 @@
 import React from 'react';
-import { Activity, Beef, Droplet } from 'lucide-react';
+import { Beef, Droplet, Wheat } from 'lucide-react';
 import CircularProgress from './CircularProgress';
-
-const getGIZone = (gi) => {
-  if (gi <= 55) return { label: 'Low', text: 'text-emerald-700' };
-  if (gi <= 69) return { label: 'Med', text: 'text-amber-700' };
-  return { label: 'High', text: 'text-rose-700' };
-};
-
-const GIRing = ({ gi, size = 60 }) => {
-  const sw = 5;
-  const r = (size - sw) / 2;
-  const circ = 2 * Math.PI * r;
-  const pct = Math.min(100, gi);
-  const offset = circ - (pct / 100) * circ;
-  const zoneText = gi <= 55 ? 'text-emerald-700' : gi <= 69 ? 'text-amber-700' : 'text-rose-700';
-  const gradStart = gi <= 55 ? '#4ade80' : gi <= 69 ? '#fbbf24' : '#f87171';
-  const gradEnd = gi <= 55 ? '#059669' : gi <= 69 ? '#f59e0b' : '#dc2626';
-
-  return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="absolute inset-0 transform -rotate-90">
-        <defs>
-          <linearGradient id={`macros-gi-grad-${gi}`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={gradStart} />
-            <stop offset="100%" stopColor={gradEnd} />
-          </linearGradient>
-        </defs>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={sw} opacity="0.3" />
-        <circle
-          cx={size / 2} cy={size / 2} r={r} fill="none"
-          stroke={`url(#macros-gi-grad-${gi})`} strokeWidth={sw}
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-        />
-      </svg>
-      <div className="relative flex flex-col items-center justify-center leading-none gap-0.5">
-        <span className={`font-bold text-[15px] ${zoneText}`}>{gi}</span>
-        <span className="text-[8px] text-gray-500 font-semibold opacity-85">Avg GI</span>
-      </div>
-    </div>
-  );
-};
 
 /**
  * MacrosCard — Card 2 of the Nutrition Carousel.
- * Compact MyFitnessPal-style with GI, fat, and protein side by side.
+ * Compact MyFitnessPal-style with 3 macros side by side.
  */
 const MacrosCard = ({ 
   consumedProtein, 
   consumedFat, 
+  consumedCarbs, 
   proteinTarget, 
   fatTarget, 
-  glycemicIndex,
+  carbsTarget, 
   onOpenModal,
 }) => {
   const hasTargets = proteinTarget != null;
-  const gi = glycemicIndex != null ? Math.round(glycemicIndex) : null;
   
   const proteinPct = hasTargets && proteinTarget > 0 ? Math.round((consumedProtein / proteinTarget) * 100) : null;
   const fatPct = hasTargets && fatTarget > 0 ? Math.round((consumedFat / fatTarget) * 100) : null;
-  const giZone = gi != null ? getGIZone(gi) : null;
+  const carbsPct = hasTargets && carbsTarget > 0 ? Math.round((consumedCarbs / carbsTarget) * 100) : null;
 
   return (
     <div className="h-full flex items-center justify-center py-2">
@@ -80,18 +39,19 @@ const MacrosCard = ({
           )}
         </div>
 
-        {/* 3 columns — order: Glycemic Index, Fat, Protein */}
+        {/* 3 Macros in a Row — order: Carbs, Fat, Protein */}
         <div className="grid grid-cols-3 gap-3">
-          {/* Glycemic Index */}
-          <div
-            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''}`}
-            onClick={() => onOpenModal && onOpenModal('glycemicIndex')}
-            role={onOpenModal ? 'button' : undefined}
-            tabIndex={onOpenModal ? 0 : undefined}
-            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('glycemicIndex'); } : undefined}
-          >
-            {gi != null ? (
-              <GIRing gi={gi} size={60} />
+          {/* Carbs */}
+          <div className="text-center">
+            {carbsPct != null ? (
+              <CircularProgress 
+                percentage={carbsPct} 
+                color="from-orange-400 to-amber-400" 
+                size={60} 
+                strokeWidth={5} 
+                targetLabel={carbsTarget != null ? `${carbsTarget}g` : undefined}
+                onClick={() => onOpenModal && onOpenModal('carbs')}
+              />
             ) : (
               <div className="w-[60px] h-[60px] mx-auto rounded-full bg-gray-100 flex items-center justify-center">
                 <span className="text-xs text-gray-400 font-medium">?</span>
@@ -99,17 +59,12 @@ const MacrosCard = ({
             )}
             <div className="mt-1">
               <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                <Activity className="w-3 h-3 text-indigo-500" />
-                <p className="text-[10px] font-semibold text-gray-700">GI</p>
+                <Wheat className="w-3 h-3 text-orange-500" />
+                <p className="text-[10px] font-semibold text-gray-700">Carbs</p>
               </div>
-              {giZone ? (
-                <>
-                  <p className={`text-xs font-bold ${giZone.text}`}>{giZone.label}</p>
-                  <p className="text-[9px] text-gray-500">Avg · {gi}</p>
-                </>
-              ) : (
-                <p className="text-[8px] text-gray-400">No data</p>
-              )}
+              <p className="text-xs font-bold text-gray-900">{Math.round(consumedCarbs || 0)}g</p>
+              {hasTargets && <p className="text-[9px] text-gray-500">/ {carbsTarget}g</p>}
+              {!hasTargets && <p className="text-[8px] text-amber-600">No target</p>}
             </div>
           </div>
 
@@ -174,7 +129,6 @@ const MacrosCard = ({
             Targets based on your weight
           </p>
         )}
-
       </div>
     </div>
   );

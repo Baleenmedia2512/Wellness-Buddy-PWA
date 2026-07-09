@@ -17,8 +17,10 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import {
   STATUS_FILTERS,
   STATUS_FILTER_OPTIONS,
+  TEAM_SCOPES,
   TEAM_SCOPE_OPTIONS,
 } from '../utils/reportFilters.js';
+import { resolveRowTeamPerformance } from '../utils/reportTeamPerformance.js';
 
 function getStatusCountKey(filterKey) {
   if (filterKey === STATUS_FILTERS.OFF_TRACK) return 'off_track';
@@ -36,8 +38,11 @@ export default function DownlineWeightReport({ user, onBack }) {
     setStatusFilter,
     searchQuery,
     setSearchQuery,
+    teamScopeCounts,
     statusCounts,
+    self,
     filtered,
+    teamPerformanceByUserId,
     loading,
     error,
     refresh,
@@ -58,7 +63,7 @@ export default function DownlineWeightReport({ user, onBack }) {
             </TouchFeedbackButton>
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                Weight Status Report
+                Ideal Weight Report
               </h1>
               <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 Team weight · ideal range tracking
@@ -92,6 +97,10 @@ export default function DownlineWeightReport({ user, onBack }) {
         >
           {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
             const isActive = teamScope === value;
+            const count = teamScopeCounts[value] ?? 0;
+            const showCount = value !== TEAM_SCOPES.MINE;
+            const desktopLabel = showCount ? `${label} (${count})` : label;
+            const mobileLabel = showCount ? `${short} (${count})` : short;
             return (
               <button
                 key={value}
@@ -105,8 +114,8 @@ export default function DownlineWeightReport({ user, onBack }) {
                     : 'text-green-800 hover:bg-green-50'
                 }`}
               >
-                <span className="hidden sm:inline truncate">{label}</span>
-                <span className="sm:hidden truncate">{short}</span>
+                <span className="hidden sm:inline truncate">{desktopLabel}</span>
+                <span className="sm:hidden truncate">{mobileLabel}</span>
               </button>
             );
           })}
@@ -191,7 +200,17 @@ export default function DownlineWeightReport({ user, onBack }) {
 
         {/* Member rows */}
         {!error && filtered.map((row) => (
-          <WeightStatusRow key={row.userId} row={row} />
+          <WeightStatusRow
+            key={row.userId}
+            row={row}
+            teamPerformance={resolveRowTeamPerformance({
+              row,
+              teamScope,
+              self,
+              loggedInCoachId: coachId,
+              teamPerformanceByUserId,
+            })}
+          />
         ))}
         </div>
       </div>

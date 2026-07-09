@@ -97,8 +97,8 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const shareCardRef = useRef(null);
 
   // Parse analysisData to extract meal name and item details
-  const foodData = parseAnalysisData(p.analysisData, 'text-gray-400');
-  const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
+  const foodData = parseAnalysisData(p.analysisData);
+  const mealName = foodData.name || 'Food';
   const meal = getMealLabel(entry.capturedAt);
   // Individual food items for the share card
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];

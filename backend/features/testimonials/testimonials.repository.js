@@ -252,7 +252,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .in('"UserId"', memberIds)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
@@ -261,7 +261,7 @@ export async function listForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
       .eq('"CoachId"', coachId)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
@@ -352,7 +352,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage"')
       .in('"UserId"', memberIds)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
@@ -361,7 +361,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "ProfileImage"')
       .eq('"CoachId"', coachId)
-      .eq('"Status"', 'Active')
+      .ilike('"Status"', 'active')
       .order('"UserName"', { ascending: true });
     if (membersErr) throw membersErr;
     members = data || [];
