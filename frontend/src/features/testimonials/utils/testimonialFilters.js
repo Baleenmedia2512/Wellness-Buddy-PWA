@@ -54,3 +54,31 @@ export function countRowsByTeamScope(mineRow, directRows, fullRows) {
 export function toggleStatusFilter(current, next) {
   return current === next ? STATUS_FILTERS.ALL : next;
 }
+
+/** Derive a video row's status bucket. */
+export function getVideoRowStatus(row) {
+  if (!row || row.videoStatus === 'none') return STATUS_FILTERS.MISSING;
+  if (row.videoStatus === 'verified') return STATUS_FILTERS.VERIFIED;
+  if (row.videoStatus === 'pending') return STATUS_FILTERS.PENDING;
+  return STATUS_FILTERS.MISSING;
+}
+
+/** Filter video rows by active status chip. */
+export function filterVideoRowsByStatus(rows, statusFilter) {
+  if (!statusFilter || statusFilter === STATUS_FILTERS.ALL) return rows;
+  return rows.filter((row) => getVideoRowStatus(row) === statusFilter);
+}
+
+/** Count video rows per status bucket for summary chips. */
+export function countVideoRowsByStatus(rows) {
+  return rows.reduce(
+    (acc, row) => {
+      const status = getVideoRowStatus(row);
+      if (status === STATUS_FILTERS.VERIFIED) acc.verified += 1;
+      else if (status === STATUS_FILTERS.PENDING) acc.pending += 1;
+      else acc.missing += 1;
+      return acc;
+    },
+    { verified: 0, pending: 0, missing: 0 },
+  );
+}
