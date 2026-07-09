@@ -271,6 +271,7 @@ export async function insertTestimonial(payload) {
       after_weight_kg:   payload.afterWeightKg,
       goal_type:         payload.goalType,
       duration_text:     payload.durationText,
+      medical_condition: payload.medicalCondition ?? null,
       status:            payload.status ?? 'pending',
       otp_hash:          payload.otpHash,
       otp_expires_at:    payload.otpExpiresAt,
@@ -319,6 +320,7 @@ export async function updateTestimonial(id, payload) {
   if (payload.afterWeightKg   !== undefined) updates.after_weight_kg   = payload.afterWeightKg;
   if (payload.goalType        !== undefined) updates.goal_type         = payload.goalType;
   if (payload.durationText    !== undefined) updates.duration_text     = payload.durationText;
+  if (payload.medicalCondition !== undefined) updates.medical_condition = payload.medicalCondition;
   if (payload.status          !== undefined) updates.status            = payload.status;
   if (payload.otpHash         !== undefined) updates.otp_hash          = payload.otpHash;
   if (payload.otpExpiresAt    !== undefined) updates.otp_expires_at    = payload.otpExpiresAt;

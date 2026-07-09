@@ -138,6 +138,7 @@ export async function submitTestimonial(rawBody) {
     beforeWeightKg:  payload.beforeWeightKg,
     goalType:        payload.goalType,
     durationText:    payload.durationText,
+    medicalCondition: payload.medicalCondition,
     status:          newStatus,
     otpHash,
     otpExpiresAt:    otpExpiry,
@@ -247,6 +248,7 @@ export async function editTestimonial(rawBody) {
   if (payload.afterWeightKg  !== undefined) updates.afterWeightKg  = payload.afterWeightKg;
   if (payload.goalType       !== undefined) updates.goalType       = payload.goalType;
   if (payload.durationText   !== undefined) updates.durationText   = payload.durationText;
+  if (payload.medicalCondition !== undefined) updates.medicalCondition = payload.medicalCondition;
 
   // Determine if after photo is now present (either just uploaded or already stored)
   const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
@@ -333,6 +335,7 @@ export async function getMyTestimonial(rawQuery) {
         afterWeightKg:   row.after_weight_kg,
         goalType:        row.goal_type,
         durationText:    row.duration_text,
+        medicalCondition: row.medical_condition ?? null,
         status:          row.status,
         verifiedAt:      row.verified_at,
         createdAt:       row.created_at,
@@ -400,6 +403,7 @@ export async function listForCoach(rawQuery) {
           afterWeightKg:   testimonial.after_weight_kg,
           goalType:        testimonial.goal_type,
           durationText:    testimonial.duration_text,
+          medicalCondition: testimonial.medical_condition ?? null,
           status:          testimonial.status,
           verifiedAt:      testimonial.verified_at,
           createdAt:       testimonial.created_at,

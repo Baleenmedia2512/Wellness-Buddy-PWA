@@ -36,6 +36,8 @@ function MemberView({ userId, mode = 'both' }) {
 
   const {
     form, setField,
+    medicalCondition, setMedicalCondition,
+    medicalConditionError, handleMedicalConditionBlur,
     beforeImage, afterImage,
     handleBeforeImageChange, handleAfterImageChange,
     existing, reload,
@@ -137,6 +139,10 @@ function MemberView({ userId, mode = 'both' }) {
           isEditMode={isEditMode}
           isIncomplete={isCompletingMode}
           onCancel={existing ? cancelEdit : null}
+          medicalCondition={medicalCondition}
+          onMedicalConditionChange={setMedicalCondition}
+          onMedicalConditionBlur={handleMedicalConditionBlur}
+          medicalConditionError={medicalConditionError}
         />
       )}
 
