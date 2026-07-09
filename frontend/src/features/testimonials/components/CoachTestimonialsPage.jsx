@@ -55,19 +55,27 @@ function formatPercentage(value) {
   return Number(value ?? 0).toFixed(2);
 }
 
-function ComplianceScoreBadge({ teamStats }) {
-  if (!teamStats?.totalMembers) return null;
+function teamComplianceColorClass(scoreNum) {
+  if (scoreNum >= 80) return 'text-green-700';
+  if (scoreNum >= 50) return 'text-amber-700';
+  return 'text-red-700';
+}
+
+function TeamComplianceInline({ userName, teamStats }) {
+  if (!teamStats?.totalMembers) {
+    return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
+  }
+
   const scoreNum = Number(teamStats.uploadPercentage ?? 0);
-  const colorClass = scoreNum >= 80
-    ? 'text-green-700 border-green-200 bg-white'
-    : scoreNum >= 50
-      ? 'text-amber-700 border-amber-200 bg-white'
-      : 'text-red-700 border-red-200 bg-white';
+  const colorClass = teamComplianceColorClass(scoreNum);
 
   return (
-    <span className={`inline-flex items-center gap-1 border rounded-full px-2.5 py-1 font-medium ${colorClass}`}>
-      Team Compliance: {formatPercentage(teamStats.uploadPercentage)}%
-    </span>
+    <p className="text-sm font-medium flex items-baseline gap-2 min-w-0">
+      <span className="font-semibold text-gray-900 truncate">{userName}</span>
+      <span className={`text-[11px] whitespace-nowrap flex-shrink-0 ${colorClass}`}>
+        Team Compliance: {formatPercentage(teamStats.uploadPercentage)}%
+      </span>
+    </p>
   );
 }
 
@@ -102,7 +110,7 @@ function UploadMemberList({ members, variant }) {
   );
 }
 
-function ComplianceScoreLine({ teamStats }) {
+function UploadScoreLine({ teamStats }) {
   const [expanded, setExpanded] = useState(null);
 
   if (!teamStats?.totalMembers) return null;
@@ -122,7 +130,7 @@ function ComplianceScoreLine({ teamStats }) {
             uploadedActive ? 'text-green-800 underline' : 'text-green-600'
           }`}
         >
-          Team Compliance {formatPercentage(teamStats.uploadPercentage)}%
+          Uploaded {formatPercentage(teamStats.uploadPercentage)}%
         </button>
         <span className="text-gray-300">|</span>
         <button
@@ -186,17 +194,16 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">{user.userName}</p>
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${cfg.color}`}>
+          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
+          <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-0.5 ${cfg.color}`}>
             <Icon className="h-3 w-3" /> {cfg.label}
           </span>
-          <ComplianceScoreLine teamStats={teamStats} />
+          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 
       {videoStatus !== 'none' && (
         <div className="flex gap-2 flex-wrap text-xs">
-          <ComplianceScoreBadge teamStats={teamStats} />
           {hasHealthVideo && (
             <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               <Video className="h-3 w-3 text-green-600" /> Health Results
@@ -271,7 +278,7 @@ function MemberRow({ user, testimonial, teamStats }) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">{user.userName}</p>
+          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
           <div className="mt-0.5">
             {missing && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
@@ -289,7 +296,7 @@ function MemberRow({ user, testimonial, teamStats }) {
               </span>
             )}
           </div>
-          <ComplianceScoreLine teamStats={teamStats} />
+          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 
@@ -326,7 +333,6 @@ function MemberRow({ user, testimonial, teamStats }) {
 
           {/* Stats */}
           <div className="flex gap-2 flex-wrap text-xs">
-            <ComplianceScoreBadge teamStats={teamStats} />
             <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               Before: {testimonial.beforeWeightKg} kg
             </span>
@@ -358,11 +364,6 @@ function MemberRow({ user, testimonial, teamStats }) {
         </>
       )}
 
-      {!testimonial && teamStats?.totalMembers > 0 && (
-        <div className="flex gap-2 flex-wrap text-xs">
-          <ComplianceScoreBadge teamStats={teamStats} />
-        </div>
-      )}
     </div>
   );
 }
