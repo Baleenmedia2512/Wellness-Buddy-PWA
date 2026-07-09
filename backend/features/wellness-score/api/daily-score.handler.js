@@ -5,6 +5,7 @@ import { fetchMealsForDate } from '../../food-corrections/food-corrections.repos
 import { getUserWeightGoal } from '../../weight-progress-tips/data/weight-progress.repo.js';
 import * as activityRepo from '../../activity/activity.repository.js';
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
+import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
 import {
   aggregateDailyFoodStats,
@@ -92,9 +93,13 @@ export async function getDailyScore({ userId, date }) {
   });
 
   const bmr = pickBmr(userGoal);
+  const calorieTarget = resolveCalorieTargetFromProfile({
+    bmr,
+    physicalActivityLevel: userGoal?.PhysicalActivityLevel,
+  }) || bmr;
   const weightKg = latestWeightKg;
   const dailyStats = aggregateDailyFoodStats(foodRecords);
-  const nutritionTargets = computeNutritionTargets({ bmr, weightKg });
+  const nutritionTargets = computeNutritionTargets({ bmr: calorieTarget, weightKg });
   const exerciseCalories = sumStepCalories(stepRows) + sumWatchCalories(watchRows);
   const currentWeight = pickCurrentWeight(weightRecords, latestWeightRow);
   const previousWeight = previousWeightRow ? parseFloat(previousWeightRow.Weight) : null;

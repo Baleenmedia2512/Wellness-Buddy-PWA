@@ -2,7 +2,7 @@
 // derived progress / burn-to-balance values. All memoized.
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  fetchUserBmr,
+  fetchUserCalorieTarget,
   fetchWatchBurnedCalories,
   DEFAULT_CALORIE_TARGET,
 } from '../services/nutritionDashboard';
@@ -24,8 +24,8 @@ export function useNutritionStats({
   useEffect(() => {
     if (!user?.email) return undefined;
     const load = async () => {
-      const bmr = await fetchUserBmr({ apiBaseUrl, email: user.email });
-      setCalorieTarget(bmr);
+      const target = await fetchUserCalorieTarget({ apiBaseUrl, email: user.email });
+      setCalorieTarget(target);
     };
     load();
     const onVisible = () => { if (document.visibilityState === 'visible') load(); };

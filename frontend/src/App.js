@@ -152,6 +152,8 @@ import { WeightProgressTipsModal } from "./features/weight-progress-tips/compone
 import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import EmailGateModal from "./features/user/components/EmailGateModal";
+import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
+import { fetchProfile } from "./features/user/services/profileService";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -445,6 +447,7 @@ function WellnessValleyApp() {
 
   // Email gate � forced for phone-OTP users who have no email in their profile
   const [showEmailGate, setShowEmailGate] = useState(false);
+  const [showPhysicalActivitySetup, setShowPhysicalActivitySetup] = useState(false);
 
   // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
@@ -994,6 +997,32 @@ function WellnessValleyApp() {
     setShowEmailGate(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth change
   }, [user?.id, user?.email, isOtpVerified]);
+
+  // Physical activity gate: after email is set, require activity level once.
+  useEffect(() => {
+    if (!user) return;
+    if (!isOtpVerified) return;
+    if (showEmailGate) return;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    if (!email) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await fetchProfile(email);
+        if (!cancelled && data && !data.physicalActivityLevel) {
+          setShowPhysicalActivitySetup(true);
+        } else if (!cancelled) {
+          setShowPhysicalActivitySetup(false);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth/email-gate change
+  }, [user?.id, user?.email, isOtpVerified, showEmailGate]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -3874,10 +3903,10 @@ function WellnessValleyApp() {
 
         // Even though weight was rejected, BMR may have been saved by the backend.
         // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
-        if (data.bmrSaved && weightData.bmr) {
+        if (data.bmrSaved || data.data?.bmr) {
           debugLog(
             "?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:",
-            weightData.bmr,
+            data.data?.bmr,
           );
           setBmrUpdateKey((prev) => prev + 1);
         }
@@ -4061,13 +4090,13 @@ function WellnessValleyApp() {
         savedWeightIdRef.current = data.id;
       }
 
-      // ?? If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
-      // BMR is synced to team_table by the backend ? increment the key so it re-reads it
-      if (weightData.bmr) {
+      // BMR synced to team_table by the backend (calculated or preserved)
+      const savedBmr = data.data?.bmr;
+      if (savedBmr) {
         setBmrUpdateKey((prev) => prev + 1);
         debugLog(
           "?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:",
-          weightData.bmr,
+          savedBmr,
         );
       }
 
@@ -8811,7 +8840,7 @@ function WellnessValleyApp() {
               cacheProfileUserName(email, profileData.name);
             }
             // If a new BMR was saved, force NutritionDashboard to re-fetch it
-            if (profileData?.bmr) {
+            if (profileData?.bmr || profileData?.physicalActivityLevel) {
               setBmrUpdateKey((prev) => prev + 1);
             }
           }}
@@ -9956,6 +9985,17 @@ function WellnessValleyApp() {
               }
               // Patch the in-memory user so the rest of the app sees the email
               setUser((prev) => prev ? { ...prev, email: savedEmail } : prev);
+            }}
+          />
+        )}
+
+        {showPhysicalActivitySetup && user && !showEmailGate && (
+          <PhysicalActivitySetup
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            onComplete={() => {
+              setShowPhysicalActivitySetup(false);
+              setBmrUpdateKey((prev) => prev + 1);
             }}
           />
         )}

@@ -6,6 +6,12 @@
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
+import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
+import {
+  buildTdeeBreakdown,
+  isValidPhysicalActivityLevel,
+  resolveCalorieTargetFromProfile,
+} from '../../utils/tdeeCalculations.js';
 import * as repo from './user.repository.js';
 
 const { getISTTimestamp } = repo;
@@ -19,6 +25,13 @@ export async function getProfile({ email }) {
   const height = user.Height ? parseFloat(user.Height) : null;
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
+  const latestBmr = user.Bmr ? parseFloat(user.Bmr) : null;
+  const physicalActivityLevel = user.PhysicalActivityLevel || null;
+  const calorieTarget = resolveCalorieTargetFromProfile({
+    bmr: latestBmr,
+    physicalActivityLevel,
+  });
+  const tdeeBreakdown = buildTdeeBreakdown({ bmr: latestBmr, physicalActivityLevel });
 
   return {
     httpStatus: 200,
@@ -35,14 +48,17 @@ export async function getProfile({ email }) {
         coachId: user.CoachId || null,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null,
-        latestBmr: user.Bmr ? parseFloat(user.Bmr) : null,
+        latestBmr,
+        physicalActivityLevel,
+        calorieTarget,
+        tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
       },
     },
   };
 }
 
-function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage, weightGoalMode }) {
+function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel }) {
   const updateData = {};
   let cleanedPhoneNumber;
   if (name != null) updateData.UserName = name;
@@ -50,6 +66,9 @@ function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage,
   if (dietType != null && VALID_DIETS.includes(dietType)) updateData.DietType = dietType;
   if (weightGoalMode != null && VALID_GOAL_MODES.includes(weightGoalMode)) {
     updateData.WeightGoalMode = weightGoalMode;
+  }
+  if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    updateData.PhysicalActivityLevel = physicalActivityLevel;
   }
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
@@ -77,15 +96,23 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
 }
 
 export async function updateProfile(input) {
-  const { email, name, height, bmr, dietType, profileImage, phoneNumber, weightGoalMode } = input;
+  const {
+    email, name, height, bmr, dietType, profileImage, phoneNumber,
+    weightGoalMode, physicalActivityLevel,
+  } = input;
   const user = await repo.findByEmail(email, 'UserId');
   if (!user) return notFound();
   const userId = user.UserId;
 
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
+
+  let savedPhysicalActivityLevel = null;
+  if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    savedPhysicalActivityLevel = physicalActivityLevel;
+  }
+
   if (Object.keys(updateData).length > 0) {
-    const rows = await repo.updateUserByEmail(email, updateData);
-    if (!rows || rows.length === 0) throw new Error(`Profile update matched 0 rows for UserId ${userId}`);
+    await repo.updateUserById(userId, updateData);
     try { await repo.updateUserById(userId, { LastActiveAt: getISTTimestamp() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
@@ -95,10 +122,33 @@ export async function updateProfile(input) {
   let savedBmr = null;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
-    if (!isNaN(bmrValue) && bmrValue > 0) { await repo.updateUserById(userId, { Bmr: bmrValue }); savedBmr = bmrValue; }
+    if (!isNaN(bmrValue) && bmrValue > 0) {
+      await repo.updateUserById(userId, { Bmr: bmrValue });
+      savedBmr = bmrValue;
+    }
+  } else {
+    const latestMetrics = await repo.getLatestWeight(userId);
+    const calculatedBmr = computeKatchMcArdleBmr(
+      latestMetrics?.Weight ? parseFloat(latestMetrics.Weight) : null,
+      latestMetrics?.BodyFat ? parseFloat(latestMetrics.BodyFat) : null,
+    );
+    if (calculatedBmr !== null) {
+      await repo.updateUserById(userId, { Bmr: calculatedBmr });
+      savedBmr = calculatedBmr;
+    }
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }
+
+  const refreshedUser = await repo.getProfile(email);
+  const effectiveBmr = savedBmr ?? (refreshedUser?.Bmr ? parseFloat(refreshedUser.Bmr) : null);
+  const effectiveActivity = savedPhysicalActivityLevel
+    ?? refreshedUser?.PhysicalActivityLevel
+    ?? null;
+  const calorieTarget = resolveCalorieTargetFromProfile({
+    bmr: effectiveBmr,
+    physicalActivityLevel: effectiveActivity,
+  });
 
   return {
     httpStatus: 200,
@@ -112,6 +162,8 @@ export async function updateProfile(input) {
         dietType: dietType || undefined,
         phoneNumber: cleanedPhoneNumber || undefined,
         weightGoalMode: weightGoalMode || undefined,
+        physicalActivityLevel: savedPhysicalActivityLevel || undefined,
+        calorieTarget: calorieTarget || undefined,
         profileImageUpdated: !!profileImage,
       },
     },

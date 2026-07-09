@@ -4,7 +4,7 @@ export async function fetchAdminUsers() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, Bmr')
+    .select('UserId, UserName, Email, Role, Bmr, PhysicalActivityLevel')
     .eq('Status', 'Active');
   if (error) throw error;
   return data || [];
@@ -14,7 +14,7 @@ export async function fetchSelfUser(userIdInt) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, Bmr')
+    .select('UserId, UserName, Email, Role, Bmr, PhysicalActivityLevel')
     .eq('UserId', userIdInt)
     .eq('Status', 'Active')
     .maybeSingle();

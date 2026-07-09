@@ -7,6 +7,7 @@ import {
   convertToIST,
 } from '../../utils/supabaseClient.js';
 import { validateAndCorrectWeight } from '../../utils/weightValidation.js';
+import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
 import * as repo from './weight.repository.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
@@ -22,6 +23,18 @@ function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = parseFloat(v);
   return isNaN(n) ? null : n;
+}
+
+async function resolveEffectiveBodyFat(userId, bodyFatValue, entryId) {
+  if (bodyFatValue !== null) return bodyFatValue;
+  if (entryId) {
+    const entry = await repo.findEntryById(entryId);
+    if (entry?.BodyFat != null) {
+      const bf = parseFloat(entry.BodyFat);
+      if (Number.isFinite(bf)) return bf;
+    }
+  }
+  return repo.findLatestBodyFat(userId);
 }
 
 function deriveCreatedAt(clientTimestamp) {
@@ -77,8 +90,12 @@ export async function saveWeight(input) {
   const bmiValue = toNumberOrNull(bmi);
   const bodyFatValue = toNumberOrNull(bodyFat);
   const muscleMassValue = toNumberOrNull(muscleMass);
-  const bmrValue = toNumberOrNull(bmr);
+  const manualBmrValue = toNumberOrNull(bmr);
   const imageBase64ToSave = rawImage && rawImage.trim() !== '' ? rawImage : null;
+
+  const effectiveBodyFat = await resolveEffectiveBodyFat(userId, bodyFatValue, entryId);
+  const calculatedBmr = computeKatchMcArdleBmr(weight, effectiveBodyFat);
+  const bmrValue = calculatedBmr ?? manualBmrValue;
 
   // BMR sync runs FIRST so it persists even if weight validation later fails.
   if (bmrValue) await repo.syncBmrToTeamTable(userId, bmrValue);
@@ -182,6 +199,7 @@ export async function saveWeight(input) {
         weightValue: weight,
         unit,
         bmr: bmrValue,
+        bmrCalculated: calculatedBmr !== null,
         bmrPreserved: !bmr && bmrValue ? true : false,
         imageBase64: imageBase64ToSave,
         timestamp: new Date().toISOString(),

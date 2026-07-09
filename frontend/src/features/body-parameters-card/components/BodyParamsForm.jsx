@@ -343,12 +343,12 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             onEnter={() => focusNextField(bmrRef)}
           />
 
-          {/* BMR - Full Width */}
-          <InputField 
-            label="BMR (kcal)" 
-            value={vm.form.bmr} 
-            onChange={(v) => vm.setField('bmr', v)} 
-            type="number" 
+          {/* BMR - editable; auto-filled from weight + fat % when not manually edited */}
+          <InputField
+            label="BMR (kcal)"
+            value={vm.form.bmr}
+            onChange={(v) => vm.setBmrManually(v)}
+            type="number"
             placeholder="kcal"
             inputRef={bmrRef}
             onEnter={() => focusNextField(bmiRef)}

@@ -45,6 +45,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           phone: data.phoneNumber || '',
           dietType: data.dietType || '',
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
+          physicalActivityLevel: data.physicalActivityLevel || '',
           weightGoalMode: data.weightGoalMode || null,
           communityId: data.communityId || '',
           email: data.email || user?.email || '',
@@ -88,6 +89,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
         bmr: form.bmr ? parseFloat(form.bmr) : null,
+        physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         profileImage: profileImagePreview || null,
       });
