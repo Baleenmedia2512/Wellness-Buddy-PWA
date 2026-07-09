@@ -26,6 +26,11 @@ const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 const REQUEST_TIMEOUT_MS = 60_000; // 60 s — parity with old imageTypeDetector
 
+/** Maximum total attempts (1 original + 2 automatic retries). */
+const MAX_ATTEMPTS    = 3;
+/** Base delay between retries in ms. Doubles each attempt: 1.5 s → 3 s. */
+const RETRY_DELAY_MS  = 1_500;
+
 /**
  * Shape returned on any unrecoverable failure.
  * Triggers the 'other' / unknown picker branch in App.js.
@@ -41,31 +46,67 @@ const FALLBACK = Object.freeze({
 /**
  * Analyse an image via the backend orchestrator (one Gemini call).
  *
+ * Automatically retries up to MAX_ATTEMPTS times on transient failures
+ * (5xx, timeout, network error) with linear back-off.  Callers never need
+ * their own retry logic or a "Try Again" button for transient errors.
+ *
  * Returns a detectedType-compatible object:
  *   { type, confidence, details, duration, traceId?, enrichmentJobId? }
  *
- * App.js reads:
- *   food:       details.foods[], details.total, details.fastNutrition
- *   weight:     details.weightValue, details.unit, details.bmi, etc.
- *   smartwatch: details.caloriesBurned, details.source, details.steps
- *   education:  details.platform, details.participantCount
- *
  * @param {File}   imageFile
  * @param {object} [opts]
- * @param {string|null} [opts.captureId]  DB capture ID — enables idempotency guard.
- * @param {string|null} [opts.userId]     Caller user ID for token audit trail.
- * @param {number|null} [opts.foodRowId]  food_nutrition_data_table PK for enrichment write-back.
+ * @param {string|null} [opts.captureId]
+ * @param {string|null} [opts.userId]
+ * @param {number|null} [opts.foodRowId]
  * @returns {Promise<object>}
  */
 export async function analyzeImage(
   imageFile,
   { captureId = null, userId = null, foodRowId = null } = {},
 ) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt });
+
+    // Success — return immediately.
+    if (!result.details?.defaulted) return result;
+
+    // Non-retryable client error (4xx) — exit without wasting more attempts.
+    if (result.details?._retryable === false) {
+      return { ...result, details: { ...result.details } };
+    }
+
+    // All attempts exhausted — surface the final failure to the caller.
+    if (attempt === MAX_ATTEMPTS) {
+      _trace('EXHAUSTED', { attempt, captureId });
+      return result;
+    }
+
+    // Wait before retrying (linear back-off: 1.5 s, 3 s).
+    // Wait before retrying. Use a longer back-off for 503 (server overload)
+    // so we do not keep flooding an already-saturated Gemini endpoint.
+    // Other transient failures (timeout, network blip) use the shorter base.
+    const is503 = (result.details?.error ?? '').includes('503');
+    const delay = is503 ? 6_000 * attempt : RETRY_DELAY_MS * attempt;
+    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, captureId });
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  /* unreachable — loop always returns before this */
+  return FALLBACK;
+}
+
+// ── Single attempt ────────────────────────────────────────────────────────────
+
+/**
+ * One HTTP attempt to the orchestrator.
+ * Never throws. Returns FALLBACK (with _retryable flag) on any error.
+ * @private
+ */
+async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt }) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  _trace('START', { captureId, userId, size: imageFile?.size ?? 0 });
+  _trace('START', { attempt, captureId, userId, size: imageFile?.size ?? 0 });
 
   try {
     const formData = new FormData();
@@ -92,19 +133,22 @@ export async function analyzeImage(
         errMsg  = body?.error?.message ?? errMsg;
       } catch (_) { /* ignore body-parse failure */ }
 
-      _trace('FAIL', { duration, code: errCode, message: errMsg, captureId });
-      return { ...FALLBACK, details: { defaulted: true, error: errMsg }, duration };
+      _trace('FAIL', { attempt, duration, code: errCode, message: errMsg, captureId });
+      // 4xx = client error, do not retry. 5xx = server/AI error, retryable.
+      const retryable = response.status >= 500;
+      return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: retryable }, duration };
     }
 
     const data = await response.json();
 
     if (!data.ok) {
       const errMsg = data.error?.message ?? 'Orchestration failed';
-      _trace('FAIL', { duration, code: data.error?.code, message: errMsg, captureId });
-      return { ...FALLBACK, details: { defaulted: true, error: errMsg }, duration };
+      _trace('FAIL', { attempt, duration, code: data.error?.code, message: errMsg, captureId });
+      return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
     }
 
     _trace('SUCCESS', {
+      attempt,
       duration,
       imageType:       data.imageType,
       confidence:      data.confidence,
@@ -122,11 +166,11 @@ export async function analyzeImage(
     const isTimeout = err.name === 'AbortError';
     const errMsg    = isTimeout ? 'timeout' : (err.message ?? 'network error');
 
-    _trace('FAIL', { duration, code: isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR', message: errMsg, captureId });
+    _trace('FAIL', { attempt, duration, code: isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR', message: errMsg, captureId });
 
     return {
       ...FALLBACK,
-      details: { defaulted: true, error: errMsg },
+      details: { defaulted: true, error: errMsg, _retryable: true },
       duration,
     };
   }

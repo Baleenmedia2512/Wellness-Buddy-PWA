@@ -19,9 +19,18 @@ import logger from '../logger.js';
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
 
-export const MODEL_NAME          = 'gemini-2.5-flash-lite';
-/** Fallback when the primary model is saturated (503 / high-demand). */
-export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash';
+export const MODEL_NAME          = 'gemini-2.5-flash';
+/** Fallback when the primary model is saturated (502 / 503 / 429 / high-demand). */
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
+
+/**
+ * thinkingBudget: 0 disables the internal reasoning pass on gemini-2.5-flash.
+ * This model is used for deterministic structured-JSON extraction where thinking
+ * adds zero value but does add latency and cost (thinking tokens are billed as output).
+ * The fallback (gemini-2.5-pro) intentionally omits this so it can think freely
+ * on difficult or ambiguous images — see getModel() below.
+ */
+const THINKING_DISABLED = Object.freeze({ thinkingConfig: { thinkingBudget: 0 } });
 
 export const MODEL_CONFIGS = {
   /**
@@ -36,6 +45,7 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
+    ...THINKING_DISABLED,
   },
 
   /**
@@ -49,6 +59,7 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 4096,
     responseMimeType: 'application/json',
+    ...THINKING_DISABLED,
   },
 
   /**
@@ -60,6 +71,7 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
+    ...THINKING_DISABLED,
   },
 
   /**
@@ -74,6 +86,7 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 2048,
     responseMimeType: 'application/json',
+    ...THINKING_DISABLED,
   },
 };
 
@@ -124,9 +137,15 @@ export function getModel(configKey, responseSchema = null, modelOverride = null)
       throw new Error(`geminiClient: unknown configKey '${configKey}'`);
     }
 
-    const generationConfig = responseSchema
-      ? { ...baseConfig, responseSchema }
+    // Fallback model (gemini-2.5-pro) should use its full reasoning capability —
+    // strip thinkingBudget:0 so Pro thinks freely on difficult/ambiguous images.
+    const config = modelOverride
+      ? (({ thinkingConfig: _dropped, ...rest }) => rest)(baseConfig)
       : baseConfig;
+
+    const generationConfig = responseSchema
+      ? { ...config, responseSchema }
+      : config;
 
     const model = genAI.getGenerativeModel({
       model: modelName,

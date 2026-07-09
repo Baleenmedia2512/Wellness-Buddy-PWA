@@ -5790,42 +5790,31 @@ function WellnessValleyApp() {
       });
       debugLog(`?? [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ? OPTIMIZED: Aggressive compression for faster uploads & API calls
+      // Always compress to ≤800px / quality 0.7 before sending to Gemini.
+      // Gemini tiles images at 768px — sending larger images creates multiple
+      // tiles (4× tokens for a 1280px image vs 1× for 800px), slowing inference
+      // and increasing 503 risk under load.  800px is sufficient for accurate
+      // food / weight / education recognition.
       const compressStart = Date.now();
-      const isAndroid = Capacitor.isNativePlatform();
-      const imageSizeMB = imageBase64.length / (1024 * 1024);
 
       let processedImage = imageBase64;
       let compressionApplied = false;
 
-      // More aggressive compression for speed (AI doesn't need high-res images)
-      if (isAndroid) {
-        // Android: Always compress aggressively for speed
-        if (imageSizeMB > 0.3) {
-          // > 300KB
-          const maxWidth = 800; // Smaller = faster upload & API processing
-          const quality = imageSizeMB > 2 ? 0.6 : 0.7; // Higher compression
-          processedImage = await compressImage(imageBase64, quality, maxWidth);
-          compressionApplied = true;
-        }
-      } else {
-        // Web: Also compress aggressively
-        if (imageSizeMB > 0.5) {
-          // > 500KB
-          processedImage = await compressImage(imageBase64, 0.7, 800);
-          compressionApplied = true;
-        }
+      try {
+        processedImage = await compressImage(imageBase64, 0.7, 800);
+        compressionApplied = true;
+      } catch (_) {
+        // Compression failed — proceed with original image
       }
 
       if (compressionApplied) {
-        const newSizeMB = processedImage.length / (1024 * 1024);
+        const origMB = imageBase64.length / (1024 * 1024);
+        const newMB  = processedImage.length / (1024 * 1024);
         debugLog(
-          `?? [PERF] Compression: ${
-            Date.now() - compressStart
-          }ms (${imageSizeMB.toFixed(2)}MB ? ${newSizeMB.toFixed(2)}MB)`,
+          `?? [PERF] Compression: ${Date.now() - compressStart}ms (${origMB.toFixed(2)}MB → ${newMB.toFixed(2)}MB)`,
         );
       } else {
-        debugLog(`?? [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
+        debugLog(`?? [PERF] Compression skipped (fallback to original)`);
       }
 
       // Set preview and uploading state while the capture row is persisted.
