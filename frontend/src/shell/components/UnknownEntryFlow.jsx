@@ -109,6 +109,9 @@ export default function UnknownEntryFlow({
   initialAiResult = null,
   /** The diary date selected in Dashboard — saves are anchored to this day. */
   diaryDate = null,
+  /** When true: show only a delete button — no category picker, no retry.
+   *  Used for out-of-scope captures where re-analysing won't help. */
+  deleteOnly = false,
   canMutate = true,
   userId,
   apiBaseUrl,
@@ -216,7 +219,7 @@ export default function UnknownEntryFlow({
         if (!hasRecognizedFood(analysis)) {
           // AI returned food type but with no recognisable items — go to picker.
           setRetrying(false);
-          setStage('pick');
+          setStage('view');
           return;
         }
         // Success: transition to AI review stage so the user can inspect and
@@ -608,8 +611,8 @@ export default function UnknownEntryFlow({
               </div>
             )}
 
-            {/* ── Inline category quick-picks (always visible) ── */}
-            {canMutate && (
+            {/* ── Category quick-picks (normal mode only) ── */}
+            {canMutate && !deleteOnly && (
               <div className="px-5 space-y-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   What is this photo?
@@ -657,6 +660,23 @@ export default function UnknownEntryFlow({
                   </button>
                 </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Delete-only view: out-of-scope captures ── */}
+            {canMutate && deleteOnly && (
+              <div className="px-5 pb-6">
+                <p className="text-sm text-gray-500 text-center mb-4">
+                  This photo wasn’t recognised as food, weight, education or smartwatch.
+                </p>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                  className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                </button>
               </div>
             )}
           </div>

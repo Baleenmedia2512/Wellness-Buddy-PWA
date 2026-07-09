@@ -24,14 +24,12 @@ export const MODEL_NAME          = 'gemini-2.5-flash';
 export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
 
 /**
- * thinkingBudget: 0 disables the internal reasoning pass on gemini-2.5-flash.
- * This model is used for deterministic structured-JSON extraction where thinking
- * adds zero value but does add latency and cost (thinking tokens are billed as output).
- * The fallback (gemini-2.5-pro) intentionally omits this so it can think freely
- * on difficult or ambiguous images — see getModel() below.
+ * NOTE: thinkingBudget is intentionally NOT set for gemini-2.5-flash.
+ * Flash is a thinking model — disabling thinking (thinkingBudget: 0) causes
+ * structured-output failures on complex 26-field nutrition schemas.
+ * Flash uses its natural dynamic thinking for reliable JSON generation.
+ * The fallback (gemini-2.5-pro) also uses full thinking via the same path.
  */
-const THINKING_DISABLED = Object.freeze({ thinkingConfig: { thinkingBudget: 0 } });
-
 export const MODEL_CONFIGS = {
   /**
    * Fast, low-token classification. No structured schema enforcement here
@@ -45,7 +43,6 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
-    ...THINKING_DISABLED,
   },
 
   /**
@@ -59,7 +56,6 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 4096,
     responseMimeType: 'application/json',
-    ...THINKING_DISABLED,
   },
 
   /**
@@ -71,7 +67,6 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
-    ...THINKING_DISABLED,
   },
 
   /**
@@ -86,7 +81,6 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 2048,
     responseMimeType: 'application/json',
-    ...THINKING_DISABLED,
   },
 };
 
@@ -137,15 +131,9 @@ export function getModel(configKey, responseSchema = null, modelOverride = null)
       throw new Error(`geminiClient: unknown configKey '${configKey}'`);
     }
 
-    // Fallback model (gemini-2.5-pro) should use its full reasoning capability —
-    // strip thinkingBudget:0 so Pro thinks freely on difficult/ambiguous images.
-    const config = modelOverride
-      ? (({ thinkingConfig: _dropped, ...rest }) => rest)(baseConfig)
-      : baseConfig;
-
     const generationConfig = responseSchema
-      ? { ...config, responseSchema }
-      : config;
+      ? { ...baseConfig, responseSchema }
+      : baseConfig;
 
     const model = genAI.getGenerativeModel({
       model: modelName,

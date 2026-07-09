@@ -147,6 +147,23 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
       return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
     }
 
+    // HTTP 200 + ok:true but the payload has no usable data for the detected type.
+    // This can happen when Gemini's structured output is incomplete despite the
+    // request succeeding — e.g. imageType:'food' but fastNutrition is null, or
+    // imageType:'weight' but no weightReading value.  Treat as retryable so the
+    // model gets another attempt rather than silently returning empty results.
+    const _type = data.imageType;
+    const _empty =
+      (_type === 'food'       && !data.fastNutrition && !data.details?.total && !(data.details?.foods?.length > 0)) ||
+      (_type === 'weight'     && !(data.weightReading?.value > 0))  ||
+      (_type === 'smartwatch' && !data.smartwatchData?.caloriesBurned && !data.smartwatchData?.steps) ||
+      (_type === 'education'  && !data.educationData?.platform);
+    if (_empty) {
+      const errMsg = `imageType '${_type}' returned with no payload data`;
+      _trace('FAIL', { attempt, duration, code: 'EMPTY_PAYLOAD', message: errMsg, captureId });
+      return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
+    }
+
     _trace('SUCCESS', {
       attempt,
       duration,
