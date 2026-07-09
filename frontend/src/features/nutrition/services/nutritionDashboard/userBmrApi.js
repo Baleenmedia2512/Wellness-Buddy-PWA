@@ -1,5 +1,5 @@
 // User profile calorie target fetch — TDEE when activity level is set, else BMR.
-const DEFAULT_CALORIE_TARGET = 1500;
+export const DEFAULT_CALORIE_TARGET = 1500;
 
 export async function fetchUserCalorieTarget({ apiBaseUrl, email }) {
   if (!email) return DEFAULT_CALORIE_TARGET;

@@ -105,9 +105,14 @@ export async function updateProfile(input) {
   const userId = user.UserId;
 
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
+
+  let savedPhysicalActivityLevel = null;
+  if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    savedPhysicalActivityLevel = physicalActivityLevel;
+  }
+
   if (Object.keys(updateData).length > 0) {
-    const rows = await repo.updateUserByEmail(email, updateData);
-    if (!rows || rows.length === 0) throw new Error(`Profile update matched 0 rows for UserId ${userId}`);
+    await repo.updateUserById(userId, updateData);
     try { await repo.updateUserById(userId, { LastActiveAt: getISTTimestamp() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
@@ -115,7 +120,6 @@ export async function updateProfile(input) {
   }
 
   let savedBmr = null;
-  const savedPhysicalActivityLevel = updateData.PhysicalActivityLevel ?? null;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
     if (!isNaN(bmrValue) && bmrValue > 0) {
