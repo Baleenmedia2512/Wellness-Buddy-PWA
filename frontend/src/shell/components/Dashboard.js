@@ -388,14 +388,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               topic,
             };
           } else {
+            // detectedType.details?.defaulted === true means AI never ran (503/timeout).
+            // Without defaulted, AI successfully analysed the image and returned 'other'
+            // (genuinely out-of-scope — not food/weight/education/smartwatch).
+            // Only offer retry when it was a transient failure, not a genuine out-of-scope.
             initialAiResult = {
               status: 'failed',
+              canRetry: !!detectedType.details?.defaulted,
               error: "We couldn't identify this item from the photo. You can try AI again or enter the details manually."
             };
           }
         } catch {
           initialAiResult = {
             status: 'failed',
+            canRetry: true, // unknown error — may be transient, retry is worth offering
             error: "We couldn't identify this item from the photo. You can try AI again or enter the details manually.",
           };
         } finally {

@@ -95,7 +95,10 @@ export default function UnknownEntryFlow({
    *
    * Shape:
    *   null                                     → no pre-flight run (e.g. canMutate=false)
-   *   { status: 'failed', error: string }      → AI could not identify the image
+   *   { status: 'failed', canRetry: boolean,
+   *     error: string }                        → AI could not identify the image.
+   *                                              canRetry=true  → transient failure (503/timeout), Retry AI shown.
+   *                                              canRetry=false → genuinely out-of-scope, Retry AI hidden.
    *   { status: 'success', type: 'food',
    *     analysisResult: object, raw: object }  → food detected
    *   { status: 'success', type: 'weight',
@@ -211,8 +214,9 @@ export default function UnknownEntryFlow({
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
         if (!hasRecognizedFood(analysis)) {
+          // AI returned food type but with no recognisable items — go to picker.
           setRetrying(false);
-          setError("Still couldn't recognise it — choose a category below.");
+          setStage('pick');
           return;
         }
         // Success: transition to AI review stage so the user can inspect and
@@ -252,14 +256,14 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else {
-        // AI returned "other" — show the category picker so user can manually classify.
+        // AI could not identify after all automatic retries — go to the manual
+        // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);
-        setError("Still couldn't identify it. Please choose a category:");
         setStage('view');
       }
     } catch {
       setRetrying(false);
-      setError('Analysis failed — please choose a category manually.');
+      setStage('view');
     }
   };
 
@@ -631,7 +635,9 @@ export default function UnknownEntryFlow({
                   ))}
                 </div>
 
-                {/* Retry AI button — secondary action */}
+                {/* Retry AI button — only shown when failure was transient (503/timeout),
+                    not when AI genuinely said 'other' (out-of-scope image). */}
+                {initialAiResult?.canRetry !== false && (
                 <div className="flex gap-2 pt-1">
                   <button
                     type="button"
@@ -650,6 +656,7 @@ export default function UnknownEntryFlow({
                     {deleting ? 'Deleting…' : '🗑️ Delete'}
                   </button>
                 </div>
+                )}
               </div>
             )}
           </div>

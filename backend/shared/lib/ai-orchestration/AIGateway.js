@@ -591,7 +591,16 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
       () => model.generateContent(parts),
-      { label, service: circuitService },
+      {
+        label,
+        service: circuitService,
+        // Primary model (Flash): cap at 2 attempts. A persistent 503 means
+        // the endpoint is saturated — burning 2 more retries on the same
+        // overloaded server delays fallback and makes congestion worse.
+        // Fallback model (Pro): keep the default 3-attempt budget; it is the
+        // last resort and worth retrying fully before surfacing an error.
+        ...(modelOverride ? {} : { maxAttempts: 2 }),
+      },
     ));
   } catch (err) {
     // Primary model saturated, circuit open, or quota exceeded → try fallback once
