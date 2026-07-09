@@ -53,6 +53,19 @@ export async function getMyTestimonial(userId) {
 }
 
 /**
+ * Fetch the current user's result-video status.
+ * @param {number} userId
+ */
+export async function getMyVideoTestimonial(userId) {
+  const res = await CapacitorHttp.get({
+    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch video testimonial');
+  return result.data; // null if no videos uploaded
+}
+
+/**
  * Coach: verify a testimonial via OTP.
  * @param {{ testimonialId, otp }} payload
  */

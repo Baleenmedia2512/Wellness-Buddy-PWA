@@ -6,19 +6,29 @@
  *
  * Route: shown when App.js `showTestimonials` is true.
  */
-import React, { useRef } from 'react';
-import { ArrowLeft, Trophy } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ArrowLeft, Trophy, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { useTestimonial } from '../hooks/useTestimonial.js';
 import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
 import TestimonialForm from './TestimonialForm';
 import TestimonialStatusCard from './TestimonialStatusCard';
+import TestimonialVideoStatusCard from './TestimonialVideoStatusCard';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
 import TestimonialVideoForm from './TestimonialVideoForm';
 import VerifyVideoOtpModal from './VerifyVideoOtpModal';
 
-function MemberView({ userId }) {
+/**
+ * @param {{ userId: number, mode?: 'photos' | 'videos' | 'both' }} props
+ * mode='photos' → photo testimonial only (coach "Your Own" on Photos tab)
+ * mode='videos' → result videos only (coach "Your Own" on Videos tab)
+ * mode='both'   → full member view (default for non-coach users)
+ */
+function MemberView({ userId, mode = 'both' }) {
+  const showPhotos = mode === 'photos' || mode === 'both';
+  const showVideos = mode === 'videos' || mode === 'both';
+
   const beforeCameraRef  = useRef(null);
   const beforeGalleryRef = useRef(null);
   const afterCameraRef   = useRef(null);
@@ -37,6 +47,8 @@ function MemberView({ userId }) {
   const testimonialId = existing?.id ?? null;
 
   const {
+    existing: existingVideo,
+    reload: reloadVideo,
     healthVideo,
     businessVideo,
     handleHealthVideoChange,
@@ -49,39 +61,49 @@ function MemberView({ userId }) {
     success:       videoSuccess,
     showOtpModal,
     setShowOtpModal,
+    pendingTestimonialId,
     handleSubmit:  handleVideoSubmit,
     handleVideoVerified,
-    reset:         resetVideo,
-  } = useTestimonialVideo({ userId, testimonialId });
+    showUploadForm,
+  } = useTestimonialVideo({ userId });
 
-  if (existing === undefined) {
+  const photoLoading = showPhotos && existing === undefined;
+  const videoLoading = showVideos && existingVideo === undefined;
+
+  if (photoLoading || videoLoading) {
     return <LoadingSpinner message="Loading your testimonial…" />;
   }
 
-  // Show form when: no existing record, or in full-edit mode, or in completing mode
-  const showForm = !existing || isEditMode || isCompletingMode;
+  const showForm = showPhotos && (!existing || isEditMode || isCompletingMode);
+  const pageTitle = mode === 'videos'
+    ? 'My Result Videos'
+    : mode === 'photos'
+      ? 'My Photo Testimonial'
+      : 'My Transformation';
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
       <div className="flex items-center gap-2">
-        <Trophy className="h-5 w-5 text-green-600" />
-        <h1 className="text-lg font-bold text-gray-900">My Transformation</h1>
+        {mode === 'videos'
+          ? <Video className="h-5 w-5 text-green-600" />
+          : <Trophy className="h-5 w-5 text-green-600" />}
+        <h1 className="text-lg font-bold text-gray-900">{pageTitle}</h1>
       </div>
 
-      {success && (
+      {showPhotos && success && (
         <div className="bg-green-50 border border-green-300 rounded-2xl px-4 py-3 text-sm text-green-800 font-medium">
           {success}
         </div>
       )}
 
-      {videoSuccess && !showOtpModal && (
+      {showVideos && videoSuccess && !showOtpModal && (
         <div className="bg-green-50 border border-green-300 rounded-2xl px-4 py-3 text-sm text-green-800 font-medium">
           {videoSuccess}
         </div>
       )}
 
-      {/* Status card — shown when there's an existing record and not in edit mode */}
-      {existing && !isEditMode && !isCompletingMode && (
+      {/* Photo status card */}
+      {showPhotos && existing && !isEditMode && !isCompletingMode && (
         <TestimonialStatusCard
           testimonial={existing}
           onEdit={startEdit}
@@ -90,7 +112,7 @@ function MemberView({ userId }) {
         />
       )}
 
-      {/* Photo form — new submission, full edit, or completing incomplete */}
+      {/* Photo form */}
       {showForm && (
         <TestimonialForm
           form={form}
@@ -114,8 +136,16 @@ function MemberView({ userId }) {
         />
       )}
 
-      {/* Video upload section — always shown (locked when no photo testimonial yet) */}
-      {!isEditMode && !isCompletingMode && (
+      {/* Video status card */}
+      {showVideos && existingVideo && existingVideo.videoStatus !== 'none' && (
+        <TestimonialVideoStatusCard
+          video={existingVideo}
+          onVerified={reloadVideo}
+        />
+      )}
+
+      {/* Video upload form — hidden once verified or pending */}
+      {showVideos && showUploadForm && (
         <TestimonialVideoForm
           healthVideo={healthVideo}
           businessVideo={businessVideo}
@@ -127,21 +157,23 @@ function MemberView({ userId }) {
           submitting={videoSubmitting}
           error={videoError}
           warning={videoWarning}
-          locked={!existing}
         />
       )}
 
       {/* Video OTP modal — shown after a successful video upload */}
-      {showOtpModal && testimonialId && (
+      {showVideos && showOtpModal && (pendingTestimonialId || existingVideo?.testimonialId || testimonialId) && (
         <VerifyVideoOtpModal
-          testimonialId={testimonialId}
-          onVerified={handleVideoVerified}
+          testimonialId={pendingTestimonialId || existingVideo?.testimonialId || testimonialId}
+          onVerified={() => {
+            handleVideoVerified();
+            reload();
+          }}
           onClose={() => setShowOtpModal(false)}
         />
       )}
 
-      {/* How it works — only for fresh users */}
-      {!existing && !showForm && (
+      {/* How it works — only for fresh photo users */}
+      {showPhotos && mode === 'both' && !existing && !showForm && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 text-sm text-blue-800 space-y-1">
           <p className="font-bold">How it works</p>
           <ol className="list-decimal list-inside space-y-1 text-xs leading-5">
@@ -150,6 +182,7 @@ function MemberView({ userId }) {
             <li>Your coach receives an email with the OTP — they share it with you.</li>
             <li>Enter the OTP in the app to get your testimonial officially verified.</li>
             <li>Optionally upload a <strong>Health</strong> or <strong>Business</strong> results video — your coach verifies with a separate OTP.</li>
+            <li>Or upload result videos first — photo testimonials are not required.</li>
           </ol>
         </div>
       )}
@@ -159,13 +192,12 @@ function MemberView({ userId }) {
 
 export default function TestimonialsPage({ user, userRole, onBack }) {
   const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
+  const [activeTab, setActiveTab] = useState('photos');
 
-  // Build a userId number from user context (App.js userContext)
   const userId = user?.userId ?? user?.id ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Back bar (only shows when page is mounted as full-screen overlay, not inside shell) */}
       {onBack && (
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
           <TouchFeedbackButton onClick={onBack} className="p-1 rounded-full text-gray-600 hover:text-green-700">
@@ -175,16 +207,20 @@ export default function TestimonialsPage({ user, userRole, onBack }) {
         </div>
       )}
 
-      {/* Role-based content */}
       {isCoach ? (
         <>
-          {/* Coaches see team view, and can also view their own member testimonial */}
-          <CoachTestimonialsPage user={user} />
+          <CoachTestimonialsPage
+            user={user}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
           {userId && (
             <div className="border-t border-gray-200 mt-4">
               <div className="max-w-lg mx-auto px-4 py-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Your Own Testimonial</p>
-                <MemberView userId={userId} />
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                  Your Own {activeTab === 'photos' ? 'Photo' : 'Video'} Testimonial
+                </p>
+                <MemberView userId={userId} mode={activeTab} />
               </div>
             </div>
           )}

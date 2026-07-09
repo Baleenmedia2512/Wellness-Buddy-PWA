@@ -11,6 +11,7 @@ import {
   prepareTestimonialVideoUpload,
   uploadTestimonialVideoFile,
   submitTestimonialVideo,
+  getMyVideoTestimonial,
 } from '../services/testimonialApi.js';
 import { resolveVideoDuration } from '../utils/getVideoMetadata.js';
 
@@ -21,17 +22,35 @@ const MAX_HEALTH_DURATION_S   = 60;   // 1 min
 const MAX_BUSINESS_DURATION_S = 120;  // 2 min
 
 /**
- * @param {{ userId: number, testimonialId: number|null }} opts
- * testimonialId is the existing testimonial ID (null = no testimonial yet, upload disabled).
+ * @param {{ userId: number }} opts
  */
-export function useTestimonialVideo({ userId, testimonialId }) {
+export function useTestimonialVideo({ userId }) {
   const [healthVideo,   setHealthVideo]   = useState(null); // { name, file, sizeLabel }
   const [businessVideo, setBusinessVideo] = useState(null);
+  const [existing,      setExisting]      = useState(undefined); // undefined = loading
   const [submitting,    setSubmitting]    = useState(false);
   const [error,         setError]         = useState(null);
   const [warning,       setWarning]       = useState(null);
   const [success,       setSuccess]       = useState(null);
   const [showOtpModal,  setShowOtpModal]  = useState(false);
+  const [pendingTestimonialId, setPendingTestimonialId] = useState(null);
+
+  const reload = useCallback(async () => {
+    if (!userId) {
+      setExisting(null);
+      return;
+    }
+    try {
+      const data = await getMyVideoTestimonial(userId);
+      setExisting(data);
+    } catch {
+      setExisting(null);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const reset = useCallback(() => {
     setHealthVideo(null);
@@ -39,6 +58,7 @@ export function useTestimonialVideo({ userId, testimonialId }) {
     setError(null);
     setWarning(null);
     setSuccess(null);
+    setPendingTestimonialId(null);
   }, []);
 
   const syncDurationWarning = useCallback((health, business) => {
@@ -132,10 +152,6 @@ export function useTestimonialVideo({ userId, testimonialId }) {
       setError('Please select at least one video to upload.');
       return;
     }
-    if (!testimonialId) {
-      setError('Please complete your photo testimonial (before/after photos) first.');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -165,13 +181,15 @@ export function useTestimonialVideo({ userId, testimonialId }) {
         );
       }
 
-      await submitTestimonialVideo({
+      const result = await submitTestimonialVideo({
         userId,
         healthVideoPath,
         businessVideoPath,
       });
+      setPendingTestimonialId(result.testimonialId ?? null);
       setSuccess('Videos uploaded! Share the OTP your coach receives to complete verification.');
       setShowOtpModal(true);
+      reload();
     } catch (err) {
       const message = err?.message || 'Upload failed. Please try again.';
       setError(
@@ -182,15 +200,20 @@ export function useTestimonialVideo({ userId, testimonialId }) {
     } finally {
       setSubmitting(false);
     }
-  }, [userId, testimonialId, healthVideo, businessVideo]);
+  }, [userId, healthVideo, businessVideo, reload]);
 
   const handleVideoVerified = useCallback(() => {
     setShowOtpModal(false);
     setSuccess('Video testimonial verified!');
     reset();
-  }, [reset]);
+    reload();
+  }, [reset, reload]);
+
+  const showUploadForm = !existing || existing.videoStatus === 'none';
 
   return {
+    existing,
+    reload,
     healthVideo,
     businessVideo,
     handleHealthVideoChange,
@@ -203,8 +226,10 @@ export function useTestimonialVideo({ userId, testimonialId }) {
     success,
     showOtpModal,
     setShowOtpModal,
+    pendingTestimonialId,
     handleSubmit,
     handleVideoVerified,
     reset,
+    showUploadForm,
   };
 }

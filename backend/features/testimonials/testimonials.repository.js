@@ -7,6 +7,15 @@ import logger from '../../shared/lib/logger.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
+
+/** Sentinel storage path — video-only uploads have no real before/after photos. */
+export function videoOnlyPlaceholderPath(userId) {
+  return `${userId}/${userId}_video_only_placeholder.jpg`;
+}
+
+export function isVideoOnlyPlaceholder(path) {
+  return typeof path === 'string' && path.endsWith('_video_only_placeholder.jpg');
+}
 const SIGNED_URL_EXPIRY_SECONDS = 1800;       // 30 min — in-app display
 const EMAIL_SIGNED_URL_EXPIRY_SECONDS = 604800; // 7 days — coach email
 
@@ -262,7 +271,7 @@ export async function insertTestimonial(payload) {
       after_weight_kg:   payload.afterWeightKg,
       goal_type:         payload.goalType,
       duration_text:     payload.durationText,
-      status:            'pending',
+      status:            payload.status ?? 'pending',
       otp_hash:          payload.otpHash,
       otp_expires_at:    payload.otpExpiresAt,
       created_at:        now,
@@ -272,6 +281,27 @@ export async function insertTestimonial(payload) {
     .single();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Create a minimal testimonial row so result videos can be stored without photo uploads.
+ * Photo report treats these as "not uploaded" until real images are submitted.
+ */
+export async function insertVideoOnlyTestimonial({ userId, coachId }) {
+  const placeholder = videoOnlyPlaceholderPath(userId);
+  return insertTestimonial({
+    userId,
+    coachId,
+    beforeImagePath: placeholder,
+    afterImagePath:  placeholder,
+    beforeWeightKg:  0,
+    afterWeightKg:   0,
+    goalType:        'loss',
+    durationText:    '—',
+    status:          'incomplete',
+    otpHash:         null,
+    otpExpiresAt:    null,
+  });
 }
 
 /**

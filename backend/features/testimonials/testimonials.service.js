@@ -313,7 +313,7 @@ export async function editTestimonial(rawBody) {
 export async function getMyTestimonial(rawQuery) {
   const { userId } = validateMyTestimonial(rawQuery);
   const row = await repo.findByUserId(userId);
-  if (!row) {
+  if (!row || repo.isVideoOnlyPlaceholder(row.before_image_path)) {
     return { httpStatus: 200, body: { success: true, data: null } };
   }
 
@@ -344,6 +344,36 @@ export async function getMyTestimonial(rawQuery) {
 }
 
 /**
+ * Fetch a member's own result-video status (independent of photo testimonial).
+ */
+export async function getMyVideoTestimonial(rawQuery) {
+  const { userId } = validateMyTestimonial(rawQuery);
+  const row = await repo.findByUserId(userId);
+  if (!row) {
+    return { httpStatus: 200, body: { success: true, data: null } };
+  }
+
+  const videoStatus = row.video_status ?? 'none';
+  if (videoStatus === 'none' && !row.health_video_path && !row.business_video_path) {
+    return { httpStatus: 200, body: { success: true, data: null } };
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      data: {
+        testimonialId:    row.id,
+        videoStatus,
+        hasHealthVideo:   !!row.health_video_path,
+        hasBusinessVideo: !!row.business_video_path,
+        videoVerifiedAt:  row.video_verified_at ?? null,
+      },
+    },
+  };
+}
+
+/**
  * List direct-downline testimonials for a coach.
  * Members with no testimonial are included (testimonial = null â†’ red in UI).
  */
@@ -354,7 +384,7 @@ export async function listForCoach(rawQuery) {
   // Generate signed URLs in parallel for members who have testimonials
   const enriched = await Promise.all(
     rows.map(async ({ user, testimonial }) => {
-      if (!testimonial) {
+      if (!testimonial || repo.isVideoOnlyPlaceholder(testimonial.before_image_path)) {
         return { user: sanitizeUser(user), testimonial: null };
       }
       const [beforeUrl, afterUrl] = await Promise.all([
@@ -426,14 +456,18 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 // ─── Video service functions ──────────────────────────────────────────────────
 
 async function assertVideoUploadEligible(userId) {
-  const existing = await repo.findByUserId(userId);
-  if (!existing) {
-    throw new ValidationError(400, 'Please submit your photo testimonial (before/after photos) before uploading result videos.');
-  }
-
   const userInfo = await repo.findCoachIdForUser(userId);
   if (!userInfo || !userInfo.coachId) {
     throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
+  }
+
+  let existing = await repo.findByUserId(userId);
+  if (!existing) {
+    existing = await repo.insertVideoOnlyTestimonial({
+      userId,
+      coachId: userInfo.coachId,
+    });
+    logger.info('[testimonials] Created video-only testimonial stub', { userId });
   }
 
   return { existing, userInfo };
@@ -539,7 +573,7 @@ export async function uploadVideoChunk(rawBody) {
 
 /**
  * Finalise health/business result videos after direct storage upload.
- * Requires the member to have an existing testimonial record (photos uploaded first).
+ * Creates a testimonial record automatically when the member has not uploaded photos yet.
  * Always sends an OTP email to the coach for video verification.
  * Both videos are optional — at least one must be provided.
  */

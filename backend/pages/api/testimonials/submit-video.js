@@ -1,7 +1,7 @@
 /**
  * POST /api/testimonials/submit-video
  * Member finalises health/business result videos after direct storage upload.
- * Requires an existing photo testimonial (before/after photos) to be present.
+ * Photo testimonial is optional — videos can be uploaded on their own.
  * Sends a verification OTP to the coach via email.
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';

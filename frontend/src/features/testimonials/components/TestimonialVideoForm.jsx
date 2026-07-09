@@ -86,7 +86,6 @@ export default function TestimonialVideoForm({
   submitting,
   error,
   warning,
-  locked,        // true when no photo testimonial exists yet
 }) {
   const healthRef   = useRef(null);
   const businessRef = useRef(null);
@@ -106,55 +105,46 @@ export default function TestimonialVideoForm({
 
       <p className="text-xs text-gray-500 leading-relaxed">
         Share your real results! Upload a short health or business results video.
-        Your coach will verify the upload with an OTP.
+        Your coach will verify the upload with an OTP. Photo testimonials are optional.
       </p>
 
-      {locked ? (
+      <VideoPicker
+        label="Health Results Video"
+        description="max 1 min"
+        video={healthVideo}
+        inputRef={healthRef}
+        onChange={handleHealthVideoChange}
+        onRemove={onRemoveHealth}
+      />
+
+      <VideoPicker
+        label="Business Results Video"
+        description="max 2 min"
+        video={businessVideo}
+        inputRef={businessRef}
+        onChange={handleBusinessVideoChange}
+        onRemove={onRemoveBusiness}
+      />
+
+      {warning && !error && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          <p className="font-semibold">Photos required first</p>
-          <p className="text-xs mt-1">Please upload your before/after transformation photos before adding result videos.</p>
+          {warning}
         </div>
-      ) : (
-        <>
-          <VideoPicker
-            label="Health Results Video"
-            description="max 1 min"
-            video={healthVideo}
-            inputRef={healthRef}
-            onChange={handleHealthVideoChange}
-            onRemove={onRemoveHealth}
-          />
-
-          <VideoPicker
-            label="Business Results Video"
-            description="max 2 min"
-            video={businessVideo}
-            inputRef={businessRef}
-            onChange={handleBusinessVideoChange}
-            onRemove={onRemoveBusiness}
-          />
-
-          {warning && !error && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-              {warning}
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <TouchFeedbackButton
-            onClick={onSubmit}
-            disabled={submitting || !hasAny}
-            className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Uploading…' : 'Upload & Notify Coach'}
-          </TouchFeedbackButton>
-        </>
       )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <TouchFeedbackButton
+        onClick={onSubmit}
+        disabled={submitting || !hasAny}
+        className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors disabled:opacity-50"
+      >
+        {submitting ? 'Uploading…' : 'Upload & Notify Coach'}
+      </TouchFeedbackButton>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach, getMyTestimonial, getTestimonialVideoReport } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport } from '../services/testimonialApi.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import {
   STATUS_FILTERS,
@@ -181,7 +181,7 @@ function MemberRow({ user, testimonial }) {
             )}
             {pending && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
-                <Clock className="h-3 w-3" /> Pending Verification
+                <Clock className="h-3 w-3" /> Awaiting Approval
               </span>
             )}
             {verified && (
@@ -260,8 +260,11 @@ function MemberRow({ user, testimonial }) {
   );
 }
 
-export default function CoachTestimonialsPage({ user }) {
-  const [activeTab,    setActiveTab]    = useState('photos'); // 'photos' | 'videos'
+export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, onTabChange }) {
+  const [activeTabInternal, setActiveTabInternal] = useState('photos');
+  const activeTab = activeTabProp ?? activeTabInternal;
+  const setActiveTab = onTabChange ?? setActiveTabInternal;
+
   const [directRows, setDirectRows] = useState([]);
   const [fullRows, setFullRows] = useState([]);
   const [mineRow, setMineRow] = useState(null);
@@ -274,7 +277,9 @@ export default function CoachTestimonialsPage({ user }) {
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
   // Video report state
-  const [videoRows,    setVideoRows]    = useState([]);
+  const [videoDirectRows, setVideoDirectRows] = useState([]);
+  const [videoFullRows,   setVideoFullRows]   = useState([]);
+  const [mineVideoRow,    setMineVideoRow]    = useState(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoScope,   setVideoScope]   = useState(TEAM_SCOPES.DIRECT);
   const [videoError,   setVideoError]   = useState(null);
@@ -307,6 +312,36 @@ export default function CoachTestimonialsPage({ user }) {
     }
   }, [coachId, user]);
 
+  const buildMineVideoRow = useCallback(async () => {
+    if (!coachId) return null;
+    try {
+      const video = await getMyVideoTestimonial(coachId);
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+        },
+        videoStatus:      video?.videoStatus      ?? 'none',
+        hasHealthVideo:   video?.hasHealthVideo   ?? false,
+        hasBusinessVideo: video?.hasBusinessVideo ?? false,
+        videoVerifiedAt:  video?.videoVerifiedAt  ?? null,
+      };
+    } catch {
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+        },
+        videoStatus: 'none',
+        hasHealthVideo: false,
+        hasBusinessVideo: false,
+        videoVerifiedAt: null,
+      };
+    }
+  }, [coachId, user]);
+
   const load = useCallback(async () => {
     if (!coachId) return;
     setLoading(true);
@@ -335,25 +370,50 @@ export default function CoachTestimonialsPage({ user }) {
     setHighlightedSuggestion(-1);
   }, [teamScope]);
 
+  useEffect(() => {
+    setVideoScope(TEAM_SCOPES.DIRECT);
+  }, [activeTab]);
+
   // ── Video report load ─────────────────────────────────────────────────────
   const loadVideoReport = useCallback(async () => {
     if (!coachId) return;
     setVideoLoading(true);
     setVideoError(null);
     try {
-      const apiScope = videoScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
-      const data = await getTestimonialVideoReport(coachId, apiScope);
-      setVideoRows(data || []);
+      const [direct, full, mine] = await Promise.all([
+        getTestimonialVideoReport(coachId, 'direct'),
+        getTestimonialVideoReport(coachId, 'full'),
+        buildMineVideoRow(),
+      ]);
+      setVideoDirectRows(direct || []);
+      setVideoFullRows(full || []);
+      setMineVideoRow(mine);
     } catch (err) {
       setVideoError(err.message || 'Failed to load video report');
     } finally {
       setVideoLoading(false);
     }
-  }, [coachId, videoScope]);
+  }, [coachId, buildMineVideoRow]);
 
   useEffect(() => {
     if (activeTab === 'videos') loadVideoReport();
   }, [activeTab, loadVideoReport]);
+
+  const videoScopeRows = useMemo(() => {
+    if (videoScope === TEAM_SCOPES.MINE) {
+      return mineVideoRow ? [mineVideoRow] : [];
+    }
+    if (videoScope === TEAM_SCOPES.FULL) {
+      return videoFullRows;
+    }
+    return videoDirectRows;
+  }, [videoScope, mineVideoRow, videoDirectRows, videoFullRows]);
+
+  const videoScopeCounts = useMemo(() => ({
+    [TEAM_SCOPES.MINE]: mineVideoRow ? 1 : 0,
+    [TEAM_SCOPES.DIRECT]: videoDirectRows.length,
+    [TEAM_SCOPES.FULL]: videoFullRows.length,
+  }), [mineVideoRow, videoDirectRows, videoFullRows]);
 
   const scopeRows = useMemo(() => {
     if (teamScope === TEAM_SCOPES.MINE) {
@@ -496,28 +556,38 @@ export default function CoachTestimonialsPage({ user }) {
       {activeTab === 'videos' && (
         <>
           {/* Video scope filter */}
-          <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
-            {[TEAM_SCOPES.DIRECT, TEAM_SCOPES.FULL].map((scope) => (
-              <button
-                key={scope}
-                type="button"
-                onClick={() => setVideoScope(scope)}
-                aria-pressed={videoScope === scope}
-                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                  videoScope === scope ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-                }`}
-              >
-                {scope === TEAM_SCOPES.DIRECT ? 'Direct Team' : 'Full Team'}
-              </button>
-            ))}
-          </div>
+          {!videoLoading && (
+            <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
+              {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+                const isActive = videoScope === value;
+                const count = videoScopeCounts[value] ?? 0;
+                const showCount = value !== TEAM_SCOPES.MINE;
+                const desktopLabel = showCount ? `${label} (${count})` : label;
+                const mobileLabel = showCount ? `${short} (${count})` : short;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setVideoScope(value)}
+                    aria-pressed={isActive}
+                    className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
+                      isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
+                    }`}
+                  >
+                    <span className="hidden sm:inline">{desktopLabel}</span>
+                    <span className="sm:hidden">{mobileLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Video summary chips */}
-          {!videoLoading && videoRows.length > 0 && (() => {
-            const total    = videoRows.length;
-            const uploaded = videoRows.filter((r) => r.videoStatus !== 'none').length;
-            const verified = videoRows.filter((r) => r.videoStatus === 'verified').length;
-            const pending  = videoRows.filter((r) => r.videoStatus === 'pending').length;
+          {!videoLoading && videoScopeRows.length > 0 && (() => {
+            const total    = videoScopeRows.length;
+            const uploaded = videoScopeRows.filter((r) => r.videoStatus !== 'none').length;
+            const verified = videoScopeRows.filter((r) => r.videoStatus === 'verified').length;
+            const pending  = videoScopeRows.filter((r) => r.videoStatus === 'pending').length;
             const missing  = total - uploaded;
             return (
               <div className="flex gap-2 flex-wrap">
@@ -534,14 +604,14 @@ export default function CoachTestimonialsPage({ user }) {
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{videoError}</div>
           )}
 
-          {!videoLoading && !videoError && videoRows.length === 0 && (
+          {!videoLoading && !videoError && videoScopeRows.length === 0 && (
             <div className="text-center py-12 text-gray-400">
               <Video className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">No team members found</p>
             </div>
           )}
 
-          {!videoLoading && videoRows.map((row) => (
+          {!videoLoading && videoScopeRows.map((row) => (
             <VideoMemberRow
               key={row.user.userId}
               user={row.user}
