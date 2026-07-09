@@ -8,6 +8,7 @@ import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
 import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from './foodTypeDetection.js';
+import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
 
 // Default required water when no weight is recorded (2.5 L)
 const DEFAULT_WATER_REQUIRED_ML = 2500;
@@ -202,14 +203,17 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   // a sort column that may not exist on team_table.
   const { data: teamRows } = await supabase
     .from('team_table')
-    .select('Bmr')
+    .select('Bmr, PhysicalActivityLevel')
     .eq('UserId', userId)
     .not('Bmr', 'is', null);
   let userBmrTarget = null;
   (teamRows || []).forEach(r => {
-    const b = parseFloat(r.Bmr);
-    if (!isNaN(b) && b > 0 && (userBmrTarget === null || b > userBmrTarget)) {
-      userBmrTarget = b;
+    const target = resolveCalorieTargetFromProfile({
+      bmr: r.Bmr,
+      physicalActivityLevel: r.PhysicalActivityLevel,
+    });
+    if (target && (userBmrTarget === null || target > userBmrTarget)) {
+      userBmrTarget = target;
     }
   });
   
