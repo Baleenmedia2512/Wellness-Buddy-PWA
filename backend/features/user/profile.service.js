@@ -6,6 +6,7 @@
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
+import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import * as repo from './user.repository.js';
 
 const { getISTTimestamp } = repo;
@@ -95,7 +96,20 @@ export async function updateProfile(input) {
   let savedBmr = null;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
-    if (!isNaN(bmrValue) && bmrValue > 0) { await repo.updateUserById(userId, { Bmr: bmrValue }); savedBmr = bmrValue; }
+    if (!isNaN(bmrValue) && bmrValue > 0) {
+      await repo.updateUserById(userId, { Bmr: bmrValue });
+      savedBmr = bmrValue;
+    }
+  } else {
+    const latestMetrics = await repo.getLatestWeight(userId);
+    const calculatedBmr = computeKatchMcArdleBmr(
+      latestMetrics?.Weight ? parseFloat(latestMetrics.Weight) : null,
+      latestMetrics?.BodyFat ? parseFloat(latestMetrics.BodyFat) : null,
+    );
+    if (calculatedBmr !== null) {
+      await repo.updateUserById(userId, { Bmr: calculatedBmr });
+      savedBmr = calculatedBmr;
+    }
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }

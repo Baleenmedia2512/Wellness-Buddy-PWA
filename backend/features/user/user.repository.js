@@ -68,7 +68,7 @@ export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"Weight", "CreatedAt"')
+    .select('"Weight", "BodyFat", "CreatedAt"')
     .eq('"UserId"', userId)
     .or('"IsDeleted".is.null,"IsDeleted".eq.false')
     .order('"CreatedAt"', { ascending: false })

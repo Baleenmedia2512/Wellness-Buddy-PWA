@@ -3874,10 +3874,10 @@ function WellnessValleyApp() {
 
         // Even though weight was rejected, BMR may have been saved by the backend.
         // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
-        if (data.bmrSaved && weightData.bmr) {
+        if (data.bmrSaved || data.data?.bmr) {
           debugLog(
             "?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:",
-            weightData.bmr,
+            data.data?.bmr,
           );
           setBmrUpdateKey((prev) => prev + 1);
         }
@@ -4061,13 +4061,13 @@ function WellnessValleyApp() {
         savedWeightIdRef.current = data.id;
       }
 
-      // ?? If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
-      // BMR is synced to team_table by the backend ? increment the key so it re-reads it
-      if (weightData.bmr) {
+      // BMR synced to team_table by the backend (calculated or preserved)
+      const savedBmr = data.data?.bmr;
+      if (savedBmr) {
         setBmrUpdateKey((prev) => prev + 1);
         debugLog(
           "?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:",
-          weightData.bmr,
+          savedBmr,
         );
       }
 

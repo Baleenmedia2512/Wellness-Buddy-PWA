@@ -4,6 +4,7 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
+import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
 import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard } from '../data/card.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
@@ -15,7 +16,7 @@ import logger from '../../../shared/lib/logger.js';
 export async function handleCreateCard(body) {
   logger.info('[handleCreateCard] 🔍 REQUEST RECEIVED', { body });
   
-  const payload = validateCreateCard(body);
+  const payload = enrichPayloadWithCalculatedBmr(validateCreateCard(body));
   logger.info('[handleCreateCard] ✅ Validation passed', { 
     createdBy: payload.createdBy, 
     phoneNumber: payload.phoneNumber,
@@ -40,6 +41,8 @@ export async function handleCreateCard(body) {
       coachId:     payload.createdBy,
       heightCm:    payload.heightCm,
       bmr:         payload.bmr,
+      weightKg:    payload.weightKg,
+      fatPercent:  payload.fatPercent,
     });
     userId = memberId;
     logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
