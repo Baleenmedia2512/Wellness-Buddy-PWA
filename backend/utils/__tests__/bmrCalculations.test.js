@@ -76,6 +76,24 @@ describe('resolveBmrForSave', () => {
   });
 });
 
+describe('resolveCardBmr', () => {
+  it('recalculates from weight + fat when not manually overridden', async () => {
+    const { resolveCardBmr } = await import('../../features/body-parameters-card/domain/card.rules.js');
+    assert.equal(
+      resolveCardBmr({ weightKg: 80, fatPercent: 33, manualBmr: 1752, preferManual: false }),
+      1528,
+    );
+  });
+
+  it('keeps manual BMR when preferManual is true', async () => {
+    const { resolveCardBmr } = await import('../../features/body-parameters-card/domain/card.rules.js');
+    assert.equal(
+      resolveCardBmr({ weightKg: 80, fatPercent: 33, manualBmr: 1500, preferManual: true }),
+      1500,
+    );
+  });
+});
+
 describe('validators', () => {
   it('validates weight and body fat ranges', () => {
     assert.equal(isValidWeightKg(70), true);

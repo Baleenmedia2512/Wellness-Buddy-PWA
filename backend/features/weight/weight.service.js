@@ -7,7 +7,7 @@ import {
   convertToIST,
 } from '../../utils/supabaseClient.js';
 import { validateAndCorrectWeight } from '../../utils/weightValidation.js';
-import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../utils/bmrCalculations.js';
+import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
 import * as repo from './weight.repository.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
@@ -95,11 +95,7 @@ export async function saveWeight(input) {
 
   const effectiveBodyFat = await resolveEffectiveBodyFat(userId, bodyFatValue, entryId);
   const calculatedBmr = computeKatchMcArdleBmr(weight, effectiveBodyFat);
-  const bmrValue = resolveBmrForSave({
-    weightKg: weight,
-    bodyFatPercent: effectiveBodyFat,
-    manualBmr: manualBmrValue,
-  });
+  const bmrValue = calculatedBmr ?? manualBmrValue;
 
   // BMR sync runs FIRST so it persists even if weight validation later fails.
   if (bmrValue) await repo.syncBmrToTeamTable(userId, bmrValue);

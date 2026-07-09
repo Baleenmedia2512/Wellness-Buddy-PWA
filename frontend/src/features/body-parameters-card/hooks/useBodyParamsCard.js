@@ -242,16 +242,19 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, bmi: String(derivedBmi) }));
   }, [derivedBmi, bmiUserEdited]);
 
-  // Auto-fill BMR from weight + body fat % (Katch-McArdle) when not manually edited.
+  // Auto-fill BMR whenever weight or body fat % changes (Katch-McArdle).
   useEffect(() => {
-    if (bmrUserEdited || derivedBmr === null) return;
+    if (derivedBmr === null) return;
     setForm((prev) => ({ ...prev, bmr: String(derivedBmr) }));
-  }, [derivedBmr, bmrUserEdited]);
+  }, [derivedBmr]);
 
   // ── Setters ───────────────────────────────────────────────────────────────
 
   const setField = useCallback((field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === 'weightKg' || field === 'fatPercent') {
+      setBmrUserEdited(false);
+    }
   }, []);
 
   /**
@@ -350,6 +353,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   /** Called when user manually types in the Weight field. */
   const setWeightManually = useCallback((value) => {
+    setBmrUserEdited(false);
     setForm((prev) => ({ ...prev, weightKg: value }));
   }, []);
 
@@ -447,6 +451,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:         form.bmi          || undefined,
         fatPercent:  form.fatPercent   || undefined,
         bmr:         form.bmr          || undefined,
+        bmrManualOverride: bmrUserEdited,
         visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
         chestCm:     toOptionalNum(form.chestCm),
@@ -495,7 +500,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited]);
 
   return {
     form, setField,

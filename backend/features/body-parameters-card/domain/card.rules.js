@@ -1,4 +1,4 @@
-import { resolveBmrForSave } from '../../../utils/bmrCalculations.js';
+import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../../utils/bmrCalculations.js';
 
 /**
  * card.rules.js — Pure business logic for Body Parameters Card.
@@ -10,10 +10,14 @@ export const SHARE_TTL_DAYS = 30;
 /**
  * Derive BMR from weight + body fat when possible; otherwise keep manual value.
  *
- * @param {{ weightKg?: number|null, fatPercent?: number|null, manualBmr?: number|null }} input
+ * @param {{ weightKg?: number|null, fatPercent?: number|null, manualBmr?: number|null, preferManual?: boolean }} input
  * @returns {number|null}
  */
-export function resolveCardBmr({ weightKg = null, fatPercent = null, manualBmr = null }) {
+export function resolveCardBmr({ weightKg = null, fatPercent = null, manualBmr = null, preferManual = false }) {
+  if (!preferManual) {
+    const calculated = computeKatchMcArdleBmr(weightKg, fatPercent);
+    if (calculated !== null) return calculated;
+  }
   return resolveBmrForSave({
     weightKg,
     bodyFatPercent: fatPercent,
@@ -28,12 +32,14 @@ export function resolveCardBmr({ weightKg = null, fatPercent = null, manualBmr =
  * @returns {object} payload with `bmr` resolved
  */
 export function enrichPayloadWithCalculatedBmr(payload) {
+  const preferManual = Boolean(payload.bmrManualOverride);
   return {
     ...payload,
     bmr: resolveCardBmr({
       weightKg: payload.weightKg,
       fatPercent: payload.fatPercent,
       manualBmr: payload.bmr,
+      preferManual,
     }),
   };
 }
