@@ -92,6 +92,7 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
+import * as captureQueue from './shared/services/captureQueue';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
@@ -5817,6 +5818,19 @@ function WellnessValleyApp() {
         debugLog(`?? [PERF] Compression skipped (fallback to original)`);
       }
 
+      // Offline: queue the image locally and exit.
+      // The online listener below will automatically resubmit when connected.
+      // Supports continuous shooting — multiple photos can be queued in a row.
+      if (!navigator.onLine) {
+        const n = captureQueue.enqueue({
+          imageBase64:   processedImage,
+          userId:        user?.id ?? null,
+          exifTimestamp: exifTimestamp ?? null,
+        });
+        showToast(`No internet — photo queued${n > 0 ? ` (${n} waiting)` : ''}, will analyse when online`);
+        return;
+      }
+
       // Set preview and uploading state while the capture row is persisted.
       setImagePreview(processedImage);
       setLoading(true);
@@ -6945,6 +6959,48 @@ function WellnessValleyApp() {
       debugLog("????????????????????????????????????????????");
     }
   };
+
+  // ── Offline capture queue ─────────────────────────────────────────────────────────
+  // Photos taken while offline are stored in localStorage and resubmitted
+  // automatically when connectivity is restored. Multiple photos queued
+  // in a row are processed sequentially with a 3 s gap to avoid flooding.
+  const [_offlineQueueTrigger, setOfflineQueueTrigger] = useState(0);
+
+  useEffect(() => {
+    // state-setter as the trigger means the second effect always has the latest
+    // handleImageSelect via its own dep without a ref.
+    const wake = () => setOfflineQueueTrigger((n) => n + 1);
+    window.addEventListener('online', wake);
+    // Process any items queued during a previous offline session on mount.
+    if (navigator.onLine && captureQueue.size() > 0) wake();
+    return () => window.removeEventListener('online', wake);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- wake only uses stable setter
+
+  useEffect(() => {
+    if (_offlineQueueTrigger === 0 || !navigator.onLine) return;
+    const items = captureQueue.flush();
+    if (items.length === 0) return;
+    showToast(`📶 Back online — processing ${items.length} queued photo${items.length === 1 ? '' : 's'}…`);
+    let idx = 0;
+    const processNext = async () => {
+      if (idx >= items.length) return;
+      const item = items[idx++];
+      try {
+        const dataUrl = item.imageBase64.startsWith('data:')
+          ? item.imageBase64
+          : `data:image/jpeg;base64,${item.imageBase64}`;
+        const res  = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], 'queued-capture.jpg', { type: 'image/jpeg' });
+        handleImageSelect(file, item.exifTimestamp);
+        setTimeout(processNext, 3000); // 3 s gap — avoids server flooding
+      } catch (err) {
+        console.warn('[CaptureQueue] Failed to process queued item:', err);
+        setTimeout(processNext, 1000);
+      }
+    };
+    processNext();
+  }, [_offlineQueueTrigger, handleImageSelect]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";

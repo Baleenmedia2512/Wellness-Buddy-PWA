@@ -3,17 +3,17 @@
 > **Scope:** everything under `frontend/`. Binding for humans + AI.
 > **Parent:** [`/claude.md`](../claude.md) holds cross-cutting rules. This file holds frontend specifics.
 > **Status:** describes the codebase **as it actually is**, and marks the **target** pattern for new code.
-> **Version:** 1.0.0
+> **Version:** 3.3.0
 
 ---
 
 ## 1. Stack
 
 - **CRA (`react-scripts` 5)** + **React 18.3**, JavaScript (no TS), `jsconfig.json` paths.
-- **Mobile:** Capacitor (Android + iOS). App id `com.wellnessvalley.app`, `webDir: build`.
+- **Mobile:** Capacitor (Android + iOS). App id `com.wellnessvalley.app`, `webDir: build`. Package majors are mixed (`@capacitor/core` ^8, `@capacitor/android` ^7, `@capacitor/ios` ^8) — verify before upgrading.
 - **Styling:** Tailwind CSS (primary) + some plain CSS. No CSS Modules.
 - **HTTP:** `axios` + raw `fetch` + a custom fetch class coexist (see §5).
-- **UI libs:** `@ionic/react`, `lucide-react`, `framer-motion`, `recharts`, `react-leaflet`, `tesseract.js`.
+- **UI libs:** `@ionic/react`, `lucide-react`, `framer-motion`, `recharts`, `react-easy-crop`, `html2canvas`. Auth/data: `firebase` (^9), `@southdevs/capacitor-google-auth`. (No `tesseract.js`, `react-leaflet`, or `@google/generative-ai` in deps.)
 
 ---
 
@@ -34,7 +34,10 @@ features/<domain>/
 - `domain/` and `hooks/` are optional and frequently absent — add them when logic warrants.
 - Always export the public surface via `index.js`; import features through their barrel.
 
-Features: activity, admin, auth, background-analysis, body-parameters-card, captures, counselling, diary, education, food-corrections, leaderboard, misc, nutrition, nutrition-centers, screen, tasks, team, token, user, water, weight, weight-progress-tips.
+Features: activity, auth, background-analysis, body-parameters-card, captures, counselling, diary, education, food-corrections, leaderboard, misc, nutrition, nutrition-centers, reports, team, testimonials, user, water, weight, weight-progress-tips, wellness-score-sheet. (There are no longer standalone `admin`, `screen`, `tasks`, or `token` feature folders.)
+
+### Composition layer (`frontend/src/shell/`)
+`shell/` is the in-app **composition root** — the only layer allowed to import from multiple `features/*` slices to wire them into one surface (`shared/` is forbidden from importing features). Introduced by ADR-0001/ADR-0003. Current resident: `components/Dashboard.js` (mounts Nutrition / Weight / Education / Diary dashboards). New cross-feature surfaces go here, **not** into `shared/`. See [shell/README.md](src/shell/README.md).
 
 ---
 
@@ -43,11 +46,13 @@ Features: activity, admin, auth, background-analysis, body-parameters-card, capt
 - `shared/components/` — ~18 reusable components (`Header.js`, `ImageUpload.js`, `LoadingSpinner.js`, `CustomAlertModal.js`, …) + `common/`, `icons/`.
 - `shared/lib/` — [storage.js](src/shared/lib/storage.js), `is-low-confidence-food.js`, `reverseGeocode.js`, `tab-by-image-type.js`.
 - `shared/utils/` — **[logger.js](src/shared/utils/logger.js) lives here** (not `lib/`), plus `fetchWithAbort.js`, `imageValidator.js`, `mobileInit.js`, `timezoneUtils.js`, `backButtonHandler.js`, `shareUtils.js`.
-- `shared/services/` — [apiClient.js](src/shared/services/apiClient.js), `cacheManager.js`, `cameraService.js`, `firebase.js`, `geminiService.js`, `getUserId.js`, `userIdentity.js`, plus `auth/`, `nativeLifecycle/`, `tokenCost/` subfolders.
+- `shared/services/` — [apiClient.js](src/shared/services/apiClient.js), `cacheManager.js`, `cameraService.js`, `captureQueue.js`, `firebase.js`, `galleryMonitor.js`, `geminiService.js` (+ `geminiService.secure.js`), `getUserId.js`, `orchestratorService.js`, `permissionManager.js`, `sessionStorage.js`, `teamHierarchyService.js`, `timeService.js`, `userContextService.js`, `userIdentity.js`, plus `auth/`, `nativeLifecycle/`, `nutritionPersistence/` subfolders.
+- `shared/constants/` — `discipline.js`, `imageTypes.js`, `limits.js`, `roles.js`, `timeWindows.js` (+ `index.js` barrel).
 - `shared/context/` — only `NutritionRefreshContext.js`.
+- `shared/types/` — shared JSDoc typedefs (`index.js`).
 - `shared/plugins/` — Capacitor native plugin JS wrappers: `galleryMonitorPlugin`, `stepCounterPlugin`, `keepAwakePlugin`, `inAppUpdatePlugin`, `foodImageAnalysis`.
 
-**Graduation to `shared/`:** used in ≥2 features, no feature-specific props, has its own tests.
+**Graduation to `shared/`:** used in ≥2 features, no feature-specific props, has its own tests. Anything that must span ≥2 features belongs in `shell/`, not `shared/`.
 
 ---
 
@@ -77,7 +82,7 @@ Three patterns exist today:
 - **Server state:** custom hooks in `features/*/hooks/` calling the feature's `services/`. No Redux (not installed).
 - **UI state:** local `useState` / `useReducer`.
 - **Cross-page state:** React Context, one provider per concern in `shared/context/` (currently only `NutritionRefreshContext`).
-- **Note:** [App.js](src/App.js) is a large "god component" with a homemade flag-based router (24 `show*` booleans mirrored to `localStorage`). Do **not** add new flags here for new features — prefer a contained component/route.
+- **Note:** [App.js](src/App.js) is intentionally the orchestrator (identity/session, native lifecycle, and a homemade flag-based router with 24 `show*` booleans mirrored to `localStorage`). Cross-feature UI composition has been pulled out into `shell/` (§2). Do **not** add new `show*` flags for new features — prefer a contained component under the owning feature or a `shell/` surface.
 
 ---
 
@@ -120,10 +125,9 @@ Three patterns exist today:
 
 ## 12. Testing
 
-- Standalone [jest.config.js](jest.config.js): jsdom, `babel-jest`, css/image mocks in `src/__mocks__/`, `setupFilesAfterEnv` → `src/setupTests.js`.
-- React Testing Library v13 + `jest-dom` + `user-event`.
-- Tests co-located in `__tests__/`, `testMatch: **/__tests__/**/*.test.{js,jsx}`.
-- Coverage thresholds currently `0` in the standalone config — raise per-path when adding well-structured slices.
+- There is **no** `jest.config.js` today and React Testing Library / Jest are **not** in `frontend/package.json` devDeps; `react-scripts test` remains available but no config or suites are wired for CI.
+- Remaining co-located test: [features/weight-progress-tips/services/__tests__/weightInsightEngine.test.js](src/features/weight-progress-tips/services/__tests__/weightInsightEngine.test.js). Use it as the co-location pattern.
+- **Target for new work:** co-locate `*.test.{js,jsx}` in the feature's `__tests__/`; if you add a suite, re-add the runner config in the same PR rather than assuming it exists.
 
 ---
 
