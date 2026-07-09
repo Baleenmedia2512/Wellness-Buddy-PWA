@@ -2,7 +2,8 @@
  * NutritionCarousel — 7-card horizontal swipe carousel for the nutrition dashboard.
  *
  * Cards (in order):
- *   0 — Calories       (BMR target, consumed, exercise=0, remaining)
+ *   0 — Wellness Score  (when ff.wellness-score-sheet is enabled)
+ *   1 — Calories       (BMR target, consumed, exercise=0, remaining)
  *   1 — Macros         (protein/fat/carbs with weight-derived targets)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
  *   3 — Low Carb       (GI, sugar ≤50g, fiber ≥25g; carbs in footer)
@@ -41,7 +42,7 @@ import MineralsCard           from './carousel/MineralsCard';
 import FoodBreakdownModal from '../FoodBreakdownModal';
 import GlycemicIndexModal from '../GlycemicIndexModal';
 
-const CARD_LABELS = [
+const NUTRITION_CARD_LABELS = [
   'Calories', 'Macros', 'Heart Healthy', 'Low Carb',
   'Vitamins A-K', 'B Vitamins', 'Minerals',
 ];
@@ -54,6 +55,8 @@ const NutritionCarousel = ({
   latestWeight,
   selectedDate,
   analyses = [],
+  leadingCard = null,
+  leadingCardLabel = 'Wellness Score',
 }) => {
   // Modal state for food breakdown
   const [modalState, setModalState] = useState({ isOpen: false, nutrient: null });
@@ -98,14 +101,19 @@ const NutritionCarousel = ({
   const vitBTiles    = computeVitaminsBComplexCard(dailyStats || {});
   const mineralTiles = computeMineralsCard(dailyStats || {});
 
+  const cardLabels = leadingCard
+    ? [leadingCardLabel, ...NUTRITION_CARD_LABELS]
+    : NUTRITION_CARD_LABELS;
+
   const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
-    cardCount: CARD_LABELS.length,
+    cardCount: cardLabels.length,
     resetKey: selectedDate,
   });
 
   // Memoize cards to prevent re-renders on swipe (only transform changes)
   const cards = useMemo(
-    () => [
+    () => {
+      const nutritionCards = [
       <CaloriesCard key="calories" {...calCard} onOpenModal={handleOpenModal} />,
       <MacrosCard
         key="macros"
@@ -129,7 +137,9 @@ const NutritionCarousel = ({
       <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} onOpenModal={handleOpenModal} />,
       <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} onOpenModal={handleOpenModal} />,
       <MineralsCard           key="minerals" tiles={mineralTiles} onOpenModal={handleOpenModal} />,
-    ],
+      ];
+      return leadingCard ? [leadingCard, ...nutritionCards] : nutritionCards;
+    },
     [
       calCard.target, calCard.consumed, calCard.exercise, calCard.remaining,
       proteinTarget, fatTarget, carbsTarget,
@@ -138,6 +148,7 @@ const NutritionCarousel = ({
       heartCard.fat, heartCard.sodium, heartCard.cholesterol,
       lowCarbCard.carbs, lowCarbCard.sugar, lowCarbCard.fiber,
       vitFatTiles, vitBTiles, mineralTiles,
+      leadingCard,
     ],
   );
 
@@ -169,7 +180,7 @@ const NutritionCarousel = ({
 
         {/* Dot indicators */}
         <div className="flex items-center justify-center gap-1.5 py-0.5">
-          {CARD_LABELS.map((label, i) => (
+          {cardLabels.map((label, i) => (
             <div
               key={label}
               className={`rounded-full transition-all duration-200 ${
