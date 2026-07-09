@@ -339,3 +339,14 @@ export function validateVideoReport(query) {
   return { coachId: coachIdN, scope: normalizedScope };
 }
 
+/**
+ * Validate query params for GET /api/testimonials/team-report
+ */
+export function validateTeamReport(query) {
+  const { coachId } = query || {};
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
+  return { coachId: coachIdN };
+}
+

@@ -170,3 +170,21 @@ export async function getTestimonialVideoReport(coachId, scope = 'direct') {
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch video report');
   return result.data; // Array<{ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt }>
 }
+
+/**
+ * Coach: upload / not-upload percentages for photo and video team reports.
+ * @param {number} coachId
+ * @returns {Promise<{ photoReport: object, videoReport: object }>}
+ */
+export async function getTeamTestimonialReport(coachId) {
+  const res = await CapacitorHttp.get({
+    url: `${base()}/team-report?coachId=${encodeURIComponent(coachId)}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonial report');
+  return {
+    photoReport: result.photoReport,
+    videoReport: result.videoReport,
+    teamPerformanceByUserId: result.teamPerformanceByUserId ?? {},
+  };
+}

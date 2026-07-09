@@ -20,6 +20,7 @@ import {
   validateUploadVideoChunk,
   validateVerifyVideoOtp,
   validateVideoReport,
+  validateTeamReport,
 } from './testimonials.validators.js';
 import { getISTTimestamp } from '../../utils/supabaseClient.js';
 import {
@@ -680,5 +681,63 @@ export async function getVideoReport(rawQuery) {
   return {
     httpStatus: 200,
     body: { success: true, data: rows },
+  };
+}
+
+function buildTeamUploadStats(uploaded, notUploaded) {
+  const total = uploaded + notUploaded;
+  if (!total) {
+    return {
+      uploaded,
+      notUploaded,
+      totalMembers: 0,
+      uploadPercentage: 0,
+      notUploadPercentage: 0,
+    };
+  }
+  return {
+    uploaded,
+    notUploaded,
+    totalMembers: total,
+    uploadPercentage: Math.round((uploaded / total) * 10000) / 100,
+    notUploadPercentage: Math.round((notUploaded / total) * 10000) / 100,
+  };
+}
+
+/**
+ * Coach: upload / not-upload percentages for photo and video reports
+ * across direct and full team scopes.
+ */
+export async function getTeamTestimonialReport(rawQuery) {
+  const { coachId } = validateTeamReport(rawQuery);
+
+  const [
+    photoDirect,
+    photoFull,
+    videoDirect,
+    videoFull,
+    teamPerformanceByUserId,
+  ] = await Promise.all([
+    repo.countPhotoUploadStatsForCoach(coachId, 'direct'),
+    repo.countPhotoUploadStatsForCoach(coachId, 'full'),
+    repo.countVideoUploadStatsForCoach(coachId, 'direct'),
+    repo.countVideoUploadStatsForCoach(coachId, 'full'),
+    repo.buildTeamUploadPerformanceByUserId(coachId),
+  ]);
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      photoReport: {
+        directTeam: buildTeamUploadStats(photoDirect.uploaded, photoDirect.notUploaded),
+        fullTeam: buildTeamUploadStats(photoFull.uploaded, photoFull.notUploaded),
+      },
+      videoReport: {
+        directTeam: buildTeamUploadStats(videoDirect.uploaded, videoDirect.notUploaded),
+        fullTeam: buildTeamUploadStats(videoFull.uploaded, videoFull.notUploaded),
+      },
+      teamPerformanceByUserId,
+    },
   };
 }

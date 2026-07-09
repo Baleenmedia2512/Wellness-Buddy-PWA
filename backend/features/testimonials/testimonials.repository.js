@@ -531,3 +531,255 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
     };
   });
 }
+
+/**
+ * Active team members for a coach (direct or full hierarchy).
+ * Same member resolution as listForCoach / listVideoReportForCoach.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ UserId: number }>>}
+ */
+async function fetchActiveTeamMembers(coachId, scope = 'direct') {
+  const supabase = getSupabaseClient();
+
+  if (scope === 'full') {
+    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+    const memberIds = (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== coachId);
+    if (memberIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .in('"UserId"', memberIds)
+      .ilike('"Status"', 'active');
+    if (error) throw error;
+    return data || [];
+  }
+
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId"')
+    .eq('"CoachId"', coachId)
+    .ilike('"Status"', 'active');
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Count photo testimonial uploads for a coach team scope.
+ * Uploaded = member has a non-deleted photo testimonial (excludes video-only placeholders).
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<{ uploaded: number, notUploaded: number }>}
+ */
+export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct') {
+  const members = await fetchActiveTeamMembers(coachId, scope);
+  const total = members.length;
+  if (!total) return { uploaded: 0, notUploaded: 0 };
+
+  const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, before_image_path')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const testimonialMap = {};
+  for (const t of (testimonials || [])) {
+    if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
+  }
+
+  let uploaded = 0;
+  for (const m of members) {
+    const t = testimonialMap[m.UserId];
+    if (t && !isVideoOnlyPlaceholder(t.before_image_path)) uploaded += 1;
+  }
+
+  return { uploaded, notUploaded: total - uploaded };
+}
+
+/**
+ * Count video testimonial uploads for a coach team scope.
+ * Uploaded = member has video_status other than 'none'.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<{ uploaded: number, notUploaded: number }>}
+ */
+export async function countVideoUploadStatsForCoach(coachId, scope = 'direct') {
+  const members = await fetchActiveTeamMembers(coachId, scope);
+  const total = members.length;
+  if (!total) return { uploaded: 0, notUploaded: 0 };
+
+  const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, video_status')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const testimonialMap = {};
+  for (const t of (testimonials || [])) {
+    if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
+  }
+
+  let uploaded = 0;
+  for (const m of members) {
+    const status = testimonialMap[m.UserId]?.video_status ?? 'none';
+    if (status !== 'none') uploaded += 1;
+  }
+
+  return { uploaded, notUploaded: total - uploaded };
+}
+
+function buildUploadStats(uploaded, notUploaded) {
+  const total = uploaded + notUploaded;
+  if (!total) {
+    return {
+      uploaded,
+      notUploaded,
+      totalMembers: 0,
+      uploadPercentage: 0,
+      notUploadPercentage: 0,
+    };
+  }
+  return {
+    uploaded,
+    notUploaded,
+    totalMembers: total,
+    uploadPercentage: Math.round((uploaded / total) * 10000) / 100,
+    notUploadPercentage: Math.round((notUploaded / total) * 10000) / 100,
+  };
+}
+
+/** Walk hierarchy tree → parentId → direct child userIds. */
+function extractChildrenByParentId(hierarchy) {
+  const childrenByParentId = new Map();
+
+  function addChild(parentId, childId) {
+    const parent = Number(parentId);
+    const child = Number(childId);
+    if (!Number.isFinite(parent) || !Number.isFinite(child)) return;
+    if (!childrenByParentId.has(parent)) childrenByParentId.set(parent, []);
+    const siblings = childrenByParentId.get(parent);
+    if (!siblings.includes(child)) siblings.push(child);
+  }
+
+  function walk(node) {
+    if (!node?.teamMembers?.length) return;
+    for (const child of node.teamMembers) {
+      addChild(node.userId, child.userId);
+      walk(child);
+    }
+  }
+
+  if (hierarchy) walk(hierarchy);
+  return childrenByParentId;
+}
+
+/** All active descendant userIds under a coach (coach excluded). */
+function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
+  const root = Number(coachUserId);
+  const visited = new Set();
+  const result = [];
+  const queue = [...(childrenIndex.get(root) || [])];
+
+  while (queue.length > 0) {
+    const id = Number(queue.shift());
+    if (!Number.isFinite(id) || visited.has(id)) continue;
+    visited.add(id);
+    if (activeMemberIds.has(id)) result.push(id);
+    const kids = childrenIndex.get(id);
+    if (kids?.length) queue.push(...kids);
+  }
+
+  return result;
+}
+
+/**
+ * Per-coach upload stats for every member in the hierarchy who manages a team.
+ * Uses the same tree as Reports / Results (buildTeamHierarchy).
+ * @param {number} rootCoachId
+ * @returns {Promise<Record<string, { photo: object, video: object }>>}
+ */
+export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
+  const supabase = getSupabaseClient();
+  const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, rootCoachId);
+
+  const activeMemberIds = new Set(
+    (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== rootCoachId),
+  );
+  if (activeMemberIds.size === 0) return {};
+
+  const childrenIndex = extractChildrenByParentId(hierarchy);
+  const memberIds = [...activeMemberIds];
+
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, before_image_path, video_status')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const photoMap = new Map();
+  const videoMap = new Map();
+  for (const t of (testimonials || [])) {
+    if (!photoMap.has(t.user_id)) photoMap.set(t.user_id, t);
+    if (!videoMap.has(t.user_id)) videoMap.set(t.user_id, t);
+  }
+
+  const countPhotoForIds = (ids) => {
+    let uploaded = 0;
+    for (const id of ids) {
+      const row = photoMap.get(id);
+      if (row && !isVideoOnlyPlaceholder(row.before_image_path)) uploaded += 1;
+    }
+    return { uploaded, notUploaded: ids.length - uploaded };
+  };
+
+  const countVideoForIds = (ids) => {
+    let uploaded = 0;
+    for (const id of ids) {
+      const status = videoMap.get(id)?.video_status ?? 'none';
+      if (status !== 'none') uploaded += 1;
+    }
+    return { uploaded, notUploaded: ids.length - uploaded };
+  };
+
+  const performanceByUserId = {};
+  const coachCandidates = new Set([
+    ...childrenIndex.keys(),
+    ...(allMembers || []).map((m) => m.UserId),
+    rootCoachId,
+  ]);
+
+  for (const coachUserId of coachCandidates) {
+    const coachId = Number(coachUserId);
+    if (!Number.isFinite(coachId)) continue;
+
+    const descendantIds = collectDescendantUserIds(coachId, childrenIndex, activeMemberIds);
+    if (!descendantIds.length) continue;
+
+    const photoCounts = countPhotoForIds(descendantIds);
+    const videoCounts = countVideoForIds(descendantIds);
+
+    performanceByUserId[coachId] = {
+      photo: buildUploadStats(photoCounts.uploaded, photoCounts.notUploaded),
+      video: buildUploadStats(videoCounts.uploaded, videoCounts.notUploaded),
+    };
+  }
+
+  return performanceByUserId;
+}

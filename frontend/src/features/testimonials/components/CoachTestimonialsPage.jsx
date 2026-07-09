@@ -10,13 +10,15 @@ import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport, getTeamTestimonialReport } from '../services/testimonialApi.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import {
   STATUS_FILTERS,
   TEAM_SCOPES,
   filterRowsByStatus,
+  filterVideoRowsByStatus,
   countRowsByStatus,
+  countVideoRowsByStatus,
   countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
@@ -26,6 +28,13 @@ import {
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
+import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
+
+const TEAM_SCOPE_OPTIONS = [
+  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
+  { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
+  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
+];
 
 const STATUS_CHIP_STYLES = {
   [STATUS_FILTERS.VERIFIED]: {
@@ -42,11 +51,74 @@ const STATUS_CHIP_STYLES = {
   },
 };
 
-const TEAM_SCOPE_OPTIONS = [
-  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
-  { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
-  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
-];
+function formatPercentage(value) {
+  return Number(value ?? 0).toFixed(2);
+}
+
+function TeamUploadPercentageCard({ label, stats }) {
+  const uploadPct = formatPercentage(stats?.uploadPercentage);
+  const notUploadPct = formatPercentage(stats?.notUploadPercentage);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{label}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-center">
+          <p className="text-[10px] font-semibold text-green-700 uppercase">Upload %</p>
+          <p className="text-lg font-bold text-green-800">{uploadPct}%</p>
+        </div>
+        <div className="rounded-lg bg-red-50 border border-red-200 px-2.5 py-2 text-center">
+          <p className="text-[10px] font-semibold text-red-700 uppercase">Not Upload %</p>
+          <p className="text-lg font-bold text-red-800">{notUploadPct}%</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComplianceScoreBadge({ teamStats }) {
+  if (!teamStats?.totalMembers) return null;
+  const score = formatPercentage(teamStats.uploadPercentage);
+  const scoreNum = Number(teamStats.uploadPercentage ?? 0);
+  const colorClass = scoreNum >= 80
+    ? 'text-green-700 border-green-200 bg-white'
+    : scoreNum >= 50
+      ? 'text-amber-700 border-amber-200 bg-white'
+      : 'text-red-700 border-red-200 bg-white';
+
+  return (
+    <span className={`inline-flex items-center gap-1 border rounded-full px-2.5 py-1 font-medium ${colorClass}`}>
+      Compliance Score: {score}%
+    </span>
+  );
+}
+
+function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
+  const isActive = activeFilter === filterKey;
+  const styles = STATUS_CHIP_STYLES[filterKey];
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(filterKey)}
+      aria-pressed={isActive}
+      className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
+        isActive ? styles.active : styles.base
+      }`}
+    >
+      {label} ({count})
+    </button>
+  );
+}
+
+function TeamUploadPercentageSummary({ directTeam, fullTeam }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <TeamUploadPercentageCard label="Direct Team" stats={directTeam} />
+      <TeamUploadPercentageCard label="Full Team" stats={fullTeam} />
+    </div>
+  );
+}
 
 // ─── Video report row ─────────────────────────────────────────────────────────
 
@@ -56,7 +128,7 @@ const VIDEO_STATUS_LABELS = {
   verified: { label: 'Verified', icon: CheckCircle,  color: 'text-green-700', bg: 'border-green-300 bg-white' },
 };
 
-function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt }) {
+function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt, teamStats }) {
   const cfg   = VIDEO_STATUS_LABELS[videoStatus] || VIDEO_STATUS_LABELS.none;
   const Icon  = cfg.icon;
 
@@ -78,24 +150,25 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
         </div>
       </div>
 
-      {videoStatus !== 'none' && (
+      {(teamStats?.totalMembers > 0 || videoStatus !== 'none') && (
         <div className="flex gap-2 flex-wrap text-xs">
-          {hasHealthVideo && (
+          <ComplianceScoreBadge teamStats={teamStats} />
+          {videoStatus !== 'none' && hasHealthVideo && (
             <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               <Video className="h-3 w-3 text-green-600" /> Health Results
             </span>
           )}
-          {hasBusinessVideo && (
+          {videoStatus !== 'none' && hasBusinessVideo && (
             <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               <Video className="h-3 w-3 text-blue-600" /> Business Results
             </span>
           )}
-          {!hasHealthVideo && (
+          {videoStatus !== 'none' && !hasHealthVideo && (
             <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
               No health video
             </span>
           )}
-          {!hasBusinessVideo && (
+          {videoStatus !== 'none' && !hasBusinessVideo && (
             <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
               No business video
             </span>
@@ -118,25 +191,7 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
   );
 }
 
-function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
-  const isActive = activeFilter === filterKey;
-  const styles = STATUS_CHIP_STYLES[filterKey];
-
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(filterKey)}
-      aria-pressed={isActive}
-      className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
-        isActive ? styles.active : styles.base
-      }`}
-    >
-      {label} ({count})
-    </button>
-  );
-}
-
-function MemberRow({ user, testimonial }) {
+function MemberRow({ user, testimonial, teamStats }) {
   const missing  = !testimonial;
   const pending  = testimonial?.status === 'pending';
   const verified = testimonial?.status === 'verified';
@@ -226,6 +281,7 @@ function MemberRow({ user, testimonial }) {
 
           {/* Stats */}
           <div className="flex gap-2 flex-wrap text-xs">
+            <ComplianceScoreBadge teamStats={teamStats} />
             <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               Before: {testimonial.beforeWeightKg} kg
             </span>
@@ -256,6 +312,12 @@ function MemberRow({ user, testimonial }) {
           )}
         </>
       )}
+
+      {!testimonial && teamStats?.totalMembers > 0 && (
+        <div className="flex gap-2 flex-wrap text-xs">
+          <ComplianceScoreBadge teamStats={teamStats} />
+        </div>
+      )}
     </div>
   );
 }
@@ -283,6 +345,13 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoScope,   setVideoScope]   = useState(TEAM_SCOPES.DIRECT);
   const [videoError,   setVideoError]   = useState(null);
+  const [videoStatusFilter, setVideoStatusFilter] = useState(STATUS_FILTERS.ALL);
+
+  // Team upload percentage summary (photo + video, direct + full)
+  const [teamReport, setTeamReport] = useState(null);
+  const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  const [teamReportLoading, setTeamReportLoading] = useState(true);
+  const [teamReportError, setTeamReportError] = useState(null);
 
   const coachId = user?.userId || user?.id;
 
@@ -364,15 +433,38 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
 
   useEffect(() => { load(); }, [load]);
 
+  const loadTeamReport = useCallback(async () => {
+    if (!coachId) return;
+    setTeamReportLoading(true);
+    setTeamReportError(null);
+    try {
+      const report = await getTeamTestimonialReport(coachId);
+      setTeamReport(report);
+      setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
+    } catch (err) {
+      setTeamReportError(err.message || 'Failed to load team upload percentages');
+    } finally {
+      setTeamReportLoading(false);
+    }
+  }, [coachId]);
+
+  useEffect(() => { loadTeamReport(); }, [loadTeamReport]);
+
   useEffect(() => {
     setSearchQuery('');
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
+    setStatusFilter(STATUS_FILTERS.ALL);
   }, [teamScope]);
 
   useEffect(() => {
     setVideoScope(TEAM_SCOPES.DIRECT);
+    setVideoStatusFilter(STATUS_FILTERS.ALL);
   }, [activeTab]);
+
+  useEffect(() => {
+    setVideoStatusFilter(STATUS_FILTERS.ALL);
+  }, [videoScope]);
 
   // ── Video report load ─────────────────────────────────────────────────────
   const loadVideoReport = useCallback(async () => {
@@ -415,6 +507,16 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
     [TEAM_SCOPES.FULL]: videoFullRows.length,
   }), [mineVideoRow, videoDirectRows, videoFullRows]);
 
+  const videoStatusCounts = useMemo(
+    () => countVideoRowsByStatus(videoScopeRows),
+    [videoScopeRows],
+  );
+
+  const videoStatusFilteredRows = useMemo(
+    () => filterVideoRowsByStatus(videoScopeRows, videoStatusFilter),
+    [videoScopeRows, videoStatusFilter],
+  );
+
   const scopeRows = useMemo(() => {
     if (teamScope === TEAM_SCOPES.MINE) {
       return mineRow ? [mineRow] : [];
@@ -449,6 +551,10 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
 
   const handleStatusToggle = useCallback((next) => {
     setStatusFilter((current) => toggleStatusFilter(current, next));
+  }, []);
+
+  const handleVideoStatusToggle = useCallback((next) => {
+    setVideoStatusFilter((current) => toggleStatusFilter(current, next));
   }, []);
 
   const handleSearchChange = useCallback((value) => {
@@ -517,12 +623,19 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
           <h1 className="text-lg font-bold text-gray-900">Team Testimonials</h1>
         </div>
         <TouchFeedbackButton
-          onClick={activeTab === 'videos' ? loadVideoReport : load}
+          onClick={() => {
+            if (activeTab === 'videos') {
+              loadVideoReport();
+            } else {
+              load();
+            }
+            loadTeamReport();
+          }}
           disabled={activeTab === 'videos' ? videoLoading : loading}
           className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
           ariaLabel="Refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${(activeTab === 'videos' ? videoLoading : loading) ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${(activeTab === 'videos' ? videoLoading : loading) || teamReportLoading ? 'animate-spin' : ''}`} />
         </TouchFeedbackButton>
       </div>
 
@@ -555,6 +668,19 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       {/* ── VIDEO REPORT TAB ─────────────────────────────────────────────── */}
       {activeTab === 'videos' && (
         <>
+          {teamReportLoading && <LoadingSpinner message="Loading upload percentages…" />}
+
+          {teamReportError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{teamReportError}</div>
+          )}
+
+          {!teamReportLoading && !teamReportError && teamReport?.videoReport && (
+            <TeamUploadPercentageSummary
+              directTeam={teamReport.videoReport.directTeam}
+              fullTeam={teamReport.videoReport.fullTeam}
+            />
+          )}
+
           {/* Video scope filter */}
           {!videoLoading && (
             <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
@@ -582,21 +708,36 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
             </div>
           )}
 
-          {/* Video summary chips */}
-          {!videoLoading && videoScopeRows.length > 0 && (() => {
-            const total    = videoScopeRows.length;
-            const uploaded = videoScopeRows.filter((r) => r.videoStatus !== 'none').length;
-            const verified = videoScopeRows.filter((r) => r.videoStatus === 'verified').length;
-            const pending  = videoScopeRows.filter((r) => r.videoStatus === 'pending').length;
-            const missing  = total - uploaded;
-            return (
-              <div className="flex gap-2 flex-wrap">
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-green-100 text-green-800">Verified: {verified}</span>
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">Pending: {pending}</span>
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-red-100 text-red-800">Not Uploaded: {missing}</span>
-              </div>
-            );
-          })()}
+          {/* Video status filter chips */}
+          {!videoLoading && videoScopeRows.length > 0 && (
+            <div
+              className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
+              role="group"
+              aria-label="Video status filter"
+            >
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.VERIFIED}
+                label="✅ Verified"
+                count={videoStatusCounts.verified}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.PENDING}
+                label="🕐 Pending"
+                count={videoStatusCounts.pending}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.MISSING}
+                label="⚠️ Not Uploaded"
+                count={videoStatusCounts.missing}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+            </div>
+          )}
 
           {videoLoading && <LoadingSpinner message="Loading video report…" />}
 
@@ -611,7 +752,13 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
             </div>
           )}
 
-          {!videoLoading && videoScopeRows.map((row) => (
+          {!videoLoading && !videoError && videoScopeRows.length > 0 && videoStatusFilteredRows.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <p className="font-medium text-sm">No records match the selected filters.</p>
+            </div>
+          )}
+
+          {!videoLoading && videoStatusFilteredRows.map((row) => (
             <VideoMemberRow
               key={row.user.userId}
               user={row.user}
@@ -619,6 +766,13 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
               hasHealthVideo={row.hasHealthVideo}
               hasBusinessVideo={row.hasBusinessVideo}
               videoVerifiedAt={row.videoVerifiedAt}
+              teamStats={resolveRowTeamUploadPerformance({
+                row,
+                teamScope: videoScope,
+                loggedInCoachId: coachId,
+                teamPerformanceByUserId,
+                reportType: 'video',
+              })}
             />
           ))}
         </>
@@ -627,6 +781,19 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       {/* ── PHOTOS REPORT TAB ────────────────────────────────────────────── */}
       {activeTab === 'photos' && (
         <>
+      {teamReportLoading && <LoadingSpinner message="Loading upload percentages…" />}
+
+      {teamReportError && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{teamReportError}</div>
+      )}
+
+      {!teamReportLoading && !teamReportError && teamReport?.photoReport && (
+        <TeamUploadPercentageSummary
+          directTeam={teamReport.photoReport.directTeam}
+          fullTeam={teamReport.photoReport.fullTeam}
+        />
+      )}
+
       {/* Team scope filter */}
       {!loading && (
         <div
@@ -729,11 +896,18 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
         </div>
       )}
 
-      {!showScopeLoading && filteredRows.map(({ user: member, testimonial }) => (
+      {!showScopeLoading && filteredRows.map((row) => (
         <MemberRow
-          key={member.userId}
-          user={member}
-          testimonial={testimonial}
+          key={row.user.userId}
+          user={row.user}
+          testimonial={row.testimonial}
+          teamStats={resolveRowTeamUploadPerformance({
+            row,
+            teamScope,
+            loggedInCoachId: coachId,
+            teamPerformanceByUserId,
+            reportType: 'photo',
+          })}
         />
       ))}
         </>
