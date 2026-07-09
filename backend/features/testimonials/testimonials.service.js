@@ -4,6 +4,7 @@
  * Zero HTTP concerns.
  */
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
 import logger from '../../shared/lib/logger.js';
@@ -14,9 +15,12 @@ import {
   validateEditTestimonial,
   validateListForCoach,
   validateMyTestimonial,
+  validatePrepareVideoUpload,
   validateSubmitVideo,
+  validateUploadVideoChunk,
   validateVerifyVideoOtp,
   validateVideoReport,
+  validateTeamReport,
 } from './testimonials.validators.js';
 import { getISTTimestamp } from '../../utils/supabaseClient.js';
 import {
@@ -310,7 +314,7 @@ export async function editTestimonial(rawBody) {
 export async function getMyTestimonial(rawQuery) {
   const { userId } = validateMyTestimonial(rawQuery);
   const row = await repo.findByUserId(userId);
-  if (!row) {
+  if (!row || repo.isVideoOnlyPlaceholder(row.before_image_path)) {
     return { httpStatus: 200, body: { success: true, data: null } };
   }
 
@@ -341,6 +345,36 @@ export async function getMyTestimonial(rawQuery) {
 }
 
 /**
+ * Fetch a member's own result-video status (independent of photo testimonial).
+ */
+export async function getMyVideoTestimonial(rawQuery) {
+  const { userId } = validateMyTestimonial(rawQuery);
+  const row = await repo.findByUserId(userId);
+  if (!row) {
+    return { httpStatus: 200, body: { success: true, data: null } };
+  }
+
+  const videoStatus = row.video_status ?? 'none';
+  if (videoStatus === 'none' && !row.health_video_path && !row.business_video_path) {
+    return { httpStatus: 200, body: { success: true, data: null } };
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      data: {
+        testimonialId:    row.id,
+        videoStatus,
+        hasHealthVideo:   !!row.health_video_path,
+        hasBusinessVideo: !!row.business_video_path,
+        videoVerifiedAt:  row.video_verified_at ?? null,
+      },
+    },
+  };
+}
+
+/**
  * List direct-downline testimonials for a coach.
  * Members with no testimonial are included (testimonial = null â†’ red in UI).
  */
@@ -351,7 +385,7 @@ export async function listForCoach(rawQuery) {
   // Generate signed URLs in parallel for members who have testimonials
   const enriched = await Promise.all(
     rows.map(async ({ user, testimonial }) => {
-      if (!testimonial) {
+      if (!testimonial || repo.isVideoOnlyPlaceholder(testimonial.before_image_path)) {
         return { user: sanitizeUser(user), testimonial: null };
       }
       const [beforeUrl, afterUrl] = await Promise.all([
@@ -422,9 +456,125 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 
 // ─── Video service functions ──────────────────────────────────────────────────
 
+async function assertVideoUploadEligible(userId) {
+  const userInfo = await repo.findCoachIdForUser(userId);
+  if (!userInfo || !userInfo.coachId) {
+    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
+  }
+
+  let existing = await repo.findByUserId(userId);
+  if (!existing) {
+    existing = await repo.insertVideoOnlyTestimonial({
+      userId,
+      coachId: userInfo.coachId,
+    });
+    logger.info('[testimonials] Created video-only testimonial stub', { userId });
+  }
+
+  return { existing, userInfo };
+}
+
 /**
- * Upload health/business result videos for a member's testimonial.
- * Requires the member to have an existing testimonial record (photos uploaded first).
+ * Reserve storage paths + session IDs for chunked client video upload.
+ * Each chunk is posted separately to stay under Vercel's ~4.5 MB body limit.
+ */
+export async function prepareVideoUpload(rawBody) {
+  const payload = validatePrepareVideoUpload(rawBody);
+
+  logger.info('[testimonials] prepareVideoUpload', { userId: payload.userId });
+
+  await assertVideoUploadEligible(payload.userId);
+
+  const uploads = {};
+
+  if (payload.uploadHealth) {
+    const sessionId = crypto.randomUUID();
+    uploads.health = {
+      path: `${payload.userId}/health_video_${sessionId}.mp4`,
+      sessionId,
+    };
+  }
+  if (payload.uploadBusiness) {
+    const sessionId = crypto.randomUUID();
+    uploads.business = {
+      path: `${payload.userId}/business_video_${sessionId}.mp4`,
+      sessionId,
+    };
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      uploads,
+    },
+  };
+}
+
+function tmpChunkPath(userId, sessionId, chunkIndex) {
+  return `${userId}/tmp_${sessionId}_chunk_${chunkIndex}.part`;
+}
+
+/**
+ * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
+ */
+export async function uploadVideoChunk(rawBody) {
+  const payload = validateUploadVideoChunk(rawBody);
+
+  logger.info('[testimonials] uploadVideoChunk', {
+    userId: payload.userId,
+    sessionId: payload.sessionId,
+    chunkIndex: payload.chunkIndex,
+    totalChunks: payload.totalChunks,
+  });
+
+  await assertVideoUploadEligible(payload.userId);
+
+  const cleaned = payload.chunkBase64.replace(/^data:[^;]+;base64,/, '');
+  const buffer = Buffer.from(cleaned, 'base64');
+  if (!buffer.length) {
+    throw new ValidationError(422, 'Video chunk data is empty. Please retry the upload.');
+  }
+
+  // Single-chunk videos upload directly — avoids tmp write/read race on small files.
+  if (payload.totalChunks === 1) {
+    await repo.uploadBuffer(payload.finalPath, buffer, 'video/mp4');
+    return {
+      httpStatus: 200,
+      body: { success: true, complete: true, path: payload.finalPath },
+    };
+  }
+
+  const tmpPath = tmpChunkPath(payload.userId, payload.sessionId, payload.chunkIndex);
+  await repo.uploadBuffer(tmpPath, buffer, 'application/octet-stream');
+
+  if (payload.chunkIndex !== payload.totalChunks - 1) {
+    return {
+      httpStatus: 200,
+      body: { success: true, complete: false },
+    };
+  }
+
+  const tmpPaths = [];
+  const parts = [];
+  for (let i = 0; i < payload.totalChunks; i++) {
+    const chunkPath = tmpChunkPath(payload.userId, payload.sessionId, i);
+    tmpPaths.push(chunkPath);
+    parts.push(await repo.downloadBuffer(chunkPath));
+  }
+
+  await repo.uploadBuffer(payload.finalPath, Buffer.concat(parts), 'video/mp4');
+  await repo.removePaths(tmpPaths);
+
+  return {
+    httpStatus: 200,
+    body: { success: true, complete: true, path: payload.finalPath },
+  };
+}
+
+/**
+ * Finalise health/business result videos after direct storage upload.
+ * Creates a testimonial record automatically when the member has not uploaded photos yet.
  * Always sends an OTP email to the coach for video verification.
  * Both videos are optional — at least one must be provided.
  */
@@ -433,28 +583,23 @@ export async function submitVideo(rawBody) {
 
   logger.info('[testimonials] submitVideo', { userId: payload.userId });
 
-  const existing = await repo.findByUserId(payload.userId);
-  if (!existing) {
-    throw new ValidationError(400, 'Please submit your photo testimonial (before/after photos) before uploading result videos.');
-  }
+  const { existing, userInfo } = await assertVideoUploadEligible(payload.userId);
 
-  const userInfo = await repo.findCoachIdForUser(payload.userId);
-  if (!userInfo || !userInfo.coachId) {
-    throw new ValidationError(400, 'User has no coach assigned. Cannot submit video testimonial.');
-  }
-
-  const ts      = Date.now();
   const uploads = {};
 
-  if (payload.healthVideoBase64) {
-    const path = `${payload.userId}/health_video_${ts}.mp4`;
-    await repo.uploadVideo(payload.healthVideoBase64, path);
-    uploads.healthVideoPath = path;
+  if (payload.healthVideoPath) {
+    const exists = await repo.objectExists(payload.healthVideoPath);
+    if (!exists) {
+      throw new ValidationError(422, 'Health video upload was not found. Please upload again.');
+    }
+    uploads.healthVideoPath = payload.healthVideoPath;
   }
-  if (payload.businessVideoBase64) {
-    const path = `${payload.userId}/business_video_${ts}.mp4`;
-    await repo.uploadVideo(payload.businessVideoBase64, path);
-    uploads.businessVideoPath = path;
+  if (payload.businessVideoPath) {
+    const exists = await repo.objectExists(payload.businessVideoPath);
+    if (!exists) {
+      throw new ValidationError(422, 'Business video upload was not found. Please upload again.');
+    }
+    uploads.businessVideoPath = payload.businessVideoPath;
   }
 
   const otp       = generateOtp();
@@ -475,8 +620,8 @@ export async function submitVideo(rawBody) {
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
       otp,
-      healthVideoPath:   uploads.healthVideoPath   ?? null,
-      businessVideoPath: uploads.businessVideoPath ?? null,
+      healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
+      businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
     });
   }
 
@@ -536,5 +681,63 @@ export async function getVideoReport(rawQuery) {
   return {
     httpStatus: 200,
     body: { success: true, data: rows },
+  };
+}
+
+function buildTeamUploadStats(uploaded, notUploaded) {
+  const total = uploaded + notUploaded;
+  if (!total) {
+    return {
+      uploaded,
+      notUploaded,
+      totalMembers: 0,
+      uploadPercentage: 0,
+      notUploadPercentage: 0,
+    };
+  }
+  return {
+    uploaded,
+    notUploaded,
+    totalMembers: total,
+    uploadPercentage: Math.round((uploaded / total) * 10000) / 100,
+    notUploadPercentage: Math.round((notUploaded / total) * 10000) / 100,
+  };
+}
+
+/**
+ * Coach: upload / not-upload percentages for photo and video reports
+ * across direct and full team scopes.
+ */
+export async function getTeamTestimonialReport(rawQuery) {
+  const { coachId } = validateTeamReport(rawQuery);
+
+  const [
+    photoDirect,
+    photoFull,
+    videoDirect,
+    videoFull,
+    teamPerformanceByUserId,
+  ] = await Promise.all([
+    repo.countPhotoUploadStatsForCoach(coachId, 'direct'),
+    repo.countPhotoUploadStatsForCoach(coachId, 'full'),
+    repo.countVideoUploadStatsForCoach(coachId, 'direct'),
+    repo.countVideoUploadStatsForCoach(coachId, 'full'),
+    repo.buildTeamUploadPerformanceByUserId(coachId),
+  ]);
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      photoReport: {
+        directTeam: buildTeamUploadStats(photoDirect.uploaded, photoDirect.notUploaded),
+        fullTeam: buildTeamUploadStats(photoFull.uploaded, photoFull.notUploaded),
+      },
+      videoReport: {
+        directTeam: buildTeamUploadStats(videoDirect.uploaded, videoDirect.notUploaded),
+        fullTeam: buildTeamUploadStats(videoFull.uploaded, videoFull.notUploaded),
+      },
+      teamPerformanceByUserId,
+    },
   };
 }

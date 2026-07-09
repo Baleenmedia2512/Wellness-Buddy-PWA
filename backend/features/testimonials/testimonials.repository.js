@@ -7,6 +7,15 @@ import logger from '../../shared/lib/logger.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
+
+/** Sentinel storage path — video-only uploads have no real before/after photos. */
+export function videoOnlyPlaceholderPath(userId) {
+  return `${userId}/${userId}_video_only_placeholder.jpg`;
+}
+
+export function isVideoOnlyPlaceholder(path) {
+  return typeof path === 'string' && path.endsWith('_video_only_placeholder.jpg');
+}
 const SIGNED_URL_EXPIRY_SECONDS = 1800;       // 30 min — in-app display
 const EMAIL_SIGNED_URL_EXPIRY_SECONDS = 604800; // 7 days — coach email
 
@@ -63,6 +72,111 @@ export async function uploadVideo(base64, path) {
     throw error;
   }
   return path;
+}
+
+/**
+ * Create a short-lived signed URL for direct client-side video upload (bypasses API payload limits).
+ * @param {string} path
+ * @returns {Promise<{ path: string, token: string, signedUrl: string }>}
+ */
+export async function createSignedUploadUrl(path) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+
+  if (error) {
+    logger.error('[testimonials.repo] Signed upload URL failed', { path, error });
+    throw error;
+  }
+  return data;
+}
+
+/**
+ * Check whether a storage object exists at the given path.
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+export async function objectExists(path) {
+  if (!path) return false;
+  const slash = path.lastIndexOf('/');
+  const folder = slash >= 0 ? path.slice(0, slash) : '';
+  const filename = slash >= 0 ? path.slice(slash + 1) : path;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .list(folder, { search: filename, limit: 1 });
+
+  if (error) {
+    logger.warn('[testimonials.repo] Storage list failed', { path, error });
+    return false;
+  }
+  return (data || []).some((entry) => entry.name === filename);
+}
+
+function throwStorageError(operation, path, error) {
+  logger.error(`[testimonials.repo] Storage ${operation} failed`, { path, error });
+  const err = new Error(error?.message || `Video storage ${operation} failed`);
+  const statusCode = Number(error?.statusCode);
+  err.status = Number.isFinite(statusCode) && statusCode >= 400 && statusCode < 600
+    ? statusCode
+    : 502;
+  throw err;
+}
+
+/**
+ * Upload a raw buffer to storage.
+ * @param {string} path
+ * @param {Buffer} buffer
+ * @param {string} [contentType='video/mp4']
+ */
+export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
+  const supabase = getSupabaseClient();
+  const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, body, { contentType, upsert: true });
+
+  if (error) throwStorageError('upload', path, error);
+  return path;
+}
+
+/**
+ * Download a storage object as a Buffer.
+ * @param {string} path
+ * @param {{ retries?: number }} [opts]
+ * @returns {Promise<Buffer>}
+ */
+export async function downloadBuffer(path, { retries = 3 } = {}) {
+  const supabase = getSupabaseClient();
+  let lastError;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const { data, error } = await supabase.storage.from(BUCKET).download(path);
+    if (!error && data) {
+      return Buffer.from(await data.arrayBuffer());
+    }
+    lastError = error;
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+
+  throwStorageError('download', path, lastError);
+}
+
+/**
+ * Remove one or more objects from storage.
+ * @param {string[]} paths
+ */
+export async function removePaths(paths) {
+  if (!paths?.length) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    logger.warn('[testimonials.repo] Failed to remove storage paths', { paths, error });
+  }
 }
 
 /**
@@ -157,7 +271,7 @@ export async function insertTestimonial(payload) {
       after_weight_kg:   payload.afterWeightKg,
       goal_type:         payload.goalType,
       duration_text:     payload.durationText,
-      status:            'pending',
+      status:            payload.status ?? 'pending',
       otp_hash:          payload.otpHash,
       otp_expires_at:    payload.otpExpiresAt,
       created_at:        now,
@@ -167,6 +281,27 @@ export async function insertTestimonial(payload) {
     .single();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Create a minimal testimonial row so result videos can be stored without photo uploads.
+ * Photo report treats these as "not uploaded" until real images are submitted.
+ */
+export async function insertVideoOnlyTestimonial({ userId, coachId }) {
+  const placeholder = videoOnlyPlaceholderPath(userId);
+  return insertTestimonial({
+    userId,
+    coachId,
+    beforeImagePath: placeholder,
+    afterImagePath:  placeholder,
+    beforeWeightKg:  0,
+    afterWeightKg:   0,
+    goalType:        'loss',
+    durationText:    '—',
+    status:          'incomplete',
+    otpHash:         null,
+    otpExpiresAt:    null,
+  });
 }
 
 /**
@@ -395,4 +530,331 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
       videoVerifiedAt:  t?.video_verified_at ?? null,
     };
   });
+}
+
+/**
+ * Active team members for a coach (direct or full hierarchy).
+ * Same member resolution as listForCoach / listVideoReportForCoach.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ UserId: number }>>}
+ */
+async function fetchActiveTeamMembers(coachId, scope = 'direct') {
+  const supabase = getSupabaseClient();
+
+  if (scope === 'full') {
+    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
+    const memberIds = (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== coachId);
+    if (memberIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .in('"UserId"', memberIds)
+      .ilike('"Status"', 'active');
+    if (error) throw error;
+    return data || [];
+  }
+
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserId"')
+    .eq('"CoachId"', coachId)
+    .ilike('"Status"', 'active');
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Count photo testimonial uploads for a coach team scope.
+ * Uploaded = member has a non-deleted photo testimonial (excludes video-only placeholders).
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<{ uploaded: number, notUploaded: number }>}
+ */
+export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct') {
+  const members = await fetchActiveTeamMembers(coachId, scope);
+  const total = members.length;
+  if (!total) return { uploaded: 0, notUploaded: 0 };
+
+  const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, before_image_path')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const testimonialMap = {};
+  for (const t of (testimonials || [])) {
+    if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
+  }
+
+  let uploaded = 0;
+  for (const m of members) {
+    const t = testimonialMap[m.UserId];
+    if (t && !isVideoOnlyPlaceholder(t.before_image_path)) uploaded += 1;
+  }
+
+  return { uploaded, notUploaded: total - uploaded };
+}
+
+/**
+ * Count video testimonial uploads for a coach team scope.
+ * Uploaded = member has video_status other than 'none'.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<{ uploaded: number, notUploaded: number }>}
+ */
+export async function countVideoUploadStatsForCoach(coachId, scope = 'direct') {
+  const members = await fetchActiveTeamMembers(coachId, scope);
+  const total = members.length;
+  if (!total) return { uploaded: 0, notUploaded: 0 };
+
+  const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, video_status')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const testimonialMap = {};
+  for (const t of (testimonials || [])) {
+    if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
+  }
+
+  let uploaded = 0;
+  for (const m of members) {
+    const status = testimonialMap[m.UserId]?.video_status ?? 'none';
+    if (status !== 'none') uploaded += 1;
+  }
+
+  return { uploaded, notUploaded: total - uploaded };
+}
+
+function buildUploadStats(uploaded, notUploaded, uploadedMembers = [], notUploadedMembers = []) {
+  const total = uploaded + notUploaded;
+  if (!total) {
+    return {
+      uploaded,
+      notUploaded,
+      totalMembers: 0,
+      uploadPercentage: 0,
+      notUploadPercentage: 0,
+      uploadedMembers,
+      notUploadedMembers,
+    };
+  }
+  return {
+    uploaded,
+    notUploaded,
+    totalMembers: total,
+    uploadPercentage: Math.round((uploaded / total) * 10000) / 100,
+    notUploadPercentage: Math.round((notUploaded / total) * 10000) / 100,
+    uploadedMembers,
+    notUploadedMembers,
+  };
+}
+
+function classifyPhotoMembers(descendantIds, photoMap, userNameById) {
+  const uploadedMembers = [];
+  const notUploadedMembers = [];
+  for (const id of descendantIds) {
+    const member = { userId: id, userName: userNameById.get(id) || `Member ${id}` };
+    const row = photoMap.get(id);
+    if (row && !isVideoOnlyPlaceholder(row.before_image_path)) {
+      uploadedMembers.push(member);
+    } else {
+      notUploadedMembers.push(member);
+    }
+  }
+  return { uploadedMembers, notUploadedMembers };
+}
+
+function classifyVideoMembers(descendantIds, videoMap, userNameById) {
+  const uploadedMembers = [];
+  const notUploadedMembers = [];
+  for (const id of descendantIds) {
+    const member = { userId: id, userName: userNameById.get(id) || `Member ${id}` };
+    const status = videoMap.get(id)?.video_status ?? 'none';
+    if (status !== 'none') {
+      uploadedMembers.push(member);
+    } else {
+      notUploadedMembers.push(member);
+    }
+  }
+  return { uploadedMembers, notUploadedMembers };
+}
+
+/** Walk hierarchy tree → parentId → direct child userIds. */
+function extractChildrenByParentId(hierarchy) {
+  const childrenByParentId = new Map();
+
+  function addChild(parentId, childId) {
+    const parent = Number(parentId);
+    const child = Number(childId);
+    if (!Number.isFinite(parent) || !Number.isFinite(child)) return;
+    if (!childrenByParentId.has(parent)) childrenByParentId.set(parent, []);
+    const siblings = childrenByParentId.get(parent);
+    if (!siblings.includes(child)) siblings.push(child);
+  }
+
+  function walk(node) {
+    if (!node?.teamMembers?.length) return;
+    for (const child of node.teamMembers) {
+      addChild(node.userId, child.userId);
+      walk(child);
+    }
+  }
+
+  if (hierarchy) walk(hierarchy);
+  return childrenByParentId;
+}
+
+/** Adjacency list from team_table CoachId (active members only). */
+function buildDbCoachChildrenIndex(members) {
+  const index = new Map();
+  for (const m of members) {
+    const parentId = Number(m.CoachId ?? m.coachId);
+    const userId = Number(m.UserId ?? m.userId);
+    if (!Number.isFinite(parentId) || !Number.isFinite(userId)) continue;
+    if (!index.has(parentId)) index.set(parentId, []);
+    if (!index.get(parentId).includes(userId)) index.get(parentId).push(userId);
+  }
+  return index;
+}
+
+function mergeChildrenIndexes(...indexes) {
+  const merged = new Map();
+  for (const index of indexes) {
+    for (const [parentId, childIds] of index) {
+      const parent = Number(parentId);
+      if (!Number.isFinite(parent)) continue;
+      if (!merged.has(parent)) merged.set(parent, []);
+      const bucket = merged.get(parent);
+      for (const childId of childIds) {
+        const child = Number(childId);
+        if (Number.isFinite(child) && !bucket.includes(child)) bucket.push(child);
+      }
+    }
+  }
+  return merged;
+}
+
+/** All active descendant userIds under a coach (overall team, coach excluded). */
+function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
+  const root = Number(coachUserId);
+  const visited = new Set();
+  const result = [];
+  const queue = [...(childrenIndex.get(root) || [])];
+
+  while (queue.length > 0) {
+    const id = Number(queue.shift());
+    if (!Number.isFinite(id) || visited.has(id)) continue;
+    visited.add(id);
+    if (activeMemberIds.has(id)) result.push(id);
+    const kids = childrenIndex.get(id);
+    if (kids?.length) queue.push(...kids);
+  }
+
+  return result;
+}
+
+/**
+ * Per-coach overall team upload stats (full downline under each coach).
+ * @param {number} rootCoachId
+ * @returns {Promise<Record<string, { photo: object, video: object }>>}
+ */
+export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
+  const supabase = getSupabaseClient();
+  const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
+  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, rootCoachId);
+
+  const activeMemberIds = new Set(
+    (allMembers || [])
+      .map((m) => m.UserId)
+      .filter((id) => id !== rootCoachId),
+  );
+  if (activeMemberIds.size === 0) return {};
+
+  const memberIds = [...activeMemberIds];
+
+  const { data: teamLinks, error: linksErr } = await supabase
+    .from('team_table')
+    .select('"UserId", "CoachId"')
+    .in('"UserId"', memberIds)
+    .ilike('"Status"', 'active');
+  if (linksErr) throw linksErr;
+
+  const childrenIndex = mergeChildrenIndexes(
+    extractChildrenByParentId(hierarchy),
+    buildDbCoachChildrenIndex(teamLinks || []),
+    buildDbCoachChildrenIndex(allMembers || []),
+  );
+
+  const { data: nameRows, error: namesErr } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName"')
+    .in('"UserId"', memberIds)
+    .ilike('"Status"', 'active');
+  if (namesErr) throw namesErr;
+
+  const userNameById = new Map((nameRows || []).map((r) => [r.UserId, r.UserName]));
+
+  const { data: testimonials, error } = await supabase
+    .from(TABLE)
+    .select('user_id, before_image_path, video_status')
+    .in('user_id', memberIds)
+    .eq('is_deleted', false)
+    .order('id', { ascending: false });
+  if (error) throw error;
+
+  const photoMap = new Map();
+  const videoMap = new Map();
+  for (const t of (testimonials || [])) {
+    if (!photoMap.has(t.user_id)) photoMap.set(t.user_id, t);
+    if (!videoMap.has(t.user_id)) videoMap.set(t.user_id, t);
+  }
+
+  const countPhotoForIds = (ids) => {
+    const { uploadedMembers, notUploadedMembers } = classifyPhotoMembers(ids, photoMap, userNameById);
+    return buildUploadStats(uploadedMembers.length, notUploadedMembers.length, uploadedMembers, notUploadedMembers);
+  };
+
+  const countVideoForIds = (ids) => {
+    const { uploadedMembers, notUploadedMembers } = classifyVideoMembers(ids, videoMap, userNameById);
+    return buildUploadStats(uploadedMembers.length, notUploadedMembers.length, uploadedMembers, notUploadedMembers);
+  };
+
+  const performanceByUserId = {};
+  const coachCandidates = new Set([
+    rootCoachId,
+    ...childrenIndex.keys(),
+    ...(allMembers || []).map((m) => m.UserId),
+    ...(teamLinks || []).map((m) => m.CoachId).filter(Boolean),
+  ]);
+
+  for (const coachUserId of coachCandidates) {
+    const coachId = Number(coachUserId);
+    if (!Number.isFinite(coachId)) continue;
+
+    // Overall team = every active member in this coach's full downline (not root's whole tree).
+    const overallTeamIds = collectDescendantUserIds(coachId, childrenIndex, activeMemberIds);
+    if (!overallTeamIds.length) continue;
+
+    performanceByUserId[coachId] = {
+      photo: countPhotoForIds(overallTeamIds),
+      video: countVideoForIds(overallTeamIds),
+    };
+  }
+
+  return performanceByUserId;
 }

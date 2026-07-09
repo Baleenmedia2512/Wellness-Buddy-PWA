@@ -53,6 +53,19 @@ export async function getMyTestimonial(userId) {
 }
 
 /**
+ * Fetch the current user's result-video status.
+ * @param {number} userId
+ */
+export async function getMyVideoTestimonial(userId) {
+  const res = await CapacitorHttp.get({
+    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch video testimonial');
+  return result.data; // null if no videos uploaded
+}
+
+/**
  * Coach: verify a testimonial via OTP.
  * @param {{ testimonialId, otp }} payload
  */
@@ -86,9 +99,35 @@ export async function listForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Member submits health/business result videos for their testimonial.
- * At least one of healthVideoBase64 / businessVideoBase64 must be provided.
- * @param {{ userId, healthVideoBase64?, businessVideoBase64? }} payload
+ * Request signed Supabase Storage upload URLs for testimonial videos.
+ * @param {{ userId, uploadHealth?: boolean, uploadBusiness?: boolean }} payload
+ */
+export async function prepareTestimonialVideoUpload(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/prepare-video-upload`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  const result = res.data;
+  if (res.status < 200 || res.status >= 300 || !result?.success) {
+    throw new Error(result?.message || 'Failed to prepare video upload');
+  }
+  return result.uploads;
+}
+
+/**
+ * Upload a video file in chunks via the backend (Capacitor-safe, no direct Supabase fetch).
+ * @param {File} file
+ * @param {{ path: string, sessionId: string }} uploadInfo
+ * @param {'health'|'business'} slot
+ * @param {number} userId
+ */
+export { uploadTestimonialVideoInChunks as uploadTestimonialVideoFile } from './testimonialVideoUpload.js';
+
+/**
+ * Member finalises health/business result videos after direct storage upload.
+ * At least one of healthVideoPath / businessVideoPath must be provided.
+ * @param {{ userId, healthVideoPath?, businessVideoPath? }} payload
  */
 export async function submitTestimonialVideo(payload) {
   const res = await CapacitorHttp.post({
@@ -130,4 +169,22 @@ export async function getTestimonialVideoReport(coachId, scope = 'direct') {
   const result = res.data;
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch video report');
   return result.data; // Array<{ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt }>
+}
+
+/**
+ * Coach: upload / not-upload percentages for photo and video team reports.
+ * @param {number} coachId
+ * @returns {Promise<{ photoReport: object, videoReport: object }>}
+ */
+export async function getTeamTestimonialReport(coachId) {
+  const res = await CapacitorHttp.get({
+    url: `${base()}/team-report?coachId=${encodeURIComponent(coachId)}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonial report');
+  return {
+    photoReport: result.photoReport,
+    videoReport: result.videoReport,
+    teamPerformanceByUserId: result.teamPerformanceByUserId ?? {},
+  };
 }

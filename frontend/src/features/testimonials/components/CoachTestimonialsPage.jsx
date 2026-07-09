@@ -10,13 +10,15 @@ import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach, getMyTestimonial, getTestimonialVideoReport } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport, getTeamTestimonialReport } from '../services/testimonialApi.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import {
   STATUS_FILTERS,
   TEAM_SCOPES,
   filterRowsByStatus,
+  filterVideoRowsByStatus,
   countRowsByStatus,
+  countVideoRowsByStatus,
   countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
@@ -26,6 +28,13 @@ import {
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
+import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
+
+const TEAM_SCOPE_OPTIONS = [
+  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
+  { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
+  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
+];
 
 const STATUS_CHIP_STYLES = {
   [STATUS_FILTERS.VERIFIED]: {
@@ -42,13 +51,127 @@ const STATUS_CHIP_STYLES = {
   },
 };
 
-const TEAM_SCOPE_OPTIONS = [
-  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
-  { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
-  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
-];
+function formatPercentage(value) {
+  return Number(value ?? 0).toFixed(2);
+}
 
-// ─── Video report row ─────────────────────────────────────────────────────────
+function teamComplianceColorClass(scoreNum) {
+  if (scoreNum >= 80) return 'text-green-700';
+  if (scoreNum >= 50) return 'text-amber-700';
+  return 'text-red-700';
+}
+
+function TeamComplianceInline({ userName, teamStats }) {
+  if (!teamStats?.totalMembers) {
+    return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
+  }
+
+  const scoreNum = Number(teamStats.uploadPercentage ?? 0);
+  const colorClass = teamComplianceColorClass(scoreNum);
+
+  return (
+    <p className="text-sm font-medium flex items-baseline gap-2 min-w-0">
+      <span className="font-semibold text-gray-900 truncate">{userName}</span>
+      <span className={`text-[11px] whitespace-nowrap flex-shrink-0 ${colorClass}`}>
+        Team Compliance: {formatPercentage(teamStats.uploadPercentage)}%
+      </span>
+    </p>
+  );
+}
+
+function UploadMemberList({ members, variant }) {
+  if (!members?.length) {
+    return (
+      <p className="text-[11px] text-gray-400 mt-1.5 italic">
+        {variant === 'uploaded' ? 'No uploaded members.' : 'No members without upload.'}
+      </p>
+    );
+  }
+
+  return (
+    <ul
+      className={`mt-1.5 rounded-lg border px-2.5 py-2 space-y-0.5 max-h-36 overflow-y-auto ${
+        variant === 'uploaded'
+          ? 'border-green-200 bg-green-50'
+          : 'border-red-200 bg-red-50'
+      }`}
+    >
+      {members.map((m) => (
+        <li
+          key={m.userId}
+          className={`text-[11px] font-medium truncate ${
+            variant === 'uploaded' ? 'text-green-800' : 'text-red-800'
+          }`}
+        >
+          {m.userName}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function UploadScoreLine({ teamStats }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (!teamStats?.totalMembers) return null;
+
+  const toggle = (key) => setExpanded((prev) => (prev === key ? null : key));
+  const uploadedActive = expanded === 'uploaded';
+  const notUploadedActive = expanded === 'notUploaded';
+
+  return (
+    <div className="mt-1">
+      <p className="text-xs font-medium flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <button
+          type="button"
+          onClick={() => toggle('uploaded')}
+          aria-expanded={uploadedActive}
+          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+            uploadedActive ? 'text-green-800 underline' : 'text-green-600'
+          }`}
+        >
+          Uploaded {formatPercentage(teamStats.uploadPercentage)}%
+        </button>
+        <span className="text-gray-300">|</span>
+        <button
+          type="button"
+          onClick={() => toggle('notUploaded')}
+          aria-expanded={notUploadedActive}
+          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+            notUploadedActive ? 'text-red-800 underline' : 'text-red-600'
+          }`}
+        >
+          Not Upload {formatPercentage(teamStats.notUploadPercentage)}%
+        </button>
+        <span className="text-gray-400">({teamStats.totalMembers} active)</span>
+      </p>
+      {uploadedActive && (
+        <UploadMemberList members={teamStats.uploadedMembers} variant="uploaded" />
+      )}
+      {notUploadedActive && (
+        <UploadMemberList members={teamStats.notUploadedMembers} variant="notUploaded" />
+      )}
+    </div>
+  );
+}
+
+function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
+  const isActive = activeFilter === filterKey;
+  const styles = STATUS_CHIP_STYLES[filterKey];
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(filterKey)}
+      aria-pressed={isActive}
+      className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
+        isActive ? styles.active : styles.base
+      }`}
+    >
+      {label} ({count})
+    </button>
+  );
+}
 
 const VIDEO_STATUS_LABELS = {
   none:     { label: 'Not Uploaded', icon: AlertCircle, color: 'text-red-600',   bg: 'border-red-300 bg-red-50' },
@@ -56,7 +179,7 @@ const VIDEO_STATUS_LABELS = {
   verified: { label: 'Verified', icon: CheckCircle,  color: 'text-green-700', bg: 'border-green-300 bg-white' },
 };
 
-function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt }) {
+function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt, teamStats }) {
   const cfg   = VIDEO_STATUS_LABELS[videoStatus] || VIDEO_STATUS_LABELS.none;
   const Icon  = cfg.icon;
 
@@ -71,10 +194,11 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">{user.userName}</p>
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${cfg.color}`}>
+          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
+          <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-0.5 ${cfg.color}`}>
             <Icon className="h-3 w-3" /> {cfg.label}
           </span>
+          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 
@@ -118,25 +242,7 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
   );
 }
 
-function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
-  const isActive = activeFilter === filterKey;
-  const styles = STATUS_CHIP_STYLES[filterKey];
-
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(filterKey)}
-      aria-pressed={isActive}
-      className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
-        isActive ? styles.active : styles.base
-      }`}
-    >
-      {label} ({count})
-    </button>
-  );
-}
-
-function MemberRow({ user, testimonial }) {
+function MemberRow({ user, testimonial, teamStats }) {
   const missing  = !testimonial;
   const pending  = testimonial?.status === 'pending';
   const verified = testimonial?.status === 'verified';
@@ -172,7 +278,7 @@ function MemberRow({ user, testimonial }) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">{user.userName}</p>
+          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
           <div className="mt-0.5">
             {missing && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
@@ -181,7 +287,7 @@ function MemberRow({ user, testimonial }) {
             )}
             {pending && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
-                <Clock className="h-3 w-3" /> Pending Verification
+                <Clock className="h-3 w-3" /> Awaiting Approval
               </span>
             )}
             {verified && (
@@ -190,6 +296,7 @@ function MemberRow({ user, testimonial }) {
               </span>
             )}
           </div>
+          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 
@@ -256,12 +363,16 @@ function MemberRow({ user, testimonial }) {
           )}
         </>
       )}
+
     </div>
   );
 }
 
-export default function CoachTestimonialsPage({ user }) {
-  const [activeTab,    setActiveTab]    = useState('photos'); // 'photos' | 'videos'
+export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, onTabChange }) {
+  const [activeTabInternal, setActiveTabInternal] = useState('photos');
+  const activeTab = activeTabProp ?? activeTabInternal;
+  const setActiveTab = onTabChange ?? setActiveTabInternal;
+
   const [directRows, setDirectRows] = useState([]);
   const [fullRows, setFullRows] = useState([]);
   const [mineRow, setMineRow] = useState(null);
@@ -274,10 +385,16 @@ export default function CoachTestimonialsPage({ user }) {
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
   // Video report state
-  const [videoRows,    setVideoRows]    = useState([]);
+  const [videoDirectRows, setVideoDirectRows] = useState([]);
+  const [videoFullRows,   setVideoFullRows]   = useState([]);
+  const [mineVideoRow,    setMineVideoRow]    = useState(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoScope,   setVideoScope]   = useState(TEAM_SCOPES.DIRECT);
   const [videoError,   setVideoError]   = useState(null);
+  const [videoStatusFilter, setVideoStatusFilter] = useState(STATUS_FILTERS.ALL);
+
+  // Team upload percentage summary (photo + video, direct + full)
+  const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
 
   const coachId = user?.userId || user?.id;
 
@@ -307,6 +424,36 @@ export default function CoachTestimonialsPage({ user }) {
     }
   }, [coachId, user]);
 
+  const buildMineVideoRow = useCallback(async () => {
+    if (!coachId) return null;
+    try {
+      const video = await getMyVideoTestimonial(coachId);
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+        },
+        videoStatus:      video?.videoStatus      ?? 'none',
+        hasHealthVideo:   video?.hasHealthVideo   ?? false,
+        hasBusinessVideo: video?.hasBusinessVideo ?? false,
+        videoVerifiedAt:  video?.videoVerifiedAt  ?? null,
+      };
+    } catch {
+      return {
+        user: {
+          userId: coachId,
+          userName: user?.userName || user?.displayName || user?.name || 'You',
+          profileImage: user?.profileImage || user?.photoURL || null,
+        },
+        videoStatus: 'none',
+        hasHealthVideo: false,
+        hasBusinessVideo: false,
+        videoVerifiedAt: null,
+      };
+    }
+  }, [coachId, user]);
+
   const load = useCallback(async () => {
     if (!coachId) return;
     setLoading(true);
@@ -329,11 +476,33 @@ export default function CoachTestimonialsPage({ user }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const loadTeamReport = useCallback(async () => {
+    if (!coachId) return;
+    try {
+      const report = await getTeamTestimonialReport(coachId);
+      setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
+    } catch {
+      setTeamPerformanceByUserId({});
+    }
+  }, [coachId]);
+
+  useEffect(() => { loadTeamReport(); }, [loadTeamReport]);
+
   useEffect(() => {
     setSearchQuery('');
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
+    setStatusFilter(STATUS_FILTERS.ALL);
   }, [teamScope]);
+
+  useEffect(() => {
+    setVideoScope(TEAM_SCOPES.DIRECT);
+    setVideoStatusFilter(STATUS_FILTERS.ALL);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setVideoStatusFilter(STATUS_FILTERS.ALL);
+  }, [videoScope]);
 
   // ── Video report load ─────────────────────────────────────────────────────
   const loadVideoReport = useCallback(async () => {
@@ -341,19 +510,50 @@ export default function CoachTestimonialsPage({ user }) {
     setVideoLoading(true);
     setVideoError(null);
     try {
-      const apiScope = videoScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
-      const data = await getTestimonialVideoReport(coachId, apiScope);
-      setVideoRows(data || []);
+      const [direct, full, mine] = await Promise.all([
+        getTestimonialVideoReport(coachId, 'direct'),
+        getTestimonialVideoReport(coachId, 'full'),
+        buildMineVideoRow(),
+      ]);
+      setVideoDirectRows(direct || []);
+      setVideoFullRows(full || []);
+      setMineVideoRow(mine);
     } catch (err) {
       setVideoError(err.message || 'Failed to load video report');
     } finally {
       setVideoLoading(false);
     }
-  }, [coachId, videoScope]);
+  }, [coachId, buildMineVideoRow]);
 
   useEffect(() => {
     if (activeTab === 'videos') loadVideoReport();
   }, [activeTab, loadVideoReport]);
+
+  const videoScopeRows = useMemo(() => {
+    if (videoScope === TEAM_SCOPES.MINE) {
+      return mineVideoRow ? [mineVideoRow] : [];
+    }
+    if (videoScope === TEAM_SCOPES.FULL) {
+      return videoFullRows;
+    }
+    return videoDirectRows;
+  }, [videoScope, mineVideoRow, videoDirectRows, videoFullRows]);
+
+  const videoScopeCounts = useMemo(() => ({
+    [TEAM_SCOPES.MINE]: mineVideoRow ? 1 : 0,
+    [TEAM_SCOPES.DIRECT]: videoDirectRows.length,
+    [TEAM_SCOPES.FULL]: videoFullRows.length,
+  }), [mineVideoRow, videoDirectRows, videoFullRows]);
+
+  const videoStatusCounts = useMemo(
+    () => countVideoRowsByStatus(videoScopeRows),
+    [videoScopeRows],
+  );
+
+  const videoStatusFilteredRows = useMemo(
+    () => filterVideoRowsByStatus(videoScopeRows, videoStatusFilter),
+    [videoScopeRows, videoStatusFilter],
+  );
 
   const scopeRows = useMemo(() => {
     if (teamScope === TEAM_SCOPES.MINE) {
@@ -389,6 +589,10 @@ export default function CoachTestimonialsPage({ user }) {
 
   const handleStatusToggle = useCallback((next) => {
     setStatusFilter((current) => toggleStatusFilter(current, next));
+  }, []);
+
+  const handleVideoStatusToggle = useCallback((next) => {
+    setVideoStatusFilter((current) => toggleStatusFilter(current, next));
   }, []);
 
   const handleSearchChange = useCallback((value) => {
@@ -457,7 +661,14 @@ export default function CoachTestimonialsPage({ user }) {
           <h1 className="text-lg font-bold text-gray-900">Team Testimonials</h1>
         </div>
         <TouchFeedbackButton
-          onClick={activeTab === 'videos' ? loadVideoReport : load}
+          onClick={() => {
+            if (activeTab === 'videos') {
+              loadVideoReport();
+            } else {
+              load();
+            }
+            loadTeamReport();
+          }}
           disabled={activeTab === 'videos' ? videoLoading : loading}
           className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
           ariaLabel="Refresh"
@@ -496,37 +707,62 @@ export default function CoachTestimonialsPage({ user }) {
       {activeTab === 'videos' && (
         <>
           {/* Video scope filter */}
-          <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
-            {[TEAM_SCOPES.DIRECT, TEAM_SCOPES.FULL].map((scope) => (
-              <button
-                key={scope}
-                type="button"
-                onClick={() => setVideoScope(scope)}
-                aria-pressed={videoScope === scope}
-                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                  videoScope === scope ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-                }`}
-              >
-                {scope === TEAM_SCOPES.DIRECT ? 'Direct Team' : 'Full Team'}
-              </button>
-            ))}
-          </div>
+          {!videoLoading && (
+            <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
+              {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+                const isActive = videoScope === value;
+                const count = videoScopeCounts[value] ?? 0;
+                const showCount = value !== TEAM_SCOPES.MINE;
+                const desktopLabel = showCount ? `${label} (${count})` : label;
+                const mobileLabel = showCount ? `${short} (${count})` : short;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setVideoScope(value)}
+                    aria-pressed={isActive}
+                    className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
+                      isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
+                    }`}
+                  >
+                    <span className="hidden sm:inline">{desktopLabel}</span>
+                    <span className="sm:hidden">{mobileLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Video summary chips */}
-          {!videoLoading && videoRows.length > 0 && (() => {
-            const total    = videoRows.length;
-            const uploaded = videoRows.filter((r) => r.videoStatus !== 'none').length;
-            const verified = videoRows.filter((r) => r.videoStatus === 'verified').length;
-            const pending  = videoRows.filter((r) => r.videoStatus === 'pending').length;
-            const missing  = total - uploaded;
-            return (
-              <div className="flex gap-2 flex-wrap">
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-green-100 text-green-800">Verified: {verified}</span>
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">Pending: {pending}</span>
-                <span className="rounded-full px-3 py-1 text-xs font-bold bg-red-100 text-red-800">Not Uploaded: {missing}</span>
-              </div>
-            );
-          })()}
+          {/* Video status filter chips */}
+          {!videoLoading && videoScopeRows.length > 0 && (
+            <div
+              className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
+              role="group"
+              aria-label="Video status filter"
+            >
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.VERIFIED}
+                label="✅ Verified"
+                count={videoStatusCounts.verified}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.PENDING}
+                label="🕐 Pending"
+                count={videoStatusCounts.pending}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+              <StatusFilterChip
+                filterKey={STATUS_FILTERS.MISSING}
+                label="⚠️ Not Uploaded"
+                count={videoStatusCounts.missing}
+                activeFilter={videoStatusFilter}
+                onToggle={handleVideoStatusToggle}
+              />
+            </div>
+          )}
 
           {videoLoading && <LoadingSpinner message="Loading video report…" />}
 
@@ -534,14 +770,20 @@ export default function CoachTestimonialsPage({ user }) {
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{videoError}</div>
           )}
 
-          {!videoLoading && !videoError && videoRows.length === 0 && (
+          {!videoLoading && !videoError && videoScopeRows.length === 0 && (
             <div className="text-center py-12 text-gray-400">
               <Video className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">No team members found</p>
             </div>
           )}
 
-          {!videoLoading && videoRows.map((row) => (
+          {!videoLoading && !videoError && videoScopeRows.length > 0 && videoStatusFilteredRows.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <p className="font-medium text-sm">No records match the selected filters.</p>
+            </div>
+          )}
+
+          {!videoLoading && videoStatusFilteredRows.map((row) => (
             <VideoMemberRow
               key={row.user.userId}
               user={row.user}
@@ -549,6 +791,13 @@ export default function CoachTestimonialsPage({ user }) {
               hasHealthVideo={row.hasHealthVideo}
               hasBusinessVideo={row.hasBusinessVideo}
               videoVerifiedAt={row.videoVerifiedAt}
+              teamStats={resolveRowTeamUploadPerformance({
+                row,
+                teamScope: videoScope,
+                loggedInCoachId: coachId,
+                teamPerformanceByUserId,
+                reportType: 'video',
+              })}
             />
           ))}
         </>
@@ -659,11 +908,18 @@ export default function CoachTestimonialsPage({ user }) {
         </div>
       )}
 
-      {!showScopeLoading && filteredRows.map(({ user: member, testimonial }) => (
+      {!showScopeLoading && filteredRows.map((row) => (
         <MemberRow
-          key={member.userId}
-          user={member}
-          testimonial={testimonial}
+          key={row.user.userId}
+          user={row.user}
+          testimonial={row.testimonial}
+          teamStats={resolveRowTeamUploadPerformance({
+            row,
+            teamScope,
+            loggedInCoachId: coachId,
+            teamPerformanceByUserId,
+            reportType: 'photo',
+          })}
         />
       ))}
         </>
