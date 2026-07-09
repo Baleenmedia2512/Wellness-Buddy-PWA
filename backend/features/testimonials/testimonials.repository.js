@@ -749,7 +749,7 @@ function mergeChildrenIndexes(...indexes) {
   return merged;
 }
 
-/** All active descendant userIds under a coach (coach excluded). */
+/** All active descendant userIds under a coach (overall team, coach excluded). */
 function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
   const root = Number(coachUserId);
   const visited = new Set();
@@ -769,8 +769,7 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
 }
 
 /**
- * Per-coach upload stats for every member in the hierarchy who manages a team.
- * Uses the same tree as Reports / Results (buildTeamHierarchy).
+ * Per-coach overall team upload stats (full downline under each coach).
  * @param {number} rootCoachId
  * @returns {Promise<Record<string, { photo: object, video: object }>>}
  */
@@ -847,15 +846,13 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
     const coachId = Number(coachUserId);
     if (!Number.isFinite(coachId)) continue;
 
-    const descendantIds = collectDescendantUserIds(coachId, childrenIndex, activeMemberIds);
-    if (!descendantIds.length) continue;
-
-    const photoStats = countPhotoForIds(descendantIds);
-    const videoStats = countVideoForIds(descendantIds);
+    // Overall team = every active member in this coach's full downline (not root's whole tree).
+    const overallTeamIds = collectDescendantUserIds(coachId, childrenIndex, activeMemberIds);
+    if (!overallTeamIds.length) continue;
 
     performanceByUserId[coachId] = {
-      photo: photoStats,
-      video: videoStats,
+      photo: countPhotoForIds(overallTeamIds),
+      video: countVideoForIds(overallTeamIds),
     };
   }
 

@@ -620,8 +620,8 @@ export async function submitVideo(rawBody) {
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
       otp,
-      healthVideoPath:   uploads.healthVideoPath   ?? null,
-      businessVideoPath: uploads.businessVideoPath ?? null,
+      healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
+      businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
     });
   }
 

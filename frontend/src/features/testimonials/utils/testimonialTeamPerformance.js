@@ -16,10 +16,7 @@ function lookupTeamPerformance(teamPerformanceByUserId, userId) {
 }
 
 /**
- * Resolve the team upload score to show on a member card.
- *
- * Mine  → logged-in coach card shows full-team upload %.
- * Direct / Full → coaches who manage a team show their downline upload %.
+ * Resolve overall team compliance for a member card (full downline under that coach).
  */
 export function resolveRowTeamUploadPerformance({
   row,
@@ -33,14 +30,11 @@ export function resolveRowTeamUploadPerformance({
   if (rowId == null) return null;
 
   const entry = lookupTeamPerformance(teamPerformanceByUserId, rowId);
-  const stats = entry?.[reportType] ?? null;
+  const bucket = entry?.[reportType];
+  const stats = bucket?.directTeam ?? bucket?.fullTeam ?? bucket;
   if (!stats?.totalMembers) return null;
 
-  if (teamScope === TEAM_SCOPES.MINE && rowId === coachId) {
-    return stats;
-  }
-
-  if (teamScope === TEAM_SCOPES.MINE) {
+  if (teamScope === TEAM_SCOPES.MINE && rowId !== coachId) {
     return null;
   }
 

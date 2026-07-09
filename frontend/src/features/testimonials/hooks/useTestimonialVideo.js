@@ -34,6 +34,7 @@ export function useTestimonialVideo({ userId }) {
   const [success,       setSuccess]       = useState(null);
   const [showOtpModal,  setShowOtpModal]  = useState(false);
   const [pendingTestimonialId, setPendingTestimonialId] = useState(null);
+  const [isEditMode,    setIsEditMode]    = useState(false);
 
   const reload = useCallback(async () => {
     if (!userId) {
@@ -60,6 +61,16 @@ export function useTestimonialVideo({ userId }) {
     setSuccess(null);
     setPendingTestimonialId(null);
   }, []);
+
+  const startEdit = useCallback(() => {
+    reset();
+    setIsEditMode(true);
+  }, [reset]);
+
+  const cancelEdit = useCallback(() => {
+    reset();
+    setIsEditMode(false);
+  }, [reset]);
 
   const syncDurationWarning = useCallback((health, business) => {
     const unverifiedSlots = [
@@ -189,6 +200,7 @@ export function useTestimonialVideo({ userId }) {
       setPendingTestimonialId(result.testimonialId ?? null);
       setSuccess('Videos uploaded! Share the OTP your coach receives to complete verification.');
       setShowOtpModal(true);
+      setIsEditMode(false);
       reload();
     } catch (err) {
       const message = err?.message || 'Upload failed. Please try again.';
@@ -205,11 +217,13 @@ export function useTestimonialVideo({ userId }) {
   const handleVideoVerified = useCallback(() => {
     setShowOtpModal(false);
     setSuccess('Video testimonial verified!');
+    setIsEditMode(false);
     reset();
     reload();
   }, [reset, reload]);
 
-  const showUploadForm = !existing || existing.videoStatus === 'none';
+  const showUploadForm = !existing || existing.videoStatus === 'none' || isEditMode;
+  const showStatusCard = !!(existing && existing.videoStatus !== 'none' && !isEditMode);
 
   return {
     existing,
@@ -231,5 +245,9 @@ export function useTestimonialVideo({ userId }) {
     handleVideoVerified,
     reset,
     showUploadForm,
+    showStatusCard,
+    isEditMode,
+    startEdit,
+    cancelEdit,
   };
 }

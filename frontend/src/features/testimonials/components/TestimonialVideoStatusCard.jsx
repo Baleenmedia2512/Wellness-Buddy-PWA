@@ -3,7 +3,7 @@
  * Shows the member's result-video status and OTP verification flow.
  */
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle, Clock, ShieldCheck, Video } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Pencil, ShieldCheck, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
 
@@ -25,7 +25,7 @@ const STATUS_CONFIG = {
   },
 };
 
-export default function TestimonialVideoStatusCard({ video, onVerified }) {
+export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }) {
   const [otp, setOtp] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [otpError, setOtpError] = useState(null);
@@ -133,6 +133,21 @@ export default function TestimonialVideoStatusCard({ video, onVerified }) {
             </div>
           )}
         </div>
+      )}
+
+      {onEdit && (
+        <>
+          <TouchFeedbackButton
+            onClick={onEdit}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold hover:border-green-400 hover:text-green-700 transition-colors"
+          >
+            <Pencil className="h-4 w-4" />
+            Change Videos
+          </TouchFeedbackButton>
+          <p className="text-xs text-gray-400 text-center">
+            Replacing a video resets verification — your coach receives a new OTP by email.
+          </p>
+        </>
       )}
     </div>
   );

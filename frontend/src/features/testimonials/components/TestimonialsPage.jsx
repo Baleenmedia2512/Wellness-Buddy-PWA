@@ -65,6 +65,10 @@ function MemberView({ userId, mode = 'both' }) {
     handleSubmit:  handleVideoSubmit,
     handleVideoVerified,
     showUploadForm,
+    showStatusCard,
+    isEditMode:    isVideoEditMode,
+    startEdit:     startVideoEdit,
+    cancelEdit:    cancelVideoEdit,
   } = useTestimonialVideo({ userId });
 
   const photoLoading = showPhotos && existing === undefined;
@@ -137,14 +141,15 @@ function MemberView({ userId, mode = 'both' }) {
       )}
 
       {/* Video status card */}
-      {showVideos && existingVideo && existingVideo.videoStatus !== 'none' && (
+      {showVideos && showStatusCard && (
         <TestimonialVideoStatusCard
           video={existingVideo}
+          onEdit={startVideoEdit}
           onVerified={reloadVideo}
         />
       )}
 
-      {/* Video upload form — hidden once verified or pending */}
+      {/* Video upload / change form */}
       {showVideos && showUploadForm && (
         <TestimonialVideoForm
           healthVideo={healthVideo}
@@ -157,6 +162,9 @@ function MemberView({ userId, mode = 'both' }) {
           submitting={videoSubmitting}
           error={videoError}
           warning={videoWarning}
+          isEditMode={isVideoEditMode}
+          onCancel={isVideoEditMode ? cancelVideoEdit : null}
+          existingVideo={existingVideo}
         />
       )}
 

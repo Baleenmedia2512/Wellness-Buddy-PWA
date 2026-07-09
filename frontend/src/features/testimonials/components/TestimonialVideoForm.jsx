@@ -86,6 +86,9 @@ export default function TestimonialVideoForm({
   submitting,
   error,
   warning,
+  isEditMode = false,
+  onCancel = null,
+  existingVideo = null,
 }) {
   const healthRef   = useRef(null);
   const businessRef = useRef(null);
@@ -97,16 +100,36 @@ export default function TestimonialVideoForm({
       {/* Header */}
       <div className="flex items-center gap-2">
         <Video className="h-5 w-5 text-green-600" />
-        <h2 className="text-base font-bold text-gray-800">Result Videos</h2>
-        <span className="ml-auto text-[11px] text-gray-400 font-medium bg-gray-100 rounded-full px-2.5 py-0.5">
-          Optional
-        </span>
+        <h2 className="text-base font-bold text-gray-800">
+          {isEditMode ? 'Change Result Videos' : 'Result Videos'}
+        </h2>
+        {!isEditMode && (
+          <span className="ml-auto text-[11px] text-gray-400 font-medium bg-gray-100 rounded-full px-2.5 py-0.5">
+            Optional
+          </span>
+        )}
       </div>
 
       <p className="text-xs text-gray-500 leading-relaxed">
-        Share your real results! Upload a short health or business results video.
-        Your coach will verify the upload with an OTP. Photo testimonials are optional.
+        {isEditMode
+          ? 'Select the video(s) you want to replace. You can change health, business, or both. Unchanged videos stay as they are.'
+          : 'Share your real results! Upload a short health or business results video. Your coach will verify the upload with an OTP. Photo testimonials are optional.'}
       </p>
+
+      {isEditMode && existingVideo && (
+        <div className="flex gap-2 flex-wrap text-xs">
+          {existingVideo.hasHealthVideo && !healthVideo && (
+            <span className="bg-green-50 border border-green-200 rounded-full px-2.5 py-1 text-green-700 font-medium">
+              Current health video kept
+            </span>
+          )}
+          {existingVideo.hasBusinessVideo && !businessVideo && (
+            <span className="bg-blue-50 border border-blue-200 rounded-full px-2.5 py-1 text-blue-700 font-medium">
+              Current business video kept
+            </span>
+          )}
+        </div>
+      )}
 
       <VideoPicker
         label="Health Results Video"
@@ -143,8 +166,22 @@ export default function TestimonialVideoForm({
         disabled={submitting || !hasAny}
         className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors disabled:opacity-50"
       >
-        {submitting ? 'Uploading…' : 'Upload & Notify Coach'}
+        {submitting
+          ? 'Uploading…'
+          : isEditMode
+            ? 'Save Changes & Re-verify'
+            : 'Upload & Notify Coach'}
       </TouchFeedbackButton>
+
+      {onCancel && (
+        <TouchFeedbackButton
+          onClick={onCancel}
+          disabled={submitting}
+          className="w-full py-2.5 rounded-xl border-2 border-gray-300 text-gray-600 text-sm font-semibold hover:border-gray-400 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </TouchFeedbackButton>
+      )}
     </div>
   );
 }

@@ -66,7 +66,7 @@ function ComplianceScoreBadge({ teamStats }) {
 
   return (
     <span className={`inline-flex items-center gap-1 border rounded-full px-2.5 py-1 font-medium ${colorClass}`}>
-      Compliance Score: {formatPercentage(teamStats.uploadPercentage)}%
+      Team Compliance: {formatPercentage(teamStats.uploadPercentage)}%
     </span>
   );
 }
@@ -122,7 +122,7 @@ function ComplianceScoreLine({ teamStats }) {
             uploadedActive ? 'text-green-800 underline' : 'text-green-600'
           }`}
         >
-          Compliance Score {formatPercentage(teamStats.uploadPercentage)}%
+          Team Compliance {formatPercentage(teamStats.uploadPercentage)}%
         </button>
         <span className="text-gray-300">|</span>
         <button
