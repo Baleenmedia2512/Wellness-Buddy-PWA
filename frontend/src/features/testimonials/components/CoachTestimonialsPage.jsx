@@ -55,30 +55,8 @@ function formatPercentage(value) {
   return Number(value ?? 0).toFixed(2);
 }
 
-function TeamUploadPercentageCard({ label, stats }) {
-  const uploadPct = formatPercentage(stats?.uploadPercentage);
-  const notUploadPct = formatPercentage(stats?.notUploadPercentage);
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
-      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{label}</p>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-center">
-          <p className="text-[10px] font-semibold text-green-700 uppercase">Upload %</p>
-          <p className="text-lg font-bold text-green-800">{uploadPct}%</p>
-        </div>
-        <div className="rounded-lg bg-red-50 border border-red-200 px-2.5 py-2 text-center">
-          <p className="text-[10px] font-semibold text-red-700 uppercase">Not Upload %</p>
-          <p className="text-lg font-bold text-red-800">{notUploadPct}%</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ComplianceScoreBadge({ teamStats }) {
   if (!teamStats?.totalMembers) return null;
-  const score = formatPercentage(teamStats.uploadPercentage);
   const scoreNum = Number(teamStats.uploadPercentage ?? 0);
   const colorClass = scoreNum >= 80
     ? 'text-green-700 border-green-200 bg-white'
@@ -88,8 +66,84 @@ function ComplianceScoreBadge({ teamStats }) {
 
   return (
     <span className={`inline-flex items-center gap-1 border rounded-full px-2.5 py-1 font-medium ${colorClass}`}>
-      Compliance Score: {score}%
+      Compliance Score: {formatPercentage(teamStats.uploadPercentage)}%
     </span>
+  );
+}
+
+function UploadMemberList({ members, variant }) {
+  if (!members?.length) {
+    return (
+      <p className="text-[11px] text-gray-400 mt-1.5 italic">
+        {variant === 'uploaded' ? 'No uploaded members.' : 'No members without upload.'}
+      </p>
+    );
+  }
+
+  return (
+    <ul
+      className={`mt-1.5 rounded-lg border px-2.5 py-2 space-y-0.5 max-h-36 overflow-y-auto ${
+        variant === 'uploaded'
+          ? 'border-green-200 bg-green-50'
+          : 'border-red-200 bg-red-50'
+      }`}
+    >
+      {members.map((m) => (
+        <li
+          key={m.userId}
+          className={`text-[11px] font-medium truncate ${
+            variant === 'uploaded' ? 'text-green-800' : 'text-red-800'
+          }`}
+        >
+          {m.userName}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ComplianceScoreLine({ teamStats }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (!teamStats?.totalMembers) return null;
+
+  const toggle = (key) => setExpanded((prev) => (prev === key ? null : key));
+  const uploadedActive = expanded === 'uploaded';
+  const notUploadedActive = expanded === 'notUploaded';
+
+  return (
+    <div className="mt-1">
+      <p className="text-xs font-medium flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <button
+          type="button"
+          onClick={() => toggle('uploaded')}
+          aria-expanded={uploadedActive}
+          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+            uploadedActive ? 'text-green-800 underline' : 'text-green-600'
+          }`}
+        >
+          Compliance Score {formatPercentage(teamStats.uploadPercentage)}%
+        </button>
+        <span className="text-gray-300">|</span>
+        <button
+          type="button"
+          onClick={() => toggle('notUploaded')}
+          aria-expanded={notUploadedActive}
+          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+            notUploadedActive ? 'text-red-800 underline' : 'text-red-600'
+          }`}
+        >
+          Not Upload {formatPercentage(teamStats.notUploadPercentage)}%
+        </button>
+        <span className="text-gray-400">({teamStats.totalMembers} active)</span>
+      </p>
+      {uploadedActive && (
+        <UploadMemberList members={teamStats.uploadedMembers} variant="uploaded" />
+      )}
+      {notUploadedActive && (
+        <UploadMemberList members={teamStats.notUploadedMembers} variant="notUploaded" />
+      )}
+    </div>
   );
 }
 
@@ -110,17 +164,6 @@ function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
     </button>
   );
 }
-
-function TeamUploadPercentageSummary({ directTeam, fullTeam }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <TeamUploadPercentageCard label="Direct Team" stats={directTeam} />
-      <TeamUploadPercentageCard label="Full Team" stats={fullTeam} />
-    </div>
-  );
-}
-
-// ─── Video report row ─────────────────────────────────────────────────────────
 
 const VIDEO_STATUS_LABELS = {
   none:     { label: 'Not Uploaded', icon: AlertCircle, color: 'text-red-600',   bg: 'border-red-300 bg-red-50' },
@@ -147,28 +190,29 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
           <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${cfg.color}`}>
             <Icon className="h-3 w-3" /> {cfg.label}
           </span>
+          <ComplianceScoreLine teamStats={teamStats} />
         </div>
       </div>
 
-      {(teamStats?.totalMembers > 0 || videoStatus !== 'none') && (
+      {videoStatus !== 'none' && (
         <div className="flex gap-2 flex-wrap text-xs">
           <ComplianceScoreBadge teamStats={teamStats} />
-          {videoStatus !== 'none' && hasHealthVideo && (
+          {hasHealthVideo && (
             <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               <Video className="h-3 w-3 text-green-600" /> Health Results
             </span>
           )}
-          {videoStatus !== 'none' && hasBusinessVideo && (
+          {hasBusinessVideo && (
             <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
               <Video className="h-3 w-3 text-blue-600" /> Business Results
             </span>
           )}
-          {videoStatus !== 'none' && !hasHealthVideo && (
+          {!hasHealthVideo && (
             <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
               No health video
             </span>
           )}
-          {videoStatus !== 'none' && !hasBusinessVideo && (
+          {!hasBusinessVideo && (
             <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
               No business video
             </span>
@@ -245,6 +289,7 @@ function MemberRow({ user, testimonial, teamStats }) {
               </span>
             )}
           </div>
+          <ComplianceScoreLine teamStats={teamStats} />
         </div>
       </div>
 
@@ -348,10 +393,7 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
   const [videoStatusFilter, setVideoStatusFilter] = useState(STATUS_FILTERS.ALL);
 
   // Team upload percentage summary (photo + video, direct + full)
-  const [teamReport, setTeamReport] = useState(null);
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
-  const [teamReportLoading, setTeamReportLoading] = useState(true);
-  const [teamReportError, setTeamReportError] = useState(null);
 
   const coachId = user?.userId || user?.id;
 
@@ -435,16 +477,11 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
 
   const loadTeamReport = useCallback(async () => {
     if (!coachId) return;
-    setTeamReportLoading(true);
-    setTeamReportError(null);
     try {
       const report = await getTeamTestimonialReport(coachId);
-      setTeamReport(report);
       setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
-    } catch (err) {
-      setTeamReportError(err.message || 'Failed to load team upload percentages');
-    } finally {
-      setTeamReportLoading(false);
+    } catch {
+      setTeamPerformanceByUserId({});
     }
   }, [coachId]);
 
@@ -635,7 +672,7 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
           className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
           ariaLabel="Refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${(activeTab === 'videos' ? videoLoading : loading) || teamReportLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${(activeTab === 'videos' ? videoLoading : loading) ? 'animate-spin' : ''}`} />
         </TouchFeedbackButton>
       </div>
 
@@ -668,19 +705,6 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       {/* ── VIDEO REPORT TAB ─────────────────────────────────────────────── */}
       {activeTab === 'videos' && (
         <>
-          {teamReportLoading && <LoadingSpinner message="Loading upload percentages…" />}
-
-          {teamReportError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{teamReportError}</div>
-          )}
-
-          {!teamReportLoading && !teamReportError && teamReport?.videoReport && (
-            <TeamUploadPercentageSummary
-              directTeam={teamReport.videoReport.directTeam}
-              fullTeam={teamReport.videoReport.fullTeam}
-            />
-          )}
-
           {/* Video scope filter */}
           {!videoLoading && (
             <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
@@ -781,19 +805,6 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       {/* ── PHOTOS REPORT TAB ────────────────────────────────────────────── */}
       {activeTab === 'photos' && (
         <>
-      {teamReportLoading && <LoadingSpinner message="Loading upload percentages…" />}
-
-      {teamReportError && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{teamReportError}</div>
-      )}
-
-      {!teamReportLoading && !teamReportError && teamReport?.photoReport && (
-        <TeamUploadPercentageSummary
-          directTeam={teamReport.photoReport.directTeam}
-          fullTeam={teamReport.photoReport.fullTeam}
-        />
-      )}
-
       {/* Team scope filter */}
       {!loading && (
         <div

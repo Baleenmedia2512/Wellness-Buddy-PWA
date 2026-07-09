@@ -640,7 +640,7 @@ export async function countVideoUploadStatsForCoach(coachId, scope = 'direct') {
   return { uploaded, notUploaded: total - uploaded };
 }
 
-function buildUploadStats(uploaded, notUploaded) {
+function buildUploadStats(uploaded, notUploaded, uploadedMembers = [], notUploadedMembers = []) {
   const total = uploaded + notUploaded;
   if (!total) {
     return {
@@ -649,6 +649,8 @@ function buildUploadStats(uploaded, notUploaded) {
       totalMembers: 0,
       uploadPercentage: 0,
       notUploadPercentage: 0,
+      uploadedMembers,
+      notUploadedMembers,
     };
   }
   return {
@@ -657,7 +659,39 @@ function buildUploadStats(uploaded, notUploaded) {
     totalMembers: total,
     uploadPercentage: Math.round((uploaded / total) * 10000) / 100,
     notUploadPercentage: Math.round((notUploaded / total) * 10000) / 100,
+    uploadedMembers,
+    notUploadedMembers,
   };
+}
+
+function classifyPhotoMembers(descendantIds, photoMap, userNameById) {
+  const uploadedMembers = [];
+  const notUploadedMembers = [];
+  for (const id of descendantIds) {
+    const member = { userId: id, userName: userNameById.get(id) || `Member ${id}` };
+    const row = photoMap.get(id);
+    if (row && !isVideoOnlyPlaceholder(row.before_image_path)) {
+      uploadedMembers.push(member);
+    } else {
+      notUploadedMembers.push(member);
+    }
+  }
+  return { uploadedMembers, notUploadedMembers };
+}
+
+function classifyVideoMembers(descendantIds, videoMap, userNameById) {
+  const uploadedMembers = [];
+  const notUploadedMembers = [];
+  for (const id of descendantIds) {
+    const member = { userId: id, userName: userNameById.get(id) || `Member ${id}` };
+    const status = videoMap.get(id)?.video_status ?? 'none';
+    if (status !== 'none') {
+      uploadedMembers.push(member);
+    } else {
+      notUploadedMembers.push(member);
+    }
+  }
+  return { uploadedMembers, notUploadedMembers };
 }
 
 /** Walk hierarchy tree → parentId → direct child userIds. */
@@ -683,6 +717,36 @@ function extractChildrenByParentId(hierarchy) {
 
   if (hierarchy) walk(hierarchy);
   return childrenByParentId;
+}
+
+/** Adjacency list from team_table CoachId (active members only). */
+function buildDbCoachChildrenIndex(members) {
+  const index = new Map();
+  for (const m of members) {
+    const parentId = Number(m.CoachId ?? m.coachId);
+    const userId = Number(m.UserId ?? m.userId);
+    if (!Number.isFinite(parentId) || !Number.isFinite(userId)) continue;
+    if (!index.has(parentId)) index.set(parentId, []);
+    if (!index.get(parentId).includes(userId)) index.get(parentId).push(userId);
+  }
+  return index;
+}
+
+function mergeChildrenIndexes(...indexes) {
+  const merged = new Map();
+  for (const index of indexes) {
+    for (const [parentId, childIds] of index) {
+      const parent = Number(parentId);
+      if (!Number.isFinite(parent)) continue;
+      if (!merged.has(parent)) merged.set(parent, []);
+      const bucket = merged.get(parent);
+      for (const childId of childIds) {
+        const child = Number(childId);
+        if (Number.isFinite(child) && !bucket.includes(child)) bucket.push(child);
+      }
+    }
+  }
+  return merged;
 }
 
 /** All active descendant userIds under a coach (coach excluded). */
@@ -722,8 +786,29 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
   );
   if (activeMemberIds.size === 0) return {};
 
-  const childrenIndex = extractChildrenByParentId(hierarchy);
   const memberIds = [...activeMemberIds];
+
+  const { data: teamLinks, error: linksErr } = await supabase
+    .from('team_table')
+    .select('"UserId", "CoachId"')
+    .in('"UserId"', memberIds)
+    .ilike('"Status"', 'active');
+  if (linksErr) throw linksErr;
+
+  const childrenIndex = mergeChildrenIndexes(
+    extractChildrenByParentId(hierarchy),
+    buildDbCoachChildrenIndex(teamLinks || []),
+    buildDbCoachChildrenIndex(allMembers || []),
+  );
+
+  const { data: nameRows, error: namesErr } = await supabase
+    .from('team_table')
+    .select('"UserId", "UserName"')
+    .in('"UserId"', memberIds)
+    .ilike('"Status"', 'active');
+  if (namesErr) throw namesErr;
+
+  const userNameById = new Map((nameRows || []).map((r) => [r.UserId, r.UserName]));
 
   const { data: testimonials, error } = await supabase
     .from(TABLE)
@@ -741,28 +826,21 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
   }
 
   const countPhotoForIds = (ids) => {
-    let uploaded = 0;
-    for (const id of ids) {
-      const row = photoMap.get(id);
-      if (row && !isVideoOnlyPlaceholder(row.before_image_path)) uploaded += 1;
-    }
-    return { uploaded, notUploaded: ids.length - uploaded };
+    const { uploadedMembers, notUploadedMembers } = classifyPhotoMembers(ids, photoMap, userNameById);
+    return buildUploadStats(uploadedMembers.length, notUploadedMembers.length, uploadedMembers, notUploadedMembers);
   };
 
   const countVideoForIds = (ids) => {
-    let uploaded = 0;
-    for (const id of ids) {
-      const status = videoMap.get(id)?.video_status ?? 'none';
-      if (status !== 'none') uploaded += 1;
-    }
-    return { uploaded, notUploaded: ids.length - uploaded };
+    const { uploadedMembers, notUploadedMembers } = classifyVideoMembers(ids, videoMap, userNameById);
+    return buildUploadStats(uploadedMembers.length, notUploadedMembers.length, uploadedMembers, notUploadedMembers);
   };
 
   const performanceByUserId = {};
   const coachCandidates = new Set([
+    rootCoachId,
     ...childrenIndex.keys(),
     ...(allMembers || []).map((m) => m.UserId),
-    rootCoachId,
+    ...(teamLinks || []).map((m) => m.CoachId).filter(Boolean),
   ]);
 
   for (const coachUserId of coachCandidates) {
@@ -772,12 +850,12 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
     const descendantIds = collectDescendantUserIds(coachId, childrenIndex, activeMemberIds);
     if (!descendantIds.length) continue;
 
-    const photoCounts = countPhotoForIds(descendantIds);
-    const videoCounts = countVideoForIds(descendantIds);
+    const photoStats = countPhotoForIds(descendantIds);
+    const videoStats = countVideoForIds(descendantIds);
 
     performanceByUserId[coachId] = {
-      photo: buildUploadStats(photoCounts.uploaded, photoCounts.notUploaded),
-      video: buildUploadStats(videoCounts.uploaded, videoCounts.notUploaded),
+      photo: photoStats,
+      video: videoStats,
     };
   }
 
