@@ -67,7 +67,7 @@ const UserProfileFields = ({
     </div>
 
     {/* Community ID — optional */}
-    {/* <div>
+    <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Hash className="w-4 h-4 text-blue-500" /> Community ID
         <span className="text-gray-400 text-xs font-normal ml-1">(optional)</span>
@@ -80,7 +80,7 @@ const UserProfileFields = ({
         className={inputCls}
         style={{ fontSize: '16px' }}
       />
-    </div> */}
+    </div>
   </div>
 );
 
