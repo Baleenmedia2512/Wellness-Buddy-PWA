@@ -17,8 +17,8 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'water_qty', label: 'Water Quantity', section: 'logging', scoringMode: 'proportional' },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit' },
-  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'proportional' },
-  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'limit' },
   { key: 'protein', label: 'Protein', section: 'nutrition', scoringMode: 'proportional' },
   { key: 'sodium', label: 'Sodium', section: 'nutrition', scoringMode: 'limit' },
   { key: 'cholesterol', label: 'Cholesterol', section: 'nutrition', scoringMode: 'limit' },

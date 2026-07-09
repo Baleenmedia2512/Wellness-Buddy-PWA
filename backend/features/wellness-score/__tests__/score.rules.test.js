@@ -10,6 +10,8 @@ import {
   calculateBreakfastPost,
   calculateWater,
   calculateCalories,
+  calculateCarbohydrates,
+  calculateFat,
   calculateProtein,
   calculateSodium,
   calculateGi,
@@ -101,6 +103,28 @@ describe('nutrition parameters', () => {
   it('protein — proportional below target', () => {
     const r = calculateProtein({ maxPoints: 100, consumed: 80, target: 100 });
     assert.equal(r.earnedPoints, 80);
+  });
+
+  it('carbohydrates — proportional below limit', () => {
+    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 100, limit: 200 });
+    assert.equal(r.earnedPoints, 50);
+    assert.equal(r.scoringMode, 'limit');
+  });
+
+  it('carbohydrates — 0 when above limit', () => {
+    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 250, limit: 200 });
+    assert.equal(r.earnedPoints, 0);
+  });
+
+  it('fat — full at limit', () => {
+    const r = calculateFat({ maxPoints: 100, consumed: 52, limit: 52 });
+    assert.equal(r.earnedPoints, 100);
+    assert.equal(r.scoringMode, 'limit');
+  });
+
+  it('fat — 0 when above limit', () => {
+    const r = calculateFat({ maxPoints: 100, consumed: 60, limit: 52 });
+    assert.equal(r.earnedPoints, 0);
   });
 
   it('sodium — proportional below limit', () => {

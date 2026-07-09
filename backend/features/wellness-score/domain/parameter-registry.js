@@ -3,8 +3,8 @@
  *
  * scoringMode:
  *   binary       — on-time log → full; late/missed → 0
- *   proportional — consumed / target × maxPoints (cap at max)
- *   limit        — consumed ≤ limit → full; above limit → 0
+ *   proportional — consumed / target × maxPoints (cap at max); used for protein, fiber, vitamins, minerals
+ *   limit        — consumed / limit × maxPoints; exceeding limit → 0; used for calories, macros caps, sodium, sugar, cholesterol, GI
  */
 
 export const SCORING_MODES = Object.freeze({
@@ -29,8 +29,8 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'water_qty', label: 'Water Quantity', section: 'logging', scoringMode: 'proportional', defaultMaxPoints: 100 },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCalories', defaultMaxPoints: 100 },
-  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalCarbs', defaultMaxPoints: 100 },
-  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalFat', defaultMaxPoints: 100 },
+  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCarbs', defaultMaxPoints: 100 },
+  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalFat', defaultMaxPoints: 100 },
   { key: 'protein', label: 'Protein', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalProtein', defaultMaxPoints: 100 },
   { key: 'sodium', label: 'Sodium', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalSodium', defaultMaxPoints: 100 },
   { key: 'cholesterol', label: 'Cholesterol', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCholesterol', defaultMaxPoints: 100 },

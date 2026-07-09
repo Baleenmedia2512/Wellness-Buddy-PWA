@@ -319,24 +319,24 @@ export function calculateCalories({ maxPoints, consumed, limit }) {
   });
 }
 
-export function calculateCarbohydrates({ maxPoints, consumed, target }) {
-  return calculateTargetNutrient({
+export function calculateCarbohydrates({ maxPoints, consumed, limit }) {
+  return calculateLimitNutrient({
     key: 'carbohydrates',
     label: 'Carbohydrates',
     maxPoints,
     consumed,
-    target,
+    limit,
     unit: 'g',
   });
 }
 
-export function calculateFat({ maxPoints, consumed, target }) {
-  return calculateTargetNutrient({
+export function calculateFat({ maxPoints, consumed, limit }) {
+  return calculateLimitNutrient({
     key: 'fat',
     label: 'Fat',
     maxPoints,
     consumed,
-    target,
+    limit,
     unit: 'g',
   });
 }
@@ -639,9 +639,9 @@ const CALCULATOR_BY_KEY = {
   calories: (cfg, ctx) =>
     calculateCalories({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCalories, limit: ctx.nutritionTargets.totalCalories }),
   carbohydrates: (cfg, ctx) =>
-    calculateCarbohydrates({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCarbs, target: ctx.nutritionTargets.totalCarbs }),
+    calculateCarbohydrates({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCarbs, limit: ctx.nutritionTargets.totalCarbs }),
   fat: (cfg, ctx) =>
-    calculateFat({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalFat, target: ctx.nutritionTargets.totalFat }),
+    calculateFat({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalFat, limit: ctx.nutritionTargets.totalFat }),
   protein: (cfg, ctx) =>
     calculateProtein({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalProtein, target: ctx.nutritionTargets.totalProtein }),
   sodium: (cfg, ctx) =>
