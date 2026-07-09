@@ -198,8 +198,7 @@ export async function getDownlineWeightStatus(rawQuery) {
 
   const members = fullTeamMembers.map((m) => ({
     ...buildWeightRow(m, weightMap),
-    // Direct team = immediate DB downline (CoachId), same as Results/Testimonials.
-    isDirect: Number(m.CoachId) === coachId,
+    isDirect: m.isDirectToRoot === true,
     coachId: m.HierarchyParent ?? m.CoachId,
     reportsToCoachId: m.CoachId,
   }));

@@ -364,47 +364,20 @@ export async function updateTestimonialVideos(id, payload) {
 /**
  * Fetch team members for a coach alongside their testimonial status.
  * scope:
- *   - direct (default): immediate downline only (CoachId = coachId)
- *   - full: every member in the coach hierarchy recursively
+ *   - direct (default): reporting downline with inactive-coach rollup
+ *   - full: every member in the reporting hierarchy recursively
  *
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Array<{ user: object, testimonial: object|null }>}
  */
 export async function listForCoach(coachId, scope = 'direct') {
-  const supabase = getSupabaseClient();
-
-  let members;
-  if (scope === 'full') {
-    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
-    const memberIds = (allMembers || [])
-      .map((m) => m.UserId)
-      .filter((id) => id !== coachId);
-    if (memberIds.length === 0) return [];
-
-    const { data, error: membersErr } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
-      .in('"UserId"', memberIds)
-      .ilike('"Status"', 'active')
-      .order('"UserName"', { ascending: true });
-    if (membersErr) throw membersErr;
-    members = data || [];
-  } else {
-    const { data, error: membersErr } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName", "Email", "ProfileImage", "PhoneNumber"')
-      .eq('"CoachId"', coachId)
-      .ilike('"Status"', 'active')
-      .order('"UserName"', { ascending: true });
-    if (membersErr) throw membersErr;
-    members = data || [];
-  }
+  const members = await fetchReportingTeamMembers(coachId, scope);
 
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
 
   // 2. Fetch testimonials for those members (non-deleted, most recent per user)
   const { data: testimonials, error: testErr } = await supabase
@@ -472,39 +445,12 @@ export async function findCoachIdForUser(userId) {
  * @returns {Array<{ user: object, videoStatus: string, hasHealthVideo: boolean, hasBusinessVideo: boolean, videoVerifiedAt: string|null }>}
  */
 export async function listVideoReportForCoach(coachId, scope = 'direct') {
-  const supabase = getSupabaseClient();
-
-  let members;
-  if (scope === 'full') {
-    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
-    const memberIds = (allMembers || [])
-      .map((m) => m.UserId)
-      .filter((id) => id !== coachId);
-    if (memberIds.length === 0) return [];
-
-    const { data, error: membersErr } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName", "Email", "ProfileImage"')
-      .in('"UserId"', memberIds)
-      .ilike('"Status"', 'active')
-      .order('"UserName"', { ascending: true });
-    if (membersErr) throw membersErr;
-    members = data || [];
-  } else {
-    const { data, error: membersErr } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName", "Email", "ProfileImage"')
-      .eq('"CoachId"', coachId)
-      .ilike('"Status"', 'active')
-      .order('"UserName"', { ascending: true });
-    if (membersErr) throw membersErr;
-    members = data || [];
-  }
+  const members = await fetchReportingTeamMembers(coachId, scope);
 
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
+  const supabase = getSupabaseClient();
 
   const { data: testimonials, error: testErr } = await supabase
     .from(TABLE)
@@ -533,39 +479,33 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Active team members for a coach (direct or full hierarchy).
- * Same member resolution as listForCoach / listVideoReportForCoach.
+ * Reporting team members for a coach (direct or full hierarchy).
+ * Applies inactive-coach rollup via reportingHierarchyService.
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
+ */
+async function fetchReportingTeamMembers(coachId, scope = 'direct') {
+  const supabase = getSupabaseClient();
+  const { loadReportingContext, getReportingMembers } = await import(
+    '../../utils/reportingHierarchyService.js'
+  );
+  const context = await loadReportingContext(supabase);
+  const members = getReportingMembers(coachId, scope, context);
+  return members
+    .filter((member) => member.UserId !== Number(coachId))
+    .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
+}
+
+/**
+ * Active team members for upload stats (same hierarchy as listForCoach).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Promise<Array<{ UserId: number }>>}
  */
 async function fetchActiveTeamMembers(coachId, scope = 'direct') {
-  const supabase = getSupabaseClient();
-
-  if (scope === 'full') {
-    const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-    const { allMembers } = await buildTeamHierarchy(supabase, coachId);
-    const memberIds = (allMembers || [])
-      .map((m) => m.UserId)
-      .filter((id) => id !== coachId);
-    if (memberIds.length === 0) return [];
-
-    const { data, error } = await supabase
-      .from('team_table')
-      .select('"UserId"')
-      .in('"UserId"', memberIds)
-      .ilike('"Status"', 'active');
-    if (error) throw error;
-    return data || [];
-  }
-
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('"UserId"')
-    .eq('"CoachId"', coachId)
-    .ilike('"Status"', 'active');
-  if (error) throw error;
-  return data || [];
+  const members = await fetchReportingTeamMembers(coachId, scope);
+  return members.map((member) => ({ UserId: member.UserId }));
 }
 
 /**
@@ -694,61 +634,6 @@ function classifyVideoMembers(descendantIds, videoMap, userNameById) {
   return { uploadedMembers, notUploadedMembers };
 }
 
-/** Walk hierarchy tree → parentId → direct child userIds. */
-function extractChildrenByParentId(hierarchy) {
-  const childrenByParentId = new Map();
-
-  function addChild(parentId, childId) {
-    const parent = Number(parentId);
-    const child = Number(childId);
-    if (!Number.isFinite(parent) || !Number.isFinite(child)) return;
-    if (!childrenByParentId.has(parent)) childrenByParentId.set(parent, []);
-    const siblings = childrenByParentId.get(parent);
-    if (!siblings.includes(child)) siblings.push(child);
-  }
-
-  function walk(node) {
-    if (!node?.teamMembers?.length) return;
-    for (const child of node.teamMembers) {
-      addChild(node.userId, child.userId);
-      walk(child);
-    }
-  }
-
-  if (hierarchy) walk(hierarchy);
-  return childrenByParentId;
-}
-
-/** Adjacency list from team_table CoachId (active members only). */
-function buildDbCoachChildrenIndex(members) {
-  const index = new Map();
-  for (const m of members) {
-    const parentId = Number(m.CoachId ?? m.coachId);
-    const userId = Number(m.UserId ?? m.userId);
-    if (!Number.isFinite(parentId) || !Number.isFinite(userId)) continue;
-    if (!index.has(parentId)) index.set(parentId, []);
-    if (!index.get(parentId).includes(userId)) index.get(parentId).push(userId);
-  }
-  return index;
-}
-
-function mergeChildrenIndexes(...indexes) {
-  const merged = new Map();
-  for (const index of indexes) {
-    for (const [parentId, childIds] of index) {
-      const parent = Number(parentId);
-      if (!Number.isFinite(parent)) continue;
-      if (!merged.has(parent)) merged.set(parent, []);
-      const bucket = merged.get(parent);
-      for (const childId of childIds) {
-        const child = Number(childId);
-        if (Number.isFinite(child) && !bucket.includes(child)) bucket.push(child);
-      }
-    }
-  }
-  return merged;
-}
-
 /** All active descendant userIds under a coach (overall team, coach excluded). */
 function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
   const root = Number(coachUserId);
@@ -775,11 +660,19 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
  */
 export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
   const supabase = getSupabaseClient();
-  const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, rootCoachId);
+  const {
+    loadReportingContext,
+    getFullReportingMembers,
+    buildReportingChildrenIndex,
+    isCoachRole,
+  } = await import('../../utils/reportingHierarchyService.js');
+  const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
+
+  const context = await loadReportingContext(supabase);
+  const reportingMembers = getFullReportingMembers(rootCoachId, context);
 
   const activeMemberIds = new Set(
-    (allMembers || [])
+    reportingMembers
       .map((m) => m.UserId)
       .filter((id) => id !== rootCoachId),
   );
@@ -787,27 +680,11 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
 
   const memberIds = [...activeMemberIds];
 
-  const { data: teamLinks, error: linksErr } = await supabase
-    .from('team_table')
-    .select('"UserId", "CoachId"')
-    .in('"UserId"', memberIds)
-    .ilike('"Status"', 'active');
-  if (linksErr) throw linksErr;
+  const childrenIndex = buildReportingChildrenIndex(context, rootCoachId);
 
-  const childrenIndex = mergeChildrenIndexes(
-    extractChildrenByParentId(hierarchy),
-    buildDbCoachChildrenIndex(teamLinks || []),
-    buildDbCoachChildrenIndex(allMembers || []),
+  const userNameById = new Map(
+    reportingMembers.map((member) => [member.UserId, member.UserName]),
   );
-
-  const { data: nameRows, error: namesErr } = await supabase
-    .from('team_table')
-    .select('"UserId", "UserName"')
-    .in('"UserId"', memberIds)
-    .ilike('"Status"', 'active');
-  if (namesErr) throw namesErr;
-
-  const userNameById = new Map((nameRows || []).map((r) => [r.UserId, r.UserName]));
 
   const { data: testimonials, error } = await supabase
     .from(TABLE)
@@ -838,8 +715,9 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
   const coachCandidates = new Set([
     rootCoachId,
     ...childrenIndex.keys(),
-    ...(allMembers || []).map((m) => m.UserId),
-    ...(teamLinks || []).map((m) => m.CoachId).filter(Boolean),
+    ...reportingMembers
+      .filter((m) => isCoachRole(m.Role) && isActiveTeamStatus(m.Status))
+      .map((m) => m.UserId),
   ]);
 
   for (const coachUserId of coachCandidates) {
