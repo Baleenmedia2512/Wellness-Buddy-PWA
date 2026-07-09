@@ -547,9 +547,10 @@ function isPrimaryOverloadedError(err) {
   // Circuit opened for the primary → the primary service is considered down
   if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
+  // 502 = bad gateway (upstream Gemini infrastructure failure)
   // 503 = service unavailable (overloaded)
   // 429 = quota exceeded / rate limited (separate quota on fallback model)
-  if (status === 503 || status === 429) return true;
+  if (status === 502 || status === 503 || status === 429) return true;
   const msg = (err.message ?? '').toLowerCase();
   return (
     msg.includes('503')                       ||
@@ -597,6 +598,7 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
     if (!modelOverride && isPrimaryOverloadedError(err)) {
       const status = Number(err.status);
       const reason = err.code === 'CIRCUIT_OPEN' ? 'circuit_open'
+                   : status === 502 ? '502_bad_gateway'
                    : (status === 429 || (err.message ?? '').toLowerCase().includes('quota') || (err.message ?? '').toLowerCase().includes('rate limit') || (err.message ?? '').toLowerCase().includes('too many requests')) ? '429_quota_exceeded'
                    : '503_overload';
       logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {

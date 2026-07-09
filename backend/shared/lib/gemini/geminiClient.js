@@ -20,8 +20,8 @@ import logger from '../logger.js';
 // here ensures all endpoints share identical hyperparameters.
 
 export const MODEL_NAME          = 'gemini-2.5-flash-lite';
-/** Fallback when the primary model is saturated (503 / high-demand). */
-export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash';
+/** Fallback when the primary model is saturated (502 / 503 / 429 / high-demand). */
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
 
 export const MODEL_CONFIGS = {
   /**
