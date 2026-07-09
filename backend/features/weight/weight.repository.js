@@ -23,10 +23,31 @@ export async function findEntryById(entryId) {
   const supabase = getSupabaseClient();
   const { data } = await supabase
     .from(TABLE)
-    .select('ID, Weight, CreatedAt')
+    .select('ID, Weight, BodyFat, CreatedAt')
     .eq('ID', entryId)
     .maybeSingle();
   return data || null;
+}
+
+/**
+ * Latest non-null BodyFat % for a user (most recent weight record).
+ * @param {number|string} userId
+ * @returns {Promise<number|null>}
+ */
+export async function findLatestBodyFat(userId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('BodyFat')
+    .eq('UserId', parseInt(userId))
+    .not('BodyFat', 'is', null)
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.BodyFat) return null;
+  const bf = parseFloat(data.BodyFat);
+  return Number.isFinite(bf) ? bf : null;
 }
 
 export async function syncBmrToTeamTable(userId, bmrValue) {

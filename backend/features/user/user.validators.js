@@ -2,10 +2,11 @@
  * User feature — input validators.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
-export { VALID_GOAL_MODES };
+export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
 
 export function normalizeEmail(raw) {
   return raw ? String(raw).toLowerCase().trim() : raw;
@@ -25,6 +26,11 @@ export function validateUpdateProfile(body) {
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
   }
+  const physicalActivityLevel = body.physicalActivityLevel;
+  if (physicalActivityLevel != null && physicalActivityLevel !== ''
+    && !isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    throw new ValidationError(400, `Invalid physicalActivityLevel. Must be one of: ${VALID_PHYSICAL_ACTIVITY_LEVELS.join(', ')}`);
+  }
   return {
     email,
     name: body.name,
@@ -34,6 +40,7 @@ export function validateUpdateProfile(body) {
     profileImage: body.profileImage,
     phoneNumber: body.phoneNumber,
     weightGoalMode: weightGoalMode || undefined,
+    physicalActivityLevel: physicalActivityLevel || undefined,
   };
 }
 

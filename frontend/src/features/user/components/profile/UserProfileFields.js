@@ -1,6 +1,7 @@
 // Editable name / height / phone / BMR / communityId fields + read-only email.
 import React from 'react';
-import { Flame, Mail, Hash } from 'lucide-react';
+import { Flame, Mail } from 'lucide-react';
+import PhysicalActivityField from './PhysicalActivityField';
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
@@ -17,6 +18,7 @@ const Field = ({ label, required, children }) => (
 const UserProfileFields = ({
   email, setEmail,
   name, setName, height, setHeight, phone, setPhone, bmr, setBmr,
+  physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
 }) => (
   <div className="space-y-4">
@@ -65,6 +67,11 @@ const UserProfileFields = ({
         placeholder="e.g. 2200" style={{ fontSize: '16px' }}
         className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none" />
     </div>
+
+    <PhysicalActivityField
+      value={physicalActivityLevel}
+      onChange={setPhysicalActivityLevel}
+    />
 
     {/* Community ID — optional */}
     <div>

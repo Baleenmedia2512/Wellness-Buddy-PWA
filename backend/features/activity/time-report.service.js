@@ -7,6 +7,7 @@ import {
 } from '../../utils/timeReportHelpers.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './time-report.repository.js';
+import { resolveCalorieTargetFromProfile } from '../../utils/tdeeCalculations.js';
 
 const DEFAULT_WINDOWS = {
   weight:    { start: '03:00:00', end: '06:30:00' },
@@ -25,7 +26,10 @@ async function resolveUsers(role, userIdInt) {
     return (hierarchy || []).reduce((acc, m) => {
       if (!seen.has(m.UserId)) {
         seen.add(m.UserId);
-        acc.push({ UserId: m.UserId, UserName: m.UserName, Email: m.Email, Role: m.Role, Bmr: m.Bmr ?? null });
+        acc.push({
+          UserId: m.UserId, UserName: m.UserName, Email: m.Email, Role: m.Role,
+          Bmr: m.Bmr ?? null, PhysicalActivityLevel: m.PhysicalActivityLevel ?? null,
+        });
       }
       return acc;
     }, []);
@@ -83,8 +87,11 @@ function indexRecords(results, usersInfo) {
     stepByUser.get(r.UserId).push(r);
   }
   for (const u of usersInfo) {
-    const b = parseFloat(u.Bmr);
-    userBmrMap[u.UserId] = (!isNaN(b) && b > 0) ? b : null;
+    const target = resolveCalorieTargetFromProfile({
+      bmr: u.Bmr,
+      physicalActivityLevel: u.PhysicalActivityLevel,
+    });
+    userBmrMap[u.UserId] = target;
   }
   for (const r of (bmrR.data || [])) {
     if (!(r.UserId in userBodyWeightMap)) {

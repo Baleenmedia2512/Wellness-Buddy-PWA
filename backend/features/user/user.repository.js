@@ -60,7 +60,7 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   return findByEmail(
     email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode"'
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel"'
   );
 }
 
@@ -68,7 +68,7 @@ export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"Weight", "CreatedAt"')
+    .select('"Weight", "BodyFat", "CreatedAt"')
     .eq('"UserId"', userId)
     .or('"IsDeleted".is.null,"IsDeleted".eq.false')
     .order('"CreatedAt"', { ascending: false })

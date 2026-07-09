@@ -20,6 +20,8 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successM
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
           bmr={form.bmr} setBmr={form.setBmr}
+          physicalActivityLevel={form.physicalActivityLevel}
+          setPhysicalActivityLevel={form.setPhysicalActivityLevel}
           communityId={form.communityId} setCommunityId={form.setCommunityId}
         />
         <IdealWeightCards height={form.height} latestWeight={latestWeight} />

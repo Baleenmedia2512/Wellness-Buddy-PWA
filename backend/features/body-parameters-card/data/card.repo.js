@@ -126,7 +126,7 @@ export async function findTeamPhoneByUserId(userId) {
  * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
-export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, heightCm, bmr }) {
+export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, heightCm, bmr, weightKg, fatPercent }) {
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
@@ -175,7 +175,7 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
   }
 
   // STEP 3: Phone doesn't exist, CREATE new member
-  const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr });
+  const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr, weightKg, fatPercent });
   const now = getISTTimestamp();
   const insertPayload = {
     EntryDateTime: now,

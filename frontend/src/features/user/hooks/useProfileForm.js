@@ -11,6 +11,7 @@ export default function useProfileForm(initial = {}) {
   const [phone, setPhone] = useState(initial.phone || '');
   const [dietType, setDietType] = useState(initial.dietType || '');
   const [bmr, setBmr] = useState(initial.bmr || '');
+  const [physicalActivityLevel, setPhysicalActivityLevel] = useState(initial.physicalActivityLevel || '');
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [email, setEmail] = useState(initial.email || '');
@@ -21,6 +22,7 @@ export default function useProfileForm(initial = {}) {
     setPhone(p.phone ?? '');
     setDietType(p.dietType ?? '');
     setBmr(p.bmr ?? '');
+    setPhysicalActivityLevel(p.physicalActivityLevel ?? '');
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
     setCommunityId(p.communityId ?? '');
     setEmail(p.email ?? '');
@@ -55,6 +57,7 @@ export default function useProfileForm(initial = {}) {
     name: name || undefined,
     height: height ? parseFloat(height) : undefined,
     bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
+    physicalActivityLevel: physicalActivityLevel || undefined,
     dietType: dietType || undefined,
     phoneNumber: phone.trim() || undefined,
     weightGoalMode: weightGoalMode || 'loss',
@@ -65,6 +68,7 @@ export default function useProfileForm(initial = {}) {
   return {
     name, setName, height, setHeight, phone, setPhone,
     dietType, setDietType, bmr, setBmr,
+    physicalActivityLevel, setPhysicalActivityLevel,
     weightGoalMode, setWeightGoalMode,
     communityId, setCommunityId,
     email, setEmail,

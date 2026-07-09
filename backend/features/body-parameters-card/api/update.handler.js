@@ -3,6 +3,7 @@
  * Calls validation → data. No HTTP concerns here.
  */
 import { validateUpdateCard } from '../validation/card.schema.js';
+import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
 import {
   updateCard,
   createTeamMemberFromPhone,
@@ -16,7 +17,7 @@ import {
  * @returns {{ httpStatus: number, body: object }}
  */
 export async function handleUpdateCard(body) {
-  const payload = validateUpdateCard(body);
+  const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
 
@@ -27,6 +28,8 @@ export async function handleUpdateCard(body) {
       coachId:     card.created_by,
       heightCm:    payload.heightCm,
       bmr:         payload.bmr,
+      weightKg:    payload.weightKg,
+      fatPercent:  payload.fatPercent,
     });
     await linkCardToUser(payload.id, userId);
     card.user_id = userId;
