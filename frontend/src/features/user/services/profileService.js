@@ -54,6 +54,7 @@ export const saveProfile = async (payload) => {
       if (payload.phoneNumber !== undefined) merged.phoneNumber = payload.phoneNumber;
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
+      if (payload.CommunityId !== undefined) merged.CommunityId = payload.CommunityId;
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }

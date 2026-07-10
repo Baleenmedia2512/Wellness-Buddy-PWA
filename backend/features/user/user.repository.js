@@ -60,7 +60,7 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   return findByEmail(
     email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel"'
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", CommunityId'
   );
 }
 
@@ -101,7 +101,7 @@ export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserId, Height, DietType, PhoneNumber')
+    .select('UserId, Height, DietType, PhoneNumber, CommunityId')
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw error;
