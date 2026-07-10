@@ -6,6 +6,8 @@ export {
   EatingHabitsSection,
   SleepQualitySection,
   MedicationSection,
+  LeadDetailsSection,
 } from './sections';
 export { useCounsellingForm } from './hooks';
+export { fetchLeadByPhone, fetchMyAssessment } from './services/counsellingApi';
 export { saveAssessment } from './services';

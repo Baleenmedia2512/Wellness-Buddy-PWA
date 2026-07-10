@@ -140,6 +140,7 @@ import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
+import { UserProfilePage } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
 import {
@@ -755,6 +756,8 @@ function WellnessValleyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+  const [showProfilePage, setShowProfilePage] = useState(false);
+  const [headerProfileKey, setHeaderProfileKey] = useState(0); // incremented after profile save to refresh header avatar
 
   // Mandatory profile picture modal state - show when user has no valid profile picture
   const [
@@ -864,6 +867,9 @@ function WellnessValleyApp() {
         Session.setCurrentPage('main');
       } else if (page === 'testimonials') {
         startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'profile') {
+        setShowProfilePage(true);
         Session.setCurrentPage('main');
       }
     };
@@ -1783,13 +1789,19 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
+      if (showProfilePage) {
+        setShowProfilePage(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
       return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showWellnessScore,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -1804,6 +1816,7 @@ function WellnessValleyApp() {
     showReports,
     showWellnessScoreSetup,
     showWellnessScore,
+    showProfilePage,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -2063,6 +2076,7 @@ function WellnessValleyApp() {
       setShowReports(false);
       setShowWellnessScoreSetup(false);
       setShowWellnessScore(false);
+      setShowProfilePage(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
       if (isOnSubPage) window.history.back();
@@ -2109,6 +2123,7 @@ function WellnessValleyApp() {
     setShowReports(false);
     setShowWellnessScoreSetup(false);
     setShowWellnessScore(false);
+    setShowProfilePage(false);
     enrollmentHistoryPushedRef.current = false;
 
     if (isOnSubPage) {
@@ -2140,6 +2155,9 @@ function WellnessValleyApp() {
         break;
       case 'reports':
         setShowReports(true);
+        break;
+      case 'profile':
+        setShowProfilePage(true);
         break;
       case 'wellness-score':
         setShowWellnessScore(true);
@@ -8213,6 +8231,50 @@ function WellnessValleyApp() {
     );
   }
 
+  // Inline Profile Page — full-screen, below nav bar (no modal overlay)
+  if (showProfilePage) {
+    return (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage={null}
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <UserProfilePage
+            user={user}
+            userRole={userRole}
+            onBack={() => navigateTo('home')}
+            onSignOut={handleSignOut}
+            onProfileUpdate={(profileData) => {
+              const email = user?.email || Session.getUserEmail() || "";
+              profileCompletedRef.current = false;
+              checkProfileCompletion(email, null, { afterSave: true });
+              if (profileData?.name?.trim()) {
+                setSavedUserName(profileData.name.trim());
+                cacheProfileUserName(email, profileData.name);
+              }
+              if (profileData?.bmr || profileData?.physicalActivityLevel) {
+                setBmrUpdateKey((prev) => prev + 1);
+              }
+              // Increment profileKey so Header re-fetches avatar/name
+              setHeaderProfileKey((k) => k + 1);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (showDashboard) {
     return (
@@ -8874,6 +8936,8 @@ function WellnessValleyApp() {
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
           // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
           // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
           onProfileSaved={(profileData) => {
