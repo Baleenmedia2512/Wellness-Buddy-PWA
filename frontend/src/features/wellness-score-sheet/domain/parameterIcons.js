@@ -89,12 +89,14 @@ export function getSectionIcon(sectionId) {
 
 export const SCORING_MODE_LABELS = {
   binary: 'On-time',
+  progress: 'Progress',
   proportional: 'Target',
   limit: 'Limit',
 };
 
 export const SCORING_MODE_HINTS = {
   binary: 'Full points when done on time; late or missed = 0',
+  progress: 'Full points when weight moves toward your goal; no progress = 0',
   proportional: 'Points scale with progress toward target',
   limit: 'Points scale up to limit; exceeding limit = 0',
 };

@@ -14,11 +14,10 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary' },
   { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary' },
   { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary' },
-  { key: 'water_qty', label: 'Water Quantity', section: 'logging', scoringMode: 'proportional' },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit' },
-  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'proportional' },
-  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'proportional' },
+  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit' },
+  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'limit' },
   { key: 'protein', label: 'Protein', section: 'nutrition', scoringMode: 'proportional' },
   { key: 'sodium', label: 'Sodium', section: 'nutrition', scoringMode: 'limit' },
   { key: 'cholesterol', label: 'Cholesterol', section: 'nutrition', scoringMode: 'limit' },
@@ -45,7 +44,8 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'zinc', label: 'Zinc', section: 'nutrition', scoringMode: 'proportional' },
   { key: 'phosphorus', label: 'Phosphorus', section: 'nutrition', scoringMode: 'proportional' },
 
-  { key: 'weight_improvement', label: 'Weight Improvement', section: 'progress', scoringMode: 'binary' },
+  { key: 'weight_improvement', label: 'Weight Improvement', section: 'progress', scoringMode: 'progress' },
+  { key: 'water_qty', label: 'Water Quantity', section: 'progress', scoringMode: 'proportional' },
   { key: 'physical_activity', label: 'Physical Activity', section: 'progress', scoringMode: 'proportional' },
 ]);
 

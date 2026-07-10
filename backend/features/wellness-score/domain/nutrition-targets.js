@@ -1,5 +1,6 @@
 /**
- * Nutrition targets for wellness score — mirrors frontend carouselRules / micronutrientRules.
+ * Nutrition limits/targets for wellness score — mirrors frontend carouselRules / micronutrientRules.
+ * Calories, carbs, fat, sodium, sugar, and cholesterol use daily limits; protein, fiber, vitamins, and minerals use targets.
  * Pure functions only; no I/O.
  */
 
@@ -40,14 +41,14 @@ export function computeNutritionTargets({ bmr = 0, weightKg = null }) {
   const weight = weightKg > 0 ? weightKg : null;
 
   let proteinTarget = null;
-  let fatTarget = null;
-  let carbsTarget = null;
+  let fatLimit = null;
+  let carbsLimit = null;
   if (weight) {
     proteinTarget = Math.round(weight * 1.5);
-    fatTarget = Math.round(weight * 0.75);
+    fatLimit = Math.round(weight * 0.75);
     const proteinCals = proteinTarget * CAL_PER_PROTEIN;
-    const fatCals = fatTarget * CAL_PER_FAT;
-    carbsTarget = Math.max(0, Math.round((bmrTarget - proteinCals - fatCals) / CAL_PER_CARB));
+    const fatCals = fatLimit * CAL_PER_FAT;
+    carbsLimit = Math.max(0, Math.round((bmrTarget - proteinCals - fatCals) / CAL_PER_CARB));
   }
 
   const sodiumLimit = weight
@@ -60,8 +61,8 @@ export function computeNutritionTargets({ bmr = 0, weightKg = null }) {
 
   const targets = {
     totalCalories: bmrTarget,
-    totalCarbs: carbsTarget,
-    totalFat: fatTarget,
+    totalCarbs: carbsLimit,
+    totalFat: fatLimit,
     totalProtein: proteinTarget,
     totalSodium: sodiumLimit,
     totalCholesterol: cholesterolLimit,

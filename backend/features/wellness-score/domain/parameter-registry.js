@@ -3,12 +3,14 @@
  *
  * scoringMode:
  *   binary       — on-time log → full; late/missed → 0
- *   proportional — consumed / target × maxPoints (cap at max)
- *   limit        — consumed ≤ limit → full; above limit → 0
+ *   progress     — moved toward goal → full; no progress → 0 (weight improvement)
+ *   proportional — consumed / target × maxPoints (cap at max); used for protein, fiber, vitamins, minerals
+ *   limit        — consumed / limit × maxPoints; exceeding limit → 0; used for calories, macros caps, sodium, sugar, cholesterol, GI
  */
 
 export const SCORING_MODES = Object.freeze({
   BINARY: 'binary',
+  PROGRESS: 'progress',
   PROPORTIONAL: 'proportional',
   LIMIT: 'limit',
 });
@@ -26,11 +28,10 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
   { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
   { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
-  { key: 'water_qty', label: 'Water Quantity', section: 'logging', scoringMode: 'proportional', defaultMaxPoints: 100 },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCalories', defaultMaxPoints: 100 },
-  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalCarbs', defaultMaxPoints: 100 },
-  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalFat', defaultMaxPoints: 100 },
+  { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCarbs', defaultMaxPoints: 100 },
+  { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalFat', defaultMaxPoints: 100 },
   { key: 'protein', label: 'Protein', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalProtein', defaultMaxPoints: 100 },
   { key: 'sodium', label: 'Sodium', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalSodium', defaultMaxPoints: 100 },
   { key: 'cholesterol', label: 'Cholesterol', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCholesterol', defaultMaxPoints: 100 },
@@ -57,7 +58,8 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'zinc', label: 'Zinc', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalZinc', defaultMaxPoints: 100 },
   { key: 'phosphorus', label: 'Phosphorus', section: 'nutrition', scoringMode: 'proportional', dailyStatsKey: 'totalPhosphorus', defaultMaxPoints: 100 },
 
-  { key: 'weight_improvement', label: 'Weight Improvement', section: 'progress', scoringMode: 'binary', defaultMaxPoints: 100 },
+  { key: 'weight_improvement', label: 'Weight Improvement', section: 'progress', scoringMode: 'progress', defaultMaxPoints: 100 },
+  { key: 'water_qty', label: 'Water Quantity', section: 'progress', scoringMode: 'proportional', defaultMaxPoints: 100 },
   { key: 'physical_activity', label: 'Physical Activity', section: 'progress', scoringMode: 'proportional', defaultMaxPoints: 100 },
 ]);
 

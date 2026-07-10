@@ -1,5 +1,6 @@
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
+import { filterEducationLogsOnly } from '../domain/education-log.helpers.js';
 
 function parseUserId(userId) {
   const uid = Number.parseInt(String(userId), 10);
@@ -43,7 +44,7 @@ export async function getEducationLogsForDate(userId, date) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('education_logs_table')
-    .select('"CreatedAt", "Topic"')
+    .select('"CreatedAt", "Topic", "Platform"')
     .eq('"UserId"', uid)
     .or('IsDeleted.is.null,IsDeleted.eq.0')
     .gte('CreatedAt', `${date}T00:00:00`)
@@ -52,7 +53,7 @@ export async function getEducationLogsForDate(userId, date) {
     logger.error('[wellness-score.repo] education logs failed', { userId: uid, date, err: error.message });
     return [];
   }
-  return data || [];
+  return filterEducationLogsOnly(data || []);
 }
 
 export async function getWeightRecordsForDate(userId, date) {
