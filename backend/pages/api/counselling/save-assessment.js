@@ -38,24 +38,43 @@ export default async function handler(req, res) {
       eatingHabits,
       sleepData,
       medicationDetails,
+      // Lead fields — name + phone only (for linking to future account).
+      // Diet type and health data come from the counselling form sections
+      // (eating_habits.dietType, health_problems) — no duplication needed.
+      leadName,
+      leadPhone,
     } = req.body;
 
     // Validation
-    if (!userId || !counsellorId) {
+    if (!counsellorId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: userId, counsellorId'
+        message: 'Missing required field: counsellorId'
       });
     }
 
-    // Ensure IDs are integers
-    const userIdInt = parseInt(userId);
-    const counsellorIdInt = parseInt(counsellorId);
-
-    if (isNaN(userIdInt) || isNaN(counsellorIdInt)) {
+    // Either an existing userId OR lead contact details must be provided
+    if (!userId && !leadPhone) {
       return res.status(400).json({
         success: false,
-        message: 'userId and counsellorId must be valid integers'
+        message: 'Either userId (for existing member) or leadPhone (for new lead) is required'
+      });
+    }
+
+    // Ensure IDs are integers (nullable for lead mode)
+    const userIdInt = userId ? parseInt(userId) : null;
+    const counsellorIdInt = parseInt(counsellorId);
+
+    if (userId && isNaN(userIdInt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId must be a valid integer'
+      });
+    }
+    if (isNaN(counsellorIdInt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'counsellorId must be a valid integer'
       });
     }
 
@@ -70,6 +89,7 @@ export default async function handler(req, res) {
       userId: userIdInt,
       counsellorId: counsellorIdInt,
       healthProblemsCount: healthProblems?.length,
+      isLead: !userIdInt,
     });
 
     // Get Supabase client
@@ -86,6 +106,9 @@ export default async function handler(req, res) {
         eating_habits: eatingHabits || null,
         sleep_data: sleepData || null,
         medication_details: medicationDetails || null,
+        // Lead columns — name + phone only for identity linking
+        lead_name: leadName || null,
+        lead_phone: leadPhone || null,
         submitted_at: timestamp,
         created_at: timestamp,
         updated_at: timestamp,

@@ -4,3 +4,4 @@ export { default as HealthProblemSection } from './HealthProblemSection';
 export { default as EatingHabitsSection } from './EatingHabitsSection';
 export { default as SleepQualitySection } from './SleepQualitySection';
 export { default as MedicationSection } from './MedicationSection';
+export { default as LeadDetailsSection } from './LeadDetailsSection';

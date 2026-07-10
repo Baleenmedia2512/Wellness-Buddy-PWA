@@ -14,7 +14,6 @@ import TestimonialsHub from './TestimonialsHub';
 
 export default function TestimonialsPage({ user, userRole, onBack }) {
   const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
-  const [activeTab, setActiveTab] = useState('photos');
 
   const userId = user?.userId ?? user?.id ?? null;
 
@@ -33,8 +32,6 @@ export default function TestimonialsPage({ user, userRole, onBack }) {
         <>
           <CoachTestimonialsPage
             user={user}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
           />
           {userId && (
             <div className="border-t border-gray-200 mt-4">

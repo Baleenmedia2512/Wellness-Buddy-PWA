@@ -2,18 +2,19 @@
  * TestimonialsHub.jsx
  * Unified single-page transformation hub for members.
  *
- * Four distinct upload slots on one page:
+ * Five distinct upload slots on one page:
  *   1. Before Photo  (with weight / goal / duration metadata)
  *   2. After Photo   (available once before photo is saved)
  *   3. Health Results Video  (max 1 min)
  *   4. Business Results Video  (max 2 min)
+ *   5. Recovered Health Issues  (searchable multi-select)
  *
- * Overall status bar classifies the member's upload completeness:
- *   Not Uploaded → Partial Upload → Awaiting Approval → All Uploaded / Fully Verified
+ * Overall status bar classifies the member's upload completeness across all 5 slots:
+ *   Not Uploaded → Partial Upload → Awaiting Approval → Fully Uploaded / Verified
  *
  * Users may upload any slot independently or fill multiple slots then submit each section.
  */
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Camera,
   Images,
@@ -31,16 +32,19 @@ import {
   ChevronDown,
   ChevronUp,
   Star,
+  HeartPulse,
+  Save,
 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { useTestimonial } from '../hooks/useTestimonial.js';
 import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
-import { verifyTestimonialOtp, verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
+import { verifyTestimonialOtp, verifyTestimonialVideoOtp, editTestimonial } from '../services/testimonialApi.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
   sanitizeDurationDigits,
 } from '../services/testimonialFormUtils.js';
+import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -92,7 +96,13 @@ function computeSlotStatuses(existing, existingVideo) {
     : existingVideo.videoStatus === 'verified'         ? 'verified'
     : /* pending */                                      'pending';
 
-  return { beforePhoto, afterPhoto, healthVideo, businessVideo };
+  const issues = existing?.recoveredHealthIssues ?? [];
+  const healthIssues =
+    !existing                                  ? 'none'
+    : Array.isArray(issues) && issues.length > 0 ? 'uploaded'
+    :                                              'none';
+
+  return { beforePhoto, afterPhoto, healthVideo, businessVideo, healthIssues };
 }
 
 // ── Overall status bar ────────────────────────────────────────────────────────
@@ -102,14 +112,14 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
   const uploaded  = values.filter((s) => s !== 'none' && s !== 'locked').length;
   const pending   = values.filter((s) => s === 'pending').length;
   const verified  = values.filter((s) => s === 'verified').length;
-  const total     = 4;
+  const total     = 5;
 
   let label, barPct;
   if (uploaded === 0) {
     label  = 'Upload any item below to start your transformation';
     barPct = 0;
   } else if (verified === total) {
-    label  = 'Fully Verified — all 4 items approved by your coach';
+    label  = 'Fully Verified — all 5 items approved by your coach';
     barPct = 100;
   } else if (uploaded === total && pending > 0) {
     label  = `All ${total} items uploaded · ${pending} awaiting coach approval`;
@@ -128,7 +138,7 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
     : uploaded > 0      ? 'bg-blue-500'
     : 'bg-gray-200';
 
-  // Dot colours per slot (order: before, after, health, business)
+  // Dot colours per slot
   const dotColor = (s) =>
     s === 'verified' ? 'bg-green-500 shadow-sm shadow-green-200'
     : s === 'pending' ? 'bg-amber-400'
@@ -157,16 +167,17 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
       </div>
 
       {/* Slot dots legend */}
-      <div className="grid grid-cols-4 gap-2 text-center">
+      <div className="grid grid-cols-5 gap-1.5 text-center">
         {[
           { label: 'Before',   key: 'beforePhoto' },
           { label: 'After',    key: 'afterPhoto' },
           { label: 'Health',   key: 'healthVideo' },
           { label: 'Business', key: 'businessVideo' },
+          { label: 'Issues',   key: 'healthIssues' },
         ].map(({ label: l, key }) => (
           <div key={key} className="space-y-1">
             <div className={`h-2 w-full rounded-full ${dotColor(slots[key])}`} />
-            <p className="text-[10px] text-gray-400 font-medium">{l}</p>
+            <p className="text-[9px] text-gray-400 font-medium leading-tight">{l}</p>
           </div>
         ))}
       </div>
@@ -658,6 +669,20 @@ export default function TestimonialsHub({ userId }) {
     startEdit: startVideoEdit, cancelEdit: cancelVideoEdit,
   } = useTestimonialVideo({ userId });
 
+  // ── Health issues slot state ────────────────────────────────────────────────
+  const [healthIssues,         setHealthIssues]         = useState([]);
+  const [healthIssuesExpanded, setHealthIssuesExpanded] = useState(false);
+  const [healthIssuesSaving,   setHealthIssuesSaving]   = useState(false);
+  const [healthIssuesError,    setHealthIssuesError]    = useState(null);
+  const [healthIssuesSuccess,  setHealthIssuesSuccess]  = useState(null);
+
+  // Sync health issues from existing testimonial
+  useEffect(() => {
+    if (existing && Array.isArray(existing.recoveredHealthIssues)) {
+      setHealthIssues(existing.recoveredHealthIssues);
+    }
+  }, [existing]);
+
   // ── Which slot is expanded ──────────────────────────────────────────────────
   const [expandedSlot, setExpandedSlot] = useState(null);
 
@@ -719,6 +744,23 @@ export default function TestimonialsHub({ userId }) {
   const handlePhotoOtpVerified = useCallback(() => {
     reload();
   }, [reload]);
+
+  const handleHealthIssuesSave = useCallback(async () => {
+    if (!userId) return;
+    setHealthIssuesError(null);
+    setHealthIssuesSuccess(null);
+    setHealthIssuesSaving(true);
+    try {
+      await editTestimonial({ userId, recoveredHealthIssues: healthIssues });
+      setHealthIssuesSuccess('Health issues saved successfully.');
+      setHealthIssuesExpanded(false);
+      reload();
+    } catch (err) {
+      setHealthIssuesError(err.message || 'Failed to save health issues.');
+    } finally {
+      setHealthIssuesSaving(false);
+    }
+  }, [userId, healthIssues, reload]);
 
   // ── Loading guard (after all hooks) ────────────────────────────────────────
   if (existing === undefined || existingVideo === undefined) {
@@ -1009,6 +1051,83 @@ export default function TestimonialsHub({ userId }) {
         )}
       </div>
 
+      {/* ══════════════════ HEALTH ISSUES SECTION ═════════════════════════════ */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1 pt-2">
+          <HeartPulse className="h-4 w-4 text-gray-400" />
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
+          <span className="text-[10px] text-gray-400 font-normal ml-auto">Optional</span>
+        </div>
+
+        <SlotCard
+          icon={HeartPulse}
+          iconBg="bg-rose-50"
+          iconColor="text-rose-500"
+          title="Health Issues Recovered"
+          subtitle={
+            healthIssuesExpanded
+              ? null
+              : (healthIssues.length > 0
+                  ? healthIssues.slice(0, 3).join(' · ') + (healthIssues.length > 3 ? ` +${healthIssues.length - 3} more` : '')
+                  : 'Which health issues did you recover from?')
+          }
+          status={slots.healthIssues}
+          isExpanded={healthIssuesExpanded}
+          disabled={!existing}
+          onToggle={() => {
+            if (!existing) return;
+            setHealthIssuesExpanded((prev) => !prev);
+            setHealthIssuesError(null);
+            setHealthIssuesSuccess(null);
+          }}
+        >
+          <div className="px-4 pb-5 pt-4 space-y-4">
+            {!existing && (
+              <p className="text-xs text-gray-400 italic">Upload your before photo first to add health issues.</p>
+            )}
+            {existing && (
+              <>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Share which health conditions you recovered from on your wellness journey. This is searchable and helps inspire others.
+                </p>
+                <DiseaseMultiSelect
+                  value={healthIssues}
+                  onChange={setHealthIssues}
+                  disabled={healthIssuesSaving}
+                />
+                {healthIssuesError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
+                    {healthIssuesError}
+                  </div>
+                )}
+                {healthIssuesSuccess && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2.5 text-xs text-green-800 font-medium flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5" /> {healthIssuesSuccess}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <TouchFeedbackButton
+                    onClick={() => { setHealthIssuesExpanded(false); setHealthIssuesError(null); setHealthIssuesSuccess(null); }}
+                    disabled={healthIssuesSaving}
+                    className="flex-1 py-3 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold"
+                  >
+                    Cancel
+                  </TouchFeedbackButton>
+                  <TouchFeedbackButton
+                    onClick={handleHealthIssuesSave}
+                    disabled={healthIssuesSaving}
+                    className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {healthIssuesSaving ? 'Saving…' : 'Save Issues'}
+                  </TouchFeedbackButton>
+                </div>
+              </>
+            )}
+          </div>
+        </SlotCard>
+      </div>
+
       {/* ── How it works (first-time hint) ─────────────────────────────────── */}
       {!existing && !existingVideo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 space-y-2">
@@ -1018,6 +1137,7 @@ export default function TestimonialsHub({ userId }) {
             <li>When you have results, tap <strong>After Photo</strong> — your coach gets an OTP by email.</li>
             <li>Ask your coach for the OTP and enter it here to get officially verified.</li>
             <li>Optionally upload <strong>Health</strong> or <strong>Business</strong> result videos — same OTP flow.</li>
+            <li>Add any <strong>Health Issues</strong> you recovered from to complete your story.</li>
             <li>You can upload any item independently, in any order, at any time.</li>
           </ol>
         </div>

@@ -1,24 +1,33 @@
-/**
+﻿/**
  * CoachTestimonialsPage.jsx
- * Coach's read-only view of all direct-downline testimonials.
- * - Members with no testimonial are highlighted in red.
- * - Members with a pending testimonial show an amber badge + reminder to share the OTP.
- * - Members with a verified testimonial show a green badge + before/after photos.
- * OTP is entered by the MEMBER (not coach) after the coach shares it via WhatsApp/phone.
+ * World-class unified testimonials management for coaches.
+ *
+ * Unified per-member card shows ALL 5 slots:
+ *   â€¢ Before photo Â· After photo Â· Health video Â· Business video Â· Recovered health issues
+ *
+ * Three upload-completeness filters (no photo/video split):
+ *   âœ… Fully Uploaded | ðŸ”¶ Partial Upload | â¬œ Not Uploaded
+ *
+ * Team scope: Mine | Direct | Full  (unchanged)
+ * Search bar (unchanged)
+ *
+ * Video playback: Instagram-style tap-to-play inline modal.
  */
-import React, { useEffect, useCallback, useState, useMemo } from 'react';
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
+import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
+import {
+  AlertCircle, ArrowLeft, CheckCircle, Clock, RefreshCw, Users, Video,
+  Play, X, HeartPulse, Maximize2,
+} from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport, getTeamTestimonialReport } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial, getTeamTestimonialReport } from '../services/testimonialApi.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import {
-  STATUS_FILTERS,
+  UPLOAD_FILTERS,
   TEAM_SCOPES,
-  filterRowsByStatus,
-  filterVideoRowsByStatus,
-  countRowsByStatus,
-  countVideoRowsByStatus,
+  computeMemberCompleteness,
+  filterRowsByUpload,
+  countRowsByUpload,
   countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
@@ -30,48 +39,32 @@ import {
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 const TEAM_SCOPE_OPTIONS = [
-  { value: TEAM_SCOPES.MINE, label: 'Mine', short: 'Mine' },
+  { value: TEAM_SCOPES.MINE,   label: 'Mine',        short: 'Mine'   },
   { value: TEAM_SCOPES.DIRECT, label: 'Direct Team', short: 'Direct' },
-  { value: TEAM_SCOPES.FULL, label: 'Full Team', short: 'Full' },
+  { value: TEAM_SCOPES.FULL,   label: 'Full Team',   short: 'Full'   },
 ];
 
-const STATUS_CHIP_STYLES = {
-  [STATUS_FILTERS.VERIFIED]: {
-    base: 'bg-green-100 text-green-800',
+const UPLOAD_CHIP_STYLES = {
+  [UPLOAD_FILTERS.FULLY_UPLOADED]: {
+    base:   'bg-green-100 text-green-800',
     active: 'bg-green-600 text-white shadow-sm ring-2 ring-green-300',
   },
-  [STATUS_FILTERS.PENDING]: {
-    base: 'bg-amber-100 text-amber-800',
+  [UPLOAD_FILTERS.PARTIAL]: {
+    base:   'bg-amber-100 text-amber-800',
     active: 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300',
   },
-  [STATUS_FILTERS.MISSING]: {
-    base: 'bg-red-100 text-red-800',
-    active: 'bg-red-600 text-white shadow-sm ring-2 ring-red-300',
+  [UPLOAD_FILTERS.NOT_UPLOADED]: {
+    base:   'bg-gray-100 text-gray-600',
+    active: 'bg-gray-700 text-white shadow-sm ring-2 ring-gray-400',
   },
 };
 
-function formatPercentage(value) {
-  return Number(value ?? 0).toFixed(1);
-}
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function formatTeamComplianceLabel(teamStats) {
-  const total = teamStats.totalMembers ?? 0;
-  const uploaded = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
-  return `${formatPercentage(teamStats.uploadPercentage)}% (${uploaded}/${total})`;
-}
-
-function getUploadCounts(teamStats) {
-  const total = teamStats.totalMembers ?? 0;
-  const uploaded = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
-  const notUploaded =
-    teamStats.notUploaded ?? teamStats.notUploadedMembers?.length ?? Math.max(total - uploaded, 0);
-  return { total, uploaded, notUploaded };
-}
-
-function formatUploadScoreLabel(percentage, count, total) {
-  return `${formatPercentage(percentage)}% (${count}/${total})`;
-}
+function formatPercentage(value) { return Number(value ?? 0).toFixed(1); }
 
 function teamComplianceColorClass(scoreNum) {
   if (scoreNum >= 80) return 'text-green-700';
@@ -79,175 +72,222 @@ function teamComplianceColorClass(scoreNum) {
   return 'text-red-700';
 }
 
+// â”€â”€ Instagram-style Video Player Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function VideoPlayerModal({ url, title, onClose }) {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    videoRef.current?.play().catch(() => {/* autoplay blocked */});
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] bg-black flex flex-col"
+      role="dialog"
+      aria-label={`Playing ${title}`}
+      onClick={onClose}
+    >
+      <div
+        className="flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-white text-sm font-semibold truncate flex-1">{title}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-3 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+          aria-label="Close video"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div
+        className="flex-1 flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          ref={videoRef}
+          src={url}
+          controls
+          playsInline
+          autoPlay
+          className="max-h-full max-w-full object-contain rounded-xl"
+          style={{ maxHeight: 'calc(100vh - 120px)' }}
+        />
+      </div>
+      <div className="pb-[max(1.5rem,env(safe-area-inset-bottom))]" />
+    </div>
+  );
+}
+
+// â”€â”€ Video play button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function VideoThumbnailBtn({ url, label, iconColor = 'text-green-600' }) {
+  const [playing, setPlaying] = useState(false);
+
+  if (!url) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-full text-[11px] text-gray-400 font-medium">
+        <Video className="h-3 w-3" /> {label} â€“ not uploaded
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPlaying(true)}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white border border-gray-200 text-[11px] font-semibold shadow-sm hover:shadow transition-all active:scale-95 ${iconColor} hover:border-green-300`}
+      >
+        <Play className="h-3 w-3 fill-current" /> {label}
+      </button>
+      {playing && <VideoPlayerModal url={url} title={label} onClose={() => setPlaying(false)} />}
+    </>
+  );
+}
+
+// â”€â”€ Upload completeness badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function CompletenessBadge({ level, filledCount, totalSlots }) {
+  const cfg =
+    level === UPLOAD_FILTERS.FULLY_UPLOADED
+      ? { label: `âœ… Fully Uploaded (${filledCount}/${totalSlots})`, cls: 'bg-green-100 text-green-800 border-green-200' }
+      : level === UPLOAD_FILTERS.PARTIAL
+      ? { label: `ðŸ”¶ Partial (${filledCount}/${totalSlots})`,        cls: 'bg-amber-100 text-amber-800 border-amber-200' }
+      : { label: `â¬œ Not Uploaded`,                                   cls: 'bg-gray-100 text-gray-500 border-gray-200'   };
+
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+// â”€â”€ Team compliance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
   if (!teamStats?.totalMembers) {
     return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
   }
-
-  const scoreNum = Number(teamStats.uploadPercentage ?? 0);
+  const scoreNum   = Number(teamStats.uploadPercentage ?? 0);
   const colorClass = teamComplianceColorClass(scoreNum);
-
+  const uploaded   = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
   return (
-    <p className="text-sm font-medium flex items-baseline gap-2 min-w-0">
+    <p className="text-sm font-medium flex items-baseline gap-2 min-w-0 flex-wrap">
       <span className="font-semibold text-gray-900 truncate">{userName}</span>
       <button
         type="button"
         onClick={onComplianceClick}
         className={`text-[11px] whitespace-nowrap flex-shrink-0 cursor-pointer underline-offset-2 hover:underline ${colorClass}`}
       >
-        Team Compliance: {formatTeamComplianceLabel(teamStats)}
+        Team {formatPercentage(teamStats.uploadPercentage)}% ({uploaded}/{teamStats.totalMembers})
       </button>
     </p>
   );
 }
 
 function TeamComplianceModal({ userName, teamStats, onClose }) {
-  const scoreColor = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
+  const scoreColor  = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
+  const uploaded    = teamStats.uploaded    ?? teamStats.uploadedMembers?.length ?? 0;
+  const total       = teamStats.totalMembers ?? 0;
+  const notUploaded = total - uploaded;
 
   return (
-    <div
-      className="fixed inset-0 z-[70] ios-full-page bg-gray-50"
-      role="dialog"
-      aria-labelledby="team-compliance-title"
-    >
+    <div className="fixed inset-0 z-[70] ios-full-page bg-gray-50" role="dialog" aria-labelledby="tc-title">
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-3">
-          <TouchFeedbackButton
-            onClick={onClose}
-            className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900"
-            ariaLabel="Back"
-          >
+          <TouchFeedbackButton onClick={onClose} className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900" ariaLabel="Back">
             <ArrowLeft className="h-5 w-5" />
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
-            <h2 id="team-compliance-title" className="text-base font-bold text-gray-800 truncate">
-              Team Compliance
-            </h2>
+            <h2 id="tc-title" className="text-base font-bold text-gray-800 truncate">Team Compliance</h2>
             <p className="text-xs text-gray-500 truncate">{userName}</p>
           </div>
         </div>
       </header>
-
-      <div className="ios-scroll-body px-4 py-4 space-y-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <p className={`text-2xl font-bold ${scoreColor}`}>
-            {formatTeamComplianceLabel(teamStats)}
-          </p>
-          <p className="text-sm text-gray-500 mt-1">Overall team upload rate</p>
+      <div className="ios-scroll-body px-4 py-4 space-y-3">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-1">
+          <p className={`text-2xl font-bold ${scoreColor}`}>{formatPercentage(teamStats.uploadPercentage)}%</p>
+          <p className="text-sm text-gray-500">Team upload rate Â· {uploaded}/{total} members</p>
         </div>
-
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <UploadScoreLine teamStats={teamStats} fullPage />
-        </div>
+        {(teamStats.uploadedMembers?.length > 0) && (
+          <div className="bg-white rounded-2xl border border-green-200 p-3">
+            <p className="text-xs font-bold text-green-800 mb-2">Uploaded ({uploaded})</p>
+            <ul className="space-y-0.5">
+              {teamStats.uploadedMembers.map((m) => (
+                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">{m.userName}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {(teamStats.notUploadedMembers?.length > 0) && (
+          <div className="bg-white rounded-2xl border border-red-200 p-3">
+            <p className="text-xs font-bold text-red-800 mb-2">Not Uploaded ({notUploaded})</p>
+            <ul className="space-y-0.5">
+              {teamStats.notUploadedMembers.map((m) => (
+                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">{m.userName}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function TeamComplianceSection({ userName, teamStats }) {
-  const [modalOpen, setModalOpen] = useState(false);
-
+  const [open, setOpen] = useState(false);
   return (
     <>
-      <TeamComplianceInline
-        userName={userName}
-        teamStats={teamStats}
-        onComplianceClick={() => setModalOpen(true)}
-      />
-      {modalOpen && teamStats?.totalMembers && (
-        <TeamComplianceModal
-          userName={userName}
-          teamStats={teamStats}
-          onClose={() => setModalOpen(false)}
-        />
+      <TeamComplianceInline userName={userName} teamStats={teamStats} onComplianceClick={() => setOpen(true)} />
+      {open && teamStats?.totalMembers && (
+        <TeamComplianceModal userName={userName} teamStats={teamStats} onClose={() => setOpen(false)} />
       )}
     </>
   );
 }
 
-function UploadMemberList({ members, variant, fullPage = false }) {
-  if (!members?.length) {
-    return (
-      <p className={`text-gray-400 mt-3 italic ${fullPage ? 'text-sm' : 'text-[11px] mt-1.5'}`}>
-        {variant === 'uploaded' ? 'No uploaded members.' : 'No members without upload.'}
-      </p>
-    );
-  }
+// â”€â”€ Photo viewer modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function PhotoModal({ url, label, onClose }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
 
   return (
-    <ul
-      className={`mt-3 rounded-xl border px-3 py-2 space-y-1 ${
-        fullPage ? 'text-sm' : 'text-[11px] mt-1.5 max-h-36 overflow-y-auto'
-      } ${
-        variant === 'uploaded'
-          ? 'border-green-200 bg-green-50'
-          : 'border-red-200 bg-red-50'
-      }`}
+    <div
+      className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center"
+      onClick={onClose}
     >
-      {members.map((m) => (
-        <li
-          key={m.userId}
-          className={`font-medium truncate ${
-            variant === 'uploaded' ? 'text-green-800' : 'text-red-800'
-          }`}
-        >
-          {m.userName}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function UploadScoreLine({ teamStats, fullPage = false }) {
-  const [expanded, setExpanded] = useState('uploaded');
-
-  if (!teamStats?.totalMembers) return null;
-
-  const { total, uploaded, notUploaded } = getUploadCounts(teamStats);
-  const toggle = (key) => setExpanded((prev) => (prev === key ? null : key));
-  const uploadedActive = expanded === 'uploaded';
-  const notUploadedActive = expanded === 'notUploaded';
-  const textSize = fullPage ? 'text-sm' : 'text-xs';
-
-  return (
-    <div className={fullPage ? '' : 'mt-1'}>
-      <p className={`${textSize} font-medium flex flex-nowrap items-center gap-x-1.5 overflow-x-auto whitespace-nowrap`}>
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <img src={url} alt={label} className="max-h-[85vh] max-w-[95vw] object-contain rounded-xl" />
         <button
           type="button"
-          onClick={() => toggle('uploaded')}
-          aria-expanded={uploadedActive}
-          className={`font-semibold shrink-0 cursor-pointer underline-offset-2 hover:underline ${
-            uploadedActive ? 'text-green-800 underline' : 'text-green-600'
-          }`}
+          onClick={onClose}
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70"
+          aria-label="Close"
         >
-          Uploaded {formatUploadScoreLabel(teamStats.uploadPercentage, uploaded, total)}
+          <X className="h-4 w-4" />
         </button>
-        <span className="text-gray-300 shrink-0">|</span>
-        <button
-          type="button"
-          onClick={() => toggle('notUploaded')}
-          aria-expanded={notUploadedActive}
-          className={`font-semibold shrink-0 cursor-pointer underline-offset-2 hover:underline ${
-            notUploadedActive ? 'text-red-800 underline' : 'text-red-600'
-          }`}
-        >
-          Not Upload {formatUploadScoreLabel(teamStats.notUploadPercentage, notUploaded, total)}
-        </button>
-      </p>
-      {uploadedActive && (
-        <UploadMemberList members={teamStats.uploadedMembers} variant="uploaded" fullPage={fullPage} />
-      )}
-      {notUploadedActive && (
-        <UploadMemberList members={teamStats.notUploadedMembers} variant="notUploaded" fullPage={fullPage} />
-      )}
+        <p className="text-center text-white text-xs font-semibold mt-2 px-2">{label}</p>
+      </div>
     </div>
   );
 }
 
-function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
-  const isActive = activeFilter === filterKey;
-  const styles = STATUS_CHIP_STYLES[filterKey];
+// â”€â”€ Upload completeness filter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+function UploadFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
+  const isActive = activeFilter === filterKey;
+  const styles   = UPLOAD_CHIP_STYLES[filterKey];
   return (
     <button
       type="button"
@@ -262,225 +302,224 @@ function StatusFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
   );
 }
 
-const VIDEO_STATUS_LABELS = {
-  none:     { label: 'Not Uploaded', icon: AlertCircle, color: 'text-red-600',   bg: 'border-red-300 bg-red-50' },
-  pending:  { label: 'Pending Verification', icon: Clock, color: 'text-amber-700', bg: 'border-amber-300 bg-amber-50' },
-  verified: { label: 'Verified', icon: CheckCircle,  color: 'text-green-700', bg: 'border-green-300 bg-white' },
-};
+// â”€â”€ Per-member unified card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, videoVerifiedAt, teamStats }) {
-  const cfg   = VIDEO_STATUS_LABELS[videoStatus] || VIDEO_STATUS_LABELS.none;
-  const Icon  = cfg.icon;
+function MemberCard({ row, teamStats }) {
+  const { user, testimonial } = row;
+  const { level, filledCount, totalSlots } = computeMemberCompleteness(row);
+
+  const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
+  const diff      = testimonial ? Math.abs((testimonial.afterWeightKg ?? 0) - (testimonial.beforeWeightKg ?? 0)).toFixed(1) : null;
+  const goalArrow = testimonial?.goalType === 'loss' ? 'â†“' : 'â†‘';
+  const issues    = testimonial?.recoveredHealthIssues ?? [];
+
+  const borderCls =
+    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'border-green-300'
+    : level === UPLOAD_FILTERS.PARTIAL      ? 'border-amber-300'
+    :                                          'border-gray-200';
+
+  const bgCls =
+    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'bg-green-50/30'
+    : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-amber-50/30'
+    :                                          'bg-white';
 
   return (
-    <div className={`rounded-2xl border-2 p-4 space-y-2 transition-colors ${cfg.bg}`}>
-      <div className="flex items-center gap-3">
+    <div className={`rounded-2xl border-2 ${borderCls} ${bgCls} p-4 space-y-3 shadow-sm`}>
+
+      {/* Header */}
+      <div className="flex items-start gap-3">
         {user.profileImage ? (
-          <img src={user.profileImage} alt={user.userName} className="h-10 w-10 rounded-full object-cover border border-gray-200" loading="lazy" />
+          <img src={user.profileImage} alt={user.userName}
+            className="h-10 w-10 rounded-full object-cover border border-gray-200 flex-shrink-0" loading="lazy" />
         ) : (
-          <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center text-green-800 font-bold text-sm">
+          <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center text-green-800 font-bold text-sm flex-shrink-0">
             {(user.userName || '?').charAt(0).toUpperCase()}
           </div>
         )}
         <div className="flex-1 min-w-0">
           <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-0.5 ${cfg.color}`}>
-            <Icon className="h-3 w-3" /> {cfg.label}
-          </span>
-        </div>
-      </div>
-
-      {videoStatus !== 'none' && (
-        <div className="flex gap-2 flex-wrap text-xs">
-          {hasHealthVideo && (
-            <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              <Video className="h-3 w-3 text-green-600" /> Health Results
-            </span>
-          )}
-          {hasBusinessVideo && (
-            <span className="flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              <Video className="h-3 w-3 text-blue-600" /> Business Results
-            </span>
-          )}
-          {!hasHealthVideo && (
-            <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
-              No health video
-            </span>
-          )}
-          {!hasBusinessVideo && (
-            <span className="bg-gray-100 rounded-full px-2.5 py-1 text-gray-400 font-medium">
-              No business video
-            </span>
-          )}
-        </div>
-      )}
-
-      {videoStatus === 'pending' && (
-        <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center">
-          OTP sent to your email — share it with {user.userName} to verify
-        </p>
-      )}
-
-      {videoStatus === 'verified' && videoVerifiedAt && (
-        <p className="text-xs text-green-600 font-medium">
-          Verified {new Date(videoVerifiedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function MemberRow({ user, testimonial, teamStats }) {
-  const missing  = !testimonial;
-  const pending  = testimonial?.status === 'pending';
-  const verified = testimonial?.status === 'verified';
-
-  const diff = testimonial
-    ? Math.abs(testimonial.afterWeightKg - testimonial.beforeWeightKg).toFixed(1)
-    : null;
-  const arrow     = testimonial?.goalType === 'loss' ? '↓' : '↑';
-  const goalLabel = testimonial?.goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
-
-  return (
-    <div
-      className={`rounded-2xl border-2 p-4 space-y-3 transition-colors ${
-        missing
-          ? 'border-red-300 bg-red-50'
-          : pending
-            ? 'border-amber-300 bg-amber-50'
-            : 'border-green-300 bg-white'
-      }`}
-    >
-      {/* Member header */}
-      <div className="flex items-center gap-3">
-        {user.profileImage ? (
-          <img
-            src={user.profileImage}
-            alt={user.userName}
-            className="h-10 w-10 rounded-full object-cover border border-gray-200"
-            loading="lazy"
-          />
-        ) : (
-          <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center text-green-800 font-bold text-sm">
-            {(user.userName || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
-          <div className="mt-0.5">
-            {missing && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
-                <AlertCircle className="h-3 w-3" /> Not Uploaded
-              </span>
-            )}
-            {pending && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
-                <Clock className="h-3 w-3" /> Awaiting Approval
-              </span>
-            )}
-            {verified && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-green-700">
-                <CheckCircle className="h-3 w-3" /> Verified
-              </span>
-            )}
+          <div className="mt-1">
+            <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
         </div>
       </div>
 
-      {/* Testimonial details */}
-      {testimonial && (
-        <>
-          {/* Photos */}
-          {(testimonial.beforeImageUrl || testimonial.afterImageUrl) && (
-            <div className="flex gap-2">
-              {testimonial.beforeImageUrl && (
-                <div className="flex-1 text-center">
-                  <img
-                    src={testimonial.beforeImageUrl}
-                    alt="Before"
-                    className={PORTRAIT_IMAGE_CLASS_SM}
-                    loading="lazy"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1 font-semibold">BEFORE</p>
-                </div>
-              )}
-              {testimonial.afterImageUrl && (
-                <div className="flex-1 text-center">
-                  <img
-                    src={testimonial.afterImageUrl}
-                    alt="After"
-                    className={PORTRAIT_IMAGE_CLASS_SM}
-                    loading="lazy"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1 font-semibold">AFTER</p>
-                </div>
-              )}
+      {/* Photos */}
+      {testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)) && (
+        <div className="flex gap-2">
+          {testimonial.beforeImageUrl && (
+            <div className="flex-1 text-center">
+              <button
+                type="button"
+                onClick={() => setExpandedPhoto({ url: testimonial.beforeImageUrl, label: `${user.userName} â€” Before (${testimonial.beforeWeightKg} kg)` })}
+                className="w-full group relative"
+              >
+                <img
+                  src={testimonial.beforeImageUrl}
+                  alt="Before"
+                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full group-hover:brightness-90 transition-all cursor-zoom-in`}
+                  loading="lazy"
+                />
+                <span className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Maximize2 className="h-3 w-3" />
+                </span>
+              </button>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">BEFORE</p>
+                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.beforeWeightKg} kg</p>
+              </div>
             </div>
           )}
-
-          {/* Stats */}
-          <div className="flex gap-2 flex-wrap text-xs">
-            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              Before: {testimonial.beforeWeightKg} kg
-            </span>
-            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              After: {testimonial.afterWeightKg} kg
-            </span>
-            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-green-700 font-semibold">
-              {arrow} {diff} kg
-            </span>
-            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              {goalLabel}
-            </span>
-            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-              ⏱ {testimonial.durationText}
-            </span>
-          </div>
-
-          {pending && (
-            <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center">
-              📧 OTP sent to your email — share it with {user.userName} to verify
-            </p>
+          {hasAfter && testimonial.afterImageUrl && (
+            <div className="flex-1 text-center">
+              <button
+                type="button"
+                onClick={() => setExpandedPhoto({ url: testimonial.afterImageUrl, label: `${user.userName} â€” After (${testimonial.afterWeightKg} kg)` })}
+                className="w-full group relative"
+              >
+                <img
+                  src={testimonial.afterImageUrl}
+                  alt="After"
+                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full group-hover:brightness-90 transition-all cursor-zoom-in`}
+                  loading="lazy"
+                />
+                <span className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Maximize2 className="h-3 w-3" />
+                </span>
+              </button>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">AFTER</p>
+                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.afterWeightKg} kg</p>
+              </div>
+            </div>
           )}
-
-          {verified && testimonial.verifiedAt && (
-            <p className="text-xs text-green-600 font-medium">
-              ✅ Verified {new Date(testimonial.verifiedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </p>
-          )}
-        </>
+        </div>
       )}
 
+      {/* Stats chips */}
+      {testimonial && (
+        <div className="flex gap-1.5 flex-wrap">
+          {testimonial.goalType && (
+            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              {testimonial.goalType === 'loss' ? 'â¬‡ï¸ Loss' : 'â¬†ï¸ Gain'}
+            </span>
+          )}
+          {testimonial.beforeWeightKg && (
+            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              {testimonial.beforeWeightKg} â†’ {hasAfter ? testimonial.afterWeightKg : '?'} kg
+            </span>
+          )}
+          {diff && hasAfter && (
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold border ${testimonial.goalType === 'loss' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
+              {goalArrow} {diff} kg
+            </span>
+          )}
+          {testimonial.durationText && (
+            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              â± {testimonial.durationText}
+            </span>
+          )}
+          {testimonial.status === 'verified' && (
+            <span className="bg-green-100 border border-green-200 rounded-full px-2 py-0.5 text-[11px] text-green-800 font-bold flex items-center gap-0.5">
+              <CheckCircle className="h-2.5 w-2.5" /> Photo Verified
+            </span>
+          )}
+          {testimonial.status === 'pending' && (
+            <span className="bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5 text-[11px] text-amber-800 font-bold flex items-center gap-0.5">
+              <Clock className="h-2.5 w-2.5" /> Awaiting OTP
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Videos */}
+      {testimonial && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+            <Video className="h-3 w-3" /> Result Videos
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <VideoThumbnailBtn
+              url={testimonial.healthVideoUrl ?? null}
+              label="Health Results"
+              iconColor="text-green-600"
+            />
+            <VideoThumbnailBtn
+              url={testimonial.businessVideoUrl ?? null}
+              label="Business Results"
+              iconColor="text-blue-600"
+            />
+          </div>
+          {testimonial.videoStatus === 'verified' && (
+            <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+              <CheckCircle className="h-3 w-3" /> Videos verified
+            </p>
+          )}
+          {testimonial.videoStatus === 'pending' && (
+            <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+              <Clock className="h-3 w-3" /> Videos pending â€” share OTP with {user.userName}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Recovered health issues */}
+      {testimonial && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+            <HeartPulse className="h-3 w-3" /> Recovered Health Issues
+          </p>
+          {issues.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {issues.map((issue) => (
+                <span key={issue} className="inline-flex items-center px-2 py-0.5 bg-rose-50 border border-rose-200 rounded-full text-[11px] font-medium text-rose-800">
+                  {issue}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400 italic">Not added yet</p>
+          )}
+        </div>
+      )}
+
+      {/* OTP hint */}
+      {testimonial?.status === 'pending' && (
+        <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center">
+          ðŸ“§ OTP sent to your email â€” share it with {user.userName} to verify
+        </p>
+      )}
+
+      {/* No testimonial */}
+      {!testimonial && (
+        <div className="flex items-center gap-2 py-1">
+          <AlertCircle className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          <p className="text-xs text-gray-500 italic">No testimonial uploaded yet</p>
+        </div>
+      )}
+
+      {expandedPhoto && (
+        <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
+      )}
     </div>
   );
 }
 
-export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, onTabChange }) {
-  const [activeTabInternal, setActiveTabInternal] = useState('photos');
-  const activeTab = activeTabProp ?? activeTabInternal;
-  const setActiveTab = onTabChange ?? setActiveTabInternal;
 
-  const [directRows, setDirectRows] = useState([]);
-  const [fullRows, setFullRows] = useState([]);
-  const [mineRow, setMineRow] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.ALL);
-  const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+export default function CoachTestimonialsPage({ user }) {
+  const [directRows, setDirectRows]   = useState([]);
+  const [fullRows,   setFullRows]     = useState([]);
+  const [mineRow,    setMineRow]      = useState(null);
+  const [loading,    setLoading]      = useState(true);
+  const [error,      setError]        = useState(null);
+
+  const [uploadFilter,          setUploadFilter]          = useState(UPLOAD_FILTERS.ALL);
+  const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.DIRECT);
+  const [searchQuery,           setSearchQuery]           = useState('');
+  const [isSearchOpen,          setIsSearchOpen]          = useState(false);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
-  // Video report state
-  const [videoDirectRows, setVideoDirectRows] = useState([]);
-  const [videoFullRows,   setVideoFullRows]   = useState([]);
-  const [mineVideoRow,    setMineVideoRow]    = useState(null);
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [videoScope,   setVideoScope]   = useState(TEAM_SCOPES.DIRECT);
-  const [videoError,   setVideoError]   = useState(null);
-  const [videoStatusFilter, setVideoStatusFilter] = useState(STATUS_FILTERS.ALL);
-
-  // Team upload percentage summary (photo + video, direct + full)
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
 
   const coachId = user?.userId || user?.id;
@@ -491,52 +530,22 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       const testimonial = await getMyTestimonial(coachId);
       return {
         user: {
-          userId: coachId,
-          userName: user?.userName || user?.displayName || user?.name || 'You',
+          userId:       coachId,
+          userName:     user?.userName || user?.displayName || user?.name || 'You',
           profileImage: user?.profileImage || user?.photoURL || null,
-          phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+          phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
         },
         testimonial: testimonial || null,
       };
     } catch {
       return {
         user: {
-          userId: coachId,
-          userName: user?.userName || user?.displayName || user?.name || 'You',
+          userId:       coachId,
+          userName:     user?.userName || user?.displayName || user?.name || 'You',
           profileImage: user?.profileImage || user?.photoURL || null,
-          phoneNumber: user?.phoneNumber || user?.PhoneNumber || null,
+          phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
         },
         testimonial: null,
-      };
-    }
-  }, [coachId, user]);
-
-  const buildMineVideoRow = useCallback(async () => {
-    if (!coachId) return null;
-    try {
-      const video = await getMyVideoTestimonial(coachId);
-      return {
-        user: {
-          userId: coachId,
-          userName: user?.userName || user?.displayName || user?.name || 'You',
-          profileImage: user?.profileImage || user?.photoURL || null,
-        },
-        videoStatus:      video?.videoStatus      ?? 'none',
-        hasHealthVideo:   video?.hasHealthVideo   ?? false,
-        hasBusinessVideo: video?.hasBusinessVideo ?? false,
-        videoVerifiedAt:  video?.videoVerifiedAt  ?? null,
-      };
-    } catch {
-      return {
-        user: {
-          userId: coachId,
-          userName: user?.userName || user?.displayName || user?.name || 'You',
-          profileImage: user?.profileImage || user?.photoURL || null,
-        },
-        videoStatus: 'none',
-        hasHealthVideo: false,
-        hasBusinessVideo: false,
-        videoVerifiedAt: null,
       };
     }
   }, [coachId, user]);
@@ -579,76 +588,14 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
     setSearchQuery('');
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
-    setStatusFilter(STATUS_FILTERS.ALL);
+    setUploadFilter(UPLOAD_FILTERS.ALL);
   }, [teamScope]);
 
-  useEffect(() => {
-    setVideoScope(TEAM_SCOPES.DIRECT);
-    setVideoStatusFilter(STATUS_FILTERS.ALL);
-  }, [activeTab]);
-
-  useEffect(() => {
-    setVideoStatusFilter(STATUS_FILTERS.ALL);
-  }, [videoScope]);
-
-  // ── Video report load ─────────────────────────────────────────────────────
-  const loadVideoReport = useCallback(async () => {
-    if (!coachId) return;
-    setVideoLoading(true);
-    setVideoError(null);
-    try {
-      const [direct, full, mine] = await Promise.all([
-        getTestimonialVideoReport(coachId, 'direct'),
-        getTestimonialVideoReport(coachId, 'full'),
-        buildMineVideoRow(),
-      ]);
-      setVideoDirectRows(direct || []);
-      setVideoFullRows(full || []);
-      setMineVideoRow(mine);
-    } catch (err) {
-      setVideoError(err.message || 'Failed to load video report');
-    } finally {
-      setVideoLoading(false);
-    }
-  }, [coachId, buildMineVideoRow]);
-
-  useEffect(() => {
-    if (activeTab === 'videos') loadVideoReport();
-  }, [activeTab, loadVideoReport]);
-
-  const videoScopeRows = useMemo(() => {
-    if (videoScope === TEAM_SCOPES.MINE) {
-      return mineVideoRow ? [mineVideoRow] : [];
-    }
-    if (videoScope === TEAM_SCOPES.FULL) {
-      return videoFullRows;
-    }
-    return videoDirectRows;
-  }, [videoScope, mineVideoRow, videoDirectRows, videoFullRows]);
-
-  const videoScopeCounts = useMemo(() => ({
-    [TEAM_SCOPES.MINE]: mineVideoRow ? 1 : 0,
-    [TEAM_SCOPES.DIRECT]: videoDirectRows.length,
-    [TEAM_SCOPES.FULL]: videoFullRows.length,
-  }), [mineVideoRow, videoDirectRows, videoFullRows]);
-
-  const videoStatusCounts = useMemo(
-    () => countVideoRowsByStatus(videoScopeRows),
-    [videoScopeRows],
-  );
-
-  const videoStatusFilteredRows = useMemo(
-    () => filterVideoRowsByStatus(videoScopeRows, videoStatusFilter),
-    [videoScopeRows, videoStatusFilter],
-  );
+  // â”€â”€ Derived state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const scopeRows = useMemo(() => {
-    if (teamScope === TEAM_SCOPES.MINE) {
-      return mineRow ? [mineRow] : [];
-    }
-    if (teamScope === TEAM_SCOPES.FULL) {
-      return fullRows;
-    }
+    if (teamScope === TEAM_SCOPES.MINE)   return mineRow ? [mineRow] : [];
+    if (teamScope === TEAM_SCOPES.FULL)   return fullRows;
     return directRows;
   }, [teamScope, mineRow, directRows, fullRows]);
 
@@ -657,29 +604,27 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
     [mineRow, directRows, fullRows],
   );
 
-  const statusCounts = useMemo(() => countRowsByStatus(scopeRows), [scopeRows]);
+  const uploadCounts = useMemo(() => countRowsByUpload(scopeRows), [scopeRows]);
 
-  const statusFilteredRows = useMemo(
-    () => filterRowsByStatus(scopeRows, statusFilter),
-    [scopeRows, statusFilter],
+  const uploadFilteredRows = useMemo(
+    () => filterRowsByUpload(scopeRows, uploadFilter),
+    [scopeRows, uploadFilter],
   );
 
   const suggestions = useMemo(
-    () => buildSearchSuggestions(statusFilteredRows, searchQuery),
-    [statusFilteredRows, searchQuery],
+    () => buildSearchSuggestions(uploadFilteredRows, searchQuery),
+    [uploadFilteredRows, searchQuery],
   );
 
   const filteredRows = useMemo(
-    () => filterRowsBySearch(statusFilteredRows, searchQuery),
-    [statusFilteredRows, searchQuery],
+    () => filterRowsBySearch(uploadFilteredRows, searchQuery),
+    [uploadFilteredRows, searchQuery],
   );
 
-  const handleStatusToggle = useCallback((next) => {
-    setStatusFilter((current) => toggleStatusFilter(current, next));
-  }, []);
+  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  const handleVideoStatusToggle = useCallback((next) => {
-    setVideoStatusFilter((current) => toggleStatusFilter(current, next));
+  const handleUploadToggle = useCallback((next) => {
+    setUploadFilter((current) => toggleStatusFilter(current, next));
   }, []);
 
   const handleSearchChange = useCallback((value) => {
@@ -700,24 +645,18 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (suggestions.length === 0) return;
+      if (!suggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (
-        prev < suggestions.length - 1 ? prev + 1 : 0
-      ));
+      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
       return;
     }
-
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (suggestions.length === 0) return;
+      if (!suggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (
-        prev > 0 ? prev - 1 : suggestions.length - 1
-      ));
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
       return;
     }
-
     if (event.key === 'Enter') {
       event.preventDefault();
       if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
@@ -728,19 +667,18 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
       }
       return;
     }
-
     if (event.key === 'Escape') {
       setIsSearchOpen(false);
       setHighlightedSuggestion(-1);
     }
   }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
 
-  const showScopeLoading = loading;
-  const hasScopeData = scopeRows.length > 0;
+  const hasScopeData    = scopeRows.length > 0;
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -748,164 +686,22 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
           <h1 className="text-lg font-bold text-gray-900">Team Testimonials</h1>
         </div>
         <TouchFeedbackButton
-          onClick={() => {
-            if (activeTab === 'videos') {
-              loadVideoReport();
-            } else {
-              load();
-            }
-            loadTeamReport();
-          }}
-          disabled={activeTab === 'videos' ? videoLoading : loading}
+          onClick={() => { load(); loadTeamReport(); }}
+          disabled={loading}
           className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
           ariaLabel="Refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${(activeTab === 'videos' ? videoLoading : loading) ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </TouchFeedbackButton>
       </div>
 
-      {/* Tab switcher: Photos / Videos */}
-      <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'photos'}
-          onClick={() => setActiveTab('photos')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-            activeTab === 'photos' ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-          }`}
-        >
-          <Users className="h-3.5 w-3.5" /> Photos Report
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'videos'}
-          onClick={() => setActiveTab('videos')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-            activeTab === 'videos' ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-          }`}
-        >
-          <Video className="h-3.5 w-3.5" /> Videos Report
-        </button>
-      </div>
-
-      {/* ── VIDEO REPORT TAB ─────────────────────────────────────────────── */}
-      {activeTab === 'videos' && (
-        <>
-          {/* Video scope filter */}
-          {!videoLoading && (
-            <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Video scope filter">
-              {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-                const isActive = videoScope === value;
-                const count = videoScopeCounts[value] ?? 0;
-                const showCount = value !== TEAM_SCOPES.MINE;
-                const desktopLabel = showCount ? `${label} (${count})` : label;
-                const mobileLabel = showCount ? `${short} (${count})` : short;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setVideoScope(value)}
-                    aria-pressed={isActive}
-                    className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
-                      isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-                    }`}
-                  >
-                    <span className="hidden sm:inline">{desktopLabel}</span>
-                    <span className="sm:hidden">{mobileLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Video status filter chips */}
-          {!videoLoading && videoScopeRows.length > 0 && (
-            <div
-              className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
-              role="group"
-              aria-label="Video status filter"
-            >
-              <StatusFilterChip
-                filterKey={STATUS_FILTERS.VERIFIED}
-                label="✅ Verified"
-                count={videoStatusCounts.verified}
-                activeFilter={videoStatusFilter}
-                onToggle={handleVideoStatusToggle}
-              />
-              <StatusFilterChip
-                filterKey={STATUS_FILTERS.PENDING}
-                label="🕐 Pending"
-                count={videoStatusCounts.pending}
-                activeFilter={videoStatusFilter}
-                onToggle={handleVideoStatusToggle}
-              />
-              <StatusFilterChip
-                filterKey={STATUS_FILTERS.MISSING}
-                label="⚠️ Not Uploaded"
-                count={videoStatusCounts.missing}
-                activeFilter={videoStatusFilter}
-                onToggle={handleVideoStatusToggle}
-              />
-            </div>
-          )}
-
-          {videoLoading && <LoadingSpinner message="Loading video report…" />}
-
-          {videoError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{videoError}</div>
-          )}
-
-          {!videoLoading && !videoError && videoScopeRows.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              <Video className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No team members found</p>
-            </div>
-          )}
-
-          {!videoLoading && !videoError && videoScopeRows.length > 0 && videoStatusFilteredRows.length === 0 && (
-            <div className="text-center py-8 text-gray-400">
-              <p className="font-medium text-sm">No records match the selected filters.</p>
-            </div>
-          )}
-
-          {!videoLoading && videoStatusFilteredRows.map((row) => (
-            <VideoMemberRow
-              key={row.user.userId}
-              user={row.user}
-              videoStatus={row.videoStatus}
-              hasHealthVideo={row.hasHealthVideo}
-              hasBusinessVideo={row.hasBusinessVideo}
-              videoVerifiedAt={row.videoVerifiedAt}
-              teamStats={resolveRowTeamUploadPerformance({
-                row,
-                teamScope: videoScope,
-                loggedInCoachId: coachId,
-                teamPerformanceByUserId,
-                reportType: 'video',
-              })}
-            />
-          ))}
-        </>
-      )}
-
-      {/* ── PHOTOS REPORT TAB ────────────────────────────────────────────── */}
-      {activeTab === 'photos' && (
-        <>
-      {/* Team scope filter */}
+      {/* Team scope */}
       {!loading && (
-        <div
-          className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1"
-          role="group"
-          aria-label="Team scope filter"
-        >
+        <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Team scope">
           {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-            const isActive = teamScope === value;
-            const count = teamScopeCounts[value] ?? 0;
+            const isActive  = teamScope === value;
+            const count     = teamScopeCounts[value] ?? 0;
             const showCount = value !== TEAM_SCOPES.MINE;
-            const desktopLabel = showCount ? `${label} (${count})` : label;
-            const mobileLabel = showCount ? `${short} (${count})` : short;
             return (
               <button
                 key={value}
@@ -913,20 +709,18 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
                 onClick={() => setTeamScope(value)}
                 aria-pressed={isActive}
                 className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
-                  isActive
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'text-green-800 hover:bg-green-50'
+                  isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
                 }`}
               >
-                <span className="hidden sm:inline">{desktopLabel}</span>
-                <span className="sm:hidden">{mobileLabel}</span>
+                <span className="hidden sm:inline">{showCount ? `${label} (${count})` : label}</span>
+                <span className="sm:hidden">{showCount ? `${short} (${count})` : short}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Smart search */}
+      {/* Search */}
       {!loading && hasScopeData && (
         <TestimonialSearchBar
           value={searchQuery}
@@ -941,65 +735,60 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
         />
       )}
 
-      {/* Summary chips — clickable status filters */}
+      {/* Upload completeness filter chips */}
       {!loading && hasScopeData && (
-        <div
-          className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
-          role="group"
-          aria-label="Status filter"
-        >
-          <StatusFilterChip
-            filterKey={STATUS_FILTERS.VERIFIED}
-            label="✅ Verified"
-            count={statusCounts.verified}
-            activeFilter={statusFilter}
-            onToggle={handleStatusToggle}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
+          <UploadFilterChip
+            filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
+            label="âœ… Fully Uploaded"
+            count={uploadCounts.fully_uploaded}
+            activeFilter={uploadFilter}
+            onToggle={handleUploadToggle}
           />
-          <StatusFilterChip
-            filterKey={STATUS_FILTERS.PENDING}
-            label="🕐 Awaiting Approval"
-            count={statusCounts.pending}
-            activeFilter={statusFilter}
-            onToggle={handleStatusToggle}
+          <UploadFilterChip
+            filterKey={UPLOAD_FILTERS.PARTIAL}
+            label="ðŸ”¶ Partial"
+            count={uploadCounts.partial_upload}
+            activeFilter={uploadFilter}
+            onToggle={handleUploadToggle}
           />
-          <StatusFilterChip
-            filterKey={STATUS_FILTERS.MISSING}
-            label="⚠️ Not Uploaded"
-            count={statusCounts.missing}
-            activeFilter={statusFilter}
-            onToggle={handleStatusToggle}
+          <UploadFilterChip
+            filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
+            label="â¬œ Not Uploaded"
+            count={uploadCounts.not_uploaded}
+            activeFilter={uploadFilter}
+            onToggle={handleUploadToggle}
           />
         </div>
       )}
 
-      {showScopeLoading && <LoadingSpinner message="Loading team testimonials…" />}
+      {/* States */}
+      {loading && <LoadingSpinner message="Loading team testimonialsâ€¦" />}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {!showScopeLoading && !error && !hasScopeData && (
+      {!loading && !error && !hasScopeData && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No team members found</p>
         </div>
       )}
 
-      {!showScopeLoading && !error && hasScopeData && filteredRows.length === 0 && (
+      {!loading && !error && hasScopeData && filteredRows.length === 0 && (
         <div className="text-center py-8 text-gray-400">
           <p className="font-medium text-sm">
-            {hasActiveSearch ? 'No matching users found.' : 'No records match the selected filters.'}
+            {hasActiveSearch ? 'No matching members found.' : 'No records match the selected filter.'}
           </p>
         </div>
       )}
 
-      {!showScopeLoading && filteredRows.map((row) => (
-        <MemberRow
+      {/* Member cards */}
+      {!loading && filteredRows.map((row) => (
+        <MemberCard
           key={row.user.userId}
-          user={row.user}
-          testimonial={row.testimonial}
+          row={row}
           teamStats={resolveRowTeamUploadPerformance({
             row,
             teamScope,
@@ -1009,8 +798,8 @@ export default function CoachTestimonialsPage({ user, activeTab: activeTabProp, 
           })}
         />
       ))}
-        </>
-      )}
     </div>
   );
 }
+
+

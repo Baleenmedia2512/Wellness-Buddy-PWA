@@ -3,6 +3,7 @@ import * as repo from './misc.repository.js';
 import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 import { formatDateForMySQL } from '../../utils/disciplineHelpers.js';
 import logger from '../../shared/lib/logger.js';
+import { MODEL_NAME } from '../../shared/lib/gemini/geminiClient.js';
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
@@ -48,7 +49,7 @@ export async function detectFace({ imageBase64 }) {
     const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const result = await model.generateContent([
       { inlineData: { mimeType, data: base64Data } },
