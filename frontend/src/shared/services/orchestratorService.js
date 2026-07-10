@@ -126,11 +126,15 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
   try {
     const formData = new FormData();
     formData.append('image', imageFile);
-    if (captureId)  formData.append('captureId',  String(captureId));
-    if (userId)     formData.append('userId',      String(userId));
-    if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
-    // Signal backend to use Gemini Pro on this attempt (attempt-3 escalation).
-    if (usePro)     formData.append('modelTier',   'pro');
+    // captureId is only sent on attempt 1 to register the capture in the DB
+    // and idempotency guard. Retry attempts (2, 3) intentionally omit it so
+    // the backend performs a FRESH classification instead of returning the
+    // cached 'other' result from the previous attempt.
+    if (captureId && attempt === 1) formData.append('captureId', String(captureId));
+    if (userId)     formData.append('userId',    String(userId));
+    if (foodRowId)  formData.append('foodRowId', String(foodRowId));
+    // Signal backend to use Gemini Pro on this attempt (escalation).
+    if (usePro)     formData.append('modelTier', 'pro');
     if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
 
     const response = await fetch(ORCHESTRATE_URL, {
@@ -163,6 +167,15 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
       const errMsg = data.error?.message ?? 'Orchestration failed';
       _trace('FAIL', { attempt, duration, code: data.error?.code, message: errMsg, captureId });
       return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
+    }
+
+    // Backend returned a cached duplicate result (idempotency guard hit on
+    // attempt 1). This happens when two rapid captures share the same captureId.
+    // Treat as retryable so attempt 2 gets a fresh classification (captureId is
+    // not sent on retry attempts, bypassing the idempotency cache).
+    if (data.duplicate) {
+      _trace('FAIL', { attempt, duration, code: 'DUPLICATE_CACHE', message: 'Idempotency cache hit — will retry fresh', captureId });
+      return { ...FALLBACK, details: { defaulted: true, error: 'duplicate', _retryable: true }, duration };
     }
 
     // HTTP 200 + ok:true but the payload has no usable data for the detected type.
