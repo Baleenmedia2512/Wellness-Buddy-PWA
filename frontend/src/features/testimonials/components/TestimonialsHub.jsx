@@ -667,34 +667,20 @@ export default function TestimonialsHub({ userId }) {
   const afterCameraRef   = useRef(null);
   const afterGalleryRef  = useRef(null);
 
-  // ── Loading guard ───────────────────────────────────────────────────────────
-  if (existing === undefined || existingVideo === undefined) {
-    return <LoadingSpinner message="Loading your testimonial…" />;
-  }
+  // ── ALL useCallback hooks declared unconditionally (before any early return) ─
 
-  // ── Slot statuses ───────────────────────────────────────────────────────────
-  const slots = computeSlotStatuses(existing, existingVideo);
-
-  // ── Slot toggle handlers ────────────────────────────────────────────────────
   const toggleSlot = useCallback((slot) => {
-    setExpandedSlot((prev) => {
-      if (prev === slot) {
-        // Closing — also reset any active edit mode
-        cancelEdit();
-        cancelVideoEdit();
-        return null;
-      }
-      return slot;
-    });
+    // cancelEdit / cancelVideoEdit are safe to call even when not in edit mode
+    cancelEdit();
+    cancelVideoEdit();
+    setExpandedSlot((prev) => (prev === slot ? null : slot));
   }, [cancelEdit, cancelVideoEdit]);
 
-  // Before photo slot
   const handleEditBefore = useCallback(() => {
     startEdit();
     setExpandedSlot('before');
   }, [startEdit]);
 
-  // After photo slot
   const handleAddAfter = useCallback(() => {
     startCompleting();
     setExpandedSlot('after');
@@ -705,15 +691,11 @@ export default function TestimonialsHub({ userId }) {
     setExpandedSlot(null);
   }, [cancelEdit]);
 
-  // Photo submit with auto-collapse on success
   const handlePhotoSubmit = useCallback(async () => {
     await handleSubmit();
-    // handleSubmit sets isEditMode/isCompletingMode to false internally on success
-    // We collapse the slot after reload; success message shown in status bar
     setExpandedSlot(null);
   }, [handleSubmit]);
 
-  // Video slot edit
   const handleEditVideo = useCallback((slot) => {
     startVideoEdit();
     setExpandedSlot(slot);
@@ -724,23 +706,27 @@ export default function TestimonialsHub({ userId }) {
     setExpandedSlot(null);
   }, [cancelVideoEdit]);
 
-  // Video submit — submits whichever video(s) are selected
   const handleVideoSlotSubmit = useCallback(async () => {
     await handleVideoSubmit();
-    // showOtpModal will be set to true by the hook on success
     setExpandedSlot(null);
   }, [handleVideoSubmit]);
 
-  // Video OTP verified
   const handleVideoOtpVerified = useCallback(() => {
     handleVideoVerified();
     reload();
   }, [handleVideoVerified, reload]);
 
-  // Photo OTP verified
   const handlePhotoOtpVerified = useCallback(() => {
     reload();
   }, [reload]);
+
+  // ── Loading guard (after all hooks) ────────────────────────────────────────
+  if (existing === undefined || existingVideo === undefined) {
+    return <LoadingSpinner message="Loading your testimonial…" />;
+  }
+
+  // ── Slot statuses (plain JS — not hooks, safe after guard) ─────────────────
+  const slots = computeSlotStatuses(existing, existingVideo);
 
   // ── Before photo slot state ─────────────────────────────────────────────────
   const beforeSlotExpanded = expandedSlot === 'before';
