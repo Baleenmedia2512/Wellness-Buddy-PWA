@@ -45,6 +45,7 @@ import { TraceContext } from './ObservabilityTracer.js';
 import { idempotencyGuard, JOB_STATUS } from './IdempotencyGuard.js';
 import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
+import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
 
 // ── Per-capture analysis status store ────────────────────────────────────────
@@ -114,6 +115,9 @@ export async function analyse(params) {
     userId       = null,
     imageBase64  = null,
     foodRowId    = null,
+    // usePro: true forces Gemini Pro on this request (used by frontend
+    // attempt-3 escalation when Flash failed twice to classify the image).
+    usePro       = false,
   } = params;
 
   const trace = new TraceContext({ captureId, userId });
@@ -150,7 +154,10 @@ export async function analyse(params) {
   // ── Step 2: Fast analysis (single unified Gemini call) ────────────────────
   let fastResult;
   try {
-    fastResult = await analyzeUnified(imageBuffer, mimeType, { trace });
+    fastResult = await analyzeUnified(imageBuffer, mimeType, {
+      trace,
+      modelOverride: usePro ? FALLBACK_MODEL_NAME : null,
+    });
   } catch (err) {
     // Graceful degradation — never crash the capture flow
     logger.error('orchestrator: fast analysis failed, using fallback', {
