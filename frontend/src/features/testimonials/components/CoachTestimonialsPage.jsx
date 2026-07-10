@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CoachTestimonialsPage.jsx
  * World-class unified testimonials management for coaches.
  *
@@ -15,8 +15,8 @@
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  AlertCircle, ArrowLeft, CheckCircle, Clock, RefreshCw, Users, Video,
-  Play, X, HeartPulse, Maximize2,
+  AlertCircle, ArrowLeft, ArrowRight, CheckCircle, CircleDot, Clock, Mail, RefreshCw, Users, Video,
+  Play, X, HeartPulse, Maximize2, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -47,17 +47,26 @@ const TEAM_SCOPE_OPTIONS = [
   { value: TEAM_SCOPES.FULL,   label: 'Full Team',   short: 'Full'   },
 ];
 
-const UPLOAD_CHIP_STYLES = {
+const UPLOAD_FILTER_CFG = {
   [UPLOAD_FILTERS.FULLY_UPLOADED]: {
-    base:   'bg-green-100 text-green-800',
+    label: 'Fully Uploaded',
+    Icon: CheckCircle,
+    badgeCls: 'bg-green-100 text-green-800 border-green-200',
+    base: 'bg-green-100 text-green-800',
     active: 'bg-green-600 text-white shadow-sm ring-2 ring-green-300',
   },
   [UPLOAD_FILTERS.PARTIAL]: {
-    base:   'bg-amber-100 text-amber-800',
+    label: 'Partial',
+    Icon: CircleDot,
+    badgeCls: 'bg-amber-100 text-amber-800 border-amber-200',
+    base: 'bg-amber-100 text-amber-800',
     active: 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300',
   },
   [UPLOAD_FILTERS.NOT_UPLOADED]: {
-    base:   'bg-gray-100 text-gray-600',
+    label: 'Not Uploaded',
+    Icon: AlertCircle,
+    badgeCls: 'bg-gray-100 text-gray-500 border-gray-200',
+    base: 'bg-gray-100 text-gray-600',
     active: 'bg-gray-700 text-white shadow-sm ring-2 ring-gray-400',
   },
 };
@@ -133,7 +142,7 @@ function VideoThumbnailBtn({ url, label, iconColor = 'text-green-600' }) {
   if (!url) {
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-full text-[11px] text-gray-400 font-medium">
-        <Video className="h-3 w-3" /> {label} â€“ not uploaded
+        <Video className="h-3 w-3 shrink-0" /> {label} · not uploaded
       </span>
     );
   }
@@ -155,16 +164,15 @@ function VideoThumbnailBtn({ url, label, iconColor = 'text-green-600' }) {
 // â”€â”€ Upload completeness badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CompletenessBadge({ level, filledCount, totalSlots }) {
-  const cfg =
-    level === UPLOAD_FILTERS.FULLY_UPLOADED
-      ? { label: `âœ… Fully Uploaded (${filledCount}/${totalSlots})`, cls: 'bg-green-100 text-green-800 border-green-200' }
-      : level === UPLOAD_FILTERS.PARTIAL
-      ? { label: `ðŸ”¶ Partial (${filledCount}/${totalSlots})`,        cls: 'bg-amber-100 text-amber-800 border-amber-200' }
-      : { label: `â¬œ Not Uploaded`,                                   cls: 'bg-gray-100 text-gray-500 border-gray-200'   };
+  const cfg = UPLOAD_FILTER_CFG[level] ?? UPLOAD_FILTER_CFG[UPLOAD_FILTERS.NOT_UPLOADED];
+  const { label, Icon, badgeCls } = cfg;
+  const text =
+    level === UPLOAD_FILTERS.NOT_UPLOADED ? label : `${label} (${filledCount}/${totalSlots})`;
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.cls}`}>
-      {cfg.label}
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeCls}`}>
+      <Icon className="h-3 w-3 shrink-0" />
+      {text}
     </span>
   );
 }
@@ -285,19 +293,22 @@ function PhotoModal({ url, label, onClose }) {
 
 // â”€â”€ Upload completeness filter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function UploadFilterChip({ filterKey, label, count, activeFilter, onToggle }) {
+function UploadFilterChip({ filterKey, count, activeFilter, onToggle }) {
   const isActive = activeFilter === filterKey;
-  const styles   = UPLOAD_CHIP_STYLES[filterKey];
+  const { label, Icon, base, active } = UPLOAD_FILTER_CFG[filterKey];
   return (
     <button
       type="button"
       onClick={() => onToggle(filterKey)}
       aria-pressed={isActive}
       className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer whitespace-nowrap ${
-        isActive ? styles.active : styles.base
+        isActive ? active : base
       }`}
     >
-      {label} ({count})
+      <span className="inline-flex items-center gap-1">
+        <Icon className="h-3 w-3 shrink-0" />
+        {label} ({count})
+      </span>
     </button>
   );
 }
@@ -311,7 +322,6 @@ function MemberCard({ row, teamStats }) {
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
   const diff      = testimonial ? Math.abs((testimonial.afterWeightKg ?? 0) - (testimonial.beforeWeightKg ?? 0)).toFixed(1) : null;
-  const goalArrow = testimonial?.goalType === 'loss' ? 'â†“' : 'â†‘';
   const issues    = testimonial?.recoveredHealthIssues ?? [];
 
   const borderCls =
@@ -352,7 +362,7 @@ function MemberCard({ row, teamStats }) {
             <div className="flex-1 text-center">
               <button
                 type="button"
-                onClick={() => setExpandedPhoto({ url: testimonial.beforeImageUrl, label: `${user.userName} â€” Before (${testimonial.beforeWeightKg} kg)` })}
+                onClick={() => setExpandedPhoto({ url: testimonial.beforeImageUrl, label: `${user.userName} — Before (${testimonial.beforeWeightKg} kg)` })}
                 className="w-full group relative"
               >
                 <img
@@ -375,7 +385,7 @@ function MemberCard({ row, teamStats }) {
             <div className="flex-1 text-center">
               <button
                 type="button"
-                onClick={() => setExpandedPhoto({ url: testimonial.afterImageUrl, label: `${user.userName} â€” After (${testimonial.afterWeightKg} kg)` })}
+                onClick={() => setExpandedPhoto({ url: testimonial.afterImageUrl, label: `${user.userName} — After (${testimonial.afterWeightKg} kg)` })}
                 className="w-full group relative"
               >
                 <img
@@ -401,23 +411,41 @@ function MemberCard({ row, teamStats }) {
       {testimonial && (
         <div className="flex gap-1.5 flex-wrap">
           {testimonial.goalType && (
-            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              {testimonial.goalType === 'loss' ? 'â¬‡ï¸ Loss' : 'â¬†ï¸ Gain'}
+            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              {testimonial.goalType === 'loss' ? (
+                <>
+                  <TrendingDown className="h-2.5 w-2.5 text-green-600 shrink-0" />
+                  Loss
+                </>
+              ) : (
+                <>
+                  <TrendingUp className="h-2.5 w-2.5 text-blue-600 shrink-0" />
+                  Gain
+                </>
+              )}
             </span>
           )}
           {testimonial.beforeWeightKg && (
-            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              {testimonial.beforeWeightKg} â†’ {hasAfter ? testimonial.afterWeightKg : '?'} kg
+            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              {testimonial.beforeWeightKg}
+              <ArrowRight className="h-2.5 w-2.5 text-gray-400 shrink-0" />
+              {hasAfter ? testimonial.afterWeightKg : '?'} kg
             </span>
           )}
           {diff && hasAfter && (
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold border ${testimonial.goalType === 'loss' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
-              {goalArrow} {diff} kg
+            <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold border ${testimonial.goalType === 'loss' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
+              {testimonial.goalType === 'loss' ? (
+                <TrendingDown className="h-2.5 w-2.5 shrink-0" />
+              ) : (
+                <TrendingUp className="h-2.5 w-2.5 shrink-0" />
+              )}
+              {diff} kg
             </span>
           )}
           {testimonial.durationText && (
-            <span className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              â± {testimonial.durationText}
+            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
+              <Clock className="h-2.5 w-2.5 text-gray-400 shrink-0" />
+              {testimonial.durationText}
             </span>
           )}
           {testimonial.status === 'verified' && (
@@ -458,7 +486,7 @@ function MemberCard({ row, teamStats }) {
           )}
           {testimonial.videoStatus === 'pending' && (
             <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Videos pending â€” share OTP with {user.userName}
+              <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
         </div>
@@ -473,8 +501,8 @@ function MemberCard({ row, teamStats }) {
           {issues.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {issues.map((issue) => (
-                <span key={issue} className="inline-flex items-center px-2 py-0.5 bg-rose-50 border border-rose-200 rounded-full text-[11px] font-medium text-rose-800">
-                  {issue}
+                <span key={issue} className="inline-flex items-center max-w-full px-2 py-0.5 bg-rose-50 border border-rose-200 rounded-full text-[10px] sm:text-[11px] font-medium text-rose-800">
+                  <span className="truncate">{issue}</span>
                 </span>
               ))}
             </div>
@@ -486,8 +514,9 @@ function MemberCard({ row, teamStats }) {
 
       {/* OTP hint */}
       {testimonial?.status === 'pending' && (
-        <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center">
-          ðŸ“§ OTP sent to your email â€” share it with {user.userName} to verify
+        <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center flex items-center justify-center gap-1.5">
+          <Mail className="h-3.5 w-3.5 shrink-0" />
+          OTP sent to your email — share it with {user.userName} to verify
         </p>
       )}
 
@@ -740,21 +769,18 @@ export default function CoachTestimonialsPage({ user }) {
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
           <UploadFilterChip
             filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
-            label="âœ… Fully Uploaded"
             count={uploadCounts.fully_uploaded}
             activeFilter={uploadFilter}
             onToggle={handleUploadToggle}
           />
           <UploadFilterChip
             filterKey={UPLOAD_FILTERS.PARTIAL}
-            label="ðŸ”¶ Partial"
             count={uploadCounts.partial_upload}
             activeFilter={uploadFilter}
             onToggle={handleUploadToggle}
           />
           <UploadFilterChip
             filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
-            label="â¬œ Not Uploaded"
             count={uploadCounts.not_uploaded}
             activeFilter={uploadFilter}
             onToggle={handleUploadToggle}
@@ -763,7 +789,7 @@ export default function CoachTestimonialsPage({ user }) {
       )}
 
       {/* States */}
-      {loading && <LoadingSpinner message="Loading team testimonialsâ€¦" />}
+      {loading && <LoadingSpinner message="Loading team testimonials…" />}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>

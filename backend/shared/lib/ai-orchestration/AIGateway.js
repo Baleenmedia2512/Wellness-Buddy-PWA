@@ -537,6 +537,30 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
     });
   }
 
+  // Detect MAX_TOKENS truncation — gemini-2.5-flash counts thinking + output
+  // tokens against maxOutputTokens. A too-small budget truncates the JSON
+  // response mid-field, causing a downstream parse failure that silently
+  // routes the capture to "other".
+  // Log a warning so this is immediately visible in observability dashboards.
+  const finishReason = result.response?.candidates?.[0]?.finishReason;
+  if (finishReason === 'MAX_TOKENS') {
+    const err = new Error(
+      `MAX_TOKENS: Gemini truncated response after ${usage?.candidatesTokenCount ?? '?'} output tokens ` +
+      `(thinking=${usage?.thoughtsTokenCount ?? '?'}). ` +
+      `Increase maxOutputTokens in MODEL_CONFIGS.${configKey}.`
+    );
+    err.code    = 'MAX_TOKENS';
+    err.status  = 503; // treat as retryable so the caller can escalate to Pro
+    logger.error('AIGateway.callModel: MAX_TOKENS truncation', {
+      label,
+      configKey,
+      candidatesTokenCount: usage?.candidatesTokenCount ?? null,
+      thoughtsTokenCount:   usage?.thoughtsTokenCount   ?? null,
+      promptTokenCount:     usage?.promptTokenCount      ?? null,
+    });
+    throw err;
+  }
+
   return { rawText, attempts, latencyMs: totalLatencyMs };
 }
 
@@ -572,14 +596,14 @@ function normaliseType(raw, confidence) {
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<object>}
  */
-export async function analyzeUnified(imageBuffer, mimeType, { trace = null } = {}) {
+export async function analyzeUnified(imageBuffer, mimeType, { trace = null, modelOverride = null } = {}) {
   const label     = 'unified';
   const imagePart = imageInlinePart(imageBuffer, mimeType);
   const stageStart = Date.now();
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
-      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace },
+      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace, modelOverride },
     );
 
     const parsed = safeParseJson(rawText, { label });

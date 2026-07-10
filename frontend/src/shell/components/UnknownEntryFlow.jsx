@@ -572,9 +572,9 @@ export default function UnknownEntryFlow({
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-2">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Unrecognised photo</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Manual Log</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  {retrying ? 'AI is re-analysing…' : 'Help us classify this capture.'}
+                  AI analysed 3 times and couldn’t identify this. Choose what you photographed.
                 </p>
               </div>
               <button type="button" onClick={close} aria-label="Close"
@@ -611,55 +611,41 @@ export default function UnknownEntryFlow({
               </div>
             )}
 
-            {/* ── Category quick-picks (normal mode only) ── */}
-            {canMutate && !deleteOnly && (
-              <div className="px-5 space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  What is this photo?
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { type: 'food',      icon: '🍽️', label: 'Food / Drink',    sub: 'Meal, shake, tea, etc.' },
-                    { type: 'weight',    icon: '⚖️',  label: 'Weight Scale',   sub: 'Scale with reading' },
-                    { type: 'education', icon: '🎓',  label: 'Education',      sub: 'Meeting screenshot' },
-                    { type: 'smartwatch',icon: '⌚',  label: 'Smartwatch',     sub: 'Steps / calories' },
-                  ].map(({ type, icon, label, sub }) => (
+{/* Category quick-picks */}
+                {canMutate && !deleteOnly && (
+                  <div className="px-5 space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      What is this photo?
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { type: 'food',       icon: '🍽️', label: 'Food / Drink',   sub: 'Meal, shake, tea, etc.' },
+                        { type: 'weight',     icon: '⚖️',  label: 'Weight Scale',  sub: 'Scale with reading' },
+                        { type: 'education',  icon: '🎓',  label: 'Education',     sub: 'Meeting screenshot' },
+                        { type: 'smartwatch', icon: '⌚',  label: 'Smartwatch',    sub: 'Steps / calories' },
+                      ].map(({ type, icon, label, sub }) => (
+                        <button
+                          key={type}
+                          type="button"
+                          disabled={deleting}
+                          onClick={() => { setError(null); setStage(type); }}
+                          className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
+                        >
+                          <span className="text-2xl">{icon}</span>
+                          <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
+                          <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Delete */}
                     <button
-                      key={type}
                       type="button"
-                      disabled={retrying || deleting}
-                      onClick={() => { setError(null); setStage(type); }}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
+                      disabled={deleting}
+                      onClick={handleDelete}
+                      className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      <span className="text-2xl">{icon}</span>
-                      <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
-                      <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
+                      {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
                     </button>
-                  ))}
-                </div>
-
-                {/* Retry AI button — only shown when failure was transient (503/timeout),
-                    not when AI genuinely said 'other' (out-of-scope image). */}
-                {initialAiResult?.canRetry !== false && (
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={retrying || deleting}
-                    onClick={handleRetry}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {retrying ? 'Analysing…' : '🔄 Retry AI'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={retrying || deleting}
-                    onClick={handleDelete}
-                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deleting ? 'Deleting…' : '🗑️ Delete'}
-                  </button>
-                </div>
-                )}
               </div>
             )}
 

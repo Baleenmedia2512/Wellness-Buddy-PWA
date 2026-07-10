@@ -22,9 +22,9 @@ const MAX_HEALTH_DURATION_S   = 60;   // 1 min
 const MAX_BUSINESS_DURATION_S = 120;  // 2 min
 
 /**
- * @param {{ userId: number }} opts
+ * @param {{ userId: number, healthIssues?: string[] }} opts
  */
-export function useTestimonialVideo({ userId }) {
+export function useTestimonialVideo({ userId, healthIssues = [] }) {
   const [healthVideo,   setHealthVideo]   = useState(null); // { name, file, sizeLabel }
   const [businessVideo, setBusinessVideo] = useState(null);
   const [existing,      setExisting]      = useState(undefined); // undefined = loading
@@ -164,6 +164,11 @@ export function useTestimonialVideo({ userId }) {
       return;
     }
 
+    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
+      setError('Add at least one recovered health issue in the Health Issues section before uploading videos for verification.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const uploads = await prepareTestimonialVideoUpload({
@@ -196,6 +201,7 @@ export function useTestimonialVideo({ userId }) {
         userId,
         healthVideoPath,
         businessVideoPath,
+        recoveredHealthIssues: healthIssues,
       });
       setPendingTestimonialId(result.testimonialId ?? null);
       setSuccess('Videos uploaded! Share the OTP your coach receives to complete verification.');
@@ -212,7 +218,7 @@ export function useTestimonialVideo({ userId }) {
     } finally {
       setSubmitting(false);
     }
-  }, [userId, healthVideo, businessVideo, reload]);
+  }, [userId, healthVideo, businessVideo, healthIssues, reload]);
 
   const handleVideoVerified = useCallback(() => {
     setShowOtpModal(false);

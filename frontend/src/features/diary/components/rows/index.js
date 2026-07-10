@@ -643,7 +643,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
             aria-hidden="true"
           />
         ) : (
-          <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+          <span className="text-xs text-amber-600 font-medium" aria-hidden="true">Manual Log</span>
         )}
       </div>
     </div>

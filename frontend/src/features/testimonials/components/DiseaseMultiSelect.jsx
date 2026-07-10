@@ -50,16 +50,16 @@ function normalize(str) {
 // ── Tag pill ───────────────────────────────────────────────────────────────────
 function Tag({ label, onRemove, disabled }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 border border-green-300 rounded-full text-xs font-semibold text-green-800 group">
-      {label}
+    <span className="inline-flex items-center gap-0.5 max-w-full px-2 py-0.5 bg-green-50 border border-green-200 rounded-full text-[10px] sm:text-[11px] font-medium text-green-800">
+      <span className="truncate">{label}</span>
       {!disabled && (
         <button
           type="button"
           onClick={() => onRemove(label)}
-          className="h-3.5 w-3.5 rounded-full bg-green-300 hover:bg-red-400 flex items-center justify-center transition-colors flex-shrink-0"
+          className="inline-flex items-center justify-center h-4 w-4 rounded-full text-green-600 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
           aria-label={`Remove ${label}`}
         >
-          <X className="h-2.5 w-2.5 text-green-900 hover:text-white" />
+          <X className="h-3 w-3" />
         </button>
       )}
     </span>
@@ -72,9 +72,10 @@ function Tag({ label, onRemove, disabled }) {
  *   onChange: (next: string[]) => void,
  *   disabled?: boolean,
  *   maxItems?: number,
+ *   required?: boolean,
  * }} props
  */
-export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS }) {
+export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS, required = false }) {
   const [query,     setQuery]     = useState('');
   const [open,      setOpen]      = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -170,17 +171,17 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
   return (
     <div className="space-y-2">
       {/* Label row */}
-      <div className="flex items-center gap-2">
-        <HeartPulse className="h-4 w-4 text-rose-500 flex-shrink-0" />
-        <span className="text-xs font-semibold text-gray-700">
+      <div className="flex items-center gap-1.5">
+        <HeartPulse className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+        <span className="text-[11px] sm:text-xs font-semibold text-gray-700">
           Recovered Health Issues
-          <span className="ml-1 text-gray-400 font-normal">(optional · up to {maxItems})</span>
+          <span className="ml-1 text-gray-400 font-normal">({required ? 'required' : 'optional'} · up to {maxItems})</span>
         </span>
       </div>
 
       {/* Tag list */}
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {selected.map((tag) => (
             <Tag key={tag} label={tag} onRemove={remove} disabled={disabled} />
           ))}
