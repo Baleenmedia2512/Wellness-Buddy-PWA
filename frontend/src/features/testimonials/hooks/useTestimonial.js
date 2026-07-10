@@ -78,9 +78,9 @@ function compressImage(file) {
 }
 
 /**
- * @param {{ userId: number }} opts
+ * @param {{ userId: number, healthIssues?: string[] }} opts
  */
-export function useTestimonial({ userId }) {
+export function useTestimonial({ userId, healthIssues = [] }) {
   const [form, setForm]               = useState(INITIAL_FORM);
   const [beforeImage, setBeforeImage] = useState(null); // { base64, preview }
   const [afterImage,  setAfterImage]  = useState(null);
@@ -150,6 +150,14 @@ export function useTestimonial({ userId }) {
 
     const isCompleting = isCompletingMode;
     const isEditing    = isEditMode;
+    const willSendOtp  = isCompleting
+      || !!afterImage
+      || (isEditing && existing?.status !== 'incomplete');
+
+    if (willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
+      setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
+      return;
+    }
 
     // When completing an incomplete testimonial, only after fields are required
     if (isCompleting) {
@@ -179,6 +187,10 @@ export function useTestimonial({ userId }) {
     setSubmitting(true);
     try {
       const payload = { userId };
+
+      if (Array.isArray(healthIssues) && healthIssues.length > 0) {
+        payload.recoveredHealthIssues = healthIssues;
+      }
 
       if (isCompleting) {
         // Completing: send after image + weight; backend upgrades status to pending
@@ -216,7 +228,7 @@ export function useTestimonial({ userId }) {
     } finally {
       setSubmitting(false);
     }
-  }, [userId, form, beforeImage, afterImage, isEditMode, isCompletingMode, existing]);
+  }, [userId, form, beforeImage, afterImage, isEditMode, isCompletingMode, existing, healthIssues]);
 
   const startEdit = useCallback(() => {
     setSuccess(null);

@@ -16,8 +16,13 @@ const MAX_DURATION_AMOUNT = 9999;
 const MAX_HEALTH_ISSUES = 20;
 const MAX_ISSUE_LEN = 120;
 
-function validateRecoveredHealthIssues(value) {
-  if (value === undefined || value === null) return [];
+function validateRecoveredHealthIssues(value, { required = false } = {}) {
+  if (value === undefined || value === null) {
+    if (required) {
+      throw new ValidationError(422, 'At least one recovered health issue is required');
+    }
+    return [];
+  }
   if (!Array.isArray(value)) {
     throw new ValidationError(422, 'recoveredHealthIssues must be an array');
   }
@@ -42,6 +47,10 @@ function validateRecoveredHealthIssues(value) {
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(trimmed);
+  }
+
+  if (required && result.length === 0) {
+    throw new ValidationError(422, 'At least one recovered health issue is required');
   }
   return result;
 }
@@ -117,7 +126,7 @@ export function validateSubmitTestimonial(body) {
     goalType,
     durationText:          normalizedDuration,
     hasAfter,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: hasAfter }),
   };
 }
 
@@ -251,7 +260,7 @@ export function validatePrepareVideoUpload(body) {
 export function validateSubmitVideo(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, healthVideoPath, businessVideoPath } = body;
+  const { userId, healthVideoPath, businessVideoPath, recoveredHealthIssues } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -264,7 +273,11 @@ export function validateSubmitVideo(body) {
     throw new ValidationError(400, 'At least one video (health or business results) must be provided');
   }
 
-  return { userId: userIdN, healthVideoPath: health, businessVideoPath: business };
+  const result = { userId: userIdN, healthVideoPath: health, businessVideoPath: business };
+  if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
+  }
+  return result;
 }
 
 // ~2 MB binary chunk → ~2.7 MB base64, safely under Vercel's ~4.5 MB body limit

@@ -69,6 +69,29 @@ function buildStatsRow(beforeWeight, afterWeight, goalLabel) {
     </table>`;
 }
 
+function buildHealthIssuesRow(issues) {
+  if (!Array.isArray(issues) || issues.length === 0) return '';
+  const pills = issues.map((issue) => {
+    const safe = escapeHtml(issue);
+    return `<span style="display:inline-block;margin:0 4px 4px 0;padding:4px 10px;background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:9999px;color:#047857;font-size:11px;font-weight:600;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${safe}</span>`;
+  }).join('');
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
+      <tr>
+        <td style="background-color:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:10px 12px;">
+          <p style="margin:0 0 6px;color:#9f1239;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Recovered Health Issues</p>
+          <p style="margin:0;line-height:1.6;">${pills}</p>
+        </td>
+      </tr>
+    </table>`;
+}
+
+function formatHealthIssuesPlain(issues) {
+  if (!Array.isArray(issues) || issues.length === 0) return '';
+  return issues.map((issue) => String(issue ?? '').trim()).filter(Boolean).join(', ');
+}
+
 function buildPhotosRow(beforeUrl, afterUrl) {
   if (!beforeUrl || !afterUrl) return '';
   const safeBefore = escapeHtml(beforeUrl);
@@ -114,6 +137,7 @@ export function buildTestimonialCoachEmailHtml({
   otp,
   beforeUrl,
   afterUrl,
+  recoveredHealthIssues,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
@@ -173,6 +197,7 @@ export function buildTestimonialCoachEmailHtml({
 
               ${buildStatsRow(beforeWeight, afterWeight, goalLabel)}
               ${buildPhotosRow(beforeUrl, afterUrl)}
+              ${buildHealthIssuesRow(recoveredHealthIssues)}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
                 <tr>
@@ -189,7 +214,7 @@ export function buildTestimonialCoachEmailHtml({
                   <td style="background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
                     <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">Verification instructions</p>
                     <p style="margin:0;color:#92400e;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;">
-                      1. Review the before and after photos.<br />
+                      1. Review the before and after photos and recovered health issues.<br />
                       2. Share the OTP with <strong>${safeMember}</strong> if approved.<br />
                       3. Member enters OTP in the Wellness Valley app.<br />
                       4. Do not share the OTP if not approved.
@@ -228,9 +253,11 @@ export function buildTestimonialCoachEmailText({
   afterWeight,
   durationText,
   otp,
+  recoveredHealthIssues,
 }) {
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   const progress = buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationText);
+  const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
 
   return [
     'Wellness Valley - Member Testimonial Verification',
@@ -239,12 +266,13 @@ export function buildTestimonialCoachEmailText({
     progress,
     '',
     `Before: ${formatWeight(beforeWeight)} kg | After: ${formatWeight(afterWeight)} kg | Goal: ${goalLabel}`,
+    ...(issuesPlain ? ['', `Recovered Health Issues: ${issuesPlain}`] : []),
     '',
     `Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
     'Valid for 24 hours',
     '',
     'Verification instructions:',
-    '1. Review the before and after photos.',
+    '1. Review the before and after photos and recovered health issues.',
     '2. Share the OTP with your member if approved.',
     '3. Member enters OTP in the Wellness Valley app.',
     '',
@@ -304,7 +332,7 @@ function buildVideoButton(label, url, accent) {
  * @param {string|null} params.businessVideoUrl  - 7-day signed URL or null
  * @returns {string}
  */
-export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, businessVideoUrl }) {
+export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
 
@@ -345,6 +373,7 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
               </p>
 
               ${videoButtons}
+              ${buildHealthIssuesRow(recoveredHealthIssues)}
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:12px 0 10px;">
                 <tr>
@@ -361,7 +390,7 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
                   <td style="background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
                     <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">Verification instructions</p>
                     <p style="margin:0;color:#92400e;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;">
-                      1. Click the button(s) above to watch the video(s).<br />
+                      1. Click the button(s) above to watch the video(s) and review recovered health issues.<br />
                       2. Share the OTP with <strong>${safeMember}</strong> if approved.<br />
                       3. Member enters OTP in the Wellness Valley app.<br />
                       4. Do not share the OTP if not approved.
@@ -393,7 +422,8 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
 /**
  * Plain-text fallback for the video coach email.
  */
-export function buildVideoCoachEmailText({ memberName, otp, healthVideoUrl, businessVideoUrl }) {
+export function buildVideoCoachEmailText({ memberName, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
+  const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
   const lines = [
     'Wellness Valley - Video Testimonial Verification',
     '',
@@ -402,6 +432,7 @@ export function buildVideoCoachEmailText({ memberName, otp, healthVideoUrl, busi
   ];
   if (healthVideoUrl)   lines.push(`Watch Health Results Video:`, healthVideoUrl, '');
   if (businessVideoUrl) lines.push(`Watch Business Results Video:`, businessVideoUrl, '');
+  if (issuesPlain)      lines.push(`Recovered Health Issues: ${issuesPlain}`, '');
   lines.push(
     `Video Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
     'Valid for 24 hours',

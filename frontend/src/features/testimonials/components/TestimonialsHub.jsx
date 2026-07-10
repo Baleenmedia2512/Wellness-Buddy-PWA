@@ -639,6 +639,13 @@ function VideoSlotContent({
  * @param {{ userId: number }} props
  */
 export default function TestimonialsHub({ userId }) {
+  // ── Health issues slot state (declared before hooks so submit payloads can include them) ──
+  const [healthIssues,         setHealthIssues]         = useState([]);
+  const [healthIssuesExpanded, setHealthIssuesExpanded] = useState(false);
+  const [healthIssuesSaving,   setHealthIssuesSaving]   = useState(false);
+  const [healthIssuesError,    setHealthIssuesError]    = useState(null);
+  const [healthIssuesSuccess,  setHealthIssuesSuccess]  = useState(null);
+
   // ── Photo hook ──────────────────────────────────────────────────────────────
   const {
     form, setField,
@@ -648,7 +655,7 @@ export default function TestimonialsHub({ userId }) {
     isEditMode, isCompletingMode,
     submitting, error, success,
     handleSubmit, startEdit, startCompleting, cancelEdit,
-  } = useTestimonial({ userId });
+  } = useTestimonial({ userId, healthIssues });
 
   // ── Video hook ──────────────────────────────────────────────────────────────
   const {
@@ -667,14 +674,7 @@ export default function TestimonialsHub({ userId }) {
     handleVideoVerified,
     isEditMode: isVideoEditMode,
     startEdit: startVideoEdit, cancelEdit: cancelVideoEdit,
-  } = useTestimonialVideo({ userId });
-
-  // ── Health issues slot state ────────────────────────────────────────────────
-  const [healthIssues,         setHealthIssues]         = useState([]);
-  const [healthIssuesExpanded, setHealthIssuesExpanded] = useState(false);
-  const [healthIssuesSaving,   setHealthIssuesSaving]   = useState(false);
-  const [healthIssuesError,    setHealthIssuesError]    = useState(null);
-  const [healthIssuesSuccess,  setHealthIssuesSuccess]  = useState(null);
+  } = useTestimonialVideo({ userId, healthIssues });
 
   // Sync health issues from existing testimonial
   useEffect(() => {
@@ -1056,7 +1056,7 @@ export default function TestimonialsHub({ userId }) {
         <div className="flex items-center gap-2 px-1 pt-2">
           <HeartPulse className="h-4 w-4 text-gray-400" />
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
-          <span className="text-[10px] text-gray-400 font-normal ml-auto">Optional</span>
+          <span className="text-[10px] text-gray-400 font-normal ml-auto">Required for verification</span>
         </div>
 
         <SlotCard
@@ -1088,12 +1088,13 @@ export default function TestimonialsHub({ userId }) {
             {existing && (
               <>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  Share which health conditions you recovered from on your wellness journey. This is searchable and helps inspire others.
+                  Share which health conditions you recovered from on your wellness journey. At least one is required before photo or video verification is sent to your coach.
                 </p>
                 <DiseaseMultiSelect
                   value={healthIssues}
                   onChange={setHealthIssues}
                   disabled={healthIssuesSaving}
+                  required
                 />
                 {healthIssuesError && (
                   <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">

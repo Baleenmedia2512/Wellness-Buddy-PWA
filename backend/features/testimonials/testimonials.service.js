@@ -49,7 +49,47 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
-async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath }) {
+/**
+ * Build API testimonial payload with signed photo/video URLs.
+ * Video-only rows (placeholder before image) still return video URLs when present.
+ */
+async function enrichTestimonialForDisplay(testimonial) {
+  if (!testimonial) return null;
+
+  const videoOnly = repo.isVideoOnlyPlaceholder(testimonial.before_image_path);
+  const hasVideos = !!(testimonial.health_video_path || testimonial.business_video_path);
+
+  if (videoOnly && !hasVideos) return null;
+
+  const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
+    videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.before_image_path),
+    videoOnly ? Promise.resolve(null) : repo.getSignedUrl(testimonial.after_image_path),
+    testimonial.health_video_path   ? repo.getSignedUrl(testimonial.health_video_path)   : Promise.resolve(null),
+    testimonial.business_video_path ? repo.getSignedUrl(testimonial.business_video_path) : Promise.resolve(null),
+  ]);
+
+  return {
+    id:                     testimonial.id,
+    beforeWeightKg:         videoOnly ? null : testimonial.before_weight_kg,
+    afterWeightKg:          videoOnly ? null : testimonial.after_weight_kg,
+    goalType:               videoOnly ? null : testimonial.goal_type,
+    durationText:           videoOnly ? null : testimonial.duration_text,
+    status:                 testimonial.status,
+    verifiedAt:             testimonial.verified_at,
+    createdAt:              testimonial.created_at,
+    updatedAt:              testimonial.updated_at,
+    beforeImageUrl:         beforeUrl,
+    afterImageUrl:          afterUrl,
+    healthVideoPath:        testimonial.health_video_path   ?? null,
+    businessVideoPath:      testimonial.business_video_path ?? null,
+    healthVideoUrl:         healthVideoUrl,
+    businessVideoUrl:       businessVideoUrl,
+    videoStatus:            testimonial.video_status        ?? 'none',
+    recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
+  };
+}
+
+async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath, recoveredHealthIssues }) {
   const [beforeUrl, afterUrl] = await Promise.all([
     repo.getEmailSignedUrl(beforeImagePath),
     repo.getEmailSignedUrl(afterImagePath),
@@ -64,6 +104,7 @@ async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, 
     otp,
     beforeUrl,
     afterUrl,
+    recoveredHealthIssues: recoveredHealthIssues ?? [],
   };
 
   const transporter = nodemailer.createTransport({
@@ -174,6 +215,7 @@ export async function submitTestimonial(rawBody) {
         otp,
         beforeImagePath: beforePath,
         afterImagePath:  afterPath,
+        recoveredHealthIssues: payload.recoveredHealthIssues,
       });
     }
   }
@@ -259,6 +301,10 @@ export async function editTestimonial(rawBody) {
     'durationText',
   ].some((field) => updates[field] !== undefined);
 
+  const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
+    ? payload.recoveredHealthIssues
+    : (existing.recovered_health_issues ?? []);
+
   // Health issues are optional metadata — save without resetting coach verification.
   if (!requiresReverification) {
     await repo.updateTestimonial(existing.id, updates);
@@ -279,6 +325,10 @@ export async function editTestimonial(rawBody) {
   // Only treat as "has after" if it's a real after path (not the before-placeholder used for incomplete)
   const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
   const isNowComplete  = !!(updates.afterImagePath) || existing.status !== 'incomplete';
+
+  if (isNowComplete && resolvedHealthIssues.length === 0) {
+    throw new ValidationError(422, 'At least one recovered health issue is required');
+  }
 
   if (isNowComplete) {
     // Full testimonial â€” reset to pending and issue new OTP
@@ -305,6 +355,7 @@ export async function editTestimonial(rawBody) {
         otp,
         beforeImagePath: currentBeforePath,
         afterImagePath:  afterPathNow,
+        recoveredHealthIssues: resolvedHealthIssues,
       });
     }
 
@@ -335,39 +386,20 @@ export async function editTestimonial(rawBody) {
 }
 
 /**
- * Fetch a member's own testimonial with signed image URLs.
+ * Fetch a member's own testimonial with signed image and video URLs.
  */
 export async function getMyTestimonial(rawQuery) {
   const { userId } = validateMyTestimonial(rawQuery);
   const row = await repo.findByUserId(userId);
-  if (!row || repo.isVideoOnlyPlaceholder(row.before_image_path)) {
+  if (!row) {
     return { httpStatus: 200, body: { success: true, data: null } };
   }
 
-  const [beforeUrl, afterUrl] = await Promise.all([
-    repo.getSignedUrl(row.before_image_path),
-    repo.getSignedUrl(row.after_image_path),
-  ]);
+  const data = await enrichTestimonialForDisplay(row);
 
   return {
     httpStatus: 200,
-    body: {
-      success: true,
-      data: {
-        id:                    row.id,
-        beforeWeightKg:        row.before_weight_kg,
-        afterWeightKg:         row.after_weight_kg,
-        goalType:              row.goal_type,
-        durationText:          row.duration_text,
-        status:                row.status,
-        verifiedAt:            row.verified_at,
-        createdAt:             row.created_at,
-        updatedAt:             row.updated_at,
-        beforeImageUrl:        beforeUrl,
-        afterImageUrl:         afterUrl,
-        recoveredHealthIssues: row.recovered_health_issues ?? [],
-      },
-    },
+    body: { success: true, data },
   };
 }
 
@@ -412,37 +444,8 @@ export async function listForCoach(rawQuery) {
   // Generate signed URLs in parallel for members who have testimonials
   const enriched = await Promise.all(
     rows.map(async ({ user, testimonial }) => {
-      if (!testimonial || repo.isVideoOnlyPlaceholder(testimonial.before_image_path)) {
-        return { user: sanitizeUser(user), testimonial: null };
-      }
-      const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
-        repo.getSignedUrl(testimonial.before_image_path),
-        repo.getSignedUrl(testimonial.after_image_path),
-        testimonial.health_video_path   ? repo.getSignedUrl(testimonial.health_video_path)   : Promise.resolve(null),
-        testimonial.business_video_path ? repo.getSignedUrl(testimonial.business_video_path) : Promise.resolve(null),
-      ]);
-      return {
-        user: sanitizeUser(user),
-        testimonial: {
-          id:                     testimonial.id,
-          beforeWeightKg:         testimonial.before_weight_kg,
-          afterWeightKg:          testimonial.after_weight_kg,
-          goalType:               testimonial.goal_type,
-          durationText:           testimonial.duration_text,
-          status:                 testimonial.status,
-          verifiedAt:             testimonial.verified_at,
-          createdAt:              testimonial.created_at,
-          updatedAt:              testimonial.updated_at,
-          beforeImageUrl:         beforeUrl,
-          afterImageUrl:          afterUrl,
-          healthVideoPath:        testimonial.health_video_path   ?? null,
-          businessVideoPath:      testimonial.business_video_path ?? null,
-          healthVideoUrl:         healthVideoUrl,
-          businessVideoUrl:       businessVideoUrl,
-          videoStatus:            testimonial.video_status        ?? 'none',
-          recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
-        },
-      };
+      const enrichedTestimonial = await enrichTestimonialForDisplay(testimonial);
+      return { user: sanitizeUser(user), testimonial: enrichedTestimonial };
     }),
   );
 
@@ -463,7 +466,7 @@ function sanitizeUser(user) {
 
 // ─── Video email helper ───────────────────────────────────────────────────────
 
-async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPath, businessVideoPath }) {
+async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPath, businessVideoPath, recoveredHealthIssues }) {
   // Generate 7-day signed URLs so coach can watch the videos directly from their email client
   const [healthVideoUrl, businessVideoUrl] = await Promise.all([
     repo.getEmailSignedUrl(healthVideoPath   ?? null),
@@ -475,7 +478,13 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
 
-  const emailParams = { memberName, otp, healthVideoUrl, businessVideoUrl };
+  const emailParams = {
+    memberName,
+    otp,
+    healthVideoUrl,
+    businessVideoUrl,
+    recoveredHealthIssues: recoveredHealthIssues ?? [],
+  };
 
   await transporter.sendMail({
     from:    '"Wellness Valley" <easy2work.india@gmail.com>',
@@ -637,6 +646,14 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
+  const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
+    ? payload.recoveredHealthIssues
+    : (existing.recovered_health_issues ?? []);
+
+  if (resolvedHealthIssues.length === 0) {
+    throw new ValidationError(422, 'At least one recovered health issue is required before uploading videos for verification.');
+  }
+
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
   const otpExpiry = otpExpiryIst(24);
@@ -649,6 +666,10 @@ export async function submitVideo(rawBody) {
     videoVerifiedAt:   null,
   });
 
+  if (payload.recoveredHealthIssues !== undefined) {
+    await repo.updateTestimonial(existing.id, { recoveredHealthIssues: payload.recoveredHealthIssues });
+  }
+
   const coachInfo = await repo.findCoachEmail(userInfo.coachId);
   if (coachInfo?.email) {
     await sendVideoCoachEmail({
@@ -657,6 +678,7 @@ export async function submitVideo(rawBody) {
       otp,
       healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
       businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
+      recoveredHealthIssues: resolvedHealthIssues,
     });
   }
 

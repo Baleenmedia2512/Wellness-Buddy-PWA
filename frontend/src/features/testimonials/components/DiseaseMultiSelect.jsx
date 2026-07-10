@@ -72,9 +72,10 @@ function Tag({ label, onRemove, disabled }) {
  *   onChange: (next: string[]) => void,
  *   disabled?: boolean,
  *   maxItems?: number,
+ *   required?: boolean,
  * }} props
  */
-export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS }) {
+export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS, required = false }) {
   const [query,     setQuery]     = useState('');
   const [open,      setOpen]      = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -174,7 +175,7 @@ export default function DiseaseMultiSelect({ value = [], onChange, disabled = fa
         <HeartPulse className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
         <span className="text-[11px] sm:text-xs font-semibold text-gray-700">
           Recovered Health Issues
-          <span className="ml-1 text-gray-400 font-normal">(optional · up to {maxItems})</span>
+          <span className="ml-1 text-gray-400 font-normal">({required ? 'required' : 'optional'} · up to {maxItems})</span>
         </span>
       </div>
 
