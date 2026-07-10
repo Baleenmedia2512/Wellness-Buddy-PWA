@@ -11,7 +11,7 @@ function base() {
 
 /**
  * Submit a new testimonial (member).
- * @param {{ userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText }} payload
+ * @param {{ userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues? }} payload
  */
 export async function submitTestimonial(payload) {
   const res = await CapacitorHttp.post({
@@ -26,7 +26,7 @@ export async function submitTestimonial(payload) {
 
 /**
  * Edit an existing testimonial (member).
- * @param {{ userId, ...partialFields }} payload
+ * @param {{ userId, recoveredHealthIssues?, ...partialFields }} payload
  */
 export async function editTestimonial(payload) {
   const res = await CapacitorHttp.post({

@@ -263,19 +263,20 @@ export async function insertTestimonial(payload) {
   const { data, error } = await supabase
     .from(TABLE)
     .insert({
-      user_id:           payload.userId,
-      coach_id:          payload.coachId,
-      before_image_path: payload.beforeImagePath,
-      after_image_path:  payload.afterImagePath,
-      before_weight_kg:  payload.beforeWeightKg,
-      after_weight_kg:   payload.afterWeightKg,
-      goal_type:         payload.goalType,
-      duration_text:     payload.durationText,
-      status:            payload.status ?? 'pending',
-      otp_hash:          payload.otpHash,
-      otp_expires_at:    payload.otpExpiresAt,
-      created_at:        now,
-      updated_at:        now,
+      user_id:                  payload.userId,
+      coach_id:                 payload.coachId,
+      before_image_path:        payload.beforeImagePath,
+      after_image_path:         payload.afterImagePath,
+      before_weight_kg:         payload.beforeWeightKg,
+      after_weight_kg:          payload.afterWeightKg,
+      goal_type:                payload.goalType,
+      duration_text:            payload.durationText,
+      status:                   payload.status ?? 'pending',
+      otp_hash:                 payload.otpHash,
+      otp_expires_at:           payload.otpExpiresAt,
+      recovered_health_issues:  payload.recoveredHealthIssues ?? [],
+      created_at:               now,
+      updated_at:               now,
     })
     .select()
     .single();
@@ -313,16 +314,17 @@ export async function insertVideoOnlyTestimonial({ userId, coachId }) {
 export async function updateTestimonial(id, payload) {
   const supabase = getSupabaseClient();
   const updates = { updated_at: getISTTimestamp() };
-  if (payload.beforeImagePath !== undefined) updates.before_image_path = payload.beforeImagePath;
-  if (payload.afterImagePath  !== undefined) updates.after_image_path  = payload.afterImagePath;
-  if (payload.beforeWeightKg  !== undefined) updates.before_weight_kg  = payload.beforeWeightKg;
-  if (payload.afterWeightKg   !== undefined) updates.after_weight_kg   = payload.afterWeightKg;
-  if (payload.goalType        !== undefined) updates.goal_type         = payload.goalType;
-  if (payload.durationText    !== undefined) updates.duration_text     = payload.durationText;
-  if (payload.status          !== undefined) updates.status            = payload.status;
-  if (payload.otpHash         !== undefined) updates.otp_hash          = payload.otpHash;
-  if (payload.otpExpiresAt    !== undefined) updates.otp_expires_at    = payload.otpExpiresAt;
-  if (payload.verifiedAt      !== undefined) updates.verified_at       = payload.verifiedAt;
+  if (payload.beforeImagePath       !== undefined) updates.before_image_path        = payload.beforeImagePath;
+  if (payload.afterImagePath         !== undefined) updates.after_image_path         = payload.afterImagePath;
+  if (payload.beforeWeightKg         !== undefined) updates.before_weight_kg         = payload.beforeWeightKg;
+  if (payload.afterWeightKg          !== undefined) updates.after_weight_kg          = payload.afterWeightKg;
+  if (payload.goalType               !== undefined) updates.goal_type                = payload.goalType;
+  if (payload.durationText           !== undefined) updates.duration_text            = payload.durationText;
+  if (payload.status                 !== undefined) updates.status                   = payload.status;
+  if (payload.otpHash                !== undefined) updates.otp_hash                 = payload.otpHash;
+  if (payload.otpExpiresAt           !== undefined) updates.otp_expires_at           = payload.otpExpiresAt;
+  if (payload.verifiedAt             !== undefined) updates.verified_at              = payload.verifiedAt;
+  if (payload.recoveredHealthIssues  !== undefined) updates.recovered_health_issues  = payload.recoveredHealthIssues;
 
   const { data, error } = await supabase
     .from(TABLE)

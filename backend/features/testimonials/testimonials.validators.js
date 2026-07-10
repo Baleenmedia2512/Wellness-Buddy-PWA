@@ -12,8 +12,8 @@ const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
 const MAX_BASE64_SIZE = 1.5 * 1024 * 1024; // 1.5 MB base64 â‰ˆ 1 MB binary
 const DURATION_PATTERN = /^(\d+)\s+(days|months)$/i;
-const MAX_DURATION_AMOUNT = 9999;
-
+const MAX_DURATION_AMOUNT = 9999;const MAX_HEALTH_ISSUES = 20;
+const MAX_ISSUE_LEN = 120;
 function validateDurationText(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) throw new ValidationError(400, 'durationText is required');
@@ -57,7 +57,7 @@ function validateWeight(value, fieldName) {
 export function validateSubmitTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -77,14 +77,15 @@ export function validateSubmitTestimonial(body) {
   const normalizedDuration = validateDurationText(durationText);
 
   return {
-    userId:              userIdN,
+    userId:                userIdN,
     beforeImageBase64,
-    afterImageBase64:    afterImage,
-    beforeWeightKg:      before,
-    afterWeightKg:       after,
+    afterImageBase64:      afterImage,
+    beforeWeightKg:        before,
+    afterWeightKg:         after,
     goalType,
-    durationText:        normalizedDuration,
+    durationText:          normalizedDuration,
     hasAfter,
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues),
   };
 }
 
@@ -114,7 +115,7 @@ export function validateVerifyOtp(body) {
 export function validateEditTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -138,6 +139,9 @@ export function validateEditTestimonial(body) {
   }
   if (durationText !== undefined) {
     result.durationText = validateDurationText(durationText);
+  }
+  if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
 
   return result;
