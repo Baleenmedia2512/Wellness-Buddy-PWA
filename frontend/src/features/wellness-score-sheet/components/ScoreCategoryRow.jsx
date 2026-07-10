@@ -1,6 +1,10 @@
 import React from 'react';
 import { getParameterMeta } from '../domain/parameterRegistry';
-import { getParameterIcon } from '../domain/parameterIcons';
+import {
+  getParameterIcon,
+  SCORING_MODE_HINTS,
+  SCORING_MODE_LABELS,
+} from '../domain/parameterIcons';
 
 function progressTone(pct) {
   if (pct >= 100) return { bar: 'bg-emerald-500', text: 'text-emerald-700' };
@@ -10,12 +14,15 @@ function progressTone(pct) {
 }
 
 /**
- * Enterprise parameter row — icon, score, and progress in one card.
+ * Parameter row — icon, scoring rule caption, today's status, and points.
  */
 export default function ScoreCategoryRow({ category, compact = false }) {
   const meta = getParameterMeta(category.key);
   const Icon = getParameterIcon(category.key);
   const label = category.label || meta?.label || category.key;
+  const scoringMode = category.scoringMode || meta?.scoringMode;
+  const modeLabel = SCORING_MODE_LABELS[scoringMode] || scoringMode;
+  const modeHint = SCORING_MODE_HINTS[scoringMode] || '';
   const maxPoints = category.maxPoints ?? 0;
   const earnedPoints = category.earnedPoints ?? 0;
   const progressPct = maxPoints > 0
@@ -30,7 +37,7 @@ export default function ScoreCategoryRow({ category, compact = false }) {
       }`}
       data-testid={`score-category-${category.key}`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50"
           aria-hidden
@@ -41,12 +48,24 @@ export default function ScoreCategoryRow({ category, compact = false }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className={`truncate font-semibold text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}>
-                {label}
-              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className={`truncate font-semibold text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}>
+                  {label}
+                </p>
+                {modeLabel && (
+                  <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
+                    {modeLabel}
+                  </span>
+                )}
+              </div>
+              {!compact && modeHint && (
+                <p className="mt-1 text-[10px] leading-snug text-gray-500">
+                  {modeHint}
+                </p>
+              )}
               {!compact && category.calculationReason && (
-                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-gray-500">
-                  {category.calculationReason}
+                <p className="mt-1 text-[11px] font-medium leading-snug text-gray-700">
+                  Today: {category.calculationReason}
                 </p>
               )}
             </div>

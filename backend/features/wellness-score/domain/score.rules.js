@@ -1,5 +1,6 @@
 import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
+import { filterEducationLogsOnly } from './education-log.helpers.js';
 import { WELLNESS_PARAMETERS } from './parameter-registry.js';
 
 export function buildParameterScore({
@@ -80,7 +81,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
     return buildParameterScore({
       key: 'water_qty',
       label: 'Water Quantity',
-      section: 'logging',
+      section: 'progress',
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: 0,
@@ -91,7 +92,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
     return buildParameterScore({
       key: 'water_qty',
       label: 'Water Quantity',
-      section: 'logging',
+      section: 'progress',
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: maxPoints,
@@ -102,7 +103,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
   return buildParameterScore({
     key: 'water_qty',
     label: 'Water Quantity',
-    section: 'logging',
+    section: 'progress',
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
@@ -256,9 +257,10 @@ export function calculateWeightPost({ maxPoints, weightRecords, window }) {
 }
 
 export function calculateEducationPost({ maxPoints, educationLogs, window }) {
+  const logs = filterEducationLogsOnly(educationLogs);
   const base = calculateBinaryLogScore({
     maxPoints,
-    records: educationLogs,
+    records: logs,
     window,
     activityLabel: 'Education Post',
   });
@@ -475,7 +477,7 @@ export function calculateWeightImprovement({
       key: 'weight_improvement',
       label: 'Weight Improvement',
       section: 'progress',
-      scoringMode: 'binary',
+      scoringMode: 'progress',
       maxPoints,
       earnedPoints: 0,
       calculationReason: 'Previous weight unavailable',
@@ -492,7 +494,7 @@ export function calculateWeightImprovement({
     key: 'weight_improvement',
     label: 'Weight Improvement',
     section: 'progress',
-    scoringMode: 'binary',
+    scoringMode: 'progress',
     maxPoints,
     earnedPoints: progressed ? maxPoints : 0,
     calculationReason: progressed

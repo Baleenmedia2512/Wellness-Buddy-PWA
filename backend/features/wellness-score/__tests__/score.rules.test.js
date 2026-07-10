@@ -48,6 +48,40 @@ describe('logging parameters', () => {
     assert.match(r.calculationReason, /Late/i);
   });
 
+  it('education post — ignores smartwatch rows in same table', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [{
+        CreatedAt: '2026-07-08T23:30:00',
+        Topic: 'Calories Burned: 200 kcal',
+        Platform: 'Apple Watch',
+      }],
+      window: EDU,
+    });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /Not completed/i);
+  });
+
+  it('education post — scores real education when mixed with smartwatch', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [
+        {
+          CreatedAt: '2026-07-08T07:00:00',
+          Topic: 'Calories Burned: 200 kcal',
+          Platform: 'Fitbit',
+        },
+        {
+          CreatedAt: '2026-07-08T08:00:00',
+          Topic: 'Hydration basics',
+          Platform: 'Zoom',
+        },
+      ],
+      window: EDU,
+    });
+    assert.equal(r.earnedPoints, 100);
+  });
+
   it('weight post — 0 when late', () => {
     const r = calculateWeightPost({
       maxPoints: 100,
@@ -152,6 +186,7 @@ describe('progress parameters', () => {
       goalMode: 'gain',
     });
     assert.equal(r.earnedPoints, 100);
+    assert.equal(r.scoringMode, 'progress');
   });
 
   it('weight improvement — 0 without previous weight', () => {
@@ -162,6 +197,7 @@ describe('progress parameters', () => {
       goalMode: 'loss',
     });
     assert.equal(r.earnedPoints, 0);
+    assert.equal(r.scoringMode, 'progress');
   });
 
   it('physical activity — proportional burn', () => {
