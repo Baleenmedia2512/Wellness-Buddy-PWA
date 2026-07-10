@@ -49,6 +49,17 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
+function healthIssuesEqual(left, right) {
+  const normalize = (value) => (
+    (Array.isArray(value) ? value : [])
+      .map((item) => String(item ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join('|')
+  );
+  return normalize(left) === normalize(right);
+}
+
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
@@ -305,15 +316,50 @@ export async function editTestimonial(rawBody) {
     ? payload.recoveredHealthIssues
     : (existing.recovered_health_issues ?? []);
 
-  // Health issues are optional metadata — save without resetting coach verification.
+  // Health-only edits: save without resetting photo verification.
+  // If the photo testimonial is still pending, resend coach email with updated issues + fresh OTP.
   if (!requiresReverification) {
-    await repo.updateTestimonial(existing.id, updates);
+    const issuesChanged = payload.recoveredHealthIssues !== undefined
+      && !healthIssuesEqual(payload.recoveredHealthIssues, existing.recovered_health_issues);
+
+    const photoPending = existing.status === 'pending'
+      && !repo.isVideoOnlyPlaceholder(existing.before_image_path);
+
+    let message = 'Health issues saved successfully.';
+    const saveUpdates = { ...updates };
+
+    if (issuesChanged && photoPending && coachInfo?.email && userInfo?.userName) {
+      const otp       = generateOtp();
+      const otpHash   = await bcrypt.hash(otp, 10);
+      const otpExpiry = otpExpiryIst(24);
+      saveUpdates.otpHash      = otpHash;
+      saveUpdates.otpExpiresAt = otpExpiry;
+
+      await repo.updateTestimonial(existing.id, saveUpdates);
+
+      await sendCoachEmail({
+        coachEmail:    coachInfo.email,
+        memberName:    userInfo.userName,
+        goalType:      existing.goal_type,
+        beforeWeight:  existing.before_weight_kg,
+        afterWeight:   existing.after_weight_kg,
+        durationText:  existing.duration_text,
+        otp,
+        beforeImagePath: existing.before_image_path,
+        afterImagePath:  existing.after_image_path,
+        recoveredHealthIssues: payload.recoveredHealthIssues,
+      });
+
+      message = 'Health issues updated. Your coach received a new verification email with the OTP.';
+    } else {
+      await repo.updateTestimonial(existing.id, saveUpdates);
+    }
 
     return {
       httpStatus: 200,
       body: {
         success: true,
-        message: 'Testimonial updated successfully.',
+        message,
         testimonialId: existing.id,
         status: existing.status,
       },

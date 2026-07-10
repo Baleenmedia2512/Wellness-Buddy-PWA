@@ -752,7 +752,11 @@ export default function TestimonialsHub({ userId }) {
     setHealthIssuesSaving(true);
     try {
       await editTestimonial({ userId, recoveredHealthIssues: healthIssues });
-      setHealthIssuesSuccess('Health issues saved successfully.');
+      setHealthIssuesSuccess(
+        existing?.status === 'pending'
+          ? 'Health issues saved. If changed, your coach will receive an updated verification email with the OTP.'
+          : 'Health issues saved successfully.',
+      );
       setHealthIssuesExpanded(false);
       reload();
     } catch (err) {
@@ -760,7 +764,7 @@ export default function TestimonialsHub({ userId }) {
     } finally {
       setHealthIssuesSaving(false);
     }
-  }, [userId, healthIssues, reload]);
+  }, [userId, healthIssues, existing?.status, reload]);
 
   // ── Loading guard (after all hooks) ────────────────────────────────────────
   if (existing === undefined || existingVideo === undefined) {
