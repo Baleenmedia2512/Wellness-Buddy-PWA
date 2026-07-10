@@ -164,6 +164,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // unrecognised ("unknown") capture flow here. `diaryReloadKey` re-fetches
   // the Other feed after a retry / delete / undo.
   const ownerId = displayUser?.id || displayUser?.userId;
+  // Safety ref: prevents setState calls after Dashboard unmounts (e.g. user
+  // navigates Home while an async AI retry is still in flight).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   const [diaryReloadKey, setDiaryReloadKey] = useState(0);
   const reloadDiary = () => setDiaryReloadKey((k) => k + 1);
   const [weightReloadKey, setWeightReloadKey] = useState(0);
@@ -235,56 +242,53 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     }
   }, [backgroundAnalyzingKey]);
 
-  // Tap handler for timeline entries: dispatches to the matching imperative
-  // handle (food/weight/education) or starts the pre-flight AI run for unknown.
+  // ── Diary entry tap dispatcher (Open/Closed Principle) ───────────────────
+  //
+  // To add a new entry kind: add one entry to KNOWN_KIND_HANDLERS below.
+  // The core dispatch loop (handleEntryOpen) is NEVER modified for new kinds.
+  //
+  // KNOWN_KIND_HANDLERS maps entry.kind → synchronous open fn.
+  // Any kind NOT in this map and NOT 'unknown' is silently ignored (e.g. watch
+  // is informational only — kcal is already visible on the card).
+  //
+  // The 'unknown' path is handled separately because it requires an async
+  // AI retry pipeline with its own resilience contract (see below).
+
+  // Registry: add new diary kinds here — zero changes elsewhere.
+  const KNOWN_KIND_HANDLERS = {
+    food:      (entry) => nutritionOpenRef.current?.(entry.payload?.id),
+    weight:    (entry) => weightOpenRef.current?.(entry),
+    education: (entry) => educationOpenRef.current?.(entry.payload?.id),
+  };
+
+  // ── Resilient unknown-tap handler ─────────────────────────────────────────
+  //
+  // orchestratorService.analyzeImage() already ran 3 attempts (Flash×2 + Pro)
+  // at capture time. No further AI retry here — open Manual Log directly.
+  const handleUnknownTap = (entry) => {
+    const p = entry.payload || {};
+    const captureIdRaw = entry.capture?.id ?? p.id;
+    const captureId = captureIdRaw != null && captureIdRaw !== ''
+      ? String(captureIdRaw) : '';
+
+    // Guard: prevent double-tap opening two modals.
+    if (captureId && analyzingRef.current.has(captureId)) return;
+
+    setUnknownFlow({
+      captureId,
+      imageBase64:     p.imageBase64,
+      diaryDate:       selectedDate,
+      initialAiResult: null,
+      deleteOnly:      false,
+    });
+  };
+
+  // Core dispatch — closed for modification; open for new kinds via KNOWN_KIND_HANDLERS.
   const handleEntryOpen = (entry) => {
-    if (entry.kind === 'food') {
-      nutritionOpenRef.current?.(entry.payload?.id);
-      return;
-    }
-    if (entry.kind === 'weight') {
-      weightOpenRef.current?.(entry);
-      return;
-    }
-    if (entry.kind === 'education') {
-      educationOpenRef.current?.(entry.payload?.id);
-      return;
-    }
-    if (entry.kind === 'unknown') {
-      const p = entry.payload || {};
-      const captureIdRaw = entry.capture?.id ?? p.id;
-      const captureId =
-        captureIdRaw != null && captureIdRaw !== ''
-          ? String(captureIdRaw)
-          : '';
-
-      // Guard: only one AI run per capture at a time.
-      if (captureId && analyzingRef.current.has(captureId)) return;
-
-      // When the user cannot mutate (viewing someone else's diary), skip AI
-      // and open the modal immediately in read-only view mode.
-      if (!viewingSelf || !captureId || !p.imageBase64 || !ownerId) {
-        setUnknownFlow({
-          captureId,
-          imageBase64: p.imageBase64,
-          diaryDate: selectedDate,
-          initialAiResult: null,
-        });
-        return;
-      }
-
-      // Unknown captures open directly in delete-only mode.
-      // They were already classified as 'other'; re-analysing won't help.
-      // The user can only delete them from here.
-      setUnknownFlow({
-        captureId,
-        imageBase64: p.imageBase64,
-        diaryDate: selectedDate,
-        initialAiResult: null,
-        deleteOnly: true,
-      });
-    }
-    // watch: informational only (kcal already visible on card), no detail modal.
+    const knownHandler = KNOWN_KIND_HANDLERS[entry.kind];
+    if (knownHandler) { knownHandler(entry); return; }
+    if (entry.kind === 'unknown') { handleUnknownTap(entry); }
+    // All other kinds (e.g. watch) are intentionally no-ops.
   };
 
   const diaryUndoLabels = {
@@ -491,6 +495,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               activeTab={activeTab}
               onTabChange={handleTabChange}
               diaryEnabled={diaryEnabled}
+              processingCount={(contextAnalyzingIds?.size ?? 0) + analyzingCaptureIds.size}
             />
           )}
           {/* Steps + Screen tab buttons remain DISABLED — see
@@ -680,6 +685,22 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               undo) via onEntryOpen → handleEntryOpen. */}
           {timelineEnabled ? (
             <>
+              {/* Processing count pill — visible at top of timeline whenever
+                  background AI is running so the user knows items are pending. */}
+              {(() => {
+                const count = (contextAnalyzingIds?.size ?? 0) + analyzingCaptureIds.size;
+                return count > 0 ? (
+                  <div className="flex items-center gap-2 mx-3 mt-2 mb-1 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full w-fit">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                    </span>
+                    <span className="text-xs font-medium text-amber-700">
+                      {count} item{count > 1 ? 's' : ''} processing…
+                    </span>
+                  </div>
+                ) : null;
+              })()}
               <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <DiaryFeed
                   showTimeline

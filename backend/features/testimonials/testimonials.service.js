@@ -134,14 +134,15 @@ export async function submitTestimonial(rawBody) {
 
   let row;
   const rowData = {
-    beforeImagePath: beforePath,
-    beforeWeightKg:  payload.beforeWeightKg,
-    goalType:        payload.goalType,
-    durationText:    payload.durationText,
-    status:          newStatus,
+    beforeImagePath:        beforePath,
+    beforeWeightKg:         payload.beforeWeightKg,
+    goalType:               payload.goalType,
+    durationText:           payload.durationText,
+    status:                 newStatus,
     otpHash,
-    otpExpiresAt:    otpExpiry,
-    verifiedAt:      null,
+    otpExpiresAt:           otpExpiry,
+    verifiedAt:             null,
+    recoveredHealthIssues:  payload.recoveredHealthIssues ?? [],
     ...(afterPath ? { afterImagePath: afterPath, afterWeightKg: payload.afterWeightKg } : {}),
   };
 
@@ -243,10 +244,35 @@ export async function editTestimonial(rawBody) {
     await repo.uploadImage(payload.afterImageBase64, afterPath);
     updates.afterImagePath = afterPath;
   }
-  if (payload.beforeWeightKg !== undefined) updates.beforeWeightKg = payload.beforeWeightKg;
-  if (payload.afterWeightKg  !== undefined) updates.afterWeightKg  = payload.afterWeightKg;
-  if (payload.goalType       !== undefined) updates.goalType       = payload.goalType;
-  if (payload.durationText   !== undefined) updates.durationText   = payload.durationText;
+  if (payload.beforeWeightKg       !== undefined) updates.beforeWeightKg      = payload.beforeWeightKg;
+  if (payload.afterWeightKg        !== undefined) updates.afterWeightKg       = payload.afterWeightKg;
+  if (payload.goalType             !== undefined) updates.goalType            = payload.goalType;
+  if (payload.durationText         !== undefined) updates.durationText        = payload.durationText;
+  if (payload.recoveredHealthIssues !== undefined) updates.recoveredHealthIssues = payload.recoveredHealthIssues;
+
+  const requiresReverification = [
+    'beforeImagePath',
+    'afterImagePath',
+    'beforeWeightKg',
+    'afterWeightKg',
+    'goalType',
+    'durationText',
+  ].some((field) => updates[field] !== undefined);
+
+  // Health issues are optional metadata — save without resetting coach verification.
+  if (!requiresReverification) {
+    await repo.updateTestimonial(existing.id, updates);
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'Testimonial updated successfully.',
+        testimonialId: existing.id,
+        status: existing.status,
+      },
+    };
+  }
 
   // Determine if after photo is now present (either just uploaded or already stored)
   const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
@@ -328,17 +354,18 @@ export async function getMyTestimonial(rawQuery) {
     body: {
       success: true,
       data: {
-        id:              row.id,
-        beforeWeightKg:  row.before_weight_kg,
-        afterWeightKg:   row.after_weight_kg,
-        goalType:        row.goal_type,
-        durationText:    row.duration_text,
-        status:          row.status,
-        verifiedAt:      row.verified_at,
-        createdAt:       row.created_at,
-        updatedAt:       row.updated_at,
-        beforeImageUrl:  beforeUrl,
-        afterImageUrl:   afterUrl,
+        id:                    row.id,
+        beforeWeightKg:        row.before_weight_kg,
+        afterWeightKg:         row.after_weight_kg,
+        goalType:              row.goal_type,
+        durationText:          row.duration_text,
+        status:                row.status,
+        verifiedAt:            row.verified_at,
+        createdAt:             row.created_at,
+        updatedAt:             row.updated_at,
+        beforeImageUrl:        beforeUrl,
+        afterImageUrl:         afterUrl,
+        recoveredHealthIssues: row.recovered_health_issues ?? [],
       },
     },
   };
@@ -388,24 +415,32 @@ export async function listForCoach(rawQuery) {
       if (!testimonial || repo.isVideoOnlyPlaceholder(testimonial.before_image_path)) {
         return { user: sanitizeUser(user), testimonial: null };
       }
-      const [beforeUrl, afterUrl] = await Promise.all([
+      const [beforeUrl, afterUrl, healthVideoUrl, businessVideoUrl] = await Promise.all([
         repo.getSignedUrl(testimonial.before_image_path),
         repo.getSignedUrl(testimonial.after_image_path),
+        testimonial.health_video_path   ? repo.getSignedUrl(testimonial.health_video_path)   : Promise.resolve(null),
+        testimonial.business_video_path ? repo.getSignedUrl(testimonial.business_video_path) : Promise.resolve(null),
       ]);
       return {
         user: sanitizeUser(user),
         testimonial: {
-          id:              testimonial.id,
-          beforeWeightKg:  testimonial.before_weight_kg,
-          afterWeightKg:   testimonial.after_weight_kg,
-          goalType:        testimonial.goal_type,
-          durationText:    testimonial.duration_text,
-          status:          testimonial.status,
-          verifiedAt:      testimonial.verified_at,
-          createdAt:       testimonial.created_at,
-          updatedAt:       testimonial.updated_at,
-          beforeImageUrl:  beforeUrl,
-          afterImageUrl:   afterUrl,
+          id:                     testimonial.id,
+          beforeWeightKg:         testimonial.before_weight_kg,
+          afterWeightKg:          testimonial.after_weight_kg,
+          goalType:               testimonial.goal_type,
+          durationText:           testimonial.duration_text,
+          status:                 testimonial.status,
+          verifiedAt:             testimonial.verified_at,
+          createdAt:              testimonial.created_at,
+          updatedAt:              testimonial.updated_at,
+          beforeImageUrl:         beforeUrl,
+          afterImageUrl:          afterUrl,
+          healthVideoPath:        testimonial.health_video_path   ?? null,
+          businessVideoPath:      testimonial.business_video_path ?? null,
+          healthVideoUrl:         healthVideoUrl,
+          businessVideoUrl:       businessVideoUrl,
+          videoStatus:            testimonial.video_status        ?? 'none',
+          recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
         },
       };
     }),

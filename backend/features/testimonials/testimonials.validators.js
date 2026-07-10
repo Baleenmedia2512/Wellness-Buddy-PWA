@@ -13,6 +13,38 @@ const MAX_DURATION_LEN = 100;
 const MAX_BASE64_SIZE = 1.5 * 1024 * 1024; // 1.5 MB base64 â‰ˆ 1 MB binary
 const DURATION_PATTERN = /^(\d+)\s+(days|months)$/i;
 const MAX_DURATION_AMOUNT = 9999;
+const MAX_HEALTH_ISSUES = 20;
+const MAX_ISSUE_LEN = 120;
+
+function validateRecoveredHealthIssues(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ValidationError(422, 'recoveredHealthIssues must be an array');
+  }
+  if (value.length > MAX_HEALTH_ISSUES) {
+    throw new ValidationError(422, `recoveredHealthIssues must have at most ${MAX_HEALTH_ISSUES} items`);
+  }
+
+  const seen = new Set();
+  const result = [];
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      throw new ValidationError(422, 'Each recovered health issue must be a string');
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      throw new ValidationError(422, 'Recovered health issue labels cannot be empty');
+    }
+    if (trimmed.length > MAX_ISSUE_LEN) {
+      throw new ValidationError(422, `Each recovered health issue must be <= ${MAX_ISSUE_LEN} characters`);
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
 
 function validateDurationText(value) {
   const trimmed = String(value || '').trim();
@@ -57,7 +89,7 @@ function validateWeight(value, fieldName) {
 export function validateSubmitTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -77,14 +109,15 @@ export function validateSubmitTestimonial(body) {
   const normalizedDuration = validateDurationText(durationText);
 
   return {
-    userId:              userIdN,
+    userId:                userIdN,
     beforeImageBase64,
-    afterImageBase64:    afterImage,
-    beforeWeightKg:      before,
-    afterWeightKg:       after,
+    afterImageBase64:      afterImage,
+    beforeWeightKg:        before,
+    afterWeightKg:         after,
     goalType,
-    durationText:        normalizedDuration,
+    durationText:          normalizedDuration,
     hasAfter,
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues),
   };
 }
 
@@ -114,7 +147,7 @@ export function validateVerifyOtp(body) {
 export function validateEditTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -138,6 +171,9 @@ export function validateEditTestimonial(body) {
   }
   if (durationText !== undefined) {
     result.durationText = validateDurationText(durationText);
+  }
+  if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
 
   return result;

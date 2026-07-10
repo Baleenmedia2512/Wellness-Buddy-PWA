@@ -26,10 +26,17 @@ const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 const REQUEST_TIMEOUT_MS = 60_000; // 60 s — parity with old imageTypeDetector
 
-/** Maximum total attempts (1 original + 2 automatic retries). */
+/** Maximum total attempts (2× Flash + 1× Pro escalation). */
 const MAX_ATTEMPTS    = 3;
 /** Base delay between retries in ms. Doubles each attempt: 1.5 s → 3 s. */
 const RETRY_DELAY_MS  = 1_500;
+
+/**
+ * Confidence threshold above which an AI "other" result is treated as
+ * DEFINITIVE — no retry is worth attempting.
+ * Below this threshold the AI is uncertain; escalating to Pro may classify it.
+ */
+const OBVIOUSLY_OTHER_CONFIDENCE = 0.7;
 
 /**
  * Shape returned on any unrecoverable failure.
@@ -65,29 +72,37 @@ export async function analyzeImage(
   { captureId = null, userId = null, foodRowId = null } = {},
 ) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt });
+    // Attempt 3 escalates to Gemini Pro for better accuracy on hard images.
+    const usePro = attempt >= MAX_ATTEMPTS;
+    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro });
 
-    // Success — return immediately.
-    if (!result.details?.defaulted) return result;
+    // ── Valid classification — return immediately ──────────────────────────
+    if (!result.details?.defaulted && result.type !== 'other') return result;
 
-    // Non-retryable client error (4xx) — exit without wasting more attempts.
+    // ── "Obviously other": AI is highly confident it's none of the 4 types ─
+    // Retrying would waste tokens. Surface immediately so the UI shows Manual Log.
+    if (result.type === 'other' && !result.details?.defaulted &&
+        (result.confidence ?? 0) >= OBVIOUSLY_OTHER_CONFIDENCE) {
+      _trace('OBVIOUSLY_OTHER', { attempt, confidence: result.confidence, captureId });
+      return { ...result, details: { ...result.details, obviouslyOther: true } };
+    }
+
+    // ── Non-retryable client error (4xx) ──────────────────────────────────
     if (result.details?._retryable === false) {
       return { ...result, details: { ...result.details } };
     }
 
-    // All attempts exhausted — surface the final failure to the caller.
+    // ── All attempts exhausted ────────────────────────────────────────────
     if (attempt === MAX_ATTEMPTS) {
       _trace('EXHAUSTED', { attempt, captureId });
       return result;
     }
 
-    // Wait before retrying (linear back-off: 1.5 s, 3 s).
-    // Wait before retrying. Use a longer back-off for 503 (server overload)
-    // so we do not keep flooding an already-saturated Gemini endpoint.
-    // Other transient failures (timeout, network blip) use the shorter base.
+    // ── Wait before next attempt ──────────────────────────────────────────
+    // Longer back-off for 503 (server overload) to avoid flooding Gemini.
     const is503 = (result.details?.error ?? '').includes('503');
     const delay = is503 ? 6_000 * attempt : RETRY_DELAY_MS * attempt;
-    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, captureId });
+    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, usePro: attempt + 1 >= MAX_ATTEMPTS, captureId });
     await new Promise((r) => setTimeout(r, delay));
   }
   /* unreachable — loop always returns before this */
@@ -101,18 +116,21 @@ export async function analyzeImage(
  * Never throws. Returns FALLBACK (with _retryable flag) on any error.
  * @private
  */
-async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt }) {
+async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro = false }) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  _trace('START', { attempt, captureId, userId, size: imageFile?.size ?? 0 });
+  _trace('START', { attempt, captureId, userId, usePro, size: imageFile?.size ?? 0 });
 
   try {
     const formData = new FormData();
     formData.append('image', imageFile);
     if (captureId)  formData.append('captureId',  String(captureId));
     if (userId)     formData.append('userId',      String(userId));
+    if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
+    // Signal backend to use Gemini Pro on this attempt (attempt-3 escalation).
+    if (usePro)     formData.append('modelTier',   'pro');
     if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
 
     const response = await fetch(ORCHESTRATE_URL, {
