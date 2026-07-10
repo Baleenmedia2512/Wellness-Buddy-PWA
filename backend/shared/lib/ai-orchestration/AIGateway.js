@@ -302,78 +302,31 @@ Supplements (isLiquid: false, near-zero calories — estimate 5–10 kcal per ta
 
 === Tamil Nadu / South Indian foods (SECOND PRIORITY) ===
 Use these EXACT names. If unsure, pick the closest Tamil Nadu food — never default to a Western name.
+Estimate nutrition using USDA FoodData Central / IFCT (Indian Food Composition Tables) values.
 
-Breakfast items (per 1 standard piece / 1 serving unless noted):
-- Idli (1 piece ~45 g):         58 kcal, 2.5 g P, 11 g C, 0.2 g F, 0.5 g fiber. sodium 120 mg.
-- Dosa (1 plain ~90 g):        110 kcal, 3.0 g P, 20 g C, 2.5 g F, 1.0 g fiber. sodium 200 mg.
-- Masala Dosa (1 ~180 g):      260 kcal, 6.0 g P, 42 g C, 7.0 g F, 3.0 g fiber.
-- Rava Dosa (1 ~90 g):         130 kcal, 3.5 g P, 22 g C, 3.5 g F, 1.0 g fiber.
-- Uthappam (1 ~120 g):         145 kcal, 4.5 g P, 25 g C, 3.0 g F, 2.0 g fiber.
-- Pongal / Ven Pongal (1 cup ~200 g): 320 kcal, 8 g P, 42 g C, 12 g F, 2 g fiber.
-- Appam (1 piece ~80 g):        95 kcal, 2.5 g P, 19 g C, 1.0 g F, 1.0 g fiber.
-- Puttu (1 serving ~120 g):    195 kcal, 4.0 g P, 40 g C, 2.5 g F, 3.0 g fiber.
-- Idiyappam (1 serving ~100 g): 160 kcal, 3.5 g P, 34 g C, 1.0 g F, 1.5 g fiber.
-- Poha / Aval (1 cup ~180 g):  240 kcal, 4.0 g P, 48 g C, 3.0 g F, 2.0 g fiber.
-- Upma (1 cup ~200 g):         230 kcal, 5.0 g P, 38 g C, 6.0 g F, 2.5 g fiber.
+Breakfast (~portion): Idli (~45 g/piece), Dosa (~90 g), Masala Dosa (~180 g), Rava Dosa (~90 g),
+  Uthappam (~120 g), Pongal/Ven Pongal (~200 g/cup), Appam (~80 g), Puttu (~120 g),
+  Idiyappam (~100 g), Poha/Aval (~180 g/cup), Upma (~200 g/cup).
 
-Rice dishes (per 1 cup ~200 g cooked):
-- Plain White Rice:             260 kcal, 5.5 g P, 57 g C, 0.5 g F, 0.5 g fiber.
-- Curd Rice:                    210 kcal, 7.0 g P, 36 g C, 4.0 g F, 0.5 g fiber.
-- Lemon Rice:                   260 kcal, 5.0 g P, 50 g C, 5.0 g F, 2.0 g fiber. sodium 350 mg.
-- Puliyodarai / Tamarind Rice:  290 kcal, 5.0 g P, 52 g C, 7.0 g F, 2.5 g fiber.
-- Tomato Rice:                  280 kcal, 6.0 g P, 52 g C, 5.5 g F, 2.0 g fiber.
-- Coconut Rice:                 310 kcal, 5.5 g P, 50 g C, 9.0 g F, 2.0 g fiber.
-- Sambar Rice (sadam):          310 kcal, 10 g P, 52 g C, 6.0 g F, 5.0 g fiber.
-- Chicken Biryani (1 plate ~350 g): 620 kcal, 32 g P, 75 g C, 18 g F, 3.0 g fiber.
-- Mutton Biryani (1 plate ~350 g):  680 kcal, 35 g P, 72 g C, 24 g F, 3.0 g fiber.
-- Seeraga Samba Biryani (1 plate ~350 g): 640 kcal, 30 g P, 76 g C, 20 g F, 3.0 g fiber.
-- Vegetable Biryani (1 plate ~300 g): 450 kcal, 10 g P, 78 g C, 12 g F, 4.0 g fiber.
+Rice (~200 g/cup cooked): Plain White Rice, Curd Rice, Lemon Rice, Puliyodarai/Tamarind Rice,
+  Tomato Rice, Coconut Rice, Sambar Rice (sadam), Chicken Biryani (~350 g/plate),
+  Mutton Biryani (~350 g/plate), Seeraga Samba Biryani (~350 g/plate), Vegetable Biryani (~300 g/plate).
 
-Breads:
-- Parotta (1 piece ~90 g):     300 kcal, 6.0 g P, 45 g C, 10 g F, 1.5 g fiber.
-- Kothu Parotta (1 serving ~250 g): 480 kcal, 18 g P, 60 g C, 18 g F, 3.0 g fiber.
-- Chapati / Roti (1 piece ~40 g): 95 kcal, 3.0 g P, 18 g C, 1.5 g F, 2.0 g fiber.
-- Phulka (1 piece ~30 g):       80 kcal, 2.5 g P, 15 g C, 1.0 g F, 2.0 g fiber.
+Breads: Parotta (~90 g), Kothu Parotta (~250 g), Chapati/Roti (~40 g), Phulka (~30 g).
 
-Gravies & curries (per 1 cup ~200 ml/g):
-- Sambar:                       100 kcal, 5.5 g P, 14 g C, 3.0 g F, 4.0 g fiber. sodium 450 mg.
-- Rasam:                         45 kcal, 1.5 g P,  7 g C, 1.5 g F, 1.0 g fiber. sodium 350 mg.
-- Kootu (vegetable+lentil):     150 kcal, 6.0 g P, 20 g C, 5.0 g F, 4.0 g fiber.
-- Poriyal (stir-fry, ~100 g):   90 kcal, 3.0 g P, 12 g C, 3.5 g F, 3.0 g fiber.
-- Avial (~150 g):               130 kcal, 3.5 g P, 15 g C, 6.0 g F, 4.0 g fiber.
-- Moru Kuzhambu (buttermilk curry, ~200 ml): 80 kcal, 3.0 g P, 8 g C, 4.0 g F.
-- Vatha Kuzhambu (~150 ml):     110 kcal, 2.0 g P, 10 g C, 7.0 g F, 2.0 g fiber.
-- Chicken Chettinad (~200 g):   280 kcal, 28 g P,  8 g C, 16 g F, 1.5 g fiber.
-- Mutton Kuzhambu (~200 g):     320 kcal, 25 g P,  9 g C, 21 g F, 1.5 g fiber.
-- Meen Kuzhambu / Fish Curry (~200 g): 220 kcal, 24 g P, 7 g C, 11 g F, 1.0 g fiber.
-- Egg Curry (1 egg + gravy):    180 kcal, 12 g P,  8 g C, 11 g F, 1.0 g fiber.
-- Egg Bhurji (2 eggs):          210 kcal, 14 g P,  6 g C, 14 g F, 1.0 g fiber.
-- Paneer Butter Masala (~200 g): 340 kcal, 14 g P, 14 g C, 26 g F, 2.0 g fiber.
-- Dal Tadka (~200 ml):          180 kcal, 10 g P, 25 g C, 5.0 g F, 5.0 g fiber.
-- Coconut Chutney (2 tbsp ~30 g): 50 kcal, 0.8 g P, 3 g C, 4.0 g F, 1.5 g fiber.
-- Tomato Chutney (2 tbsp ~30 g):  25 kcal, 0.5 g P, 4 g C, 1.0 g F, 1.0 g fiber.
+Gravies (~200 ml/g cup): Sambar, Rasam, Kootu, Poriyal (~100 g), Avial (~150 g),
+  Moru Kuzhambu, Vatha Kuzhambu (~150 ml), Chicken Chettinad, Mutton Kuzhambu,
+  Meen Kuzhambu/Fish Curry, Egg Curry, Egg Bhurji, Paneer Butter Masala, Dal Tadka,
+  Coconut Chutney (~30 g), Tomato Chutney (~30 g).
 
-Snacks:
-- Murukku (1 piece ~30 g):     155 kcal, 2.5 g P, 20 g C, 7.0 g F, 1.0 g fiber.
-- Sundal (1 cup ~100 g):       155 kcal, 9.0 g P, 22 g C, 3.5 g F, 7.0 g fiber.
-- Bonda (1 piece ~60 g):       145 kcal, 3.5 g P, 20 g C, 6.0 g F, 1.5 g fiber.
-- Bajji (1 piece ~50 g):       120 kcal, 3.0 g P, 16 g C, 5.0 g F, 1.5 g fiber.
+Snacks: Murukku (~30 g), Sundal (~100 g), Bonda (~60 g), Bajji (~50 g).
 
-Beverages (isLiquid: true, per standard serving):
-- Filter Coffee with milk (~150 ml): 85 kcal, 3.5 g P, 9 g C, 4.0 g F. calcium 120 mg, potassium 200 mg.
-- Masala Chai with milk (~150 ml):   80 kcal, 3.0 g P, 9 g C, 3.5 g F. calcium 110 mg.
-- Plain Tea with milk (~150 ml):     60 kcal, 2.5 g P, 7 g C, 3.0 g F.
-- Ginger Tea with milk (~150 ml):    65 kcal, 2.5 g P, 8 g C, 3.0 g F.
-- Buttermilk / Moru (~200 ml):       35 kcal, 2.5 g P, 5 g C, 1.0 g F. calcium 100 mg.
-- Tender Coconut Water (~240 ml):    45 kcal, 0.5 g P, 11 g C, 0.5 g F. potassium 600 mg.
-- Sugarcane Juice (~240 ml):        120 kcal, 0.5 g P, 30 g C, 0.0 g F. potassium 180 mg.
+Beverages (isLiquid: true): Filter Coffee with milk (~150 ml), Masala Chai with milk (~150 ml),
+  Plain Tea with milk (~150 ml), Ginger Tea with milk (~150 ml), Buttermilk/Moru (~200 ml),
+  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml).
 
-Sweets (per 1 piece / 1 serving):
-- Sweet Pongal / Sakkarai Pongal (1 cup ~150 g): 350 kcal, 6 g P, 60 g C, 10 g F.
-- Payasam (1 cup ~150 ml):   200 kcal, 5.0 g P, 35 g C, 5.0 g F.
-- Mysore Pak (1 piece ~50 g):290 kcal, 3.5 g P, 32 g C, 17 g F.
-- Halwa (1 piece ~80 g):     280 kcal, 3.0 g P, 45 g C, 10 g F.
-- Laddu (1 piece ~50 g):     225 kcal, 4.5 g P, 30 g C, 10 g F.
+Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~50 g),
+  Halwa (~80 g), Laddu (~50 g).
 
 === isLiquid ===
 true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate)
@@ -403,7 +356,7 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
-- Use the reference values above for Tamil Nadu foods, Herbalife Afresh / Herbal Tea, and Herbalife Formula 1 (official per-100 g label with proportional scaling).
+- Use USDA / IFCT values for Tamil Nadu foods, Herbalife Afresh / Herbal Tea (exact values above), and Herbalife Formula 1 (official per-100 g label with proportional scaling).
 - Herbalife Formula 1 Shake: estimate weight_g from the image, then scale ALL macros and micronutrients using actual_value = per100g_value × detected_weight_g / 100. Never use outdated values (210 kcal, 18 g protein, 24 g carbs, 3 g fat).
 - For any other Indian food, estimate using USDA FoodData Central or equivalent.
 
@@ -471,61 +424,7 @@ Herbalife Formula 2 Multivitamin (per daily dose):
   vitamin_b1: 1.1, vitamin_b2: 1.4, vitamin_b3: 16, vitamin_b6: 1.4, vitamin_b9: 200, vitamin_b12: 2.5,
   calcium: 150, iron: 8, magnesium: 55, potassium: 80, zinc: 7, phosphorus: 100.
 
-=== Tamil Nadu foods — micronutrient references per standard serving ===
-
-Dairy-based beverages (per ~150–200 ml cup with cow's milk):
-  Filter Coffee / Masala Chai / Tea with milk / Ginger Tea:
-    calcium: 120, potassium: 200, phosphorus: 100, vitamin_b2: 0.20, vitamin_b12: 0.5,
-    magnesium: 15, vitamin_a: 50, vitamin_b1: 0.05, vitamin_d: 0.5.
-
-Idli (per 2 pieces ~90 g):
-  iron: 0.8, calcium: 20, potassium: 70, phosphorus: 50, magnesium: 15,
-  vitamin_b1: 0.06, vitamin_b2: 0.03, vitamin_b3: 0.7, vitamin_b9: 12.
-
-Dosa (plain, per 1 piece ~90 g):
-  iron: 0.7, calcium: 15, potassium: 80, phosphorus: 60, magnesium: 18,
-  vitamin_b1: 0.08, vitamin_b2: 0.04, vitamin_b3: 0.9, vitamin_b9: 14.
-
-Pongal / Ven Pongal (per 1 cup ~200 g):
-  calcium: 25, iron: 1.5, potassium: 150, phosphorus: 90, magnesium: 30,
-  vitamin_b1: 0.10, vitamin_b3: 1.5, vitamin_b9: 20.
-
-Sambar (per 1 cup ~200 ml):
-  iron: 2.0, calcium: 50, potassium: 350, phosphorus: 80, magnesium: 35,
-  vitamin_c: 15, vitamin_b1: 0.10, vitamin_b3: 1.2, vitamin_b9: 40, vitamin_a: 120.
-
-Curd Rice (per 1 cup ~200 g):
-  calcium: 150, potassium: 180, phosphorus: 120, vitamin_b2: 0.18, vitamin_b12: 0.4,
-  magnesium: 18, vitamin_a: 40.
-
-Chicken Biryani (per 1 plate ~350 g):
-  iron: 2.5, zinc: 3.5, potassium: 450, phosphorus: 280, calcium: 40,
-  vitamin_b3: 8.0, vitamin_b6: 0.5, vitamin_b12: 0.6, vitamin_b1: 0.15, magnesium: 45.
-
-Mutton Biryani (per 1 plate ~350 g):
-  iron: 3.5, zinc: 5.0, potassium: 480, phosphorus: 300, calcium: 45,
-  vitamin_b3: 7.0, vitamin_b6: 0.4, vitamin_b12: 1.5, vitamin_b1: 0.18, magnesium: 50.
-
-Parotta (per 1 piece ~90 g):
-  iron: 1.2, calcium: 20, phosphorus: 70, potassium: 80, vitamin_b1: 0.12, vitamin_b3: 1.0.
-
-Rasam (per 1 cup ~200 ml):
-  vitamin_c: 12, iron: 1.0, potassium: 250, magnesium: 20, calcium: 25, vitamin_a: 40.
-
-Kootu (vegetable+lentil, per 1 cup ~150 g):
-  iron: 2.0, calcium: 60, potassium: 300, magnesium: 40, vitamin_c: 20, vitamin_b9: 50.
-
-Tender Coconut Water (per 240 ml):
-  potassium: 600, magnesium: 25, calcium: 18, phosphorus: 17, vitamin_c: 4.
-
-Buttermilk / Moru (per 200 ml):
-  calcium: 115, potassium: 180, phosphorus: 90, vitamin_b2: 0.15, vitamin_b12: 0.35.
-
-Egg (per 1 whole egg ~50 g):
-  vitamin_a: 70, vitamin_d: 1.1, vitamin_b2: 0.24, vitamin_b12: 0.6, vitamin_b9: 24,
-  iron: 0.9, calcium: 25, phosphorus: 95, zinc: 0.6, potassium: 70.
-
-For any Tamil Nadu food not listed above, use USDA / IFCT (Indian Food Composition Tables) values.
+For all Tamil Nadu foods use USDA / IFCT (Indian Food Composition Tables) values from your training data.
 For any other food, use USDA FoodData Central.
 
 JSON only. No markdown.`;
@@ -547,9 +446,10 @@ function isPrimaryOverloadedError(err) {
   // Circuit opened for the primary → the primary service is considered down
   if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
+  // 502 = bad gateway (upstream Gemini infrastructure failure)
   // 503 = service unavailable (overloaded)
   // 429 = quota exceeded / rate limited (separate quota on fallback model)
-  if (status === 503 || status === 429) return true;
+  if (status === 502 || status === 503 || status === 429) return true;
   const msg = (err.message ?? '').toLowerCase();
   return (
     msg.includes('503')                       ||
@@ -590,13 +490,23 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
       () => model.generateContent(parts),
-      { label, service: circuitService },
+      {
+        label,
+        service: circuitService,
+        // Primary model (Flash): cap at 2 attempts. A persistent 503 means
+        // the endpoint is saturated — burning 2 more retries on the same
+        // overloaded server delays fallback and makes congestion worse.
+        // Fallback model (Pro): keep the default 3-attempt budget; it is the
+        // last resort and worth retrying fully before surfacing an error.
+        ...(modelOverride ? {} : { maxAttempts: 2 }),
+      },
     ));
   } catch (err) {
     // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
       const status = Number(err.status);
       const reason = err.code === 'CIRCUIT_OPEN' ? 'circuit_open'
+                   : status === 502 ? '502_bad_gateway'
                    : (status === 429 || (err.message ?? '').toLowerCase().includes('quota') || (err.message ?? '').toLowerCase().includes('rate limit') || (err.message ?? '').toLowerCase().includes('too many requests')) ? '429_quota_exceeded'
                    : '503_overload';
       logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {

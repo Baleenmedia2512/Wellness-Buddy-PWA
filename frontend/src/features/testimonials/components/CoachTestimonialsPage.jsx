@@ -7,7 +7,7 @@
  * OTP is entered by the MEMBER (not coach) after the coach shares it via WhatsApp/phone.
  */
 import React, { useEffect, useCallback, useState, useMemo } from 'react';
-import { AlertCircle, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, RefreshCw, Users, Video } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTestimonialVideoReport, getTeamTestimonialReport } from '../services/testimonialApi.js';
@@ -52,7 +52,25 @@ const STATUS_CHIP_STYLES = {
 };
 
 function formatPercentage(value) {
-  return Number(value ?? 0).toFixed(2);
+  return Number(value ?? 0).toFixed(1);
+}
+
+function formatTeamComplianceLabel(teamStats) {
+  const total = teamStats.totalMembers ?? 0;
+  const uploaded = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
+  return `${formatPercentage(teamStats.uploadPercentage)}% (${uploaded}/${total})`;
+}
+
+function getUploadCounts(teamStats) {
+  const total = teamStats.totalMembers ?? 0;
+  const uploaded = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
+  const notUploaded =
+    teamStats.notUploaded ?? teamStats.notUploadedMembers?.length ?? Math.max(total - uploaded, 0);
+  return { total, uploaded, notUploaded };
+}
+
+function formatUploadScoreLabel(percentage, count, total) {
+  return `${formatPercentage(percentage)}% (${count}/${total})`;
 }
 
 function teamComplianceColorClass(scoreNum) {
@@ -61,7 +79,7 @@ function teamComplianceColorClass(scoreNum) {
   return 'text-red-700';
 }
 
-function TeamComplianceInline({ userName, teamStats }) {
+function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
   if (!teamStats?.totalMembers) {
     return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
   }
@@ -72,17 +90,85 @@ function TeamComplianceInline({ userName, teamStats }) {
   return (
     <p className="text-sm font-medium flex items-baseline gap-2 min-w-0">
       <span className="font-semibold text-gray-900 truncate">{userName}</span>
-      <span className={`text-[11px] whitespace-nowrap flex-shrink-0 ${colorClass}`}>
-        Team Compliance: {formatPercentage(teamStats.uploadPercentage)}%
-      </span>
+      <button
+        type="button"
+        onClick={onComplianceClick}
+        className={`text-[11px] whitespace-nowrap flex-shrink-0 cursor-pointer underline-offset-2 hover:underline ${colorClass}`}
+      >
+        Team Compliance: {formatTeamComplianceLabel(teamStats)}
+      </button>
     </p>
   );
 }
 
-function UploadMemberList({ members, variant }) {
+function TeamComplianceModal({ userName, teamStats, onClose }) {
+  const scoreColor = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] ios-full-page bg-gray-50"
+      role="dialog"
+      aria-labelledby="team-compliance-title"
+    >
+      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+        <div className="flex items-center gap-3">
+          <TouchFeedbackButton
+            onClick={onClose}
+            className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900"
+            ariaLabel="Back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </TouchFeedbackButton>
+          <div className="min-w-0 flex-1">
+            <h2 id="team-compliance-title" className="text-base font-bold text-gray-800 truncate">
+              Team Compliance
+            </h2>
+            <p className="text-xs text-gray-500 truncate">{userName}</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="ios-scroll-body px-4 py-4 space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className={`text-2xl font-bold ${scoreColor}`}>
+            {formatTeamComplianceLabel(teamStats)}
+          </p>
+          <p className="text-sm text-gray-500 mt-1">Overall team upload rate</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <UploadScoreLine teamStats={teamStats} fullPage />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamComplianceSection({ userName, teamStats }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  return (
+    <>
+      <TeamComplianceInline
+        userName={userName}
+        teamStats={teamStats}
+        onComplianceClick={() => setModalOpen(true)}
+      />
+      {modalOpen && teamStats?.totalMembers && (
+        <TeamComplianceModal
+          userName={userName}
+          teamStats={teamStats}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function UploadMemberList({ members, variant, fullPage = false }) {
   if (!members?.length) {
     return (
-      <p className="text-[11px] text-gray-400 mt-1.5 italic">
+      <p className={`text-gray-400 mt-3 italic ${fullPage ? 'text-sm' : 'text-[11px] mt-1.5'}`}>
         {variant === 'uploaded' ? 'No uploaded members.' : 'No members without upload.'}
       </p>
     );
@@ -90,7 +176,9 @@ function UploadMemberList({ members, variant }) {
 
   return (
     <ul
-      className={`mt-1.5 rounded-lg border px-2.5 py-2 space-y-0.5 max-h-36 overflow-y-auto ${
+      className={`mt-3 rounded-xl border px-3 py-2 space-y-1 ${
+        fullPage ? 'text-sm' : 'text-[11px] mt-1.5 max-h-36 overflow-y-auto'
+      } ${
         variant === 'uploaded'
           ? 'border-green-200 bg-green-50'
           : 'border-red-200 bg-red-50'
@@ -99,7 +187,7 @@ function UploadMemberList({ members, variant }) {
       {members.map((m) => (
         <li
           key={m.userId}
-          className={`text-[11px] font-medium truncate ${
+          className={`font-medium truncate ${
             variant === 'uploaded' ? 'text-green-800' : 'text-red-800'
           }`}
         >
@@ -110,46 +198,47 @@ function UploadMemberList({ members, variant }) {
   );
 }
 
-function UploadScoreLine({ teamStats }) {
-  const [expanded, setExpanded] = useState(null);
+function UploadScoreLine({ teamStats, fullPage = false }) {
+  const [expanded, setExpanded] = useState('uploaded');
 
   if (!teamStats?.totalMembers) return null;
 
+  const { total, uploaded, notUploaded } = getUploadCounts(teamStats);
   const toggle = (key) => setExpanded((prev) => (prev === key ? null : key));
   const uploadedActive = expanded === 'uploaded';
   const notUploadedActive = expanded === 'notUploaded';
+  const textSize = fullPage ? 'text-sm' : 'text-xs';
 
   return (
-    <div className="mt-1">
-      <p className="text-xs font-medium flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+    <div className={fullPage ? '' : 'mt-1'}>
+      <p className={`${textSize} font-medium flex flex-nowrap items-center gap-x-1.5 overflow-x-auto whitespace-nowrap`}>
         <button
           type="button"
           onClick={() => toggle('uploaded')}
           aria-expanded={uploadedActive}
-          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+          className={`font-semibold shrink-0 cursor-pointer underline-offset-2 hover:underline ${
             uploadedActive ? 'text-green-800 underline' : 'text-green-600'
           }`}
         >
-          Uploaded {formatPercentage(teamStats.uploadPercentage)}%
+          Uploaded {formatUploadScoreLabel(teamStats.uploadPercentage, uploaded, total)}
         </button>
-        <span className="text-gray-300">|</span>
+        <span className="text-gray-300 shrink-0">|</span>
         <button
           type="button"
           onClick={() => toggle('notUploaded')}
           aria-expanded={notUploadedActive}
-          className={`font-semibold cursor-pointer underline-offset-2 hover:underline ${
+          className={`font-semibold shrink-0 cursor-pointer underline-offset-2 hover:underline ${
             notUploadedActive ? 'text-red-800 underline' : 'text-red-600'
           }`}
         >
-          Not Upload {formatPercentage(teamStats.notUploadPercentage)}%
+          Not Upload {formatUploadScoreLabel(teamStats.notUploadPercentage, notUploaded, total)}
         </button>
-        <span className="text-gray-400">({teamStats.totalMembers} active)</span>
       </p>
       {uploadedActive && (
-        <UploadMemberList members={teamStats.uploadedMembers} variant="uploaded" />
+        <UploadMemberList members={teamStats.uploadedMembers} variant="uploaded" fullPage={fullPage} />
       )}
       {notUploadedActive && (
-        <UploadMemberList members={teamStats.notUploadedMembers} variant="notUploaded" />
+        <UploadMemberList members={teamStats.notUploadedMembers} variant="notUploaded" fullPage={fullPage} />
       )}
     </div>
   );
@@ -194,11 +283,10 @@ function VideoMemberRow({ user, videoStatus, hasHealthVideo, hasBusinessVideo, v
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
+          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
           <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-0.5 ${cfg.color}`}>
             <Icon className="h-3 w-3" /> {cfg.label}
           </span>
-          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 
@@ -278,7 +366,7 @@ function MemberRow({ user, testimonial, teamStats }) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <TeamComplianceInline userName={user.userName} teamStats={teamStats} />
+          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
           <div className="mt-0.5">
             {missing && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
@@ -296,7 +384,6 @@ function MemberRow({ user, testimonial, teamStats }) {
               </span>
             )}
           </div>
-          <UploadScoreLine teamStats={teamStats} />
         </div>
       </div>
 

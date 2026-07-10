@@ -92,6 +92,7 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
+import * as captureQueue from './shared/services/captureQueue';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
@@ -5790,42 +5791,44 @@ function WellnessValleyApp() {
       });
       debugLog(`?? [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ? OPTIMIZED: Aggressive compression for faster uploads & API calls
+      // Always compress to ≤800px / quality 0.7 before sending to Gemini.
+      // Gemini tiles images at 768px — sending larger images creates multiple
+      // tiles (4× tokens for a 1280px image vs 1× for 800px), slowing inference
+      // and increasing 503 risk under load.  800px is sufficient for accurate
+      // food / weight / education recognition.
       const compressStart = Date.now();
-      const isAndroid = Capacitor.isNativePlatform();
-      const imageSizeMB = imageBase64.length / (1024 * 1024);
 
       let processedImage = imageBase64;
       let compressionApplied = false;
 
-      // More aggressive compression for speed (AI doesn't need high-res images)
-      if (isAndroid) {
-        // Android: Always compress aggressively for speed
-        if (imageSizeMB > 0.3) {
-          // > 300KB
-          const maxWidth = 800; // Smaller = faster upload & API processing
-          const quality = imageSizeMB > 2 ? 0.6 : 0.7; // Higher compression
-          processedImage = await compressImage(imageBase64, quality, maxWidth);
-          compressionApplied = true;
-        }
-      } else {
-        // Web: Also compress aggressively
-        if (imageSizeMB > 0.5) {
-          // > 500KB
-          processedImage = await compressImage(imageBase64, 0.7, 800);
-          compressionApplied = true;
-        }
+      try {
+        processedImage = await compressImage(imageBase64, 0.7, 800);
+        compressionApplied = true;
+      } catch (_) {
+        // Compression failed — proceed with original image
       }
 
       if (compressionApplied) {
-        const newSizeMB = processedImage.length / (1024 * 1024);
+        const origMB = imageBase64.length / (1024 * 1024);
+        const newMB  = processedImage.length / (1024 * 1024);
         debugLog(
-          `?? [PERF] Compression: ${
-            Date.now() - compressStart
-          }ms (${imageSizeMB.toFixed(2)}MB ? ${newSizeMB.toFixed(2)}MB)`,
+          `?? [PERF] Compression: ${Date.now() - compressStart}ms (${origMB.toFixed(2)}MB → ${newMB.toFixed(2)}MB)`,
         );
       } else {
-        debugLog(`?? [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
+        debugLog(`?? [PERF] Compression skipped (fallback to original)`);
+      }
+
+      // Offline: queue the image locally and exit.
+      // The online listener below will automatically resubmit when connected.
+      // Supports continuous shooting — multiple photos can be queued in a row.
+      if (!navigator.onLine) {
+        const n = captureQueue.enqueue({
+          imageBase64:   processedImage,
+          userId:        user?.id ?? null,
+          exifTimestamp: exifTimestamp ?? null,
+        });
+        showToast(`No internet — photo queued${n > 0 ? ` (${n} waiting)` : ''}, will analyse when online`);
+        return;
       }
 
       // Set preview and uploading state while the capture row is persisted.
@@ -6956,6 +6959,48 @@ function WellnessValleyApp() {
       debugLog("????????????????????????????????????????????");
     }
   };
+
+  // ── Offline capture queue ─────────────────────────────────────────────────────────
+  // Photos taken while offline are stored in localStorage and resubmitted
+  // automatically when connectivity is restored. Multiple photos queued
+  // in a row are processed sequentially with a 3 s gap to avoid flooding.
+  const [_offlineQueueTrigger, setOfflineQueueTrigger] = useState(0);
+
+  useEffect(() => {
+    // state-setter as the trigger means the second effect always has the latest
+    // handleImageSelect via its own dep without a ref.
+    const wake = () => setOfflineQueueTrigger((n) => n + 1);
+    window.addEventListener('online', wake);
+    // Process any items queued during a previous offline session on mount.
+    if (navigator.onLine && captureQueue.size() > 0) wake();
+    return () => window.removeEventListener('online', wake);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- wake only uses stable setter
+
+  useEffect(() => {
+    if (_offlineQueueTrigger === 0 || !navigator.onLine) return;
+    const items = captureQueue.flush();
+    if (items.length === 0) return;
+    showToast(`📶 Back online — processing ${items.length} queued photo${items.length === 1 ? '' : 's'}…`);
+    let idx = 0;
+    const processNext = async () => {
+      if (idx >= items.length) return;
+      const item = items[idx++];
+      try {
+        const dataUrl = item.imageBase64.startsWith('data:')
+          ? item.imageBase64
+          : `data:image/jpeg;base64,${item.imageBase64}`;
+        const res  = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], 'queued-capture.jpg', { type: 'image/jpeg' });
+        handleImageSelect(file, item.exifTimestamp);
+        setTimeout(processNext, 3000); // 3 s gap — avoids server flooding
+      } catch (err) {
+        console.warn('[CaptureQueue] Failed to process queued item:', err);
+        setTimeout(processNext, 1000);
+      }
+    };
+    processNext();
+  }, [_offlineQueueTrigger, handleImageSelect]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";

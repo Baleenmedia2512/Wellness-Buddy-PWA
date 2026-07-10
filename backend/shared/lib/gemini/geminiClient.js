@@ -19,10 +19,17 @@ import logger from '../logger.js';
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
 
-export const MODEL_NAME          = 'gemini-2.5-flash-lite';
-/** Fallback when the primary model is saturated (503 / high-demand). */
-export const FALLBACK_MODEL_NAME = 'gemini-2.5-flash';
+export const MODEL_NAME          = 'gemini-2.5-flash';
+/** Fallback when the primary model is saturated (502 / 503 / 429 / high-demand). */
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
 
+/**
+ * NOTE: thinkingBudget is intentionally NOT set for gemini-2.5-flash.
+ * Flash is a thinking model — disabling thinking (thinkingBudget: 0) causes
+ * structured-output failures on complex 26-field nutrition schemas.
+ * Flash uses its natural dynamic thinking for reliable JSON generation.
+ * The fallback (gemini-2.5-pro) also uses full thinking via the same path.
+ */
 export const MODEL_CONFIGS = {
   /**
    * Fast, low-token classification. No structured schema enforcement here

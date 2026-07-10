@@ -95,7 +95,10 @@ export default function UnknownEntryFlow({
    *
    * Shape:
    *   null                                     → no pre-flight run (e.g. canMutate=false)
-   *   { status: 'failed', error: string }      → AI could not identify the image
+   *   { status: 'failed', canRetry: boolean,
+   *     error: string }                        → AI could not identify the image.
+   *                                              canRetry=true  → transient failure (503/timeout), Retry AI shown.
+   *                                              canRetry=false → genuinely out-of-scope, Retry AI hidden.
    *   { status: 'success', type: 'food',
    *     analysisResult: object, raw: object }  → food detected
    *   { status: 'success', type: 'weight',
@@ -106,6 +109,9 @@ export default function UnknownEntryFlow({
   initialAiResult = null,
   /** The diary date selected in Dashboard — saves are anchored to this day. */
   diaryDate = null,
+  /** When true: show only a delete button — no category picker, no retry.
+   *  Used for out-of-scope captures where re-analysing won't help. */
+  deleteOnly = false,
   canMutate = true,
   userId,
   apiBaseUrl,
@@ -211,8 +217,9 @@ export default function UnknownEntryFlow({
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
         if (!hasRecognizedFood(analysis)) {
+          // AI returned food type but with no recognisable items — go to picker.
           setRetrying(false);
-          setError("Still couldn't recognise it — choose a category below.");
+          setStage('view');
           return;
         }
         // Success: transition to AI review stage so the user can inspect and
@@ -252,14 +259,14 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else {
-        // AI returned "other" — show the category picker so user can manually classify.
+        // AI could not identify after all automatic retries — go to the manual
+        // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);
-        setError("Still couldn't identify it. Please choose a category:");
         setStage('view');
       }
     } catch {
       setRetrying(false);
-      setError('Analysis failed — please choose a category manually.');
+      setStage('view');
     }
   };
 
@@ -604,8 +611,8 @@ export default function UnknownEntryFlow({
               </div>
             )}
 
-            {/* ── Inline category quick-picks (always visible) ── */}
-            {canMutate && (
+            {/* ── Category quick-picks (normal mode only) ── */}
+            {canMutate && !deleteOnly && (
               <div className="px-5 space-y-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   What is this photo?
@@ -631,7 +638,9 @@ export default function UnknownEntryFlow({
                   ))}
                 </div>
 
-                {/* Retry AI button — secondary action */}
+                {/* Retry AI button — only shown when failure was transient (503/timeout),
+                    not when AI genuinely said 'other' (out-of-scope image). */}
+                {initialAiResult?.canRetry !== false && (
                 <div className="flex gap-2 pt-1">
                   <button
                     type="button"
@@ -650,6 +659,24 @@ export default function UnknownEntryFlow({
                     {deleting ? 'Deleting…' : '🗑️ Delete'}
                   </button>
                 </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Delete-only view: out-of-scope captures ── */}
+            {canMutate && deleteOnly && (
+              <div className="px-5 pb-6">
+                <p className="text-sm text-gray-500 text-center mb-4">
+                  This photo wasn’t recognised as food, weight, education or smartwatch.
+                </p>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                  className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                </button>
               </div>
             )}
           </div>
