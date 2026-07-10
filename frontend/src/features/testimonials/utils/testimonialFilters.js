@@ -22,12 +22,32 @@ export const STATUS_FILTERS = {
 };
 
 /**
- * Check whether a before/after image path is a real photo (not a placeholder).
- * @param {string|null|undefined} path
+ * Check whether a before/after image path or signed URL is a real photo (not a placeholder).
+ * Coach list APIs expose signed URLs; member APIs may expose storage paths.
+ * @param {string|null|undefined} pathOrUrl
  */
-function isRealImagePath(path) {
-  if (!path) return false;
-  return !path.endsWith('_video_only_placeholder.jpg');
+function isRealImagePath(pathOrUrl) {
+  if (!pathOrUrl) return false;
+  return !pathOrUrl.endsWith('_video_only_placeholder.jpg');
+}
+
+function hasBeforePhoto(t) {
+  return isRealImagePath(t.beforeImagePath ?? t.before_image_path ?? t.beforeImageUrl);
+}
+
+function hasAfterPhoto(t) {
+  return (
+    isRealImagePath(t.afterImagePath ?? t.after_image_path ?? t.afterImageUrl) &&
+    (t.status === 'pending' || t.status === 'verified')
+  );
+}
+
+function hasHealthVideo(t) {
+  return !!(t.healthVideoPath ?? t.health_video_path ?? t.healthVideoUrl);
+}
+
+function hasBusinessVideo(t) {
+  return !!(t.businessVideoPath ?? t.business_video_path ?? t.businessVideoUrl);
 }
 
 /**
@@ -39,15 +59,16 @@ export function computeMemberCompleteness(row) {
   const t = row?.testimonial;
   if (!t) return { filledCount: 0, totalSlots: 5, level: UPLOAD_FILTERS.NOT_UPLOADED };
 
-  const hasBeforePhoto   = isRealImagePath(t.beforeImagePath ?? t.before_image_path);
-  const hasAfterPhoto    = isRealImagePath(t.afterImagePath  ?? t.after_image_path) &&
-                           (t.status === 'pending' || t.status === 'verified');
-  const hasHealthVideo   = !!(t.healthVideoPath   ?? t.health_video_path);
-  const hasBusinessVideo = !!(t.businessVideoPath ?? t.business_video_path);
-  const healthIssues     = t.recoveredHealthIssues ?? t.recovered_health_issues ?? [];
-  const hasHealthIssues  = Array.isArray(healthIssues) && healthIssues.length > 0;
+  const healthIssues    = t.recoveredHealthIssues ?? t.recovered_health_issues ?? [];
+  const hasHealthIssues = Array.isArray(healthIssues) && healthIssues.length > 0;
 
-  const filledCount = [hasBeforePhoto, hasAfterPhoto, hasHealthVideo, hasBusinessVideo, hasHealthIssues]
+  const filledCount = [
+    hasBeforePhoto(t),
+    hasAfterPhoto(t),
+    hasHealthVideo(t),
+    hasBusinessVideo(t),
+    hasHealthIssues,
+  ]
     .filter(Boolean).length;
 
   let level;

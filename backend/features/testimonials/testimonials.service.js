@@ -250,6 +250,30 @@ export async function editTestimonial(rawBody) {
   if (payload.durationText         !== undefined) updates.durationText        = payload.durationText;
   if (payload.recoveredHealthIssues !== undefined) updates.recoveredHealthIssues = payload.recoveredHealthIssues;
 
+  const requiresReverification = [
+    'beforeImagePath',
+    'afterImagePath',
+    'beforeWeightKg',
+    'afterWeightKg',
+    'goalType',
+    'durationText',
+  ].some((field) => updates[field] !== undefined);
+
+  // Health issues are optional metadata — save without resetting coach verification.
+  if (!requiresReverification) {
+    await repo.updateTestimonial(existing.id, updates);
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'Testimonial updated successfully.',
+        testimonialId: existing.id,
+        status: existing.status,
+      },
+    };
+  }
+
   // Determine if after photo is now present (either just uploaded or already stored)
   const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
   // Only treat as "has after" if it's a real after path (not the before-placeholder used for incomplete)
