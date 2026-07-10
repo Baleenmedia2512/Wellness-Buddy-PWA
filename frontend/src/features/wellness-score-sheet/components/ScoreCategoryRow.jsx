@@ -74,9 +74,6 @@ export default function ScoreCategoryRow({ category, compact = false }) {
                 {Math.round(earnedPoints)}
                 <span className="font-medium text-gray-400">/{maxPoints}</span>
               </p>
-              <p className={`text-[10px] font-semibold tabular-nums ${tone.text}`}>
-                {progressPct}%
-              </p>
             </div>
           </div>
 

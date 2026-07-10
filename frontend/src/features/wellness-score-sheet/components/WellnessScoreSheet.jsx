@@ -139,7 +139,6 @@ export default function WellnessScoreSheet({
               const SectionIcon = getSectionIcon(section.id);
               const sectionEarned = block.parameters.reduce((s, p) => s + (p.earnedPoints ?? 0), 0);
               const sectionMax = block.parameters.reduce((s, p) => s + (p.maxPoints ?? 0), 0);
-              const sectionPct = sectionMax > 0 ? Math.round((sectionEarned / sectionMax) * 100) : 0;
 
               return (
                 <section
@@ -154,7 +153,7 @@ export default function WellnessScoreSheet({
                       </h2>
                     </div>
                     <span className="text-xs font-semibold tabular-nums text-gray-600">
-                      {sectionEarned}/{sectionMax} · {sectionPct}%
+                      {sectionEarned}/{sectionMax}
                     </span>
                   </div>
                   <div className="space-y-2 p-3">

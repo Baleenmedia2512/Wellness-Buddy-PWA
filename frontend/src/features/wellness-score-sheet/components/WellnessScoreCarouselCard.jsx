@@ -11,7 +11,7 @@ function statusBadge(pct) {
 }
 
 /**
- * Home carousel card — bold score hero, circular progress only (no duplicate %).
+ * Home carousel card — large ring + score hero, fills carousel slide height.
  */
 export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup }) {
   const today = useISTToday();
@@ -34,13 +34,13 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
   };
 
   return (
-    <div className="h-full min-h-[148px] flex">
+    <div className="flex h-full min-h-[148px] w-full">
       <div
         role="button"
         tabIndex={0}
         onClick={onOpen}
         onKeyDown={handleCardKeyDown}
-        className="group flex h-full w-full flex-col rounded-xl bg-gradient-to-br from-white via-white to-emerald-50/60 p-3 text-left shadow-lg ring-1 ring-emerald-100/80 transition-all hover:shadow-xl hover:ring-emerald-200 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
+        className="group flex h-full w-full min-h-[148px] flex-col rounded-xl bg-gradient-to-br from-white via-white to-emerald-50/70 p-2.5 text-left shadow-lg ring-1 ring-emerald-100/80 transition-all hover:shadow-xl hover:ring-emerald-200 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
         data-testid="wellness-score-home-tile"
         aria-label={
           hasData
@@ -48,13 +48,13 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
             : 'Wellness score loading. Tap for full breakdown.'
         }
       >
-        {/* Header */}
-        <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-md">
-              <Trophy className="h-4 w-4 text-white" aria-hidden />
+        {/* Header — compact */}
+        <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-md">
+              <Trophy className="h-3.5 w-3.5 text-white" aria-hidden />
             </div>
-            <span className="truncate text-base font-bold text-gray-900">Wellness Score</span>
+            <span className="truncate text-sm font-bold text-gray-900">Wellness Score</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {hasData && (
@@ -83,27 +83,27 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
           </div>
         </div>
 
-        {/* Hero — ring + score fills remaining space */}
-        <div className="flex min-h-0 flex-1 items-center justify-between gap-3">
-          <div className="flex shrink-0 items-center justify-center">
+        {/* Hero — fills all vertical space between header and CTA */}
+        <div className="flex min-h-0 flex-1 items-center justify-between gap-1 px-0.5">
+          <div className="flex w-[42%] shrink-0 items-center justify-center">
             <CircularProgress
               percentage={hasData ? displayPct : 0}
-              size={92}
-              strokeWidth={8}
+              size={118}
+              strokeWidth={10}
             />
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col items-end justify-center text-right">
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center text-center">
             <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
               Today&apos;s score
             </p>
-            <p className="mt-0.5 text-[2.35rem] font-black leading-none tabular-nums tracking-tight text-gray-900">
+            <p className="mt-0.5 text-[2.75rem] font-black leading-none tabular-nums tracking-tight text-gray-900 sm:text-5xl">
               {hasData ? earned.toLocaleString() : '—'}
             </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums text-gray-500">
+            <p className="mt-1 text-sm font-semibold tabular-nums leading-tight text-gray-500">
               of
               {' '}
-              <span className="text-base font-bold text-gray-800">
+              <span className="text-xl font-bold text-gray-800">
                 {hasData ? possible.toLocaleString() : '—'}
               </span>
               {' '}
@@ -112,12 +112,12 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
           </div>
         </div>
 
-        {/* Tap CTA — uses footer whitespace */}
-        <div className="mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-emerald-200/70 bg-emerald-600/10 px-3 py-2 transition-colors group-hover:bg-emerald-600/15">
-          <span className="text-[11px] font-bold text-emerald-800">
+        {/* Tap CTA */}
+        <div className="mt-1 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-emerald-200/70 bg-emerald-600/10 px-2.5 py-1.5 transition-colors group-hover:bg-emerald-600/15">
+          <span className="text-[10px] font-bold text-emerald-800">
             Tap to view full breakdown
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" aria-hidden />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" aria-hidden />
         </div>
       </div>
     </div>
