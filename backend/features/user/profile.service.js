@@ -61,7 +61,7 @@ export async function getProfile({ email }) {
 }
 
 function buildProfileUpdate({
-  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, CommunityId,
+  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, communityId,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -74,7 +74,7 @@ function buildProfileUpdate({
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     updateData.PhysicalActivityLevel = physicalActivityLevel;
   }
-  if (CommunityId !== undefined) updateData.CommunityId = CommunityId;
+  if (communityId !== undefined) updateData.CommunityId = communityId;
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
@@ -86,7 +86,7 @@ function buildProfileUpdate({
   return { updateData, cleanedPhoneNumber };
 }
 
-function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, CommunityId }) {
+function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId }) {
   if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
     throw new Error('Phone number was not saved. Please try again.');
   }
@@ -98,7 +98,7 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
   if (dietType != null && updateData.DietType && verifyRow.DietType !== updateData.DietType) {
     throw new Error('Diet preference was not saved. Please try again.');
   }
-  if (CommunityId !== undefined) {
+  if (communityId !== undefined) {
     const expected = updateData.CommunityId ?? null;
     const saved = verifyRow.CommunityId ?? null;
     if (saved !== expected) throw new Error('Community ID was not saved. Please try again.');
@@ -108,18 +108,18 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
 export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber,
-    weightGoalMode, physicalActivityLevel, CommunityId,
+    weightGoalMode, physicalActivityLevel, communityId,
   } = input;
 
   logger.info('[profile/update] incoming request', {
     email,
-    receivedCommunityId: CommunityId !== undefined,
+    receivedCommunityId: communityId !== undefined,
   });
-  if (CommunityId !== undefined) {
-    logger.info('[profile/update] community_id validation result', {
+  if (communityId !== undefined) {
+    logger.info('[profile/update] CommunityId validation result', {
       email,
       valid: true,
-      communityId: CommunityId ?? null,
+      communityId: communityId ?? null,
     });
   }
 

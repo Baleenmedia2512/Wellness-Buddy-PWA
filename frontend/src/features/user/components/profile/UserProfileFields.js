@@ -81,7 +81,7 @@ const UserProfileFields = ({
       </label>
       <input
         type="text"
-        value={CommunityId || ''}
+        value={communityId || ''}
         onChange={(e) => setCommunityId(e.target.value)}
         placeholder="Enter your community ID"
         maxLength={100}

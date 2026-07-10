@@ -49,7 +49,7 @@ export default function useProfileForm(initial = {}) {
     }
     if (!phoneValid) return 'Please enter a valid phone number (10-15 digits).';
     if (requireDiet && !dietValid) return 'Please select a diet preference.';
-    const trimmedCommunityId = CommunityId.trim();
+    const trimmedCommunityId = communityId.trim();
     if (trimmedCommunityId) {
       if (trimmedCommunityId.length > 100) return 'Community ID must be at most 100 characters.';
       if (!/^[a-zA-Z0-9]+$/.test(trimmedCommunityId)) {
@@ -68,7 +68,7 @@ export default function useProfileForm(initial = {}) {
     dietType: dietType || undefined,
     phoneNumber: phone.trim() || undefined,
     weightGoalMode: weightGoalMode || 'loss',
-    communityId: CommunityId.trim() === '' ? null : CommunityId.trim(),
+    communityId: communityId.trim() === '' ? null : communityId.trim(),
     ...extras,
   });
 

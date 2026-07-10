@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     logger.info('[profile] incoming update request', {
       email: req.body?.email,
-      hasCommunityId: req.body?.CommunityId !== undefined || req.body?.Community_id !== undefined,
+      hasCommunityId: req.body?.communityId !== undefined || req.body?.community_id !== undefined,
     });
     return runService(res, async () => {
       let input;
@@ -22,8 +22,8 @@ export default async function handler(req, res) {
         input = validateUpdateProfile(req.body);
       } catch (err) {
         if (err?.status === 400
-          && (req.body?.CommunityId !== undefined || req.body?.CommunityId !== undefined)) {
-          logger.info('[profile/update] community_id validation result', {
+          && (req.body?.communityId !== undefined || req.body?.community_id !== undefined)) {
+          logger.info('[profile/update] CommunityId validation result', {
             valid: false,
             message: err.message,
           });
