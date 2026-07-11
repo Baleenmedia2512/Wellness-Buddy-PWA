@@ -7,6 +7,8 @@ import { submitTestimonial, editTestimonial, getMyTestimonial } from '../service
 import {
   formatDurationText,
   parseDurationText,
+  validateDurationFields,
+  validateWeightKg,
 } from '../services/testimonialFormUtils.js';
 
 const INITIAL_FORM = {
@@ -156,31 +158,43 @@ export function useTestimonial({ userId, healthIssues = [] }) {
 
     if (willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
       setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
-      return;
+      return false;
     }
 
     // When completing an incomplete testimonial, only after fields are required
     if (isCompleting) {
-      if (!afterImage) { setError('Please upload your After photo'); return; }
-      if (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg))) {
-        setError('Enter a valid after weight'); return;
+      if (!afterImage) {
+        setError('Please upload your After photo');
+        return false;
+      }
+      const afterWeightErr = validateWeightKg(form.afterWeightKg, 'After weight');
+      if (afterWeightErr) {
+        setError(afterWeightErr);
+        return false;
       }
     } else {
       // New submission or full edit — before required unless edit keeps existing photo
       if (!beforeImage && !(isEditing && existing?.beforeImageUrl)) {
         setError('Please upload your Before photo');
-        return;
+        return false;
       }
-      if (!form.beforeWeightKg || isNaN(parseFloat(form.beforeWeightKg))) {
-        setError('Enter a valid before weight'); return;
+      const beforeWeightErr = validateWeightKg(form.beforeWeightKg, 'Before weight');
+      if (beforeWeightErr) {
+        setError(beforeWeightErr);
+        return false;
       }
-      if (!formatDurationText(form.durationUnit, form.durationValue)) {
-        setError('Enter a valid duration (numbers only)');
-        return;
+      const durationErr = validateDurationFields(form.durationUnit, form.durationValue);
+      if (durationErr) {
+        setError(durationErr);
+        return false;
       }
-      // After photo is optional here â€” backend handles incomplete state
-      if (afterImage && (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg)))) {
-        setError('Enter your after weight'); return;
+      // After photo is optional here — backend handles incomplete state
+      if (afterImage) {
+        const afterWeightErr = validateWeightKg(form.afterWeightKg, 'After weight');
+        if (afterWeightErr) {
+          setError(afterWeightErr);
+          return false;
+        }
       }
     }
 
@@ -223,8 +237,10 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       } else {
         setSuccess('Testimonial updated.');
       }
+      return true;
     } catch (err) {
       setError(err.message || 'Submission failed. Please try again.');
+      return false;
     } finally {
       setSubmitting(false);
     }

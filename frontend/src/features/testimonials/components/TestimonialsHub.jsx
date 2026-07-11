@@ -717,8 +717,8 @@ export default function TestimonialsHub({ userId }) {
   }, [cancelEdit]);
 
   const handlePhotoSubmit = useCallback(async () => {
-    await handleSubmit();
-    setExpandedSlot(null);
+    const ok = await handleSubmit();
+    if (ok) setExpandedSlot(null);
   }, [handleSubmit]);
 
   const handleEditVideo = useCallback((slot) => {
@@ -732,8 +732,8 @@ export default function TestimonialsHub({ userId }) {
   }, [cancelVideoEdit]);
 
   const handleVideoSlotSubmit = useCallback(async () => {
-    await handleVideoSubmit();
-    setExpandedSlot(null);
+    const ok = await handleVideoSubmit();
+    if (ok) setExpandedSlot(null);
   }, [handleVideoSubmit]);
 
   const handleVideoOtpVerified = useCallback(() => {

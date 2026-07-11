@@ -161,12 +161,12 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
 
     if (!healthVideo && !businessVideo) {
       setError('Please select at least one video to upload.');
-      return;
+      return false;
     }
 
     if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
       setError('Add at least one recovered health issue in the Health Issues section before uploading videos for verification.');
-      return;
+      return false;
     }
 
     setSubmitting(true);
@@ -208,6 +208,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
       setShowOtpModal(true);
       setIsEditMode(false);
       reload();
+      return true;
     } catch (err) {
       const message = err?.message || 'Upload failed. Please try again.';
       setError(
@@ -215,6 +216,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
           ? 'Upload failed — please check your internet connection and try again.'
           : message,
       );
+      return false;
     } finally {
       setSubmitting(false);
     }
