@@ -5,10 +5,28 @@
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
 
 /** Coach-like roles that may search/view other team members. */
-const COACH_ROLES = new Set(['coach', 'coCoach', 'admin', 'developer']);
+const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
 
 export function isCoachRole(role) {
-  return COACH_ROLES.has(role);
+  return COACH_ROLES.has(String(role || '').toLowerCase());
+}
+
+/** True when role grants search or user coaches at least one team_table row. */
+export function canUseTeamSearch(role, hasTeamMembers) {
+  return isCoachRole(role) || Boolean(hasTeamMembers);
+}
+
+/** Check team_table: does any user list this userId as their CoachId? */
+export async function fetchHasTeamMembers(userId) {
+  if (!userId) return false;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const res = await fetch(
+    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
+    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  );
+  if (!res.ok) return false;
+  const data = await res.json();
+  return Boolean(data?.hasTeamMembers);
 }
 
 /** Fetch the saved profile name for the current user (best-effort). */
