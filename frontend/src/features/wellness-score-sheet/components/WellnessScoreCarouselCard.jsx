@@ -4,7 +4,7 @@ import CircularProgress from '../../nutrition/components/dashboard/carousel/Circ
 import { useISTToday } from '../hooks/useISTToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
-/** Ring diameter + stroke that fit carousel card width on small phones. */
+/** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
   const [ring, setRing] = useState({ size: 80, strokeWidth: 8 });
 
