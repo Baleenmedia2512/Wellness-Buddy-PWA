@@ -240,10 +240,8 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       return true;
     } catch (err) {
       const raw = err?.message || '';
-      const friendly = /is not defined/i.test(raw)
-        ? 'Unable to save your photo. Please update the app or try again.'
-        : (raw || 'Submission failed. Please try again.');
-      setError(friendly);
+      console.error('[useTestimonial] submit failed:', raw);
+      setError(raw || 'Submission failed. Please try again.');
       return false;
     } finally {
       setSubmitting(false);
