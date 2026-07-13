@@ -10,8 +10,6 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
-const MEDICAL_CONDITION_MAX_LEN = 100;
-const MEDICAL_CONDITION_PATTERN = /^[a-zA-Z0-9\s\-',./()]+$/;
 const MAX_BASE64_SIZE = 1.5 * 1024 * 1024; // 1.5 MB base64 â‰ˆ 1 MB binary
 const DURATION_PATTERN = /^(\d+)\s+(days|months)$/i;
 const MAX_DURATION_AMOUNT = 9999;
@@ -102,21 +100,6 @@ function validateWeight(value, fieldName) {
   const n = parseFloat(value);
   if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number â‰¤ 500`);
   return n;
-}
-
-function validateMedicalCondition(value, { required = true } = {}) {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
-  if (!trimmed) {
-    if (required) throw new ValidationError(400, 'Please enter your medical condition.');
-    return null;
-  }
-  if (trimmed.length > MEDICAL_CONDITION_MAX_LEN) {
-    throw new ValidationError(422, `Medical condition must be ${MEDICAL_CONDITION_MAX_LEN} characters or fewer.`);
-  }
-  if (!MEDICAL_CONDITION_PATTERN.test(trimmed)) {
-    throw new ValidationError(422, 'Only letters, numbers, spaces, and - \' , . / ( ) are allowed.');
-  }
-  return trimmed;
 }
 
 /**
