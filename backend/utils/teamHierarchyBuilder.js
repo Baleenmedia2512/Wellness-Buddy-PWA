@@ -265,6 +265,16 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       });
 
       partnerMembers.forEach(member => {
+        if (!isActiveTeamStatus(member.Status)) {
+          const promoted = collectPromotedChildren(
+            member.UserId,
+            coachIdInt,
+            new Set([coachIdInt, partnerId]),
+            coachPartnerIds,
+          );
+          promoted.forEach((child) => hierarchy.teamMembers.push(child));
+          return;
+        }
         const memberNode = buildHierarchy(
           member.UserId,
           coachIdInt,
