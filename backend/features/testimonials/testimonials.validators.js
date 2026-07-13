@@ -145,7 +145,6 @@ export function validateSubmitTestimonial(body) {
     throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
   }
   const normalizedDuration = validateDurationText(durationText);
-  const normalizedMedicalCondition = validateMedicalCondition(medicalCondition, { required: true });
 
   return {
     userId:                userIdN,
