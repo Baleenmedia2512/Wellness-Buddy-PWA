@@ -96,9 +96,9 @@ function computeSlotStatuses(existing, existingVideo) {
     : existingVideo.videoStatus === 'verified'         ? 'verified'
     : /* pending */                                      'pending';
 
-  const issues = existing?.recoveredHealthIssues ?? [];
+  const issues = existing?.recoveredHealthIssues ?? existingVideo?.recoveredHealthIssues ?? [];
   const healthIssues =
-    !existing                                  ? 'none'
+    !existing && !existingVideo               ? 'none'
     : Array.isArray(issues) && issues.length > 0 ? 'uploaded'
     :                                              'none';
 
@@ -676,12 +676,16 @@ export default function TestimonialsHub({ userId }) {
     startEdit: startVideoEdit, cancelEdit: cancelVideoEdit,
   } = useTestimonialVideo({ userId, healthIssues });
 
-  // Sync health issues from existing testimonial
+  // Sync shared health issues from photo or video testimonial row
   useEffect(() => {
     if (existing && Array.isArray(existing.recoveredHealthIssues)) {
       setHealthIssues(existing.recoveredHealthIssues);
+      return;
     }
-  }, [existing]);
+    if (existingVideo && Array.isArray(existingVideo.recoveredHealthIssues)) {
+      setHealthIssues(existingVideo.recoveredHealthIssues);
+    }
+  }, [existing, existingVideo]);
 
   // ── Which slot is expanded ──────────────────────────────────────────────────
   const [expandedSlot, setExpandedSlot] = useState(null);
@@ -746,7 +750,7 @@ export default function TestimonialsHub({ userId }) {
   }, [reload]);
 
   const handleHealthIssuesSave = useCallback(async () => {
-    if (!userId || !existing) return;
+    if (!userId || (!existing && !existingVideo)) return;
     if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
       setHealthIssuesError('Please add at least one recovered health issue.');
       setHealthIssuesSuccess(null);
@@ -766,7 +770,7 @@ export default function TestimonialsHub({ userId }) {
     } finally {
       setHealthIssuesSaving(false);
     }
-  }, [userId, existing, healthIssues, reload, reloadVideo]);
+  }, [userId, existing, existingVideo, healthIssues, reload, reloadVideo]);
 
   // ── Loading guard (after all hooks) ────────────────────────────────────────
   if (existing === undefined || existingVideo === undefined) {
@@ -775,6 +779,7 @@ export default function TestimonialsHub({ userId }) {
 
   // ── Slot statuses (plain JS — not hooks, safe after guard) ─────────────────
   const slots = computeSlotStatuses(existing, existingVideo);
+  const hasTestimonialRow = !!(existing || existingVideo);
 
   // ── Before photo slot state ─────────────────────────────────────────────────
   const beforeSlotExpanded = expandedSlot === 'before';
@@ -882,7 +887,7 @@ export default function TestimonialsHub({ userId }) {
           <div className="flex items-center gap-2 px-1 pt-2">
             <HeartPulse className="h-4 w-4 text-gray-400" />
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
-            <span className="text-[10px] text-gray-400 font-normal ml-auto">Required before after-photo verification</span>
+            <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
           </div>
 
           <SlotCard
@@ -899,22 +904,22 @@ export default function TestimonialsHub({ userId }) {
             }
             status={slots.healthIssues}
             isExpanded={healthIssuesExpanded}
-            disabled={!existing}
+            disabled={!hasTestimonialRow}
             onToggle={() => {
-              if (!existing) return;
+              if (!hasTestimonialRow) return;
               setHealthIssuesExpanded((prev) => !prev);
               setHealthIssuesError(null);
               setHealthIssuesSuccess(null);
             }}
           >
             <div className="px-4 pb-5 pt-4 space-y-4">
-              {!existing && (
-                <p className="text-xs text-gray-400 italic">Save your before photo first, then add recovered health issues here.</p>
+              {!hasTestimonialRow && (
+                <p className="text-xs text-gray-400 italic">Upload a before photo or result video first, then add recovered health issues here.</p>
               )}
-              {existing && (
+              {hasTestimonialRow && (
                 <>
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Share which health conditions you recovered from. Add at least one before submitting your after photo for coach verification.
+                    Share which health conditions you recovered from. These apply to both photo and video testimonials. If you edit them after submitting, your coach gets a new OTP with your latest photos or videos.
                   </p>
                   <DiseaseMultiSelect
                     value={healthIssues}

@@ -60,6 +60,104 @@ function healthIssuesEqual(left, right) {
   return normalize(left) === normalize(right);
 }
 
+/** Extract millis timestamp embedded in storage paths like `42/before_1720000000000.jpg`. */
+function parseStoragePathTimestamp(path) {
+  if (!path || typeof path !== 'string') return 0;
+  const match = path.match(/_(\d{10,13})\./);
+  return match ? Number(match[1]) : 0;
+}
+
+/** Member submitted a complete before/after photo testimonial (pending or verified). */
+function hasCompletePhotoTestimonial(row) {
+  if (repo.isVideoOnlyPlaceholder(row.before_image_path)) return false;
+  if (row.status === 'incomplete') return false;
+  const afterPath = row.after_image_path;
+  if (!afterPath || afterPath === row.before_image_path) return false;
+  return !repo.isVideoOnlyPlaceholder(afterPath);
+}
+
+function hasVideoTestimonial(row) {
+  return !!(row.health_video_path || row.business_video_path);
+}
+
+/**
+ * Health issues are shared across photo + video flows.
+ * When they change, OTP email should attach the member's latest submitted entry.
+ */
+function resolveHealthIssueOtpChannel(row) {
+  const hasPhoto = hasCompletePhotoTestimonial(row);
+  const hasVideo = hasVideoTestimonial(row);
+  if (!hasPhoto && !hasVideo) return null;
+  if (hasPhoto && !hasVideo) return 'photo';
+  if (!hasPhoto && hasVideo) return 'video';
+
+  const photoTs = Math.max(
+    parseStoragePathTimestamp(row.before_image_path),
+    parseStoragePathTimestamp(row.after_image_path),
+  );
+  const videoTs = Math.max(
+    Date.parse(row.video_verified_at || '') || 0,
+    Date.parse(row.updated_at || '') || 0,
+  );
+  return photoTs >= videoTs ? 'photo' : 'video';
+}
+
+async function sendHealthIssueOtpEmail({
+  channel,
+  existing,
+  coachInfo,
+  userInfo,
+  recoveredHealthIssues,
+  saveUpdates,
+}) {
+  const otp       = generateOtp();
+  const otpHash   = await bcrypt.hash(otp, 10);
+  const otpExpiry = otpExpiryIst(24);
+
+  if (channel === 'photo') {
+    saveUpdates.status       = 'pending';
+    saveUpdates.verifiedAt   = null;
+    saveUpdates.otpHash      = otpHash;
+    saveUpdates.otpExpiresAt = otpExpiry;
+
+    await repo.updateTestimonial(existing.id, saveUpdates);
+
+    await sendCoachEmail({
+      coachEmail:      coachInfo.email,
+      memberName:      userInfo.userName,
+      goalType:        existing.goal_type,
+      beforeWeight:    existing.before_weight_kg,
+      afterWeight:     existing.after_weight_kg,
+      durationText:    existing.duration_text,
+      otp,
+      beforeImagePath: existing.before_image_path,
+      afterImagePath:  existing.after_image_path,
+      recoveredHealthIssues,
+    });
+
+    return 'Health issues updated. Your coach received a new photo OTP by email with your latest images.';
+  }
+
+  await repo.updateTestimonial(existing.id, saveUpdates);
+  await repo.updateTestimonialVideos(existing.id, {
+    videoStatus:       'pending',
+    videoOtpHash:      otpHash,
+    videoOtpExpiresAt: otpExpiry,
+    videoVerifiedAt:   null,
+  });
+
+  await sendVideoCoachEmail({
+    coachEmail:        coachInfo.email,
+    memberName:        userInfo.userName,
+    otp,
+    healthVideoPath:   existing.health_video_path   ?? null,
+    businessVideoPath: existing.business_video_path ?? null,
+    recoveredHealthIssues,
+  });
+
+  return 'Health issues updated. Your coach received a new video OTP by email with your latest videos.';
+}
+
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
@@ -316,68 +414,24 @@ export async function editTestimonial(rawBody) {
     ? payload.recoveredHealthIssues
     : (existing.recovered_health_issues ?? []);
 
-  // Health-only edits: keep verification pending until coach OTP is entered.
-  // If issues changed while photo/video verification is pending, resend coach email + fresh OTP.
+  // Health-only edits: shared list for photo + video. Resend coach OTP with the latest entry.
   if (!requiresReverification) {
     const issuesChanged = payload.recoveredHealthIssues !== undefined
       && !healthIssuesEqual(payload.recoveredHealthIssues, existing.recovered_health_issues);
 
-    const photoPending = existing.status === 'pending'
-      && !repo.isVideoOnlyPlaceholder(existing.before_image_path);
-    const videoPending = existing.video_status === 'pending'
-      && !!(existing.health_video_path || existing.business_video_path);
-
-    let message = 'Health issues saved successfully.';
+    const otpChannel = issuesChanged ? resolveHealthIssueOtpChannel(existing) : null;
     const saveUpdates = { ...updates };
+    let message = 'Health issues saved successfully.';
 
-    if (issuesChanged && photoPending && coachInfo?.email && userInfo?.userName) {
-      const otp       = generateOtp();
-      const otpHash   = await bcrypt.hash(otp, 10);
-      const otpExpiry = otpExpiryIst(24);
-      saveUpdates.status       = 'pending';
-      saveUpdates.verifiedAt   = null;
-      saveUpdates.otpHash      = otpHash;
-      saveUpdates.otpExpiresAt = otpExpiry;
-
-      await repo.updateTestimonial(existing.id, saveUpdates);
-
-      await sendCoachEmail({
-        coachEmail:    coachInfo.email,
-        memberName:    userInfo.userName,
-        goalType:      existing.goal_type,
-        beforeWeight:  existing.before_weight_kg,
-        afterWeight:   existing.after_weight_kg,
-        durationText:  existing.duration_text,
-        otp,
-        beforeImagePath: existing.before_image_path,
-        afterImagePath:  existing.after_image_path,
+    if (issuesChanged && otpChannel && coachInfo?.email && userInfo?.userName) {
+      message = await sendHealthIssueOtpEmail({
+        channel: otpChannel,
+        existing,
+        coachInfo,
+        userInfo,
         recoveredHealthIssues: payload.recoveredHealthIssues,
+        saveUpdates,
       });
-
-      message = 'Health issues updated. Your coach received a new OTP by email. Status stays pending until you enter it.';
-    } else if (issuesChanged && videoPending && coachInfo?.email && userInfo?.userName) {
-      const otp       = generateOtp();
-      const otpHash   = await bcrypt.hash(otp, 10);
-      const otpExpiry = otpExpiryIst(24);
-
-      await repo.updateTestimonial(existing.id, saveUpdates);
-      await repo.updateTestimonialVideos(existing.id, {
-        videoStatus:       'pending',
-        videoOtpHash:      otpHash,
-        videoOtpExpiresAt: otpExpiry,
-        videoVerifiedAt:   null,
-      });
-
-      await sendVideoCoachEmail({
-        coachEmail:        coachInfo.email,
-        memberName:        userInfo.userName,
-        otp,
-        healthVideoPath:   existing.health_video_path   ?? null,
-        businessVideoPath: existing.business_video_path ?? null,
-        recoveredHealthIssues: payload.recoveredHealthIssues,
-      });
-
-      message = 'Health issues updated. Your coach received a new video OTP by email. Status stays pending until you enter it.';
     } else {
       await repo.updateTestimonial(existing.id, saveUpdates);
     }
@@ -388,7 +442,9 @@ export async function editTestimonial(rawBody) {
         success: true,
         message,
         testimonialId: existing.id,
-        status: photoPending || videoPending ? 'pending' : existing.status,
+        status: otpChannel === 'photo' ? 'pending' : existing.status,
+        otpChannel: otpChannel ?? undefined,
+        videoStatus: otpChannel === 'video' ? 'pending' : (existing.video_status ?? 'none'),
       },
     };
   }
@@ -507,6 +563,7 @@ export async function getMyVideoTestimonial(rawQuery) {
         hasHealthVideo:   !!row.health_video_path,
         hasBusinessVideo: !!row.business_video_path,
         videoVerifiedAt:  row.video_verified_at ?? null,
+        recoveredHealthIssues: row.recovered_health_issues ?? [],
       },
     },
   };
