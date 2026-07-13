@@ -108,6 +108,13 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
         </div>
       </div>
 
+      {testimonial.medicalCondition ? (
+        <div className="bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-left">
+          <p className="text-[10px] text-gray-500 font-semibold uppercase">Medical Condition</p>
+          <p className="text-sm font-semibold text-gray-800">{testimonial.medicalCondition}</p>
+        </div>
+      ) : null}
+
       <div className="flex gap-2 text-xs text-gray-600">
         <span className="bg-gray-100 rounded-full px-3 py-1 font-medium">{goalLabel}</span>
         <span className="bg-gray-100 rounded-full px-3 py-1 font-medium">⏱ {testimonial.durationText}</span>

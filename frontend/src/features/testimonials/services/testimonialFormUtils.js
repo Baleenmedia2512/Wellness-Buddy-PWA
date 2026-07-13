@@ -24,10 +24,42 @@ export function parseDurationText(durationText) {
   };
 }
 
-/** Build API durationText from unit + numeric value. */
+const MAX_DURATION_AMOUNT = 9999;
+const MIN_WEIGHT_KG = 1;
+const MAX_WEIGHT_KG = 500;
+
+/**
+ * Validate a weight field before submit (1–500 kg, no zero/empty).
+ * @returns {string|null} Error message, or null when valid.
+ */
+export function validateWeightKg(value, label = 'Weight') {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return `${label} is required`;
+  const n = parseFloat(trimmed);
+  if (!Number.isFinite(n) || n < MIN_WEIGHT_KG || n > MAX_WEIGHT_KG) {
+    return `${label} must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg`;
+  }
+  return null;
+}
+
+/**
+ * Validate duration number + unit before submit.
+ * @returns {string|null} Error message, or null when valid.
+ */
+export function validateDurationFields(durationUnit, durationValue) {
+  const digits = String(durationValue ?? '').replace(/\D/g, '');
+  if (!digits) return 'Duration is required';
+  const n = parseInt(digits, 10);
+  if (!Number.isFinite(n) || n < 1) return 'Duration must be at least 1';
+  if (n > MAX_DURATION_AMOUNT) return `Duration must be ${MAX_DURATION_AMOUNT} or less`;
+  if (!DURATION_UNITS.includes(durationUnit)) return 'Select days or months for duration';
+  return null;
+}
+
+/** Build API durationText from unit + numeric value. Returns '' when invalid. */
 export function formatDurationText(durationUnit, durationValue) {
+  if (validateDurationFields(durationUnit, durationValue)) return '';
   const n = parseInt(String(durationValue || '').replace(/\D/g, ''), 10);
-  if (!Number.isFinite(n) || n < 1) return '';
   const unit = DURATION_UNITS.includes(durationUnit) ? durationUnit : 'months';
   return `${n} ${unit}`;
 }

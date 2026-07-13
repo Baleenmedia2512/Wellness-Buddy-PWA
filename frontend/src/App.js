@@ -972,20 +972,33 @@ function WellnessValleyApp() {
   // even when returning to app during/after analysis (user expectation).
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
+    const onboardingActive =
+      showSetupWizard ||
+      showValidateOTP ||
+      showEmailGate ||
+      showPhysicalActivitySetup ||
+      showCompleteProfile ||
+      profileChecking;
+
     _homeScreenActiveRef.current =
       !!user &&
       !authLoading &&
+      !onboardingActive &&
       !showDashboard &&
       !showActivityReport &&
-      !showActivityTimeReport &&
-      !showCompleteProfile;
+      !showActivityTimeReport;
   }, [
     user,
     authLoading,
+    showSetupWizard,
+    showValidateOTP,
+    showEmailGate,
+    showPhysicalActivitySetup,
+    showCompleteProfile,
+    profileChecking,
     showDashboard,
     showActivityReport,
     showActivityTimeReport,
-    showCompleteProfile,
   ]);
 
   const _userIdRef = useRef(null);  // mirrors user?.id
@@ -1256,7 +1269,15 @@ function WellnessValleyApp() {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
-    if (showCompleteProfile) return; // wait until profile gate clears
+    // Wait until new-user onboarding is complete: email → coach setup → profile → activity level
+    const onboardingActive =
+      showSetupWizard ||
+      showValidateOTP ||
+      showEmailGate ||
+      showPhysicalActivitySetup ||
+      showCompleteProfile ||
+      profileChecking;
+    if (onboardingActive) return;
 
     let cancelled = false;
     const tryOpen = () => {
@@ -1287,7 +1308,12 @@ function WellnessValleyApp() {
     user,
     permissionsReady,
     isUserActive,
+    showSetupWizard,
+    showValidateOTP,
+    showEmailGate,
+    showPhysicalActivitySetup,
     showCompleteProfile,
+    profileChecking,
     _launchUrlCheckedRef,
   ]);
 

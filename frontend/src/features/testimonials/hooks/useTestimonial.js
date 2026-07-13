@@ -2,12 +2,16 @@
  * useTestimonial.js â€” State and lifecycle for the member testimonial form.
  * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
 import {
   formatDurationText,
   parseDurationText,
+  validateDurationFields,
+  validateWeightKg,
 } from '../services/testimonialFormUtils.js';
+import { validateMedicalCondition } from '../domain/medicalConditionValidation.js';
+import { recordRecentMedicalCondition } from '../domain/medicalConditionSearch.js';
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
@@ -82,6 +86,8 @@ function compressImage(file) {
  */
 export function useTestimonial({ userId, healthIssues = [] }) {
   const [form, setForm]               = useState(INITIAL_FORM);
+  const [medicalCondition, setMedicalCondition] = useState('');
+  const [medicalConditionTouched, setMedicalConditionTouched] = useState(false);
   const [beforeImage, setBeforeImage] = useState(null); // { base64, preview }
   const [afterImage,  setAfterImage]  = useState(null);
   const [existing,    setExisting]    = useState(undefined); // undefined = loading, null = none
@@ -114,6 +120,8 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         durationUnit:   duration.durationUnit,
         durationValue:  duration.durationValue,
       });
+      setMedicalCondition(existing.medicalCondition ?? '');
+      setMedicalConditionTouched(false);
       setBeforeImage(null);
       setAfterImage(null);
     }
@@ -143,6 +151,20 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
   const handleAfterImageChange  = useCallback(makeImageHandler(setAfterImage),  [makeImageHandler]);
 
+  const medicalConditionValidation = useMemo(
+    () => validateMedicalCondition(medicalCondition),
+    [medicalCondition],
+  );
+
+  const medicalConditionError =
+    medicalConditionTouched && !medicalConditionValidation.valid
+      ? medicalConditionValidation.message
+      : '';
+
+  const handleMedicalConditionBlur = useCallback(() => {
+    setMedicalConditionTouched(true);
+  }, []);
+
   // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSubmit = useCallback(async () => {
     setError(null);
@@ -150,37 +172,54 @@ export function useTestimonial({ userId, healthIssues = [] }) {
 
     const isCompleting = isCompletingMode;
     const isEditing    = isEditMode;
-    const willSendOtp  = isCompleting
-      || !!afterImage
-      || (isEditing && existing?.status !== 'incomplete');
+    const isBeforeOnlySubmit = !isCompleting && !afterImage;
+    // Health issues required only when an after photo is being submitted (coach OTP flow).
+    const willSendOtp  = isCompleting || !!afterImage;
 
-    if (willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
+    if (!isBeforeOnlySubmit && willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
       setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
-      return;
+      return false;
     }
 
     // When completing an incomplete testimonial, only after fields are required
     if (isCompleting) {
-      if (!afterImage) { setError('Please upload your After photo'); return; }
-      if (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg))) {
-        setError('Enter a valid after weight'); return;
+      if (!afterImage) {
+        setError('Please upload your After photo');
+        return false;
+      }
+      const afterWeightErr = validateWeightKg(form.afterWeightKg, 'After weight');
+      if (afterWeightErr) {
+        setError(afterWeightErr);
+        return false;
       }
     } else {
+      setMedicalConditionTouched(true);
+      if (!medicalConditionValidation.valid) {
+        setError(medicalConditionValidation.message);
+        return;
+      }
       // New submission or full edit — before required unless edit keeps existing photo
       if (!beforeImage && !(isEditing && existing?.beforeImageUrl)) {
         setError('Please upload your Before photo');
-        return;
+        return false;
       }
-      if (!form.beforeWeightKg || isNaN(parseFloat(form.beforeWeightKg))) {
-        setError('Enter a valid before weight'); return;
+      const beforeWeightErr = validateWeightKg(form.beforeWeightKg, 'Before weight');
+      if (beforeWeightErr) {
+        setError(beforeWeightErr);
+        return false;
       }
-      if (!formatDurationText(form.durationUnit, form.durationValue)) {
-        setError('Enter a valid duration (numbers only)');
-        return;
+      const durationErr = validateDurationFields(form.durationUnit, form.durationValue);
+      if (durationErr) {
+        setError(durationErr);
+        return false;
       }
-      // After photo is optional here â€” backend handles incomplete state
-      if (afterImage && (!form.afterWeightKg || isNaN(parseFloat(form.afterWeightKg)))) {
-        setError('Enter your after weight'); return;
+      // After photo is optional here — backend handles incomplete state
+      if (afterImage) {
+        const afterWeightErr = validateWeightKg(form.afterWeightKg, 'After weight');
+        if (afterWeightErr) {
+          setError(afterWeightErr);
+          return false;
+        }
       }
     }
 
@@ -188,7 +227,7 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     try {
       const payload = { userId };
 
-      if (Array.isArray(healthIssues) && healthIssues.length > 0) {
+      if (Array.isArray(healthIssues) && healthIssues.length > 0 && !isBeforeOnlySubmit) {
         payload.recoveredHealthIssues = healthIssues;
       }
 
@@ -203,6 +242,8 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         payload.beforeWeightKg = parseFloat(form.beforeWeightKg);
         payload.goalType       = form.goalType;
         payload.durationText   = formatDurationText(form.durationUnit, form.durationValue);
+        payload.medicalCondition = medicalConditionValidation.value;
+        recordRecentMedicalCondition(payload.medicalCondition);
         if (afterImage) {
           payload.afterImageBase64 = afterImage.base64;
           payload.afterWeightKg    = parseFloat(form.afterWeightKg);
@@ -223,8 +264,14 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       } else {
         setSuccess('Testimonial updated.');
       }
+      return true;
     } catch (err) {
-      setError(err.message || 'Submission failed. Please try again.');
+      const raw = err?.message || '';
+      const friendly = /is not defined/i.test(raw)
+        ? 'Unable to save your photo. Please update the app or try again.'
+        : (raw || 'Submission failed. Please try again.');
+      setError(friendly);
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -253,6 +300,10 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   return {
     form,
     setField,
+    medicalCondition,
+    setMedicalCondition,
+    medicalConditionError,
+    handleMedicalConditionBlur,
     beforeImage,
     afterImage,
     handleBeforeImageChange,

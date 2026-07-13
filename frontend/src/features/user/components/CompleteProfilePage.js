@@ -38,13 +38,25 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         const result = await fetchProfile(user?.email || user?.Email);
         if (!mounted) return;
         const profile = result?.data;
-        if (!profile) { setMissing({ height: true, phoneNumber: true, dietType: true }); return; }
-        const hasName =typeof profile.userName === 'string' &&profile.userName.trim() !== '';
+        if (!profile) {
+          setMissing({ name: true, height: true, phoneNumber: true, dietType: true });
+          return;
+        }
+        const hasName = typeof profile.userName === 'string' && profile.userName.trim() !== '';
         const hasH = typeof profile.height === 'number' && profile.height >= 50 && profile.height <= 250;
         const hasP = typeof profile.phoneNumber === 'string' && profile.phoneNumber.trim() !== '';
         const hasD = typeof profile.dietType === 'string' && profile.dietType.trim() !== '';
-        const next = { name: !hasName,height: !hasH, phoneNumber: !hasP, dietType: !hasD };
+        const next = {
+          name: !hasP && !hasName,
+          height: !hasH,
+          phoneNumber: !hasP,
+          dietType: !hasD,
+        };
         setMissing(next);
+        if (hasName) setName(profile.userName.trim());
+        if (hasH) setHeight(String(profile.height));
+        if (hasP) setPhone(profile.phoneNumber.trim());
+        if (hasD) setDietType(profile.dietType);
         if (
             !next.name &&
             !next.height &&
@@ -69,8 +81,10 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     heightNum <= 250;
   const phoneValid = PHONE_REGEX.test(phone.trim());
   const dietValid = !!dietType;
+  const pictureValid = !showPictureSection || (profileImage && face.status === 'face_found');
   const formValid =
-    ( (!missing.name || nameValid) &&!missing.height || heightValid) && (!missing.phoneNumber || phoneValid) && (!missing.dietType || dietValid);
+    ((!missing.name || nameValid) && (!missing.height || heightValid) && (!missing.phoneNumber || phoneValid) && (!missing.dietType || dietValid))
+    && pictureValid;
 
   const checks = [];
 
@@ -98,26 +112,42 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
               done: dietValid,
           });
 
+      if (showPictureSection)
+          checks.push({
+              label: 'Profile Picture',
+              done: pictureValid,
+          });
+
   const handleSave = useCallback(async () => {
     setError('');
-    if (!formValid) {
-      if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
+      if (!formValid) {
+      if (showPictureSection && !pictureValid) {
+        if (!profileImage) setError('Profile picture is required.');
+        else setError('Please upload a clear front-facing profile photo with a visible face.');
+      } else if (missing.name && !nameValid) setError('Please enter your name.');
+      else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!phoneValid) setError('Please enter a valid phone number (10-15 digits).');
       else if (!dietValid) setError('Please select a diet preference.');
       return;
     }
     setSaving(true);
     try {
+      if (showPictureSection && profileImage) {
+        const faceResult = await face.awaitResult();
+        if (faceResult !== 'face_found') {
+          setError('Please upload a clear front-facing profile photo with a visible face.');
+          return;
+        }
+      }
       const payload = { email: user.email || user.Email };
       if (missing.name) payload.name = name.trim();
       if (missing.height) payload.height = heightNum;
       if (missing.phoneNumber) payload.phoneNumber = phone.trim();
       if (missing.dietType) payload.dietType = dietType;
+      if (showPictureSection && profileImage) payload.profileImage = profileImage;
       await saveProfile(payload);
-      if (showPictureSection && profileImage) {
-        await saveProfile({ email: payload.email, profileImage });
-      }
       onComplete({
+        userName: missing.name ? name.trim() : undefined,
         height: missing.height ? heightNum : undefined,
         phoneNumber: missing.phoneNumber ? phone.trim() : undefined,
         dietType: missing.dietType ? dietType : undefined,
@@ -125,7 +155,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       });
     } catch (e) { setError(e.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
-  }, [formValid, heightValid, phoneValid, dietValid, missing, heightNum, phone, dietType, user, profileImage, showPictureSection, onComplete]);
+  }, [formValid, pictureValid, nameValid, heightValid, phoneValid, dietValid, missing, name, heightNum, phone, dietType, user, profileImage, showPictureSection, onComplete, face]);
 
   return (
     <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 300 }}>
@@ -142,7 +172,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       <div className="max-w-md mx-auto p-5 space-y-5">
         <CompleteProfileChecklist loading={loading} checks={checks} />
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-4">
-          <CompleteRequiredFields missing={missing} name={name} setName={setName}height={height} setHeight={setHeight}
+          <CompleteRequiredFields missing={missing} name={name} setName={setName} height={height} setHeight={setHeight}
             heightValid={heightValid} phone={phone} setPhone={setPhone} phoneValid={phoneValid}
             dietType={dietType} setDietType={setDietType} />
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-sm text-red-600">{error}</p></div>}

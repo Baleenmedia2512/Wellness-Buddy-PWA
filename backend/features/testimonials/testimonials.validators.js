@@ -10,11 +10,24 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
+const MEDICAL_CONDITION_MAX_LEN = 100;
+const MEDICAL_CONDITION_PATTERN = /^[a-zA-Z0-9\s\-',./()]+$/;
 const MAX_BASE64_SIZE = 1.5 * 1024 * 1024; // 1.5 MB base64 â‰ˆ 1 MB binary
 const DURATION_PATTERN = /^(\d+)\s+(days|months)$/i;
 const MAX_DURATION_AMOUNT = 9999;
 const MAX_HEALTH_ISSUES = 20;
 const MAX_ISSUE_LEN = 120;
+
+function normalizeRecoveredHealthIssues(body) {
+  if (!body || typeof body !== 'object') return undefined;
+  if (body.recoveredHealthIssues !== undefined) return body.recoveredHealthIssues;
+  // Legacy clients sent a single medicalCondition string before multi-select health issues.
+  const legacy = body.medicalCondition;
+  if (legacy === undefined || legacy === null || legacy === '') return undefined;
+  if (Array.isArray(legacy)) return legacy;
+  if (typeof legacy === 'string') return [legacy];
+  return undefined;
+}
 
 function validateRecoveredHealthIssues(value, { required = false } = {}) {
   if (value === undefined || value === null) {
@@ -91,6 +104,21 @@ function validateWeight(value, fieldName) {
   return n;
 }
 
+function validateMedicalCondition(value, { required = true } = {}) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) {
+    if (required) throw new ValidationError(400, 'Please enter your medical condition.');
+    return null;
+  }
+  if (trimmed.length > MEDICAL_CONDITION_MAX_LEN) {
+    throw new ValidationError(422, `Medical condition must be ${MEDICAL_CONDITION_MAX_LEN} characters or fewer.`);
+  }
+  if (!MEDICAL_CONDITION_PATTERN.test(trimmed)) {
+    throw new ValidationError(422, 'Only letters, numbers, spaces, and - \' , . / ( ) are allowed.');
+  }
+  return trimmed;
+}
+
 /**
  * Validate payload for POST /api/testimonials/submit
  * After photo + weight are optional â€” omitting them creates an 'incomplete' record.
@@ -98,7 +126,8 @@ function validateWeight(value, fieldName) {
 export function validateSubmitTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -116,6 +145,7 @@ export function validateSubmitTestimonial(body) {
     throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
   }
   const normalizedDuration = validateDurationText(durationText);
+  const normalizedMedicalCondition = validateMedicalCondition(medicalCondition, { required: true });
 
   return {
     userId:                userIdN,
@@ -156,7 +186,8 @@ export function validateVerifyOtp(body) {
 export function validateEditTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);

@@ -1,7 +1,7 @@
 /**
  * counsellingApi.js — slice service.
  * Single responsibility: persist and look up counselling assessments.
- * Uses CapacitorHttp so the call works on web AND native.
+ * Uses CapacitorHttp so the call works on web AND native...
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
