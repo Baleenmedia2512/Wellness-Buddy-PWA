@@ -746,7 +746,12 @@ export default function TestimonialsHub({ userId }) {
   }, [reload]);
 
   const handleHealthIssuesSave = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !existing) return;
+    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
+      setHealthIssuesError('Please add at least one recovered health issue.');
+      setHealthIssuesSuccess(null);
+      return;
+    }
     setHealthIssuesError(null);
     setHealthIssuesSuccess(null);
     setHealthIssuesSaving(true);
@@ -760,7 +765,7 @@ export default function TestimonialsHub({ userId }) {
     } finally {
       setHealthIssuesSaving(false);
     }
-  }, [userId, healthIssues, reload]);
+  }, [userId, existing, healthIssues, reload]);
 
   // ── Loading guard (after all hooks) ────────────────────────────────────────
   if (existing === undefined || existingVideo === undefined) {
@@ -870,6 +875,84 @@ export default function TestimonialsHub({ userId }) {
             </TouchFeedbackButton>
           </div>
         )}
+
+        {/* ── Health Issues (after before photo, before after photo) ─────────── */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1 pt-2">
+            <HeartPulse className="h-4 w-4 text-gray-400" />
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
+            <span className="text-[10px] text-gray-400 font-normal ml-auto">Required before after-photo verification</span>
+          </div>
+
+          <SlotCard
+            icon={HeartPulse}
+            iconBg="bg-rose-50"
+            iconColor="text-rose-500"
+            title="Health Issues Recovered"
+            subtitle={
+              healthIssuesExpanded
+                ? null
+                : (healthIssues.length > 0
+                    ? healthIssues.slice(0, 3).join(' · ') + (healthIssues.length > 3 ? ` +${healthIssues.length - 3} more` : '')
+                    : 'Which health issues did you recover from?')
+            }
+            status={slots.healthIssues}
+            isExpanded={healthIssuesExpanded}
+            disabled={!existing}
+            onToggle={() => {
+              if (!existing) return;
+              setHealthIssuesExpanded((prev) => !prev);
+              setHealthIssuesError(null);
+              setHealthIssuesSuccess(null);
+            }}
+          >
+            <div className="px-4 pb-5 pt-4 space-y-4">
+              {!existing && (
+                <p className="text-xs text-gray-400 italic">Save your before photo first, then add recovered health issues here.</p>
+              )}
+              {existing && (
+                <>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Share which health conditions you recovered from. Add at least one before submitting your after photo for coach verification.
+                  </p>
+                  <DiseaseMultiSelect
+                    value={healthIssues}
+                    onChange={setHealthIssues}
+                    disabled={healthIssuesSaving}
+                    required
+                  />
+                  {healthIssuesError && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
+                      {healthIssuesError}
+                    </div>
+                  )}
+                  {healthIssuesSuccess && (
+                    <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2.5 text-xs text-green-800 font-medium flex items-center gap-1.5">
+                      <CheckCircle className="h-3.5 w-3.5" /> {healthIssuesSuccess}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <TouchFeedbackButton
+                      onClick={() => { setHealthIssuesExpanded(false); setHealthIssuesError(null); setHealthIssuesSuccess(null); }}
+                      disabled={healthIssuesSaving}
+                      className="flex-1 py-3 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold"
+                    >
+                      Cancel
+                    </TouchFeedbackButton>
+                    <TouchFeedbackButton
+                      onClick={handleHealthIssuesSave}
+                      disabled={healthIssuesSaving}
+                      className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      {healthIssuesSaving ? 'Saving…' : 'Save Issues'}
+                    </TouchFeedbackButton>
+                  </div>
+                </>
+              )}
+            </div>
+          </SlotCard>
+        </div>
 
         {/* ── After Photo slot ────────────────────────────────────────────────── */}
         <SlotCard
@@ -1051,94 +1134,16 @@ export default function TestimonialsHub({ userId }) {
         )}
       </div>
 
-      {/* ══════════════════ HEALTH ISSUES SECTION ═════════════════════════════ */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 px-1 pt-2">
-          <HeartPulse className="h-4 w-4 text-gray-400" />
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
-          <span className="text-[10px] text-gray-400 font-normal ml-auto">Required for verification</span>
-        </div>
-
-        <SlotCard
-          icon={HeartPulse}
-          iconBg="bg-rose-50"
-          iconColor="text-rose-500"
-          title="Health Issues Recovered"
-          subtitle={
-            healthIssuesExpanded
-              ? null
-              : (healthIssues.length > 0
-                  ? healthIssues.slice(0, 3).join(' · ') + (healthIssues.length > 3 ? ` +${healthIssues.length - 3} more` : '')
-                  : 'Which health issues did you recover from?')
-          }
-          status={slots.healthIssues}
-          isExpanded={healthIssuesExpanded}
-          disabled={!existing}
-          onToggle={() => {
-            if (!existing) return;
-            setHealthIssuesExpanded((prev) => !prev);
-            setHealthIssuesError(null);
-            setHealthIssuesSuccess(null);
-          }}
-        >
-          <div className="px-4 pb-5 pt-4 space-y-4">
-            {!existing && (
-              <p className="text-xs text-gray-400 italic">Upload your before photo first to add health issues.</p>
-            )}
-            {existing && (
-              <>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Share which health conditions you recovered from on your wellness journey. At least one is required before photo or video verification is sent to your coach.
-                </p>
-                <DiseaseMultiSelect
-                  value={healthIssues}
-                  onChange={setHealthIssues}
-                  disabled={healthIssuesSaving}
-                  required
-                />
-                {healthIssuesError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
-                    {healthIssuesError}
-                  </div>
-                )}
-                {healthIssuesSuccess && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2.5 text-xs text-green-800 font-medium flex items-center gap-1.5">
-                    <CheckCircle className="h-3.5 w-3.5" /> {healthIssuesSuccess}
-                  </div>
-                )}
-                <div className="flex gap-3">
-                  <TouchFeedbackButton
-                    onClick={() => { setHealthIssuesExpanded(false); setHealthIssuesError(null); setHealthIssuesSuccess(null); }}
-                    disabled={healthIssuesSaving}
-                    className="flex-1 py-3 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold"
-                  >
-                    Cancel
-                  </TouchFeedbackButton>
-                  <TouchFeedbackButton
-                    onClick={handleHealthIssuesSave}
-                    disabled={healthIssuesSaving}
-                    className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Save className="h-4 w-4" />
-                    {healthIssuesSaving ? 'Saving…' : 'Save Issues'}
-                  </TouchFeedbackButton>
-                </div>
-              </>
-            )}
-          </div>
-        </SlotCard>
-      </div>
-
       {/* ── How it works (first-time hint) ─────────────────────────────────── */}
       {!existing && !existingVideo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 space-y-2">
           <p className="text-xs font-bold text-blue-800">How it works</p>
           <ol className="list-decimal list-inside space-y-1 text-xs text-blue-700 leading-5">
             <li>Tap <strong>Before Photo</strong> to upload your starting photo and weight.</li>
+            <li>Add any <strong>Health Issues</strong> you recovered from.</li>
             <li>When you have results, tap <strong>After Photo</strong> — your coach gets an OTP by email.</li>
             <li>Ask your coach for the OTP and enter it here to get officially verified.</li>
             <li>Optionally upload <strong>Health</strong> or <strong>Business</strong> result videos — same OTP flow.</li>
-            <li>Add any <strong>Health Issues</strong> you recovered from to complete your story.</li>
             <li>You can upload any item independently, in any order, at any time.</li>
           </ol>
         </div>

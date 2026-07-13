@@ -43,7 +43,14 @@ export async function getProfile({ email }) {
         email: user.Email,
         height, dietType, phoneNumber,
         weightGoalMode: user.WeightGoalMode || 'loss',
-        profileComplete: !!(height && dietType && phoneNumber),
+        profileComplete: !!(
+          height
+          && dietType
+          && (
+            (typeof phoneNumber === 'string' && phoneNumber.trim() !== '')
+            || (typeof user.UserName === 'string' && user.UserName.trim() !== '')
+          )
+        ),
         profileImage: user.ProfileImage || null,
         coachId: user.CoachId || null,
         profilePicSnooze: user.profile_pic_snooze || null,

@@ -9,6 +9,14 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+
+function mapRoleForApi(userRole) {
+  const n = String(userRole || 'member').toLowerCase();
+  if (n === 'admin' || n === 'developer') return 'admin';
+  if (n === 'coach' || n === 'upline') return 'coach';
+  return 'member';
+}
 
 // Activity type metadata
 const ACTIVITY_TYPES = [
@@ -228,6 +236,25 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [memberStats, setMemberStats] = useState(null);
   const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [effectiveRole, setEffectiveRole] = useState(() => mapRoleForApi(userRole));
+
+  // Treat users with downline members in team_table as coaches for attendance data.
+  useEffect(() => {
+    let cancelled = false;
+    const baseRole = mapRoleForApi(userRole);
+    if (baseRole !== 'member' || !user?.id) {
+      setEffectiveRole(baseRole);
+      return undefined;
+    }
+    fetchHasTeamMembers(user.id)
+      .then((hasTeam) => {
+        if (!cancelled) setEffectiveRole(hasTeam ? 'coach' : 'member');
+      })
+      .catch(() => {
+        if (!cancelled) setEffectiveRole('member');
+      });
+    return () => { cancelled = true; };
+  }, [user?.id, userRole]);
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -248,7 +275,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType: 'summary',
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -272,7 +299,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchDetails = useCallback(async (activityType) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
@@ -286,7 +313,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType,
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -311,7 +338,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchMemberSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
@@ -323,7 +350,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType: 'member-summary',
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -347,7 +374,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setMemberSummaryLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchSummary();

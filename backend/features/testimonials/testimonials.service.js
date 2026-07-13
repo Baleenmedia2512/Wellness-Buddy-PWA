@@ -322,9 +322,15 @@ export async function editTestimonial(rawBody) {
 
   // Determine if after photo is now present (either just uploaded or already stored)
   const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
-  // Only treat as "has after" if it's a real after path (not the before-placeholder used for incomplete)
+  const hasRealAfterPhoto = !!updates.afterImagePath
+    || (
+      existing.status !== 'incomplete'
+      && existing.after_image_path
+      && existing.after_image_path !== existing.before_image_path
+      && !repo.isVideoOnlyPlaceholder(existing.after_image_path)
+    );
+  const isNowComplete = hasRealAfterPhoto;
   const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
-  const isNowComplete  = !!(updates.afterImagePath) || existing.status !== 'incomplete';
 
   if (isNowComplete && resolvedHealthIssues.length === 0) {
     throw new ValidationError(422, 'At least one recovered health issue is required');

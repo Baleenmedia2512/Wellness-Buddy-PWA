@@ -16,6 +16,17 @@ const MAX_DURATION_AMOUNT = 9999;
 const MAX_HEALTH_ISSUES = 20;
 const MAX_ISSUE_LEN = 120;
 
+function normalizeRecoveredHealthIssues(body) {
+  if (!body || typeof body !== 'object') return undefined;
+  if (body.recoveredHealthIssues !== undefined) return body.recoveredHealthIssues;
+  // Legacy clients sent a single medicalCondition string before multi-select health issues.
+  const legacy = body.medicalCondition;
+  if (legacy === undefined || legacy === null || legacy === '') return undefined;
+  if (Array.isArray(legacy)) return legacy;
+  if (typeof legacy === 'string') return [legacy];
+  return undefined;
+}
+
 function validateRecoveredHealthIssues(value, { required = false } = {}) {
   if (value === undefined || value === null) {
     if (required) {
@@ -98,7 +109,8 @@ function validateWeight(value, fieldName) {
 export function validateSubmitTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);
@@ -156,7 +168,8 @@ export function validateVerifyOtp(body) {
 export function validateEditTestimonial(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
 
-  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues } = body;
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
 
   if (!userId) throw new ValidationError(400, 'userId is required');
   const userIdN = parseInt(userId, 10);

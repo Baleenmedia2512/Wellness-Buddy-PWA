@@ -152,11 +152,11 @@ export function useTestimonial({ userId, healthIssues = [] }) {
 
     const isCompleting = isCompletingMode;
     const isEditing    = isEditMode;
-    const willSendOtp  = isCompleting
-      || !!afterImage
-      || (isEditing && existing?.status !== 'incomplete');
+    const isBeforeOnlySubmit = !isCompleting && !afterImage;
+    // Health issues required only when an after photo is being submitted (coach OTP flow).
+    const willSendOtp  = isCompleting || !!afterImage;
 
-    if (willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
+    if (!isBeforeOnlySubmit && willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
       setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
       return false;
     }
@@ -202,7 +202,7 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     try {
       const payload = { userId };
 
-      if (Array.isArray(healthIssues) && healthIssues.length > 0) {
+      if (Array.isArray(healthIssues) && healthIssues.length > 0 && !isBeforeOnlySubmit) {
         payload.recoveredHealthIssues = healthIssues;
       }
 
@@ -239,7 +239,11 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       }
       return true;
     } catch (err) {
-      setError(err.message || 'Submission failed. Please try again.');
+      const raw = err?.message || '';
+      const friendly = /is not defined/i.test(raw)
+        ? 'Unable to save your photo. Please update the app or try again.'
+        : (raw || 'Submission failed. Please try again.');
+      setError(friendly);
       return false;
     } finally {
       setSubmitting(false);
