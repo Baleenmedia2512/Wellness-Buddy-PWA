@@ -49,6 +49,17 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
+function healthIssuesEqual(left, right) {
+  const normalize = (value) => (
+    (Array.isArray(value) ? value : [])
+      .map((item) => String(item ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join('|')
+  );
+  return normalize(left) === normalize(right);
+}
+
 /**
  * Build API testimonial payload with signed photo/video URLs.
  * Video-only rows (placeholder before image) still return video URLs when present.
@@ -305,17 +316,79 @@ export async function editTestimonial(rawBody) {
     ? payload.recoveredHealthIssues
     : (existing.recovered_health_issues ?? []);
 
-  // Health issues are optional metadata — save without resetting coach verification.
+  // Health-only edits: keep verification pending until coach OTP is entered.
+  // If issues changed while photo/video verification is pending, resend coach email + fresh OTP.
   if (!requiresReverification) {
-    await repo.updateTestimonial(existing.id, updates);
+    const issuesChanged = payload.recoveredHealthIssues !== undefined
+      && !healthIssuesEqual(payload.recoveredHealthIssues, existing.recovered_health_issues);
+
+    const photoPending = existing.status === 'pending'
+      && !repo.isVideoOnlyPlaceholder(existing.before_image_path);
+    const videoPending = existing.video_status === 'pending'
+      && !!(existing.health_video_path || existing.business_video_path);
+
+    let message = 'Health issues saved successfully.';
+    const saveUpdates = { ...updates };
+
+    if (issuesChanged && photoPending && coachInfo?.email && userInfo?.userName) {
+      const otp       = generateOtp();
+      const otpHash   = await bcrypt.hash(otp, 10);
+      const otpExpiry = otpExpiryIst(24);
+      saveUpdates.status       = 'pending';
+      saveUpdates.verifiedAt   = null;
+      saveUpdates.otpHash      = otpHash;
+      saveUpdates.otpExpiresAt = otpExpiry;
+
+      await repo.updateTestimonial(existing.id, saveUpdates);
+
+      await sendCoachEmail({
+        coachEmail:    coachInfo.email,
+        memberName:    userInfo.userName,
+        goalType:      existing.goal_type,
+        beforeWeight:  existing.before_weight_kg,
+        afterWeight:   existing.after_weight_kg,
+        durationText:  existing.duration_text,
+        otp,
+        beforeImagePath: existing.before_image_path,
+        afterImagePath:  existing.after_image_path,
+        recoveredHealthIssues: payload.recoveredHealthIssues,
+      });
+
+      message = 'Health issues updated. Your coach received a new OTP by email. Status stays pending until you enter it.';
+    } else if (issuesChanged && videoPending && coachInfo?.email && userInfo?.userName) {
+      const otp       = generateOtp();
+      const otpHash   = await bcrypt.hash(otp, 10);
+      const otpExpiry = otpExpiryIst(24);
+
+      await repo.updateTestimonial(existing.id, saveUpdates);
+      await repo.updateTestimonialVideos(existing.id, {
+        videoStatus:       'pending',
+        videoOtpHash:      otpHash,
+        videoOtpExpiresAt: otpExpiry,
+        videoVerifiedAt:   null,
+      });
+
+      await sendVideoCoachEmail({
+        coachEmail:        coachInfo.email,
+        memberName:        userInfo.userName,
+        otp,
+        healthVideoPath:   existing.health_video_path   ?? null,
+        businessVideoPath: existing.business_video_path ?? null,
+        recoveredHealthIssues: payload.recoveredHealthIssues,
+      });
+
+      message = 'Health issues updated. Your coach received a new video OTP by email. Status stays pending until you enter it.';
+    } else {
+      await repo.updateTestimonial(existing.id, saveUpdates);
+    }
 
     return {
       httpStatus: 200,
       body: {
         success: true,
-        message: 'Testimonial updated successfully.',
+        message,
         testimonialId: existing.id,
-        status: existing.status,
+        status: photoPending || videoPending ? 'pending' : existing.status,
       },
     };
   }

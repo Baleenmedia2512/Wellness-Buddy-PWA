@@ -11,6 +11,7 @@
 import React from 'react';
 import { Camera, Images, CheckCircle, Plus } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import MedicalConditionAutocomplete from './MedicalConditionAutocomplete';
 import {
   PORTRAIT_IMAGE_CLASS,
   sanitizeDurationDigits,
@@ -120,6 +121,10 @@ export default function TestimonialForm({
   isEditMode,
   onCancel,
   isIncomplete,   // true when editing an existing 'incomplete' record to add after photo
+  medicalCondition,
+  onMedicalConditionChange,
+  onMedicalConditionBlur,
+  medicalConditionError,
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-5">
@@ -218,6 +223,14 @@ export default function TestimonialForm({
               </select>
             </div>
           </div>
+
+          <MedicalConditionAutocomplete
+            value={medicalCondition}
+            onChange={onMedicalConditionChange}
+            onBlur={onMedicalConditionBlur}
+            error={medicalConditionError}
+          />
+
           <p className="text-xs text-gray-400">Portrait photos only (vertical). Duration accepts numbers only.</p>
         </>
       )}

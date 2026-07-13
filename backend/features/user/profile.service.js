@@ -5,6 +5,7 @@
  * Preserves response shapes byte-identical to the legacy handlers.
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
+import logger from '../../shared/lib/logger.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import {
@@ -57,6 +58,7 @@ export async function getProfile({ email }) {
         latestWeight: latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null,
         latestBmr,
         physicalActivityLevel,
+        communityId: user.CommunityId ?? null,
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
@@ -65,7 +67,9 @@ export async function getProfile({ email }) {
   };
 }
 
-function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel }) {
+function buildProfileUpdate({
+  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, communityId,
+}) {
   const updateData = {};
   let cleanedPhoneNumber;
   if (name != null) updateData.UserName = name;
@@ -77,6 +81,7 @@ function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage,
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     updateData.PhysicalActivityLevel = physicalActivityLevel;
   }
+  if (communityId !== undefined) updateData.CommunityId = communityId;
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
@@ -88,7 +93,7 @@ function buildProfileUpdate({ name, height, dietType, phoneNumber, profileImage,
   return { updateData, cleanedPhoneNumber };
 }
 
-function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData }) {
+function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId }) {
   if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
     throw new Error('Phone number was not saved. Please try again.');
   }
@@ -100,13 +105,31 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
   if (dietType != null && updateData.DietType && verifyRow.DietType !== updateData.DietType) {
     throw new Error('Diet preference was not saved. Please try again.');
   }
+  if (communityId !== undefined) {
+    const expected = updateData.CommunityId ?? null;
+    const saved = verifyRow.CommunityId ?? null;
+    if (saved !== expected) throw new Error('Community ID was not saved. Please try again.');
+  }
 }
 
 export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber,
-    weightGoalMode, physicalActivityLevel,
+    weightGoalMode, physicalActivityLevel, communityId,
   } = input;
+
+  logger.info('[profile/update] incoming request', {
+    email,
+    receivedCommunityId: communityId !== undefined,
+  });
+  if (communityId !== undefined) {
+    logger.info('[profile/update] CommunityId validation result', {
+      email,
+      valid: true,
+      communityId: communityId ?? null,
+    });
+  }
+
   const user = await repo.findByEmail(email, 'UserId');
   if (!user) return notFound();
   const userId = user.UserId;
@@ -118,12 +141,19 @@ export async function updateProfile(input) {
     savedPhysicalActivityLevel = physicalActivityLevel;
   }
 
+  let savedCommunityId;
   if (Object.keys(updateData).length > 0) {
     await repo.updateUserById(userId, updateData);
+    logger.info('[profile/update] database update result', {
+      userId,
+      updatedFields: Object.keys(updateData),
+      communityIdSaved: updateData.CommunityId ?? null,
+    });
     try { await repo.updateUserById(userId, { LastActiveAt: getISTTimestamp() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
-    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData });
+    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId });
+    if (communityId !== undefined) savedCommunityId = communityId;
   }
 
   let savedBmr = null;
@@ -157,23 +187,34 @@ export async function updateProfile(input) {
     physicalActivityLevel: effectiveActivity,
   });
 
+  const responseBody = {
+    success: true, message: 'User profile updated successfully',
+    data: {
+      email,
+      name: name || undefined,
+      height: height ? parseFloat(height) : undefined,
+      bmr: savedBmr || undefined,
+      dietType: dietType || undefined,
+      phoneNumber: cleanedPhoneNumber || undefined,
+      weightGoalMode: weightGoalMode || undefined,
+      physicalActivityLevel: savedPhysicalActivityLevel || undefined,
+      communityId: savedCommunityId !== undefined
+        ? savedCommunityId
+        : refreshedUser?.CommunityId ?? undefined,
+      calorieTarget: calorieTarget || undefined,
+      profileImageUpdated: !!profileImage,
+    },
+  };
+
+  logger.info('[profile/update] response sent', {
+    email,
+    httpStatus: 200,
+    communityId: responseBody.data.communityId ?? null,
+  });
+
   return {
     httpStatus: 200,
-    body: {
-      success: true, message: 'User profile updated successfully',
-      data: {
-        email,
-        name: name || undefined,
-        height: height ? parseFloat(height) : undefined,
-        bmr: savedBmr || undefined,
-        dietType: dietType || undefined,
-        phoneNumber: cleanedPhoneNumber || undefined,
-        weightGoalMode: weightGoalMode || undefined,
-        physicalActivityLevel: savedPhysicalActivityLevel || undefined,
-        calorieTarget: calorieTarget || undefined,
-        profileImageUpdated: !!profileImage,
-      },
-    },
+    body: responseBody,
   };
 }
 

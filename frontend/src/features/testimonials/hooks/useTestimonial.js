@@ -2,7 +2,7 @@
  * useTestimonial.js â€” State and lifecycle for the member testimonial form.
  * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
 import {
   formatDurationText,
@@ -10,6 +10,8 @@ import {
   validateDurationFields,
   validateWeightKg,
 } from '../services/testimonialFormUtils.js';
+import { validateMedicalCondition } from '../domain/medicalConditionValidation.js';
+import { recordRecentMedicalCondition } from '../domain/medicalConditionSearch.js';
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
@@ -84,6 +86,8 @@ function compressImage(file) {
  */
 export function useTestimonial({ userId, healthIssues = [] }) {
   const [form, setForm]               = useState(INITIAL_FORM);
+  const [medicalCondition, setMedicalCondition] = useState('');
+  const [medicalConditionTouched, setMedicalConditionTouched] = useState(false);
   const [beforeImage, setBeforeImage] = useState(null); // { base64, preview }
   const [afterImage,  setAfterImage]  = useState(null);
   const [existing,    setExisting]    = useState(undefined); // undefined = loading, null = none
@@ -116,6 +120,8 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         durationUnit:   duration.durationUnit,
         durationValue:  duration.durationValue,
       });
+      setMedicalCondition(existing.medicalCondition ?? '');
+      setMedicalConditionTouched(false);
       setBeforeImage(null);
       setAfterImage(null);
     }
@@ -145,6 +151,20 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
   const handleAfterImageChange  = useCallback(makeImageHandler(setAfterImage),  [makeImageHandler]);
 
+  const medicalConditionValidation = useMemo(
+    () => validateMedicalCondition(medicalCondition),
+    [medicalCondition],
+  );
+
+  const medicalConditionError =
+    medicalConditionTouched && !medicalConditionValidation.valid
+      ? medicalConditionValidation.message
+      : '';
+
+  const handleMedicalConditionBlur = useCallback(() => {
+    setMedicalConditionTouched(true);
+  }, []);
+
   // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSubmit = useCallback(async () => {
     setError(null);
@@ -173,6 +193,11 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         return false;
       }
     } else {
+      setMedicalConditionTouched(true);
+      if (!medicalConditionValidation.valid) {
+        setError(medicalConditionValidation.message);
+        return;
+      }
       // New submission or full edit — before required unless edit keeps existing photo
       if (!beforeImage && !(isEditing && existing?.beforeImageUrl)) {
         setError('Please upload your Before photo');
@@ -217,6 +242,8 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         payload.beforeWeightKg = parseFloat(form.beforeWeightKg);
         payload.goalType       = form.goalType;
         payload.durationText   = formatDurationText(form.durationUnit, form.durationValue);
+        payload.medicalCondition = medicalConditionValidation.value;
+        recordRecentMedicalCondition(payload.medicalCondition);
         if (afterImage) {
           payload.afterImageBase64 = afterImage.base64;
           payload.afterWeightKg    = parseFloat(form.afterWeightKg);
@@ -273,6 +300,10 @@ export function useTestimonial({ userId, healthIssues = [] }) {
   return {
     form,
     setField,
+    medicalCondition,
+    setMedicalCondition,
+    medicalConditionError,
+    handleMedicalConditionBlur,
     beforeImage,
     afterImage,
     handleBeforeImageChange,

@@ -3,41 +3,28 @@
  * Owns: team_table (direct-downline lookup) + weight_records_table (latest weight).
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import {
+  loadReportingContext,
+  getFullReportingMembers,
+  getDirectReportingMembers,
+  buildReportingChildrenIndex,
+} from '../../utils/reportingHierarchyService.js';
 
 /**
- * Walk the hierarchy tree and derive each member's parent coach plus
- * which users are direct children of the logged-in coach.
+ * Walk the reporting hierarchy and derive parent links plus direct-to-root flags.
  */
-function extractHierarchyMeta(hierarchy, rootCoachId) {
+function extractReportingHierarchyMeta(context, rootCoachId) {
   const rootId = Number(rootCoachId);
   const parentByUserId = new Map();
-  const childrenByParentId = new Map();
-  const directToRoot = new Set();
+  const childrenByParentId = buildReportingChildrenIndex(context, rootId);
+  const directToRoot = new Set(getDirectReportingMembers(rootId, context).map((m) => m.UserId));
 
-  function addChild(parentId, childId) {
-    const parent = Number(parentId);
-    const child = Number(childId);
-    if (!Number.isFinite(parent) || !Number.isFinite(child)) return;
-    parentByUserId.set(child, parent);
-    if (!childrenByParentId.has(parent)) childrenByParentId.set(parent, []);
-    const siblings = childrenByParentId.get(parent);
-    if (!siblings.includes(child)) siblings.push(child);
-  }
-
-  function walk(node) {
-    if (!node?.teamMembers?.length) return;
-    for (const child of node.teamMembers) {
-      const childId = child.userId;
-      const parentId = node.userId;
-      if (childId != null && parentId != null) {
-        addChild(parentId, childId);
-        if (Number(parentId) === rootId) directToRoot.add(Number(childId));
-      }
-      walk(child);
+  for (const [parentId, childIds] of childrenByParentId) {
+    for (const childId of childIds) {
+      parentByUserId.set(Number(childId), Number(parentId));
     }
   }
 
-  if (hierarchy) walk(hierarchy);
   return { parentByUserId, childrenByParentId, directToRoot };
 }
 
@@ -69,85 +56,54 @@ export async function getCoachMember(coachId) {
  */
 export async function getFullTeamMembers(coachId) {
   const supabase = getSupabaseClient();
-  const { buildTeamHierarchy } = await import('../../utils/teamHierarchyBuilder.js');
-  const { allMembers, hierarchy } = await buildTeamHierarchy(supabase, coachId);
-  const { parentByUserId, childrenByParentId, directToRoot } = extractHierarchyMeta(hierarchy, coachId);
-  const memberIds = (allMembers || [])
+  const context = await loadReportingContext(supabase);
+  const reportingMembers = getFullReportingMembers(coachId, context);
+  const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
+    context,
+    coachId,
+  );
+
+  const memberIds = reportingMembers
     .map((m) => m.UserId)
     .filter((id) => id !== coachId);
   if (memberIds.length === 0) {
     return { rawMembers: [], childrenByParentId };
   }
 
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('"UserId", "UserName", "Height", "CoachId", "Role"')
-    .in('"UserId"', memberIds)
-    .ilike('"Status"', 'active')
-    .order('"UserName"', { ascending: true });
-  if (error) throw error;
+  const rawMembers = reportingMembers
+    .filter((member) => member.UserId !== coachId)
+    .map((member) => ({
+      UserId: member.UserId,
+      UserName: member.UserName,
+      Height: member.Height ?? null,
+      CoachId: member.CoachId,
+      Role: member.Role,
+      Status: member.Status,
+      HierarchyParent: parentByUserId.get(Number(member.UserId)) ?? member.CoachId,
+      isDirectToRoot: directToRoot.has(Number(member.UserId)),
+    }))
+    .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
 
-  const rawMembers = (data || []).map((member) => ({
-    ...member,
-    HierarchyParent: parentByUserId.get(Number(member.UserId)) ?? member.CoachId,
-    isDirectToRoot: directToRoot.has(Number(member.UserId)),
-  }));
-
-  const augmentedChildren = await augmentChildrenFromDirectReports(
-    supabase,
-    rawMembers,
-    childrenByParentId,
-  );
-
-  return { rawMembers, childrenByParentId: augmentedChildren };
+  return { rawMembers, childrenByParentId };
 }
 
 /**
- * Merge DB direct-report links (CoachId) into the hierarchy children map.
- * Ensures sub-coach cards get team stats even when tree walk missed an edge.
- */
-async function augmentChildrenFromDirectReports(supabase, rawMembers, childrenByParentId) {
-  const memberIdSet = new Set(rawMembers.map((m) => Number(m.UserId)));
-  const coachIds = rawMembers.map((m) => Number(m.UserId)).filter(Number.isFinite);
-  if (coachIds.length === 0) return childrenByParentId;
-
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('"UserId", "CoachId"')
-    .in('"CoachId"', coachIds)
-    .ilike('"Status"', 'active');
-  if (error) throw error;
-
-  const merged = new Map(childrenByParentId);
-  for (const row of data || []) {
-    const parent = Number(row.CoachId);
-    const child = Number(row.UserId);
-    if (!Number.isFinite(parent) || !Number.isFinite(child)) continue;
-    if (!memberIdSet.has(child)) continue;
-    if (!merged.has(parent)) merged.set(parent, []);
-    const bucket = merged.get(parent);
-    if (!bucket.includes(child)) bucket.push(child);
-  }
-  return merged;
-}
-
-/**
- * Fetch direct-downline members for a given coach.
- * Returns UserId, UserName, Height for every Active member whose CoachId matches.
+ * Fetch direct-downline members for a given coach using reporting hierarchy rules.
  *
  * @param {number} coachId
  * @returns {Promise<Array<{ UserId: number, UserName: string, Height: string|null }>>}
  */
 export async function getDirectDownline(coachId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('"UserId", "UserName", "Height"')
-    .eq('"CoachId"', coachId)
-    .ilike('"Status"', 'active')
-    .order('"UserName"', { ascending: true });
-  if (error) throw error;
-  return data || [];
+  const context = await loadReportingContext(supabase);
+  return getDirectReportingMembers(coachId, context)
+    .filter((member) => member.UserId !== coachId)
+    .map((member) => ({
+      UserId: member.UserId,
+      UserName: member.UserName,
+      Height: member.Height ?? null,
+    }))
+    .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
 }
 
 /**

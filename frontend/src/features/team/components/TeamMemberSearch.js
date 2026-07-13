@@ -32,12 +32,11 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             onClearSelection={vm.clearSelection}
           />
 
-          {vm.isOpen && vm.searchQuery && vm.suggestions.length > 0 && (
+          {vm.isOpen && vm.searchQuery && (
             <TeamSearchResults
               dropdownRef={vm.dropdownRef}
               loading={vm.loading}
               suggestions={vm.suggestions}
-              searchQuery={vm.searchQuery}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}
             />
