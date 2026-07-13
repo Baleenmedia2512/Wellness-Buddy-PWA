@@ -11,10 +11,13 @@ async function readJsonResponse(res) {
 }
 
 export async function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
-  const params = new URLSearchParams({ userId });
+  const params = new URLSearchParams({ userId, _t: String(Date.now()) });
   if (date) params.set('date', date);
 
-  const res = await fetch(`${base(apiBaseUrl)}/api/wellness-score/daily?${params.toString()}`);
+  const res = await fetch(`${base(apiBaseUrl)}/api/wellness-score/daily?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+  });
   const payload = await readJsonResponse(res);
   return payload?.data ?? payload;
 }

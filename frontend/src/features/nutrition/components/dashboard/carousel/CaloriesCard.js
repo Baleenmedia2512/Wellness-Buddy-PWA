@@ -6,7 +6,7 @@ import { Flame, Utensils, User } from 'lucide-react';
  * Shows Remaining (Goal - Food + Exercise), Base Goal, Food, Exercise.
  * Formula: Remaining = Goal - Food + Exercise
  * 
- * Design: Compact, mobile-optimized with circular progress.....
+ * Design: Compact, mobile-optimized with circular progress.....z
  */
 
 // Compact Circular Progress for mobile (green up to 100%, solid red when over)
@@ -175,7 +175,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-blue-50 flex items-center justify-center">
               <User className="w-3.5 h-3.5 text-blue-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">BMR</p>
+            <p className="text-[10px] text-gray-500 mb-0">Calories Limit</p>
             <p className="text-xs font-bold text-gray-900">{target.toLocaleString()}</p>
           </div>
 

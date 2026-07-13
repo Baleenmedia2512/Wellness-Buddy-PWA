@@ -4,6 +4,7 @@ import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
 
 /**
  * Loads daily wellness score from the backend API.
+ * Clears stale data when `date` changes and refetches on app resume.
  */
 export function useWellnessScore({ user, apiBaseUrl, date }) {
   const [loading, setLoading] = useState(true);
@@ -31,8 +32,23 @@ export function useWellnessScore({ user, apiBaseUrl, date }) {
     }
   }, [user, apiBaseUrl, date]);
 
+  // Drop yesterday's payload as soon as the IST date rolls over.
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [date]);
+
   useEffect(() => {
     reload();
+  }, [reload]);
+
+  // Foreground resume — pick up new IST day without requiring a full reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
   return { loading, error, data, reload };

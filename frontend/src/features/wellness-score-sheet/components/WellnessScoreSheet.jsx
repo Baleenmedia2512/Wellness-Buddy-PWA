@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft, ClipboardList, Loader2, Trophy } from 'lucide-react';
+import { todayDateInIST } from '../../../shared/utils/timezoneUtils';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
@@ -22,7 +23,7 @@ function scoreTone(pct) {
 }
 
 /**
- * Full wellness score sheet — unified progress card + parameter breakdown.
+ * Full wellness score sheet — configured points + parameter breakdown.
  */
 export default function WellnessScoreSheet({
   onBack,
@@ -31,10 +32,10 @@ export default function WellnessScoreSheet({
   error = null,
   onRetry,
 }) {
-  const dateStr = scoreData?.date || new Date().toISOString().slice(0, 10);
+  const dateStr = scoreData?.date || todayDateInIST();
   const parameters = scoreData?.parameters || [];
   const grouped = parametersBySection(parameters);
-  const overallScore = scoreData?.percentage ?? 0;
+  const progressPct = scoreData?.percentage ?? 0;
   const earned = Math.round(scoreData?.totalEarned ?? 0);
   const possible = Math.round(scoreData?.totalPossible ?? 0);
 
@@ -91,48 +92,41 @@ export default function WellnessScoreSheet({
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-emerald-600" aria-hidden />
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                    Daily wellness score
+                    {formatDateLabel(dateStr)}&apos;s score
                   </p>
                 </div>
               </div>
               <div className="px-4 py-4">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-4xl font-bold tabular-nums leading-none text-gray-900">
-                      {Math.round(overallScore)}
-                      <span className="text-lg font-semibold text-gray-400">/100</span>
-                    </p>
-                    <p className="mt-2 text-sm text-gray-600">
-                      <span className="font-semibold text-gray-900">{earned}</span>
-                      {' '}
-                      of
-                      {' '}
-                      <span className="font-semibold text-gray-900">{possible}</span>
-                      {' '}
-                      points earned
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-right">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                      Parameters
-                    </p>
-                    <p className="text-lg font-bold tabular-nums text-gray-900">{parameters.length}</p>
-                  </div>
-                </div>
+                <p className="text-4xl font-bold tabular-nums leading-none text-gray-900">
+                  {earned.toLocaleString()}
+                  <span className="text-xl font-semibold text-gray-400">
+                    {' '}
+                    /
+                    {' '}
+                    {possible.toLocaleString()}
+                  </span>
+                </p>
+                <p className="mt-1.5 text-sm text-gray-600">
+                  Points earned from
+                  {' '}
+                  <span className="font-semibold text-gray-900">{parameters.length}</span>
+                  {' '}
+                  active parameters
+                </p>
                 <div className="mt-4">
                   <div className="mb-1.5 flex justify-between text-[11px] font-medium text-gray-500">
-                    <span>Overall progress</span>
-                    <span className="tabular-nums text-gray-700">{Math.round(overallScore)}%</span>
+                    <span>Progress</span>
+                    <span className="tabular-nums text-gray-700">{Math.round(progressPct)}%</span>
                   </div>
                   <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100">
                     <div
-                      className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${scoreTone(overallScore)}`}
-                      style={{ width: `${Math.min(100, overallScore)}%` }}
+                      className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${scoreTone(progressPct)}`}
+                      style={{ width: `${Math.min(100, progressPct)}%` }}
                       role="progressbar"
-                      aria-valuenow={Math.round(overallScore)}
+                      aria-valuenow={Math.round(progressPct)}
                       aria-valuemin={0}
                       aria-valuemax={100}
-                      aria-label="Overall wellness score"
+                      aria-label="Wellness score progress"
                     />
                   </div>
                 </div>
@@ -145,7 +139,6 @@ export default function WellnessScoreSheet({
               const SectionIcon = getSectionIcon(section.id);
               const sectionEarned = block.parameters.reduce((s, p) => s + (p.earnedPoints ?? 0), 0);
               const sectionMax = block.parameters.reduce((s, p) => s + (p.maxPoints ?? 0), 0);
-              const sectionPct = sectionMax > 0 ? Math.round((sectionEarned / sectionMax) * 100) : 0;
 
               return (
                 <section
@@ -160,7 +153,7 @@ export default function WellnessScoreSheet({
                       </h2>
                     </div>
                     <span className="text-xs font-semibold tabular-nums text-gray-600">
-                      {sectionEarned}/{sectionMax} pts · {sectionPct}%
+                      {sectionEarned}/{sectionMax}
                     </span>
                   </div>
                   <div className="space-y-2 p-3">
