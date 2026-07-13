@@ -81,8 +81,8 @@ export const APP_VERSION = {
   // NOTE: versionCode must never decrease for Play Store compatibility.
   VERSION_CODE: 48,
   
-  // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 48,
+  // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
+  IOS_BUILD_NUMBER: 49,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  3.3.1',
@@ -93,15 +93,16 @@ export const APP_VERSION = {
   // Platform release notes
   PLATFORMS: {
     ANDROID: { versionCode: 48, versionName: '3.3.1' },
-    IOS: { buildNumber: 48, versionName: '3.3.1' },
+    IOS: { buildNumber: 49, versionName: '3.3.1' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.3.1 (Code 48) - 2026-07-13 [ANDROID + iOS RELEASE]
+ * Version 3.3.1 (Code 48 / iOS build 49) - 2026-07-13 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
+ *   🔢 iOS build bumped to 49 for App Store Connect re-upload
  *
  * Version 3.3.0 (Code 47) - 2026-07-06 [ANDROID + iOS RELEASE]
  *   🚀 Minor version bump — version sync across all platforms
