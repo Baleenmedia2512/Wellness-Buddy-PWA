@@ -9,7 +9,7 @@ import CropOverlay from './shared/CropOverlay';
 import CompleteProfileChecklist from './complete/CompleteProfileChecklist';
 import CompleteRequiredFields from './complete/CompleteRequiredFields';
 import CompletePictureSection from './complete/CompletePictureSection';
-import { hasValidProfileName } from '../../domain/profileCompleteness';
+import { hasValidProfileName } from '../domain/profileCompleteness';
 
 const PHONE_REGEX = /^\+?\d[\d\s\-]{8,18}\d$/;
 

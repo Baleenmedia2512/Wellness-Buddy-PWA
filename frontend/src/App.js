@@ -10107,7 +10107,7 @@ function WellnessValleyApp() {
           <EmailGateModal
             user={user}
             apiBaseUrl={apiBaseUrl}
-            onComplete={(savedEmail) => {
+            onComplete={({ email: savedEmail, userName: savedName }) => {
               setShowEmailGate(false);
               // Persist email to localStorage so SetupWizard, ValidateOTP, and
               // all downstream session reads get a non-null value. Also patch the
@@ -10117,13 +10117,24 @@ function WellnessValleyApp() {
               if (cachedRaw) {
                 try {
                   const cached = JSON.parse(cachedRaw);
-                  if (!cached.email || !cached.email.trim()) {
-                    Session.setOtpUser({ ...cached, email: savedEmail });
-                  }
+                  Session.setOtpUser({
+                    ...cached,
+                    email: savedEmail,
+                    ...(savedName ? { username: savedName, userName: savedName } : {}),
+                  });
                 } catch { /* non-fatal */ }
               }
-              // Patch the in-memory user so the rest of the app sees the email
-              setUser((prev) => prev ? { ...prev, email: savedEmail } : prev);
+              // Patch the in-memory user so the rest of the app sees the email + name
+              setUser((prev) => prev ? {
+                ...prev,
+                email: savedEmail,
+                username: savedName || prev.username,
+                userName: savedName || prev.userName,
+              } : prev);
+              if (savedName) {
+                cacheProfileUserName(savedEmail, savedName);
+                setSavedUserName(savedName);
+              }
             }}
           />
         )}
