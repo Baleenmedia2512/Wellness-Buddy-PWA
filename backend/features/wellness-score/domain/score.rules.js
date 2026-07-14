@@ -2,6 +2,11 @@ import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
 import { filterEducationLogsOnly } from './education-log.helpers.js';
 import { WELLNESS_PARAMETERS } from './parameter-registry.js';
+import { GI_HIGH_MIN } from './nutrition-targets.js';
+
+function isGainGoalMode(goalMode) {
+  return String(goalMode || 'loss').toLowerCase() === 'gain';
+}
 
 export function buildParameterScore({
   key,
@@ -163,6 +168,7 @@ export function calculateLimitNutrient({
   limit,
   unit = '',
   lowerIsBetter = false,
+  goalMode,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const lim = Number(limit);
@@ -210,6 +216,34 @@ export function calculateLimitNutrient({
       calculationReason: `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
     });
   }
+
+  // Weight loss: binary — full points while within limit; exceeding limit = 0.
+  if (!isGainGoalMode(goalMode)) {
+    if (actual > lim) {
+      return buildParameterScore({
+        key,
+        label,
+        section: 'nutrition',
+        scoringMode: 'limit',
+        maxPoints,
+        earnedPoints: 0,
+        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+      });
+    }
+    return buildParameterScore({
+      key,
+      label,
+      section: 'nutrition',
+      scoringMode: 'limit',
+      maxPoints,
+      earnedPoints: maxPoints,
+      calculationReason: actual <= 0
+        ? `Within limit (0${unit} ≤ ${lim}${unit})`
+        : `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
+    });
+  }
+
+  // Weight gain: proportional up to limit; exceeding limit = 0.
   if (actual > lim) {
     return buildParameterScore({
       key,
@@ -310,7 +344,7 @@ export function calculateWater({ maxPoints, consumedMl, requiredMl }) {
 
 // ─── Nutrition parameters ────────────────────────────────────────────────────
 
-export function calculateCalories({ maxPoints, consumed, limit }) {
+export function calculateCalories({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'calories',
     label: 'Calories',
@@ -318,10 +352,11 @@ export function calculateCalories({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: ' kcal',
+    goalMode,
   });
 }
 
-export function calculateCarbohydrates({ maxPoints, consumed, limit }) {
+export function calculateCarbohydrates({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'carbohydrates',
     label: 'Carbohydrates',
@@ -329,10 +364,11 @@ export function calculateCarbohydrates({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: 'g',
+    goalMode,
   });
 }
 
-export function calculateFat({ maxPoints, consumed, limit }) {
+export function calculateFat({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'fat',
     label: 'Fat',
@@ -340,6 +376,7 @@ export function calculateFat({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: 'g',
+    goalMode,
   });
 }
 
@@ -354,7 +391,7 @@ export function calculateProtein({ maxPoints, consumed, target }) {
   });
 }
 
-export function calculateSodium({ maxPoints, consumed, limit }) {
+export function calculateSodium({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'sodium',
     label: 'Sodium',
@@ -362,10 +399,11 @@ export function calculateSodium({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: 'mg',
+    goalMode,
   });
 }
 
-export function calculateCholesterol({ maxPoints, consumed, limit }) {
+export function calculateCholesterol({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'cholesterol',
     label: 'Cholesterol',
@@ -373,10 +411,11 @@ export function calculateCholesterol({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: 'mg',
+    goalMode,
   });
 }
 
-export function calculateSugar({ maxPoints, consumed, limit }) {
+export function calculateSugar({ maxPoints, consumed, limit, goalMode }) {
   return calculateLimitNutrient({
     key: 'sugar',
     label: 'Sugar',
@@ -384,6 +423,7 @@ export function calculateSugar({ maxPoints, consumed, limit }) {
     consumed,
     limit,
     unit: 'g',
+    goalMode,
   });
 }
 
@@ -398,15 +438,54 @@ export function calculateFiber({ maxPoints, consumed, target }) {
   });
 }
 
-export function calculateGi({ maxPoints, consumed, limit }) {
-  return calculateLimitNutrient({
+export function calculateGi({ maxPoints, consumed, limit, goalMode }) {
+  const gi = Number(consumed);
+
+  if (isGainGoalMode(goalMode)) {
+    return calculateLimitNutrient({
+      key: 'gi',
+      label: 'GI',
+      maxPoints,
+      consumed,
+      limit,
+      unit: '',
+      lowerIsBetter: true,
+      goalMode,
+    });
+  }
+
+  if (!Number.isFinite(gi) || gi <= 0) {
+    return buildParameterScore({
+      key: 'gi',
+      label: 'GI',
+      section: 'nutrition',
+      scoringMode: 'limit',
+      maxPoints,
+      earnedPoints: 0,
+      calculationReason: 'No GI data logged',
+    });
+  }
+
+  if (gi >= GI_HIGH_MIN) {
+    return buildParameterScore({
+      key: 'gi',
+      label: 'GI',
+      section: 'nutrition',
+      scoringMode: 'limit',
+      maxPoints,
+      earnedPoints: 0,
+      calculationReason: `High GI (${gi})`,
+    });
+  }
+
+  return buildParameterScore({
     key: 'gi',
     label: 'GI',
+    section: 'nutrition',
+    scoringMode: 'limit',
     maxPoints,
-    consumed,
-    limit,
-    unit: '',
-    lowerIsBetter: true,
+    earnedPoints: maxPoints,
+    calculationReason: `Low/medium GI (${gi})`,
   });
 }
 
@@ -639,19 +718,49 @@ const CALCULATOR_BY_KEY = {
   water_qty: (cfg, ctx) =>
     calculateWater({ maxPoints: cfg.maxPoints, consumedMl: ctx.waterConsumedMl, requiredMl: ctx.waterRequiredMl }),
   calories: (cfg, ctx) =>
-    calculateCalories({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCalories, limit: ctx.nutritionTargets.totalCalories }),
+    calculateCalories({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalCalories,
+      limit: ctx.nutritionTargets.totalCalories,
+      goalMode: ctx.goalMode,
+    }),
   carbohydrates: (cfg, ctx) =>
-    calculateCarbohydrates({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCarbs, limit: ctx.nutritionTargets.totalCarbs }),
+    calculateCarbohydrates({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalCarbs,
+      limit: ctx.nutritionTargets.totalCarbs,
+      goalMode: ctx.goalMode,
+    }),
   fat: (cfg, ctx) =>
-    calculateFat({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalFat, limit: ctx.nutritionTargets.totalFat }),
+    calculateFat({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalFat,
+      limit: ctx.nutritionTargets.totalFat,
+      goalMode: ctx.goalMode,
+    }),
   protein: (cfg, ctx) =>
     calculateProtein({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalProtein, target: ctx.nutritionTargets.totalProtein }),
   sodium: (cfg, ctx) =>
-    calculateSodium({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalSodium, limit: ctx.nutritionTargets.totalSodium }),
+    calculateSodium({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalSodium,
+      limit: ctx.nutritionTargets.totalSodium,
+      goalMode: ctx.goalMode,
+    }),
   cholesterol: (cfg, ctx) =>
-    calculateCholesterol({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalCholesterol, limit: ctx.nutritionTargets.totalCholesterol }),
+    calculateCholesterol({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalCholesterol,
+      limit: ctx.nutritionTargets.totalCholesterol,
+      goalMode: ctx.goalMode,
+    }),
   sugar: (cfg, ctx) =>
-    calculateSugar({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalSugar, limit: ctx.nutritionTargets.totalSugar }),
+    calculateSugar({
+      maxPoints: cfg.maxPoints,
+      consumed: ctx.dailyStats.totalSugar,
+      limit: ctx.nutritionTargets.totalSugar,
+      goalMode: ctx.goalMode,
+    }),
   fiber: (cfg, ctx) =>
     calculateFiber({ maxPoints: cfg.maxPoints, consumed: ctx.dailyStats.totalFiber, target: ctx.nutritionTargets.totalFiber }),
   gi: (cfg, ctx) => {
@@ -671,6 +780,7 @@ const CALCULATOR_BY_KEY = {
       maxPoints: cfg.maxPoints,
       consumed: gi,
       limit: ctx.nutritionTargets.averageGlycemicIndex,
+      goalMode: ctx.goalMode,
     });
   },
   vitamin_a: (cfg, ctx) =>

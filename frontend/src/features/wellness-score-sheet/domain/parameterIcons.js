@@ -100,3 +100,35 @@ export const SCORING_MODE_HINTS = {
   proportional: 'Points scale with progress toward target',
   limit: 'Points scale up to limit; exceeding limit = 0',
 };
+
+const LIMIT_HINT_LOSS = 'Start from full point; exceeding limit = 0';
+const LIMIT_HINT_GAIN = SCORING_MODE_HINTS.limit;
+const GI_HINT_LOSS = 'Low and medium GI = full points; high GI = 0';
+const GI_HINT_GAIN = 'Full points when average GI ≤ 55; above limit = 0';
+
+/**
+ * Scoring hint for a parameter — goal-mode aware for limit/GI nutrition params.
+ * @param {string} scoringMode
+ * @param {string} [parameterKey]
+ * @param {string} [goalMode] - 'loss' | 'gain'
+ * @param {{ adminView?: boolean }} [options]
+ */
+export function getScoringModeHint(scoringMode, parameterKey, goalMode, { adminView = false } = {}) {
+  const isGain = String(goalMode || 'loss').toLowerCase() === 'gain';
+
+  if (parameterKey === 'gi') {
+    if (adminView) {
+      return `Loss: ${GI_HINT_LOSS}. Gain: ${GI_HINT_GAIN}.`;
+    }
+    return isGain ? GI_HINT_GAIN : GI_HINT_LOSS;
+  }
+
+  if (scoringMode === 'limit') {
+    if (adminView) {
+      return `Loss: ${LIMIT_HINT_LOSS}. Gain: ${LIMIT_HINT_GAIN}.`;
+    }
+    return isGain ? LIMIT_HINT_GAIN : LIMIT_HINT_LOSS;
+  }
+
+  return SCORING_MODE_HINTS[scoringMode] || '';
+}

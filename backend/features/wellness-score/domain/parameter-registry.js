@@ -5,7 +5,8 @@
  *   binary       — on-time log → full; late/missed → 0
  *   progress     — moved toward goal → full; no progress → 0 (weight improvement)
  *   proportional — consumed / target × maxPoints (cap at max); used for protein, fiber, vitamins, minerals
- *   limit        — consumed / limit × maxPoints; exceeding limit → 0; used for calories, macros caps, sodium, sugar, cholesterol, GI
+ *   limit        — loss: full points within limit, exceeding → 0; gain: proportional up to limit
+ *                   GI loss: low/medium → full, high → 0; GI gain: average ≤ limit → full
  */
 
 export const SCORING_MODES = Object.freeze({

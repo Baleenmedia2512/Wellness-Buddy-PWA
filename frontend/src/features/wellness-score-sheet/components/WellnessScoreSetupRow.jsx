@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   getParameterIcon,
-  SCORING_MODE_HINTS,
+  getScoringModeHint,
   SCORING_MODE_LABELS,
 } from '../domain/parameterIcons';
 
@@ -12,7 +12,7 @@ export default function WellnessScoreSetupRow({ category, config, onChange }) {
   const { enabled, maxPoints } = config;
   const Icon = getParameterIcon(category.key);
   const modeLabel = SCORING_MODE_LABELS[category.scoringMode] || category.scoringMode;
-  const hint = SCORING_MODE_HINTS[category.scoringMode] || '';
+  const hint = getScoringModeHint(category.scoringMode, category.key, null, { adminView: true });
 
   const handleToggle = () => {
     onChange({ ...config, enabled: !enabled });

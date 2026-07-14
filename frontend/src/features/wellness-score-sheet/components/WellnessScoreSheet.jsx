@@ -158,7 +158,11 @@ export default function WellnessScoreSheet({
                   </div>
                   <div className="space-y-2 p-3">
                     {block.parameters.map((param) => (
-                      <ScoreCategoryRow key={param.key} category={param} />
+                      <ScoreCategoryRow
+                        key={param.key}
+                        category={param}
+                        goalMode={scoreData?.goalMode}
+                      />
                     ))}
                   </div>
                 </section>

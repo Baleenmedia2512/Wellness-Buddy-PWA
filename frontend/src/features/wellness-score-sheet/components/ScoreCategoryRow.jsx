@@ -2,7 +2,7 @@ import React from 'react';
 import { getParameterMeta } from '../domain/parameterRegistry';
 import {
   getParameterIcon,
-  SCORING_MODE_HINTS,
+  getScoringModeHint,
   SCORING_MODE_LABELS,
 } from '../domain/parameterIcons';
 
@@ -16,13 +16,13 @@ function progressTone(pct) {
 /**
  * Parameter row — icon, scoring rule caption, today's status, and points.
  */
-export default function ScoreCategoryRow({ category, compact = false }) {
+export default function ScoreCategoryRow({ category, compact = false, goalMode }) {
   const meta = getParameterMeta(category.key);
   const Icon = getParameterIcon(category.key);
   const label = category.label || meta?.label || category.key;
   const scoringMode = category.scoringMode || meta?.scoringMode;
   const modeLabel = SCORING_MODE_LABELS[scoringMode] || scoringMode;
-  const modeHint = SCORING_MODE_HINTS[scoringMode] || '';
+  const modeHint = getScoringModeHint(scoringMode, category.key, goalMode);
   const maxPoints = category.maxPoints ?? 0;
   const earnedPoints = category.earnedPoints ?? 0;
   const progressPct = maxPoints > 0
