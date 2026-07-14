@@ -12,9 +12,19 @@ function scoreTone(pct) {
 /**
  * Home screen tile — configured score + progress (matches carousel card).
  */
-export default function WellnessScoreHomeTile({ user, apiBaseUrl, onOpen }) {
+export default function WellnessScoreHomeTile({
+  user,
+  apiBaseUrl,
+  onOpen,
+  nutritionRefreshKey = 0,
+}) {
   const today = useISTToday();
-  const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
+  const { loading, data } = useWellnessScore({
+    user,
+    apiBaseUrl,
+    date: today,
+    nutritionRefreshKey,
+  });
 
   const progressPct = data?.percentage ?? 0;
   const earned = Math.round(data?.totalEarned ?? 0);

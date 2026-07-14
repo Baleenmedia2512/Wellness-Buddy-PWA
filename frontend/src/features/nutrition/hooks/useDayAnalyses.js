@@ -13,6 +13,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { parseAnalysisData } from '../services/nutritionDashboard';
 import * as Session from '../../../shared/services/sessionStorage';
 import { ALL_MICRONUTRIENTS } from '../domain/micronutrientRules';
+import {
+  shouldRefreshHomeDashboard,
+  markHomeDashboardProcessed,
+  getLatestActivityLogId,
+  getHomeDashboardSnapshot,
+  setHomeDashboardSnapshot,
+} from '../../../shared/services/homeDashboardActivity';
 
 // camelCase dailyStats key ↔ snake_case AI key ↔ PascalCase DB column.
 // Source of truth list lives in micronutrientRules.js; this table only adds
@@ -59,14 +66,55 @@ const EMPTY_STATS = {
   ...EMPTY_MICRO_STATS,
 };
 
-export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey = 0 }) {
-  const [analyses, setAnalyses] = useState([]);
-  const [dailyStats, setDailyStats] = useState(EMPTY_STATS);
+function dateKey(date) {
+  return (
+    date.getFullYear() +
+    '-' +
+    String(date.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(date.getDate()).padStart(2, '0')
+  );
+}
+
+export function useDayAnalyses({
+  user,
+  selectedDate,
+  apiBaseUrl,
+  resolveUserId,
+  nutritionRefreshKey = 0,
+  /** Home-only: skip refetch when no newer activity log exists (see homeDashboardActivity). */
+  enableActivityLogGate = false,
+}) {
+  // Restore last Home snapshot instantly when remounting with no new activity log.
+  const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
+  const [analyses, setAnalyses] = useState(() => cachedSnapshot?.analyses ?? []);
+  const [dailyStats, setDailyStats] = useState(() => cachedSnapshot?.dailyStats ?? EMPTY_STATS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchDayAnalyses = useCallback(
-    async (date) => {
+    async (date, { force = false } = {}) => {
+      // Refresh decision (Home): skip network when no newer async activity log
+      // exists and we already have a snapshot for this calendar day.
+      if (enableActivityLogGate && !force) {
+        const snapshot = getHomeDashboardSnapshot();
+        const key = dateKey(date);
+        const email = user?.email || '';
+        if (
+          !shouldRefreshHomeDashboard() &&
+          snapshot &&
+          snapshot.dateKey === key &&
+          snapshot.userEmail === email &&
+          Array.isArray(snapshot.analyses)
+        ) {
+          setAnalyses(snapshot.analyses);
+          setDailyStats(snapshot.dailyStats || EMPTY_STATS);
+          setLoading(false);
+          setError(null);
+          return;
+        }
+      }
+
       setLoading(true);
       setError(null);
 
@@ -139,7 +187,7 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
         const averageGlycemicIndex = stats._giTotalCarbs > 0
           ? Math.round(stats._giCarbProduct / stats._giTotalCarbs)
           : null;
-        setDailyStats({
+        const nextStats = {
           totalCalories: stats.totalCalories,
           totalProtein: stats.totalProtein,
           totalCarbs: stats.totalCarbs,
@@ -151,7 +199,9 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
           averageGlycemicIndex,
           mealCount: stats.mealCount,
           ...MICRO_FIELDS.reduce((m, f) => { m[f.key] = stats[f.key] || 0; return m; }, {}),
-        });
+        };
+        setDailyStats(nextStats);
+        return nextStats;
       };
 
       try {
@@ -162,13 +212,9 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
         }
 
         // ✅ TIMEZONE FIX: Use local date formatting instead of toISOString()
-        const dateString =
-          date.getFullYear() +
-          '-' +
-          String(date.getMonth() + 1).padStart(2, '0') +
-          '-' +
-          String(date.getDate()).padStart(2, '0');
+        const dateString = dateKey(date);
         const cacheBuster = Date.now();
+        const activityLogAtFetch = getLatestActivityLogId();
 
         // Stage 18 — useDayAnalyses fetch started
         const _trD = window.__captureTrace;
@@ -219,7 +265,20 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
           }
 
           setAnalyses(list);
-          calculateDailyStats(list);
+          const nextStats = calculateDailyStats(list);
+
+          // Home activity-log gate: persist snapshot so remount without a
+          // newer async activity can skip the API and skip the spinner.
+          if (enableActivityLogGate) {
+            setHomeDashboardSnapshot({
+              userId: actualUserId,
+              dateKey: dateString,
+              analyses: list,
+              dailyStats: nextStats,
+              activityLogId: activityLogAtFetch,
+            });
+            markHomeDashboardProcessed(activityLogAtFetch);
+          }
 
           // Stage 20 — final meal count returned
           if (_trD) {
@@ -241,13 +300,17 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
         setLoading(false);
       }
     },
-    [apiBaseUrl, resolveUserId],
+    [apiBaseUrl, resolveUserId, enableActivityLogGate],
   );
 
-  // Auto-refresh when user, date, or nutritionRefreshKey changes.
+  // Auto-refresh when user, date, or nutritionRefreshKey (activity log) changes.
+  // Diary / NutritionDashboard always force-fetch; Home uses the activity gate.
   useEffect(() => {
-    if (user) fetchDayAnalyses(selectedDate);
-  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!user) return;
+    fetchDayAnalyses(selectedDate, {
+      force: enableActivityLogGate ? shouldRefreshHomeDashboard() : true,
+    });
+  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(

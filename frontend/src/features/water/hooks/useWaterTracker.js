@@ -15,10 +15,13 @@ import {
   fetchWaterIntake,
   logWaterIntake,
 } from '../services/waterStorageService';
+import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 const SUCCESS_TOAST_MS = 3000;
 
 export function useWaterTracker({ user, userId: propUserId } = {}) {
+  const nutritionRefresh = useNutritionRefreshOptional();
+  const triggerRefresh = nutritionRefresh?.triggerRefresh;
   const [resolvedUserId, setResolvedUserId] = useState(propUserId || null);
   const [waterData, setWaterData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +85,10 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
         });
         setSaveSuccess({ amount: ml });
         await refresh();
+        // Async activity log → Home dashboard refreshes when this watermark is newer
+        if (triggerRefresh) {
+          triggerRefresh({ immediate: true, source: 'water-intake' });
+        }
       } catch (err) {
         console.error('[useWaterTracker] logWater error:', err);
         setError(err.message || 'Failed to log water. Please try again.');
@@ -90,7 +97,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
         setTimeout(() => setSaveSuccess(null), SUCCESS_TOAST_MS);
       }
     },
-    [resolvedUserId, saving, user, refresh],
+    [resolvedUserId, saving, user, refresh, triggerRefresh],
   );
 
   const submitCustom = useCallback(() => {

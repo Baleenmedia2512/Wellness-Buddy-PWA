@@ -166,6 +166,7 @@ import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
 import * as PermissionManager from "./shared/services/permissionManager";
+import { clearHomeDashboardSnapshot } from "./shared/services/homeDashboardActivity";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
@@ -7513,6 +7514,7 @@ function WellnessValleyApp() {
 
       // Clear user context cache
       clearContextCache();
+      clearHomeDashboardSnapshot();
       setUserContext(null);
       setUserContextLoading(false);
       debugLog("??? [Sign Out] User context cache and state cleared");
@@ -8257,9 +8259,17 @@ function WellnessValleyApp() {
     );
   }
 
+  const adminLikeRole = ['admin', 'developer'].includes(userRole);
+
+  // Home keep-alive: sub-pages overlay Home instead of early-return
+  // unmounting it. Returning to Home preserves scroll/state and avoids
+  // dashboard API reloads unless a newer async activity log exists
+  // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
+  let homeOverlay = null;
+
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   if (showProfilePage) {
-    return (
+    homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
           navOnly
@@ -8294,16 +8304,15 @@ function WellnessValleyApp() {
               }
               // Increment profileKey so Header re-fetches avatar/name
               setHeaderProfileKey((k) => k + 1);
+              // Activity log: Home should refresh cards when returning from profile edits
+              triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
             }}
           />
         </div>
       </div>
     );
-  }
-
-  // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (showDashboard) {
-    return (
+  } else if (showDashboard) {
+    homeOverlay = (
       <div className="ios-full-page bg-[#e8f5e9]">
         {/* 5-tab nav bar � always visible on every sub-page */}
         <Header
@@ -8339,11 +8348,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  // Wellness Counselling - Full page view
-  if (showWellnessCounselling) {
-    return (
+  } else if (showWellnessCounselling) {
+    homeOverlay = (
       <div className="ios-full-page">
         <Header
           navOnly
@@ -8373,11 +8379,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  // Wellness University Enrollment - Full page view
-  if (showUniversityEnrollment) {
-    return (
+  } else if (showUniversityEnrollment) {
+    homeOverlay = (
       <div className="ios-full-page">
         <Header
           navOnly
@@ -8409,11 +8412,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  // Activity Report � member view (personal activity + education attendance data)
-  if (showActivityReport) {
-    return (
+  } else if (showActivityReport) {
+    homeOverlay = (
       <div className="ios-full-page">
         <Header
           navOnly
@@ -8445,11 +8445,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  // Activity Time Report � hierarchical coach/admin view (team activity heatmap)
-  if (showActivityTimeReport) {
-    return (
+  } else if (showActivityTimeReport) {
+    homeOverlay = (
       <div className="ios-full-page">
         <Header
           navOnly
@@ -8481,11 +8478,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  // Physical Club � full page view
-  if (showNutritionCentersMap) {
-    return (
+  } else if (showNutritionCentersMap) {
+    homeOverlay = (
       <>
         <div className="ios-full-page bg-[#e8f5e9]">
           <Header
@@ -8538,11 +8532,8 @@ function WellnessValleyApp() {
         )}
       </>
     );
-  }
-
-  // Testimonials � full page view (member submit + coach team list)
-  if (showTestimonials) {
-    return (
+  } else if (showTestimonials) {
+    homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
           navOnly
@@ -8573,12 +8564,8 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  }
-
-  const adminLikeRole = ['admin', 'developer'].includes(userRole);
-
-  if (showWellnessScoreSetup && isFlagEnabled('ff.wellness-score-sheet') && adminLikeRole) {
-    return (
+  } else if (showWellnessScoreSetup && isFlagEnabled('ff.wellness-score-sheet') && adminLikeRole) {
+    homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Setup..." />}>
         <WellnessScoreSetup
           user={user}
@@ -8591,10 +8578,8 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  }
-
-  if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
-    return (
+  } else if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
+    homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
         <WellnessScorePage
           user={user}
@@ -8607,11 +8592,8 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  }
-
-  // Reports � full page view (coach/upline analytics)
-  if (showReports && isFlagEnabled('ff.reports-module')) {
-    return (
+  } else if (showReports && isFlagEnabled('ff.reports-module')) {
+    homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
           navOnly
@@ -8643,8 +8625,13 @@ function WellnessValleyApp() {
     );
   }
 
-  // Main app interface
+  // Main app interface — Home stays mounted under overlays (display:none)
   return (
+    <>
+      <div
+        style={{ display: homeOverlay ? 'none' : undefined }}
+        aria-hidden={Boolean(homeOverlay)}
+      >
     <LocationGuard>
       <div
         className="ios-full-page"
@@ -8978,6 +8965,7 @@ function WellnessValleyApp() {
             if (profileData?.bmr || profileData?.physicalActivityLevel) {
               setBmrUpdateKey((prev) => prev + 1);
             }
+            triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
           }}
         />
 
@@ -10674,6 +10662,9 @@ function WellnessValleyApp() {
           )}
       </div>
     </LocationGuard>
+      </div>
+      {homeOverlay}
+    </>
   );
 }
 
