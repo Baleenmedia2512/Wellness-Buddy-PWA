@@ -9,6 +9,7 @@ import CropOverlay from './shared/CropOverlay';
 import CompleteProfileChecklist from './complete/CompleteProfileChecklist';
 import CompleteRequiredFields from './complete/CompleteRequiredFields';
 import CompletePictureSection from './complete/CompletePictureSection';
+import { hasValidProfileName } from '../../domain/profileCompleteness';
 
 const PHONE_REGEX = /^\+?\d[\d\s\-]{8,18}\d$/;
 
@@ -42,12 +43,16 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           setMissing({ name: true, height: true, phoneNumber: true, dietType: true });
           return;
         }
-        const hasName = typeof profile.userName === 'string' && profile.userName.trim() !== '';
+        const profileEmail = profile.email || user?.email || user?.Email || '';
+        const hasName = hasValidProfileName(profile.userName, {
+          email: profileEmail,
+          phoneNumber: profile.phoneNumber,
+        });
         const hasH = typeof profile.height === 'number' && profile.height >= 50 && profile.height <= 250;
         const hasP = typeof profile.phoneNumber === 'string' && profile.phoneNumber.trim() !== '';
         const hasD = typeof profile.dietType === 'string' && profile.dietType.trim() !== '';
         const next = {
-          name: !hasP && !hasName,
+          name: !hasName,
           height: !hasH,
           phoneNumber: !hasP,
           dietType: !hasD,
@@ -167,7 +172,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           <div className="bg-white/20 rounded-full p-2"><User className="w-6 h-6 text-white" /></div>
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
-        <p className="text-green-100 text-sm">A few details are needed to personalise your wellness journey.</p>
+        <p className="text-green-100 text-sm">Tell us your name and a few details to personalise your wellness journey.</p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
         <CompleteProfileChecklist loading={loading} checks={checks} />
