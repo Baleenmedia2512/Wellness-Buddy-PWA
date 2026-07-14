@@ -187,48 +187,180 @@ const ENRICHMENT_SCHEMA = {
   required: ['enrichment', 'confidence'],
 };
 
-// ── Prompts (module-level constants) ──────────────────────────────────────────
+// ── Herbalife prepared shake (fixed business profile) ─────────────────────────
 
-/** Standard Wellness Valley member Herbalife shake — fixed recipe (no powder weight estimation). */
-const WELLNESS_VALLEY_SHAKE = `Herbalife Wellness Valley Shake — STANDARD RECIPE (fixed nutrition; NEVER estimate powder weight or scoop count):
+/** Canonical name for a prepared Herbalife meal-replacement shake. */
+const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
 
-Wellness Valley members drink this standard prepared shake unless extra ingredients are clearly visible.
+/**
+ * Fixed nutrition for the standard Wellness Valley prepared shake recipe.
+ * Single source of truth — reused by prompts and deterministic backend overrides.
+ */
+const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
+  name:      HERBALIFE_SHAKE_NAME,
+  portion:   '1 serving',
+  weight_g:  58,
+  volume_ml: 300,
+  isLiquid:  true,
+  nutrition: Object.freeze({
+    calories:       223,
+    protein:        24.73,
+    carbs:          24.24,
+    fat:            2.98,
+    fiber:          3,
+    sugar:          11.57,
+    sodium:         355,
+    cholesterol:    7,
+    glycemic_index: 20,
+    vitamin_a:      210,
+    vitamin_c:      15,
+    vitamin_d:      3.40,
+    vitamin_e:      5,
+    vitamin_k:      0,
+    vitamin_b1:     0.45,
+    vitamin_b2:     0.45,
+    vitamin_b3:     5,
+    vitamin_b6:     0.80,
+    vitamin_b9:     85,
+    vitamin_b12:    0.40,
+    calcium:        129,
+    iron:           3,
+    magnesium:      50,
+    potassium:      260,
+    zinc:           2.5,
+    phosphorus:     0,
+  }),
+});
 
-Recipe (total powder 58 g, mixed with water; water contributes zero calories):
+const FAST_NUTRITION_KEYS = Object.freeze([
+  'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium', 'cholesterol', 'glycemic_index',
+]);
+
+const ALL_NUTRITION_KEYS = Object.freeze(Object.keys(HERBALIFE_SHAKE_NUTRITION.nutrition));
+
+function normalizeFoodName(name) {
+  return String(name ?? '').trim().toLowerCase();
+}
+
+/** Formula 1 powder/container product — NOT a prepared drink; never apply shake override. */
+function isFormula1ProductContainer(name) {
+  const n = normalizeFoodName(name);
+  if (!n.includes('formula 1') && !n.includes('formula1')) return false;
+  return (
+    n.includes('nutritional shake mix')
+    || n.includes('shake mix')
+    || /\bpowder\b/.test(n)
+    || (n.includes('mix') && !n.includes('protein drink mix'))
+  );
+}
+
+/**
+ * True when AI labelled a prepared Herbalife meal-replacement shake (including legacy names).
+ * @param {string} name
+ */
+function isPreparedHerbalifeShakeName(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  if (isFormula1ProductContainer(n)) return false;
+  if (n === 'herbalife shake') return true;
+  if (n.includes('wellness valley shake')) return true;
+  if (n.includes('formula 1') && n.includes('shake')) return true;
+  if (n.includes('herbalife') && n.includes('shake')) return true;
+  return false;
+}
+
+function buildHerbalifeShakeFoodItem(existing = {}) {
+  return {
+    ...existing,
+    name:      HERBALIFE_SHAKE_NUTRITION.name,
+    portion:   HERBALIFE_SHAKE_NUTRITION.portion,
+    weight_g:  HERBALIFE_SHAKE_NUTRITION.weight_g,
+    volume_ml: HERBALIFE_SHAKE_NUTRITION.volume_ml,
+    isLiquid:  HERBALIFE_SHAKE_NUTRITION.isLiquid,
+    nutrition: { ...HERBALIFE_SHAKE_NUTRITION.nutrition },
+  };
+}
+
+function sumNutritionFields(foods) {
+  const total = Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
+  for (const food of foods) {
+    const nutrition = food?.nutrition ?? {};
+    for (const key of ALL_NUTRITION_KEYS) {
+      total[key] += Number(nutrition[key]) || 0;
+    }
+  }
+  return total;
+}
+
+function extractFastNutrition(total) {
+  return Object.fromEntries(
+    FAST_NUTRITION_KEYS.map((key) => [key, Number(total?.[key]) || 0]),
+  );
+}
+
+function extractEnrichmentNutrition(nutrition) {
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, Number(nutrition?.[key]) || 0]),
+  );
+}
+
+function sumEnrichmentFields(left, right) {
+  const result = {};
+  for (const key of Object.keys(ENRICHMENT_PROPS)) {
+    result[key] = (Number(left?.[key]) || 0) + (Number(right?.[key]) || 0);
+  }
+  return result;
+}
+
+/**
+ * Apply fixed Herbalife Shake nutrition to detected prepared shakes and recompute totals.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyHerbalifeShakeOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let shakeFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPreparedHerbalifeShakeName(food?.name)) return food;
+    shakeFound = true;
+    return buildHerbalifeShakeFoodItem(food);
+  });
+
+  if (!shakeFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
+function formatHerbalifeShakeEnrichmentReference() {
+  const micros = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
+  return Object.entries(micros)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ');
+}
+
+const HERBALIFE_SHAKE_DETECTION_PROMPT = `Herbalife Shake — STANDARD PREPARED MEAL-REPLACEMENT DRINK (detection only):
+
+Members prepare the same fixed recipe (58 g total powder + water → ~300 ml; water = 0 calories):
   • Formula 1 Nutritional Shake Mix — 3 scoops — 25 g
   • ShakeMate — 2 scoops — 27 g
   • Protein Drink Mix (PDM) — 1 scoop — 6 g
-  Approx prepared volume: 300 ml
 
-Detection — classify as "Herbalife Wellness Valley Shake" when the drink is:
-  thick, creamy, opaque, smoothie consistency, milkshake consistency,
-  inside a Herbalife shaker, or in a cup typically used for Herbalife shakes.
-Do NOT classify prepared thick shakes as "Herbalife Formula 1 Shake".
-Use "Herbalife Formula 1 Nutritional Shake Mix" ONLY when the image clearly shows ONLY the Formula 1 powder container (not a prepared drink).
+Classify as "${HERBALIFE_SHAKE_NAME}" when the drink is thick, creamy, opaque, smoothie or milkshake consistency,
+inside a shaker, glass, or cup and appears to be a Herbalife meal-replacement drink.
+
+NEVER name a prepared drink "Herbalife Formula 1 Shake" or "Herbalife Wellness Valley Shake".
+Use "Herbalife Formula 1" / "Herbalife Formula 1 Nutritional Shake Mix" ONLY for the powder product container itself.
 Transparent drinks remain "Herbalife Afresh Energy Drink".
 
-Return EXACTLY these values for the shake (1 serving) — do NOT scale, estimate, or adjust:
-  name: "Herbalife Wellness Valley Shake"
-  portion: "1 serving"
-  weight_g: 58
-  volume_ml: 300
-  isLiquid: true
-  nutrition: {
-    calories: 223, protein: 24.73, carbs: 24.24, fat: 2.98, fiber: 3.00,
-    sugar: 11.57, sodium: 355, cholesterol: 7, glycemic_index: 20,
-    vitamin_a: 210, vitamin_c: 15, vitamin_d: 3.40, vitamin_e: 5, vitamin_k: 0,
-    vitamin_b1: 0.45, vitamin_b2: 0.45, vitamin_b3: 5, vitamin_b6: 0.80, vitamin_b9: 85, vitamin_b12: 0.40,
-    calcium: 129, iron: 3, magnesium: 50, potassium: 260, zinc: 2.5, phosphorus: 0
-  }
+Do NOT estimate powder weight, scoop count, or shake nutrition — set all "${HERBALIFE_SHAKE_NAME}" nutrition fields to 0;
+the server applies the fixed profile after detection.
 
-Additional visible ingredients (banana, apple, oats, milk, almonds, peanut butter, berries, other fruits):
-  List each as a SEPARATE food item in details.foods with its own nutrition.
-  Do NOT modify the Herbalife Wellness Valley Shake values — add extras into details.total only.`;
-
-const WELLNESS_VALLEY_SHAKE_MICRONUTRIENTS = `Herbalife Wellness Valley Shake (1 serving — fixed; do NOT scale):
-  vitamin_a: 210, vitamin_c: 15, vitamin_d: 3.40, vitamin_e: 5, vitamin_k: 0,
-  vitamin_b1: 0.45, vitamin_b2: 0.45, vitamin_b3: 5, vitamin_b6: 0.80, vitamin_b9: 85, vitamin_b12: 0.40,
-  calcium: 129, iron: 3, magnesium: 50, potassium: 260, zinc: 2.5, phosphorus: 0.`;
+Additional visible ingredients (banana, apple, milk, oats, berries, almonds, peanut butter, etc.):
+  list each as a SEPARATE food item with independently estimated nutrition.
+  Do NOT modify "${HERBALIFE_SHAKE_NAME}" nutrition — extras are summed into details.total only.`;
 
 const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
 
@@ -289,19 +421,18 @@ Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
 - Always classify as "Herbalife Afresh Energy Drink".
 - Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
 
-Herbalife Wellness Valley Shake (standard meal-replacement — prepared shake in cup/bottle/shaker):
+Herbalife Shake (standard meal-replacement — prepared drink in cup/glass/bottle/shaker):
 - Users upload photos of PREPARED shakes, not dry powder.
 - Thick, creamy, smooth, velvety; opaque; milkshake or smoothie consistency.
 - Chocolate, vanilla, coffee or strawberry colours are acceptable.
-- Inside a Herbalife shaker or a cup typically used for Herbalife shakes.
-- Examples: thick chocolate shake → Herbalife Wellness Valley Shake; thick coffee-coloured shake → Herbalife Wellness Valley Shake; vanilla milkshake in shaker → Herbalife Wellness Valley Shake.
-- Always classify as "Herbalife Wellness Valley Shake" when texture matches — do NOT classify thick prepared shakes as powder.
-- When Herbalife Wellness Valley Shake is detected, return the FIXED standard recipe nutrition below. Do NOT estimate powder weight, scoop count, or scale nutrients.
+- Examples: thick chocolate shake in shaker → Herbalife Shake; creamy vanilla drink in glass → Herbalife Shake.
+- Always name prepared thick shakes "${HERBALIFE_SHAKE_NAME}" — never "Herbalife Formula 1 Shake".
+- Do NOT estimate powder weight, scoop count, or shake nutrition (use 0; server applies fixed profile).
 
-${WELLNESS_VALLEY_SHAKE}
+${HERBALIFE_SHAKE_DETECTION_PROMPT}
 
 Other Herbalife products:
-- "Herbalife Formula 1 Nutritional Shake Mix" — ONLY when the image clearly shows the Formula 1 powder container alone (not a prepared drink).
+- "Herbalife Formula 1 Nutritional Shake Mix" / "Herbalife Formula 1" — ONLY when the Formula 1 powder container is visible (not a prepared drink).
 - "Herbalife Protein Drink Mix (PDM)" — powder/scoop container only (identify only; do not estimate nutrition when shown separately).
 - "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink (identify only; do not estimate nutrition).
 - "Herbalife Herbal Tea Concentrate" — small sachet, dark concentrate bottle.
@@ -344,7 +475,7 @@ Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~5
   Halwa (~80 g), Laddu (~50 g).
 
 === isLiquid ===
-true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife Wellness Valley Shake)
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife Shake)
 false → solid foods and supplement tablets/capsules
 
 === FOOD output ===
@@ -354,7 +485,7 @@ fastNutrition — 9-field aggregate totals:
 
 details.foods — one object per visible edible item or beverage:
 {
-  name,       ← specific: "Idli" / "Herbalife Wellness Valley Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
+  name,       ← specific: "Idli" / "Herbalife Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
   portion,    ← realistic serving size string  e.g. "2 pieces" / "1 cup (200 ml)"
   weight_g,   ← solids (g)
   volume_ml,  ← liquids (ml); provide both when estimable
@@ -371,9 +502,9 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
-- Use USDA / IFCT values for Tamil Nadu foods, Herbalife Afresh / Herbal Tea (exact values above), and Herbalife Wellness Valley Shake (fixed standard recipe values above — never estimate or scale).
-- Herbalife Wellness Valley Shake: always return the exact fixed nutrition (58 g powder, 300 ml, 223 kcal, etc.). Never estimate scoop count or powder weight from the image.
-- If extra fruits or add-ins are visible, list them as separate food items and sum into details.total.
+- Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
+- "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
+- If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
 - For any other Indian food, estimate using USDA FoodData Central or equivalent.
 
 details.total — same 26 flat fields, sum of all foods:
@@ -425,8 +556,9 @@ Units: vitamin_a µg RAE | vitamin_d/k µg | all others mg.
 Use the reference values below when the identified food matches. Interpolate for mixed dishes.
 
 === Herbalife products ===
-${WELLNESS_VALLEY_SHAKE_MICRONUTRIENTS}
-  For enrichment when identified as Herbalife Wellness Valley Shake: return these exact micronutrient values. Do NOT scale.
+${HERBALIFE_SHAKE_NAME} (1 serving — fixed; server-side profile):
+  ${formatHerbalifeShakeEnrichmentReference()}
+  When "${HERBALIFE_SHAKE_NAME}" is the only identified item, return these exact micronutrient values.
 
 Herbalife Afresh Energy Drink (1 cup):
   vitamin_c: 15, potassium: 30. All others: 0.
@@ -632,6 +764,17 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null, mode
     const d        = parsed.data;
     const normType = normaliseType(d.imageType, d.confidence);
 
+    let details = d.details ?? {};
+    let fastNutrition = null;
+    if (normType === 'food') {
+      details = applyHerbalifeShakeOverrides(details);
+      if (details.total) {
+        fastNutrition = extractFastNutrition(details.total);
+      } else {
+        fastNutrition = d.fastNutrition ?? null;
+      }
+    }
+
     if (trace) {
       trace.addStage({ name: label, latencyMs, success: true, extra: { attempts, imageType: normType } });
     }
@@ -639,8 +782,8 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null, mode
     return {
       imageType:      normType,
       confidence:     d.confidence,
-      details:        d.details         ?? {},
-      fastNutrition:  normType === 'food'       ? (d.fastNutrition  ?? null) : null,
+      details,
+      fastNutrition,
       weightReading:  normType === 'weight'     ? (d.weightReading  ?? null) : null,
       smartwatchData: normType === 'smartwatch' ? (d.smartwatchData ?? null) : null,
       educationData:  normType === 'education'  ? (d.educationData  ?? null) : null,
@@ -704,10 +847,29 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
 
   const label      = 'enrichment';
   const imagePart  = imageInlinePart(imageBuffer, mimeType);
-  const prompt     = buildEnrichmentPrompt(fastContext, resolvedFoodItems);
   const stageStart = Date.now();
 
   const { trace: resolvedTrace = null } = resolvedOpts;
+
+  const shakeItems = (resolvedFoodItems ?? []).filter(isPreparedHerbalifeShakeName);
+  const otherItems = (resolvedFoodItems ?? []).filter((name) => !isPreparedHerbalifeShakeName(name));
+  const fixedShakeEnrichment = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
+
+  // Prepared Herbalife Shake only — skip Gemini; return deterministic micronutrients.
+  if (shakeItems.length > 0 && otherItems.length === 0) {
+    const latencyMs = Date.now() - stageStart;
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts: 0, herbalifeShakeFixed: true } });
+    }
+    return {
+      enrichment: fixedShakeEnrichment,
+      confidence: 'high',
+      latencyMs,
+      attempts: 0,
+    };
+  }
+
+  const prompt = buildEnrichmentPrompt(fastContext, otherItems.length > 0 ? otherItems : resolvedFoodItems);
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
@@ -720,12 +882,19 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
       return { enrichment: {}, confidence: 'low', latencyMs, attempts };
     }
 
+    let enrichment = parsed.data.enrichment ?? {};
+
+    // Shake + extras: fixed shake micronutrients + Gemini estimate for additional items.
+    if (shakeItems.length > 0 && otherItems.length > 0) {
+      enrichment = sumEnrichmentFields(fixedShakeEnrichment, enrichment);
+    }
+
     if (resolvedTrace) {
       resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
     }
 
     return {
-      enrichment: parsed.data.enrichment ?? {},
+      enrichment,
       confidence: parsed.data.confidence ?? 'low',
       latencyMs,
       attempts,
