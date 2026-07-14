@@ -189,31 +189,46 @@ const ENRICHMENT_SCHEMA = {
 
 // ── Prompts (module-level constants) ──────────────────────────────────────────
 
-/** Official Herbalife Formula 1 nutrition label — per 100 g (single source of truth). */
-const FORMULA_1_PER_100G = `Herbalife Formula 1 — Official nutrition label (PER 100 g):
-Reference serving: 25 g (3 scoops) = scale all values × (detected_weight_g / 100).
+/** Standard Wellness Valley member Herbalife shake — fixed recipe (no powder weight estimation). */
+const WELLNESS_VALLEY_SHAKE = `Herbalife Wellness Valley Shake — STANDARD RECIPE (fixed nutrition; NEVER estimate powder weight or scoop count):
 
-Macros & minerals (per 100 g):
-  calories: 376.80 kcal | protein: 36.00 g | carbs: 42.00 g | fat: 7.20 g
-  sugar: 27.32 g | fiber: 12.00 g | sodium: 472.00 mg | cholesterol: 12.00 mg
+Wellness Valley members drink this standard prepared shake unless extra ingredients are clearly visible.
 
-Vitamins & minerals (per 100 g):
-  vitamin_a: 840.00 µg | vitamin_b1: 1.80 mg | vitamin_b2: 1.80 mg | vitamin_b3: 20.00 mg
-  vitamin_b6: 3.20 mg | vitamin_b9: 340.00 µg | vitamin_b12: 1.60 µg
-  vitamin_c: 60.00 mg | vitamin_d: 7.00 µg (D2) | vitamin_e: 20.00 mg
-  iron: 12.00 mg | magnesium: 200.00 mg | zinc: 10.00 mg | potassium: 1040.00 mg
-  vitamin_k: 0 | calcium: 0 | phosphorus: 0  (not listed on label — use 0)
+Recipe (total powder 58 g, mixed with water; water contributes zero calories):
+  • Formula 1 Nutritional Shake Mix — 3 scoops — 25 g
+  • ShakeMate — 2 scoops — 27 g
+  • Protein Drink Mix (PDM) — 1 scoop — 6 g
+  Approx prepared volume: 300 ml
 
-Scaling formula (apply to EVERY nutrient):
-  actual_value = per100g_value × detected_weight_g / 100
+Detection — classify as "Herbalife Wellness Valley Shake" when the drink is:
+  thick, creamy, opaque, smoothie consistency, milkshake consistency,
+  inside a Herbalife shaker, or in a cup typically used for Herbalife shakes.
+Do NOT classify prepared thick shakes as "Herbalife Formula 1 Shake".
+Use "Herbalife Formula 1 Nutritional Shake Mix" ONLY when the image clearly shows ONLY the Formula 1 powder container (not a prepared drink).
+Transparent drinks remain "Herbalife Afresh Energy Drink".
 
-Examples:
-  25 g → official label serving values (376.80 × 0.25 = 94.2 kcal, etc.)
-  30 g → scale all nutrients × 0.30
-  35 g → scale all nutrients × 0.35
-  40 g → scale all nutrients × 0.40
+Return EXACTLY these values for the shake (1 serving) — do NOT scale, estimate, or adjust:
+  name: "Herbalife Wellness Valley Shake"
+  portion: "1 serving"
+  weight_g: 58
+  volume_ml: 300
+  isLiquid: true
+  nutrition: {
+    calories: 223, protein: 24.73, carbs: 24.24, fat: 2.98, fiber: 3.00,
+    sugar: 11.57, sodium: 355, cholesterol: 7, glycemic_index: 20,
+    vitamin_a: 210, vitamin_c: 15, vitamin_d: 3.40, vitamin_e: 5, vitamin_k: 0,
+    vitamin_b1: 0.45, vitamin_b2: 0.45, vitamin_b3: 5, vitamin_b6: 0.80, vitamin_b9: 85, vitamin_b12: 0.40,
+    calcium: 129, iron: 3, magnesium: 50, potassium: 260, zinc: 2.5, phosphorus: 0
+  }
 
-Do NOT use outdated estimates (210 kcal, 18 g protein, 24 g carbs, 3 g fat, or any other hardcoded serving values).`;
+Additional visible ingredients (banana, apple, oats, milk, almonds, peanut butter, berries, other fruits):
+  List each as a SEPARATE food item in details.foods with its own nutrition.
+  Do NOT modify the Herbalife Wellness Valley Shake values — add extras into details.total only.`;
+
+const WELLNESS_VALLEY_SHAKE_MICRONUTRIENTS = `Herbalife Wellness Valley Shake (1 serving — fixed; do NOT scale):
+  vitamin_a: 210, vitamin_c: 15, vitamin_d: 3.40, vitamin_e: 5, vitamin_k: 0,
+  vitamin_b1: 0.45, vitamin_b2: 0.45, vitamin_b3: 5, vitamin_b6: 0.80, vitamin_b9: 85, vitamin_b12: 0.40,
+  calcium: 129, iron: 3, magnesium: 50, potassium: 260, zinc: 2.5, phosphorus: 0.`;
 
 const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
 
@@ -274,20 +289,20 @@ Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
 - Always classify as "Herbalife Afresh Energy Drink".
 - Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
 
-Herbalife Formula 1 Shake (meal-replacement — prepared shake in cup/bottle):
+Herbalife Wellness Valley Shake (standard meal-replacement — prepared shake in cup/bottle/shaker):
 - Users upload photos of PREPARED shakes, not dry powder.
 - Thick, creamy, smooth, velvety; opaque; milkshake or smoothie consistency.
 - Chocolate, vanilla, coffee or strawberry colours are acceptable.
-- Examples: thick chocolate shake → Herbalife Formula 1 Shake; thick coffee-coloured shake → Herbalife Formula 1 Shake; vanilla milkshake → Herbalife Formula 1 Shake.
-- Always classify as "Herbalife Formula 1 Shake" when texture matches — do NOT classify thick prepared shakes as powder.
-- When Herbalife Formula 1 Shake is detected:
-  * Identify the product and estimate serving size (weight_g preferred; volume_ml if needed).
-  * Use the official per-100 g nutrition below and scale every nutrient proportionally.
+- Inside a Herbalife shaker or a cup typically used for Herbalife shakes.
+- Examples: thick chocolate shake → Herbalife Wellness Valley Shake; thick coffee-coloured shake → Herbalife Wellness Valley Shake; vanilla milkshake in shaker → Herbalife Wellness Valley Shake.
+- Always classify as "Herbalife Wellness Valley Shake" when texture matches — do NOT classify thick prepared shakes as powder.
+- When Herbalife Wellness Valley Shake is detected, return the FIXED standard recipe nutrition below. Do NOT estimate powder weight, scoop count, or scale nutrients.
 
-${FORMULA_1_PER_100G}
+${WELLNESS_VALLEY_SHAKE}
 
 Other Herbalife products:
-- "Herbalife Protein Drink Mix (PDM)" — powder/scoop added to F1 shake (identify only; do not estimate nutrition).
+- "Herbalife Formula 1 Nutritional Shake Mix" — ONLY when the image clearly shows the Formula 1 powder container alone (not a prepared drink).
+- "Herbalife Protein Drink Mix (PDM)" — powder/scoop container only (identify only; do not estimate nutrition when shown separately).
 - "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink (identify only; do not estimate nutrition).
 - "Herbalife Herbal Tea Concentrate" — small sachet, dark concentrate bottle.
     Per cup (~200 ml): 8 kcal, 0 g protein, 2 g carbs, 0 g fat. Antioxidant beverage.
@@ -329,8 +344,8 @@ Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~5
   Halwa (~80 g), Laddu (~50 g).
 
 === isLiquid ===
-true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate)
-false → solid foods AND meal-replacement shakes (Formula 1, PDM, protein shakes count as meals)
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife Wellness Valley Shake)
+false → solid foods and supplement tablets/capsules
 
 === FOOD output ===
 
@@ -339,7 +354,7 @@ fastNutrition — 9-field aggregate totals:
 
 details.foods — one object per visible edible item or beverage:
 {
-  name,       ← specific: "Idli" / "Herbalife Formula 1 Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
+  name,       ← specific: "Idli" / "Herbalife Wellness Valley Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
   portion,    ← realistic serving size string  e.g. "2 pieces" / "1 cup (200 ml)"
   weight_g,   ← solids (g)
   volume_ml,  ← liquids (ml); provide both when estimable
@@ -356,8 +371,9 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
-- Use USDA / IFCT values for Tamil Nadu foods, Herbalife Afresh / Herbal Tea (exact values above), and Herbalife Formula 1 (official per-100 g label with proportional scaling).
-- Herbalife Formula 1 Shake: estimate weight_g from the image, then scale ALL macros and micronutrients using actual_value = per100g_value × detected_weight_g / 100. Never use outdated values (210 kcal, 18 g protein, 24 g carbs, 3 g fat).
+- Use USDA / IFCT values for Tamil Nadu foods, Herbalife Afresh / Herbal Tea (exact values above), and Herbalife Wellness Valley Shake (fixed standard recipe values above — never estimate or scale).
+- Herbalife Wellness Valley Shake: always return the exact fixed nutrition (58 g powder, 300 ml, 223 kcal, etc.). Never estimate scoop count or powder weight from the image.
+- If extra fruits or add-ins are visible, list them as separate food items and sum into details.total.
 - For any other Indian food, estimate using USDA FoodData Central or equivalent.
 
 details.total — same 26 flat fields, sum of all foods:
@@ -409,11 +425,8 @@ Units: vitamin_a µg RAE | vitamin_d/k µg | all others mg.
 Use the reference values below when the identified food matches. Interpolate for mixed dishes.
 
 === Herbalife products ===
-Herbalife Formula 1 Shake — scale micronutrients from official per-100 g label:
-  ${FORMULA_1_PER_100G}
-  For enrichment: scale vitamin_a, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
-  vitamin_c, vitamin_d, vitamin_e, iron, magnesium, zinc, potassium using the same formula.
-  vitamin_k, calcium, phosphorus: 0 (not on label).
+${WELLNESS_VALLEY_SHAKE_MICRONUTRIENTS}
+  For enrichment when identified as Herbalife Wellness Valley Shake: return these exact micronutrient values. Do NOT scale.
 
 Herbalife Afresh Energy Drink (1 cup):
   vitamin_c: 15, potassium: 30. All others: 0.
