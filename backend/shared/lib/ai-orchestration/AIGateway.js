@@ -201,13 +201,14 @@ const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
   portion:   '1 serving',
   weight_g:  58,
   volume_ml: 300,
+  unit:      'ml',
   isLiquid:  true,
   nutrition: Object.freeze({
     calories:       223,
     protein:        24.73,
     carbs:          24.24,
     fat:            2.98,
-    fiber:          3,
+    fiber:          3.00,
     sugar:          11.57,
     sodium:         355,
     cholesterol:    7,
@@ -231,6 +232,22 @@ const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
     phosphorus:     0,
   }),
 });
+
+function cloneHerbalifeShakeNutrition() {
+  return { ...HERBALIFE_SHAKE_NUTRITION.nutrition };
+}
+
+function extractHerbalifeShakeFastNutrition() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(FAST_NUTRITION_KEYS.map((key) => [key, nutrition[key]]));
+}
+
+function extractHerbalifeShakeEnrichment() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition[key] ?? 0]),
+  );
+}
 
 const FAST_NUTRITION_KEYS = Object.freeze([
   'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium', 'cholesterol', 'glycemic_index',
@@ -270,44 +287,103 @@ function isPreparedHerbalifeShakeName(name) {
 }
 
 function buildHerbalifeShakeFoodItem(existing = {}) {
+  const nutrition = cloneHerbalifeShakeNutrition();
+  const {
+    nutrition: _nutrition,
+    calories: _calories,
+    protein: _protein,
+    carbs: _carbs,
+    fat: _fat,
+    fiber: _fiber,
+    sugar: _sugar,
+    sodium: _sodium,
+    cholesterol: _cholesterol,
+    glycemic_index: _glycemicIndex,
+    vitamin_a: _vitaminA,
+    vitamin_c: _vitaminC,
+    vitamin_d: _vitaminD,
+    vitamin_e: _vitaminE,
+    vitamin_k: _vitaminK,
+    vitamin_b1: _vitaminB1,
+    vitamin_b2: _vitaminB2,
+    vitamin_b3: _vitaminB3,
+    vitamin_b6: _vitaminB6,
+    vitamin_b9: _vitaminB9,
+    vitamin_b12: _vitaminB12,
+    calcium: _calcium,
+    iron: _iron,
+    magnesium: _magnesium,
+    potassium: _potassium,
+    zinc: _zinc,
+    phosphorus: _phosphorus,
+    name: _name,
+    portion: _portion,
+    weight_g: _weightG,
+    volume_ml: _volumeMl,
+    unit: _unit,
+    isLiquid: _isLiquid,
+    ...rest
+  } = existing;
+
   return {
-    ...existing,
+    ...rest,
     name:      HERBALIFE_SHAKE_NUTRITION.name,
     portion:   HERBALIFE_SHAKE_NUTRITION.portion,
     weight_g:  HERBALIFE_SHAKE_NUTRITION.weight_g,
     volume_ml: HERBALIFE_SHAKE_NUTRITION.volume_ml,
+    unit:      HERBALIFE_SHAKE_NUTRITION.unit,
     isLiquid:  HERBALIFE_SHAKE_NUTRITION.isLiquid,
-    nutrition: { ...HERBALIFE_SHAKE_NUTRITION.nutrition },
+    nutrition,
   };
 }
 
 function sumNutritionFields(foods) {
-  const total = Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
-  for (const food of foods) {
+  const shakeFoods = foods.filter((food) => isPreparedHerbalifeShakeName(food?.name));
+  const otherFoods = foods.filter((food) => !isPreparedHerbalifeShakeName(food?.name));
+
+  if (shakeFoods.length > 0 && otherFoods.length === 0) {
+    return cloneHerbalifeShakeNutrition();
+  }
+
+  let total = shakeFoods.length > 0
+    ? cloneHerbalifeShakeNutrition()
+    : Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
+
+  for (const food of otherFoods) {
     const nutrition = food?.nutrition ?? {};
     for (const key of ALL_NUTRITION_KEYS) {
-      total[key] += Number(nutrition[key]) || 0;
+      const val = nutrition[key];
+      if (val != null && val !== '') total[key] += +val;
     }
   }
+
   return total;
 }
 
-function extractFastNutrition(total) {
+function extractFastNutrition(total, foods = []) {
+  if (Array.isArray(foods) && foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+    return extractHerbalifeShakeFastNutrition();
+  }
+
   return Object.fromEntries(
-    FAST_NUTRITION_KEYS.map((key) => [key, Number(total?.[key]) || 0]),
+    FAST_NUTRITION_KEYS.map((key) => [key, total?.[key] ?? 0]),
   );
 }
 
 function extractEnrichmentNutrition(nutrition) {
+  if (nutrition === HERBALIFE_SHAKE_NUTRITION.nutrition) {
+    return extractHerbalifeShakeEnrichment();
+  }
+
   return Object.fromEntries(
-    Object.keys(ENRICHMENT_PROPS).map((key) => [key, Number(nutrition?.[key]) || 0]),
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition?.[key] ?? 0]),
   );
 }
 
 function sumEnrichmentFields(left, right) {
   const result = {};
   for (const key of Object.keys(ENRICHMENT_PROPS)) {
-    result[key] = (Number(left?.[key]) || 0) + (Number(right?.[key]) || 0);
+    result[key] = (left?.[key] ?? 0) + (right?.[key] ?? 0);
   }
   return result;
 }
@@ -768,8 +844,12 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null, mode
     let fastNutrition = null;
     if (normType === 'food') {
       details = applyHerbalifeShakeOverrides(details);
+      const foods = Array.isArray(details.foods) ? details.foods : [];
       if (details.total) {
-        fastNutrition = extractFastNutrition(details.total);
+        fastNutrition = extractFastNutrition(details.total, foods);
+      } else if (foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+        details.total = cloneHerbalifeShakeNutrition();
+        fastNutrition = extractHerbalifeShakeFastNutrition();
       } else {
         fastNutrition = d.fastNutrition ?? null;
       }
@@ -853,7 +933,7 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
 
   const shakeItems = (resolvedFoodItems ?? []).filter(isPreparedHerbalifeShakeName);
   const otherItems = (resolvedFoodItems ?? []).filter((name) => !isPreparedHerbalifeShakeName(name));
-  const fixedShakeEnrichment = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
+  const fixedShakeEnrichment = extractHerbalifeShakeEnrichment();
 
   // Prepared Herbalife Shake only — skip Gemini; return deterministic micronutrients.
   if (shakeItems.length > 0 && otherItems.length === 0) {
