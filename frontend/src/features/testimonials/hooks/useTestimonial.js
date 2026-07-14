@@ -105,13 +105,15 @@ export function useTestimonial({ userId, healthIssues = [] }) {
 
   useEffect(() => { reload(); }, [reload]);
 
-  // Populate form when entering edit mode
+  // Populate form when entering edit / complete-after mode (keep existing photos until replaced)
   useEffect(() => {
     if ((isEditMode || isCompletingMode) && existing) {
       const duration = parseDurationText(existing.durationText);
+      const hasExistingAfter =
+        existing.status !== 'incomplete' && !!existing.afterWeightKg;
       setForm({
         beforeWeightKg: String(existing.beforeWeightKg ?? ''),
-        afterWeightKg:  '',
+        afterWeightKg:  hasExistingAfter ? String(existing.afterWeightKg ?? '') : '',
         goalType:       existing.goalType ?? 'loss',
         durationUnit:   duration.durationUnit,
         durationValue:  duration.durationValue,
@@ -161,9 +163,11 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       return false;
     }
 
-    // When completing an incomplete testimonial, only after fields are required
+    // After photo slot: new upload or editing an existing after photo
     if (isCompleting) {
-      if (!afterImage) {
+      const hasExistingAfter =
+        existing?.status !== 'incomplete' && !!existing?.afterImageUrl;
+      if (!afterImage && !hasExistingAfter) {
         setError('Please upload your After photo');
         return false;
       }
@@ -207,9 +211,9 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       }
 
       if (isCompleting) {
-        // Completing: send after image + weight; backend upgrades status to pending
-        payload.afterImageBase64 = afterImage.base64;
-        payload.afterWeightKg    = parseFloat(form.afterWeightKg);
+        // Add / update after photo + weight; backend upgrades/resets status to pending when image changes
+        if (afterImage) payload.afterImageBase64 = afterImage.base64;
+        payload.afterWeightKg = parseFloat(form.afterWeightKg);
         await editTestimonial(payload);
       } else {
         // New or full edit

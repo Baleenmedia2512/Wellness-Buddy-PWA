@@ -194,6 +194,7 @@ async function enrichTestimonialForDisplay(testimonial) {
     healthVideoUrl:         healthVideoUrl,
     businessVideoUrl:       businessVideoUrl,
     videoStatus:            testimonial.video_status        ?? 'none',
+    videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
   };
 }
