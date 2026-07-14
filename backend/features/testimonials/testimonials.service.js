@@ -449,7 +449,36 @@ export async function editTestimonial(rawBody) {
     };
   }
 
-  // Determine if after photo is now present (either just uploaded or already stored)
+  // Determine if this request is submitting / changing the after photo
+  const includesAfterPhoto = !!payload.afterImageBase64 || updates.afterImagePath !== undefined;
+
+  // Before-only or metadata-only edit — no coach OTP, no health-issue gate here.
+  if (requiresReverification && !includesAfterPhoto) {
+    const hasCompleteAfter = existing.status !== 'incomplete'
+      && existing.after_image_path
+      && existing.after_image_path !== existing.before_image_path
+      && !repo.isVideoOnlyPlaceholder(existing.after_image_path);
+
+    if (!hasCompleteAfter) {
+      updates.status = 'incomplete';
+    }
+
+    await repo.updateTestimonial(existing.id, updates);
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: hasCompleteAfter
+          ? 'Before photo details updated.'
+          : 'Before photo updated. Add your after photo when you\'re ready to complete your testimonial.',
+        testimonialId: existing.id,
+        status: updates.status ?? existing.status,
+      },
+    };
+  }
+
+  // After photo is part of this update — full verification path
   const afterPathNow = updates.afterImagePath ?? existing.after_image_path;
   const hasRealAfterPhoto = !!updates.afterImagePath
     || (
@@ -505,7 +534,7 @@ export async function editTestimonial(rawBody) {
     };
   }
 
-  // Still incomplete â€” just save changes, no email
+  // Still incomplete — after photo not yet in this flow (should not reach here after before-only branch)
   updates.status = 'incomplete';
   await repo.updateTestimonial(existing.id, updates);
 

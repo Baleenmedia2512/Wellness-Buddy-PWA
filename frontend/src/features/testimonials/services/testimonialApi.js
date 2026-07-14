@@ -9,6 +9,21 @@ function base() {
   return `${getApiBaseUrl()}/api/testimonials`;
 }
 
+function parseApiResponse(res, fallbackMessage) {
+  let result = res?.data;
+  if (typeof result === 'string') {
+    try {
+      result = JSON.parse(result);
+    } catch {
+      result = null;
+    }
+  }
+  if (res?.status >= 200 && res?.status < 300 && result?.success) {
+    return result;
+  }
+  throw new Error(result?.message || fallbackMessage);
+}
+
 /**
  * Submit a new testimonial (member).
  * @param {{ userId, beforeImageBase64, afterImageBase64, beforeWeightKg, afterWeightKg, goalType, durationText, recoveredHealthIssues? }} payload
@@ -19,9 +34,7 @@ export async function submitTestimonial(payload) {
     headers: { 'Content-Type': 'application/json' },
     data:    payload,
   });
-  const result = res.data;
-  if (!result?.success) throw new Error(result?.message || 'Failed to submit testimonial');
-  return result;
+  return parseApiResponse(res, 'Failed to submit testimonial');
 }
 
 /**
@@ -34,9 +47,7 @@ export async function editTestimonial(payload) {
     headers: { 'Content-Type': 'application/json' },
     data:    payload,
   });
-  const result = res.data;
-  if (!result?.success) throw new Error(result?.message || 'Failed to update testimonial');
-  return result;
+  return parseApiResponse(res, 'Failed to update testimonial');
 }
 
 /**

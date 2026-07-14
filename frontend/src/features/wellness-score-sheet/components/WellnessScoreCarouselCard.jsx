@@ -1,13 +1,26 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronRight, Settings, Trophy } from 'lucide-react';
 import CircularProgress from '../../nutrition/components/dashboard/carousel/CircularProgress';
 import { useISTToday } from '../hooks/useISTToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
-function statusBadge(pct) {
-  if (pct >= 75) return { label: 'Great', className: 'bg-emerald-100 text-emerald-700' };
-  if (pct >= 50) return { label: 'On Track', className: 'bg-amber-100 text-amber-700' };
-  return { label: 'Keep Going', className: 'bg-orange-100 text-orange-700' };
+/** Ring diameter + stroke that fit carousel card width on small phones... */
+function useResponsiveRing() {
+  const [ring, setRing] = useState({ size: 80, strokeWidth: 8 });
+
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      if (w < 360) setRing({ size: 64, strokeWidth: 7 });
+      else if (w < 400) setRing({ size: 72, strokeWidth: 8 });
+      else setRing({ size: 84, strokeWidth: 8 });
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return ring;
 }
 
 /**
@@ -16,11 +29,11 @@ function statusBadge(pct) {
 export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup }) {
   const today = useISTToday();
   const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
+  const { size: ringSize, strokeWidth } = useResponsiveRing();
 
   const progressPct = data?.percentage ?? 0;
   const earned = Math.round(data?.totalEarned ?? 0);
   const possible = Math.round(data?.totalPossible ?? 0);
-  const badge = statusBadge(progressPct);
   const hasData = !loading || !!data;
   const displayPct = hasData ? Math.round(progressPct) : 0;
 
@@ -57,11 +70,6 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
             <span className="truncate text-sm font-bold text-gray-900">Wellness Score</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {hasData && (
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.className}`}>
-                {badge.label}
-              </span>
-            )}
             {onOpenSetup ? (
               <button
                 type="button"
@@ -84,26 +92,26 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
         </div>
 
         {/* Hero — fills all vertical space between header and CTA */}
-        <div className="flex min-h-0 flex-1 items-center justify-between gap-1 px-0.5">
-          <div className="flex w-[42%] shrink-0 items-center justify-center">
+        <div className="flex min-h-0 flex-1 items-center justify-between gap-2 px-0.5 sm:gap-3">
+          <div className="flex shrink-0 items-center justify-center">
             <CircularProgress
               percentage={hasData ? displayPct : 0}
-              size={118}
-              strokeWidth={10}
+              size={ringSize}
+              strokeWidth={strokeWidth}
             />
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center text-center">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-700 sm:text-[10px]">
               Today&apos;s score
             </p>
-            <p className="mt-0.5 text-[2.75rem] font-black leading-none tabular-nums tracking-tight text-gray-900 sm:text-5xl">
+            <p className="mt-0.5 text-4xl font-black leading-none tabular-nums tracking-tight text-gray-900 sm:text-[2.75rem]">
               {hasData ? earned.toLocaleString() : '—'}
             </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums leading-tight text-gray-500">
+            <p className="mt-1 text-xs font-semibold tabular-nums leading-tight text-gray-500 sm:text-sm">
               of
               {' '}
-              <span className="text-xl font-bold text-gray-800">
+              <span className="text-lg font-bold text-gray-800 sm:text-xl">
                 {hasData ? possible.toLocaleString() : '—'}
               </span>
               {' '}
