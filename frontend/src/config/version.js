@@ -93,15 +93,16 @@ export const APP_VERSION = {
   // Platform release notes
   PLATFORMS: {
     ANDROID: { versionCode: 50, versionName: '3.3.2' },
-    IOS: { buildNumber: 50, versionName: '3.3.1' },
+    IOS: { buildNumber: 50, versionName: '3.3.2' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.3.2 (Code 50) - 2026-07-14 [ANDROID RELEASE]
+ * Version 3.3.2 (Code 50) - 2026-07-14 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
+ *   🍎 iOS App Store — build 50 prepared for Transporter upload
  *
  * Version 3.3.1 (Code 49 / iOS build 50) - 2026-07-13 [ANDROID + iOS RELEASE]
  *   🔢 Build bump for Play Store / App Store Connect re-upload
