@@ -27,17 +27,23 @@ function useResponsiveRing() {
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
  */
-export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup,nutritionRefreshKey,onOpenSetup,scoreData,loading,scoreSubtitle,periodContext}) {
+export default function WellnessScoreCarouselCard({
+  user,
+  apiBaseUrl,
+  onOpen,
+  onOpenSetup,
+  nutritionRefreshKey = 0,
+  scoreData: scoreDataProp,
+  loading: loadingProp,
+  scoreSubtitle = 'Daily Score',
+  periodContext,
+}) {
   const today = useISTToday();
   const internal = useWellnessScore({
-   
     user: scoreDataProp == null ? user : null,
-   
     apiBaseUrl,
-   
     date: today,
     nutritionRefreshKey,
- ,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 
@@ -75,7 +81,6 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
         }
       >
         <CarouselPeriodHeader periodContext={periodContext} />
-        {/* Header — compact */}
         <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-md">
@@ -105,7 +110,6 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
           </div>
         </div>
 
-        {/* Hero — fills all vertical space between header and CTA */}
         <div className="flex min-h-0 flex-1 items-center justify-between gap-2 px-0.5 sm:gap-3">
           <div className="flex shrink-0 items-center justify-center">
             <CircularProgress
@@ -126,18 +130,15 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
               {hasData ? earned.toLocaleString() : '—'}
             </p>
             <p className="mt-1 text-xs font-semibold tabular-nums leading-tight text-gray-500 sm:text-sm">
-              {periodContext?.goalLabel ?? 'Goal'}
-              {': '}
+              {periodContext?.goalLabel ?? 'Goal'}:{' '}
               <span className="text-lg font-bold text-gray-800 sm:text-xl">
                 {hasData ? possible.toLocaleString() : '—'}
-              </span>
-              {' '}
+              </span>{' '}
               pts
             </p>
           </div>
         </div>
 
-        {/* Tap CTA */}
         <div className="mt-1 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-emerald-200/70 bg-emerald-600/10 px-2.5 py-1.5 transition-colors group-hover:bg-emerald-600/15">
           <span className="text-[10px] font-bold text-emerald-800">
             Tap to view full breakdown
