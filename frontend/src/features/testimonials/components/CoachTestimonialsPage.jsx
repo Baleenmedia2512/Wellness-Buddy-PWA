@@ -12,8 +12,8 @@
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Camera, CheckCircle, CircleDot, Clock,
-  Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
+  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
+  Images, Mail, Pencil, Plus, RefreshCw, Save, Share2, ShieldCheck, Upload, Users, Video,
   Play, X, HeartPulse, Maximize2, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -27,6 +27,7 @@ import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
+import TransformationShareCard from './TransformationShareCard.jsx';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
@@ -374,10 +375,13 @@ function MemberCard({
   const [draftIssues,   setDraftIssues]   = useState(null);
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
-  const [isSubmitting,  setIsSubmitting]  = useState(false);
-  const [submitError,   setSubmitError]   = useState(null);
-  const [submitDone,    setSubmitDone]    = useState(false);
+  const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
+  const [isSubmitting,    setIsSubmitting]    = useState(false);
+  const [submitError,     setSubmitError]     = useState(null);
+  const [videoUploadError,setVideoUploadError]= useState(null);
+  const [submitDone,      setSubmitDone]      = useState(false);
   const [unifiedOtpVerified, setUnifiedOtpVerified] = useState(false);
+  const [showShareCard,   setShowShareCard]   = useState(false);
 
   const beforeCamRef   = useRef(null);
   const beforeGalRef   = useRef(null);
@@ -419,25 +423,41 @@ function MemberCard({
   }, [testimonial]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
+    const numericUserId = Number(userId);
+    if (!numericUserId) {
+      setVideoUploadError('Cannot upload video: user ID is missing. Please refresh the page.');
+      return;
+    }
+    setVideoUploadError(null);
     const localUrl = URL.createObjectURL(file);
     if (slot === 'health')    { setDraftHealthPreview(localUrl);   setUploadingHealth(true);   }
     else                      { setDraftBusinessPreview(localUrl); setUploadingBusiness(true); }
     try {
       const prep = await prepareTestimonialVideoUpload({
-        userId,
+        userId:         numericUserId,
         uploadHealth:   slot === 'health',
         uploadBusiness: slot === 'business',
       });
-      const info = slot === 'health' ? prep.data?.healthVideo : prep.data?.businessVideo;
-      const path = await uploadTestimonialVideoInChunks(file, info, slot, userId);
+      const info = slot === 'health' ? prep?.health : prep?.business;
+      if (!info?.path || !info?.sessionId) {
+        throw new Error('Server did not return a valid upload path. Please try again.');
+      }
+      const path = await uploadTestimonialVideoInChunks(file, info, slot, numericUserId);
       if (slot === 'health') setDraftHealthPath(path);
       else                   setDraftBusinessPath(path);
-    } catch {
+    } catch (err) {
+      const msg = err?.message || '';
+      const isNoCoach = msg.toLowerCase().includes('no coach');
+      setVideoUploadError(
+        isNoCoach
+          ? 'You do not have a coach assigned yet. Please ask your admin to assign a coach before uploading videos.'
+          : (msg || 'Video upload failed. Please try again.')
+      );
       if (slot === 'health') { setDraftHealthPreview(null); setDraftHealthPath(null); }
       else                   { setDraftBusinessPreview(null); setDraftBusinessPath(null); }
     } finally {
       if (slot === 'health') setUploadingHealth(false);
-      else                   { setUploadingBusiness(false); }
+      else                   setUploadingBusiness(false);
     }
   }, [userId]);
 
@@ -495,199 +515,202 @@ function MemberCard({
     :                                          'border-gray-200';
 
   const bgCls =
-    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'bg-green-50/30'
-    : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-amber-50/30'
+    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'bg-gradient-to-b from-green-50/60 to-white'
+    : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-gradient-to-b from-amber-50/50 to-white'
     :                                          'bg-white';
 
   return (
-    <div className={`rounded-2xl border-2 ${borderCls} ${bgCls} p-4 space-y-3 shadow-sm`}>
-      {/* Header */}
-      <div className="flex items-start gap-3">
+    <div className={`rounded-3xl border ${borderCls} ${bgCls} overflow-hidden shadow-md`}>
+      {/* Header strip */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         {user.profileImage ? (
           <img src={user.profileImage} alt={user.userName}
-            className="h-10 w-10 rounded-full object-cover border border-gray-200 flex-shrink-0" loading="lazy" />
+            className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0" loading="lazy" />
         ) : (
-          <div className="h-10 w-10 rounded-full bg-green-200 flex items-center justify-center text-green-800 font-bold text-sm flex-shrink-0">
+          <div className="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0">
             {(user.userName || '?').charAt(0).toUpperCase()}
           </div>
         )}
         <div className="flex-1 min-w-0">
           <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
-          <div className="mt-1">
+          <div className="mt-0.5">
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
         </div>
       </div>
+      <div className="px-4 pb-4 space-y-3">
 
       {/* Photos — always show before/after slots when editable (Mine) */}
       {(editable || (testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
-            {testimonial?.beforeImageUrl ? (
-              <button
-                type="button"
-                onClick={() => setExpandedPhoto({ url: testimonial.beforeImageUrl, label: `${user.userName} — Before (${testimonial.beforeWeightKg} kg)` })}
-                className="w-full group relative"
-              >
-                <img
-                  src={testimonial.beforeImageUrl}
-                  alt="Before"
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full group-hover:brightness-90 transition-all cursor-zoom-in`}
-                  loading="lazy"
-                />
-                <span className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Maximize2 className="h-3 w-3" />
-                </span>
-              </button>
-            ) : (
-              <div className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border border-dashed border-gray-200`}>
-                <AlertCircle className="h-5 w-5 text-gray-300" />
-              </div>
-            )}
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">BEFORE</p>
-              {testimonial?.beforeWeightKg != null && (
-                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.beforeWeightKg} kg</p>
-              )}
-              {editable && (
+            <div className="relative">
+              {draftBefore?.previewUrl || testimonial?.beforeImageUrl ? (
                 <button
                   type="button"
-                  onClick={() => toggleSlot('before')}
-                  className={`mt-1 inline-flex items-center gap-1 mx-auto px-2.5 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors ${expandedSlots.has('before') ? 'border-green-500 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 hover:border-green-400 hover:text-green-700'}`}
+                  onClick={() => setExpandedPhoto({ url: draftBefore?.previewUrl || testimonial.beforeImageUrl, label: `${user.userName} — Before` })}
+                  className="w-full"
                 >
-                  <Pencil className="h-3 w-3" /> {testimonial?.beforeImageUrl ? 'Edit' : 'Add'}
+                  <img
+                    src={draftBefore?.previewUrl || testimonial.beforeImageUrl}
+                    alt="Before"
+                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
+                    loading="lazy"
+                  />
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={editable ? () => setPickerSlot('before') : undefined}
+                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
+                >
+                  {editable ? <Plus className="h-7 w-7 text-green-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
+                </button>
+              )}
+              {editable && (draftBefore?.previewUrl || testimonial?.beforeImageUrl) && (
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(pickerSlot === 'before' ? null : 'before')}
+                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  aria-label="Edit before photo"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            {editable && pickerSlot === 'before' && (
+              <div className="flex gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => { beforeCamRef.current?.click(); setPickerSlot(null); }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
+                  <Camera className="h-3 w-3" /> Camera
+                </button>
+                <button type="button" onClick={() => { beforeGalRef.current?.click(); setPickerSlot(null); }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
+                  <Images className="h-3 w-3" /> Gallery
+                </button>
+                <button type="button" onClick={() => setPickerSlot(null)}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
+            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
+            <div className="mt-1 space-y-0.5">
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
+              {(draftBefore?.weightKg != null ? draftBefore.weightKg : testimonial?.beforeWeightKg) != null && (
+                <p className="text-sm font-bold text-gray-800">{draftBefore?.weightKg ?? testimonial?.beforeWeightKg} <span className="text-xs font-normal text-gray-400">kg</span></p>
               )}
             </div>
           </div>
           <div className="flex-1 text-center">
-            {hasAfter && testimonial?.afterImageUrl ? (
-              <button
-                type="button"
-                onClick={() => setExpandedPhoto({ url: testimonial.afterImageUrl, label: `${user.userName} — After (${testimonial.afterWeightKg} kg)` })}
-                className="w-full group relative"
-              >
-                <img
-                  src={testimonial.afterImageUrl}
-                  alt="After"
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full group-hover:brightness-90 transition-all cursor-zoom-in`}
-                  loading="lazy"
-                />
-                <span className="absolute top-1.5 right-1.5 p-0.5 rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Maximize2 className="h-3 w-3" />
-                </span>
-              </button>
-            ) : (
-              <div className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border border-dashed border-gray-200`}>
-                <AlertCircle className="h-5 w-5 text-gray-300" />
-              </div>
-            )}
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">AFTER</p>
-              {hasAfter && testimonial?.afterWeightKg != null && (
-                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.afterWeightKg} kg</p>
-              )}
-              {editable && (
+            <div className="relative">
+              {draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl) ? (
                 <button
                   type="button"
-                  onClick={() => toggleSlot('after')}
-                  className={`mt-1 inline-flex items-center gap-1 mx-auto px-2.5 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors ${expandedSlots.has('after') ? 'border-purple-500 text-purple-700 bg-purple-50' : 'border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-700'}`}
+                  onClick={() => setExpandedPhoto({ url: draftAfter?.previewUrl || testimonial.afterImageUrl, label: `${user.userName} — After` })}
+                  className="w-full"
                 >
-                  <Pencil className="h-3 w-3" /> {hasAfter && testimonial?.afterImageUrl ? 'Edit' : 'Add'}
+                  <img
+                    src={draftAfter?.previewUrl || testimonial.afterImageUrl}
+                    alt="After"
+                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
+                    loading="lazy"
+                  />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={editable ? () => setPickerSlot('after') : undefined}
+                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-purple-300 hover:bg-purple-50' : 'border-gray-200'} transition-colors`}
+                >
+                  {editable ? <Plus className="h-7 w-7 text-purple-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
+                </button>
+              )}
+              {editable && (draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl)) && (
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(pickerSlot === 'after' ? null : 'after')}
+                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  aria-label="Edit after photo"
+                >
+                  <Pencil className="h-3 w-3" />
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Before inline edit panel */}
-      {editable && expandedSlots.has('before') && (
-        <div className="bg-gray-50 border border-green-200 rounded-2xl p-3 space-y-3">
-          <p className="text-xs font-bold text-green-800 uppercase tracking-wide">Edit Before Photo</p>
-          <div className="text-center space-y-2">
-            <img
-              src={draftBefore?.previewUrl || testimonial?.beforeImageUrl || undefined}
-              alt="Before preview"
-              className="w-28 h-36 object-cover rounded-xl mx-auto border border-gray-200"
-              style={{ display: (draftBefore?.previewUrl || testimonial?.beforeImageUrl) ? 'block' : 'none' }}
-            />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => beforeCamRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-600 text-white text-[11px] font-bold">
-                <Camera className="h-3.5 w-3.5" /> Camera
-              </button>
-              <button type="button" onClick={() => beforeGalRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-300 text-gray-700 text-[11px] font-bold">
-                <Images className="h-3.5 w-3.5" /> Gallery
-              </button>
-            </div>
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleImageFile('before', e.target.files[0])} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleImageFile('before', e.target.files[0])} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[10px] font-bold text-gray-500 mb-1">Before Weight (kg)</label>
-              <input type="number" step="0.1" min="1" max="500" placeholder={testimonial?.beforeWeightKg || ''}
-                value={draftBefore?.weightKg ?? ''}
-                onChange={(e) => setDraftBefore(prev => ({ ...(prev || {}), weightKg: parseFloat(e.target.value) || undefined }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-gray-500 mb-1">Goal</label>
-              <select value={draftBefore?.goalType || testimonial?.goalType || 'loss'}
-                onChange={(e) => setDraftBefore(prev => ({ ...(prev || {}), goalType: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                <option value="loss">Weight Loss</option>
-                <option value="gain">Weight Gain</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 mb-1">Duration (e.g. "3 months")</label>
-            <input type="text" placeholder={testimonial?.durationText || 'e.g. 3 months'}
-              value={draftBefore?.durationText ?? ''}
-              onChange={(e) => setDraftBefore(prev => ({ ...(prev || {}), durationText: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-          </div>
-        </div>
-      )}
-
-      {/* After inline edit panel */}
-      {editable && expandedSlots.has('after') && (
-        <div className="bg-gray-50 border border-purple-200 rounded-2xl p-3 space-y-3">
-          <p className="text-xs font-bold text-purple-800 uppercase tracking-wide">Edit After Photo</p>
-          <div className="text-center space-y-2">
-            <img
-              src={draftAfter?.previewUrl || (hasAfter ? testimonial?.afterImageUrl : undefined) || undefined}
-              alt="After preview"
-              className="w-28 h-36 object-cover rounded-xl mx-auto border border-gray-200"
-              style={{ display: (draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl)) ? 'block' : 'none' }}
-            />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => afterCamRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-purple-600 text-white text-[11px] font-bold">
-                <Camera className="h-3.5 w-3.5" /> Camera
-              </button>
-              <button type="button" onClick={() => afterGalRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-300 text-gray-700 text-[11px] font-bold">
-                <Images className="h-3.5 w-3.5" /> Gallery
-              </button>
-            </div>
+            {editable && pickerSlot === 'after' && (
+              <div className="flex gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => { afterCamRef.current?.click(); setPickerSlot(null); }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
+                  <Camera className="h-3 w-3" /> Camera
+                </button>
+                <button type="button" onClick={() => { afterGalRef.current?.click(); setPickerSlot(null); }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
+                  <Images className="h-3 w-3" /> Gallery
+                </button>
+                <button type="button" onClick={() => setPickerSlot(null)}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
             <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleImageFile('after', e.target.files[0])} />
+              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
             <input ref={afterGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleImageFile('after', e.target.files[0])} />
+              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
+            <div className="mt-1 space-y-0.5">
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
+              {(draftAfter?.weightKg != null ? draftAfter.weightKg : (hasAfter ? testimonial?.afterWeightKg : null)) != null && (
+                <p className="text-sm font-bold text-gray-800">{draftAfter?.weightKg ?? testimonial?.afterWeightKg} <span className="text-xs font-normal text-gray-400">kg</span></p>
+              )}
+            </div>
           </div>
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 mb-1">After Weight (kg)</label>
-            <input type="number" step="0.1" min="1" max="500" placeholder={hasAfter ? testimonial?.afterWeightKg : ''}
-              value={draftAfter?.weightKg ?? ''}
-              onChange={(e) => setDraftAfter(prev => ({ ...(prev || {}), weightKg: parseFloat(e.target.value) || undefined }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
-          </div>
+        </div>
+      )}
+
+      {/* Compact metadata strip — visible when editable and photos are being edited */}
+      {editable && (draftBefore || draftAfter) && (
+        <div className="grid grid-cols-2 gap-2 px-1">
+          {draftBefore && (
+            <>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
+                <input type="number" step="0.1" min="1" max="500"
+                  placeholder={String(testimonial?.beforeWeightKg ?? '')}
+                  value={draftBefore?.weightKg ?? ''}
+                  onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-400 mb-1">Goal</label>
+                <select value={draftBefore?.goalType || testimonial?.goalType || 'loss'}
+                  onChange={(e) => setDraftBefore(prev => ({ ...prev, goalType: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                  <option value="loss">Weight Loss</option>
+                  <option value="gain">Weight Gain</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] font-medium text-gray-400 mb-1">Duration (e.g. "3 months")</label>
+                <input type="text" placeholder={testimonial?.durationText || 'e.g. 3 months'}
+                  value={draftBefore?.durationText ?? ''}
+                  onChange={(e) => setDraftBefore(prev => ({ ...prev, durationText: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              </div>
+            </>
+          )}
+          {draftAfter && (
+            <div className={draftBefore ? '' : 'col-span-2'}>
+              <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
+              <input type="number" step="0.1" min="1" max="500"
+                placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
+                value={draftAfter?.weightKg ?? ''}
+                onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+            </div>
+          )}
         </div>
       )}
 
@@ -705,57 +728,88 @@ function MemberCard({
         />
       )}
 
-      {/* Stats chips */}
+      {/* Stats — single summary line + status badge */}
       {testimonial && (
-        <div className="flex gap-1.5 flex-wrap">
-          {testimonial.goalType && (
-            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              {testimonial.goalType === 'loss' ? (
-                <>
-                  <TrendingDown className="h-2.5 w-2.5 text-green-600 shrink-0" />
-                  Loss
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="h-2.5 w-2.5 text-blue-600 shrink-0" />
-                  Gain
-                </>
-              )}
-            </span>
-          )}
-          {testimonial.beforeWeightKg && (
-            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              {testimonial.beforeWeightKg}
-              <ArrowRight className="h-2.5 w-2.5 text-gray-400 shrink-0" />
-              {hasAfter ? testimonial.afterWeightKg : '?'} kg
-            </span>
-          )}
+        <div className="space-y-1.5">
+          {/* "Lost X kgs in Y duration" sentence */}
           {diff && hasAfter && (
-            <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold border ${testimonial.goalType === 'loss' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
-              {testimonial.goalType === 'loss' ? (
-                <TrendingDown className="h-2.5 w-2.5 shrink-0" />
-              ) : (
-                <TrendingUp className="h-2.5 w-2.5 shrink-0" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${testimonial.goalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
+                {testimonial.goalType === 'loss'
+                  ? <TrendingDown className="h-3 w-3 shrink-0" />
+                  : <TrendingUp   className="h-3 w-3 shrink-0" />
+                }
+                {testimonial.goalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
+                {testimonial.durationText ? ` in ${testimonial.durationText}` : ''}
+              </span>
+              {/* Pencil/Plus for duration edit (Mine only) */}
+              {editable && (
+                expandedSlots.has('duration') ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="e.g. 3 months"
+                      defaultValue={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val) setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType }), durationText: val }));
+                        toggleSlot('duration');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.target.blur(); }
+                        if (e.key === 'Escape') { toggleSlot('duration'); }
+                      }}
+                      className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                    <button type="button" onClick={() => toggleSlot('duration')} className="text-gray-400 hover:text-gray-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleSlot('duration')}
+                    className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                    aria-label="Edit duration"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )
               )}
-              {diff} kg
+            </div>
+          )}
+          {/* No diff yet — show before weight or add prompt */}
+          {(!diff || !hasAfter) && testimonial.beforeWeightKg && (
+            <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
+              {testimonial.beforeWeightKg} kg → ?
             </span>
           )}
-          {testimonial.durationText && (
-            <span className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full px-2 py-0.5 text-[11px] text-gray-700 font-medium">
-              <Clock className="h-2.5 w-2.5 text-gray-400 shrink-0" />
-              {testimonial.durationText}
-            </span>
-          )}
-          {testimonial.status === 'verified' && (
-            <span className="bg-green-100 border border-green-200 rounded-full px-2 py-0.5 text-[11px] text-green-800 font-bold flex items-center gap-0.5">
-              <CheckCircle className="h-2.5 w-2.5" /> Photo Verified
-            </span>
-          )}
-          {testimonial.status === 'pending' && (
-            <span className="bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5 text-[11px] text-amber-800 font-bold flex items-center gap-0.5">
-              <Clock className="h-2.5 w-2.5" /> Awaiting OTP
-            </span>
-          )}
+          {/* Status badge */}
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {testimonial.status === 'verified' && (
+              <>
+                <span className="bg-green-100 border border-green-200 rounded-full px-2 py-0.5 text-[11px] text-green-800 font-bold flex items-center gap-0.5">
+                  <CheckCircle className="h-2.5 w-2.5" /> Photo Verified
+                </span>
+                {/* Share card — only for Mine (editable) */}
+                {editable && hasAfter && (
+                  <button
+                    type="button"
+                    onClick={() => setShowShareCard(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-600 text-white text-[11px] font-bold hover:bg-green-700 transition-colors"
+                  >
+                    <Share2 className="h-2.5 w-2.5" /> Share Card
+                  </button>
+                )}
+              </>
+            )}
+            {testimonial.status === 'pending' && (
+              <span className="bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5 text-[11px] text-amber-800 font-bold flex items-center gap-0.5">
+                <Clock className="h-2.5 w-2.5" /> Awaiting OTP
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -765,41 +819,104 @@ function MemberCard({
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
             <Video className="h-3 w-3" /> Result Videos
           </p>
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="inline-flex items-center gap-1">
-              <VideoThumbnailCard
-                url={testimonial?.healthVideoUrl ?? null}
-                localPreviewUrl={draftHealthPreview}
-                label="Health Results"
-                accentColor="bg-green-600"
-                compact={true}
-              />
-              {editable && (
-                <button
-                  type="button"
-                  onClick={() => toggleSlot('health')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors ${expandedSlots.has('health') ? 'border-green-500 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 hover:border-green-400 hover:text-green-700'}`}
-                >
-                  <Pencil className="h-3 w-3" /> {testimonial?.healthVideoUrl ? 'Edit' : 'Add'}
-                </button>
+          {editable && videoUploadError && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
+            </div>
+          )}
+          {/* Health video — pencil/plus overlay, clicking directly opens file picker */}
+          <div className="flex gap-3">
+            <div className="flex-1 space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+              {editable ? (
+                <div className="relative">
+                  {draftHealthPreview || testimonial?.healthVideoUrl ? (
+                    <>
+                      <VideoThumbnailCard
+                        url={testimonial?.healthVideoUrl ?? null}
+                        localPreviewUrl={draftHealthPreview}
+                        label="Health Results"
+                        accentColor="bg-green-600"
+                      />
+                      {!uploadingHealth && (
+                        <button type="button" onClick={() => healthVidRef.current?.click()}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                          aria-label="Replace health video">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => healthVidRef.current?.click()}
+                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-5 hover:bg-green-50 transition-colors">
+                      <Plus className="h-6 w-6 text-green-400" />
+                      <span className="text-[10px] font-semibold text-green-600">Add video</span>
+                    </button>
+                  )}
+                  {uploadingHealth && (
+                    <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
+                      <div className="flex flex-col items-center gap-1">
+                        <Upload className="h-5 w-5 text-white animate-bounce" />
+                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                      </div>
+                    </div>
+                  )}
+                  <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleVideoFile('health', e.target.files[0])} />
+                </div>
+              ) : (
+                <VideoThumbnailCard
+                  url={testimonial?.healthVideoUrl ?? null}
+                  label="Health Results"
+                  accentColor="bg-green-600"
+                />
               )}
             </div>
-            <div className="inline-flex items-center gap-1">
-              <VideoThumbnailCard
-                url={testimonial?.businessVideoUrl ?? null}
-                localPreviewUrl={draftBusinessPreview}
-                label="Business Results"
-                accentColor="bg-blue-600"
-                compact={true}
-              />
-              {editable && (
-                <button
-                  type="button"
-                  onClick={() => toggleSlot('business')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors ${expandedSlots.has('business') ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-700'}`}
-                >
-                  <Pencil className="h-3 w-3" /> {testimonial?.businessVideoUrl ? 'Edit' : 'Add'}
-                </button>
+            <div className="flex-1 space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+              {editable ? (
+                <div className="relative">
+                  {draftBusinessPreview || testimonial?.businessVideoUrl ? (
+                    <>
+                      <VideoThumbnailCard
+                        url={testimonial?.businessVideoUrl ?? null}
+                        localPreviewUrl={draftBusinessPreview}
+                        label="Business Results"
+                        accentColor="bg-blue-600"
+                      />
+                      {!uploadingBusiness && (
+                        <button type="button" onClick={() => businessVidRef.current?.click()}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                          aria-label="Replace business video">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => businessVidRef.current?.click()}
+                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-5 hover:bg-blue-50 transition-colors">
+                      <Plus className="h-6 w-6 text-blue-400" />
+                      <span className="text-[10px] font-semibold text-blue-600">Add video</span>
+                    </button>
+                  )}
+                  {uploadingBusiness && (
+                    <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
+                      <div className="flex flex-col items-center gap-1">
+                        <Upload className="h-5 w-5 text-white animate-bounce" />
+                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                      </div>
+                    </div>
+                  )}
+                  <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleVideoFile('business', e.target.files[0])} />
+                </div>
+              ) : (
+                <VideoThumbnailCard
+                  url={testimonial?.businessVideoUrl ?? null}
+                  label="Business Results"
+                  accentColor="bg-blue-600"
+                />
               )}
             </div>
           </div>
@@ -807,57 +924,6 @@ function MemberCard({
             <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
               <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
             </p>
-          )}
-          {/* Health video inline edit panel */}
-          {editable && expandedSlots.has('health') && (
-            <div className="bg-gray-50 border border-green-200 rounded-2xl p-3 space-y-2">
-              <p className="text-xs font-bold text-green-800 uppercase tracking-wide">Edit Health Results Video</p>
-              {draftHealthPreview && (
-                <VideoThumbnailCard url={null} localPreviewUrl={draftHealthPreview} label="Health Results" accentColor="bg-green-600" className="h-28" />
-              )}
-              {!draftHealthPreview && testimonial?.healthVideoUrl && (
-                <VideoThumbnailCard url={testimonial.healthVideoUrl} label="Current Health Video" accentColor="bg-green-600" className="h-28" />
-              )}
-              {uploadingHealth ? (
-                <div className="flex items-center justify-center gap-2 py-3 text-green-700 text-xs font-semibold">
-                  <Upload className="h-3.5 w-3.5 animate-bounce" /> Uploading video…
-                </div>
-              ) : (
-                <button type="button" onClick={() => healthVidRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold">
-                  <Video className="h-3.5 w-3.5" /> {testimonial?.healthVideoUrl ? 'Replace video' : 'Select video'}
-                </button>
-              )}
-              <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleVideoFile('health', e.target.files[0])} />
-              <p className="text-[10px] text-gray-400 text-center">Max 1 minute · MP4 recommended</p>
-            </div>
-          )}
-
-          {/* Business video inline edit panel */}
-          {editable && expandedSlots.has('business') && (
-            <div className="bg-gray-50 border border-blue-200 rounded-2xl p-3 space-y-2">
-              <p className="text-xs font-bold text-blue-800 uppercase tracking-wide">Edit Business Results Video</p>
-              {draftBusinessPreview && (
-                <VideoThumbnailCard url={null} localPreviewUrl={draftBusinessPreview} label="Business Results" accentColor="bg-blue-600" className="h-28" />
-              )}
-              {!draftBusinessPreview && testimonial?.businessVideoUrl && (
-                <VideoThumbnailCard url={testimonial.businessVideoUrl} label="Current Business Video" accentColor="bg-blue-600" className="h-28" />
-              )}
-              {uploadingBusiness ? (
-                <div className="flex items-center justify-center gap-2 py-3 text-blue-700 text-xs font-semibold">
-                  <Upload className="h-3.5 w-3.5 animate-bounce" /> Uploading video…
-                </div>
-              ) : (
-                <button type="button" onClick={() => businessVidRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">
-                  <Video className="h-3.5 w-3.5" /> {testimonial?.businessVideoUrl ? 'Replace video' : 'Select video'}
-                </button>
-              )}
-              <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleVideoFile('business', e.target.files[0])} />
-              <p className="text-[10px] text-gray-400 text-center">Max 2 minutes · MP4 recommended</p>
-            </div>
           )}
 
           {/* Existing video OTP (old per-slot flow, not yet migrated) */}
@@ -913,15 +979,13 @@ function MemberCard({
             <p className="text-[11px] text-gray-400 italic">Not added yet</p>
           )}
 
-          {/* Issues inline edit panel */}
+          {/* Issues inline — opens immediately on pencil tap */}
           {editable && expandedSlots.has('issues') && (
-            <div className="bg-gray-50 border border-rose-200 rounded-2xl p-3 space-y-2 mt-1">
-              <p className="text-xs font-bold text-rose-800 uppercase tracking-wide">Edit Health Issues</p>
-              <DiseaseMultiSelect
-                value={draftIssues ?? issues}
-                onChange={(val) => setDraftIssues(val)}
-              />
-            </div>
+            <DiseaseMultiSelect
+              value={draftIssues ?? issues}
+              onChange={(val) => setDraftIssues(val)}
+              autoFocus
+            />
           )}
         </div>
       )}
@@ -970,6 +1034,15 @@ function MemberCard({
       {expandedPhoto && (
         <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
       )}
+      {showShareCard && testimonial && (
+        <TransformationShareCard
+          testimonial={testimonial}
+          userName={user.userName}
+          hasAfter={hasAfter}
+          onClose={() => setShowShareCard(false)}
+        />
+      )}
+      </div>
     </div>
   );
 }
@@ -1266,7 +1339,13 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
       )}
 
       {/* States */}
-      {loading && <LoadingSpinner message="Loading testimonials…" />}
+      {loading && (
+        <div className="space-y-3 animate-pulse">
+          <div className="h-32 bg-gray-100 rounded-2xl" />
+          <div className="h-6 bg-gray-100 rounded-xl w-3/4" />
+          <div className="h-6 bg-gray-100 rounded-xl w-1/2" />
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>

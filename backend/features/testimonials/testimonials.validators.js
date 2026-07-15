@@ -256,8 +256,8 @@ export function validatePrepareVideoUpload(body) {
   const userIdN = parseInt(userId, 10);
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
-  const wantsHealth = uploadHealth === true;
-  const wantsBusiness = uploadBusiness === true;
+  const wantsHealth   = uploadHealth   === true || uploadHealth   === 'true';
+  const wantsBusiness = uploadBusiness === true || uploadBusiness === 'true';
   if (!wantsHealth && !wantsBusiness) {
     throw new ValidationError(400, 'At least one video slot must be requested');
   }
