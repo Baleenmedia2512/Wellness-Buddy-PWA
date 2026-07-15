@@ -42,10 +42,8 @@ const istDayBoundsWithOffset = (date) => ({
  * Food rows for the day. Mirrors `food-corrections.repository.js ::
  * fetchMealsForDate` — same column list (truncated to what the Diary
  * cards actually render), same IsDeleted + AnalysisData IS NOT NULL
- * guards. The micronutrient columns are intentionally omitted here;
- * the Diary feed card renders summary nutrition only, and the
- * existing per-meal detail modal still fetches the full row via the
- * established food-corrections endpoint.
+ * guards. Micronutrient summary columns (sugar/sodium/cholesterol) are
+ * included for diary share cards; full detail still uses food-corrections.
  */
 export async function fetchFoodForDay(ownerUserId, date) {
   const supabase = getSupabaseClient();
@@ -56,6 +54,7 @@ export async function fetchFoodForDay(ownerUserId, date) {
       [
         'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
         'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+        'TotalSugar, TotalSodium, TotalCholesterol',
         'CaptureID, ProcessedBy, DeviceInfo, CreatedAt',
       ].join(', '),
     )

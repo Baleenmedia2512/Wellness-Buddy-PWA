@@ -12,6 +12,7 @@ export { useCalorieTrend } from './useCalorieTrend';
 export { useCalorieChartData } from './useCalorieChartData';
 export { useResolveUserId } from './useResolveUserId';
 export { useDayAnalyses } from './useDayAnalyses';
+export { useHomeCarouselData } from './useHomeCarouselData';
 export { useInfiniteScroll } from './useInfiniteScroll';
 export { useSwipePanelHeight } from './useSwipePanelHeight';
 export { useCarouselSwipe } from './useCarouselSwipe';

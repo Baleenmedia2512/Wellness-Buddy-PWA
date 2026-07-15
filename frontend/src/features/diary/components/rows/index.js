@@ -18,8 +18,29 @@
 import React, { useState, useRef } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
-import { parseAnalysisData } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
+
+function resolveFoodShareTotals(payload, foodData) {
+  const t = payload?.totals || {};
+  const n = foodData?.nutrition || {};
+  const fromItems = foodData?.detailedItems?.length
+    ? recalculateTotals(foodData.detailedItems)
+    : null;
+
+  const pick = (key) => t[key] ?? n[key] ?? fromItems?.[key] ?? 0;
+
+  return {
+    calories: pick('calories'),
+    protein: pick('protein'),
+    carbs: pick('carbs'),
+    fat: pick('fat'),
+    fiber: pick('fiber'),
+    sugar: pick('sugar'),
+    sodium: pick('sodium'),
+    cholesterol: pick('cholesterol'),
+  };
+}
 
 const WeighingScaleIcon = ({ className }) => (
   <svg
@@ -108,7 +129,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
     ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
     : (p.imagePath || null);
 
-  const t = p.totals || {};
+  const t = resolveFoodShareTotals(p, foodData);
   const macros = [
     { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
     { label: 'Protein',  value: Math.round(t.protein  ?? 0), unit: 'g',    color: '#3b82f6' },

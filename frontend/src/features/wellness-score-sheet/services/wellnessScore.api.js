@@ -22,6 +22,21 @@ export async function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
   return payload?.data ?? payload;
 }
 
+export async function fetchWellnessScoreHistory({ userId, startDate, endDate, apiBaseUrl }) {
+  const params = new URLSearchParams({
+    userId,
+    startDate,
+    endDate,
+    _t: String(Date.now()),
+  });
+  const res = await fetch(`${base(apiBaseUrl)}/api/wellness-score/history?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+  });
+  const payload = await readJsonResponse(res);
+  return payload?.data ?? payload;
+}
+
 export async function fetchWellnessScoreAdminConfig({ requesterUserId, requesterEmail, apiBaseUrl }) {
   const params = new URLSearchParams();
   if (requesterUserId != null && requesterUserId !== '') {

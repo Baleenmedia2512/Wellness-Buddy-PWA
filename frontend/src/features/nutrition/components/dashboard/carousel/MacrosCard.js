@@ -1,6 +1,7 @@
 import React from 'react';
 import { Beef, Droplet, Wheat } from 'lucide-react';
 import CircularProgress from './CircularProgress';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * MacrosCard — Card 2 of the Nutrition Carousel.
@@ -13,6 +14,7 @@ const MacrosCard = ({
   proteinTarget, 
   fatTarget, 
   carbsTarget, 
+  periodContext,
   onOpenModal,
 }) => {
   const hasTargets = proteinTarget != null;
@@ -24,6 +26,7 @@ const MacrosCard = ({
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-3 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
@@ -126,7 +129,9 @@ const MacrosCard = ({
         {/* Footer */}
         {hasTargets && (
           <p className="text-[9px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
-            Targets based on your weight
+            {periodContext?.isMultiDay
+              ? 'Total macros achieved vs period macro goals'
+              : 'Targets based on your weight'}
           </p>
         )}
       </div>

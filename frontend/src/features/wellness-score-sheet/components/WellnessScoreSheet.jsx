@@ -4,17 +4,10 @@ import { todayDateInIST } from '../../../shared/utils/timezoneUtils';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
-
-function formatDateLabel(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dt);
-  target.setHours(0, 0, 0, 0);
-  if (target.getTime() === today.getTime()) return 'Today';
-  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
+import { formatWellnessDayLabel } from '../domain/dateRange';
+import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import WellnessScoreDayStrip from './WellnessScoreDayStrip';
 
 function scoreTone(pct) {
   if (pct >= 75) return 'from-emerald-500 to-emerald-600';
@@ -31,8 +24,18 @@ export default function WellnessScoreSheet({
   loading = false,
   error = null,
   onRetry,
+  today = todayDateInIST(),
+  dateRange = 'today',
+  onDateRangeChange,
+  customStartDate = null,
+  customEndDate = null,
+  onCustomDateSelect,
+  historyDays = [],
+  selectedDate,
+  onSelectDate,
+  isMultiDay = false,
 }) {
-  const dateStr = scoreData?.date || todayDateInIST();
+  const dateStr = scoreData?.date || selectedDate || todayDateInIST();
   const parameters = scoreData?.parameters || [];
   const grouped = parametersBySection(parameters);
   const progressPct = scoreData?.percentage ?? 0;
@@ -58,12 +61,32 @@ export default function WellnessScoreSheet({
               <ClipboardList className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
               Wellness Score
             </h1>
-            <p className="text-xs text-gray-500">{formatDateLabel(dateStr)}</p>
+            <p className="text-xs text-gray-500">{formatWellnessDayLabel(dateStr, today)}</p>
           </div>
         </div>
+        {onDateRangeChange && (
+          <div className="border-t border-gray-100 px-4 py-3">
+            <ReportDateRangeFilter
+              ranges={WELLNESS_SCORE_DATE_RANGES}
+              dateRange={dateRange}
+              onDateRangeChange={onDateRangeChange}
+              customStartDate={customStartDate}
+              customEndDate={customEndDate}
+              onCustomDateSelect={onCustomDateSelect}
+            />
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-28">
+        {isMultiDay && historyDays.length > 1 && onSelectDate && (
+          <WellnessScoreDayStrip
+            days={historyDays}
+            selectedDate={selectedDate || dateStr}
+            onSelectDate={onSelectDate}
+            today={today}
+          />
+        )}
         {loading && (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-label="Loading" />
@@ -92,7 +115,7 @@ export default function WellnessScoreSheet({
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-emerald-600" aria-hidden />
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                    {formatDateLabel(dateStr)}&apos;s score
+                    {formatWellnessDayLabel(dateStr, today)}&apos;s score
                   </p>
                 </div>
               </div>
