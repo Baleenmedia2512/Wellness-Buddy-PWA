@@ -39,12 +39,13 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { useTestimonial } from '../hooks/useTestimonial.js';
 import { useTestimonialVideo } from '../hooks/useTestimonialVideo.js';
-import { verifyTestimonialOtp, verifyTestimonialVideoOtp, editTestimonial } from '../services/testimonialApi.js';
+import { editTestimonial } from '../services/testimonialApi.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
   sanitizeDurationDigits,
 } from '../services/testimonialFormUtils.js';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
+import OtpInline from './OtpInline.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -199,74 +200,19 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
   );
 }
 
-// ── Inline OTP entry ──────────────────────────────────────────────────────────
-
-function OtpInline({ testimonialId, type, onVerified }) {
-  const [otp,     setOtp]     = useState('');
-  const [loading, setLoading] = useState(false);
-  const [err,     setErr]     = useState(null);
-
-  const submit = async () => {
-    setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setErr('Enter the 6-digit OTP from your coach');
-      return;
-    }
-    setLoading(true);
-    try {
-      if (type === 'photo') {
-        await verifyTestimonialOtp({ testimonialId, otp: otp.trim() });
-      } else {
-        await verifyTestimonialVideoOtp({ testimonialId, otp: otp.trim() });
-      }
-      onVerified();
-    } catch (e) {
-      setErr(e.message || 'Invalid OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 mt-2">
-      <div className="flex items-center gap-2">
-        <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your coach</p>
-      </div>
-      <p className="text-xs text-amber-700 leading-relaxed">
-        Your coach received a 6-digit verification code by email. Ask them to share it with you.
-      </p>
-      <input
-        type="tel"
-        inputMode="numeric"
-        maxLength={6}
-        placeholder="_ _ _ _ _ _"
-        value={otp}
-        onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
-        className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-      />
-      {err && <p className="text-xs text-red-600 text-center">{err}</p>}
-      <TouchFeedbackButton
-        onClick={submit}
-        disabled={loading || otp.length !== 6}
-        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-      >
-        {loading ? 'Verifying…' : 'Verify with OTP'}
-      </TouchFeedbackButton>
-    </div>
-  );
-}
-
 // ── Image picker ──────────────────────────────────────────────────────────────
 
-function InlineImagePicker({ image, cameraRef, galleryRef, onCameraChange, onGalleryChange }) {
+function InlineImagePicker({ image, existingPreviewUrl, cameraRef, galleryRef, onCameraChange, onGalleryChange }) {
+  const previewSrc = image?.preview || existingPreviewUrl || null;
+  const isExistingOnly = !image && !!existingPreviewUrl;
+
   return (
     <div className="space-y-2">
-      {image ? (
+      {previewSrc ? (
         <div className="space-y-2">
           <img
-            src={image.preview}
-            alt="Selected"
+            src={previewSrc}
+            alt={isExistingOnly ? 'Current photo' : 'Selected'}
             className={`${PORTRAIT_IMAGE_CLASS_SM} max-w-[160px] mx-auto`}
           />
           <div className="flex gap-2 max-w-[160px] mx-auto">
@@ -274,7 +220,7 @@ function InlineImagePicker({ image, cameraRef, galleryRef, onCameraChange, onGal
               onClick={() => cameraRef.current?.click()}
               className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200"
             >
-              <Camera className="h-3.5 w-3.5" /> Retake
+              <Camera className="h-3.5 w-3.5" /> {isExistingOnly ? 'Camera' : 'Retake'}
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={() => galleryRef.current?.click()}
@@ -284,7 +230,8 @@ function InlineImagePicker({ image, cameraRef, galleryRef, onCameraChange, onGal
             </TouchFeedbackButton>
           </div>
           <p className="text-xs text-green-600 font-medium text-center flex items-center justify-center gap-1">
-            <CheckCircle className="h-3.5 w-3.5" /> Photo selected
+            <CheckCircle className="h-3.5 w-3.5" />
+            {isExistingOnly ? 'Current photo — replace to change' : 'Photo selected'}
           </p>
         </div>
       ) : (
@@ -378,6 +325,7 @@ function BeforePhotoSlotContent({
 
       <InlineImagePicker
         image={beforeImage}
+        existingPreviewUrl={isEditMode ? existing?.beforeImageUrl : null}
         cameraRef={beforeCameraRef}
         galleryRef={beforeGalleryRef}
         onCameraChange={onBeforeCameraChange}
@@ -469,26 +417,33 @@ function BeforePhotoSlotContent({
 function AfterPhotoSlotContent({
   form, setField,
   afterImage,
+  existingAfterUrl,
+  isEditMode,
   afterCameraRef, afterGalleryRef,
   onAfterCameraChange, onAfterGalleryChange,
   submitting, error,
   onSubmit, onCancel,
 }) {
+  const hasPhoto = !!(afterImage || existingAfterUrl);
+
   return (
     <div className="px-4 pb-5 pt-4 space-y-4">
       <p className="text-xs text-gray-500 leading-relaxed">
-        Upload your transformation result photo. Your coach will receive a verification email with an OTP.
+        {isEditMode
+          ? 'Update your after photo or change your result weight.'
+          : 'Upload your transformation result photo. Your coach will receive a verification email with an OTP.'}
       </p>
 
       <InlineImagePicker
         image={afterImage}
+        existingPreviewUrl={isEditMode ? existingAfterUrl : null}
         cameraRef={afterCameraRef}
         galleryRef={afterGalleryRef}
         onCameraChange={onAfterCameraChange}
         onGalleryChange={onAfterGalleryChange}
       />
 
-      {afterImage && (
+      {hasPhoto && (
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">
             After Weight (kg) <span className="text-red-500">*</span>
@@ -516,10 +471,14 @@ function AfterPhotoSlotContent({
           </TouchFeedbackButton>
         )}
         <TouchFeedbackButton
-          onClick={onSubmit} disabled={submitting || !afterImage}
+          onClick={onSubmit} disabled={submitting || !hasPhoto}
           className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold disabled:opacity-60 transition-colors"
         >
-          {submitting ? 'Saving…' : 'Complete Testimonial'}
+          {submitting
+            ? 'Saving…'
+            : isEditMode
+              ? 'Update After Photo'
+              : 'Complete Testimonial'}
         </TouchFeedbackButton>
       </div>
     </div>
@@ -636,9 +595,13 @@ function VideoSlotContent({
 // ── Main hub ──────────────────────────────────────────────────────────────────
 
 /**
- * @param {{ userId: number }} props
+ * @param {{
+ *   userId: number,
+ *   focusOnly?: 'before'|'after'|'health'|'business'|'issues'|null,
+ *   onFocusClose?: () => void,
+ * }} props
  */
-export default function TestimonialsHub({ userId }) {
+export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose }) {
   // ── Health issues slot state (declared before hooks so submit payloads can include them) ──
   const [healthIssues,         setHealthIssues]         = useState([]);
   const [healthIssuesExpanded, setHealthIssuesExpanded] = useState(false);
@@ -715,30 +678,78 @@ export default function TestimonialsHub({ userId }) {
     setExpandedSlot('after');
   }, [startCompleting]);
 
-  const handleCancelPhotoEdit = useCallback(() => {
-    cancelEdit();
-    setExpandedSlot(null);
-  }, [cancelEdit]);
-
-  const handlePhotoSubmit = useCallback(async () => {
-    const ok = await handleSubmit();
-    if (ok) setExpandedSlot(null);
-  }, [handleSubmit]);
+  const handleEditAfter = useCallback(() => {
+    startCompleting();
+    setExpandedSlot('after');
+  }, [startCompleting]);
 
   const handleEditVideo = useCallback((slot) => {
     startVideoEdit();
     setExpandedSlot(slot);
   }, [startVideoEdit]);
 
-  const handleCancelVideoEdit = useCallback(() => {
+  const handleEditIssues = useCallback(() => {
+    cancelEdit();
     cancelVideoEdit();
     setExpandedSlot(null);
-  }, [cancelVideoEdit]);
+    setHealthIssuesExpanded(true);
+    setHealthIssuesError(null);
+    setHealthIssuesSuccess(null);
+  }, [cancelEdit, cancelVideoEdit]);
+
+  // Open the requested slot when mounted in focused (modal) mode
+  useEffect(() => {
+    if (!focusOnly) return;
+    if (focusOnly === 'before') handleEditBefore();
+    else if (focusOnly === 'after') handleEditAfter();
+    else if (focusOnly === 'health') handleEditVideo('health');
+    else if (focusOnly === 'business') handleEditVideo('business');
+    else if (focusOnly === 'issues') handleEditIssues();
+    // intentionally only when focusOnly is set / changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusOnly]);
+
+  const finishFocus = useCallback(() => {
+    cancelEdit();
+    cancelVideoEdit();
+    setExpandedSlot(null);
+    setHealthIssuesExpanded(false);
+    onFocusClose?.();
+  }, [cancelEdit, cancelVideoEdit, onFocusClose]);
+
+  const handleCancelPhotoEdit = useCallback(() => {
+    if (focusOnly) {
+      finishFocus();
+      return;
+    }
+    cancelEdit();
+    setExpandedSlot(null);
+  }, [focusOnly, finishFocus, cancelEdit]);
+
+  const handleCancelVideoEdit = useCallback(() => {
+    if (focusOnly) {
+      finishFocus();
+      return;
+    }
+    cancelVideoEdit();
+    setExpandedSlot(null);
+  }, [focusOnly, finishFocus, cancelVideoEdit]);
+
+  const handlePhotoSubmit = useCallback(async () => {
+    const ok = await handleSubmit();
+    if (ok) {
+      setExpandedSlot(null);
+      if (focusOnly) onFocusClose?.();
+    }
+  }, [handleSubmit, focusOnly, onFocusClose]);
 
   const handleVideoSlotSubmit = useCallback(async () => {
     const ok = await handleVideoSubmit();
-    if (ok) setExpandedSlot(null);
-  }, [handleVideoSubmit]);
+    if (ok) {
+      setExpandedSlot(null);
+      if (focusOnly) onFocusClose?.();
+    }
+  }, [handleVideoSubmit, focusOnly, onFocusClose]);
 
   const handleVideoOtpVerified = useCallback(() => {
     handleVideoVerified();
@@ -765,12 +776,13 @@ export default function TestimonialsHub({ userId }) {
       setHealthIssuesExpanded(false);
       reload();
       reloadVideo();
+      if (focusOnly) onFocusClose?.();
     } catch (err) {
       setHealthIssuesError(err.message || 'Failed to save health issues.');
     } finally {
       setHealthIssuesSaving(false);
     }
-  }, [userId, existing, existingVideo, healthIssues, reload, reloadVideo]);
+  }, [userId, existing, existingVideo, healthIssues, reload, reloadVideo, focusOnly, onFocusClose]);
 
   // ── Loading guard (after all hooks) ────────────────────────────────────────
   if (existing === undefined || existingVideo === undefined) {
@@ -780,6 +792,13 @@ export default function TestimonialsHub({ userId }) {
   // ── Slot statuses (plain JS — not hooks, safe after guard) ─────────────────
   const slots = computeSlotStatuses(existing, existingVideo);
   const hasTestimonialRow = !!(existing || existingVideo);
+  const isFocused = !!focusOnly;
+  const showBefore   = !isFocused || focusOnly === 'before';
+  const showAfter    = !isFocused || focusOnly === 'after';
+  const showIssues   = !isFocused || focusOnly === 'issues';
+  const showHealth   = !isFocused || focusOnly === 'health';
+  const showBusiness = !isFocused || focusOnly === 'business';
+  const showVideosSection = showHealth || showBusiness;
 
   // ── Before photo slot state ─────────────────────────────────────────────────
   const beforeSlotExpanded = expandedSlot === 'before';
@@ -807,24 +826,31 @@ export default function TestimonialsHub({ userId }) {
   const businessSlotExpanded = expandedSlot === 'business';
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-3">
+    <div className={`max-w-lg mx-auto px-4 pt-4 space-y-3 ${isFocused ? 'pb-6' : 'pb-24'}`}>
 
-      {/* ── Overall status bar ─────────────────────────────────────────────── */}
-      <OverallStatusBar
-        slots={slots}
-        photoSuccess={success}
-        videoSuccess={videoSuccess && !showOtpModal ? videoSuccess : null}
-      />
+      {/* ── Overall status bar (hidden in focused edit modal) ─────────────── */}
+      {!isFocused && (
+        <OverallStatusBar
+          slots={slots}
+          photoSuccess={success}
+          videoSuccess={videoSuccess && !showOtpModal ? videoSuccess : null}
+        />
+      )}
 
       {/* ══════════════════ PHOTOS SECTION ════════════════════════════════════ */}
+      {(showBefore || showAfter || showIssues) && (
       <div className="space-y-2">
         {/* Section label */}
-        <div className="flex items-center gap-2 px-1 pt-2">
-          <Camera className="h-4 w-4 text-gray-400" />
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Photos</p>
-        </div>
+        {!isFocused && (
+          <div className="flex items-center gap-2 px-1 pt-2">
+            <Camera className="h-4 w-4 text-gray-400" />
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Photos</p>
+          </div>
+        )}
 
         {/* ── Before Photo slot ──────────────────────────────────────────────── */}
+        {showBefore && (
+        <>
         <SlotCard
           icon={Camera}
           iconBg="bg-green-50"
@@ -832,8 +858,9 @@ export default function TestimonialsHub({ userId }) {
           title="Before Photo"
           subtitle={beforeSlotExpanded ? null : beforeSlotSubtitle}
           status={slots.beforePhoto}
-          isExpanded={beforeSlotExpanded}
+          isExpanded={beforeSlotExpanded || isFocused}
           onToggle={() => {
+            if (isFocused) return;
             if (slots.beforePhoto !== 'none' && !beforeSlotExpanded) {
               handleEditBefore();
             } else if (beforeSlotExpanded) {
@@ -845,7 +872,7 @@ export default function TestimonialsHub({ userId }) {
         >
           <BeforePhotoSlotContent
             existing={existing}
-            isEditMode={isEditMode}
+            isEditMode={isEditMode || isFocused}
             form={form}
             setField={setField}
             beforeImage={beforeImage}
@@ -856,12 +883,12 @@ export default function TestimonialsHub({ userId }) {
             submitting={submitting}
             error={error}
             onSubmit={handlePhotoSubmit}
-            onCancel={isEditMode ? handleCancelPhotoEdit : null}
+            onCancel={isEditMode || isFocused ? handleCancelPhotoEdit : null}
           />
         </SlotCard>
 
         {/* Before photo thumbnail when collapsed and uploaded */}
-        {!beforeSlotExpanded && existing && existing.beforeImageUrl && (
+        {!isFocused && !beforeSlotExpanded && existing && existing.beforeImageUrl && (
           <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm">
             <img
               src={existing.beforeImageUrl}
@@ -881,14 +908,19 @@ export default function TestimonialsHub({ userId }) {
             </TouchFeedbackButton>
           </div>
         )}
+        </>
+        )}
 
         {/* ── Health Issues (after before photo, before after photo) ─────────── */}
+        {showIssues && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 px-1 pt-2">
-            <HeartPulse className="h-4 w-4 text-gray-400" />
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
-            <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
-          </div>
+          {!isFocused && (
+            <div className="flex items-center gap-2 px-1 pt-2">
+              <HeartPulse className="h-4 w-4 text-gray-400" />
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recovered Health Issues</p>
+              <span className="text-[10px] text-gray-400 font-normal ml-auto">Shared for photo &amp; video verification</span>
+            </div>
+          )}
 
           <SlotCard
             icon={HeartPulse}
@@ -896,16 +928,17 @@ export default function TestimonialsHub({ userId }) {
             iconColor="text-rose-500"
             title="Health Issues Recovered"
             subtitle={
-              healthIssuesExpanded
+              healthIssuesExpanded || isFocused
                 ? null
                 : (healthIssues.length > 0
                     ? healthIssues.slice(0, 3).join(' · ') + (healthIssues.length > 3 ? ` +${healthIssues.length - 3} more` : '')
                     : 'Which health issues did you recover from?')
             }
             status={slots.healthIssues}
-            isExpanded={healthIssuesExpanded}
+            isExpanded={healthIssuesExpanded || (isFocused && focusOnly === 'issues')}
             disabled={!hasTestimonialRow}
             onToggle={() => {
+              if (isFocused) return;
               if (!hasTestimonialRow) return;
               setHealthIssuesExpanded((prev) => !prev);
               setHealthIssuesError(null);
@@ -939,7 +972,15 @@ export default function TestimonialsHub({ userId }) {
                   )}
                   <div className="flex gap-3">
                     <TouchFeedbackButton
-                      onClick={() => { setHealthIssuesExpanded(false); setHealthIssuesError(null); setHealthIssuesSuccess(null); }}
+                      onClick={() => {
+                        if (focusOnly) {
+                          finishFocus();
+                          return;
+                        }
+                        setHealthIssuesExpanded(false);
+                        setHealthIssuesError(null);
+                        setHealthIssuesSuccess(null);
+                      }}
                       disabled={healthIssuesSaving}
                       className="flex-1 py-3 rounded-xl border-2 border-gray-300 text-gray-700 text-sm font-semibold"
                     >
@@ -958,9 +999,25 @@ export default function TestimonialsHub({ userId }) {
               )}
             </div>
           </SlotCard>
+
+          {/* Verified video badge — under health issues */}
+          {!isFocused && existingVideo?.videoStatus === 'verified' && existingVideo.videoVerifiedAt && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
+              <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+              <p className="text-xs text-green-800 font-medium">
+                Videos verified on{' '}
+                {new Date(existingVideo.videoVerifiedAt).toLocaleDateString('en-IN', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                })}
+              </p>
+            </div>
+          )}
         </div>
+        )}
 
         {/* ── After Photo slot ────────────────────────────────────────────────── */}
+        {showAfter && (
+        <>
         <SlotCard
           icon={Star}
           iconBg={afterSlotLocked ? 'bg-gray-50' : 'bg-purple-50'}
@@ -968,57 +1025,28 @@ export default function TestimonialsHub({ userId }) {
           title="After Photo"
           subtitle={afterSlotExpanded ? null : afterSlotSubtitle}
           status={afterSlotLocked ? 'locked' : slots.afterPhoto}
-          isExpanded={afterSlotExpanded}
+          isExpanded={afterSlotExpanded || (isFocused && focusOnly === 'after')}
           disabled={afterSlotLocked}
           onToggle={() => {
+            if (isFocused) return;
             if (afterSlotLocked) return;
             if (afterSlotExpanded) {
               handleCancelPhotoEdit();
             } else if (slots.afterPhoto === 'none') {
               handleAddAfter();
             } else {
-              toggleSlot('after');
+              handleEditAfter();
             }
           }}
         >
-          {/* After photo thumbnail (collapsed — shown inline in the card body when not editing) */}
-          {!afterSlotLocked && slots.afterPhoto !== 'none' && (
-            existing?.afterImageUrl ? (
-              <div className="px-4 py-3 flex items-center gap-3">
-                <img
-                  src={existing.afterImageUrl}
-                  alt="After"
-                  className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
-                />
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <p className="text-xs font-semibold text-gray-700">After: {existing?.afterWeightKg} kg</p>
-                  {existing?.beforeWeightKg && existing?.afterWeightKg && (
-                    <p className="text-xs text-gray-500">
-                      Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg {existing.goalType === 'loss' ? '⬇️' : '⬆️'}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : null
-          )}
-
-          {/* OTP entry for pending photo */}
-          {!afterSlotLocked && slots.afterPhoto === 'pending' && existing?.id && (
-            <div className="px-4 pb-4">
-              <OtpInline
-                testimonialId={existing.id}
-                type="photo"
-                onVerified={handlePhotoOtpVerified}
-              />
-            </div>
-          )}
-
-          {/* Upload form for completing mode */}
-          {isCompletingMode && (
+          {/* Upload / edit form */}
+          {(isCompletingMode || (isFocused && focusOnly === 'after')) && (
             <AfterPhotoSlotContent
               form={form}
               setField={setField}
               afterImage={afterImage}
+              existingAfterUrl={existing?.afterImageUrl}
+              isEditMode={slots.afterPhoto !== 'none'}
               afterCameraRef={afterCameraRef}
               afterGalleryRef={afterGalleryRef}
               onAfterCameraChange={handleAfterImageChange}
@@ -1030,18 +1058,61 @@ export default function TestimonialsHub({ userId }) {
             />
           )}
         </SlotCard>
+
+        {/* After photo thumbnail when collapsed and uploaded */}
+        {!isFocused && !afterSlotLocked && !afterSlotExpanded && slots.afterPhoto !== 'none' && existing?.afterImageUrl && (
+          <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm">
+            <img
+              src={existing.afterImageUrl}
+              alt="After"
+              className="w-14 h-20 object-contain bg-gray-50 rounded-xl border border-gray-200 shrink-0"
+            />
+            <div className="flex-1 min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold text-gray-700">After: {existing?.afterWeightKg} kg</p>
+              {existing?.beforeWeightKg && existing?.afterWeightKg && (
+                <p className="text-xs text-gray-500">
+                  Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg {existing.goalType === 'loss' ? '⬇️' : '⬆️'}
+                </p>
+              )}
+            </div>
+            <TouchFeedbackButton
+              onClick={handleEditAfter}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-purple-400 hover:text-purple-700 transition-colors shrink-0"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </TouchFeedbackButton>
+          </div>
+        )}
+
+        {/* OTP entry for pending photo */}
+        {!isFocused && !afterSlotLocked && !afterSlotExpanded && slots.afterPhoto === 'pending' && existing?.id && (
+          <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4">
+            <OtpInline
+              testimonialId={existing.id}
+              type="photo"
+              onVerified={handlePhotoOtpVerified}
+            />
+          </div>
+        )}
+        </>
+        )}
       </div>
+      )}
 
       {/* ══════════════════ RESULT VIDEOS SECTION ═════════════════════════════ */}
+      {showVideosSection && (
       <div className="space-y-2">
         {/* Section label */}
-        <div className="flex items-center gap-2 px-1 pt-2">
-          <Video className="h-4 w-4 text-gray-400" />
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Result Videos</p>
-          <span className="text-[10px] text-gray-400 font-normal ml-auto">Optional · both or either</span>
-        </div>
+        {!isFocused && (
+          <div className="flex items-center gap-2 px-1 pt-2">
+            <Video className="h-4 w-4 text-gray-400" />
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Result Videos</p>
+            <span className="text-[10px] text-gray-400 font-normal ml-auto">Optional · both or either</span>
+          </div>
+        )}
 
         {/* ── Health Results Video slot ─────────────────────────────────────── */}
+        {showHealth && (
         <SlotCard
           icon={Video}
           iconBg="bg-green-50"
@@ -1049,8 +1120,9 @@ export default function TestimonialsHub({ userId }) {
           title="Health Results"
           subtitle={healthSlotExpanded ? null : 'Max 1 min · show your health journey'}
           status={slots.healthVideo}
-          isExpanded={healthSlotExpanded}
+          isExpanded={healthSlotExpanded || (isFocused && focusOnly === 'health')}
           onToggle={() => {
+            if (isFocused) return;
             if (healthSlotExpanded) {
               handleCancelVideoEdit();
             } else if (slots.healthVideo !== 'none' && !isVideoEditMode) {
@@ -1070,12 +1142,14 @@ export default function TestimonialsHub({ userId }) {
             warning={videoWarning}
             onSubmit={handleVideoSlotSubmit}
             onCancel={handleCancelVideoEdit}
-            isEditMode={isVideoEditMode}
+            isEditMode={isVideoEditMode || (isFocused && focusOnly === 'health')}
             existingHasVideo={!!existingVideo?.hasHealthVideo}
           />
         </SlotCard>
+        )}
 
         {/* ── Business Results Video slot ───────────────────────────────────── */}
+        {showBusiness && (
         <SlotCard
           icon={Video}
           iconBg="bg-blue-50"
@@ -1083,8 +1157,9 @@ export default function TestimonialsHub({ userId }) {
           title="Business Results"
           subtitle={businessSlotExpanded ? null : 'Max 2 min · show your business journey'}
           status={slots.businessVideo}
-          isExpanded={businessSlotExpanded}
+          isExpanded={businessSlotExpanded || (isFocused && focusOnly === 'business')}
           onToggle={() => {
+            if (isFocused) return;
             if (businessSlotExpanded) {
               handleCancelVideoEdit();
             } else if (slots.businessVideo !== 'none' && !isVideoEditMode) {
@@ -1104,13 +1179,14 @@ export default function TestimonialsHub({ userId }) {
             warning={videoWarning}
             onSubmit={handleVideoSlotSubmit}
             onCancel={handleCancelVideoEdit}
-            isEditMode={isVideoEditMode}
+            isEditMode={isVideoEditMode || (isFocused && focusOnly === 'business')}
             existingHasVideo={!!existingVideo?.hasBusinessVideo}
           />
         </SlotCard>
+        )}
 
         {/* ── Shared video OTP entry ────────────────────────────────────────── */}
-        {(videoOtpPending || videoOtpJustDone) && videoTestimonialId && (
+        {!isFocused && (videoOtpPending || videoOtpJustDone) && videoTestimonialId && (
           <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1">
             <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
@@ -1125,23 +1201,12 @@ export default function TestimonialsHub({ userId }) {
             />
           </div>
         )}
-
-        {/* Verified video badge */}
-        {existingVideo?.videoStatus === 'verified' && existingVideo.videoVerifiedAt && (
-          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
-            <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-            <p className="text-xs text-green-800 font-medium">
-              Videos verified on{' '}
-              {new Date(existingVideo.videoVerifiedAt).toLocaleDateString('en-IN', {
-                day: 'numeric', month: 'short', year: 'numeric',
-              })}
-            </p>
-          </div>
-        )}
       </div>
+      
+      )}
 
       {/* ── How it works (first-time hint) ─────────────────────────────────── */}
-      {!existing && !existingVideo && (
+      {!isFocused && !existing && !existingVideo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 space-y-2">
           <p className="text-xs font-bold text-blue-800">How it works</p>
           <ol className="list-decimal list-inside space-y-1 text-xs text-blue-700 leading-5">

@@ -1,21 +1,17 @@
-/**
+﻿/**
  * TestimonialsPage.jsx
  * Top-level page for the testimonials feature.
- * - Members see the unified TestimonialsHub (4 upload slots on one page).
- * - Coaches see the team list view (CoachTestimonialsPage) + their own hub below.
- *
+ * Inline editing is now handled directly on the Mine card — no modal needed.
  * Route: shown when App.js `showTestimonials` is true.
  */
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
-import TestimonialsHub from './TestimonialsHub';
 
-export default function TestimonialsPage({ user, userRole, onBack }) {
-  const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
-
+export default function TestimonialsPage({ user, onBack }) {
   const userId = user?.userId ?? user?.id ?? null;
+  const [reloadSignal, setReloadSignal] = useState(0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -28,30 +24,15 @@ export default function TestimonialsPage({ user, userRole, onBack }) {
         </div>
       )}
 
-      {isCoach ? (
-        <>
-          <CoachTestimonialsPage
-            user={user}
-          />
-          {userId && (
-            <div className="border-t border-gray-200 mt-4">
-              <div className="max-w-lg mx-auto px-4 py-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                  Your Own Transformation
-                </p>
-                <TestimonialsHub userId={userId} />
-              </div>
-            </div>
-          )}
-        </>
+      {userId ? (
+        <CoachTestimonialsPage
+          user={user}
+          reloadSignal={reloadSignal}
+        />
       ) : (
-        userId
-          ? <TestimonialsHub userId={userId} />
-          : (
-            <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
-              <p>Unable to load your profile. Please sign in again.</p>
-            </div>
-          )
+        <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
+          <p>Unable to load your profile. Please sign in again.</p>
+        </div>
       )}
     </div>
   );

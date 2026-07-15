@@ -21,6 +21,8 @@ import {
   validateVerifyVideoOtp,
   validateVideoReport,
   validateTeamReport,
+  validateSubmitAllEdits,
+  validateVerifyUnifiedOtp,
 } from './testimonials.validators.js';
 import { getISTTimestamp } from '../../utils/supabaseClient.js';
 import {
@@ -30,6 +32,9 @@ import {
   buildVideoCoachEmailHtml,
   buildVideoCoachEmailText,
   buildVideoCoachEmailSubject,
+  buildUnifiedSubmitEmailHtml,
+  buildUnifiedSubmitEmailText,
+  buildUnifiedSubmitEmailSubject,
 } from './testimonialCoachEmail.template.js';
 
 // â”€â”€â”€ OTP helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -194,6 +199,7 @@ async function enrichTestimonialForDisplay(testimonial) {
     healthVideoUrl:         healthVideoUrl,
     businessVideoUrl:       businessVideoUrl,
     videoStatus:            testimonial.video_status        ?? 'none',
+    videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
   };
 }
@@ -960,6 +966,308 @@ export async function getTeamTestimonialReport(rawQuery) {
         fullTeam: buildTeamUploadStats(videoFull.uploaded, videoFull.notUploaded),
       },
       teamPerformanceByUserId,
+    },
+  };
+}
+
+// ─── Unified edit + OTP ───────────────────────────────────────────────────────
+
+/**
+ * Helper: build and send the unified coach email via nodemailer.
+ */
+async function sendUnifiedCoachEmail({
+  coachEmail,
+  memberName,
+  otp,
+  changedSlots,
+  goalType,
+  beforeWeight,
+  afterWeight,
+  durationText,
+  beforeImagePath,
+  afterImagePath,
+  previousBeforeImagePath,
+  previousAfterImagePath,
+  healthVideoPath,
+  businessVideoPath,
+  recoveredHealthIssues,
+  isComplete,
+}) {
+  const slots = new Set(changedSlots);
+
+  const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl] =
+    await Promise.all([
+      (isComplete && beforeImagePath && slots.has('before')) ? repo.getEmailSignedUrl(beforeImagePath)         : Promise.resolve(null),
+      (isComplete && afterImagePath  && slots.has('after'))  ? repo.getEmailSignedUrl(afterImagePath)          : Promise.resolve(null),
+      (slots.has('before') && previousBeforeImagePath)       ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
+      (slots.has('after')  && previousAfterImagePath)        ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
+      (slots.has('health') && healthVideoPath)               ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
+      (slots.has('business') && businessVideoPath)           ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
+    ]);
+
+  const emailParams = {
+    memberName,
+    otp,
+    changedSlots,
+    goalType,
+    beforeWeight,
+    afterWeight,
+    durationText,
+    beforeUrl,
+    afterUrl,
+    previousBeforeUrl: prevBeforeUrl,
+    previousAfterUrl:  prevAfterUrl,
+    healthVideoUrl,
+    businessVideoUrl,
+    recoveredHealthIssues: recoveredHealthIssues ?? [],
+    isComplete,
+  };
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+
+  await transporter.sendMail({
+    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
+    to:      coachEmail,
+    subject: buildUnifiedSubmitEmailSubject({ memberName }),
+    text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
+    html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
+    headers: { 'Content-Language': 'en' },
+  });
+
+  logger.info('[testimonials.service] Unified coach email dispatched', { coachEmail, memberName, changedSlots });
+}
+
+/**
+ * Member submits multiple edited slots in one request; generates a single unified OTP.
+ *
+ * Logic:
+ * - Issues-only change → silent save, no OTP, no email.
+ * - Any photo/video change → one OTP stored in both otp_hash and video_otp_hash fields.
+ * - Photo status is set to 'pending' only when the testimonial is or becomes complete (has both photos).
+ * - Video status is set to 'pending' when video slots are dirty.
+ * - Always overwrites otp_hash with the new unified OTP (so verifyUnifiedOtp can work).
+ */
+export async function submitAllEdits(rawBody) {
+  const payload = validateSubmitAllEdits(rawBody);
+
+  const existing = await repo.findByUserId(payload.userId);
+  if (!existing) {
+    throw new ValidationError(404, 'No testimonial found. Please submit your before photo first.');
+  }
+
+  const userInfo = await repo.findCoachIdForUser(payload.userId);
+  if (!userInfo?.coachId) {
+    throw new ValidationError(400, 'User has no coach assigned. Cannot submit for approval.');
+  }
+
+  const slots       = new Set(payload.dirtySlots);
+  const hasPhotoDirty = slots.has('before') || slots.has('after')
+    || payload.beforeWeightKg !== undefined || payload.afterWeightKg !== undefined
+    || payload.goalType !== undefined || payload.durationText !== undefined;
+  const hasVideoDirty  = slots.has('health') || slots.has('business');
+  const hasIssuesDirty = slots.has('issues');
+
+  // Issues-only → silent save, no OTP required
+  if (hasIssuesDirty && !hasPhotoDirty && !hasVideoDirty) {
+    await repo.updateTestimonial(existing.id, {
+      recoveredHealthIssues: payload.recoveredHealthIssues ?? [],
+    });
+    return {
+      httpStatus: 200,
+      body: {
+        success:    true,
+        message:    'Health issues saved.',
+        testimonialId: existing.id,
+        status:     existing.status,
+        videoStatus: existing.video_status ?? 'none',
+      },
+    };
+  }
+
+  // Upload new photos
+  const ts = Date.now();
+  const photoUpdates = {};
+
+  if (slots.has('before') && payload.beforeImageBase64) {
+    const beforePath = storagePath(payload.userId, 'before', ts);
+    await repo.uploadImage(payload.beforeImageBase64, beforePath);
+    photoUpdates.beforeImagePath = beforePath;
+  }
+  if (slots.has('after') && payload.afterImageBase64) {
+    const afterPath = storagePath(payload.userId, 'after', ts);
+    await repo.uploadImage(payload.afterImageBase64, afterPath);
+    photoUpdates.afterImagePath = afterPath;
+  }
+  if (payload.beforeWeightKg !== undefined) photoUpdates.beforeWeightKg = payload.beforeWeightKg;
+  if (payload.afterWeightKg  !== undefined) photoUpdates.afterWeightKg  = payload.afterWeightKg;
+  if (payload.goalType       !== undefined) photoUpdates.goalType        = payload.goalType;
+  if (payload.durationText   !== undefined) photoUpdates.durationText    = payload.durationText;
+  if (hasIssuesDirty)                       photoUpdates.recoveredHealthIssues = payload.recoveredHealthIssues ?? [];
+
+  // Determine if testimonial is/becomes complete (has both real photos)
+  const newBeforePath = photoUpdates.beforeImagePath ?? existing.before_image_path;
+  const newAfterPath  = photoUpdates.afterImagePath  ?? existing.after_image_path;
+  const hasRealBefore = newBeforePath && !repo.isVideoOnlyPlaceholder(newBeforePath);
+  const hasRealAfter  = newAfterPath
+    && !repo.isVideoOnlyPlaceholder(newAfterPath)
+    && newAfterPath !== existing.before_image_path
+    && newAfterPath !== newBeforePath;
+  const isComplete = !!(hasRealBefore && hasRealAfter);
+
+  // Guard: if photos still incomplete after update, no OTP needed for photo changes
+  const photoNeedsOtp = hasPhotoDirty && isComplete;
+
+  // Validate health issues are present when completing a testimonial
+  const resolvedHealthIssues = hasIssuesDirty
+    ? (payload.recoveredHealthIssues ?? [])
+    : (existing.recovered_health_issues ?? []);
+
+  if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
+    throw new ValidationError(422, 'At least one recovered health issue is required.');
+  }
+
+  // Capture previous photo paths for email diff BEFORE saving
+  const prevBeforeImagePath = slots.has('before') ? existing.before_image_path : null;
+  const prevAfterImagePath  = slots.has('after')  ? existing.after_image_path  : null;
+  const isBeforeFirstUpload = !prevBeforeImagePath || repo.isVideoOnlyPlaceholder(prevBeforeImagePath);
+  const isAfterFirstUpload  =
+    !prevAfterImagePath
+    || repo.isVideoOnlyPlaceholder(prevAfterImagePath)
+    || prevAfterImagePath === existing.before_image_path
+    || existing.status === 'incomplete';
+
+  // Generate single unified OTP
+  const otp       = generateOtp();
+  const otpHash   = await bcrypt.hash(otp, 10);
+  const otpExpiry = otpExpiryIst(24);
+
+  // Save photo changes
+  const photoDbUpdates = { ...photoUpdates, otpHash, otpExpiresAt: otpExpiry };
+  if (photoNeedsOtp) {
+    photoDbUpdates.status    = 'pending';
+    photoDbUpdates.verifiedAt = null;
+  } else if (hasPhotoDirty && !isComplete) {
+    photoDbUpdates.status = 'incomplete';
+  }
+  await repo.updateTestimonial(existing.id, photoDbUpdates);
+
+  // Save video changes
+  if (hasVideoDirty) {
+    const videoUpdates = {
+      videoStatus:       'pending',
+      videoOtpHash:      otpHash,
+      videoOtpExpiresAt: otpExpiry,
+      videoVerifiedAt:   null,
+    };
+    if (slots.has('health'))   videoUpdates.healthVideoPath   = payload.healthVideoPath;
+    if (slots.has('business')) videoUpdates.businessVideoPath = payload.businessVideoPath;
+    await repo.updateTestimonialVideos(existing.id, videoUpdates);
+  } else if (!hasPhotoDirty) {
+    // video-only path won't reach here but guard for clarity
+    await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
+  }
+
+  // Send unified coach email
+  const coachInfo = await repo.findCoachEmail(userInfo.coachId);
+  if (coachInfo?.email && userInfo?.userName) {
+    const finalBeforePath    = photoUpdates.beforeImagePath   ?? existing.before_image_path;
+    const finalAfterPath     = photoUpdates.afterImagePath    ?? existing.after_image_path;
+    const finalHealthVideo   = slots.has('health')   ? payload.healthVideoPath   : (existing.health_video_path   ?? null);
+    const finalBusinessVideo = slots.has('business') ? payload.businessVideoPath : (existing.business_video_path ?? null);
+
+    await sendUnifiedCoachEmail({
+      coachEmail:             coachInfo.email,
+      memberName:             userInfo.userName,
+      otp,
+      changedSlots:           payload.dirtySlots,
+      goalType:               photoUpdates.goalType    ?? existing.goal_type,
+      beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+      afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
+      durationText:           photoUpdates.durationText   ?? existing.duration_text,
+      beforeImagePath:        finalBeforePath,
+      afterImagePath:         finalAfterPath,
+      previousBeforeImagePath: isBeforeFirstUpload ? null : prevBeforeImagePath,
+      previousAfterImagePath:  isAfterFirstUpload  ? null : prevAfterImagePath,
+      healthVideoPath:        finalHealthVideo,
+      businessVideoPath:      finalBusinessVideo,
+      recoveredHealthIssues:  resolvedHealthIssues,
+      isComplete,
+    });
+  }
+
+  const finalStatus      = photoNeedsOtp ? 'pending' : (photoDbUpdates.status ?? existing.status);
+  const finalVideoStatus = hasVideoDirty ? 'pending' : (existing.video_status ?? 'none');
+
+  return {
+    httpStatus: 200,
+    body: {
+      success:       true,
+      message:       'Updates submitted for approval. Your coach will receive a verification email.',
+      testimonialId: existing.id,
+      status:        finalStatus,
+      videoStatus:   finalVideoStatus,
+    },
+  };
+}
+
+/**
+ * Verify a unified OTP that was generated by submitAllEdits.
+ * Marks both photo status and video status as 'verified' where pending.
+ */
+export async function verifyUnifiedOtp(rawBody) {
+  const { userId, otp } = validateVerifyUnifiedOtp(rawBody);
+
+  const row = await repo.findByUserId(userId);
+  if (!row) throw new ValidationError(404, 'Testimonial not found');
+  if (!row.otp_hash) throw new ValidationError(422, 'No pending verification OTP found. Please re-submit your updates.');
+
+  const now     = new Date();
+  const istNow  = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const expiry  = new Date(row.otp_expires_at);
+  if (istNow > expiry) {
+    throw new ValidationError(422, 'OTP has expired. Please re-submit your updates to receive a new OTP.');
+  }
+
+  const valid = await bcrypt.compare(otp, row.otp_hash);
+  if (!valid) throw new ValidationError(422, 'Invalid OTP. Please check with your coach and try again.');
+
+  const verifiedAt = getISTTimestamp();
+
+  // Mark photo as verified if it was pending
+  const photoPending = row.status === 'pending';
+  const videoPending = (row.video_status ?? 'none') === 'pending';
+
+  const photoUpdates = { otpHash: null, otpExpiresAt: null };
+  if (photoPending) {
+    photoUpdates.status    = 'verified';
+    photoUpdates.verifiedAt = verifiedAt;
+  }
+  await repo.updateTestimonial(row.id, photoUpdates);
+
+  if (videoPending) {
+    await repo.updateTestimonialVideos(row.id, {
+      videoStatus:       'verified',
+      videoOtpHash:      null,
+      videoOtpExpiresAt: null,
+      videoVerifiedAt:   verifiedAt,
+    });
+  }
+
+  const verifiedItems = [
+    photoPending   && 'photos',
+    videoPending   && 'videos',
+  ].filter(Boolean).join(' and ');
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: verifiedItems
+        ? `Your ${verifiedItems} have been verified successfully.`
+        : 'Verification complete.',
     },
   };
 }

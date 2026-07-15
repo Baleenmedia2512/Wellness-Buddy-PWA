@@ -75,12 +75,23 @@ function Tag({ label, onRemove, disabled }) {
  *   required?: boolean,
  * }} props
  */
-export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS, required = false }) {
+export default function DiseaseMultiSelect({ value = [], onChange, disabled = false, maxItems = MAX_ITEMS, required = false, autoFocus = false }) {
   const [query,     setQuery]     = useState('');
   const [open,      setOpen]      = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const inputRef  = useRef(null);
   const dropRef   = useRef(null);
+
+  // Auto-focus + open dropdown on mount when requested
+  useEffect(() => {
+    if (autoFocus && !disabled) {
+      const t = setTimeout(() => {
+        inputRef.current?.focus();
+        setOpen(true);
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [autoFocus, disabled]);
 
   const selected    = Array.isArray(value) ? value : [];
   const atMax       = selected.length >= maxItems;

@@ -455,3 +455,375 @@ export function buildVideoCoachEmailSubject({ memberName }) {
   const safe = String(memberName ?? 'Member').replace(/[\r\n]/g, ' ').trim();
   return `Video testimonial from ${safe} - Verification required`;
 }
+
+// ─── Unified edit email (submit-all-edits) ────────────────────────────────────
+
+const SLOT_LABELS = {
+  before:   'Before photo',
+  after:    'After photo',
+  health:   'Health Results Video',
+  business: 'Business Results Video',
+  issues:   'Recovered health issues',
+};
+
+/**
+ * "WHAT CHANGED" summary block — bold list of updated items.
+ */
+function buildChangedSlotsBlock(changedSlots) {
+  if (!Array.isArray(changedSlots) || changedSlots.length === 0) return '';
+  const rows = changedSlots
+    .map((s) => SLOT_LABELS[s] || s)
+    .map((label) => `<li style="margin:0 0 4px;color:#065f46;font-size:13px;font-family:Arial,Helvetica,sans-serif;font-weight:600;line-height:1.4;">${escapeHtml(label)}</li>`)
+    .join('');
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td style="background-color:#ecfdf5;border:2px solid #6ee7b7;border-radius:8px;padding:10px 14px;">
+          <p style="margin:0 0 6px;color:#047857;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">WHAT CHANGED</p>
+          <ul style="margin:0;padding:0 0 0 14px;">${rows}</ul>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
+ * Shows a single photo with label. Renders "First Upload" placeholder when no previous URL.
+ */
+function buildSinglePhotoCell(url, label, isFirst) {
+  if (!url) return '';
+  const safeUrl = escapeHtml(url);
+  if (isFirst) {
+    return `
+      <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 3px;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
+              <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(label)}</p>
+              <img src="${safeUrl}" alt="${escapeHtml(label)}" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
+            </td>
+          </tr>
+        </table>
+      </td>`;
+  }
+  return `
+    <td width="50%" valign="top" align="center" class="photo-col" style="padding:0 3px 0 3px;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td align="center" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px;">
+            <p style="margin:0 0 6px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(label)}</p>
+            <img src="${safeUrl}" alt="${escapeHtml(label)}" width="260" height="320" class="photo-img" style="display:block;width:260px;max-width:100%;height:320px;margin:0 auto;border:0;border-radius:6px;" />
+          </td>
+        </tr>
+      </table>
+    </td>`;
+}
+
+/**
+ * Photo diff row: Previous → New (or "First Upload → New" when previousUrl is null).
+ * Only renders if newUrl is present.
+ */
+function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
+  if (!newUrl) return '';
+
+  const prevCell = isFirstUpload
+    ? `
+      <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="center" valign="middle" height="180" style="background-color:#f3f4f6;border:1px dashed #d1d5db;border-radius:8px;padding:8px;">
+              <p style="margin:0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;font-weight:600;">First Upload</p>
+              <p style="margin:4px 0 0;color:#d1d5db;font-size:10px;font-family:Arial,Helvetica,sans-serif;">No previous photo</p>
+            </td>
+          </tr>
+        </table>
+      </td>`
+    : (previousUrl
+      ? `
+      <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="center" style="background-color:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:4px;">
+              <p style="margin:0 0 4px;color:#9ca3af;font-size:9px;font-weight:700;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">PREVIOUS</p>
+              <img src="${escapeHtml(previousUrl)}" alt="Previous ${escapeHtml(slotLabel)}" width="200" height="250" class="photo-img" style="display:block;width:200px;max-width:100%;height:250px;margin:0 auto;border:0;border-radius:4px;opacity:0.6;" />
+            </td>
+          </tr>
+        </table>
+      </td>`
+      : '');
+
+  const arrowCell = `
+    <td width="12%" valign="middle" align="center" style="padding:0 2px;font-size:18px;color:#059669;font-family:Arial,Helvetica,sans-serif;font-weight:700;">&#8594;</td>`;
+
+  const newCell = `
+    <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td align="center" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:4px;">
+            <p style="margin:0 0 4px;color:#047857;font-size:9px;font-weight:700;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">NEW</p>
+            <img src="${escapeHtml(newUrl)}" alt="New ${escapeHtml(slotLabel)}" width="200" height="250" class="photo-img" style="display:block;width:200px;max-width:100%;height:250px;margin:0 auto;border:0;border-radius:4px;" />
+          </td>
+        </tr>
+      </table>
+    </td>`;
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
+      <tr>
+        <td>
+          <p style="margin:0 0 6px;color:#374151;font-size:11px;font-weight:700;font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(slotLabel)}</p>
+        </td>
+      </tr>
+      <tr>
+        ${prevCell}
+        ${arrowCell}
+        ${newCell}
+      </tr>
+    </table>`;
+}
+
+/**
+ * Video updated indicator row for the email.
+ */
+function buildVideoUpdatedRow(label, url, accent) {
+  if (!url) return '';
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 8px 0;">
+      <tr>
+        <td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;">
+          <p style="margin:0 0 6px;color:#374151;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">${escapeHtml(label)}</p>
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" bgcolor="${accent}" style="border-radius:5px;background-color:${accent};">
+                <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
+                   style="display:inline-block;padding:8px 20px;color:#ffffff;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;text-decoration:none;line-height:1;">
+                  &#9654; Watch New Video
+                </a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:6px 0 0;color:#9ca3af;font-size:10px;font-family:Arial,Helvetica,sans-serif;">Link valid for 7 days.</p>
+        </td>
+      </tr>
+    </table>`;
+}
+
+/**
+ * Build the full HTML email for the unified submit-all-edits coach verification.
+ *
+ * @param {object}   params
+ * @param {string}   params.memberName
+ * @param {string}   params.otp
+ * @param {string[]} params.changedSlots          - e.g. ['before', 'after', 'health']
+ * @param {string}   params.goalType
+ * @param {number}   params.beforeWeight
+ * @param {number}   params.afterWeight
+ * @param {string}   params.durationText
+ * @param {string|null} params.beforeUrl          - new before photo signed URL
+ * @param {string|null} params.afterUrl           - new after photo signed URL
+ * @param {string|null} params.previousBeforeUrl  - old before photo URL (null = first upload)
+ * @param {string|null} params.previousAfterUrl   - old after photo URL (null = first upload)
+ * @param {string|null} params.healthVideoUrl     - new health video signed URL
+ * @param {string|null} params.businessVideoUrl   - new business video signed URL
+ * @param {string[]}    params.recoveredHealthIssues
+ * @param {boolean}     params.isComplete         - true if testimonial has both photos
+ */
+export function buildUnifiedSubmitEmailHtml({
+  memberName,
+  otp,
+  changedSlots,
+  goalType,
+  beforeWeight,
+  afterWeight,
+  durationText,
+  beforeUrl,
+  afterUrl,
+  previousBeforeUrl,
+  previousAfterUrl,
+  healthVideoUrl,
+  businessVideoUrl,
+  recoveredHealthIssues,
+  isComplete,
+}) {
+  const safeMember = escapeHtml(memberName);
+  const safeOtp    = formatOtpDisplay(otp);
+  const slots      = new Set(changedSlots || []);
+
+  const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
+
+  const changedBlock = buildChangedSlotsBlock(changedSlots);
+
+  const beforeDiff = slots.has('before')
+    ? buildPhotoDiffBlock(previousBeforeUrl, beforeUrl, 'Before Photo', !previousBeforeUrl)
+    : '';
+
+  const afterDiff = slots.has('after')
+    ? buildPhotoDiffBlock(previousAfterUrl, afterUrl, 'After Photo', !previousAfterUrl)
+    : '';
+
+  const currentPhotosBlock = (isComplete && beforeUrl && afterUrl && !slots.has('before') && !slots.has('after'))
+    ? buildPhotosRow(beforeUrl, afterUrl)
+    : '';
+
+  const healthVideoBlock   = slots.has('health')   ? buildVideoUpdatedRow('Health Results Video — Updated',   healthVideoUrl,   '#059669') : '';
+  const businessVideoBlock = slots.has('business') ? buildVideoUpdatedRow('Business Results Video — Updated', businessVideoUrl, '#2563eb') : '';
+
+  const statsBlock = (isComplete && beforeWeight && afterWeight)
+    ? buildStatsRow(beforeWeight, afterWeight, goalLabel)
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Testimonial Updates - Wellness Valley</title>
+  <!--[if mso]>
+  <style type="text/css">body, table, td { font-family: Arial, Helvetica, sans-serif !important; }</style>
+  <![endif]-->
+  <!--[if !mso]><!-->
+  <style type="text/css">
+    @media only screen and (max-width: 480px) {
+      .wrapper { width: 100% !important; }
+      .body-pad { padding: 14px 12px !important; }
+      .photo-img { width: 100% !important; max-width: 140px !important; height: 180px !important; }
+    }
+  </style>
+  <!--<![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#eef2f7;width:100%;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#eef2f7;">
+    <tr>
+      <td align="center" style="padding:12px 8px;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" class="wrapper" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+
+          <tr>
+            <td align="center" style="background-color:#059669;padding:16px 20px;">
+              <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.2;">Wellness Valley</p>
+              <p style="margin:4px 0 0;color:#d1fae5;font-size:12px;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">Member Testimonial Updates - Verification Required</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="body-pad" style="padding:16px 20px;">
+              <p style="margin:0 0 8px;color:#111827;font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${safeMember} has submitted updates for approval</p>
+              <p style="margin:0 0 14px;color:#4b5563;font-size:13px;line-height:1.5;font-family:Arial,Helvetica,sans-serif;">
+                Review the changes below and share the OTP with <strong style="color:#111827;">${safeMember}</strong> if approved.
+              </p>
+
+              ${changedBlock}
+              ${statsBlock}
+              ${beforeDiff}
+              ${afterDiff}
+              ${currentPhotosBlock}
+              ${healthVideoBlock}
+              ${businessVideoBlock}
+              ${buildHealthIssuesRow(recoveredHealthIssues)}
+
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:10px 0;">
+                <tr>
+                  <td align="center" style="background-color:#f0fdf4;border:2px dashed #6ee7b7;border-radius:8px;padding:14px 12px;">
+                    <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
+                    <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
+                    <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
+                    <p style="margin:0 0 4px;color:#92400e;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">Verification instructions</p>
+                    <p style="margin:0;color:#92400e;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;">
+                      1. Review all the changes listed above.<br />
+                      2. Share the OTP with <strong>${safeMember}</strong> if the updates are approved.<br />
+                      3. Member enters the OTP in the Wellness Valley app.<br />
+                      4. Do not share the OTP if the updates are not approved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="background-color:#f9fafb;border-top:1px solid #e5e7eb;padding:12px 20px;">
+              <p style="margin:0;color:#6b7280;font-size:11px;line-height:1.4;font-family:Arial,Helvetica,sans-serif;">
+                <strong style="color:#374151;">Wellness Valley Team</strong><br />
+                Automated message. Do not reply.<br />
+                Support: easy2work.india@gmail.com
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
+ * Plain-text fallback for the unified submit email.
+ */
+export function buildUnifiedSubmitEmailText({
+  memberName,
+  otp,
+  changedSlots,
+  goalType,
+  beforeWeight,
+  afterWeight,
+  durationText,
+  healthVideoUrl,
+  businessVideoUrl,
+  recoveredHealthIssues,
+  isComplete,
+}) {
+  const goalLabel   = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
+  const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
+  const slots       = new Set(changedSlots || []);
+
+  const lines = [
+    'Wellness Valley - Member Testimonial Updates',
+    '',
+    `${memberName} has submitted updates for approval.`,
+    '',
+    'WHAT CHANGED:',
+    ...(changedSlots || []).map((s) => `  - ${SLOT_LABELS[s] || s}`),
+    '',
+  ];
+
+  if (isComplete && beforeWeight && afterWeight) {
+    lines.push(`Before: ${formatWeight(beforeWeight)} kg | After: ${formatWeight(afterWeight)} kg | Goal: ${goalLabel}`);
+    if (durationText) lines.push(`Duration: ${durationText}`);
+    lines.push('');
+  }
+
+  if (slots.has('health') && healthVideoUrl)     lines.push('Health Results Video (new):', healthVideoUrl, '');
+  if (slots.has('business') && businessVideoUrl) lines.push('Business Results Video (new):', businessVideoUrl, '');
+  if (issuesPlain)                               lines.push(`Recovered Health Issues: ${issuesPlain}`, '');
+
+  lines.push(
+    `Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
+    'Valid for 24 hours',
+    '',
+    'Verification instructions:',
+    '1. Review all the changes listed above.',
+    `2. Share the OTP with ${memberName} if approved.`,
+    '3. Member enters the OTP in the Wellness Valley app.',
+    '',
+    'Wellness Valley Team',
+    'Support: easy2work.india@gmail.com',
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Subject line for the unified submit email.
+ */
+export function buildUnifiedSubmitEmailSubject({ memberName }) {
+  const safe = String(memberName ?? 'Member').replace(/[\r\n]/g, ' ').trim();
+  return `Testimonial updates from ${safe} - Verification required`;
+}

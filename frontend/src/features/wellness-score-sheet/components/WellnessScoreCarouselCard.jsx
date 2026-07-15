@@ -27,21 +27,17 @@ function useResponsiveRing() {
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
  */
-export default function WellnessScoreCarouselCard({
-  user,
-  apiBaseUrl,
-  onOpen,
-  onOpenSetup,
-  scoreData: scoreDataProp = null,
-  loading: loadingProp = null,
-  scoreSubtitle = "Today's score",
-  periodContext = null,
-}) {
+export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup,nutritionRefreshKey,onOpenSetup,scoreData,loading,scoreSubtitle,periodContext}) {
   const today = useISTToday();
   const internal = useWellnessScore({
+   
     user: scoreDataProp == null ? user : null,
+   
     apiBaseUrl,
+   
     date: today,
+    nutritionRefreshKey,
+ ,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 

@@ -3,9 +3,10 @@
  * Shows the member's result-video status and OTP verification flow.
  */
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle, Clock, Pencil, ShieldCheck, Video } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Pencil, ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
+import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 
 const STATUS_CONFIG = {
   pending: {
@@ -64,18 +65,31 @@ export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }
         </span>
       </div>
 
-      <div className="flex gap-2 flex-wrap text-xs">
-        {video.hasHealthVideo && (
-          <span className="flex items-center gap-1 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-            <Video className="h-3 w-3 text-green-600" /> Health Results
-          </span>
-        )}
-        {video.hasBusinessVideo && (
-          <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-1 text-gray-700 font-medium">
-            <Video className="h-3 w-3 text-blue-600" /> Business Results
-          </span>
-        )}
-      </div>
+      {(video.healthVideoUrl || video.businessVideoUrl) && (
+        <div className="flex gap-2">
+          {video.healthVideoUrl && (
+            <div className="flex-1">
+              <VideoThumbnailCard
+                url={video.healthVideoUrl}
+                label="Health Results"
+                accentColor="bg-green-600"
+              />
+            </div>
+          )}
+          {video.businessVideoUrl && (
+            <div className="flex-1">
+              <VideoThumbnailCard
+                url={video.businessVideoUrl}
+                label="Business Results"
+                accentColor="bg-blue-600"
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {(!video.healthVideoUrl && !video.businessVideoUrl) && (
+        <p className="text-xs text-gray-400 italic">Video links not yet available</p>
+      )}
 
       {video.videoStatus === 'verified' && video.videoVerifiedAt && (
         <p className="text-xs text-green-600 font-medium">
