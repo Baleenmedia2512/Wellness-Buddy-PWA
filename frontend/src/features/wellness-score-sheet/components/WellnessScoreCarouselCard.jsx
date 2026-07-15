@@ -26,9 +26,20 @@ function useResponsiveRing() {
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
  */
-export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup }) {
+export default function WellnessScoreCarouselCard({
+  user,
+  apiBaseUrl,
+  onOpen,
+  onOpenSetup,
+  nutritionRefreshKey = 0,
+}) {
   const today = useISTToday();
-  const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
+  const { loading, data } = useWellnessScore({
+    user,
+    apiBaseUrl,
+    date: today,
+    nutritionRefreshKey,
+  });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 
   const progressPct = data?.percentage ?? 0;

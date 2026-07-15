@@ -1,23 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import { fetchDailyWellnessScore } from '../services/wellnessScore.api';
 
 /**
  * Loads daily wellness score from the backend API.
  * Clears stale data when `date` changes and refetches on app resume.
+ * When `nutritionRefreshKey` bumps (food/weight/camera saves), refetches in the
+ * background so the home carousel score stays in sync with nutrition cards.
  */
-export function useWellnessScore({ user, apiBaseUrl, date }) {
+export function useWellnessScore({ user, apiBaseUrl, date, nutritionRefreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async ({ background = false } = {}) => {
     if (!user) {
       setLoading(false);
       setData(null);
       return;
     }
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
     try {
       const userId = user.id || (await getUserId(user));
@@ -26,9 +28,9 @@ export function useWellnessScore({ user, apiBaseUrl, date }) {
       setData(score);
     } catch (err) {
       setError(err?.message || 'Failed to load wellness score');
-      setData(null);
+      if (!background) setData(null);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [user, apiBaseUrl, date]);
 
@@ -41,6 +43,16 @@ export function useWellnessScore({ user, apiBaseUrl, date }) {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Food/weight/camera saves bump nutritionRefreshKey via NutritionRefreshContext.
+  const activityRefreshMounted = useRef(false);
+  useEffect(() => {
+    if (!activityRefreshMounted.current) {
+      activityRefreshMounted.current = true;
+      return;
+    }
+    reload({ background: true });
+  }, [nutritionRefreshKey, reload]);
 
   // Foreground resume — pick up new IST day without requiring a full reload.
   useEffect(() => {

@@ -53,6 +53,8 @@ export default function HomeNutritionCarousel({
     apiBaseUrl,
     resolveUserId,
     nutritionRefreshKey,
+    // Skip refetch on Home remount unless a newer async activity log exists.
+    enableActivityLogGate: true,
   });
   // Fetch today's watch-burned calories so the Calories card shows the correct
   // net value (food consumed − exercise calories) even from the home screen.
@@ -77,9 +79,10 @@ export default function HomeNutritionCarousel({
         apiBaseUrl={apiBaseUrl}
         onOpen={onOpenWellnessScore}
         onOpenSetup={onOpenWellnessScoreSetup}
+        nutritionRefreshKey={nutritionRefreshKey}
       />
     );
-  }, [user, apiBaseUrl, onOpenWellnessScore, onOpenWellnessScoreSetup]);
+  }, [user, apiBaseUrl, onOpenWellnessScore, onOpenWellnessScoreSetup, nutritionRefreshKey]);
 
   if (!user) return null;
 

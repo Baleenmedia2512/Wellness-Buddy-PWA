@@ -1,27 +1,25 @@
 /**
  * CoachTestimonialsPage.jsx
- * World-class unified testimonials management for coaches.
+ * Unified testimonials card view for every user.
  *
  * Unified per-member card shows ALL 5 slots:
- *   â€¢ Before photo Â· After photo Â· Health video Â· Business video Â· Recovered health issues
+ *   • Before photo · After photo · Health video · Business video · Recovered health issues
  *
- * Three upload-completeness filters (no photo/video split):
- *   âœ… Fully Uploaded | ðŸ”¶ Partial Upload | â¬œ Not Uploaded
- *
- * Team scope: Mine | Direct | Full  (unchanged)
- * Search bar (unchanged)
+ * With downline: Mine | Direct | Full + search + upload filters.
+ * Without downline: own card only (no Direct/Full/search/filters).
  *
  * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, CheckCircle, CircleDot, Clock, Mail, RefreshCw, Users, Video,
+  AlertCircle, ArrowLeft, ArrowRight, CheckCircle, CircleDot, Clock, Mail, Pencil, RefreshCw, ShieldCheck, Users, Video,
   Play, X, HeartPulse, Maximize2, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
-import { listForCoach, getMyTestimonial, getTeamTestimonialReport } from '../services/testimonialApi.js';
+import { listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport } from '../services/testimonialApi.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
+import OtpInline from './OtpInline.jsx';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
@@ -315,7 +313,17 @@ function UploadFilterChip({ filterKey, count, activeFilter, onToggle }) {
 
 // â”€â”€ Per-member unified card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function MemberCard({ row, teamStats }) {
+function MemberCard({
+  row,
+  teamStats,
+  editable = false,
+  onEditBefore,
+  onEditAfter,
+  onEditHealth,
+  onEditBusiness,
+  onEditIssues,
+  onOtpVerified,
+}) {
   const { user, testimonial } = row;
   const { level, filledCount, totalSlots } = computeMemberCompleteness(row);
 
@@ -336,7 +344,6 @@ function MemberCard({ row, teamStats }) {
 
   return (
     <div className={`rounded-2xl border-2 ${borderCls} ${bgCls} p-4 space-y-3 shadow-sm`}>
-
       {/* Header */}
       <div className="flex items-start gap-3">
         {user.profileImage ? (
@@ -355,11 +362,11 @@ function MemberCard({ row, teamStats }) {
         </div>
       </div>
 
-      {/* Photos */}
-      {testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)) && (
+      {/* Photos — always show before/after slots when editable (Mine) */}
+      {(editable || (testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)))) && (
         <div className="flex gap-2">
-          {testimonial.beforeImageUrl && (
-            <div className="flex-1 text-center">
+          <div className="flex-1 text-center">
+            {testimonial?.beforeImageUrl ? (
               <button
                 type="button"
                 onClick={() => setExpandedPhoto({ url: testimonial.beforeImageUrl, label: `${user.userName} — Before (${testimonial.beforeWeightKg} kg)` })}
@@ -375,14 +382,29 @@ function MemberCard({ row, teamStats }) {
                   <Maximize2 className="h-3 w-3" />
                 </span>
               </button>
-              <div className="mt-1 space-y-0.5">
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">BEFORE</p>
-                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.beforeWeightKg} kg</p>
+            ) : (
+              <div className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border border-dashed border-gray-200`}>
+                <AlertCircle className="h-5 w-5 text-gray-300" />
               </div>
+            )}
+            <div className="mt-1 space-y-0.5">
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">BEFORE</p>
+              {testimonial?.beforeWeightKg != null && (
+                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.beforeWeightKg} kg</p>
+              )}
+              {editable && onEditBefore && (
+                <button
+                  type="button"
+                  onClick={onEditBefore}
+                  className="mt-1 inline-flex items-center gap-1 mx-auto px-2.5 py-1 rounded-full border border-gray-200 bg-white text-[10px] font-bold text-gray-600 hover:border-green-400 hover:text-green-700 transition-colors"
+                >
+                  <Pencil className="h-3 w-3" /> {testimonial?.beforeImageUrl ? 'Edit' : 'Add'}
+                </button>
+              )}
             </div>
-          )}
-          {hasAfter && testimonial.afterImageUrl && (
-            <div className="flex-1 text-center">
+          </div>
+          <div className="flex-1 text-center">
+            {hasAfter && testimonial?.afterImageUrl ? (
               <button
                 type="button"
                 onClick={() => setExpandedPhoto({ url: testimonial.afterImageUrl, label: `${user.userName} — After (${testimonial.afterWeightKg} kg)` })}
@@ -398,13 +420,37 @@ function MemberCard({ row, teamStats }) {
                   <Maximize2 className="h-3 w-3" />
                 </span>
               </button>
-              <div className="mt-1 space-y-0.5">
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">AFTER</p>
-                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.afterWeightKg} kg</p>
+            ) : (
+              <div className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border border-dashed border-gray-200`}>
+                <AlertCircle className="h-5 w-5 text-gray-300" />
               </div>
+            )}
+            <div className="mt-1 space-y-0.5">
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">AFTER</p>
+              {hasAfter && testimonial?.afterWeightKg != null && (
+                <p className="text-[11px] text-gray-700 font-semibold">{testimonial.afterWeightKg} kg</p>
+              )}
+              {editable && onEditAfter && (
+                <button
+                  type="button"
+                  onClick={onEditAfter}
+                  className="mt-1 inline-flex items-center gap-1 mx-auto px-2.5 py-1 rounded-full border border-gray-200 bg-white text-[10px] font-bold text-gray-600 hover:border-purple-400 hover:text-purple-700 transition-colors"
+                >
+                  <Pencil className="h-3 w-3" /> {hasAfter && testimonial?.afterImageUrl ? 'Edit' : 'Add'}
+                </button>
+              )}
             </div>
-          )}
+          </div>
         </div>
+      )}
+
+      {/* Photo OTP — directly under Before/After images (Mine, when pending) */}
+      {editable && testimonial?.status === 'pending' && testimonial?.id && (
+        <OtpInline
+          testimonialId={testimonial.id}
+          type="photo"
+          onVerified={onOtpVerified}
+        />
       )}
 
       {/* Stats chips */}
@@ -461,30 +507,68 @@ function MemberCard({ row, teamStats }) {
         </div>
       )}
 
-      {/* Videos */}
-      {testimonial && (
+      {/* Videos — always show on Mine so Edit/Add is available */}
+      {(editable || testimonial) && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
             <Video className="h-3 w-3" /> Result Videos
           </p>
-          <div className="flex flex-wrap gap-2">
-            <VideoThumbnailBtn
-              url={testimonial.healthVideoUrl ?? null}
-              label="Health Results"
-              iconColor="text-green-600"
-            />
-            <VideoThumbnailBtn
-              url={testimonial.businessVideoUrl ?? null}
-              label="Business Results"
-              iconColor="text-blue-600"
-            />
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="inline-flex items-center gap-1">
+              <VideoThumbnailBtn
+                url={testimonial?.healthVideoUrl ?? null}
+                label="Health Results"
+                iconColor="text-green-600"
+              />
+              {editable && onEditHealth && (
+                <button
+                  type="button"
+                  onClick={onEditHealth}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-gray-200 bg-white text-[10px] font-bold text-gray-600 hover:border-green-400 hover:text-green-700 transition-colors"
+                >
+                  <Pencil className="h-3 w-3" /> {testimonial?.healthVideoUrl ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+            <div className="inline-flex items-center gap-1">
+              <VideoThumbnailBtn
+                url={testimonial?.businessVideoUrl ?? null}
+                label="Business Results"
+                iconColor="text-blue-600"
+              />
+              {editable && onEditBusiness && (
+                <button
+                  type="button"
+                  onClick={onEditBusiness}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-gray-200 bg-white text-[10px] font-bold text-gray-600 hover:border-blue-400 hover:text-blue-700 transition-colors"
+                >
+                  <Pencil className="h-3 w-3" /> {testimonial?.businessVideoUrl ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
           </div>
-          {testimonial.videoStatus === 'verified' && (
+          {testimonial?.videoStatus === 'verified' && (
             <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
-              <CheckCircle className="h-3 w-3" /> Videos verified
+              <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
             </p>
           )}
-          {testimonial.videoStatus === 'pending' && (
+          {/* Video OTP under Result Videos (Mine) — same block as Verify Your Videos */}
+          {editable && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+            <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
+              </p>
+              <p className="text-xs text-gray-500 pb-1">
+                One OTP covers both uploaded videos. Ask your coach for the code they received by email.
+              </p>
+              <OtpInline
+                testimonialId={testimonial.id}
+                type="video"
+                onVerified={onOtpVerified}
+              />
+            </div>
+          )}
+          {!editable && testimonial?.videoStatus === 'pending' && (
             <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
@@ -492,12 +576,23 @@ function MemberCard({ row, teamStats }) {
         </div>
       )}
 
-      {/* Recovered health issues */}
-      {testimonial && (
+      {/* Recovered health issues — always show on Mine */}
+      {(editable || testimonial) && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <HeartPulse className="h-3 w-3" /> Recovered Health Issues
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+              <HeartPulse className="h-3 w-3" /> Recovered Health Issues
+            </p>
+            {editable && onEditIssues && (
+              <button
+                type="button"
+                onClick={onEditIssues}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 bg-white text-[10px] font-bold text-gray-600 hover:border-rose-400 hover:text-rose-700 transition-colors shrink-0"
+              >
+                <Pencil className="h-3 w-3" /> {issues.length > 0 ? 'Edit' : 'Add'}
+              </button>
+            )}
+          </div>
           {issues.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {issues.map((issue) => (
@@ -512,16 +607,16 @@ function MemberCard({ row, teamStats }) {
         </div>
       )}
 
-      {/* OTP hint */}
-      {testimonial?.status === 'pending' && (
+      {/* OTP hint — team members only (Mine uses inline OTP under Before) */}
+      {!editable && testimonial?.status === 'pending' && (
         <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center flex items-center justify-center gap-1.5">
           <Mail className="h-3.5 w-3.5 shrink-0" />
           OTP sent to your email — share it with {user.userName} to verify
         </p>
       )}
 
-      {/* No testimonial */}
-      {!testimonial && (
+      {/* No testimonial — team view only (Mine always has Add slots above) */}
+      {!editable && !testimonial && (
         <div className="flex items-center gap-2 py-1">
           <AlertCircle className="h-4 w-4 text-gray-400 flex-shrink-0" />
           <p className="text-xs text-gray-500 italic">No testimonial uploaded yet</p>
@@ -536,15 +631,16 @@ function MemberCard({ row, teamStats }) {
 }
 
 
-export default function CoachTestimonialsPage({ user }) {
+export default function CoachTestimonialsPage({ user, onEditOwnSlot, reloadSignal = 0 }) {
   const [directRows, setDirectRows]   = useState([]);
   const [fullRows,   setFullRows]     = useState([]);
   const [mineRow,    setMineRow]      = useState(null);
   const [loading,    setLoading]      = useState(true);
   const [error,      setError]        = useState(null);
+  const [hasDownline, setHasDownline] = useState(false);
 
   const [uploadFilter,          setUploadFilter]          = useState(UPLOAD_FILTERS.ALL);
-  const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.DIRECT);
+  const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.MINE);
   const [searchQuery,           setSearchQuery]           = useState('');
   const [isSearchOpen,          setIsSearchOpen]          = useState(false);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
@@ -555,27 +651,35 @@ export default function CoachTestimonialsPage({ user }) {
 
   const buildMineRow = useCallback(async () => {
     if (!coachId) return null;
+    const userPayload = {
+      userId:       coachId,
+      userName:     user?.userName || user?.displayName || user?.name || 'You',
+      profileImage: user?.profileImage || user?.photoURL || null,
+      phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
+    };
     try {
-      const testimonial = await getMyTestimonial(coachId);
-      return {
-        user: {
-          userId:       coachId,
-          userName:     user?.userName || user?.displayName || user?.name || 'You',
-          profileImage: user?.profileImage || user?.photoURL || null,
-          phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
-        },
-        testimonial: testimonial || null,
+      const [testimonial, video] = await Promise.all([
+        getMyTestimonial(coachId),
+        getMyVideoTestimonial(coachId).catch(() => null),
+      ]);
+      if (!testimonial && !video) {
+        return { user: userPayload, testimonial: null };
+      }
+      // Merge video verification fields so Mine can show "Videos verified"
+      const merged = {
+        ...(testimonial || {
+          healthVideoUrl: null,
+          businessVideoUrl: null,
+          status: 'incomplete',
+          recoveredHealthIssues: [],
+        }),
+        id:              testimonial?.id ?? video?.testimonialId ?? null,
+        videoStatus:     video?.videoStatus ?? testimonial?.videoStatus ?? 'none',
+        videoVerifiedAt: video?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
       };
+      return { user: userPayload, testimonial: merged };
     } catch {
-      return {
-        user: {
-          userId:       coachId,
-          userName:     user?.userName || user?.displayName || user?.name || 'You',
-          profileImage: user?.profileImage || user?.photoURL || null,
-          phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
-        },
-        testimonial: null,
-      };
+      return { user: userPayload, testimonial: null };
     }
   }, [coachId, user]);
 
@@ -584,14 +688,21 @@ export default function CoachTestimonialsPage({ user }) {
     setLoading(true);
     setError(null);
     try {
-      const [direct, mine, full] = await Promise.all([
-        listForCoach(coachId, TEAM_SCOPES.DIRECT),
+      const [directResult, mine, fullResult] = await Promise.all([
+        listForCoach(coachId, TEAM_SCOPES.DIRECT).catch(() => []),
         buildMineRow(),
-        listForCoach(coachId, TEAM_SCOPES.FULL),
+        listForCoach(coachId, TEAM_SCOPES.FULL).catch(() => []),
       ]);
-      setDirectRows(direct || []);
+      const direct = Array.isArray(directResult) ? directResult : [];
+      const full   = Array.isArray(fullResult) ? fullResult : [];
+      const downline = direct.length > 0 || full.length > 0;
+      setDirectRows(direct);
       setMineRow(mine);
-      setFullRows(full || []);
+      setFullRows(full);
+      setHasDownline(downline);
+      // Members with no team stay on Mine; coaches with downline keep current scope
+      // unless we just learned they have no downline.
+      if (!downline) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       setError(err.message || 'Failed to load testimonials');
     } finally {
@@ -602,16 +713,35 @@ export default function CoachTestimonialsPage({ user }) {
   useEffect(() => { load(); }, [load]);
 
   const loadTeamReport = useCallback(async () => {
-    if (!coachId) return;
+    if (!coachId || !hasDownline) {
+      setTeamPerformanceByUserId({});
+      return;
+    }
     try {
       const report = await getTeamTestimonialReport(coachId);
       setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
     } catch {
       setTeamPerformanceByUserId({});
     }
-  }, [coachId]);
+  }, [coachId, hasDownline]);
 
   useEffect(() => { loadTeamReport(); }, [loadTeamReport]);
+
+  // Soft-refresh Mine after edit modal so pending OTP UI appears (no full loading flash)
+  useEffect(() => {
+    if (!reloadSignal) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const mine = await buildMineRow();
+        if (!cancelled) setMineRow(mine);
+        loadTeamReport();
+      } catch {
+        // keep existing card data if soft refresh fails
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reloadSignal, buildMineRow, loadTeamReport]);
 
   useEffect(() => {
     setSearchQuery('');
@@ -620,13 +750,13 @@ export default function CoachTestimonialsPage({ user }) {
     setUploadFilter(UPLOAD_FILTERS.ALL);
   }, [teamScope]);
 
-  // â”€â”€ Derived state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived state ──────────────────────────────────────────────────────────
 
   const scopeRows = useMemo(() => {
-    if (teamScope === TEAM_SCOPES.MINE)   return mineRow ? [mineRow] : [];
-    if (teamScope === TEAM_SCOPES.FULL)   return fullRows;
+    if (!hasDownline || teamScope === TEAM_SCOPES.MINE) return mineRow ? [mineRow] : [];
+    if (teamScope === TEAM_SCOPES.FULL) return fullRows;
     return directRows;
-  }, [teamScope, mineRow, directRows, fullRows]);
+  }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
   const teamScopeCounts = useMemo(
     () => countRowsByTeamScope(mineRow, directRows, fullRows),
@@ -650,7 +780,7 @@ export default function CoachTestimonialsPage({ user }) {
     [uploadFilteredRows, searchQuery],
   );
 
-  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleUploadToggle = useCallback((next) => {
     setUploadFilter((current) => toggleStatusFilter(current, next));
@@ -704,6 +834,8 @@ export default function CoachTestimonialsPage({ user }) {
 
   const hasScopeData    = scopeRows.length > 0;
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
+  const showTeamChrome  = hasDownline;
+  const isMineScope     = !hasDownline || teamScope === TEAM_SCOPES.MINE;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -712,7 +844,9 @@ export default function CoachTestimonialsPage({ user }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-green-700" />
-          <h1 className="text-lg font-bold text-gray-900">Team Testimonials</h1>
+          <h1 className="text-lg font-bold text-gray-900">
+            {showTeamChrome ? 'Team Testimonials' : 'My Transformation'}
+          </h1>
         </div>
         <TouchFeedbackButton
           onClick={() => { load(); loadTeamReport(); }}
@@ -724,8 +858,8 @@ export default function CoachTestimonialsPage({ user }) {
         </TouchFeedbackButton>
       </div>
 
-      {/* Team scope */}
-      {!loading && (
+      {/* Team scope — only when user has a downline */}
+      {!loading && showTeamChrome && (
         <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Team scope">
           {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
             const isActive  = teamScope === value;
@@ -749,47 +883,46 @@ export default function CoachTestimonialsPage({ user }) {
         </div>
       )}
 
-      {/* Search */}
-      {!loading && hasScopeData && (
-        <TestimonialSearchBar
-          value={searchQuery}
-          onChange={handleSearchChange}
-          suggestions={suggestions}
-          isOpen={isSearchOpen}
-          onOpenChange={setIsSearchOpen}
-          highlightedIndex={highlightedSuggestion}
-          onHighlightChange={setHighlightedSuggestion}
-          onSelectSuggestion={handleSelectSuggestion}
-          onKeyDown={handleSearchKeyDown}
-        />
-      )}
+      {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
+      {!loading && showTeamChrome && hasScopeData && !isMineScope && (
+        <>
+          <TestimonialSearchBar
+            value={searchQuery}
+            onChange={handleSearchChange}
+            suggestions={suggestions}
+            isOpen={isSearchOpen}
+            onOpenChange={setIsSearchOpen}
+            highlightedIndex={highlightedSuggestion}
+            onHighlightChange={setHighlightedSuggestion}
+            onSelectSuggestion={handleSelectSuggestion}
+            onKeyDown={handleSearchKeyDown}
+          />
 
-      {/* Upload completeness filter chips */}
-      {!loading && hasScopeData && (
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
-          <UploadFilterChip
-            filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
-            count={uploadCounts.fully_uploaded}
-            activeFilter={uploadFilter}
-            onToggle={handleUploadToggle}
-          />
-          <UploadFilterChip
-            filterKey={UPLOAD_FILTERS.PARTIAL}
-            count={uploadCounts.partial_upload}
-            activeFilter={uploadFilter}
-            onToggle={handleUploadToggle}
-          />
-          <UploadFilterChip
-            filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
-            count={uploadCounts.not_uploaded}
-            activeFilter={uploadFilter}
-            onToggle={handleUploadToggle}
-          />
-        </div>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
+            <UploadFilterChip
+              filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
+              count={uploadCounts.fully_uploaded}
+              activeFilter={uploadFilter}
+              onToggle={handleUploadToggle}
+            />
+            <UploadFilterChip
+              filterKey={UPLOAD_FILTERS.PARTIAL}
+              count={uploadCounts.partial_upload}
+              activeFilter={uploadFilter}
+              onToggle={handleUploadToggle}
+            />
+            <UploadFilterChip
+              filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
+              count={uploadCounts.not_uploaded}
+              activeFilter={uploadFilter}
+              onToggle={handleUploadToggle}
+            />
+          </div>
+        </>
       )}
 
       {/* States */}
-      {loading && <LoadingSpinner message="Loading team testimonials…" />}
+      {loading && <LoadingSpinner message="Loading testimonials…" />}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
@@ -798,7 +931,9 @@ export default function CoachTestimonialsPage({ user }) {
       {!loading && !error && !hasScopeData && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No team members found</p>
+          <p className="font-medium">
+            {showTeamChrome ? 'No team members found' : 'Unable to load your transformation'}
+          </p>
         </div>
       )}
 
@@ -817,15 +952,23 @@ export default function CoachTestimonialsPage({ user }) {
           row={row}
           teamStats={resolveRowTeamUploadPerformance({
             row,
-            teamScope,
+            teamScope: isMineScope ? TEAM_SCOPES.MINE : teamScope,
             loggedInCoachId: coachId,
             teamPerformanceByUserId,
             reportType: 'photo',
           })}
+          editable={isMineScope && typeof onEditOwnSlot === 'function'}
+          onEditBefore={isMineScope ? () => onEditOwnSlot?.('before') : undefined}
+          onEditAfter={isMineScope ? () => onEditOwnSlot?.('after') : undefined}
+          onEditHealth={isMineScope ? () => onEditOwnSlot?.('health') : undefined}
+          onEditBusiness={isMineScope ? () => onEditOwnSlot?.('business') : undefined}
+          onEditIssues={isMineScope ? () => onEditOwnSlot?.('issues') : undefined}
+          onOtpVerified={isMineScope ? () => { load(); loadTeamReport(); } : undefined}
         />
       ))}
     </div>
   );
 }
+
 
 
