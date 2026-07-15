@@ -6715,20 +6715,25 @@ function WellnessValleyApp() {
             return o;
           };
 
+          const preserveMacro = (v) =>
+            typeof v === "number" && Number.isFinite(v) ? v : 0;
+          const roundMacroInt = (v) =>
+            typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0;
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
-              calories: Math.round(total.calories || 0),
-              protein: Math.round(total.protein || 0),
-              carbs: Math.round(total.carbs || 0),
-              fat: Math.round(total.fat || 0),
-              fiber: Math.round(total.fiber || 0),
+              calories: roundMacroInt(total.calories),
+              protein: preserveMacro(total.protein),
+              carbs: preserveMacro(total.carbs),
+              fat: preserveMacro(total.fat),
+              fiber: preserveMacro(total.fiber),
               // Persist the AI's invisible micronutrients so the backend
               // saves TotalSugar / TotalSodium / TotalCholesterol instead
               // of NULL. See aggregateFoodTotals + bug report.
-              sugar: Math.round(total.sugar || 0),
-              sodium: Math.round(total.sodium || 0),
-              cholesterol: Math.round(total.cholesterol || 0),
+              sugar: preserveMacro(total.sugar),
+              sodium: roundMacroInt(total.sodium),
+              cholesterol: roundMacroInt(total.cholesterol),
               // Carb-weighted Glycemic Index (intrinsic, never summed).
               glycemic_index: computedTotalGI,
               // 17 vitamins/minerals (from enrichMicronutrients + Gemini).
@@ -6747,24 +6752,19 @@ function WellnessValleyApp() {
                 ? "medium"
                 : "low",
             detailedItems: foods.map((food) => {
+              const n = food.nutrition || food;
               // ?? Extract nutrition values from the corrected food object
               const nutritionValues = {
-                calories: Math.round(
-                  food.nutrition?.calories || food.calories || 0,
-                ),
-                protein: Math.round(
-                  food.nutrition?.protein || food.protein || 0,
-                ),
-                carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
-                fat: Math.round(food.nutrition?.fat || food.fat || 0),
-                fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+                calories: roundMacroInt(n.calories),
+                protein: preserveMacro(n.protein),
+                carbs: preserveMacro(n.carbs),
+                fat: preserveMacro(n.fat),
+                fiber: preserveMacro(n.fiber),
                 // Carry sugar/sodium/cholesterol through to the save payload
                 // so they reach food_nutrition_data_table instead of NULL.
-                sugar: Math.round(food.nutrition?.sugar || food.sugar || 0),
-                sodium: Math.round(food.nutrition?.sodium || food.sodium || 0),
-                cholesterol: Math.round(
-                  food.nutrition?.cholesterol || food.cholesterol || 0,
-                ),
+                sugar: preserveMacro(n.sugar),
+                sodium: roundMacroInt(n.sodium),
+                cholesterol: roundMacroInt(n.cholesterol),
                 // GI is intrinsic to the food (not summed); preserve as-is.
                 glycemic_index:
                   (food.nutrition?.glycemic_index ?? food.glycemic_index) !=
@@ -6797,6 +6797,10 @@ function WellnessValleyApp() {
                 correctionSource: food.correctionSource, // ?? Track correction source
                 correctionMetadata: food.correctionMetadata, // ?? Full correction metadata
                 portionDescription: food.portion || "Unknown portion",
+                weight_g:
+                  typeof food.weight_g === "number" ? food.weight_g : null,
+                volume_ml:
+                  typeof food.volume_ml === "number" ? food.volume_ml : null,
                 estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
                 unit: food.unit || (food.volume_ml ? "ml" : "g"),
                 isLiquid: food.isLiquid || false,

@@ -11,6 +11,26 @@ const MICRO_KEYS = [
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
+const finiteNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** Resolve powder weight (g) and prepared volume (ml) without conflating the two. */
+const resolveWeightAndVolume = (item) => {
+  const weightG = finiteNum(item.weight_g);
+  const volumeMl = finiteNum(item.volume_ml);
+  if (weightG != null || volumeMl != null) {
+    return { weight_g: weightG, volume_ml: volumeMl };
+  }
+
+  const est = finiteNum(item.estimatedWeight);
+  const unit = item.unit || 'g';
+  if (est != null) {
+    if (unit === 'ml') return { weight_g: null, volume_ml: est };
+    return { weight_g: est, volume_ml: null };
+  }
+
+  return { weight_g: 100, volume_ml: null };
+};
+
 const pickMicros = (src) => {
   const out = {};
   for (const k of MICRO_KEYS) out[k] = num(src?.[k]);
@@ -32,6 +52,7 @@ const macros = (src) => ({
 
 const detailedItemToFood = (item) => {
   const n = item.nutrition || {};
+  const { weight_g, volume_ml } = resolveWeightAndVolume(item);
   return {
     name: item.name || 'Unknown Food',
     // 🔴 Preserve correction metadata for DB persistence.
@@ -40,9 +61,9 @@ const detailedItemToFood = (item) => {
     correctionSource: item.correctionSource || null,
     correctionMetadata: item.correctionMetadata || null,
     portion: item.portionDescription || item.portion || '1 serving',
-    weight_g: typeof item.estimatedWeight === 'number' ? item.estimatedWeight : (item.weight_g || 100),
-    volume_ml: item.volume_ml || null,
-    unit: item.unit || 'g',
+    weight_g,
+    volume_ml,
+    unit: item.unit || (volume_ml != null ? 'ml' : 'g'),
     isLiquid: item.isLiquid || false,
     nutrition: {
       calories: item.calories || n.calories || 0,
