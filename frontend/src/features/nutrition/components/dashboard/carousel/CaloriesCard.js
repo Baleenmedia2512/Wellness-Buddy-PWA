@@ -1,5 +1,6 @@
 import React from 'react';
 import { Flame, Utensils, User } from 'lucide-react';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * CaloriesCard — Mobile-First Compact Card 1 of the Nutrition Carousel.
@@ -119,7 +120,7 @@ const MiniProgressBar = ({ percentage, color }) => {
   );
 };
 
-const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPercent }) => {
+const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPercent, periodContext }) => {
   const isExceed = progressPercent > 100;
   // `net` = consumed − exercise; when exceeded, show net overage (not raw food overage).
   const exceeded = Math.max(0, (net ?? Math.max(0, consumed - exercise)) - target);
@@ -128,6 +129,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
     <div className="h-full flex items-center justify-center py-2">
       {/* Compact Card Container */}
       <div className="bg-white rounded-xl shadow-lg p-3 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
@@ -147,7 +149,9 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
 
         {/* Formula */}
         <p className="text-[9px] text-gray-500 text-center mb-1.5">
-          Remaining = Goal - Food + Exercise
+          {periodContext?.isMultiDay
+            ? 'Progress = total food − total exercise vs period calorie goal'
+            : 'Remaining = Goal − Food + Exercise'}
         </p>
 
         {/* Main Section — Circle + Remaining */}
@@ -175,7 +179,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-blue-50 flex items-center justify-center">
               <User className="w-3.5 h-3.5 text-blue-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">Calories Limit</p>
+            <p className="text-[10px] text-gray-500 mb-0">{periodContext?.goalLabel ?? 'Calories limit'}</p>
             <p className="text-xs font-bold text-gray-900">{target.toLocaleString()}</p>
           </div>
 
@@ -184,7 +188,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
               <Utensils className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">Food</p>
+            <p className="text-[10px] text-gray-500 mb-0">{periodContext?.achievedLabel ?? 'Food'}</p>
             <p className="text-xs font-bold text-gray-900">{consumed.toLocaleString()}</p>
           </div>
 
@@ -193,7 +197,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
               <Flame className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">Exercise</p>
+            <p className="text-[10px] text-gray-500 mb-0">Exercise (total)</p>
             <p className="text-xs font-bold text-gray-900">{exercise.toLocaleString()}</p>
           </div>
         </div>

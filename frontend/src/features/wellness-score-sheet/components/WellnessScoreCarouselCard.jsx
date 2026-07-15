@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, Settings, Trophy } from 'lucide-react';
 import CircularProgress from '../../nutrition/components/dashboard/carousel/CircularProgress';
+import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/CarouselPeriodHeader';
 import { useISTToday } from '../hooks/useISTToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
@@ -26,10 +27,26 @@ function useResponsiveRing() {
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
  */
-export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, onOpenSetup }) {
+export default function WellnessScoreCarouselCard({
+  user,
+  apiBaseUrl,
+  onOpen,
+  onOpenSetup,
+  scoreData: scoreDataProp = null,
+  loading: loadingProp = null,
+  scoreSubtitle = "Today's score",
+  periodContext = null,
+}) {
   const today = useISTToday();
-  const { loading, data } = useWellnessScore({ user, apiBaseUrl, date: today });
+  const internal = useWellnessScore({
+    user: scoreDataProp == null ? user : null,
+    apiBaseUrl,
+    date: today,
+  });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
+
+  const loading = loadingProp ?? internal.loading;
+  const data = scoreDataProp ?? internal.data;
 
   const progressPct = data?.percentage ?? 0;
   const earned = Math.round(data?.totalEarned ?? 0);
@@ -61,6 +78,7 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
             : 'Wellness score loading. Tap for full breakdown.'
         }
       >
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header — compact */}
         <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
@@ -103,14 +121,17 @@ export default function WellnessScoreCarouselCard({ user, apiBaseUrl, onOpen, on
 
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-700 sm:text-[10px]">
-              Today&apos;s score
+              {scoreSubtitle}
+            </p>
+            <p className="text-[9px] text-gray-500">
+              {periodContext?.achievedLabel ?? 'Achieved'}
             </p>
             <p className="mt-0.5 text-4xl font-black leading-none tabular-nums tracking-tight text-gray-900 sm:text-[2.75rem]">
               {hasData ? earned.toLocaleString() : '—'}
             </p>
             <p className="mt-1 text-xs font-semibold tabular-nums leading-tight text-gray-500 sm:text-sm">
-              of
-              {' '}
+              {periodContext?.goalLabel ?? 'Goal'}
+              {': '}
               <span className="text-lg font-bold text-gray-800 sm:text-xl">
                 {hasData ? possible.toLocaleString() : '—'}
               </span>

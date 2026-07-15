@@ -1,6 +1,7 @@
 import React from 'react';
 import { Activity, Wheat, Candy, Leaf } from 'lucide-react';
 import CircularProgress from './CircularProgress';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 const getGIZone = (gi) => {
   if (gi <= 55) return { label: 'Low', text: 'text-emerald-700' };
@@ -47,7 +48,7 @@ const GIRing = ({ gi, size = 70 }) => {
  * LowCarbCard — Card 4 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with GI, sugar, and fiber side by side.
  */
-const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, onOpenModal }) => {
+const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, periodContext, onOpenModal }) => {
   const sugarPct = Math.round((sugar.consumed / sugar.target) * 100);
   const fiberPct = Math.round(((fiber.consumed || 0) / fiber.target) * 100);
   const gi = glycemicIndex != null ? Math.round(glycemicIndex) : null;
@@ -56,6 +57,7 @@ const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -91,7 +93,9 @@ const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, onOpenModal }) => {
               {giZone ? (
                 <>
                   <p className={`text-sm font-bold ${giZone.text}`}>{giZone.label}</p>
-                  <p className="text-[10px] text-gray-500">Avg · {gi}</p>
+                  <p className="text-[10px] text-gray-500">
+                    {periodContext?.isMultiDay ? 'Period avg' : 'Avg'} · {gi}
+                  </p>
                 </>
               ) : (
                 <p className="text-[9px] text-gray-400">No data</p>
@@ -145,9 +149,9 @@ const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, onOpenModal }) => {
 
         {/* Footer — carbs summary */}
        <p className="text-[10px] text-gray-400 text-center mt-2 pt-2 border-t border-gray-100">
-  {carbs.target != null
-    ? 'Track sugar & fiber goals'
-    : 'Track your carb intake goals'}
+  {periodContext?.isMultiDay
+    ? 'Total sugar & fiber vs period goals · GI = carb-weighted period average'
+    : (carbs.target != null ? 'Track sugar & fiber goals' : 'Track your carb intake goals')}
 </p>
       </div>
     </div>

@@ -8,7 +8,6 @@ import { formatWellnessDayLabel } from '../domain/dateRange';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import WellnessScoreDayStrip from './WellnessScoreDayStrip';
-import WellnessScoreParameterHistory from './WellnessScoreParameterHistory';
 
 function scoreTone(pct) {
   if (pct >= 75) return 'from-emerald-500 to-emerald-600';
@@ -86,13 +85,6 @@ export default function WellnessScoreSheet({
             selectedDate={selectedDate || dateStr}
             onSelectDate={onSelectDate}
             today={today}
-          />
-        )}
-        {isMultiDay && historyDays.length > 1 && (
-          <WellnessScoreParameterHistory
-            days={historyDays}
-            today={today}
-            selectedDate={selectedDate || dateStr}
           />
         )}
         {loading && (

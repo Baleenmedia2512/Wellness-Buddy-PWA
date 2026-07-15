@@ -10,58 +10,12 @@
  * Extracted from NutritionDashboard.js. Behavior preserved exactly.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { parseAnalysisData } from '../services/nutritionDashboard';
+import { computeDailyStatsFromAnalyses, EMPTY_DAILY_STATS } from '../domain/dailyStatsRules';
 import * as Session from '../../../shared/services/sessionStorage';
-import { ALL_MICRONUTRIENTS } from '../domain/micronutrientRules';
-
-// camelCase dailyStats key ↔ snake_case AI key ↔ PascalCase DB column.
-// Source of truth list lives in micronutrientRules.js; this table only adds
-// the AI/DB key mapping (per-meal record fields).
-const MICRO_FIELDS = [
-  { key: 'totalVitaminA',   aiKey: 'vitamin_a',   dbCol: 'TotalVitaminA' },
-  { key: 'totalVitaminC',   aiKey: 'vitamin_c',   dbCol: 'TotalVitaminC' },
-  { key: 'totalVitaminD',   aiKey: 'vitamin_d',   dbCol: 'TotalVitaminD' },
-  { key: 'totalVitaminE',   aiKey: 'vitamin_e',   dbCol: 'TotalVitaminE' },
-  { key: 'totalVitaminK',   aiKey: 'vitamin_k',   dbCol: 'TotalVitaminK' },
-  { key: 'totalVitaminB1',  aiKey: 'vitamin_b1',  dbCol: 'TotalVitaminB1' },
-  { key: 'totalVitaminB2',  aiKey: 'vitamin_b2',  dbCol: 'TotalVitaminB2' },
-  { key: 'totalVitaminB3',  aiKey: 'vitamin_b3',  dbCol: 'TotalVitaminB3' },
-  { key: 'totalVitaminB6',  aiKey: 'vitamin_b6',  dbCol: 'TotalVitaminB6' },
-  { key: 'totalVitaminB9',  aiKey: 'vitamin_b9',  dbCol: 'TotalVitaminB9' },
-  { key: 'totalVitaminB12', aiKey: 'vitamin_b12', dbCol: 'TotalVitaminB12' },
-  { key: 'totalCalcium',    aiKey: 'calcium',     dbCol: 'TotalCalcium' },
-  { key: 'totalIron',       aiKey: 'iron',        dbCol: 'TotalIron' },
-  { key: 'totalMagnesium',  aiKey: 'magnesium',   dbCol: 'TotalMagnesium' },
-  { key: 'totalPotassium',  aiKey: 'potassium',   dbCol: 'TotalPotassium' },
-  { key: 'totalZinc',       aiKey: 'zinc',        dbCol: 'TotalZinc' },
-  { key: 'totalPhosphorus', aiKey: 'phosphorus',  dbCol: 'TotalPhosphorus' },
-];
-
-// Defensive sanity check — bumps test failures fast if the two lists diverge.
-if (process.env.NODE_ENV !== 'production' && MICRO_FIELDS.length !== ALL_MICRONUTRIENTS.length) {
-  // eslint-disable-next-line no-console
-  console.warn('[useDayAnalyses] MICRO_FIELDS out of sync with ALL_MICRONUTRIENTS');
-}
-
-const EMPTY_MICRO_STATS = MICRO_FIELDS.reduce((acc, f) => { acc[f.key] = 0; return acc; }, {});
-
-const EMPTY_STATS = {
-  totalCalories: 0,
-  totalProtein: 0,
-  totalCarbs: 0,
-  totalFat: 0,
-  totalFiber: 0,
-  totalSugar: 0,
-  totalSodium: 0,
-  totalCholesterol: 0,
-  averageGlycemicIndex: null,
-  mealCount: 0,
-  ...EMPTY_MICRO_STATS,
-};
 
 export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey = 0 }) {
   const [analyses, setAnalyses] = useState([]);
-  const [dailyStats, setDailyStats] = useState(EMPTY_STATS);
+  const [dailyStats, setDailyStats] = useState(EMPTY_DAILY_STATS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -69,90 +23,6 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
     async (date) => {
       setLoading(true);
       setError(null);
-
-      const calculateDailyStats = (dayAnalyses) => {
-        const stats = dayAnalyses.reduce(
-          (acc, analysis) => {
-            if (analysis.isUndoPlaceholder) return acc;
-            const foodData = parseAnalysisData(analysis.AnalysisData);
-            const n = foodData.nutrition || {};
-            const calories = n.calories || analysis.TotalCalories || 0;
-            const protein = n.protein || analysis.TotalProtein || 0;
-            const carbs = n.carbs || analysis.TotalCarbs || 0;
-            const fat = n.fat || analysis.TotalFat || 0;
-            const fiber = n.fiber || analysis.TotalFiber || 0;
-            // Prefer DB columns (updated by enrichment / initial save) over
-            // JSON values which may be 0 due to schema constraints in older records.
-            // `?? n.xxx ?? 0` ensures: DB non-null wins, JSON fallback when DB null.
-            const sugar = analysis.TotalSugar != null ? analysis.TotalSugar : (n.sugar ?? 0);
-            const sodium = analysis.TotalSodium != null ? analysis.TotalSodium : (n.sodium ?? 0);
-            const cholesterol = analysis.TotalCholesterol != null ? analysis.TotalCholesterol : (n.cholesterol ?? 0);
-            // GI is meal-level — read from DB column first; fallback to AnalysisData JSON
-            const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
-            let mealGI = analysis.GlycemicIndex ?? null;
-            if (mealGI == null) {
-              try {
-                const parsed = typeof analysis.AnalysisData === 'string'
-                  ? JSON.parse(analysis.AnalysisData) : analysis.AnalysisData;
-                if (parsed?.total?.glycemic_index != null) {
-                  mealGI = parsed.total.glycemic_index;
-                } else if (parsed?.nutrition?.glycemic_index != null) {
-                  mealGI = parsed.nutrition.glycemic_index;
-                } else if (parsed?.foods?.length > 0) {
-                  let giCarbs = 0, totalFoodCarbs = 0;
-                  for (const f of parsed.foods) {
-                    const fgi = f.nutrition?.glycemic_index ?? null;
-                    const fc = f.nutrition?.carbs || 0;
-                    if (fgi != null && fc > 0) { giCarbs += fgi * fc; totalFoodCarbs += fc; }
-                  }
-                  mealGI = totalFoodCarbs > 0 ? Math.round(giCarbs / totalFoodCarbs) : null;
-                }
-              } catch { /* ignore */ }
-            }
-            return {
-              totalCalories: acc.totalCalories + calories,
-              totalProtein: acc.totalProtein + protein,
-              totalCarbs: acc.totalCarbs + carbs,
-              totalFat: acc.totalFat + fat,
-              totalFiber: acc.totalFiber + fiber,
-              totalSugar: acc.totalSugar + sugar,
-              totalSodium: acc.totalSodium + sodium,
-              totalCholesterol: acc.totalCholesterol + cholesterol,
-              // Accumulate numerator and denominator for carb-weighted daily GI
-              _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealCarbs > 0 ? mealGI * mealCarbs : 0),
-              _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealCarbs > 0 ? mealCarbs : 0),
-              mealCount: acc.mealCount + 1,
-              // Micronutrients: prefer DB column (updated by enrichment / initial save),
-              // fall back to AnalysisData JSON field. Avoids `??` returning 0 from JSON
-              // when the DB column has been enriched to a real value.
-              ...MICRO_FIELDS.reduce((m, f) => {
-                const dbVal = analysis[f.dbCol];
-                const jsonVal = n[f.aiKey];
-                const val = dbVal != null ? dbVal : (jsonVal ?? 0);
-                m[f.key] = (acc[f.key] || 0) + (Number(val) || 0);
-                return m;
-              }, {}),
-            };
-          },
-          { ...EMPTY_STATS, _giCarbProduct: 0, _giTotalCarbs: 0 },
-        );
-        const averageGlycemicIndex = stats._giTotalCarbs > 0
-          ? Math.round(stats._giCarbProduct / stats._giTotalCarbs)
-          : null;
-        setDailyStats({
-          totalCalories: stats.totalCalories,
-          totalProtein: stats.totalProtein,
-          totalCarbs: stats.totalCarbs,
-          totalFat: stats.totalFat,
-          totalFiber: stats.totalFiber,
-          totalSugar: stats.totalSugar,
-          totalSodium: stats.totalSodium,
-          totalCholesterol: stats.totalCholesterol,
-          averageGlycemicIndex,
-          mealCount: stats.mealCount,
-          ...MICRO_FIELDS.reduce((m, f) => { m[f.key] = stats[f.key] || 0; return m; }, {}),
-        });
-      };
 
       try {
         const actualUserId = await resolveUserId();
@@ -219,7 +89,7 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, 
           }
 
           setAnalyses(list);
-          calculateDailyStats(list);
+          setDailyStats(computeDailyStatsFromAnalyses(list));
 
           // Stage 20 — final meal count returned
           if (_trD) {

@@ -17,6 +17,21 @@ export function addDaysYmd(dateStr, deltaDays) {
   return formatLocalDateString(d);
 }
 
+export function ymdToLocalDate(dateStr) {
+  return parseYmd(dateStr);
+}
+
+export function enumerateDatesYmd(startDate, endDate) {
+  const dates = [];
+  let cursor = startDate;
+  while (cursor <= endDate) {
+    dates.push(cursor);
+    if (cursor === endDate) break;
+    cursor = addDaysYmd(cursor, 1);
+  }
+  return dates;
+}
+
 export function resolveWellnessDateRange({
   preset,
   customStartDate,
