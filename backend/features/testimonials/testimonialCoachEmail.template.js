@@ -526,20 +526,27 @@ function buildSinglePhotoCell(url, label, isFirst) {
 function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
   if (!newUrl) return '';
 
-  const prevCell = isFirstUpload
+  // First upload — no previous photo to compare against, just show the new photo.
+  if (isFirstUpload) {
+    return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 10px 0;">
+      <tr>
+        <td>
+          <p style="margin:0 0 6px;color:#374151;font-size:11px;font-weight:700;font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(slotLabel)}</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;">
+          <p style="margin:0 0 6px;color:#047857;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">New Upload</p>
+          <img src="${escapeHtml(newUrl)}" alt="${escapeHtml(slotLabel)}" width="280" height="340" class="photo-img" style="display:block;width:280px;max-width:100%;height:340px;margin:0 auto;border:0;border-radius:6px;" />
+        </td>
+      </tr>
+    </table>`;
+  }
+
+  // Edit — show previous → new comparison only when a previous photo exists.
+  const prevCell = previousUrl
     ? `
-      <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
-          <tr>
-            <td align="center" valign="middle" height="180" style="background-color:#f3f4f6;border:1px dashed #d1d5db;border-radius:8px;padding:8px;">
-              <p style="margin:0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;font-weight:600;">First Upload</p>
-              <p style="margin:4px 0 0;color:#d1d5db;font-size:10px;font-family:Arial,Helvetica,sans-serif;">No previous photo</p>
-            </td>
-          </tr>
-        </table>
-      </td>`
-    : (previousUrl
-      ? `
       <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
@@ -550,13 +557,15 @@ function buildPhotoDiffBlock(previousUrl, newUrl, slotLabel, isFirstUpload) {
           </tr>
         </table>
       </td>`
-      : '');
+    : '';
 
-  const arrowCell = `
-    <td width="12%" valign="middle" align="center" style="padding:0 2px;font-size:18px;color:#059669;font-family:Arial,Helvetica,sans-serif;font-weight:700;">&#8594;</td>`;
+  const arrowCell = prevCell
+    ? `<td width="12%" valign="middle" align="center" style="padding:0 2px;font-size:18px;color:#059669;font-family:Arial,Helvetica,sans-serif;font-weight:700;">&#8594;</td>`
+    : '';
 
+  const newCellWidth = prevCell ? '44%' : '100%';
   const newCell = `
-    <td width="44%" valign="top" align="center" style="padding:0 0 0 0;">
+    <td width="${newCellWidth}" valign="top" align="center" style="padding:0 0 0 0;">
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
         <tr>
           <td align="center" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:4px;">
