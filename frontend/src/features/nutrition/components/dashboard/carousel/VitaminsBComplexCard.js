@@ -1,15 +1,17 @@
 import React from 'react';
 import { Zap } from 'lucide-react';
 import MicroNutrientTile from './MicroNutrientTile';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * VitaminsBComplexCard — Card 7 of the Nutrition Carousel.
  * Vitamins B1, B2, B3, B6, B9, B12. Six tiles in a 3-col × 2-row grid.
  */
-const VitaminsBComplexCard = ({ tiles, onOpenModal }) => {
+const VitaminsBComplexCard = ({ tiles, periodContext, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -37,7 +39,9 @@ const VitaminsBComplexCard = ({ tiles, onOpenModal }) => {
         </div>
 
         <p className="text-[10px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
-          Energy &amp; nervous-system support
+          {periodContext?.isMultiDay
+            ? 'Total B vitamins vs period RDA'
+            : 'Energy & nervous-system support (daily RDA)'}
         </p>
       </div>
     </div>

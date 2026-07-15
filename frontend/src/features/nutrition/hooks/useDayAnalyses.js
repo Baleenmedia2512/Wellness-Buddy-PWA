@@ -10,7 +10,7 @@
  * Extracted from NutritionDashboard.js. Behavior preserved exactly.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { parseAnalysisData } from '../services/nutritionDashboard';
+import { computeDailyStatsFromAnalyses, EMPTY_DAILY_STATS } from '../domain/dailyStatsRules';
 import * as Session from '../../../shared/services/sessionStorage';
 import { ALL_MICRONUTRIENTS } from '../domain/micronutrientRules';
 import {
@@ -88,7 +88,7 @@ export function useDayAnalyses({
   // Restore last Home snapshot instantly when remounting with no new activity log.
   const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
   const [analyses, setAnalyses] = useState(() => cachedSnapshot?.analyses ?? []);
-  const [dailyStats, setDailyStats] = useState(() => cachedSnapshot?.dailyStats ?? EMPTY_STATS);
+  const [dailyStats, setDailyStats] = useState(() => cachedSnapshot?.dailyStats ?? EMPTY_DAILY_STATS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -265,7 +265,7 @@ export function useDayAnalyses({
           }
 
           setAnalyses(list);
-          const nextStats = calculateDailyStats(list);
+          const nextStats = setDailyStats(computeDailyStatsFromAnalyses(list));
 
           // Home activity-log gate: persist snapshot so remount without a
           // newer async activity can skip the API and skip the spinner.

@@ -3,10 +3,15 @@
 import { toLocalDateString } from './analysisHelpers';
 import * as Session from '../../../../shared/services/sessionStorage';
 
+function resolveDateString(date) {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return toLocalDateString(date);
+}
+
 export async function fetchDayAnalyses({ apiBaseUrl, userId, date }) {
   if (!userId) return { success: false, list: [], error: 'no-user' };
 
-  const dateString = toLocalDateString(date);
+  const dateString = resolveDateString(date);
   const cacheBuster = Date.now();
   try {
     const res = await fetch(
