@@ -116,13 +116,13 @@ export default function BpcShareLanding({ token, baseUrl, memberName, isExpired 
   return (
     <>
       <Head>
-        <title>Body Parameters — Wellness Valley</title>
+        <title>Download Wellness Valley</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <meta name="robots" content="noindex" />
         <meta property="og:type"        content="website" />
         <meta property="og:site_name"   content="Wellness Valley" />
-        <meta property="og:title"       content={`${displayName} — Body Parameters`} />
-        <meta property="og:description" content="Your coach shared a Body Parameters card with you on Wellness Valley." />
+        <meta property="og:title"       content="Download Wellness Valley" />
+        <meta property="og:description" content={`${displayName} — Body Parameters card shared with you.`} />
         {baseUrl && <meta property="og:image" content={`${baseUrl}/wellness-valley-icon.png`} />}
         {baseUrl && token && <meta property="og:url" content={`${baseUrl}/share/bpc/${token}`} />}
       </Head>
@@ -165,7 +165,7 @@ export default function BpcShareLanding({ token, baseUrl, memberName, isExpired 
                   <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>
                     <div>1️⃣ Tap <strong>Get on Google Play</strong> below &amp; install</div>
                     <div>2️⃣ Come back to WhatsApp &amp; tap this link again</div>
-                    <div>3️⃣ Tap <strong>"I have the app — open it"</strong></div>
+                    <div>3️⃣ Tap <strong>View on Wellness Valley</strong></div>
                     <div>4️⃣ Sign in — your Height &amp; BMR auto-fill ✅</div>
                   </div>
                 </div>
@@ -175,7 +175,7 @@ export default function BpcShareLanding({ token, baseUrl, memberName, isExpired 
                   href={`wellnessvalley://share/bpc/${token}`}
                   style={{ ...primaryBtn, marginBottom: 10 }}
                 >
-                  ✅ I have the app — open it
+                  View on Wellness Valley
                 </a>
                 <a href={PLAY_STORE_URL} style={secondaryBtn}>⬇️ Get on Google Play (new user)</a>
                 <a href={APP_STORE_URL}  style={{ ...secondaryBtn, marginBottom: 0 }}>🍎 Available on the App Store</a>
