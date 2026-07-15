@@ -408,7 +408,7 @@ function MemberCard({
     const reader = new FileReader();
     reader.onload = (e) => {
       const full = e.target.result;
-      const b64  = full.replace(/^data:[/span>+;base64,/, '');
+      const b64 = full.replace(/^data:image\/[a-z]+;base64,/, '');
       if (slot === 'before') {
         setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType, durationText: testimonial?.durationText }), imageBase64: b64, previewUrl: full }));
       } else {
