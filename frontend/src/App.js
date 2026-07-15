@@ -143,11 +143,6 @@ import { UserProfileModal } from "./features/user";
 import { UserProfilePage } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
-import {
-  fetchPublicCard,
-  savePendingCard,
-  consumePendingCard,
-} from "./features/body-parameters-card";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
@@ -1362,8 +1357,6 @@ function WellnessValleyApp() {
     const SHARE_ID_RE =
       "([A-Za-z0-9]{6,10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
     const SHARE_PATH_RE = new RegExp(`/share/${SHARE_ID_RE}(?:[/?#]|$)`, "i");
-    const BPC_PATH_RE =
-      /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
@@ -1377,37 +1370,7 @@ function WellnessValleyApp() {
       return httpsMatch ? httpsMatch[1] : null;
     };
 
-    const extractBpcToken = (rawUrl) => {
-      if (!rawUrl || typeof rawUrl !== "string") return null;
-      const m = rawUrl.match(BPC_PATH_RE);
-      return m ? m[1] : null;
-    };
-
     const handleUrl = async (rawUrl) => {
-      // -- Body Parameters Card deep link -----------------------------------
-      const bpcToken = extractBpcToken(rawUrl);
-      if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
-        _suppressAutoCameraOnDeepLinkRef.current = true;
-        seenTokens.add(`bpc:${bpcToken}`);
-        try {
-          const card = await fetchPublicCard(bpcToken);
-          if (cancelled) return;
-          if (user?.id) {
-            // Already logged in: save to profile inline, no pending storage needed.
-            const { saveCardToProfile } = await import(
-              "./features/body-parameters-card"
-            );
-            await saveCardToProfile(bpcToken, user.id).catch(() => {});
-          } else {
-            // Not logged in: persist so the post-login auth handler can save it.
-            savePendingCard({ ...card, _token: bpcToken });
-          }
-        } catch {
-          // Expired / not-found: show nothing, fall through.
-        }
-        return;
-      }
-
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
       _suppressAutoCameraOnDeepLinkRef.current = true;
@@ -2936,25 +2899,6 @@ function WellnessValleyApp() {
           (async () => {
             const isActive = await checkUserStatus(user);
             if (!isActive) return; // inactive/not-found modal already triggered
-
-            // -- Consume any BPC card stored pre-login (deep link before sign-in) --
-            // Happens when: user tapped WhatsApp link ? app not logged in ? savePendingCard()
-            // was called ? user now logged in ? save height+BMR to their profile silently.
-            const bpcPending = consumePendingCard();
-            if (bpcPending?._token && user?.id) {
-              const { saveCardToProfile } = await import(
-                "./features/body-parameters-card"
-              );
-              saveCardToProfile(bpcPending._token, user.id).catch((err) => {
-                debugLog(
-                  "[BPC] post-login pending card save failed:",
-                  err?.message,
-                );
-              });
-              debugLog(
-                "? [BPC] Consumed pending card after login, height+BMR saved to profile",
-              );
-            }
 
             if (!userEmail) return;
             debugLog("?? [Auth State] Checking setup wizard status...");
@@ -7233,20 +7177,6 @@ function WellnessValleyApp() {
 
           if (isActive) {
             setUser(user);
-            // -- Consume any BPC card stored pre-login (new user from deep link) --
-            const bpcPendingSignIn = consumePendingCard();
-            if (bpcPendingSignIn?._token && user?.id) {
-              import("./features/body-parameters-card").then(
-                ({ saveCardToProfile }) => {
-                  saveCardToProfile(bpcPendingSignIn._token, user.id).catch(
-                    () => {},
-                  );
-                },
-              );
-              debugLog(
-                "? [BPC] Consumed pending card on first sign-in, height+BMR saved",
-              );
-            }
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {

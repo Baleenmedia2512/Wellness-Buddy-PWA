@@ -8,13 +8,15 @@
  * runs IN PARALLEL with the API call — making share feel instant.
  */
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Capacitor } from '@capacitor/core';
 import BodyParamsCardPreview from './BodyParamsCardPreview.jsx';
-import { precaptureShareImage, shareImageWithLink, shareTextViaWhatsApp } from '../../../shared/utils/shareUtils.js';
-import { buildShareText } from '../domain/platform-store.rules.js';
+import {
+  precaptureShareImage,
+  shareViaCapacitorAPI,
+  shareTextViaWhatsApp,
+} from '../../../shared/utils/shareUtils.js';
+import { buildShareCaptionForImage } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
-const NEEDS_IMAGE_CAPTURE = Capacitor.isNativePlatform();
 const CAPTURE_OPTS = { scale: 1.25, quality: 0.8, immediate: true };
 
 /** Wait two animation frames so the off-screen card is painted before capture. */
@@ -32,17 +34,20 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
   const firedRef          = useRef(false);
 
   const doShare = useCallback(async () => {
-    const textWithUrl    = buildShareText(shareUrl, card?.name);  // for web WhatsApp (URL in text)
-    const textWithoutUrl = buildShareText(null,     card?.name);  // for native (url passed separately)
+    const caption = buildShareCaptionForImage(card?.name, shareUrl);
     try {
-      if (NEEDS_IMAGE_CAPTURE && preCapRef.current) {
-        await shareImageWithLink(preCapRef.current, shareUrl, {
+      const dataUrl = preCapRef.current;
+      if (dataUrl) {
+        const result = await shareViaCapacitorAPI(dataUrl, {
           title:    `${card?.name || 'Body'} Parameters`,
-          text:     textWithoutUrl,
+          text:     caption,
           fileName: `wellness-body-params-${Date.now()}.jpg`,
         });
+        if (!result?.ok && !result?.dismissed) {
+          await shareTextViaWhatsApp(caption);
+        }
       } else {
-        await shareTextViaWhatsApp(textWithUrl);
+        await shareTextViaWhatsApp(caption);
       }
       debugLog('✅ [BodyParamsShare] Auto-share completed');
     } catch {
@@ -52,10 +57,9 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
     }
   }, [shareUrl, card, onClose]);
 
-  // ⚡ Phase 1 — pre-capture starts as soon as preCapCard arrives
-  // (runs IN PARALLEL with the API save; skipped on web — text-only share)
+  // Pre-capture when form data or saved card is available (web + native).
   useEffect(() => {
-    if (!preCapCard || !NEEDS_IMAGE_CAPTURE) return;
+    if (!preCapCard && !card) return;
 
     preCapRef.current = null;
     capturePromiseRef.current = (async () => {
@@ -66,22 +70,20 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
       debugLog('⚡ [BodyParamsShare] Pre-capture ready');
       return dataUrl;
     })();
-  }, [preCapCard]);
+  }, [preCapCard, card]);
 
-  // ⚡ Phase 2 — once isOpen + shareUrl arrive, share immediately
+  // Once isOpen + shareUrl arrive, share immediately.
   useEffect(() => {
     if (!isOpen || !card || !shareUrl) return;
     firedRef.current = false;
     let cancelled = false;
 
     const run = async () => {
-      if (NEEDS_IMAGE_CAPTURE) {
-        if (!preCapRef.current && capturePromiseRef.current) {
-          preCapRef.current = await capturePromiseRef.current;
-        }
-        if (!preCapRef.current && cardRef.current) {
-          preCapRef.current = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
-        }
+      if (!preCapRef.current && capturePromiseRef.current) {
+        preCapRef.current = await capturePromiseRef.current;
+      }
+      if (!preCapRef.current && cardRef.current) {
+        preCapRef.current = await precaptureShareImage(cardRef.current, CAPTURE_OPTS);
       }
 
       if (cancelled || firedRef.current) return;
@@ -104,7 +106,7 @@ const BodyParamsShareSheet = ({ isOpen, onClose, card, shareUrl, preCapCard, pre
   const displayCard = preCapCard || card;
   if (!displayCard) return null;
 
-  // Off-screen card — needed for html2canvas on native only, not visible to user.
+  // Off-screen card — captured by html2canvas for WhatsApp image share.
   return (
     <div style={{ position: 'fixed', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
       <BodyParamsCardPreview ref={cardRef} card={displayCard} previousCard={previousCard} />

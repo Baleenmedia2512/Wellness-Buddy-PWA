@@ -14,6 +14,7 @@ import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
@@ -468,7 +469,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       // Extract previousCard from API response (null for fresh users).
       const { previousCard: prevCard = null, ...cardCore } = card;
 
-      const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
+      const url = buildOnboardingShareUrl(getApiBaseUrl());
 
       // Merge API response with form fallbacks so the share card always has
       // the saved measurements (API is source of truth after persist).
