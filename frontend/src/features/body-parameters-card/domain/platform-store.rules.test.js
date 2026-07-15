@@ -7,9 +7,9 @@ import {
 
 describe('platform-store.rules', () => {
   describe('buildOnboardingShareUrl', () => {
-    it('returns /app on the API host without tokens', () => {
+    it('returns /share on the API host without tokens', () => {
       expect(buildOnboardingShareUrl('https://api.example.com/'))
-        .toBe('https://api.example.com/app');
+        .toBe('https://api.example.com/share');
     });
 
     it('falls back to web landing when base is empty', () => {
@@ -21,10 +21,10 @@ describe('platform-store.rules', () => {
     it('includes member first name and host-only app path (no https)', () => {
       const text = buildShareCaptionForImage(
         'Priya Sharma',
-        'https://api.example.com/app',
+        'https://api.example.com/share',
       );
       expect(text).toContain('Priya');
-      expect(text).toContain('api.example.com/app');
+      expect(text).toContain('api.example.com/share');
       expect(text).not.toContain('https://');
     });
   });

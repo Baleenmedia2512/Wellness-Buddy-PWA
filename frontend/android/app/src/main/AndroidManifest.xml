@@ -120,10 +120,16 @@
                       android:pathPrefix="/share/" />
                 <data android:scheme="https"
                       android:host="wellness-buddy-pwa-eta.vercel.app"
-                      android:path="/app" />
+                      android:path="/share" />
                 <data android:scheme="https"
                       android:host="wellness-buddy-pwa-backend-test.vercel.app"
-                      android:path="/app" />
+                      android:path="/share" />
+                <data android:scheme="https"
+                      android:host="wellness-valley-pwa-backend-test.vercel.app"
+                      android:path="/share" />
+                <data android:scheme="https"
+                      android:host="wellness-valley-pwa-backend-test.vercel.app"
+                      android:pathPrefix="/share/" />
             </intent-filter>
 
             <!-- Custom-scheme fallback (used by the web landing page and

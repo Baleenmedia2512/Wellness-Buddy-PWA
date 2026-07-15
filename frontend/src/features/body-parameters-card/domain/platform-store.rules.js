@@ -23,8 +23,7 @@ export function getStoreLink(platform) {
 
 /**
  * Generic onboarding link shared after a Body Parameters Card is created.
- * No tokens or member data in the URL — profile data is already on team_table
- * via the member phone number entered by the coach.
+ * Uses /share (already deployed) — opens app or store; no tokens or member data.
  *
  * @param {string} [apiBaseUrl] - from getApiBaseUrl()
  * @returns {string}
@@ -32,7 +31,7 @@ export function getStoreLink(platform) {
 export function buildOnboardingShareUrl(apiBaseUrl) {
   const base = String(apiBaseUrl || process.env.REACT_APP_API_BASE_URL || '')
     .replace(/\/+$/, '');
-  if (base) return `${base}/app`;
+  if (base) return `${base}/share`;
   return STORE_LINKS.web;
 }
 

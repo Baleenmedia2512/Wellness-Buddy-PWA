@@ -1,16 +1,8 @@
 /**
- * Generic share landing page — /share (no token).
+ * Generic landing — /share (no token).
  *
- * This page is shown when WhatsApp crawls the clean share URL
- * (e.g. https://app/share) that the app sends in WhatsApp messages
- * instead of the full /share/<uuid>?n=... URL.
- *
- * Purpose: provide proper OG meta tags so the WhatsApp link preview
- * shows branded Wellness Valley content (title, description, icon)
- * rather than a blank or broken card.
- *
- * Functionality is NOT affected — the actual deep-link token is stored
- * in the app and handled natively via Android App Links / iOS Universal Links.
+ * Used for: meal-share OG previews, body-parameters onboarding link,
+ * and any WhatsApp message that needs a clean install/open-app URL.
  */
 import Head from 'next/head';
 
@@ -20,6 +12,10 @@ const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACK
 const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
 export async function getServerSideProps({ req }) {
+  const ua = req.headers['user-agent'] || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    return { redirect: { destination: APP_STORE_URL, permanent: false } };
+  }
   const proto = req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
   const host = req.headers['x-forwarded-host'] || req.headers.host || '';
   const baseUrl = `${proto}://${host}`;
@@ -30,41 +26,39 @@ export default function ShareIndex({ baseUrl }) {
   const ogImageUrl = baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null;
   const appUrl = baseUrl || 'https://wellness-buddy-pwa-eta.vercel.app';
 
+  const bootstrap = `(function(){try{
+    var ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return;
+    if (/Android/i.test(ua)) {
+      var intentUrl = 'intent://share#Intent;scheme=wellnessvalley;package=${APP_PACKAGE};end';
+      var t = setTimeout(function(){ window.location.replace('${PLAY_STORE_URL}'); }, 1200);
+      window.addEventListener('pagehide', function(){ clearTimeout(t); });
+      window.location.href = intentUrl;
+      return;
+    }
+    window.location.replace('${PLAY_STORE_URL}');
+  }catch(e){ window.location.replace('${PLAY_STORE_URL}'); }})();`;
+
   return (
     <>
       <Head>
-        <title>Wellness Valley — Health Tracking</title>
-        <meta name="description" content="Track your meals, weight, and wellness journey with Wellness Valley." />
-        <meta property="og:title" content="🌿 Wellness Valley" />
-        <meta property="og:description" content="A healthy update has been shared with you. Open the app to view it." />
+        <title>Wellness Valley</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content="Download or open Wellness Valley — your wellness tracking app." />
+        <meta property="og:title" content="Wellness Valley" />
+        <meta property="og:description" content="Download or open the Wellness Valley app." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={`${appUrl}/share`} />
         {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
         <meta name="twitter:card" content="summary" />
-        <meta name="twitter:title" content="🌿 Wellness Valley" />
-        <meta name="twitter:description" content="A healthy update has been shared with you." />
+        <meta name="twitter:title" content="Wellness Valley" />
+        <meta name="twitter:description" content="Download or open the Wellness Valley app." />
         {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
       </Head>
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#ecfdf5 0%,#fff 100%)', fontFamily: 'system-ui,sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ maxWidth: 420, width: '100%', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 20, boxShadow: '0 8px 24px rgba(16,185,129,.08)', overflow: 'hidden', textAlign: 'center' }}>
-          <div style={{ background: 'linear-gradient(135deg,#059669 0%,#10b981 100%)', padding: '32px 24px 24px' }}>
-            <img src="/wellness-valley-icon.png" alt="Wellness Valley" width={72} height={72} style={{ borderRadius: 16, marginBottom: 12 }} />
-            <h1 style={{ color: '#fff', margin: 0, fontSize: 24, fontWeight: 700 }}>Wellness Valley</h1>
-            <p style={{ color: '#d1fae5', margin: '8px 0 0', fontSize: 15 }}>Your trusted health companion</p>
-          </div>
-          <div style={{ padding: '28px 24px' }}>
-            <p style={{ color: '#374151', fontSize: 16, lineHeight: 1.6, margin: '0 0 24px' }}>
-              A health update has been shared with you. Open the Wellness Valley app to view the details.
-            </p>
-            <a href={APP_STORE_URL} style={{ display: 'block', background: '#000', color: '#fff', borderRadius: 12, padding: '14px 20px', textDecoration: 'none', fontWeight: 600, fontSize: 15, marginBottom: 12 }}>
-              📱 Download on App Store
-            </a>
-            <a href={PLAY_STORE_URL} style={{ display: 'block', background: '#1a73e8', color: '#fff', borderRadius: 12, padding: '14px 20px', textDecoration: 'none', fontWeight: 600, fontSize: 15 }}>
-              🤖 Get it on Google Play
-            </a>
-          </div>
-        </div>
-      </div>
+      <noscript>
+        <meta httpEquiv="refresh" content={`0;url=${PLAY_STORE_URL}`} />
+      </noscript>
+      <script dangerouslySetInnerHTML={{ __html: bootstrap }} />
     </>
   );
 }
