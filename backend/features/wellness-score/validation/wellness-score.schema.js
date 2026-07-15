@@ -1,4 +1,5 @@
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { enumerateScoreDates } from '../domain/date-range.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,6 +20,28 @@ export function validateGetDailyScore(query) {
   }
   const date = dateRaw && DATE_RE.test(String(dateRaw)) ? String(dateRaw) : todayInIST();
   return { userId, date };
+}
+
+export function validateGetScoreHistory(query) {
+  const userIdRaw = query?.userId;
+  if (userIdRaw == null || userIdRaw === '') {
+    throw new ValidationError(400, 'userId is required');
+  }
+  const userId = String(userIdRaw);
+  const startDate = String(query?.startDate || '');
+  const endDate = String(query?.endDate || '');
+  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
+    throw new ValidationError(400, 'startDate and endDate must be YYYY-MM-DD');
+  }
+  if (startDate > endDate) {
+    throw new ValidationError(400, 'startDate must be on or before endDate');
+  }
+  try {
+    enumerateScoreDates(startDate, endDate);
+  } catch (err) {
+    throw new ValidationError(400, err.message || 'Invalid date range');
+  }
+  return { userId, startDate, endDate };
 }
 
 export function validateAdminConfigGet(query) {
