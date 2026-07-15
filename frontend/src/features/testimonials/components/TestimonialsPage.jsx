@@ -1,10 +1,10 @@
 /**
  * TestimonialsPage.jsx
  * Top-level page for the testimonials feature.
- * - Members see the unified TestimonialsHub (5 upload slots on one page).
- * - Coaches see the team list view (CoachTestimonialsPage); Mine → Edit opens a
- *   focused modal with only that slot’s form.
- * - After edit, Mine card reloads so pending OTP blocks appear under photos/videos.
+ * - Everyone sees the MemberCard-style view (before/after, videos, health issues).
+ * - Users with a downline also get Mine | Direct | Full + search/filters.
+ * - Users without a downline only see their own card (no team chrome).
+ * - Edit opens a focused modal with only that slot’s form (TestimonialsHub).
  *
  * Route: shown when App.js `showTestimonials` is true.
  */
@@ -22,9 +22,7 @@ const FOCUS_TITLES = {
   issues:   'Edit Health Issues',
 };
 
-export default function TestimonialsPage({ user, userRole, onBack }) {
-  const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
-
+export default function TestimonialsPage({ user, onBack }) {
   const userId = user?.userId ?? user?.id ?? null;
   const [focusSlot, setFocusSlot] = useState(null);
   const [reloadSignal, setReloadSignal] = useState(0);
@@ -54,24 +52,20 @@ export default function TestimonialsPage({ user, userRole, onBack }) {
         </div>
       )}
 
-      {isCoach ? (
+      {userId ? (
         <CoachTestimonialsPage
           user={user}
           onEditOwnSlot={handleEditOwnSlot}
           reloadSignal={reloadSignal}
         />
       ) : (
-        userId
-          ? <TestimonialsHub userId={userId} />
-          : (
-            <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
-              <p>Unable to load your profile. Please sign in again.</p>
-            </div>
-          )
+        <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
+          <p>Unable to load your profile. Please sign in again.</p>
+        </div>
       )}
 
-      {/* Focused edit modal — only the requested slot (coach Mine → Edit) */}
-      {isCoach && focusSlot && userId && (
+      {/* Focused edit modal — Mine → Edit (any role) */}
+      {focusSlot && userId && (
         <div
           className="fixed inset-0 z-[100] bg-black/50 flex flex-col justify-end sm:justify-center"
           role="dialog"
