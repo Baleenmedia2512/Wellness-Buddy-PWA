@@ -92,3 +92,65 @@ export async function getPreviousWeightBeforeDate(userId, date) {
   }
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
+
+export async function upsertDailyScore({
+  userId,
+  scoreDate,
+  totalEarned,
+  totalPossible,
+  percentage,
+  goalMode,
+  parameters,
+}) {
+  const uid = parseUserId(userId);
+  if (!uid) return null;
+  const supabase = getSupabaseClient();
+  const now = getISTTimestamp();
+  const row = {
+    user_id: uid,
+    score_date: scoreDate,
+    total_earned: Math.max(0, Number(totalEarned) || 0),
+    total_possible: Math.max(0, Number(totalPossible) || 0),
+    percentage: Math.max(0, Math.min(100, Number(percentage) || 0)),
+    goal_mode: goalMode || 'loss',
+    parameters: parameters || [],
+    computed_at: now,
+  };
+  const { data, error } = await supabase
+    .from('wellness_score_daily_table')
+    .upsert(row, { onConflict: 'user_id,score_date' })
+    .select('user_id, score_date, total_earned, total_possible, percentage, goal_mode, parameters, computed_at')
+    .single();
+  if (error) {
+    logger.error('[wellness-score.repo] daily score upsert failed', {
+      userId: uid,
+      scoreDate,
+      err: error.message,
+    });
+    return null;
+  }
+  return data;
+}
+
+export async function getStoredScoresInRange(userId, startDate, endDate) {
+  const uid = parseUserId(userId);
+  if (!uid) return [];
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('wellness_score_daily_table')
+    .select('score_date, total_earned, total_possible, percentage, goal_mode, parameters, computed_at')
+    .eq('user_id', uid)
+    .gte('score_date', startDate)
+    .lte('score_date', endDate)
+    .order('score_date', { ascending: true });
+  if (error) {
+    logger.error('[wellness-score.repo] daily score range fetch failed', {
+      userId: uid,
+      startDate,
+      endDate,
+      err: error.message,
+    });
+    return [];
+  }
+  return data || [];
+}

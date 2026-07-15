@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, RefreshCw, Download, Search, ChevronDown, ChevronUp,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
-  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
 
 function mapRoleForApi(userRole) {
@@ -28,162 +28,6 @@ const ACTIVITY_TYPES = [
   { id: 'water', label: 'Water', icon: Droplets, color: 'cyan', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700' },
   { id: 'calories', label: 'Calories', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
 ];
-
-const DATE_RANGES = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'last7days', label: 'Last 7 Days' },
-  { value: 'last30days', label: 'Last 30 Days' },
-  { value: 'custom', label: 'Custom Range' },
-];
-
-// Date Picker Component
-const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectingStart, setSelectingStart] = useState(true);
-  const [tempStart, setTempStart] = useState(startDate);
-  const [tempEnd, setTempEnd] = useState(endDate);
-
-  const daysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const handleDateClick = (day) => {
-    const clickedDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (clickedDate > today) return;
-
-    if (selectingStart) {
-      setTempStart(clickedDate);
-      setTempEnd(null);
-      setSelectingStart(false);
-    } else {
-      if (clickedDate < tempStart) {
-        setTempEnd(tempStart);
-        setTempStart(clickedDate);
-      } else {
-        setTempEnd(clickedDate);
-      }
-      onSelect(clickedDate < tempStart ? clickedDate : tempStart, clickedDate < tempStart ? tempStart : clickedDate);
-    }
-  };
-
-  const isInRange = (day) => {
-    if (!tempStart || !tempEnd) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date >= tempStart && date <= tempEnd;
-  };
-
-  const isStartDate = (day) => {
-    if (!tempStart) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date.toDateString() === tempStart.toDateString();
-  };
-
-  const isEndDate = (day) => {
-    if (!tempEnd) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date.toDateString() === tempEnd.toDateString();
-  };
-
-  const renderCalendar = () => {
-    const days = [];
-    const totalDays = daysInMonth(currentMonth);
-    const firstDay = getFirstDayOfMonth(currentMonth);
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10" />);
-    }
-
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-
-    for (let day = 1; day <= totalDays; day++) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-      const isFuture = date > today;
-      const inRange = isInRange(day);
-      const isStart = isStartDate(day);
-      const isEnd = isEndDate(day);
-
-      days.push(
-        <button
-          key={day}
-          onClick={() => !isFuture && handleDateClick(day)}
-          disabled={isFuture}
-          className={`h-10 flex items-center justify-center text-sm rounded-lg transition-colors ${
-            isFuture
-              ? 'text-gray-300 cursor-not-allowed'
-              : isStart || isEnd
-              ? 'bg-green-600 text-white font-bold'
-              : inRange
-              ? 'bg-green-100 text-green-800'
-              : 'hover:bg-gray-100'
-          }`}
-        >
-          {day}
-        </button>
-      );
-    }
-
-    return days;
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="bg-white rounded-xl shadow-lg p-4 border border-gray-200"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <h3 className="text-lg font-semibold">
-          {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        </h3>
-        <button
-          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-          <div key={day} className="h-8 flex items-center justify-center text-xs font-semibold text-gray-600">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
-
-      <div className="mt-4 flex justify-between items-center">
-        <p className="text-xs text-gray-600">
-          {selectingStart ? 'Select start date' : 'Select end date'}
-        </p>
-        <button
-          onClick={onClose}
-          className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
-        >
-          Done
-        </button>
-      </div>
-    </motion.div>
-  );
-};
 
 // Activity Badge Component
 const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
@@ -221,7 +65,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
@@ -393,20 +236,18 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setMemberSummaries([]);
     setMemberStats(null);
     setError('');
-    if (range === 'custom') {
-      setShowDatePicker(true);
+    if (range !== 'custom') {
       if (!customStartDate || !customEndDate) {
-        setSummary(null);
+        /* presets fetch immediately */
       }
-    } else {
-      setShowDatePicker(false);
+    } else if (!customStartDate || !customEndDate) {
+      setSummary(null);
     }
   };
 
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
-    setShowDatePicker(false);
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
@@ -582,12 +423,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   };
 
-  const getCustomRangeLabel = () => {
-    if (!customStartDate || !customEndDate) return 'Select Dates';
-    const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
       {/* Header */}
@@ -620,34 +455,14 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Date Range Filter */}
         <div className="mb-6">
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {DATE_RANGES.map((range) => (
-              <TouchFeedbackButton
-                key={range.value}
-                onClick={() => handleDateRangeChange(range.value)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                  dateRange === range.value
-                    ? 'bg-green-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:border-green-400'
-                }`}
-              >
-                {range.value === 'custom' ? getCustomRangeLabel() : range.label}
-              </TouchFeedbackButton>
-            ))}
-          </div>
-
-          <AnimatePresence>
-            {showDatePicker && (
-              <div className="mt-4">
-                <DateRangePicker
-                  startDate={customStartDate}
-                  endDate={customEndDate}
-                  onSelect={handleCustomDateSelect}
-                  onClose={() => setShowDatePicker(false)}
-                />
-              </div>
-            )}
-          </AnimatePresence>
+          <ReportDateRangeFilter
+            ranges={ACTIVITY_REPORT_DATE_RANGES}
+            dateRange={dateRange}
+            onDateRangeChange={handleDateRangeChange}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateSelect={handleCustomDateSelect}
+          />
         </div>
 
         {/* Error Display */}
