@@ -37,16 +37,32 @@ export function buildOnboardingShareUrl(apiBaseUrl) {
 }
 
 /**
- * Build the WhatsApp share text for a body-parameters card.
+ * Caption for WhatsApp when the body-parameters card IMAGE is the attachment.
+ * Omits a full https:// URL so WhatsApp does not replace the image with an OG link card.
  *
- * @param {string|null} shareUrl - generic /app link (no personal data)
+ * @param {string} memberName
+ * @param {string|null} shareUrl - generic /app link (host/path only in caption)
+ * @returns {string}
+ */
+export function buildShareCaptionForImage(memberName, shareUrl) {
+  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
+  const lines = [
+    `Hey ${firstName}! Your coach shared your body parameters.`,
+    'Install or open Wellness Valley app.',
+  ];
+  if (shareUrl) {
+    lines.push(shareUrl.replace(/^https?:\/\//i, ''));
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Build plain-text WhatsApp message (text-only fallback — no image).
+ *
+ * @param {string|null} shareUrl
  * @param {string} memberName
  * @returns {string}
  */
 export function buildShareText(shareUrl, memberName) {
-  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
-  if (!shareUrl) {
-    return `Hey ${firstName}! Your coach shared your body parameters. Install the Wellness Valley app to get started.`;
-  }
-  return `Hey ${firstName}! Your coach shared your body parameters. Open or install Wellness Valley:\n${shareUrl}`;
+  return buildShareCaptionForImage(memberName, shareUrl);
 }

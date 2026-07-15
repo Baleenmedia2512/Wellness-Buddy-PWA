@@ -1,6 +1,6 @@
 import {
   buildOnboardingShareUrl,
-  buildShareText,
+  buildShareCaptionForImage,
   getStoreLink,
   STORE_LINKS,
 } from './platform-store.rules.js';
@@ -17,12 +17,15 @@ describe('platform-store.rules', () => {
     });
   });
 
-  describe('buildShareText', () => {
-    it('includes the generic link and member first name', () => {
-      const text = buildShareText('https://api.example.com/app', 'Priya Sharma');
+  describe('buildShareCaptionForImage', () => {
+    it('includes member first name and host-only app path (no https)', () => {
+      const text = buildShareCaptionForImage(
+        'Priya Sharma',
+        'https://api.example.com/app',
+      );
       expect(text).toContain('Priya');
-      expect(text).toContain('https://api.example.com/app');
-      expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+      expect(text).toContain('api.example.com/app');
+      expect(text).not.toContain('https://');
     });
   });
 
