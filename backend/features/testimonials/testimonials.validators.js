@@ -412,3 +412,114 @@ export function validateTeamReport(query) {
   return { coachId: coachIdN };
 }
 
+// ─── Unified edit + OTP validators ───────────────────────────────────────────
+
+const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues']);
+
+/**
+ * Validate payload for POST /api/testimonials/submit-all-edits
+ * Accepts all dirty slots in one payload and generates a single unified OTP.
+ * Videos are pre-uploaded to storage; only their storage paths are sent here.
+ */
+export function validateSubmitAllEdits(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const {
+    userId,
+    dirtySlots,
+    beforeImageBase64,
+    afterImageBase64,
+    beforeWeightKg,
+    afterWeightKg,
+    goalType,
+    durationText,
+    healthVideoPath,
+    businessVideoPath,
+  } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  if (!Array.isArray(dirtySlots) || dirtySlots.length === 0) {
+    throw new ValidationError(400, 'dirtySlots must be a non-empty array');
+  }
+
+  for (const s of dirtySlots) {
+    if (!VALID_DIRTY_SLOTS.has(s)) {
+      throw new ValidationError(422, `Invalid slot: "${s}". Must be one of: ${[...VALID_DIRTY_SLOTS].join(', ')}`);
+    }
+  }
+
+  const slots = new Set(dirtySlots);
+  const result = { userId: userIdN, dirtySlots: [...slots] };
+
+  if (slots.has('before')) {
+    validateBase64Image(beforeImageBase64, 'beforeImageBase64');
+    result.beforeImageBase64 = beforeImageBase64;
+  }
+
+  if (slots.has('after')) {
+    const afterImg = validateOptionalBase64Image(afterImageBase64, 'afterImageBase64');
+    if (!afterImg) throw new ValidationError(400, 'afterImageBase64 is required when "after" is in dirtySlots');
+    result.afterImageBase64 = afterImg;
+  }
+
+  if (slots.has('health')) {
+    const hPath = validateOptionalVideoPath(healthVideoPath, 'healthVideoPath', userIdN, 'health');
+    if (!hPath) throw new ValidationError(400, 'healthVideoPath is required when "health" is in dirtySlots');
+    result.healthVideoPath = hPath;
+  }
+
+  if (slots.has('business')) {
+    const bPath = validateOptionalVideoPath(businessVideoPath, 'businessVideoPath', userIdN, 'business');
+    if (!bPath) throw new ValidationError(400, 'businessVideoPath is required when "business" is in dirtySlots');
+    result.businessVideoPath = bPath;
+  }
+
+  if (slots.has('issues')) {
+    if (recoveredHealthIssues === undefined) {
+      throw new ValidationError(400, 'recoveredHealthIssues is required when "issues" is in dirtySlots');
+    }
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
+  } else if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
+  }
+
+  if (beforeWeightKg !== undefined) result.beforeWeightKg = validateWeight(beforeWeightKg, 'beforeWeightKg');
+  if (afterWeightKg  !== undefined) result.afterWeightKg  = validateWeight(afterWeightKg,  'afterWeightKg');
+
+  if (goalType !== undefined) {
+    if (!GOAL_TYPES.includes(goalType)) {
+      throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
+    }
+    result.goalType = goalType;
+  }
+
+  if (durationText !== undefined) {
+    result.durationText = validateDurationText(durationText);
+  }
+
+  return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/verify-unified-otp
+ * One OTP covers both photo and video verification when submitted via submit-all-edits.
+ */
+export function validateVerifyUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, otp } = body;
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
+  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+
+  return { userId: userIdN, otp: otp.trim() };
+}
+

@@ -4,15 +4,44 @@
  * - Everyone sees the MemberCard-style view (before/after, videos, health issues).
  * - Users with a downline also get Mine | Direct | Full + search/filters.
  * - Users without a downline only see their own card (no team chrome).
- * - Edit opens a focused modal with only that slot’s form (TestimonialsHub).
+ * - Inline editing is handled directly on the Mine card (no modal).
  *
  * Route: shown when App.js `showTestimonials` is true.
  */
-import React, { useCallback, useState } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
-import TestimonialsHub from './TestimonialsHub';
+
+export default function TestimonialsPage({ user, onBack }) {
+  const userId = user?.userId ?? user?.id ?? null;
+  const [reloadSignal, setReloadSignal] = useState(0);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {onBack && (
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
+          <TouchFeedbackButton onClick={onBack} className="p-1 rounded-full text-gray-600 hover:text-green-700">
+            <ArrowLeft className="h-5 w-5" />
+          </TouchFeedbackButton>
+          <span className="font-bold text-gray-800">Results / Testimonials</span>
+        </div>
+      )}
+
+      {userId ? (
+        <CoachTestimonialsPage
+          user={user}
+          reloadSignal={reloadSignal}
+        />
+      ) : (
+        <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
+          <p>Unable to load your profile. Please sign in again.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 const FOCUS_TITLES = {
   before:   'Edit Before Photo',
