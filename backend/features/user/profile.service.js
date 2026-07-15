@@ -14,6 +14,10 @@ import {
   resolveCalorieTargetFromProfile,
 } from '../../utils/tdeeCalculations.js';
 import * as repo from './user.repository.js';
+import {
+  hasValidProfileName,
+  isProfileComplete,
+} from './domain/profileCompleteness.js';
 
 const { getISTTimestamp } = repo;
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
@@ -44,14 +48,17 @@ export async function getProfile({ email }) {
         email: user.Email,
         height, dietType, phoneNumber,
         weightGoalMode: user.WeightGoalMode || 'loss',
-        profileComplete: !!(
-          height
-          && dietType
-          && (
-            (typeof phoneNumber === 'string' && phoneNumber.trim() !== '')
-            || (typeof user.UserName === 'string' && user.UserName.trim() !== '')
-          )
-        ),
+        profileComplete: isProfileComplete({
+          height,
+          dietType,
+          phoneNumber,
+          userName: user.UserName,
+          email: user.Email,
+        }),
+        needsName: !hasValidProfileName(user.UserName, {
+          email: user.Email,
+          phoneNumber,
+        }),
         profileImage: user.ProfileImage || null,
         coachId: user.CoachId || null,
         profilePicSnooze: user.profile_pic_snooze || null,

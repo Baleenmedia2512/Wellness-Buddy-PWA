@@ -131,6 +131,7 @@ export async function getDailyScore({ userId, date }) {
         totalEarned: scores.totalEarned,
         totalPossible: scores.totalPossible,
         percentage: scores.percentage,
+        goalMode: userGoal?.WeightGoalMode || 'loss',
         parameters: scores.parameters,
       },
     },

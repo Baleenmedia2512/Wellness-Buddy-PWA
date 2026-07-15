@@ -75,4 +75,8 @@ export function computeNutritionTargets({ bmr = 0, weightKg = null }) {
   return targets;
 }
 
+/** GI category thresholds (aligned with nutrition UI: Low ≤55, Medium 56–69, High ≥70). */
+export const GI_MEDIUM_MAX = 69;
+export const GI_HIGH_MIN = 70;
+
 export { GI_LIMIT };

@@ -114,23 +114,33 @@ describe('water quantity', () => {
 });
 
 describe('nutrition parameters', () => {
-  it('calories — proportional below limit', () => {
-    const r = calculateCalories({ maxPoints: 100, consumed: 750, limit: 1500 });
+  it('calories — proportional below limit (gain mode)', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 750, limit: 1500, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 50);
   });
 
-  it('calories — 0 when no intake', () => {
-    const r = calculateCalories({ maxPoints: 100, consumed: 0, limit: 1500 });
+  it('calories — full within limit (loss mode)', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 750, limit: 1500, goalMode: 'loss' });
+    assert.equal(r.earnedPoints, 100);
+  });
+
+  it('calories — full when no intake within limit (loss mode)', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 0, limit: 1500, goalMode: 'loss' });
+    assert.equal(r.earnedPoints, 100);
+  });
+
+  it('calories — 0 when no intake (gain mode)', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 0, limit: 1500, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 0);
   });
 
-  it('calories — full at limit', () => {
-    const r = calculateCalories({ maxPoints: 100, consumed: 1500, limit: 1500 });
+  it('calories — full at limit (gain mode)', () => {
+    const r = calculateCalories({ maxPoints: 100, consumed: 1500, limit: 1500, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 100);
   });
 
   it('calories — 0 when above limit', () => {
-    const r = calculateCalories({ maxPoints: 100, consumed: 1600, limit: 1500 });
+    const r = calculateCalories({ maxPoints: 100, consumed: 1600, limit: 1500, goalMode: 'loss' });
     assert.equal(r.earnedPoints, 0);
   });
 
@@ -139,19 +149,24 @@ describe('nutrition parameters', () => {
     assert.equal(r.earnedPoints, 80);
   });
 
-  it('carbohydrates — proportional below limit', () => {
-    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 100, limit: 200 });
+  it('carbohydrates — proportional below limit (gain mode)', () => {
+    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 100, limit: 200, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 50);
     assert.equal(r.scoringMode, 'limit');
   });
 
+  it('carbohydrates — full within limit (loss mode)', () => {
+    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 100, limit: 200, goalMode: 'loss' });
+    assert.equal(r.earnedPoints, 100);
+  });
+
   it('carbohydrates — 0 when above limit', () => {
-    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 250, limit: 200 });
+    const r = calculateCarbohydrates({ maxPoints: 100, consumed: 250, limit: 200, goalMode: 'loss' });
     assert.equal(r.earnedPoints, 0);
   });
 
-  it('fat — full at limit', () => {
-    const r = calculateFat({ maxPoints: 100, consumed: 52, limit: 52 });
+  it('fat — full at limit (gain mode)', () => {
+    const r = calculateFat({ maxPoints: 100, consumed: 52, limit: 52, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 100);
     assert.equal(r.scoringMode, 'limit');
   });
@@ -161,18 +176,35 @@ describe('nutrition parameters', () => {
     assert.equal(r.earnedPoints, 0);
   });
 
-  it('sodium — proportional below limit', () => {
-    const r = calculateSodium({ maxPoints: 100, consumed: 1150, limit: 2300 });
+  it('sodium — proportional below limit (gain mode)', () => {
+    const r = calculateSodium({ maxPoints: 100, consumed: 1150, limit: 2300, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 50);
   });
 
-  it('gi — full when within low-GI limit', () => {
-    const r = calculateGi({ maxPoints: 100, consumed: 45, limit: 55 });
+  it('gi — full for low GI (loss mode)', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 45, limit: 55, goalMode: 'loss' });
+    assert.equal(r.earnedPoints, 100);
+    assert.match(r.calculationReason, /Low\/medium GI/i);
+  });
+
+  it('gi — full for medium GI (loss mode)', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 60, limit: 55, goalMode: 'loss' });
     assert.equal(r.earnedPoints, 100);
   });
 
-  it('gi — 0 when above limit', () => {
-    const r = calculateGi({ maxPoints: 100, consumed: 70, limit: 55 });
+  it('gi — 0 for high GI (loss mode)', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 70, limit: 55, goalMode: 'loss' });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /High GI/i);
+  });
+
+  it('gi — full when within limit (gain mode)', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 45, limit: 55, goalMode: 'gain' });
+    assert.equal(r.earnedPoints, 100);
+  });
+
+  it('gi — 0 when above limit (gain mode)', () => {
+    const r = calculateGi({ maxPoints: 100, consumed: 70, limit: 55, goalMode: 'gain' });
     assert.equal(r.earnedPoints, 0);
   });
 });
