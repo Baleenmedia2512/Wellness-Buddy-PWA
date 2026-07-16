@@ -69,6 +69,39 @@ const REGISTRY = Object.freeze({
     defaultEnabled: false,
     description:    'Contact Picker API shortcut on the phone login field.',
   },
+
+  // Testimonials — before/after Herbalife transformation photos with
+  // coach OTP verification. Members upload; coach verifies via emailed OTP.
+  // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
+  // localStorage 'ff.testimonials'='false' to disable.
+  'ff.testimonials': {
+    envKey:         'REACT_APP_FF_TESTIMONIALS',
+    storageKey:     'ff.testimonials',
+    defaultEnabled: true,
+    description:    'Before/after testimonial upload + coach OTP verification flow.',
+  },
+
+  // Reports module — coach/upline analytics.
+  // Currently: direct-downline weight status (current vs BMI 19–23 ideal range).
+  // Tab is only shown to coach / upline / admin / developer roles.
+  // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
+  // localStorage 'ff.reports-module'='false' to disable.
+  'ff.reports-module': {
+    envKey:         'REACT_APP_FF_REPORTS_MODULE',
+    storageKey:     'ff.reports-module',
+    defaultEnabled: true,
+    description:    'Reports module with downline weight status report for coaches.',
+  },
+
+  // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
+  // Default ON for UI preview. Set REACT_APP_FF_WELLNESS_SCORE_SHEET=false or
+  // localStorage 'ff.wellness-score-sheet'='false' to hide.
+  'ff.wellness-score-sheet': {
+    envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
+    storageKey:     'ff.wellness-score-sheet',
+    defaultEnabled: true,
+    description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+  },
 });
 
 function readStorage(key) {

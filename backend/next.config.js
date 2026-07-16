@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      // Legacy body-params onboarding link — /app was never deployed to some envs.
+      { source: '/app', destination: '/share', permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

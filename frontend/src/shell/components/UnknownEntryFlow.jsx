@@ -95,7 +95,10 @@ export default function UnknownEntryFlow({
    *
    * Shape:
    *   null                                     → no pre-flight run (e.g. canMutate=false)
-   *   { status: 'failed', error: string }      → AI could not identify the image
+   *   { status: 'failed', canRetry: boolean,
+   *     error: string }                        → AI could not identify the image.
+   *                                              canRetry=true  → transient failure (503/timeout), Retry AI shown.
+   *                                              canRetry=false → genuinely out-of-scope, Retry AI hidden.
    *   { status: 'success', type: 'food',
    *     analysisResult: object, raw: object }  → food detected
    *   { status: 'success', type: 'weight',
@@ -106,6 +109,9 @@ export default function UnknownEntryFlow({
   initialAiResult = null,
   /** The diary date selected in Dashboard — saves are anchored to this day. */
   diaryDate = null,
+  /** When true: show only a delete button — no category picker, no retry.
+   *  Used for out-of-scope captures where re-analysing won't help. */
+  deleteOnly = false,
   canMutate = true,
   userId,
   apiBaseUrl,
@@ -119,8 +125,7 @@ export default function UnknownEntryFlow({
     if (!r || r.status !== 'success') return 'view';
     if (r.type === 'food') return 'ai-review-food';
     if (r.type === 'weight') return 'weight';
-    if (r.type === 'education') return 'education';
-    if (r.type === 'smartwatch') return 'smartwatch';
+    if (r.type === 'education' || r.type === 'smartwatch') return 'ai-review-education';
     return 'view';
   }
 
@@ -141,6 +146,17 @@ export default function UnknownEntryFlow({
   const [aiWeight, setAiWeight] = useState(
     initialAiResult?.status === 'success' && initialAiResult.type === 'weight'
       ? { weightValue: initialAiResult.weightValue, unit: initialAiResult.unit }
+      : null,
+  );
+  // AI-detected education / smartwatch data for the review screen.
+  const [aiEducation, setAiEducation] = useState(
+    initialAiResult?.status === 'success'
+      && (initialAiResult.type === 'education' || initialAiResult.type === 'smartwatch')
+      ? {
+          platform: initialAiResult.platform,
+          topic: initialAiResult.topic,
+          captureKind: initialAiResult.type,
+        }
       : null,
   );
 
@@ -201,8 +217,9 @@ export default function UnknownEntryFlow({
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
         if (!hasRecognizedFood(analysis)) {
+          // AI returned food type but with no recognisable items — go to picker.
           setRetrying(false);
-          setError("Still couldn't recognise it — choose a category below.");
+          setStage('view');
           return;
         }
         // Success: transition to AI review stage so the user can inspect and
@@ -225,21 +242,31 @@ export default function UnknownEntryFlow({
 
       } else if (detectedType.type === 'education') {
         setRetrying(false);
-        setStage('education');
+        setAiEducation({
+          platform: detectedType.details?.platform || 'Online Meeting',
+          topic: detectedType.details?.topic || 'Education Meeting',
+          captureKind: 'education',
+        });
+        setStage('ai-review-education');
 
       } else if (detectedType.type === 'smartwatch') {
         setRetrying(false);
-        setStage('smartwatch');
+        setAiEducation({
+          platform: detectedType.details?.source || 'Smartwatch',
+          topic: `Calories Burned: ${detectedType.details?.caloriesBurned || 0} kcal`,
+          captureKind: 'smartwatch',
+        });
+        setStage('ai-review-education');
 
       } else {
-        // AI returned "other" — show the category picker so user can manually classify.
+        // AI could not identify after all automatic retries — go to the manual
+        // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);
-        setError("Still couldn't identify it. Please choose a category:");
         setStage('view');
       }
     } catch {
       setRetrying(false);
-      setError('Analysis failed — please choose a category manually.');
+      setStage('view');
     }
   };
 
@@ -319,7 +346,11 @@ export default function UnknownEntryFlow({
     }
   };
 
-  const handleEducationSave = async ({ platform, topic }) => {
+  const handleEducationSave = async (
+    { platform, topic },
+    captureKind = 'education',
+    { errorStage = 'view' } = {},
+  ) => {
     try {
       await saveLog({
         userId,
@@ -327,14 +358,26 @@ export default function UnknownEntryFlow({
         topic,
         captureId,
         imageBase64,
-        // Anchor the record to the diary's selected date, not the current time.
         imageTimestamp: buildNoonTimestamp(diaryDate),
       });
+      await retagCapture(captureKind);
       finish({ kind: 'education', captureId });
     } catch {
       setError("Couldn't save — please try again.");
-      setStage('view');
+      setStage(errorStage);
     }
+  };
+
+  const handleAiEducationConfirm = async () => {
+    if (!aiEducation?.platform) return;
+    await handleEducationSave(
+      {
+        platform: aiEducation.platform,
+        topic: aiEducation.topic || 'Education Meeting',
+      },
+      aiEducation.captureKind || 'education',
+      { errorStage: 'ai-review-education' },
+    );
   };
 
   return (
@@ -433,6 +476,87 @@ export default function UnknownEntryFlow({
         </div>
       )}
 
+      {/* ── ai-review-education stage: review AI-detected meeting before saving ── */}
+      {stage === 'ai-review-education' && aiEducation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-review-edu-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70"
+          onClick={close}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-3xl bg-white shadow-xl overflow-y-auto max-h-[90vh] pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-2">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-emerald-500 text-lg" aria-hidden="true">✓</span>
+                  <h2 id="ai-review-edu-title" className="text-lg font-semibold text-gray-900">
+                    {aiEducation.captureKind === 'smartwatch' ? 'AI detected activity' : 'AI detected education'}
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-500 mt-0.5">Review and save, or edit manually.</p>
+              </div>
+              <button type="button" onClick={close} aria-label="Close"
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100">✕</button>
+            </div>
+
+            <div className="px-5 pb-3">
+              {imageBase64 && (
+                <img
+                  src={imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`}
+                  alt="Captured photo"
+                  className="w-full rounded-xl object-cover max-h-48"
+                />
+              )}
+            </div>
+
+            <div className="px-5">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 space-y-1">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Platform</span>
+                  <span className="text-gray-900 font-medium">{aiEducation.platform}</span>
+                </div>
+                {aiEducation.topic && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Topic</span>
+                    <span className="text-gray-900 font-medium text-right max-w-[60%]">{aiEducation.topic}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mx-5 mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            <div className="px-5 mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={handleAiEducationConfirm}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-colors"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setStage(aiEducation.captureKind === 'smartwatch' ? 'smartwatch' : 'education');
+                }}
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Edit Manually
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── View stage: image + AI retry indicator + inline category picks ── */}
       {stage === 'view' && (
         <div
@@ -448,9 +572,9 @@ export default function UnknownEntryFlow({
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-2">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Unrecognised photo</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Manual Log</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  {retrying ? 'AI is re-analysing…' : 'Help us classify this capture.'}
+                  AI analysed 3 times and couldn’t identify this. Choose what you photographed.
                 </p>
               </div>
               <button type="button" onClick={close} aria-label="Close"
@@ -487,52 +611,58 @@ export default function UnknownEntryFlow({
               </div>
             )}
 
-            {/* ── Inline category quick-picks (always visible) ── */}
-            {canMutate && (
-              <div className="px-5 space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  What is this photo?
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { type: 'food',      icon: '🍽️', label: 'Food / Drink',    sub: 'Meal, shake, tea, etc.' },
-                    { type: 'weight',    icon: '⚖️',  label: 'Weight Scale',   sub: 'Scale with reading' },
-                    { type: 'education', icon: '🎓',  label: 'Education',      sub: 'Meeting screenshot' },
-                    { type: 'smartwatch',icon: '⌚',  label: 'Smartwatch',     sub: 'Steps / calories' },
-                  ].map(({ type, icon, label, sub }) => (
+{/* Category quick-picks */}
+                {canMutate && !deleteOnly && (
+                  <div className="px-5 space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      What is this photo?
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { type: 'food',       icon: '🍽️', label: 'Food / Drink',   sub: 'Meal, shake, tea, etc.' },
+                        { type: 'weight',     icon: '⚖️',  label: 'Weight Scale',  sub: 'Scale with reading' },
+                        { type: 'education',  icon: '🎓',  label: 'Education',     sub: 'Meeting screenshot' },
+                        { type: 'smartwatch', icon: '⌚',  label: 'Smartwatch',    sub: 'Steps / calories' },
+                      ].map(({ type, icon, label, sub }) => (
+                        <button
+                          key={type}
+                          type="button"
+                          disabled={deleting}
+                          onClick={() => { setError(null); setStage(type); }}
+                          className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
+                        >
+                          <span className="text-2xl">{icon}</span>
+                          <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
+                          <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Delete */}
                     <button
-                      key={type}
                       type="button"
-                      disabled={retrying || deleting}
-                      onClick={() => { setError(null); setStage(type); }}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
+                      disabled={deleting}
+                      onClick={handleDelete}
+                      className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      <span className="text-2xl">{icon}</span>
-                      <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
-                      <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
+                      {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
                     </button>
-                  ))}
-                </div>
+              </div>
+            )}
 
-                {/* Retry AI button — secondary action */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={retrying || deleting}
-                    onClick={handleRetry}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {retrying ? 'Analysing…' : '🔄 Retry AI'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={retrying || deleting}
-                    onClick={handleDelete}
-                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deleting ? 'Deleting…' : '🗑️ Delete'}
-                  </button>
-                </div>
+            {/* ── Delete-only view: out-of-scope captures ── */}
+            {canMutate && deleteOnly && (
+              <div className="px-5 pb-6">
+                <p className="text-sm text-gray-500 text-center mb-4">
+                  This photo wasn’t recognised as food, weight, education or smartwatch.
+                </p>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                  className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                </button>
               </div>
             )}
           </div>
@@ -566,9 +696,15 @@ export default function UnknownEntryFlow({
 
       <ManualEducationEntryModal
         isOpen={stage === 'education' || stage === 'smartwatch'}
+        skipTypeSelect={true}
+        initialPlatform={aiEducation?.platform}
+        initialTopic={aiEducation?.topic}
         onClose={() => setStage('view')}
         onBack={() => setStage('view')}
-        onSave={handleEducationSave}
+        onSave={(data) => handleEducationSave(
+          data,
+          stage === 'smartwatch' ? 'smartwatch' : 'education',
+        )}
       />
     </>
   );

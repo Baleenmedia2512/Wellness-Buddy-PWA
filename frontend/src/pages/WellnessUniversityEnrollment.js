@@ -64,8 +64,6 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
-  // Coach/upline/admin can search for and view a team member's enrollment
-  const isCoachRole = ['coach', 'upline', 'admin', 'developer'].includes(String(userRole || '').toLowerCase());
   const [selectedMember, setSelectedMember] = useState(null);
 
   // Use userId as the primary key for enrollment lookups — more reliable than
@@ -283,17 +281,15 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
 
         {/* Form Content */}
         <div className="p-3 xs:p-4 sm:p-6 overflow-y-auto flex-1 ios-scroll-body">
-          {/* Coach: member search to view a downline's enrollment */}
-          {isCoachRole && (
-            <div className="mb-4">
-              <TeamMemberSearch
-                user={user}
-                userRole={userRole}
-                selectedMember={selectedMember}
-                onMemberSelect={setSelectedMember}
-              />
-            </div>
-          )}
+          {/* Coach / admin / anyone with team_table downline: member search */}
+          <div className="mb-4">
+            <TeamMemberSearch
+              user={user}
+              userRole={userRole}
+              selectedMember={selectedMember}
+              onMemberSelect={setSelectedMember}
+            />
+          </div>
 
           {/* User Info */}
           <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">

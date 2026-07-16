@@ -1,6 +1,6 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
-import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from "../../../utils/foodTypeDetection.js";
 import {
   parseDateRange,
   calculateDisciplinePercentage,
@@ -318,8 +318,8 @@ export default async function handler(req, res) {
             const analysisData = typeof r.AnalysisData === 'string'
               ? JSON.parse(r.AnalysisData)
               : r.AnalysisData;
-            (analysisData?.foods || []).forEach(food => {
-              if (isExemptedFood(food.name)) {
+            extractFoodItemsFromAnalysis(analysisData).forEach(food => {
+              if (isExemptedFood(getFoodItemName(food))) {
                 // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
                 const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
                 waterVolumeByDate[dateStr] += ml;

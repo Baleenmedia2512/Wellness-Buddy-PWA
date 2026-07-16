@@ -1,12 +1,13 @@
 import React from 'react';
 import { Heart, Droplet, Activity } from 'lucide-react';
 import CircularProgress from './CircularProgress';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * HeartHealthyCard — Card 3 of the Nutrition Carousel.
  * Compact MyFitnessPal-style with 3 nutrients side by side.
  */
-const HeartHealthyCard = ({ fat, sodium, cholesterol, onOpenModal }) => {
+const HeartHealthyCard = ({ fat, sodium, cholesterol, periodContext, onOpenModal }) => {
   const hasFatTarget = fat.target != null;
   
   const fatPct = hasFatTarget ? Math.round((fat.consumed / fat.target) * 100) : null;
@@ -16,6 +17,7 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -98,7 +100,9 @@ const HeartHealthyCard = ({ fat, sodium, cholesterol, onOpenModal }) => {
 
         {/* Footer */}
         <p className="text-[10px] text-gray-400 text-center mt-2 pt-2 border-t border-gray-100">
-          Daily recommended limits
+          {periodContext?.isMultiDay
+            ? 'Total intake vs period limits (fat, sodium, cholesterol)'
+            : 'Daily recommended limits'}
         </p>
       </div>
     </div>

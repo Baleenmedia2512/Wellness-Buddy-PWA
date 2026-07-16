@@ -16,7 +16,7 @@ export async function getUserWeightGoal(userId) {
   try {
     const { data, error } = await supabase
       .from('team_table')
-      .select('"WeightGoalMode", "Height", "Bmr", "CoachId"')
+      .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel"')
       .eq('UserId', parseInt(userId, 10))
       .maybeSingle();
 

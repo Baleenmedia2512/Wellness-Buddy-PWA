@@ -70,7 +70,9 @@ function tabClass(isActive) {
   }`;
 }
 
-export default function DashboardTabs({ activeTab, onTabChange, diaryEnabled }) {
+export default function DashboardTabs({ activeTab, onTabChange, diaryEnabled, processingCount = 0 }) {
+  // processingCount: total captures currently being analyzed (App.js background
+  // AI + tap-to-fix retries). Shown as a pulsing badge on the Diary tab icon.
   return (
     <div className="flex justify-center border-b border-gray-200">
       <TouchFeedbackButton
@@ -110,7 +112,17 @@ export default function DashboardTabs({ activeTab, onTabChange, diaryEnabled }) 
           onClick={() => onTabChange('diary')}
           className={tabClass(activeTab === 'diary')}
         >
-          <BookOpen className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+          <span className="relative inline-flex items-center">
+            <BookOpen className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            {processingCount > 0 && (
+              <span
+                className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center animate-pulse"
+                aria-label={`${processingCount} item${processingCount > 1 ? 's' : ''} processing`}
+              >
+                {processingCount > 9 ? '9+' : processingCount}
+              </span>
+            )}
+          </span>
           <span>Diary</span>
         </TouchFeedbackButton>
       )}

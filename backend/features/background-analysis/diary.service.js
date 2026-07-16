@@ -330,6 +330,7 @@ export async function listDiaryEntries(input) {
   ];
   if (includesUnknown) {
     reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date)));
+    reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date)));
   }
   const results = await Promise.all(reads);
 
@@ -340,7 +341,11 @@ export async function listDiaryEntries(input) {
   const entries = [];
   for (const { kind, rows } of results) {
     for (const row of rows) {
-      entries.push(toDiaryEntry(kind, row));
+      if (kind === 'pending') {
+        entries.push(toDiaryEntry('unknown', row, { isPendingAnalysis: true }));
+      } else {
+        entries.push(toDiaryEntry(kind, row));
+      }
     }
   }
   entries.sort((a, b) =>
@@ -369,7 +374,7 @@ export async function listDiaryEntries(input) {
  *
  * @internal
  */
-export function toDiaryEntry(kind, row) {
+export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
   switch (kind) {
     case 'food':
       return {
@@ -388,6 +393,9 @@ export function toDiaryEntry(kind, row) {
             carbs:    row.TotalCarbs,
             fat:      row.TotalFat,
             fiber:    row.TotalFiber,
+            sugar:       row.TotalSugar ?? null,
+            sodium:      row.TotalSodium ?? null,
+            cholesterol: row.TotalCholesterol ?? null,
           },
           processedBy: row.ProcessedBy,
           deviceInfo:  row.DeviceInfo,
@@ -456,6 +464,7 @@ export function toDiaryEntry(kind, row) {
           id:          row.ID,
           imagePath:   row.ImagePath,
           imageBase64: row.ImageBase64,
+          ...(isPendingAnalysis ? { isPendingAnalysis: true } : {}),
         },
       };
 

@@ -1,12 +1,12 @@
 /**
- * useUserCalorieTarget — fetch the user's BMR-based daily calorie target.
+ * useUserCalorieTarget — fetch the user's TDEE-based daily calorie target.
  *
- * Wraps fetchUserBmr() with a useEffect that re-runs on email/apiBaseUrl/
- * bmrUpdateKey change AND on tab visibility change (so editing BMR in the
+ * Wraps fetchUserCalorieTarget() with a useEffect that re-runs on email/apiBaseUrl/
+ * bmrUpdateKey change AND on tab visibility change (so editing BMR or activity in the
  * profile screen and returning to nutrition picks up the new value).
  */
 import { useState, useEffect } from 'react';
-import { fetchUserBmr, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
+import { fetchUserCalorieTarget, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
 
 export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
@@ -21,9 +21,9 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
     let cancelled = false;
     setBmrLoading(true);
     const load = async () => {
-      const bmr = await fetchUserBmr({ apiBaseUrl, email: user.email });
+      const target = await fetchUserCalorieTarget({ apiBaseUrl, email: user.email });
       if (!cancelled) {
-        setCalorieTarget(bmr);
+        setCalorieTarget(target);
         setBmrLoading(false);
       }
     };

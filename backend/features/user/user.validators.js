@@ -2,10 +2,34 @@
  * User feature — input validators.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
-export { VALID_GOAL_MODES };
+export const COMMUNITY_ID_MAX_LENGTH = 100;
+const COMMUNITY_ID_PATTERN = /^[a-zA-Z0-9]+$/;
+export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
+
+export function normalizeCommunityId(raw) {
+  if (raw === null || raw === undefined) return null;
+  const trimmed = String(raw).trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+export function validateCommunityId(raw) {
+  const normalized = normalizeCommunityId(raw);
+  if (normalized === null) return { valid: true, value: null };
+  if (normalized.length > COMMUNITY_ID_MAX_LENGTH) {
+    return {
+      valid: false,
+      message: `Community ID must be at most ${COMMUNITY_ID_MAX_LENGTH} characters.`,
+    };
+  }
+  if (!COMMUNITY_ID_PATTERN.test(normalized)) {
+    return { valid: false, message: 'Community ID may only contain letters and numbers.' };
+  }
+  return { valid: true, value: normalized };
+}
 
 export function normalizeEmail(raw) {
   return raw ? String(raw).toLowerCase().trim() : raw;
@@ -25,6 +49,20 @@ export function validateUpdateProfile(body) {
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
   }
+  const physicalActivityLevel = body.physicalActivityLevel;
+  if (physicalActivityLevel != null && physicalActivityLevel !== ''
+    && !isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    throw new ValidationError(400, `Invalid physicalActivityLevel. Must be one of: ${VALID_PHYSICAL_ACTIVITY_LEVELS.join(', ')}`);
+  }
+
+  let communityId;
+  if ('communityId' in body || 'community_id' in body) {
+    const communityIdRaw = body.communityId !== undefined ? body.communityId : body.community_id;
+    const validation = validateCommunityId(communityIdRaw);
+    if (!validation.valid) throw new ValidationError(400, validation.message);
+    communityId = validation.value;
+  }
+
   return {
     email,
     name: body.name,
@@ -34,6 +72,8 @@ export function validateUpdateProfile(body) {
     profileImage: body.profileImage,
     phoneNumber: body.phoneNumber,
     weightGoalMode: weightGoalMode || undefined,
+    physicalActivityLevel: physicalActivityLevel || undefined,
+    communityId,
   };
 }
 

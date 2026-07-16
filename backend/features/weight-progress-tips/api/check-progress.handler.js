@@ -24,6 +24,7 @@ import {
   getCoachPhone,
 } from '../data/weight-progress.repo.js';
 import { convertToIST } from '../../../utils/supabaseClient.js';
+import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 
 /**
  * Check if user has reverse weight progress and generate actionable tips.
@@ -47,7 +48,11 @@ export async function checkProgressHandler(query) {
 
   const bmr = parseFloat(userGoal.Bmr) || 0;
   const heightCm = parseFloat(userGoal.Height);
-  console.log('✅ [Step 2] heightCm:', heightCm, 'BMR:', bmr);
+  const tdee = resolveCalorieTargetFromProfile({
+    bmr,
+    physicalActivityLevel: userGoal.PhysicalActivityLevel,
+  }) || 0;
+  console.log('✅ [Step 2] heightCm:', heightCm, 'BMR:', bmr, 'TDEE:', tdee);
 
   // Step 3: Fetch recent weight records
   console.log('🔍 [Step 3] Fetching last 2 weight records for userId:', userId);
@@ -93,9 +98,9 @@ export async function checkProgressHandler(query) {
   }
 
   const waterTarget = calculateWaterTarget(currentWeightValue);
-  const calorieTarget = computeCalorieTarget(bmr, goalMode);
-  const displayCalorieTarget = computeDisplayCalorieTarget(bmr);
-  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(bmr, currentWeightValue);
+  const calorieTarget = computeCalorieTarget(tdee, goalMode);
+  const displayCalorieTarget = computeDisplayCalorieTarget(tdee);
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue);
   const proteinTargetForTips = computeProteinTarget(currentWeightValue);
   console.log('🎯 [Step 3] targets — calories:', displayCalorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
 

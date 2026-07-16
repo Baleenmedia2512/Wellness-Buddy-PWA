@@ -6,14 +6,20 @@
  * UI state for inline editing only.
  */
 import React, { useState } from 'react';
-import { Edit2, Trash2, Share2 } from 'lucide-react';
-import { validateEditWeight } from '../services/weightFormService';
+import { Edit2, Trash2, Share2, TrendingDown, TrendingUp, Target } from 'lucide-react';
+import {
+  validateEditWeight,
+  formatWeightChangeLabel,
+  pickIdealWeightDisplay,
+  formatHistoryDate,
+} from '../services/weightFormService';
 import { useWeightDetailImage } from '../hooks/useWeightDetailImage';
 import WeightDetailHeader from './WeightDetailHeader';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
 
 const WeightCardModal = ({
   data, onClose, onDelete, onUpdate, apiBaseUrl, userId = null,
+  previousWeight = null, previousEntry = null, idealWeight = null,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editWeight, setEditWeight] = useState('');
@@ -50,6 +56,11 @@ const WeightCardModal = ({
   };
 
   const displayWeight = isEditing ? editWeight : parseFloat(data.Weight).toFixed(2);
+  const changeInfo = formatWeightChangeLabel(displayWeight, previousWeight);
+  const idealDisplay = pickIdealWeightDisplay(parseFloat(displayWeight), idealWeight);
+  const previousDateLabel = previousEntry?.CreatedAt
+    ? formatHistoryDate(previousEntry.CreatedAt)
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
@@ -102,6 +113,70 @@ const WeightCardModal = ({
               <p className="text-2xl font-bold text-emerald-900 mt-1">{displayWeight} kg</p>
             )}
           </div>
+
+          {changeInfo && (
+            <div
+              className={`rounded-2xl p-4 border ${
+                changeInfo.gained
+                  ? 'bg-rose-50 border-rose-100'
+                  : 'bg-emerald-50 border-emerald-100'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Since last log
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Previous: <span className="font-semibold text-gray-800">{changeInfo.previousLabel}</span>
+                  </p>
+                  {previousDateLabel && (
+                    <p className="text-xs text-gray-400 mt-0.5">{previousDateLabel}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p
+                    className={`text-xl font-bold ${
+                      changeInfo.gained ? 'text-rose-600' : 'text-emerald-600'
+                    }`}
+                  >
+                    {changeInfo.signedLabel}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 flex items-center justify-end gap-1">
+                    {changeInfo.gained ? (
+                      <TrendingUp className="w-3.5 h-3.5" aria-hidden="true" />
+                    ) : (
+                      <TrendingDown className="w-3.5 h-3.5" aria-hidden="true" />
+                    )}
+                    change
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {idealWeight && idealDisplay && (
+            <div className="rounded-2xl p-4 border border-blue-100 bg-blue-50">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5" aria-hidden="true" />
+                    Ideal weight
+                  </p>
+                  <p className="text-xs text-blue-600/80 mt-1">
+                    Based on height {idealWeight.heightCm} cm
+                  </p>
+                  <p className="text-xs text-blue-600/70 mt-0.5">
+                    Healthy range: {idealWeight.min}–{idealWeight.value} {idealWeight.unit}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-blue-800">{idealDisplay}</p>
+                  <p className="text-[11px] text-blue-600/70 mt-0.5">target</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button

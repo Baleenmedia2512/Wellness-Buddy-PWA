@@ -174,6 +174,15 @@ export function isToday(istTimestamp) {
 }
 
 /**
+ * Calendar date (YYYY-MM-DD) for "today" in IST — matches backend todayInIST().
+ * Use for wellness score, discipline, and other IST business-day boundaries.
+ */
+export function todayDateInIST(now = new Date()) {
+  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  return ist.toISOString().split('T')[0];
+}
+
+/**
  * Format Date object as YYYY-MM-DD string in local timezone
  * @param {Date} date - Date object to format
  * @returns {string} Date string in YYYY-MM-DD format

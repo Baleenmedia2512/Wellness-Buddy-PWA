@@ -18,8 +18,29 @@
 import React, { useState, useRef } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
-import { parseAnalysisData } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
+
+function resolveFoodShareTotals(payload, foodData) {
+  const t = payload?.totals || {};
+  const n = foodData?.nutrition || {};
+  const fromItems = foodData?.detailedItems?.length
+    ? recalculateTotals(foodData.detailedItems)
+    : null;
+
+  const pick = (key) => t[key] ?? n[key] ?? fromItems?.[key] ?? 0;
+
+  return {
+    calories: pick('calories'),
+    protein: pick('protein'),
+    carbs: pick('carbs'),
+    fat: pick('fat'),
+    fiber: pick('fiber'),
+    sugar: pick('sugar'),
+    sodium: pick('sodium'),
+    cholesterol: pick('cholesterol'),
+  };
+}
 
 const WeighingScaleIcon = ({ className }) => (
   <svg
@@ -97,8 +118,8 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   const shareCardRef = useRef(null);
 
   // Parse analysisData to extract meal name and item details
-  const foodData = parseAnalysisData(p.analysisData, 'text-gray-400');
-  const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
+  const foodData = parseAnalysisData(p.analysisData);
+  const mealName = foodData.name || 'Food';
   const meal = getMealLabel(entry.capturedAt);
   // Individual food items for the share card
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
@@ -108,7 +129,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
     ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
     : (p.imagePath || null);
 
-  const t = p.totals || {};
+  const t = resolveFoodShareTotals(p, foodData);
   const macros = [
     { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
     { label: 'Protein',  value: Math.round(t.protein  ?? 0), unit: 'g',    color: '#3b82f6' },
@@ -521,9 +542,10 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
 // prevents duplicate AI requests. Swipe-to-delete is also disabled during
 // analysis to avoid race conditions with the pending AI request.
 
-export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTime = false }) {
+export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackgroundPending = false, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const showBackgroundHint = isBackgroundPending && !isAnalyzing;
 
   return (
     <div
@@ -558,6 +580,8 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
         aria-label={
           isAnalyzing
             ? 'AI is analysing this photo — please wait'
+            : showBackgroundHint
+            ? 'Photo uploaded — AI analysis in progress'
             : 'Unrecognised capture, tap to identify or swipe to delete'
         }
         data-testid="diary-row-unknown"
@@ -575,6 +599,8 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
           'relative z-10 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden transition-shadow',
           isAnalyzing
             ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
+            : showBackgroundHint
+            ? 'bg-emerald-50/80 border border-emerald-200 cursor-pointer hover:shadow-md'
             : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
         ].join(' ')}
         style={{
@@ -590,7 +616,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
         )}
 
         {/* AI analysis indeterminate progress bar across the card top */}
-        {isAnalyzing && (
+        {(isAnalyzing || showBackgroundHint) && (
           <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl overflow-hidden bg-emerald-100" aria-hidden="true">
             <div className="h-full bg-emerald-500 w-2/5 animate-shimmer" />
           </div>
@@ -606,11 +632,22 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
                 {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt)} · AI is analysing`}
               </p>
             </>
+          ) : showBackgroundHint ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">Analyzing…</h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime
+                  ? 'Your photo is being analyzed'
+                  : `${formatTime(entry.capturedAt)} · AI analysis in progress`}
+              </p>
+            </>
           ) : (
             <>
               <h4 className="font-semibold text-gray-900 truncate">Other</h4>
               <p className="text-xs text-gray-500">
-                {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
+                {hideTime
+                  ? "couldn't identify"
+                  : `${formatTime(entry.capturedAt)} · couldn't identify`}
               </p>
             </>
           )}
@@ -621,8 +658,13 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, hideTim
             className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
             aria-hidden="true"
           />
+        ) : showBackgroundHint ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            aria-hidden="true"
+          />
         ) : (
-          <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+          <span className="text-xs text-amber-600 font-medium" aria-hidden="true">Manual Log</span>
         )}
       </div>
     </div>

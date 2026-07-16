@@ -7,7 +7,7 @@ import React from 'react';
 import { User } from 'lucide-react';
 
 export default function TeamSearchResults({
-  dropdownRef, loading, suggestions, searchQuery,
+  dropdownRef, loading, suggestions,
   selectedMemberId, onSelect,
 }) {
   return (
@@ -47,7 +47,7 @@ export default function TeamSearchResults({
         </ul>
       ) : (
         <div className="px-4 py-3 text-sm text-gray-500">
-          No team members found matching &quot;{searchQuery}&quot;
+          No active users found.
         </div>
       )}
     </div>

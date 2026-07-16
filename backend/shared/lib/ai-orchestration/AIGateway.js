@@ -187,7 +187,256 @@ const ENRICHMENT_SCHEMA = {
   required: ['enrichment', 'confidence'],
 };
 
-// ── Prompts (module-level constants) ──────────────────────────────────────────
+// ── Herbalife prepared shake (fixed business profile) ─────────────────────────
+
+/** Canonical name for a prepared Herbalife meal-replacement shake. */
+const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
+
+/**
+ * Fixed nutrition for the standard Wellness Valley prepared shake recipe.
+ * Single source of truth — reused by prompts and deterministic backend overrides.
+ */
+const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
+  name:      HERBALIFE_SHAKE_NAME,
+  portion:   '1 serving',
+  weight_g:  58,
+  volume_ml: 300,
+  unit:      'ml',
+  isLiquid:  true,
+  nutrition: Object.freeze({
+    calories:       223,
+    protein:        24.73,
+    carbs:          24.24,
+    fat:            2.98,
+    fiber:          3.00,
+    sugar:          11.57,
+    sodium:         355,
+    cholesterol:    7,
+    glycemic_index: 20,
+    vitamin_a:      210,
+    vitamin_c:      15,
+    vitamin_d:      3.40,
+    vitamin_e:      5,
+    vitamin_k:      0,
+    vitamin_b1:     0.45,
+    vitamin_b2:     0.45,
+    vitamin_b3:     5,
+    vitamin_b6:     0.80,
+    vitamin_b9:     85,
+    vitamin_b12:    0.40,
+    calcium:        129,
+    iron:           3,
+    magnesium:      50,
+    potassium:      260,
+    zinc:           2.5,
+    phosphorus:     0,
+  }),
+});
+
+function cloneHerbalifeShakeNutrition() {
+  return { ...HERBALIFE_SHAKE_NUTRITION.nutrition };
+}
+
+function extractHerbalifeShakeFastNutrition() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(FAST_NUTRITION_KEYS.map((key) => [key, nutrition[key]]));
+}
+
+function extractHerbalifeShakeEnrichment() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition[key] ?? 0]),
+  );
+}
+
+const FAST_NUTRITION_KEYS = Object.freeze([
+  'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium', 'cholesterol', 'glycemic_index',
+]);
+
+const ALL_NUTRITION_KEYS = Object.freeze(Object.keys(HERBALIFE_SHAKE_NUTRITION.nutrition));
+
+function normalizeFoodName(name) {
+  return String(name ?? '').trim().toLowerCase();
+}
+
+/** Formula 1 powder/container product — NOT a prepared drink; never apply shake override. */
+function isFormula1ProductContainer(name) {
+  const n = normalizeFoodName(name);
+  if (!n.includes('formula 1') && !n.includes('formula1')) return false;
+  return (
+    n.includes('nutritional shake mix')
+    || n.includes('shake mix')
+    || /\bpowder\b/.test(n)
+    || (n.includes('mix') && !n.includes('protein drink mix'))
+  );
+}
+
+/**
+ * True when AI labelled a prepared Herbalife meal-replacement shake (including legacy names).
+ * @param {string} name
+ */
+function isPreparedHerbalifeShakeName(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  if (isFormula1ProductContainer(n)) return false;
+  if (n === 'herbalife shake') return true;
+  if (n.includes('wellness valley shake')) return true;
+  if (n.includes('formula 1') && n.includes('shake')) return true;
+  if (n.includes('herbalife') && n.includes('shake')) return true;
+  return false;
+}
+
+function buildHerbalifeShakeFoodItem(existing = {}) {
+  const nutrition = cloneHerbalifeShakeNutrition();
+  const {
+    nutrition: _nutrition,
+    calories: _calories,
+    protein: _protein,
+    carbs: _carbs,
+    fat: _fat,
+    fiber: _fiber,
+    sugar: _sugar,
+    sodium: _sodium,
+    cholesterol: _cholesterol,
+    glycemic_index: _glycemicIndex,
+    vitamin_a: _vitaminA,
+    vitamin_c: _vitaminC,
+    vitamin_d: _vitaminD,
+    vitamin_e: _vitaminE,
+    vitamin_k: _vitaminK,
+    vitamin_b1: _vitaminB1,
+    vitamin_b2: _vitaminB2,
+    vitamin_b3: _vitaminB3,
+    vitamin_b6: _vitaminB6,
+    vitamin_b9: _vitaminB9,
+    vitamin_b12: _vitaminB12,
+    calcium: _calcium,
+    iron: _iron,
+    magnesium: _magnesium,
+    potassium: _potassium,
+    zinc: _zinc,
+    phosphorus: _phosphorus,
+    name: _name,
+    portion: _portion,
+    weight_g: _weightG,
+    volume_ml: _volumeMl,
+    unit: _unit,
+    isLiquid: _isLiquid,
+    ...rest
+  } = existing;
+
+  return {
+    ...rest,
+    name:      HERBALIFE_SHAKE_NUTRITION.name,
+    portion:   HERBALIFE_SHAKE_NUTRITION.portion,
+    weight_g:  HERBALIFE_SHAKE_NUTRITION.weight_g,
+    volume_ml: HERBALIFE_SHAKE_NUTRITION.volume_ml,
+    unit:      HERBALIFE_SHAKE_NUTRITION.unit,
+    isLiquid:  HERBALIFE_SHAKE_NUTRITION.isLiquid,
+    nutrition,
+  };
+}
+
+function sumNutritionFields(foods) {
+  const shakeFoods = foods.filter((food) => isPreparedHerbalifeShakeName(food?.name));
+  const otherFoods = foods.filter((food) => !isPreparedHerbalifeShakeName(food?.name));
+
+  if (shakeFoods.length > 0 && otherFoods.length === 0) {
+    return cloneHerbalifeShakeNutrition();
+  }
+
+  let total = shakeFoods.length > 0
+    ? cloneHerbalifeShakeNutrition()
+    : Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
+
+  for (const food of otherFoods) {
+    const nutrition = food?.nutrition ?? {};
+    for (const key of ALL_NUTRITION_KEYS) {
+      const val = nutrition[key];
+      if (val != null && val !== '') total[key] += +val;
+    }
+  }
+
+  return total;
+}
+
+function extractFastNutrition(total, foods = []) {
+  if (Array.isArray(foods) && foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+    return extractHerbalifeShakeFastNutrition();
+  }
+
+  return Object.fromEntries(
+    FAST_NUTRITION_KEYS.map((key) => [key, total?.[key] ?? 0]),
+  );
+}
+
+function extractEnrichmentNutrition(nutrition) {
+  if (nutrition === HERBALIFE_SHAKE_NUTRITION.nutrition) {
+    return extractHerbalifeShakeEnrichment();
+  }
+
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition?.[key] ?? 0]),
+  );
+}
+
+function sumEnrichmentFields(left, right) {
+  const result = {};
+  for (const key of Object.keys(ENRICHMENT_PROPS)) {
+    result[key] = (left?.[key] ?? 0) + (right?.[key] ?? 0);
+  }
+  return result;
+}
+
+/**
+ * Apply fixed Herbalife Shake nutrition to detected prepared shakes and recompute totals.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyHerbalifeShakeOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let shakeFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPreparedHerbalifeShakeName(food?.name)) return food;
+    shakeFound = true;
+    return buildHerbalifeShakeFoodItem(food);
+  });
+
+  if (!shakeFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
+function formatHerbalifeShakeEnrichmentReference() {
+  const micros = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
+  return Object.entries(micros)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ');
+}
+
+const HERBALIFE_SHAKE_DETECTION_PROMPT = `Herbalife Shake — STANDARD PREPARED MEAL-REPLACEMENT DRINK (detection only):
+
+Members prepare the same fixed recipe (58 g total powder + water → ~300 ml; water = 0 calories):
+  • Formula 1 Nutritional Shake Mix — 3 scoops — 25 g
+  • ShakeMate — 2 scoops — 27 g
+  • Protein Drink Mix (PDM) — 1 scoop — 6 g
+
+Classify as "${HERBALIFE_SHAKE_NAME}" when the drink is thick, creamy, opaque, smoothie or milkshake consistency,
+inside a shaker, glass, or cup and appears to be a Herbalife meal-replacement drink.
+
+NEVER name a prepared drink "Herbalife Formula 1 Shake" or "Herbalife Wellness Valley Shake".
+Use "Herbalife Formula 1" / "Herbalife Formula 1 Nutritional Shake Mix" ONLY for the powder product container itself.
+Transparent drinks remain "Herbalife Afresh Energy Drink".
+
+Do NOT estimate powder weight, scoop count, or shake nutrition — set all "${HERBALIFE_SHAKE_NAME}" nutrition fields to 0;
+the server applies the fixed profile after detection.
+
+Additional visible ingredients (banana, apple, milk, oats, berries, almonds, peanut butter, etc.):
+  list each as a SEPARATE food item with independently estimated nutrition.
+  Do NOT modify "${HERBALIFE_SHAKE_NAME}" nutrition — extras are summed into details.total only.`;
 
 const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
 
@@ -228,19 +477,40 @@ A blurry food photo = "food" at 0.55, not "other".
 === Herbalife products (HIGHEST PRIORITY — recognise on sight) ===
 These are the most common items in this app. When in doubt, check Herbalife first.
 
-Meal-replacement shakes (isLiquid: true, ~250–300 ml serving):
-- "Herbalife Formula 1 Shake" — powder sachet or blended shaker bottle with logo.
-    Prepared with water: 210 kcal, 18 g protein, 24 g carbs, 3 g fat, 4 g fiber.
-    Prepared with 200 ml full-fat milk: 340 kcal, 26 g protein, 36 g carbs, 9 g fat, 4 g fiber.
-    Adjust if plant milk (soy/almond) is visible.
-- "Herbalife Protein Drink Mix (PDM)" — added to F1 shake.
-    Per 1 scoop added to F1: +70 kcal, 15 g protein, 3 g carbs, 0.5 g fat.
-- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink.
-    1 serving: 230 kcal, 20 g protein, 22 g carbs, 5 g fat.
+=== Herbalife Drink Recognition (Highest Priority) ===
 
-Hydration beverages (isLiquid: true, NOT a meal):
-- "Herbalife Afresh Energy Drink" — yellow/orange/green sachet or prepared in a cup.
-    Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
+Always classify Herbalife drinks using TEXTURE first, then transparency, then consistency, then colour.
+Texture has higher priority than colour.
+
+Classification priority:
+1. Texture
+2. Transparency
+3. Consistency
+4. Colour
+
+Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
+- Transparent or semi-transparent.
+- Thin, watery consistency like tea or coloured water.
+- Never creamy or thick.
+- Brown, amber, green or yellow colours are acceptable.
+- Examples: transparent brown drink → Herbalife Afresh Energy Drink; semi-transparent tea → Herbalife Afresh Energy Drink.
+- Always classify as "Herbalife Afresh Energy Drink".
+- Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
+
+Herbalife Shake (standard meal-replacement — prepared drink in cup/glass/bottle/shaker):
+- Users upload photos of PREPARED shakes, not dry powder.
+- Thick, creamy, smooth, velvety; opaque; milkshake or smoothie consistency.
+- Chocolate, vanilla, coffee or strawberry colours are acceptable.
+- Examples: thick chocolate shake in shaker → Herbalife Shake; creamy vanilla drink in glass → Herbalife Shake.
+- Always name prepared thick shakes "${HERBALIFE_SHAKE_NAME}" — never "Herbalife Formula 1 Shake".
+- Do NOT estimate powder weight, scoop count, or shake nutrition (use 0; server applies fixed profile).
+
+${HERBALIFE_SHAKE_DETECTION_PROMPT}
+
+Other Herbalife products:
+- "Herbalife Formula 1 Nutritional Shake Mix" / "Herbalife Formula 1" — ONLY when the Formula 1 powder container is visible (not a prepared drink).
+- "Herbalife Protein Drink Mix (PDM)" — powder/scoop container only (identify only; do not estimate nutrition when shown separately).
+- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink (identify only; do not estimate nutrition).
 - "Herbalife Herbal Tea Concentrate" — small sachet, dark concentrate bottle.
     Per cup (~200 ml): 8 kcal, 0 g protein, 2 g carbs, 0 g fat. Antioxidant beverage.
 
@@ -252,89 +522,37 @@ Supplements (isLiquid: false, near-zero calories — estimate 5–10 kcal per ta
 - "Herbalife Prolessa Duo" — weight management.
 - Any labelled Herbalife supplement bottle/packet: name it exactly as printed.
 
-Micronutrients for Herbalife F1 Shake (per serving, approximate):
-  vitamin_a: 250 µg, vitamin_c: 60 mg, vitamin_d: 5 µg, vitamin_e: 5 mg, vitamin_k: 30 µg,
-  vitamin_b1: 0.7 mg, vitamin_b2: 0.8 mg, vitamin_b3: 8 mg, vitamin_b6: 0.7 mg, vitamin_b9: 100 µg, vitamin_b12: 1.5 µg,
-  calcium: 250 mg, iron: 4 mg, magnesium: 50 mg, potassium: 350 mg, zinc: 3 mg, phosphorus: 200 mg.
-
 === Tamil Nadu / South Indian foods (SECOND PRIORITY) ===
 Use these EXACT names. If unsure, pick the closest Tamil Nadu food — never default to a Western name.
+Estimate nutrition using USDA FoodData Central / IFCT (Indian Food Composition Tables) values.
 
-Breakfast items (per 1 standard piece / 1 serving unless noted):
-- Idli (1 piece ~45 g):         58 kcal, 2.5 g P, 11 g C, 0.2 g F, 0.5 g fiber. sodium 120 mg.
-- Dosa (1 plain ~90 g):        110 kcal, 3.0 g P, 20 g C, 2.5 g F, 1.0 g fiber. sodium 200 mg.
-- Masala Dosa (1 ~180 g):      260 kcal, 6.0 g P, 42 g C, 7.0 g F, 3.0 g fiber.
-- Rava Dosa (1 ~90 g):         130 kcal, 3.5 g P, 22 g C, 3.5 g F, 1.0 g fiber.
-- Uthappam (1 ~120 g):         145 kcal, 4.5 g P, 25 g C, 3.0 g F, 2.0 g fiber.
-- Pongal / Ven Pongal (1 cup ~200 g): 320 kcal, 8 g P, 42 g C, 12 g F, 2 g fiber.
-- Appam (1 piece ~80 g):        95 kcal, 2.5 g P, 19 g C, 1.0 g F, 1.0 g fiber.
-- Puttu (1 serving ~120 g):    195 kcal, 4.0 g P, 40 g C, 2.5 g F, 3.0 g fiber.
-- Idiyappam (1 serving ~100 g): 160 kcal, 3.5 g P, 34 g C, 1.0 g F, 1.5 g fiber.
-- Poha / Aval (1 cup ~180 g):  240 kcal, 4.0 g P, 48 g C, 3.0 g F, 2.0 g fiber.
-- Upma (1 cup ~200 g):         230 kcal, 5.0 g P, 38 g C, 6.0 g F, 2.5 g fiber.
+Breakfast (~portion): Idli (~45 g/piece), Dosa (~90 g), Masala Dosa (~180 g), Rava Dosa (~90 g),
+  Uthappam (~120 g), Pongal/Ven Pongal (~200 g/cup), Appam (~80 g), Puttu (~120 g),
+  Idiyappam (~100 g), Poha/Aval (~180 g/cup), Upma (~200 g/cup).
 
-Rice dishes (per 1 cup ~200 g cooked):
-- Plain White Rice:             260 kcal, 5.5 g P, 57 g C, 0.5 g F, 0.5 g fiber.
-- Curd Rice:                    210 kcal, 7.0 g P, 36 g C, 4.0 g F, 0.5 g fiber.
-- Lemon Rice:                   260 kcal, 5.0 g P, 50 g C, 5.0 g F, 2.0 g fiber. sodium 350 mg.
-- Puliyodarai / Tamarind Rice:  290 kcal, 5.0 g P, 52 g C, 7.0 g F, 2.5 g fiber.
-- Tomato Rice:                  280 kcal, 6.0 g P, 52 g C, 5.5 g F, 2.0 g fiber.
-- Coconut Rice:                 310 kcal, 5.5 g P, 50 g C, 9.0 g F, 2.0 g fiber.
-- Sambar Rice (sadam):          310 kcal, 10 g P, 52 g C, 6.0 g F, 5.0 g fiber.
-- Chicken Biryani (1 plate ~350 g): 620 kcal, 32 g P, 75 g C, 18 g F, 3.0 g fiber.
-- Mutton Biryani (1 plate ~350 g):  680 kcal, 35 g P, 72 g C, 24 g F, 3.0 g fiber.
-- Seeraga Samba Biryani (1 plate ~350 g): 640 kcal, 30 g P, 76 g C, 20 g F, 3.0 g fiber.
-- Vegetable Biryani (1 plate ~300 g): 450 kcal, 10 g P, 78 g C, 12 g F, 4.0 g fiber.
+Rice (~200 g/cup cooked): Plain White Rice, Curd Rice, Lemon Rice, Puliyodarai/Tamarind Rice,
+  Tomato Rice, Coconut Rice, Sambar Rice (sadam), Chicken Biryani (~350 g/plate),
+  Mutton Biryani (~350 g/plate), Seeraga Samba Biryani (~350 g/plate), Vegetable Biryani (~300 g/plate).
 
-Breads:
-- Parotta (1 piece ~90 g):     300 kcal, 6.0 g P, 45 g C, 10 g F, 1.5 g fiber.
-- Kothu Parotta (1 serving ~250 g): 480 kcal, 18 g P, 60 g C, 18 g F, 3.0 g fiber.
-- Chapati / Roti (1 piece ~40 g): 95 kcal, 3.0 g P, 18 g C, 1.5 g F, 2.0 g fiber.
-- Phulka (1 piece ~30 g):       80 kcal, 2.5 g P, 15 g C, 1.0 g F, 2.0 g fiber.
+Breads: Parotta (~90 g), Kothu Parotta (~250 g), Chapati/Roti (~40 g), Phulka (~30 g).
 
-Gravies & curries (per 1 cup ~200 ml/g):
-- Sambar:                       100 kcal, 5.5 g P, 14 g C, 3.0 g F, 4.0 g fiber. sodium 450 mg.
-- Rasam:                         45 kcal, 1.5 g P,  7 g C, 1.5 g F, 1.0 g fiber. sodium 350 mg.
-- Kootu (vegetable+lentil):     150 kcal, 6.0 g P, 20 g C, 5.0 g F, 4.0 g fiber.
-- Poriyal (stir-fry, ~100 g):   90 kcal, 3.0 g P, 12 g C, 3.5 g F, 3.0 g fiber.
-- Avial (~150 g):               130 kcal, 3.5 g P, 15 g C, 6.0 g F, 4.0 g fiber.
-- Moru Kuzhambu (buttermilk curry, ~200 ml): 80 kcal, 3.0 g P, 8 g C, 4.0 g F.
-- Vatha Kuzhambu (~150 ml):     110 kcal, 2.0 g P, 10 g C, 7.0 g F, 2.0 g fiber.
-- Chicken Chettinad (~200 g):   280 kcal, 28 g P,  8 g C, 16 g F, 1.5 g fiber.
-- Mutton Kuzhambu (~200 g):     320 kcal, 25 g P,  9 g C, 21 g F, 1.5 g fiber.
-- Meen Kuzhambu / Fish Curry (~200 g): 220 kcal, 24 g P, 7 g C, 11 g F, 1.0 g fiber.
-- Egg Curry (1 egg + gravy):    180 kcal, 12 g P,  8 g C, 11 g F, 1.0 g fiber.
-- Egg Bhurji (2 eggs):          210 kcal, 14 g P,  6 g C, 14 g F, 1.0 g fiber.
-- Paneer Butter Masala (~200 g): 340 kcal, 14 g P, 14 g C, 26 g F, 2.0 g fiber.
-- Dal Tadka (~200 ml):          180 kcal, 10 g P, 25 g C, 5.0 g F, 5.0 g fiber.
-- Coconut Chutney (2 tbsp ~30 g): 50 kcal, 0.8 g P, 3 g C, 4.0 g F, 1.5 g fiber.
-- Tomato Chutney (2 tbsp ~30 g):  25 kcal, 0.5 g P, 4 g C, 1.0 g F, 1.0 g fiber.
+Gravies (~200 ml/g cup): Sambar, Rasam, Kootu, Poriyal (~100 g), Avial (~150 g),
+  Moru Kuzhambu, Vatha Kuzhambu (~150 ml), Chicken Chettinad, Mutton Kuzhambu,
+  Meen Kuzhambu/Fish Curry, Egg Curry, Egg Bhurji, Paneer Butter Masala, Dal Tadka,
+  Coconut Chutney (~30 g), Tomato Chutney (~30 g).
 
-Snacks:
-- Murukku (1 piece ~30 g):     155 kcal, 2.5 g P, 20 g C, 7.0 g F, 1.0 g fiber.
-- Sundal (1 cup ~100 g):       155 kcal, 9.0 g P, 22 g C, 3.5 g F, 7.0 g fiber.
-- Bonda (1 piece ~60 g):       145 kcal, 3.5 g P, 20 g C, 6.0 g F, 1.5 g fiber.
-- Bajji (1 piece ~50 g):       120 kcal, 3.0 g P, 16 g C, 5.0 g F, 1.5 g fiber.
+Snacks: Murukku (~30 g), Sundal (~100 g), Bonda (~60 g), Bajji (~50 g).
 
-Beverages (isLiquid: true, per standard serving):
-- Filter Coffee with milk (~150 ml): 85 kcal, 3.5 g P, 9 g C, 4.0 g F. calcium 120 mg, potassium 200 mg.
-- Masala Chai with milk (~150 ml):   80 kcal, 3.0 g P, 9 g C, 3.5 g F. calcium 110 mg.
-- Plain Tea with milk (~150 ml):     60 kcal, 2.5 g P, 7 g C, 3.0 g F.
-- Ginger Tea with milk (~150 ml):    65 kcal, 2.5 g P, 8 g C, 3.0 g F.
-- Buttermilk / Moru (~200 ml):       35 kcal, 2.5 g P, 5 g C, 1.0 g F. calcium 100 mg.
-- Tender Coconut Water (~240 ml):    45 kcal, 0.5 g P, 11 g C, 0.5 g F. potassium 600 mg.
-- Sugarcane Juice (~240 ml):        120 kcal, 0.5 g P, 30 g C, 0.0 g F. potassium 180 mg.
+Beverages (isLiquid: true): Filter Coffee with milk (~150 ml), Masala Chai with milk (~150 ml),
+  Plain Tea with milk (~150 ml), Ginger Tea with milk (~150 ml), Buttermilk/Moru (~200 ml),
+  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml).
 
-Sweets (per 1 piece / 1 serving):
-- Sweet Pongal / Sakkarai Pongal (1 cup ~150 g): 350 kcal, 6 g P, 60 g C, 10 g F.
-- Payasam (1 cup ~150 ml):   200 kcal, 5.0 g P, 35 g C, 5.0 g F.
-- Mysore Pak (1 piece ~50 g):290 kcal, 3.5 g P, 32 g C, 17 g F.
-- Halwa (1 piece ~80 g):     280 kcal, 3.0 g P, 45 g C, 10 g F.
-- Laddu (1 piece ~50 g):     225 kcal, 4.5 g P, 30 g C, 10 g F.
+Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~50 g),
+  Halwa (~80 g), Laddu (~50 g).
 
 === isLiquid ===
-true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife shakes)
-false → all solid foods (rice, bread, curry, snacks, idli, supplements)
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife Shake)
+false → solid foods and supplement tablets/capsules
 
 === FOOD output ===
 
@@ -343,7 +561,7 @@ fastNutrition — 9-field aggregate totals:
 
 details.foods — one object per visible edible item or beverage:
 {
-  name,       ← specific: "Idli" / "Herbalife Formula 1 Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
+  name,       ← specific: "Idli" / "Herbalife Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
   portion,    ← realistic serving size string  e.g. "2 pieces" / "1 cup (200 ml)"
   weight_g,   ← solids (g)
   volume_ml,  ← liquids (ml); provide both when estimable
@@ -360,7 +578,9 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
-- Use the reference values above for Tamil Nadu foods and Herbalife products.
+- Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
+- "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
+- If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
 - For any other Indian food, estimate using USDA FoodData Central or equivalent.
 
 details.total — same 26 flat fields, sum of all foods:
@@ -412,10 +632,10 @@ Units: vitamin_a µg RAE | vitamin_d/k µg | all others mg.
 Use the reference values below when the identified food matches. Interpolate for mixed dishes.
 
 === Herbalife products ===
-Herbalife Formula 1 Shake (1 serving, prepared):
-  vitamin_a: 250, vitamin_c: 60, vitamin_d: 5, vitamin_e: 5, vitamin_k: 30,
-  vitamin_b1: 0.7, vitamin_b2: 0.8, vitamin_b3: 8, vitamin_b6: 0.7, vitamin_b9: 100, vitamin_b12: 1.5,
-  calcium: 250, iron: 4, magnesium: 50, potassium: 350, zinc: 3, phosphorus: 200.
+${HERBALIFE_SHAKE_NAME} (1 serving — fixed; server-side profile):
+  ${formatHerbalifeShakeEnrichmentReference()}
+  When "${HERBALIFE_SHAKE_NAME}" is the only identified item, return these exact micronutrient values.
+
 Herbalife Afresh Energy Drink (1 cup):
   vitamin_c: 15, potassium: 30. All others: 0.
 Herbalife Herbal Tea Concentrate (1 cup):
@@ -425,61 +645,7 @@ Herbalife Formula 2 Multivitamin (per daily dose):
   vitamin_b1: 1.1, vitamin_b2: 1.4, vitamin_b3: 16, vitamin_b6: 1.4, vitamin_b9: 200, vitamin_b12: 2.5,
   calcium: 150, iron: 8, magnesium: 55, potassium: 80, zinc: 7, phosphorus: 100.
 
-=== Tamil Nadu foods — micronutrient references per standard serving ===
-
-Dairy-based beverages (per ~150–200 ml cup with cow's milk):
-  Filter Coffee / Masala Chai / Tea with milk / Ginger Tea:
-    calcium: 120, potassium: 200, phosphorus: 100, vitamin_b2: 0.20, vitamin_b12: 0.5,
-    magnesium: 15, vitamin_a: 50, vitamin_b1: 0.05, vitamin_d: 0.5.
-
-Idli (per 2 pieces ~90 g):
-  iron: 0.8, calcium: 20, potassium: 70, phosphorus: 50, magnesium: 15,
-  vitamin_b1: 0.06, vitamin_b2: 0.03, vitamin_b3: 0.7, vitamin_b9: 12.
-
-Dosa (plain, per 1 piece ~90 g):
-  iron: 0.7, calcium: 15, potassium: 80, phosphorus: 60, magnesium: 18,
-  vitamin_b1: 0.08, vitamin_b2: 0.04, vitamin_b3: 0.9, vitamin_b9: 14.
-
-Pongal / Ven Pongal (per 1 cup ~200 g):
-  calcium: 25, iron: 1.5, potassium: 150, phosphorus: 90, magnesium: 30,
-  vitamin_b1: 0.10, vitamin_b3: 1.5, vitamin_b9: 20.
-
-Sambar (per 1 cup ~200 ml):
-  iron: 2.0, calcium: 50, potassium: 350, phosphorus: 80, magnesium: 35,
-  vitamin_c: 15, vitamin_b1: 0.10, vitamin_b3: 1.2, vitamin_b9: 40, vitamin_a: 120.
-
-Curd Rice (per 1 cup ~200 g):
-  calcium: 150, potassium: 180, phosphorus: 120, vitamin_b2: 0.18, vitamin_b12: 0.4,
-  magnesium: 18, vitamin_a: 40.
-
-Chicken Biryani (per 1 plate ~350 g):
-  iron: 2.5, zinc: 3.5, potassium: 450, phosphorus: 280, calcium: 40,
-  vitamin_b3: 8.0, vitamin_b6: 0.5, vitamin_b12: 0.6, vitamin_b1: 0.15, magnesium: 45.
-
-Mutton Biryani (per 1 plate ~350 g):
-  iron: 3.5, zinc: 5.0, potassium: 480, phosphorus: 300, calcium: 45,
-  vitamin_b3: 7.0, vitamin_b6: 0.4, vitamin_b12: 1.5, vitamin_b1: 0.18, magnesium: 50.
-
-Parotta (per 1 piece ~90 g):
-  iron: 1.2, calcium: 20, phosphorus: 70, potassium: 80, vitamin_b1: 0.12, vitamin_b3: 1.0.
-
-Rasam (per 1 cup ~200 ml):
-  vitamin_c: 12, iron: 1.0, potassium: 250, magnesium: 20, calcium: 25, vitamin_a: 40.
-
-Kootu (vegetable+lentil, per 1 cup ~150 g):
-  iron: 2.0, calcium: 60, potassium: 300, magnesium: 40, vitamin_c: 20, vitamin_b9: 50.
-
-Tender Coconut Water (per 240 ml):
-  potassium: 600, magnesium: 25, calcium: 18, phosphorus: 17, vitamin_c: 4.
-
-Buttermilk / Moru (per 200 ml):
-  calcium: 115, potassium: 180, phosphorus: 90, vitamin_b2: 0.15, vitamin_b12: 0.35.
-
-Egg (per 1 whole egg ~50 g):
-  vitamin_a: 70, vitamin_d: 1.1, vitamin_b2: 0.24, vitamin_b12: 0.6, vitamin_b9: 24,
-  iron: 0.9, calcium: 25, phosphorus: 95, zinc: 0.6, potassium: 70.
-
-For any Tamil Nadu food not listed above, use USDA / IFCT (Indian Food Composition Tables) values.
+For all Tamil Nadu foods use USDA / IFCT (Indian Food Composition Tables) values from your training data.
 For any other food, use USDA FoodData Central.
 
 JSON only. No markdown.`;
@@ -501,9 +667,10 @@ function isPrimaryOverloadedError(err) {
   // Circuit opened for the primary → the primary service is considered down
   if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
+  // 502 = bad gateway (upstream Gemini infrastructure failure)
   // 503 = service unavailable (overloaded)
   // 429 = quota exceeded / rate limited (separate quota on fallback model)
-  if (status === 503 || status === 429) return true;
+  if (status === 502 || status === 503 || status === 429) return true;
   const msg = (err.message ?? '').toLowerCase();
   return (
     msg.includes('503')                       ||
@@ -544,13 +711,23 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
       () => model.generateContent(parts),
-      { label, service: circuitService },
+      {
+        label,
+        service: circuitService,
+        // Primary model (Flash): cap at 2 attempts. A persistent 503 means
+        // the endpoint is saturated — burning 2 more retries on the same
+        // overloaded server delays fallback and makes congestion worse.
+        // Fallback model (Pro): keep the default 3-attempt budget; it is the
+        // last resort and worth retrying fully before surfacing an error.
+        ...(modelOverride ? {} : { maxAttempts: 2 }),
+      },
     ));
   } catch (err) {
     // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
       const status = Number(err.status);
       const reason = err.code === 'CIRCUIT_OPEN' ? 'circuit_open'
+                   : status === 502 ? '502_bad_gateway'
                    : (status === 429 || (err.message ?? '').toLowerCase().includes('quota') || (err.message ?? '').toLowerCase().includes('rate limit') || (err.message ?? '').toLowerCase().includes('too many requests')) ? '429_quota_exceeded'
                    : '503_overload';
       logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
@@ -579,6 +756,30 @@ async function callModel(configKey, parts, schema, { label, trace = null, modelO
       outputTokens: usage.candidatesTokenCount ?? 0,
       model:        configKey,
     });
+  }
+
+  // Detect MAX_TOKENS truncation — gemini-2.5-flash counts thinking + output
+  // tokens against maxOutputTokens. A too-small budget truncates the JSON
+  // response mid-field, causing a downstream parse failure that silently
+  // routes the capture to "other".
+  // Log a warning so this is immediately visible in observability dashboards.
+  const finishReason = result.response?.candidates?.[0]?.finishReason;
+  if (finishReason === 'MAX_TOKENS') {
+    const err = new Error(
+      `MAX_TOKENS: Gemini truncated response after ${usage?.candidatesTokenCount ?? '?'} output tokens ` +
+      `(thinking=${usage?.thoughtsTokenCount ?? '?'}). ` +
+      `Increase maxOutputTokens in MODEL_CONFIGS.${configKey}.`
+    );
+    err.code    = 'MAX_TOKENS';
+    err.status  = 503; // treat as retryable so the caller can escalate to Pro
+    logger.error('AIGateway.callModel: MAX_TOKENS truncation', {
+      label,
+      configKey,
+      candidatesTokenCount: usage?.candidatesTokenCount ?? null,
+      thoughtsTokenCount:   usage?.thoughtsTokenCount   ?? null,
+      promptTokenCount:     usage?.promptTokenCount      ?? null,
+    });
+    throw err;
   }
 
   return { rawText, attempts, latencyMs: totalLatencyMs };
@@ -616,14 +817,14 @@ function normaliseType(raw, confidence) {
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<object>}
  */
-export async function analyzeUnified(imageBuffer, mimeType, { trace = null } = {}) {
+export async function analyzeUnified(imageBuffer, mimeType, { trace = null, modelOverride = null } = {}) {
   const label     = 'unified';
   const imagePart = imageInlinePart(imageBuffer, mimeType);
   const stageStart = Date.now();
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
-      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace },
+      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace, modelOverride },
     );
 
     const parsed = safeParseJson(rawText, { label });
@@ -639,6 +840,21 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null } = {
     const d        = parsed.data;
     const normType = normaliseType(d.imageType, d.confidence);
 
+    let details = d.details ?? {};
+    let fastNutrition = null;
+    if (normType === 'food') {
+      details = applyHerbalifeShakeOverrides(details);
+      const foods = Array.isArray(details.foods) ? details.foods : [];
+      if (details.total) {
+        fastNutrition = extractFastNutrition(details.total, foods);
+      } else if (foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+        details.total = cloneHerbalifeShakeNutrition();
+        fastNutrition = extractHerbalifeShakeFastNutrition();
+      } else {
+        fastNutrition = d.fastNutrition ?? null;
+      }
+    }
+
     if (trace) {
       trace.addStage({ name: label, latencyMs, success: true, extra: { attempts, imageType: normType } });
     }
@@ -646,8 +862,8 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null } = {
     return {
       imageType:      normType,
       confidence:     d.confidence,
-      details:        d.details         ?? {},
-      fastNutrition:  normType === 'food'       ? (d.fastNutrition  ?? null) : null,
+      details,
+      fastNutrition,
       weightReading:  normType === 'weight'     ? (d.weightReading  ?? null) : null,
       smartwatchData: normType === 'smartwatch' ? (d.smartwatchData ?? null) : null,
       educationData:  normType === 'education'  ? (d.educationData  ?? null) : null,
@@ -711,10 +927,29 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
 
   const label      = 'enrichment';
   const imagePart  = imageInlinePart(imageBuffer, mimeType);
-  const prompt     = buildEnrichmentPrompt(fastContext, resolvedFoodItems);
   const stageStart = Date.now();
 
   const { trace: resolvedTrace = null } = resolvedOpts;
+
+  const shakeItems = (resolvedFoodItems ?? []).filter(isPreparedHerbalifeShakeName);
+  const otherItems = (resolvedFoodItems ?? []).filter((name) => !isPreparedHerbalifeShakeName(name));
+  const fixedShakeEnrichment = extractHerbalifeShakeEnrichment();
+
+  // Prepared Herbalife Shake only — skip Gemini; return deterministic micronutrients.
+  if (shakeItems.length > 0 && otherItems.length === 0) {
+    const latencyMs = Date.now() - stageStart;
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts: 0, herbalifeShakeFixed: true } });
+    }
+    return {
+      enrichment: fixedShakeEnrichment,
+      confidence: 'high',
+      latencyMs,
+      attempts: 0,
+    };
+  }
+
+  const prompt = buildEnrichmentPrompt(fastContext, otherItems.length > 0 ? otherItems : resolvedFoodItems);
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
@@ -727,12 +962,19 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
       return { enrichment: {}, confidence: 'low', latencyMs, attempts };
     }
 
+    let enrichment = parsed.data.enrichment ?? {};
+
+    // Shake + extras: fixed shake micronutrients + Gemini estimate for additional items.
+    if (shakeItems.length > 0 && otherItems.length > 0) {
+      enrichment = sumEnrichmentFields(fixedShakeEnrichment, enrichment);
+    }
+
     if (resolvedTrace) {
       resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
     }
 
     return {
-      enrichment: parsed.data.enrichment ?? {},
+      enrichment,
       confidence: parsed.data.confidence ?? 'low',
       latencyMs,
       attempts,

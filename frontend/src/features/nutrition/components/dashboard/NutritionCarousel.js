@@ -1,15 +1,18 @@
 /**
- * NutritionCarousel — 8-card horizontal swipe carousel for the nutrition dashboard.
+ * NutritionCarousel — 7-card horizontal swipe carousel for the nutrition dashboard.
  *
  * Cards (in order):
- *   0 — Calories       (BMR target, consumed, exercise=0, remaining)
+ *   0 — Wellness Score  (when ff.wellness-score-sheet is enabled)
+ *   1 — Calories       (BMR target, consumed, exercise=0, remaining)
  *   1 — Macros         (protein/fat/carbs with weight-derived targets)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
- *   3 — Low Carb       (carbs, sugar ≤50g, fiber ≥25g)
- *   4 — Glycemic Index (average GI with Low/Medium/High zones)
- *   5 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
- *   6 — B Vitamins     (B1, B2, B3, B6, B9, B12 vs. adult RDA)
- *   7 — Minerals       (Ca, Fe, Mg, K, Zn, P vs. adult RDA)
+ *   3 — Low Carb       (GI, sugar ≤50g, fiber ≥25g; carbs in footer)
+ *   4 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
+ *   5 — B Vitamins     (B1, B2, B3, B6, B9, B12 vs. adult RDA)
+ *   6 — Minerals       (Ca, Fe, Mg, K, Zn, P vs. adult RDA)
+ *
+ * (Glycemic Index carousel card disabled — GI is on the Low Carb card instead.
+ *  To re-enable: uncomment GICard import/usage below and add 'Glycemic Index' to CARD_LABELS.)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
  * Resets to card 0 when selectedDate changes.
@@ -20,26 +23,28 @@ import {
   computeMacroTargets,
   computeHeartHealthyCard,
   computeLowCarbCard,
-  computeGICard,
+  // computeGICard, // disabled — GI moved to Low Carb card
 } from '../../domain/carouselRules';
 import {
   computeVitaminsFatSolubleCard,
   computeVitaminsBComplexCard,
   computeMineralsCard,
 } from '../../domain/micronutrientRules';
+import { scaleMicronutrientTiles } from '../../domain/carouselPeriodProgress';
 import { useCarouselSwipe } from '../../hooks/useCarouselSwipe';
 import CaloriesCard   from './carousel/CaloriesCard';
 import MacrosCard     from './carousel/MacrosCard';
 import HeartHealthyCard from './carousel/HeartHealthyCard';
 import LowCarbCard    from './carousel/LowCarbCard';
-import GICard         from './carousel/GICard';
+// import GICard         from './carousel/GICard'; // disabled — GI moved to Low Carb card
 import VitaminsFatSolubleCard from './carousel/VitaminsFatSolubleCard';
 import VitaminsBComplexCard   from './carousel/VitaminsBComplexCard';
 import MineralsCard           from './carousel/MineralsCard';
 import FoodBreakdownModal from '../FoodBreakdownModal';
+import GlycemicIndexModal from '../GlycemicIndexModal';
 
-const CARD_LABELS = [
-  'Calories', 'Macros', 'Heart Healthy', 'Low Carb', 'Glycemic Index',
+const NUTRITION_CARD_LABELS = [
+  'Calories', 'Macros', 'Heart Healthy', 'Low Carb',
   'Vitamins A-K', 'B Vitamins', 'Minerals',
 ];
 
@@ -50,8 +55,26 @@ const NutritionCarousel = ({
   dailyStats,
   latestWeight,
   selectedDate,
+  rangeKey,
   analyses = [],
+  leadingCard = null,
+  leadingCardLabel = 'Wellness Score',
+  periodContext = null,
 }) => {
+  const goalScale = periodContext?.goalScale ?? 1;
+
+  const scaleTarget = (value) => {
+    if (value == null) return null;
+    return Math.round(value * goalScale);
+  };
+
+  const scaleLimitNutrient = (nutrient) => ({
+    ...nutrient,
+    target: nutrient.target != null ? Math.round(nutrient.target * goalScale) : null,
+    pct: nutrient.target != null && nutrient.target > 0
+      ? Math.min(100, Math.round((nutrient.consumed / (nutrient.target * goalScale)) * 100))
+      : nutrient.pct,
+  });
   // Modal state for food breakdown
   const [modalState, setModalState] = useState({ isOpen: false, nutrient: null });
 
@@ -65,7 +88,7 @@ const NutritionCarousel = ({
 
   // Derive values from domain rules (pure)
   const calCard = computeCaloriesCard({
-    calorieTarget,
+    calorieTarget: calorieTarget * goalScale,
     consumedCalories: consumedCalories || dailyStats?.totalCalories || 0,
     burnedCalories: burnedCalories || 0,
   });
@@ -74,70 +97,97 @@ const NutritionCarousel = ({
     latestWeight,
     calorieTarget,
   });
+  const scaledProteinTarget = scaleTarget(proteinTarget);
+  const scaledFatTarget = scaleTarget(fatTarget);
+  const scaledCarbsTarget = scaleTarget(carbsTarget);
 
-  const heartCard = computeHeartHealthyCard({
+  const heartCardRaw = computeHeartHealthyCard({
     consumedFat:         dailyStats?.totalFat         || 0,
     consumedSodium:      dailyStats?.totalSodium      || 0,
     consumedCholesterol: dailyStats?.totalCholesterol || 0,
     fatTarget,
     weight: latestWeight,
   });
+  const heartCard = {
+    fat: scaleLimitNutrient(heartCardRaw.fat),
+    sodium: scaleLimitNutrient(heartCardRaw.sodium),
+    cholesterol: scaleLimitNutrient(heartCardRaw.cholesterol),
+  };
 
-  const lowCarbCard = computeLowCarbCard({
+  const lowCarbCardRaw = computeLowCarbCard({
     consumedCarbs: dailyStats?.totalCarbs || 0,
     consumedSugar: dailyStats?.totalSugar || 0,
     consumedFiber: dailyStats?.totalFiber || 0,
     carbsTarget,
     calorieTarget,
   });
+  const lowCarbCard = {
+    carbs: scaleLimitNutrient(lowCarbCardRaw.carbs),
+    sugar: scaleLimitNutrient(lowCarbCardRaw.sugar),
+    fiber: {
+      ...lowCarbCardRaw.fiber,
+      target: Math.round(lowCarbCardRaw.fiber.target * goalScale),
+      pct: Math.min(100, Math.round(
+        ((lowCarbCardRaw.fiber.consumed || 0) / Math.max(lowCarbCardRaw.fiber.target * goalScale, 1)) * 100,
+      )),
+    },
+  };
 
-  const giCard = computeGICard({
-    averageGlycemicIndex: dailyStats?.averageGlycemicIndex ?? null,
-    mealCount: dailyStats?.mealCount || 0,
-  });
+  const vitFatTiles  = scaleMicronutrientTiles(computeVitaminsFatSolubleCard(dailyStats || {}), goalScale);
+  const vitBTiles    = scaleMicronutrientTiles(computeVitaminsBComplexCard(dailyStats || {}), goalScale);
+  const mineralTiles = scaleMicronutrientTiles(computeMineralsCard(dailyStats || {}), goalScale);
 
-  const vitFatTiles  = computeVitaminsFatSolubleCard(dailyStats || {});
-  const vitBTiles    = computeVitaminsBComplexCard(dailyStats || {});
-  const mineralTiles = computeMineralsCard(dailyStats || {});
+  const cardLabels = leadingCard
+    ? [leadingCardLabel, ...NUTRITION_CARD_LABELS]
+    : NUTRITION_CARD_LABELS;
 
   const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
-    cardCount: CARD_LABELS.length,
-    resetKey: selectedDate,
+    cardCount: cardLabels.length,
+    resetKey: rangeKey || selectedDate,
   });
 
   // Memoize cards to prevent re-renders on swipe (only transform changes)
   const cards = useMemo(
-    () => [
-      <CaloriesCard key="calories" {...calCard} onOpenModal={handleOpenModal} />,
+    () => {
+      const nutritionCards = [
+      <CaloriesCard key="calories" {...calCard} periodContext={periodContext} onOpenModal={handleOpenModal} />,
       <MacrosCard
         key="macros"
         consumedProtein={dailyStats?.totalProtein || 0}
         consumedFat={dailyStats?.totalFat        || 0}
         consumedCarbs={dailyStats?.totalCarbs    || 0}
-        proteinTarget={proteinTarget}
-        fatTarget={fatTarget}
-        carbsTarget={carbsTarget}
-        glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
-        analyses={analyses}
+        proteinTarget={scaledProteinTarget}
+        fatTarget={scaledFatTarget}
+        carbsTarget={scaledCarbsTarget}
+        periodContext={periodContext}
         onOpenModal={handleOpenModal}
       />,
-      <HeartHealthyCard key="heart"   fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} onOpenModal={handleOpenModal} />,
-      <LowCarbCard      key="lowcarb" carbs={lowCarbCard.carbs} sugar={lowCarbCard.sugar} fiber={lowCarbCard.fiber} onOpenModal={handleOpenModal} />,
-      <GICard           key="gi"      averageGI={giCard.averageGI} mealCount={giCard.mealCount} />,
-      <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} onOpenModal={handleOpenModal} />,
-      <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} onOpenModal={handleOpenModal} />,
-      <MineralsCard           key="minerals" tiles={mineralTiles} onOpenModal={handleOpenModal} />,
-    ],
+      <HeartHealthyCard key="heart" fat={heartCard.fat} sodium={heartCard.sodium} cholesterol={heartCard.cholesterol} periodContext={periodContext} onOpenModal={handleOpenModal} />,
+      <LowCarbCard
+        key="lowcarb"
+        carbs={lowCarbCard.carbs}
+        sugar={lowCarbCard.sugar}
+        fiber={lowCarbCard.fiber}
+        glycemicIndex={dailyStats?.averageGlycemicIndex ?? null}
+        periodContext={periodContext}
+        onOpenModal={handleOpenModal}
+      />,
+      <VitaminsFatSolubleCard key="vit-fat" tiles={vitFatTiles} periodContext={periodContext} onOpenModal={handleOpenModal} />,
+      <VitaminsBComplexCard   key="vit-b"   tiles={vitBTiles} periodContext={periodContext} onOpenModal={handleOpenModal} />,
+      <MineralsCard           key="minerals" tiles={mineralTiles} periodContext={periodContext} onOpenModal={handleOpenModal} />,
+      ];
+      return leadingCard ? [leadingCard, ...nutritionCards] : nutritionCards;
+    },
     [
       calCard.target, calCard.consumed, calCard.exercise, calCard.remaining,
-      proteinTarget, fatTarget, carbsTarget,
+      scaledProteinTarget, scaledFatTarget, scaledCarbsTarget,
+      periodContext,
       dailyStats?.totalProtein, dailyStats?.totalFat, dailyStats?.totalCarbs,
       dailyStats?.averageGlycemicIndex,
       heartCard.fat, heartCard.sodium, heartCard.cholesterol,
       lowCarbCard.carbs, lowCarbCard.sugar, lowCarbCard.fiber,
-      giCard.averageGI, giCard.mealCount,
       vitFatTiles, vitBTiles, mineralTiles,
-      analyses,
+      leadingCard,
     ],
   );
 
@@ -169,7 +219,7 @@ const NutritionCarousel = ({
 
         {/* Dot indicators */}
         <div className="flex items-center justify-center gap-1.5 py-0.5">
-          {CARD_LABELS.map((label, i) => (
+          {cardLabels.map((label, i) => (
             <div
               key={label}
               className={`rounded-full transition-all duration-200 ${
@@ -182,18 +232,27 @@ const NutritionCarousel = ({
         </div>
       </div>
 
-      {/* Food Breakdown Modal - rendered at carousel level for full-screen bottom sheet */}
-      <FoodBreakdownModal
-        isOpen={modalState.isOpen}
-        onClose={handleCloseModal}
-        nutrientName={getNutrientDisplayName(modalState.nutrient)}
-        unit={getNutrientUnit(modalState.nutrient)}
-        totalConsumed={getNutrientTotal(modalState.nutrient, dailyStats, calCard, proteinTarget, fatTarget, carbsTarget, heartCard, lowCarbCard)}
-        target={getNutrientTarget(modalState.nutrient, proteinTarget, fatTarget, carbsTarget, calCard.target, heartCard, lowCarbCard)}
-        foodBreakdown={
-          modalState.isOpen && modalState.nutrient ? extractFoodContributions(analyses, modalState.nutrient).breakdown : []
-        }
-      />
+      {/* Food Breakdown / GI Modal - rendered at carousel level for full-screen bottom sheet */}
+      {modalState.nutrient === 'glycemicIndex' ? (
+        <GlycemicIndexModal
+          isOpen={modalState.isOpen}
+          onClose={handleCloseModal}
+          averageGI={dailyStats?.averageGlycemicIndex ?? null}
+          mealCount={dailyStats?.mealCount || 0}
+        />
+      ) : (
+        <FoodBreakdownModal
+          isOpen={modalState.isOpen}
+          onClose={handleCloseModal}
+          nutrientName={getNutrientDisplayName(modalState.nutrient)}
+          unit={getNutrientUnit(modalState.nutrient)}
+          totalConsumed={getNutrientTotal(modalState.nutrient, dailyStats, calCard, scaledProteinTarget, scaledFatTarget, scaledCarbsTarget, heartCard, lowCarbCard)}
+          target={getNutrientTarget(modalState.nutrient, scaledProteinTarget, scaledFatTarget, scaledCarbsTarget, calCard.target, heartCard, lowCarbCard)}
+          foodBreakdown={
+            modalState.isOpen && modalState.nutrient ? extractFoodContributions(analyses, modalState.nutrient).breakdown : []
+          }
+        />
+      )}
     </div>
   );
 };

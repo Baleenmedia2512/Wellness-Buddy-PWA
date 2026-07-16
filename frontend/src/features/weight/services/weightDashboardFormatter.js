@@ -21,6 +21,22 @@ export const toDateKey = (value) => {
 export const isSmallChartDevice = () =>
   typeof window !== 'undefined' && window.innerWidth < 380;
 
+/** Map a diary timeline row (`kind: weight`) to a weight-history entry shape. */
+export function weightEntryFromDiaryRow(diaryEntry) {
+  const p = diaryEntry?.payload || {};
+  if (p.id == null || p.id === '') return null;
+  return {
+    ID: p.id,
+    Weight: p.weight,
+    Bmi: p.bmi,
+    BodyFat: p.bodyFat,
+    MuscleMass: p.muscleMass,
+    Bmr: p.bmr,
+    WeightImageBase64: p.imageBase64 ?? null,
+    CreatedAt: diaryEntry.capturedAt ?? null,
+  };
+}
+
 /**
  * Filter weight entries to a single calendar day (matches the day the
  * entry is displayed under, i.e. its IST-local date). Returns the full

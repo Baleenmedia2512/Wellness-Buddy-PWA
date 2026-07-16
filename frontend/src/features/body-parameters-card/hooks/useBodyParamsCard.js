@@ -1,18 +1,20 @@
 /**
  * useBodyParamsCard.js
  * Owns state + validation + submit lifecycle for the body-parameters card form.
- * Includes three auto-calculations:
+ * Includes auto-calculations:
  *   1. Height → ideal weight  (BMI 23 × heightM²)
  *   2. Height + Weight → BMI  (weight ÷ heightM²)
- *   3. Gender → fat% hint label
+ *   3. Weight + Fat% → BMR   (Katch-McArdle)
+ *   4. Gender → fat% hint label
  * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CapacitorHttp } from '@capacitor/core';
+import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
@@ -91,6 +93,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Track whether the user manually typed in the BMI field.
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
+  const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
 
   // ── Phone autocomplete state ──────────────────────────────────────────────
@@ -129,7 +132,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
         locationName: existingCard.locationName ?? '',
       });
-      setBmiUserEdited(false); // Reset BMI edit flag for new card
+      setBmiUserEdited(false);
+      setBmrUserEdited(false);
     }
   }, [existingCard?.id]); // Only update when card ID changes
 
@@ -209,6 +213,11 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     return Math.round((w / (m * m)) * 10) / 10;
   }, [form.heightCm, form.weightKg]);
 
+  /** BMR from Katch-McArdle when weight + fat% are valid. */
+  const derivedBmr = useMemo(() => {
+    return computeKatchMcArdleBmr(form.weightKg, form.fatPercent);
+  }, [form.weightKg, form.fatPercent]);
+
   /** Fat% healthy-range hint based on selected gender. */
   const fatHint = useMemo(() => {
     if (form.gender === 'Male')   return '10–20%';
@@ -234,10 +243,19 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, bmi: String(derivedBmi) }));
   }, [derivedBmi, bmiUserEdited]);
 
+  // Auto-fill BMR whenever weight or body fat % changes (Katch-McArdle).
+  useEffect(() => {
+    if (derivedBmr === null) return;
+    setForm((prev) => ({ ...prev, bmr: String(derivedBmr) }));
+  }, [derivedBmr]);
+
   // ── Setters ───────────────────────────────────────────────────────────────
 
   const setField = useCallback((field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === 'weightKg' || field === 'fatPercent') {
+      setBmrUserEdited(false);
+    }
   }, []);
 
   /**
@@ -336,6 +354,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   /** Called when user manually types in the Weight field. */
   const setWeightManually = useCallback((value) => {
+    setBmrUserEdited(false);
     setForm((prev) => ({ ...prev, weightKg: value }));
   }, []);
 
@@ -345,12 +364,19 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, bmi: value }));
   }, []);
 
+  /** Called when user manually types in the BMR field. Disables auto-fill for BMR. */
+  const setBmrManually = useCallback((value) => {
+    setBmrUserEdited(true);
+    setForm((prev) => ({ ...prev, bmr: value }));
+  }, []);
+
   const resetForm = useCallback(() => {
     setForm(EMPTY_FORM);
     setError('');
     setSavedCard(null);
     setShareUrl('');
     setBmiUserEdited(false);
+    setBmrUserEdited(false);
   }, []);
 
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
@@ -426,6 +452,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:         form.bmi          || undefined,
         fatPercent:  form.fatPercent   || undefined,
         bmr:         form.bmr          || undefined,
+        bmrManualOverride: bmrUserEdited,
         visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
         chestCm:     toOptionalNum(form.chestCm),
@@ -442,7 +469,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       // Extract previousCard from API response (null for fresh users).
       const { previousCard: prevCard = null, ...cardCore } = card;
 
-      const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
+      const url = buildOnboardingShareUrl(getApiBaseUrl());
 
       // Merge API response with form fallbacks so the share card always has
       // the saved measurements (API is source of truth after persist).
@@ -474,16 +501,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited]);
 
   return {
     form, setField,
     setPhoneField, fillFromMember,
     phoneSuggestions, phoneSearchLoading,
-    setWeightManually, setBmiManually,
+    setWeightManually, setBmiManually, setBmrManually,
     fatHint, fatPlaceholder,
-    derivedIdealWeight, derivedBmi,
-    bmiUserEdited,
+    derivedIdealWeight, derivedBmi, derivedBmr,
+    bmiUserEdited, bmrUserEdited,
     isSaving, error,
     isValid,
     isEditMode,

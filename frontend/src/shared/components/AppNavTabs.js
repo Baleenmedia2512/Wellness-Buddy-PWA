@@ -1,4 +1,5 @@
-// Six-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// Eight-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
 import React from 'react';
 import {
   Home,
@@ -7,6 +8,8 @@ import {
   GraduationCap,
   Heart,
   Map,
+  Trophy,
+  FileBarChart,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 
@@ -18,6 +21,9 @@ export default function AppNavTabs({
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
+  onShowTestimonials,
+  onShowReports,
+  reportsEnabled = false,
 }) {
   return (
     <div
@@ -88,6 +94,34 @@ export default function AppNavTabs({
         label="Club"
         ariaLabel="Physical Club"
       />
+      <NavTabButton
+        onClick={onShowTestimonials ?? (() => {})}
+        active={activePage === 'testimonials'}
+        activeBg="bg-yellow-100"
+        hoverBg="hover:bg-yellow-50"
+        icon={Trophy}
+        iconActiveClass="text-yellow-700"
+        iconClass="text-yellow-600"
+        labelActiveClass="text-yellow-900"
+        labelClass="text-yellow-800"
+        label="Results"
+        ariaLabel="Testimonials"
+      />
+      {reportsEnabled && (
+        <NavTabButton
+          onClick={onShowReports ?? (() => {})}
+          active={activePage === 'reports'}
+          activeBg="bg-indigo-100"
+          hoverBg="hover:bg-indigo-50"
+          icon={FileBarChart}
+          iconActiveClass="text-indigo-700"
+          iconClass="text-indigo-600"
+          labelActiveClass="text-indigo-900"
+          labelClass="text-indigo-800"
+          label="Reports"
+          ariaLabel="Reports"
+        />
+      )}
     </div>
   );
 }

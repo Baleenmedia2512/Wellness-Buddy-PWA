@@ -29,6 +29,23 @@ export async function findByExactEmail(email, columns) {
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
+/**
+ * @param {string|number} userId
+ * @param {string} [columns]
+ */
+export async function findByUserId(userId, columns = '"UserId", "Role"') {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select(columns)
+    .eq('"UserId"', uid)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
 export async function findByUsername(username) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -43,7 +60,7 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   return findByEmail(
     email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode"'
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId"'
   );
 }
 
@@ -51,7 +68,7 @@ export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"Weight", "CreatedAt"')
+    .select('"Weight", "BodyFat", "CreatedAt"')
     .eq('"UserId"', userId)
     .or('"IsDeleted".is.null,"IsDeleted".eq.false')
     .order('"CreatedAt"', { ascending: false })
@@ -84,7 +101,7 @@ export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserId, Height, DietType, PhoneNumber')
+    .select('UserId, Height, DietType, PhoneNumber, "CommunityId"')
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw error;
@@ -111,7 +128,7 @@ export async function setUserStatus(userId, status) {
 }
 
 export async function getStatusFields(email) {
-  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped"');
+  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
 export async function getPendingApproval(userId) {

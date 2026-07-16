@@ -10,6 +10,8 @@
  *   - education_logs_table             (education rows — Topic NOT LIKE 'Calories Burned:%')
  *   - education_logs_table             (watch rows    — Topic LIKE 'Calories Burned:%')
  *   - captures_table                   (unknown rows  — ImageType = 'unknown', flag-gated)
+ *   - captures_table                   (pending rows  — ImageType = 'pending', flag-gated;
+ *                                       shown immediately after Phase-1 capture save)
  *
  * Each query is scoped to one user + one IST calendar day. Today's date
  * window matches the existing convention in
@@ -40,10 +42,8 @@ const istDayBoundsWithOffset = (date) => ({
  * Food rows for the day. Mirrors `food-corrections.repository.js ::
  * fetchMealsForDate` — same column list (truncated to what the Diary
  * cards actually render), same IsDeleted + AnalysisData IS NOT NULL
- * guards. The micronutrient columns are intentionally omitted here;
- * the Diary feed card renders summary nutrition only, and the
- * existing per-meal detail modal still fetches the full row via the
- * established food-corrections endpoint.
+ * guards. Micronutrient summary columns (sugar/sodium/cholesterol) are
+ * included for diary share cards; full detail still uses food-corrections.
  */
 export async function fetchFoodForDay(ownerUserId, date) {
   const supabase = getSupabaseClient();
@@ -54,6 +54,7 @@ export async function fetchFoodForDay(ownerUserId, date) {
       [
         'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
         'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+        'TotalSugar, TotalSodium, TotalCholesterol',
         'CaptureID, ProcessedBy, DeviceInfo, CreatedAt',
       ].join(', '),
     )
@@ -144,13 +145,35 @@ export async function fetchWatchForDay(ownerUserId, date) {
  */
 export async function fetchUnknownCapturesForDay(ownerUserId, date) {
   const supabase = getSupabaseClient();
-  const { start, end } = istDayBounds(date);
+  const { start, end } = istDayBoundsWithOffset(date);
   const { data, error } = await supabase
     .from('captures_table')
     .select('"ID", "UserID", "ImageType", "ImageBase64", "ImagePath", "PublicShareToken", "CreatedAt"')
     .eq('"UserID"', String(ownerUserId))
     .eq('"IsDeleted"', 0)
     .eq('"ImageType"', 'unknown')
+    .gte('"CreatedAt"', start)
+    .lte('"CreatedAt"', end)
+    .order('"CreatedAt"', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * In-flight captures for the day (`ImageType = 'pending'`).
+ * Surfaced in the Diary feed immediately after Phase-1 POST /captures so
+ * the user sees their photo while background AI runs. Once classified, the
+ * row is promoted to a terminal type and disappears from this query.
+ */
+export async function fetchPendingCapturesForDay(ownerUserId, date) {
+  const supabase = getSupabaseClient();
+  const { start, end } = istDayBoundsWithOffset(date);
+  const { data, error } = await supabase
+    .from('captures_table')
+    .select('"ID", "UserID", "ImageType", "ImageBase64", "ImagePath", "PublicShareToken", "CreatedAt"')
+    .eq('"UserID"', String(ownerUserId))
+    .eq('"IsDeleted"', 0)
+    .eq('"ImageType"', 'pending')
     .gte('"CreatedAt"', start)
     .lte('"CreatedAt"', end)
     .order('"CreatedAt"', { ascending: false });

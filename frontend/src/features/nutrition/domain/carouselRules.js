@@ -5,7 +5,7 @@
  * Domain layer per claude.md §3.1.
  *
  * Targets:
- *   Card 1 — Calories:     target = BMR (latestBmr), consumed = food cals, exercise = 0
+ *   Card 1 — Calories:     target = TDEE (BMR + PA + TEF), consumed = food cals, exercise = burned
  *   Card 2 — Macros:       protein = weight×1.5g, fat = weight×0.75g, carbs = derived
  *   Card 3 — Heart Healthy: fat = macro target, sodium = 2300mg, cholesterol = 300mg
  *   Card 4 — Low Carb:     carbs = macro target, sugar = 50g, fiber = 25g
@@ -147,7 +147,7 @@ export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber
   return { carbs, sugar, fiber };
 }
 
-// ─── Card 5: Glycemic Index ───────────────────────────────────────────────────
+// ─── Card 5: Glycemic Index (disabled — GI now shown on Low Carb card) ────────
 
 /**
  * @param {{ averageGlycemicIndex: number|null, mealCount: number }}
