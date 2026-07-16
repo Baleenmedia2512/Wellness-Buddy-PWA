@@ -72,6 +72,7 @@ export function useWeightCapture({
     useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
+  const [lastWeight, setLastWeight] = useState(null); // Last recorded weight for reference
 
   const clearWeightState = useCallback(() => {
     setWeightResult(null);
@@ -644,6 +645,7 @@ export function useWeightCapture({
     weightEntrySaved, setWeightEntrySaved,
     pendingWeightImage, setPendingWeightImage,
     showWeightProgressModal, setShowWeightProgressModal,
+    weightProgressCheck,
     lastWeight,
     isEditingWeight, setIsEditingWeight,
     editWeightValue, setEditWeightValue,

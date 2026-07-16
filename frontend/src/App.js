@@ -489,9 +489,6 @@ function WellnessValleyApp() {
     nutritionDataRef.current = nutritionData;
   }, [nutritionData]);
   useEffect(() => {
-    weightResultRef.current = weightResult;
-  }, [weightResult]);
-  useEffect(() => {
     educationResultRef.current = educationResult;
   }, [educationResult]);
   useEffect(() => {
@@ -1506,43 +1503,6 @@ function WellnessValleyApp() {
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
-
-  // Pre-capture the weight share image in the background as soon as the result
-  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
-  // IMPORTANT: idealWeight and weightDiff are in the dep array so the cache is
-  // invalidated and re-captured after the async profile / history API calls
-  // resolve. Without them the timer fires before those values arrive, producing
-  // a cached image that silently omits the ideal-weight strip and the
-  // vs-previous row.
-  //
-  // The 900 ms timeout acts as a debounce: weightResult, weightDiff, and
-  // idealWeight all arrive at different times (~0 ms, ~500 ms, ~800 ms after
-  // the save). Each new arrival cancels the previous timer via the cleanup
-  // function, so exactly ONE html2canvas render fires ? 900 ms after the last
-  // dependency settles ? with all three values present in the DOM.
-  useEffect(() => {
-    cachedWeightShareDataUrlRef.current = null;
-    if (imageType !== "weight" || !weightResult || !imagePreview) return;
-    let cancelled = false;
-    const t = setTimeout(() => {
-      if (!weightAnalysisShareRef.current) return;
-      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
-        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
-      });
-    }, 900);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [
-    imageType,
-    weightResult,
-    imagePreview,
-    savedProfileImage,
-    sharePhotoBase64,
-    idealWeight,
-    weightDiff,
-  ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -3654,6 +3614,7 @@ function WellnessValleyApp() {
     weightEntrySaved, setWeightEntrySaved,
     pendingWeightImage, setPendingWeightImage,
     showWeightProgressModal, setShowWeightProgressModal,
+    weightProgressCheck,
     lastWeight,
     isEditingWeight, setIsEditingWeight,
     editWeightValue, setEditWeightValue,
@@ -3668,6 +3629,38 @@ function WellnessValleyApp() {
     setAlertModal, setSaveLoading, setLoadingState,
     setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
   });
+
+  // Ref-sync: keep weightResultRef current so mount-only resume listener can
+  // read the latest value without stale closure.
+  useEffect(() => {
+    weightResultRef.current = weightResult;
+  }, [weightResult]);
+
+  // Pre-capture the weight share image in the background as soon as the result
+  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
+  useEffect(() => {
+    cachedWeightShareDataUrlRef.current = null;
+    if (imageType !== "weight" || !weightResult || !imagePreview) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!weightAnalysisShareRef.current) return;
+      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
+        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
+      });
+    }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    imageType,
+    weightResult,
+    imagePreview,
+    savedProfileImage,
+    sharePhotoBase64,
+    idealWeight,
+    weightDiff,
+  ]);
 
   /**
    * Handle manual weight entry from modal
