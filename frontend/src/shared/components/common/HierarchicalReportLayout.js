@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   LayoutGrid,
+  Share2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -339,6 +340,7 @@ const HierarchicalReportLayout = ({
   onRefresh,
   onDownload,
   onSettings,
+  onShare,
   sortBy,
   sortOrder,
   onSortChange,
@@ -491,6 +493,15 @@ const HierarchicalReportLayout = ({
                   ariaLabel="Download"
                 >
                   <Download className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
+                </TouchFeedbackButton>
+              )}
+              {onShare && (
+                <TouchFeedbackButton
+                  onClick={onShare}
+                  className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors"
+                  ariaLabel="Share"
+                >
+                  <Share2 className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
                 </TouchFeedbackButton>
               )}
             </div>

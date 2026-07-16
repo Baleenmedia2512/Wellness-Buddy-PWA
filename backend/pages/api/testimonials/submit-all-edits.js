@@ -7,6 +7,8 @@ import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/han
 import { submitAllEdits } from '../../../features/testimonials/testimonials.service.js';
 import logger from '../../../shared/lib/logger.js';
 
+export const config = { api: { bodyParser: { sizeLimit: '10mb' } } };
+
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return methodNotAllowed(res);

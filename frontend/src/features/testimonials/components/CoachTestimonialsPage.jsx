@@ -390,14 +390,17 @@ function MemberCard({
   const healthVidRef   = useRef(null);
   const businessVidRef = useRef(null);
 
+  // dirtySlots: only include 'before'/'after' when new IMAGE was selected
+  // weight/goal/duration-only changes still trigger Submit but don't appear in email photo diff
   const dirtySlots = [
-    draftBefore            && 'before',
-    draftAfter             && 'after',
-    draftHealthPath        && 'health',
-    draftBusinessPath      && 'business',
-    draftIssues !== null   && 'issues',
+    draftBefore?.imageBase64 && 'before',
+    draftAfter?.imageBase64  && 'after',
+    draftHealthPath          && 'health',
+    draftBusinessPath        && 'business',
+    draftIssues !== null     && 'issues',
   ].filter(Boolean);
-  const hasDirtySlots = dirtySlots.length > 0;
+  // hasDirtySlots: true for ANY pending change including weight-only edits
+  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
   const toggleSlot = useCallback((slot) => {
@@ -469,13 +472,15 @@ function MemberCard({
         userId,
         dirtySlots,
         ...(draftBefore ? {
-          beforeImageBase64: draftBefore.imageBase64,
+          // Only send image when actually changed
+          ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
           ...(draftBefore.weightKg    !== undefined ? { beforeWeightKg: draftBefore.weightKg }   : {}),
           ...(draftBefore.goalType                  ? { goalType: draftBefore.goalType }          : {}),
           ...(draftBefore.durationText              ? { durationText: draftBefore.durationText }  : {}),
         } : {}),
         ...(draftAfter ? {
-          afterImageBase64: draftAfter.imageBase64,
+          // Only send image when actually changed
+          ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
           ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
         } : {}),
         ...(draftHealthPath   ? { healthVideoPath:   draftHealthPath }   : {}),
@@ -483,9 +488,9 @@ function MemberCard({
         ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
       };
       await submitAllEdits(payload);
-      // Issues-only = silent save; everything else needs OTP
-      const isIssuesOnly = dirtySlots.length === 1 && dirtySlots[0] === 'issues';
-      if (isIssuesOnly) {
+      // Issues-only OR weight/meta-only = silent save; anything with photo/video needs OTP
+      const needsOtp = dirtySlots.some((s) => ['before','after','health','business'].includes(s));
+      if (!needsOtp) {
         onOtpVerified?.();
       } else {
         setSubmitDone(true);
@@ -520,7 +525,7 @@ function MemberCard({
     :                                          'bg-white';
 
   return (
-    <div className={`rounded-3xl border ${borderCls} ${bgCls} overflow-hidden shadow-md`}>
+    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md`}>
       {/* Header strip */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         {user.profileImage ? (
@@ -600,8 +605,37 @@ function MemberCard({
               onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
-              {(draftBefore?.weightKg != null ? draftBefore.weightKg : testimonial?.beforeWeightKg) != null && (
-                <p className="text-sm font-bold text-gray-800">{draftBefore?.weightKg ?? testimonial?.beforeWeightKg} <span className="text-xs font-normal text-gray-400">kg</span></p>
+              {editable && expandedSlots.has('beforeWeight') ? (
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  <input
+                    type="number" step="0.1" min="1" max="500" autoFocus
+                    defaultValue={draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (v > 0) setDraftBefore(prev => ({ ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }), weightKg: v }));
+                      toggleSlot('beforeWeight');
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('beforeWeight'); }}
+                    className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                  <span className="text-xs text-gray-400">kg</span>
+                  <button type="button" onClick={() => toggleSlot('beforeWeight')} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-1">
+                  <p className="text-sm font-bold text-gray-800">
+                    {draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? '—'}
+                    {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                  </p>
+                  {editable && (
+                    <button type="button" onClick={() => toggleSlot('beforeWeight')}
+                      className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -662,8 +696,37 @@ function MemberCard({
               onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
-              {(draftAfter?.weightKg != null ? draftAfter.weightKg : (hasAfter ? testimonial?.afterWeightKg : null)) != null && (
-                <p className="text-sm font-bold text-gray-800">{draftAfter?.weightKg ?? testimonial?.afterWeightKg} <span className="text-xs font-normal text-gray-400">kg</span></p>
+              {editable && expandedSlots.has('afterWeight') ? (
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  <input
+                    type="number" step="0.1" min="1" max="500" autoFocus
+                    defaultValue={draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (v > 0) setDraftAfter(prev => ({ ...(prev || {}), weightKg: v }));
+                      toggleSlot('afterWeight');
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('afterWeight'); }}
+                    className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                  <span className="text-xs text-gray-400">kg</span>
+                  <button type="button" onClick={() => toggleSlot('afterWeight')} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-1">
+                  <p className="text-sm font-bold text-gray-800">
+                    {draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null) ?? '—'}
+                    {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                  </p>
+                  {editable && (
+                    <button type="button" onClick={() => toggleSlot('afterWeight')}
+                      className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
