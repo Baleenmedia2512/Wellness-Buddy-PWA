@@ -145,6 +145,46 @@ export function buildCardPatchFromProfile(card, profile = {}) {
 }
 
 /**
+ * Build the Profile → Card sync payload from profile save input and snapshots.
+ *
+ * @param {{ name?: string|null, height?: number|string|null, bmr?: number|string|null }} profileInput
+ * @param {{ savedBmr?: number|null, latestWeight?: { Weight?: number|string|null, BodyFat?: number|string|null, Bmi?: number|string|null }|null }} snapshots
+ * @returns {{ name?: string, height?: number, bmr?: number, weightKg?: number, fatPercent?: number, bmi?: number }}
+ */
+export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null, latestWeight = null } = {}) {
+  const { name, height, bmr } = profileInput;
+  const cardSync = {};
+
+  if (name != null && String(name).trim() !== '') {
+    cardSync.name = String(name).trim();
+  }
+  if (height != null) {
+    const h = parseFloat(height);
+    if (!Number.isNaN(h)) cardSync.height = h;
+  }
+
+  const effectiveBmr = savedBmr ?? (bmr != null ? parseFloat(bmr) : null);
+  if (effectiveBmr != null && !Number.isNaN(effectiveBmr) && effectiveBmr > 0) {
+    cardSync.bmr = effectiveBmr;
+  }
+
+  if (latestWeight?.Weight != null) {
+    const w = parseFloat(latestWeight.Weight);
+    if (!Number.isNaN(w)) cardSync.weightKg = w;
+  }
+  if (latestWeight?.BodyFat != null) {
+    const f = parseFloat(latestWeight.BodyFat);
+    if (!Number.isNaN(f)) cardSync.fatPercent = f;
+  }
+  if (latestWeight?.Bmi != null) {
+    const b = parseFloat(latestWeight.Bmi);
+    if (!Number.isNaN(b)) cardSync.bmi = b;
+  }
+
+  return cardSync;
+}
+
+/**
  * Whether a team_table / weight sync would write anything.
  *
  * @param {{ UserName?: string, Height?: number, Bmr?: number }} teamDiff

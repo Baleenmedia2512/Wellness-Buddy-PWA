@@ -15,7 +15,7 @@ import { format } from 'date-fns';
  * Wellness Counselling - Body Parameters Cards View
  * Shows body parameter cards for team members in a tile/grid layout
  */
-const WellnessCounsellingCards = ({ user, onBack }) => {
+const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
@@ -108,8 +108,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     // Cancel any in-flight fetch when the component unmounts or user changes.
     // Incrementing the generation makes every pending setBodyParamsCards a no-op.
     return () => { fetchGenerationRef.current++; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user is the only meaningful dep
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user + refreshKey are the meaningful deps
+  }, [user, refreshKey]);
 
   const handleRefresh = () => fetchData(true);
 

@@ -9,6 +9,7 @@ import {
   buildTeamTableDiff,
   buildWeightInsertIfChanged,
   buildCardPatchFromProfile,
+  buildProfileCardSyncPayload,
   hasSyncWrites,
 } from './sync.rules.js';
 
@@ -167,6 +168,34 @@ describe('buildCardPatchFromProfile', () => {
       chest: 90,
     });
     assert.deepEqual(patch, {});
+  });
+});
+
+describe('buildProfileCardSyncPayload', () => {
+  it('includes team_table and weight metrics for card sync', () => {
+    const payload = buildProfileCardSyncPayload(
+      { name: 'Ada', height: 172, bmr: 1600 },
+      {
+        savedBmr: 1600,
+        latestWeight: { Weight: 72, BodyFat: 18, Bmi: 24.5 },
+      },
+    );
+    assert.deepEqual(payload, {
+      name: 'Ada',
+      height: 172,
+      bmr: 1600,
+      weightKg: 72,
+      fatPercent: 18,
+      bmi: 24.5,
+    });
+  });
+
+  it('prefers savedBmr over raw bmr input', () => {
+    const payload = buildProfileCardSyncPayload(
+      { bmr: 1400 },
+      { savedBmr: 1580, latestWeight: null },
+    );
+    assert.equal(payload.bmr, 1580);
   });
 });
 

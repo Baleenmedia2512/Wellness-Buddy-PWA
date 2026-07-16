@@ -18,6 +18,7 @@ import {
   hasValidProfileName,
   isProfileComplete,
 } from './domain/profileCompleteness.js';
+import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 
 const { getISTTimestamp } = repo;
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
@@ -163,20 +164,19 @@ export async function updateProfile(input) {
     if (communityId !== undefined) savedCommunityId = communityId;
   }
 
+  const latestWeightRow = await repo.getLatestWeight(userId);
+
   let savedBmr = null;
-  let bmrExplicitlySaved = false;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
     if (!isNaN(bmrValue) && bmrValue > 0) {
       await repo.updateUserById(userId, { Bmr: bmrValue });
       savedBmr = bmrValue;
-      bmrExplicitlySaved = true;
     }
   } else {
-    const latestMetrics = await repo.getLatestWeight(userId);
     const calculatedBmr = computeKatchMcArdleBmr(
-      latestMetrics?.Weight ? parseFloat(latestMetrics.Weight) : null,
-      latestMetrics?.BodyFat ? parseFloat(latestMetrics.BodyFat) : null,
+      latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
+      latestWeightRow?.BodyFat ? parseFloat(latestWeightRow.BodyFat) : null,
     );
     if (calculatedBmr !== null) {
       await repo.updateUserById(userId, { Bmr: calculatedBmr });
@@ -186,18 +186,10 @@ export async function updateProfile(input) {
 
   // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
-    const cardSync = {};
-    if (name != null && String(name).trim() !== '') {
-      cardSync.name = String(name).trim();
-    }
-    if (height != null) {
-      const h = parseFloat(height);
-      if (!Number.isNaN(h)) cardSync.height = h;
-    }
-    const effectiveBmr = savedBmr ?? (bmr != null ? parseFloat(bmr) : null);
-    if (effectiveBmr != null && !Number.isNaN(effectiveBmr) && effectiveBmr > 0) {
-      cardSync.bmr = effectiveBmr;
-    }
+    const cardSync = buildProfileCardSyncPayload(input, {
+      savedBmr,
+      latestWeight: latestWeightRow,
+    });
 
     if (Object.keys(cardSync).length > 0) {
       const syncResult = await repo.syncProfileToLatestBodyParamsCard(userId, cardSync);
@@ -205,6 +197,11 @@ export async function updateProfile(input) {
         logger.info('[profile/update] synced to latest body-params card', {
           userId,
           fields: syncResult.fields,
+        });
+      } else {
+        logger.info('[profile/update] body-params card sync skipped', {
+          userId,
+          attemptedFields: Object.keys(cardSync),
         });
       }
     }
