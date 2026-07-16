@@ -5,7 +5,7 @@
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
 import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
-import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard } from '../data/card.repo.js';
+import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard, findTeamPhoneByUserId } from '../data/card.repo.js';
 import { syncCardToProfile } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
@@ -110,6 +110,10 @@ export async function handleCreateCard(body) {
     ? await findPreviousCardByUserId(userId, card.id)
     : null;
 
+  const phoneNumber = card.user_id
+    ? await findTeamPhoneByUserId(card.user_id)
+    : (payload.phoneNumber || null);
+
   return {
     httpStatus: existingCard ? 200 : 201,
     body: {
@@ -133,7 +137,7 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
-        phoneNumber:      payload.phoneNumber, // Include phone from request
+        phoneNumber:      phoneNumber || payload.phoneNumber || null,
         previousCard,
       },
     },

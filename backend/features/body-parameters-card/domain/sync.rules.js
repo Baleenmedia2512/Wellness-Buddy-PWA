@@ -12,7 +12,7 @@
  * No I/O. Callers must skip the reciprocal sync path (write via repo, not
  * through the other feature's update pipeline) to prevent circular updates.
  */
-import { resolveCardBmr } from './card.rules.js';
+import { resolveSyncedBmrFromCard } from './card.rules.js';
 
 /**
  * Compare two scalar values for sync purposes.
@@ -54,11 +54,7 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
     ? String(card.name).trim()
     : null;
   const nextHeight = card.height_cm ?? null;
-  const nextBmr = resolveCardBmr({
-    weightKg: card.weight_kg,
-    fatPercent: card.fat_percent,
-    manualBmr: card.bmr,
-  });
+  const nextBmr = resolveSyncedBmrFromCard(card);
 
   const diff = {};
   if (nextName != null && !syncValuesEqual(nextName, currentProfile.userName)) {
@@ -85,11 +81,7 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
 export function buildWeightInsertIfChanged(card, userId, latestWeight = null) {
   if (!card?.weight_kg) return null;
 
-  const nextBmr = resolveCardBmr({
-    weightKg: card.weight_kg,
-    fatPercent: card.fat_percent,
-    manualBmr: card.bmr,
-  });
+  const nextBmr = resolveSyncedBmrFromCard(card);
 
   const next = {
     weight: Number(card.weight_kg),
@@ -117,13 +109,12 @@ export function buildWeightInsertIfChanged(card, userId, latestWeight = null) {
 }
 
 /**
- * Build a partial card patch from profile fields (Name / Height / BMR only).
- * Only includes keys that differ from the current card. Never touches
- * card-only or weight-metric columns.
+ * Build a partial card patch from profile / latest-weight fields.
+ * Only includes keys that differ from the current card.
  *
  * @param {object} card - latest body_parameters_cards row (snake_case)
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null }} profile
- * @returns {{ name?: string, height_cm?: number, bmr?: number }}
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} profile
+ * @returns {object} snake_case patch for body_parameters_cards
  */
 export function buildCardPatchFromProfile(card, profile = {}) {
   if (!card || !profile) return {};
@@ -140,6 +131,15 @@ export function buildCardPatchFromProfile(card, profile = {}) {
   }
   if (profile.bmr != null && !syncValuesEqual(profile.bmr, card.bmr)) {
     diff.bmr = Number(profile.bmr);
+  }
+  if (profile.weightKg != null && !syncValuesEqual(profile.weightKg, card.weight_kg)) {
+    diff.weight_kg = Number(profile.weightKg);
+  }
+  if (profile.fatPercent != null && !syncValuesEqual(profile.fatPercent, card.fat_percent)) {
+    diff.fat_percent = Number(profile.fatPercent);
+  }
+  if (profile.bmi != null && !syncValuesEqual(profile.bmi, card.bmi)) {
+    diff.bmi = Number(profile.bmi);
   }
   return diff;
 }

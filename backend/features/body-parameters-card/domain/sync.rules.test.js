@@ -38,11 +38,10 @@ describe('buildTeamTableDiff', () => {
   };
 
   it('returns empty when profile already matches', () => {
-    // Katch-McArdle: 70kg @ 20% → LBM 56 → BMR 1580
     const diff = buildTeamTableDiff(card, {
       userName: 'Ada',
       height: 170,
-      bmr: 1580,
+      bmr: 1500,
     });
     assert.deepEqual(diff, {});
   });
@@ -55,7 +54,15 @@ describe('buildTeamTableDiff', () => {
     });
     assert.equal(diff.UserName, 'Ada');
     assert.equal(diff.Height, 170);
-    assert.equal(diff.Bmr, 1580);
+    assert.equal(diff.Bmr, 1500);
+  });
+
+  it('syncs manual card BMR even when weight+fat would calculate differently', () => {
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, weight_kg: 70, fat_percent: 20, bmr: 2000 },
+      { userName: 'Ada', height: 170, bmr: 1580 },
+    );
+    assert.deepEqual(diff, { Bmr: 2000 });
   });
 
   it('does not overwrite with null card values', () => {
@@ -85,7 +92,16 @@ describe('buildWeightInsertIfChanged', () => {
     assert.equal(row.Weight, 70);
     assert.equal(row.BodyFat, 20);
     assert.equal(row.Bmi, 24.2);
-    assert.equal(row.Bmr, 1580);
+    assert.equal(row.Bmr, 1500);
+  });
+
+  it('uses manual card BMR on weight insert', () => {
+    const row = buildWeightInsertIfChanged(
+      { weight_kg: 70, fat_percent: 20, bmi: 24.2, bmr: 2000 },
+      42,
+      null,
+    );
+    assert.equal(row.Bmr, 2000);
   });
 
   it('skips insert when latest weight already matches', () => {
@@ -93,7 +109,7 @@ describe('buildWeightInsertIfChanged', () => {
       weight: 70,
       bodyFat: 20,
       bmi: 24.2,
-      bmr: 1580,
+      bmr: 1500,
     });
     assert.equal(row, null);
   });
@@ -103,7 +119,7 @@ describe('buildWeightInsertIfChanged', () => {
       weight: 70,
       bodyFat: 18,
       bmi: 24.2,
-      bmr: 1580,
+      bmr: 1500,
     });
     assert.ok(row);
     assert.equal(row.BodyFat, 20);
@@ -131,6 +147,16 @@ describe('buildCardPatchFromProfile', () => {
       height_cm: 172,
       bmr: 1600,
     });
+  });
+
+  it('patches weight metrics when changed', () => {
+    const patch = buildCardPatchFromProfile(
+      { ...card, weight_kg: 70, fat_percent: 20, bmi: 24 },
+      { weightKg: 72, fatPercent: 18, bmi: 24.5 },
+    );
+    assert.equal(patch.weight_kg, 72);
+    assert.equal(patch.fat_percent, 18);
+    assert.equal(patch.bmi, 24.5);
   });
 
   it('never includes card-only fields', () => {

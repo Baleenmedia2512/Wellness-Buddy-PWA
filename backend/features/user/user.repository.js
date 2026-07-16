@@ -3,6 +3,7 @@
  * needed for account removal.
  */
 import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
@@ -68,9 +69,9 @@ export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"Weight", "BodyFat", "CreatedAt"')
+    .select('"Weight", "BodyFat", "Bmi", "CreatedAt"')
     .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false')
+    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
     .order('"CreatedAt"', { ascending: false })
     .limit(1);
   if (error) return null;
@@ -218,13 +219,11 @@ export async function deleteTeamRow(userId) {
 }
 
 /**
- * Sync Profile Name / Height / BMR onto the user's latest Body Parameters Card.
+ * Sync Profile fields onto the user's latest Body Parameters Card.
  * Only the latest card is patched; historical cards are never touched.
- * Writes via direct table update (not the BPC update handler) to avoid
- * circular Profile ↔ Card sync loops.
  *
  * @param {number} userId
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null }} fields
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
  * @returns {Promise<{ synced: boolean, fields: string[] }>}
  */
 export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
@@ -233,45 +232,23 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     return { synced: false, fields: [] };
   }
 
-  const hasAny =
-    fields.name !== undefined ||
-    fields.height !== undefined ||
-    fields.bmr !== undefined;
+  const hasAny = Object.keys(fields).some((k) => fields[k] !== undefined);
   if (!hasAny) return { synced: false, fields: [] };
 
   const supabase = getSupabaseClient();
-  const { data: card, error: findErr } = await supabase
+  const { data: rows, error: findErr } = await supabase
     .from('body_parameters_cards')
-    .select('id, name, height_cm, bmr')
+    .select('id, name, height_cm, bmr, weight_kg, fat_percent, bmi')
     .eq('user_id', uid)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   if (findErr) throw findErr;
+  const card = rows?.[0] ?? null;
   if (!card) return { synced: false, fields: [] };
 
-  const patch = {};
-  if (fields.name !== undefined && fields.name != null && String(fields.name).trim() !== '') {
-    const next = String(fields.name).trim();
-    if (String(card.name || '').trim() !== next) patch.name = next;
-  }
-  if (fields.height !== undefined && fields.height != null) {
-    const next = Number(fields.height);
-    const cur = card.height_cm != null ? Number(card.height_cm) : null;
-    if (Number.isFinite(next) && (cur === null || Math.abs(cur - next) >= 1e-6)) {
-      patch.height_cm = next;
-    }
-  }
-  if (fields.bmr !== undefined && fields.bmr != null) {
-    const next = Number(fields.bmr);
-    const cur = card.bmr != null ? Number(card.bmr) : null;
-    if (Number.isFinite(next) && (cur === null || Math.abs(cur - next) >= 1e-6)) {
-      patch.bmr = next;
-    }
-  }
-
+  const patch = buildCardPatchFromProfile(card, fields);
   if (Object.keys(patch).length === 0) {
     return { synced: false, fields: [] };
   }

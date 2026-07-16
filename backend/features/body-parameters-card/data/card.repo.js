@@ -375,21 +375,25 @@ export async function listCardsForCoach(coachId) {
       .in('UserId', userIds);
     
     if (teamMembers) {
-      teamMembersMap = Object.fromEntries(
-        teamMembers.map(m => [m.UserId, m])
-      );
+      for (const m of teamMembers) {
+        const key = String(m.UserId);
+        teamMembersMap[key] = m;
+      }
       logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
     }
   }
 
   // Map cards with optional phone number from team_table
   const mappedCards = cards.map(card => {
-    const member = teamMembersMap[card.user_id];
+    const member = teamMembersMap[String(card.user_id)];
+    const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
+      ? String(member.PhoneNumber).trim()
+      : null;
     return {
       id:           card.id,
       userId:       card.user_id,
       name:         card.name,
-      phoneNumber:  member?.PhoneNumber || null,
+      phoneNumber:  phone,
       age:          card.age,
       gender:       card.gender,
       heightCm:     card.height_cm,

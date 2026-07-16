@@ -77,7 +77,7 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
  * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
  */
 const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart });
+  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
 
   // Refs for all input fields
   const phoneRef = useRef(null);
@@ -121,8 +121,8 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
 
   const handleSave = async () => {
     await vm.handleSave();
-    // After successful save, reset form so next open shows empty form
-    if (!vm.error) {
+    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
+    if (!vm.error && !vm.isEditMode) {
       vm.resetForm();
     }
   };

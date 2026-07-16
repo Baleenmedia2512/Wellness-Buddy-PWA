@@ -123,8 +123,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     );
   });
 
-  const handleEditCard = (card) => {
-    setSelectedCard(card);
+  const fetchFreshCard = async (cardId) => {
+    if (!user?.email || !cardId) return null;
+    try {
+      const userId = await getUserId(user.email);
+      const cards = await listBodyParamsCards(userId);
+      setBodyParamsCards(cards || []);
+      return (cards || []).find((c) => c.id === cardId) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleEditCard = async (card) => {
+    const fresh = await fetchFreshCard(card.id);
+    const merged = fresh
+      ? { ...fresh, phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null }
+      : card;
+    setSelectedCard(merged);
     setIsBodyParamsFormOpen(true);
   };
 
@@ -305,12 +321,17 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           // below, once the user is back and looking at the grid.
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
+            const merged = {
+              ...(idx >= 0 ? prevCards[idx] : {}),
+              ...card,
+              phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+            };
             if (idx >= 0) {
               const next = [...prevCards];
-              next[idx] = { ...prevCards[idx], ...card };
+              next[idx] = merged;
               return next;
             }
-            return [card, ...prevCards];
+            return [merged, ...prevCards];
           });
 
           setSelectedCard(null);

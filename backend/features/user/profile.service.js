@@ -184,20 +184,21 @@ export async function updateProfile(input) {
     }
   }
 
-  // Profile → latest Body Parameters Card (Name / Height / explicit BMR only).
-  // Direct card patch — does not call BPC update handler — prevents sync loops.
-  // Auto-recalculated BMR (when client omitted bmr) is not pushed to the card.
+  // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
     const cardSync = {};
-    if (name != null && updateData.UserName !== undefined) {
-      cardSync.name = updateData.UserName;
+    if (name != null && String(name).trim() !== '') {
+      cardSync.name = String(name).trim();
     }
-    if (height != null && updateData.Height !== undefined) {
-      cardSync.height = updateData.Height;
+    if (height != null) {
+      const h = parseFloat(height);
+      if (!Number.isNaN(h)) cardSync.height = h;
     }
-    if (bmrExplicitlySaved) {
-      cardSync.bmr = savedBmr;
+    const effectiveBmr = savedBmr ?? (bmr != null ? parseFloat(bmr) : null);
+    if (effectiveBmr != null && !Number.isNaN(effectiveBmr) && effectiveBmr > 0) {
+      cardSync.bmr = effectiveBmr;
     }
+
     if (Object.keys(cardSync).length > 0) {
       const syncResult = await repo.syncProfileToLatestBodyParamsCard(userId, cardSync);
       if (syncResult.synced) {

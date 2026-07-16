@@ -23,7 +23,8 @@ export async function handleUpdateCard(body) {
 
   const card = await updateCard(payload.id, payload);
 
-  if (payload.phoneNumber && !card.user_id) {
+  // Link card to team member when phone is provided but user_id is missing.
+  if (!card.user_id && payload.phoneNumber) {
     const { userId } = await createTeamMemberFromPhone({
       name:        payload.name,
       phoneNumber: payload.phoneNumber,
