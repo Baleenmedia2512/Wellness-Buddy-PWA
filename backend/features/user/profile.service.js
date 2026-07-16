@@ -186,10 +186,20 @@ export async function updateProfile(input) {
 
   // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
-    const cardSync = buildProfileCardSyncPayload(input, {
-      savedBmr,
-      latestWeight: latestWeightRow,
-    });
+    const dbProfile = await repo.findByUserId(
+      userId,
+      '"UserName", "Height", "Bmr"',
+    );
+    const cardSync = buildProfileCardSyncPayload(
+      {
+        name: dbProfile?.UserName ?? name,
+        height: dbProfile?.Height != null
+          ? parseFloat(dbProfile.Height)
+          : (height != null ? parseFloat(height) : null),
+        bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
+      },
+      { savedBmr, latestWeight: latestWeightRow },
+    );
 
     if (Object.keys(cardSync).length > 0) {
       const syncResult = await repo.syncProfileToLatestBodyParamsCard(userId, cardSync);

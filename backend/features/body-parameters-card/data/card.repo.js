@@ -279,20 +279,25 @@ export async function findLatestCardForProfileSync(userId) {
 
   const { data: member, error: memberErr } = await supabase
     .from('team_table')
-    .select('"UserName"')
-    .eq('"UserId"', uid)
+    .select('"UserName", "CoachId"')
+    .eq('UserId', uid)
     .maybeSingle();
   if (memberErr) throw memberErr;
 
   const userName = member?.UserName ? String(member.UserName).trim() : '';
   if (!userName) return null;
 
-  const { data: orphanRows, error: orphanErr } = await supabase
+  let orphanQuery = supabase
     .from(TABLE)
     .select(cardSelect)
     .is('user_id', null)
     .eq('is_deleted', false)
-    .ilike('name', userName)
+    .ilike('name', userName);
+  const coachId = member?.CoachId != null ? parseInt(member.CoachId, 10) : null;
+  if (Number.isFinite(coachId) && coachId > 0) {
+    orphanQuery = orphanQuery.eq('created_by', coachId);
+  }
+  const { data: orphanRows, error: orphanErr } = await orphanQuery
     .order('created_at', { ascending: false })
     .limit(1);
   if (orphanErr) throw orphanErr;

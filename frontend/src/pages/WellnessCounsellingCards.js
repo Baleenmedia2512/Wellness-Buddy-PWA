@@ -15,7 +15,7 @@ import { format } from 'date-fns';
  * Wellness Counselling - Body Parameters Cards View
  * Shows body parameter cards for team members in a tile/grid layout
  */
-const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0 }) => {
+const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
@@ -311,6 +311,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0 }) => {
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
+          onCardSaved?.(card);
 
           // Optimistic update — new card appears in the grid immediately.
           // Do NOT call fetchData here: a background fetch that completes while

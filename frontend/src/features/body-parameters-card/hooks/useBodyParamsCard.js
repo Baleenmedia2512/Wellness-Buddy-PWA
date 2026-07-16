@@ -228,9 +228,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   // Auto-fill BMR whenever weight or body fat % changes (Katch-McArdle).
   useEffect(() => {
-    if (derivedBmr === null) return;
+    if (bmrUserEdited || derivedBmr === null) return;
     setForm((prev) => ({ ...prev, bmr: String(derivedBmr) }));
-  }, [derivedBmr]);
+  }, [derivedBmr, bmrUserEdited]);
 
   // ── Setters ───────────────────────────────────────────────────────────────
 

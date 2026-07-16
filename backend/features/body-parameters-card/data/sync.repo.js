@@ -26,7 +26,7 @@ export async function getTeamProfileSnapshot(userId) {
   const { data, error } = await supabase
     .from(TEAM)
     .select('"UserName", "Height", "Bmr", "Email"')
-    .eq('"UserId"', uid)
+    .eq('UserId', uid)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -48,7 +48,7 @@ export async function getLatestWeightSnapshot(userId) {
   const { data: rows, error } = await supabase
     .from(WEIGHT)
     .select('"Weight", "BodyFat", "Bmi", "Bmr"')
-    .eq('"UserId"', uid)
+    .eq('UserId', uid)
     .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
     .order('"CreatedAt"', { ascending: false })
     .limit(1);
@@ -71,12 +71,19 @@ export async function getLatestWeightSnapshot(userId) {
 export async function patchTeamProfile(userId, diff) {
   if (!diff || Object.keys(diff).length === 0) return;
   const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) {
+    throw new Error(`[bpc-sync] invalid UserId for team_table patch: ${userId}`);
+  }
   const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(TEAM)
     .update(diff)
-    .eq('"UserId"', uid);
+    .eq('UserId', uid)
+    .select('UserId');
   if (error) throw error;
+  if (!data?.length) {
+    throw new Error(`[bpc-sync] team_table patch affected 0 rows for UserId ${uid}`);
+  }
 }
 
 /**

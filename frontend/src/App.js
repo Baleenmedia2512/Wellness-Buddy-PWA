@@ -8306,6 +8306,10 @@ function WellnessValleyApp() {
             <WellnessCounselling
               user={user}
               refreshKey={bodyParamsRefreshKey}
+              onCardSaved={() => {
+                setHeaderProfileKey((k) => k + 1);
+                setBmrUpdateKey((k) => k + 1);
+              }}
               onBack={() => {
                 setShowWellnessCounselling(false);
                 const currentWvPage = window.history.state?.wvPage;
