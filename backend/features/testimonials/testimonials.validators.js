@@ -442,18 +442,38 @@ export function validateSubmitAllEdits(body) {
   const userIdN = parseInt(userId, 10);
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
-  if (!Array.isArray(dirtySlots) || dirtySlots.length === 0) {
-    throw new ValidationError(400, 'dirtySlots must be a non-empty array');
-  }
+const hasDirtySlots =
+  Array.isArray(dirtySlots) && dirtySlots.length > 0;
 
+const hasOtherChanges =
+  beforeWeightKg !== undefined ||
+  afterWeightKg !== undefined ||
+  goalType !== undefined ||
+  durationText !== undefined;
+
+if (!hasDirtySlots && !hasOtherChanges) {
+  throw new ValidationError(400, 'No changes were submitted.');
+}
+
+if (Array.isArray(dirtySlots)) {
   for (const s of dirtySlots) {
     if (!VALID_DIRTY_SLOTS.has(s)) {
-      throw new ValidationError(422, `Invalid slot: "${s}". Must be one of: ${[...VALID_DIRTY_SLOTS].join(', ')}`);
+      throw new ValidationError(
+        422,
+        `Invalid slot: "${s}". Must be one of: ${[...VALID_DIRTY_SLOTS].join(', ')}`
+      );
     }
   }
+}
 
-  const slots = new Set(dirtySlots);
-  const result = { userId: userIdN, dirtySlots: [...slots] };
+  //const slots = new Set(dirtySlots);
+  //const result = { userId: userIdN, dirtySlots: [...slots] };
+
+  const slots = new Set(Array.isArray(dirtySlots) ? dirtySlots : []);
+const result = {
+  userId: userIdN,
+  dirtySlots: [...slots],
+};
 
   if (slots.has('before')) {
     validateBase64Image(beforeImageBase64, 'beforeImageBase64');
