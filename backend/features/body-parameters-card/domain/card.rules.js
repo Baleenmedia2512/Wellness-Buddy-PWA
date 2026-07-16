@@ -75,14 +75,17 @@ export function isCardShareValid(shareExpiresAt, now = new Date()) {
 /**
  * Build the profile fields that should be written to team_table when a
  * link recipient saves a card to their profile.
- * Body Age is excluded — it is card-only per spec.
+ * Body Age / Age / Gender / measurements are excluded — card-only (no Profile columns).
  *
  * @param {object} card - row from body_parameters_cards
- * @returns {{ height: number|null, bmr: number|null }}
+ * @returns {{ name: string|null, height: number|null, bmr: number|null }}
  */
 export function buildProfilePatch(card) {
   return {
-    height: card.height_cm  ?? null,
+    name: card.name != null && String(card.name).trim()
+      ? String(card.name).trim()
+      : null,
+    height: card.height_cm ?? null,
     bmr: resolveCardBmr({
       weightKg: card.weight_kg,
       fatPercent: card.fat_percent,

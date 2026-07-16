@@ -6,6 +6,7 @@ import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
 import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
 import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard } from '../data/card.repo.js';
+import { syncCardToProfile } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -87,6 +88,20 @@ export async function handleCreateCard(body) {
       user_id: card.user_id,
       type_created_by: typeof card.created_by
     });
+  }
+
+  // Bidirectional sync: card → profile (Name/Height/BMR + weight metrics).
+  // Writes via sync.repo only — never through profile.service — to avoid loops.
+  if (card.user_id) {
+    try {
+      await syncCardToProfile(card);
+    } catch (syncErr) {
+      logger.warn('[handleCreateCard] profile sync failed (non-fatal)', {
+        cardId: card.id,
+        userId: card.user_id,
+        message: syncErr?.message,
+      });
+    }
   }
 
   // Fetch the previous card for this user so the frontend can show the

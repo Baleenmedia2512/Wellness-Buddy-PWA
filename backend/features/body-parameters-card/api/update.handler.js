@@ -11,6 +11,8 @@ import {
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
 } from '../data/card.repo.js';
+import { syncCardToProfile } from '../data/sync.repo.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * @param {object} body - raw request body (must include `id`)
@@ -33,6 +35,19 @@ export async function handleUpdateCard(body) {
     });
     await linkCardToUser(payload.id, userId);
     card.user_id = userId;
+  }
+
+  // Card → profile for every linked-card edit (changed fields only).
+  if (card.user_id) {
+    try {
+      await syncCardToProfile(card);
+    } catch (syncErr) {
+      logger.warn('[handleUpdateCard] profile sync failed (non-fatal)', {
+        cardId: card.id,
+        userId: card.user_id,
+        message: syncErr?.message,
+      });
+    }
   }
 
   const previousCard = card.user_id

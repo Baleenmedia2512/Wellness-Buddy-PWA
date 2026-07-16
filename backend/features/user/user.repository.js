@@ -217,6 +217,75 @@ export async function deleteTeamRow(userId) {
   if (error) throw error;
 }
 
+/**
+ * Sync Profile Name / Height / BMR onto the user's latest Body Parameters Card.
+ * Only the latest card is patched; historical cards are never touched.
+ * Writes via direct table update (not the BPC update handler) to avoid
+ * circular Profile ↔ Card sync loops.
+ *
+ * @param {number} userId
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null }} fields
+ * @returns {Promise<{ synced: boolean, fields: string[] }>}
+ */
+export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) {
+    return { synced: false, fields: [] };
+  }
+
+  const hasAny =
+    fields.name !== undefined ||
+    fields.height !== undefined ||
+    fields.bmr !== undefined;
+  if (!hasAny) return { synced: false, fields: [] };
+
+  const supabase = getSupabaseClient();
+  const { data: card, error: findErr } = await supabase
+    .from('body_parameters_cards')
+    .select('id, name, height_cm, bmr')
+    .eq('user_id', uid)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!card) return { synced: false, fields: [] };
+
+  const patch = {};
+  if (fields.name !== undefined && fields.name != null && String(fields.name).trim() !== '') {
+    const next = String(fields.name).trim();
+    if (String(card.name || '').trim() !== next) patch.name = next;
+  }
+  if (fields.height !== undefined && fields.height != null) {
+    const next = Number(fields.height);
+    const cur = card.height_cm != null ? Number(card.height_cm) : null;
+    if (Number.isFinite(next) && (cur === null || Math.abs(cur - next) >= 1e-6)) {
+      patch.height_cm = next;
+    }
+  }
+  if (fields.bmr !== undefined && fields.bmr != null) {
+    const next = Number(fields.bmr);
+    const cur = card.bmr != null ? Number(card.bmr) : null;
+    if (Number.isFinite(next) && (cur === null || Math.abs(cur - next) >= 1e-6)) {
+      patch.bmr = next;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { synced: false, fields: [] };
+  }
+
+  const { error: updateErr } = await supabase
+    .from('body_parameters_cards')
+    .update(patch)
+    .eq('id', card.id)
+    .eq('is_deleted', false);
+  if (updateErr) throw updateErr;
+
+  return { synced: true, fields: Object.keys(patch) };
+}
+
 /** Fetch raw food correction / nutrition data needed by user context. */
 export async function getUserContextData(userId) {
   const supabase = getSupabaseClient();

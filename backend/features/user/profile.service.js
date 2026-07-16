@@ -164,11 +164,13 @@ export async function updateProfile(input) {
   }
 
   let savedBmr = null;
+  let bmrExplicitlySaved = false;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
     if (!isNaN(bmrValue) && bmrValue > 0) {
       await repo.updateUserById(userId, { Bmr: bmrValue });
       savedBmr = bmrValue;
+      bmrExplicitlySaved = true;
     }
   } else {
     const latestMetrics = await repo.getLatestWeight(userId);
@@ -180,6 +182,36 @@ export async function updateProfile(input) {
       await repo.updateUserById(userId, { Bmr: calculatedBmr });
       savedBmr = calculatedBmr;
     }
+  }
+
+  // Profile → latest Body Parameters Card (Name / Height / explicit BMR only).
+  // Direct card patch — does not call BPC update handler — prevents sync loops.
+  // Auto-recalculated BMR (when client omitted bmr) is not pushed to the card.
+  try {
+    const cardSync = {};
+    if (name != null && updateData.UserName !== undefined) {
+      cardSync.name = updateData.UserName;
+    }
+    if (height != null && updateData.Height !== undefined) {
+      cardSync.height = updateData.Height;
+    }
+    if (bmrExplicitlySaved) {
+      cardSync.bmr = savedBmr;
+    }
+    if (Object.keys(cardSync).length > 0) {
+      const syncResult = await repo.syncProfileToLatestBodyParamsCard(userId, cardSync);
+      if (syncResult.synced) {
+        logger.info('[profile/update] synced to latest body-params card', {
+          userId,
+          fields: syncResult.fields,
+        });
+      }
+    }
+  } catch (syncErr) {
+    logger.warn('[profile/update] body-params card sync failed (non-fatal)', {
+      userId,
+      message: syncErr?.message,
+    });
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }
