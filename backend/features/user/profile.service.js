@@ -18,6 +18,7 @@ import {
   hasValidProfileName,
   isProfileComplete,
 } from './domain/profileCompleteness.js';
+import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 
 const { getISTTimestamp } = repo;
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
@@ -163,6 +164,8 @@ export async function updateProfile(input) {
     if (communityId !== undefined) savedCommunityId = communityId;
   }
 
+  const latestWeightRow = await repo.getLatestWeight(userId);
+
   let savedBmr = null;
   if (bmr != null) {
     const bmrValue = parseFloat(bmr);
@@ -171,15 +174,53 @@ export async function updateProfile(input) {
       savedBmr = bmrValue;
     }
   } else {
-    const latestMetrics = await repo.getLatestWeight(userId);
     const calculatedBmr = computeKatchMcArdleBmr(
-      latestMetrics?.Weight ? parseFloat(latestMetrics.Weight) : null,
-      latestMetrics?.BodyFat ? parseFloat(latestMetrics.BodyFat) : null,
+      latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
+      latestWeightRow?.BodyFat ? parseFloat(latestWeightRow.BodyFat) : null,
     );
     if (calculatedBmr !== null) {
       await repo.updateUserById(userId, { Bmr: calculatedBmr });
       savedBmr = calculatedBmr;
     }
+  }
+
+  // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
+  try {
+    const dbProfile = await repo.findByUserId(
+      userId,
+      '"UserName", "Height", "Bmr"',
+    );
+    const cardSync = buildProfileCardSyncPayload(
+      {
+        name: dbProfile?.UserName ?? name,
+        height: dbProfile?.Height != null
+          ? parseFloat(dbProfile.Height)
+          : (height != null ? parseFloat(height) : null),
+        bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
+      },
+      { savedBmr, latestWeight: latestWeightRow },
+    );
+
+    if (Object.keys(cardSync).length > 0) {
+      const syncResult = await repo.syncProfileToLatestBodyParamsCard(userId, cardSync);
+      if (syncResult.synced) {
+        logger.info('[profile/update] synced to latest body-params card', {
+          userId,
+          fields: syncResult.fields,
+        });
+      } else {
+        logger.info('[profile/update] body-params card sync skipped', {
+          userId,
+          attemptedFields: Object.keys(cardSync),
+        });
+      }
+    }
+  } catch (syncErr) {
+    logger.error('[profile/update] body-params card sync failed', {
+      userId,
+      message: syncErr?.message,
+    });
+    throw syncErr;
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }

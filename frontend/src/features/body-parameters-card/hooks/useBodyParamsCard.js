@@ -56,35 +56,35 @@ const EMPTY_FORM = {
   locationName: '',
 };
 
+function cardToFormState(card) {
+  if (!card?.id) return EMPTY_FORM;
+  return {
+    name:         card.name         ?? '',
+    phoneNumber:  card.phoneNumber  ?? '',
+    age:          card.age          != null ? String(card.age)         : '',
+    gender:       card.gender        ?? '',
+    heightCm:     card.heightCm     != null ? String(card.heightCm)    : '',
+    weightKg:     card.weightKg     != null ? String(card.weightKg)    : '',
+    bmi:          card.bmi          != null ? String(card.bmi)         : '',
+    fatPercent:   card.fatPercent   != null ? String(card.fatPercent)  : '',
+    bmr:          card.bmr          != null ? String(card.bmr)         : '',
+    visceralFat:  card.visceralFat  != null ? String(card.visceralFat) : '',
+    bodyAge:      card.bodyAge      != null ? String(card.bodyAge)     : '',
+    chestCm:      card.chestCm      != null ? String(card.chestCm)     : '',
+    waistCm:      card.waistCm      != null ? String(card.waistCm)     : '',
+    hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
+    recordedDate: card.recordedDate ?? new Date().toISOString().substring(0, 10),
+    locationName: card.locationName ?? '',
+  };
+}
+
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null } = {}) {
+export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false } = {}) {
   const isEditMode = Boolean(existingCard?.id);
 
-  const [form, setForm] = useState(() => {
-    if (existingCard) {
-      return {
-        name:         existingCard.name         ?? '',
-        phoneNumber:  existingCard.phoneNumber  ?? '',
-        age:          existingCard.age          != null ? String(existingCard.age)         : '',
-        gender:       existingCard.gender        ?? '',
-        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
-        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
-        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
-        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
-        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
-        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
-        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
-        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
-        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
-        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
-        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
-        locationName: existingCard.locationName ?? '',
-      };
-    }
-    return EMPTY_FORM;
-  });
+  const [form, setForm] = useState(() => cardToFormState(existingCard));
   const [isSaving, setIsSaving]           = useState(false);
   const [error, setError]                 = useState('');
   const [savedCard, setSavedCard]         = useState(null);
@@ -111,31 +111,14 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
-  // Update form when existingCard changes (for edit mode)
+  // Reload form every time the modal opens (fixes phone/fields missing after save+reopen).
   useEffect(() => {
-    if (existingCard) {
-      setForm({
-        name:         existingCard.name         ?? '',
-        phoneNumber:  existingCard.phoneNumber  ?? '',
-        age:          existingCard.age          != null ? String(existingCard.age)         : '',
-        gender:       existingCard.gender        ?? '',
-        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
-        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
-        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
-        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
-        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
-        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
-        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
-        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
-        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
-        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
-        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
-        locationName: existingCard.locationName ?? '',
-      });
-      setBmiUserEdited(false);
-      setBmrUserEdited(false);
-    }
-  }, [existingCard?.id]); // Only update when card ID changes
+    if (!isOpen) return;
+    setForm(cardToFormState(existingCard));
+    setBmiUserEdited(false);
+    setBmrUserEdited(false);
+    setError('');
+  }, [isOpen, existingCard]);
 
   // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
   useEffect(() => {
@@ -245,9 +228,9 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   // Auto-fill BMR whenever weight or body fat % changes (Katch-McArdle).
   useEffect(() => {
-    if (derivedBmr === null) return;
+    if (bmrUserEdited || derivedBmr === null) return;
     setForm((prev) => ({ ...prev, bmr: String(derivedBmr) }));
-  }, [derivedBmr]);
+  }, [derivedBmr, bmrUserEdited]);
 
   // ── Setters ───────────────────────────────────────────────────────────────
 

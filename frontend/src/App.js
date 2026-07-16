@@ -260,6 +260,7 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
+  const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
   // For returning OTP users, pre-load the cached user synchronously so that
@@ -7237,6 +7238,7 @@ function WellnessValleyApp() {
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
               triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
+              setBodyParamsRefreshKey((k) => k + 1);
             }}
           />
         </div>
@@ -7300,6 +7302,11 @@ function WellnessValleyApp() {
           <Suspense fallback={null}>
             <WellnessCounselling
               user={user}
+              refreshKey={bodyParamsRefreshKey}
+              onCardSaved={() => {
+                setHeaderProfileKey((k) => k + 1);
+                setBmrUpdateKey((k) => k + 1);
+              }}
               onBack={() => {
                 setShowWellnessCounselling(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7897,6 +7904,7 @@ function WellnessValleyApp() {
               setBmrUpdateKey((prev) => prev + 1);
             }
             triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
+            setBodyParamsRefreshKey((k) => k + 1);
           }}
         />
 
@@ -8577,6 +8585,8 @@ function WellnessValleyApp() {
           user={user}
           onProfileUpdate={() => {
             debugLog("? [NewUserProfile] Profile updated successfully");
+            setBodyParamsRefreshKey((k) => k + 1);
+            triggerNutritionRefresh({ immediate: true, source: 'new-user-profile' });
           }}
         />
 

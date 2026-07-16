@@ -26,6 +26,26 @@ export function resolveCardBmr({ weightKg = null, fatPercent = null, manualBmr =
 }
 
 /**
+ * BMR to push into Profile / weight records from a persisted card row.
+ * The stored card.bmr is authoritative (includes manual coach entry);
+ * only falls back to Katch-McArdle when the card has no BMR saved.
+ *
+ * @param {object} card - body_parameters_cards row (snake_case)
+ * @returns {number|null}
+ */
+export function resolveSyncedBmrFromCard(card) {
+  if (card?.bmr != null) {
+    const stored = Number(card.bmr);
+    if (Number.isFinite(stored) && stored > 0) return Math.round(stored);
+  }
+  return resolveCardBmr({
+    weightKg: card?.weight_kg,
+    fatPercent: card?.fat_percent,
+    manualBmr: null,
+  });
+}
+
+/**
  * Apply Katch-McArdle BMR to a validated card payload before persistence.
  *
  * @param {object} payload - validated create/update payload
@@ -75,19 +95,18 @@ export function isCardShareValid(shareExpiresAt, now = new Date()) {
 /**
  * Build the profile fields that should be written to team_table when a
  * link recipient saves a card to their profile.
- * Body Age is excluded — it is card-only per spec.
+ * Body Age / Age / Gender / measurements are excluded — card-only (no Profile columns).
  *
  * @param {object} card - row from body_parameters_cards
- * @returns {{ height: number|null, bmr: number|null }}
+ * @returns {{ name: string|null, height: number|null, bmr: number|null }}
  */
 export function buildProfilePatch(card) {
   return {
-    height: card.height_cm  ?? null,
-    bmr: resolveCardBmr({
-      weightKg: card.weight_kg,
-      fatPercent: card.fat_percent,
-      manualBmr: card.bmr,
-    }),
+    name: card.name != null && String(card.name).trim()
+      ? String(card.name).trim()
+      : null,
+    height: card.height_cm ?? null,
+    bmr: resolveSyncedBmrFromCard(card),
   };
 }
 
@@ -102,11 +121,7 @@ export function buildProfilePatch(card) {
 export function buildWeightRecord(card, userId) {
   const weight = card.weight_kg;
   if (!weight) return null; // weight is mandatory for a weight_records_table row
-  const bmr = resolveCardBmr({
-    weightKg: card.weight_kg,
-    fatPercent: card.fat_percent,
-    manualBmr: card.bmr,
-  });
+  const bmr = resolveSyncedBmrFromCard(card);
   return {
     UserId:    userId,
     Weight:    weight,

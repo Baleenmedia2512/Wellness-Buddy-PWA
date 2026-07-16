@@ -227,6 +227,89 @@ export async function linkCardToUser(cardId, userId) {
 }
 
 /**
+ * Ensure a card row is linked to a team_table member (via phone).
+ * Required before Profile sync — body_parameters_cards.user_id is the join key.
+ *
+ * @param {object} card - persisted card row
+ * @param {{ phoneNumber?: string|null, name?: string, coachId?: number, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} linkPayload
+ * @returns {Promise<number|null>} linked UserId
+ */
+export async function ensureCardLinkedToUser(card, linkPayload = {}) {
+  if (card?.user_id) return card.user_id;
+  const phoneNumber = linkPayload.phoneNumber;
+  if (!phoneNumber || !card?.id) return null;
+
+  const { userId } = await createTeamMemberFromPhone({
+    name:        linkPayload.name ?? card.name,
+    phoneNumber,
+    coachId:     linkPayload.coachId ?? card.created_by,
+    heightCm:    linkPayload.heightCm ?? card.height_cm,
+    bmr:         linkPayload.bmr ?? card.bmr,
+    weightKg:    linkPayload.weightKg ?? card.weight_kg,
+    fatPercent:  linkPayload.fatPercent ?? card.fat_percent,
+  });
+  await linkCardToUser(card.id, userId);
+  logger.info('[body-params-card] linked card to team member', { cardId: card.id, userId });
+  return userId;
+}
+
+/**
+ * Latest body_parameters_cards row for Profile → Card sync.
+ * Prefers user_id match; backfills user_id on a recent orphan with the same name.
+ *
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestCardForProfileSync(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const cardSelect = 'id, name, height_cm, bmr, weight_kg, fat_percent, bmi, user_id';
+
+  const { data: linkedRows, error: linkedErr } = await supabase
+    .from(TABLE)
+    .select(cardSelect)
+    .eq('user_id', uid)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (linkedErr) throw linkedErr;
+  if (linkedRows?.[0]) return linkedRows[0];
+
+  const { data: member, error: memberErr } = await supabase
+    .from('team_table')
+    .select('"UserName", "CoachId"')
+    .eq('UserId', uid)
+    .maybeSingle();
+  if (memberErr) throw memberErr;
+
+  const userName = member?.UserName ? String(member.UserName).trim() : '';
+  if (!userName) return null;
+
+  let orphanQuery = supabase
+    .from(TABLE)
+    .select(cardSelect)
+    .is('user_id', null)
+    .eq('is_deleted', false)
+    .ilike('name', userName);
+  const coachId = member?.CoachId != null ? parseInt(member.CoachId, 10) : null;
+  if (Number.isFinite(coachId) && coachId > 0) {
+    orphanQuery = orphanQuery.eq('created_by', coachId);
+  }
+  const { data: orphanRows, error: orphanErr } = await orphanQuery
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (orphanErr) throw orphanErr;
+
+  const orphan = orphanRows?.[0];
+  if (!orphan) return null;
+
+  await linkCardToUser(orphan.id, uid);
+  return { ...orphan, user_id: uid };
+}
+
+/**
  * Search team_table rows by phone number prefix, scoped to a specific coach. * Returns up to 10 matches ordered by UserId ascending.
  *
  * @param {{ prefix: string, coachId: number }} opts
@@ -375,21 +458,25 @@ export async function listCardsForCoach(coachId) {
       .in('UserId', userIds);
     
     if (teamMembers) {
-      teamMembersMap = Object.fromEntries(
-        teamMembers.map(m => [m.UserId, m])
-      );
+      for (const m of teamMembers) {
+        const key = String(m.UserId);
+        teamMembersMap[key] = m;
+      }
       logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
     }
   }
 
   // Map cards with optional phone number from team_table
   const mappedCards = cards.map(card => {
-    const member = teamMembersMap[card.user_id];
+    const member = teamMembersMap[String(card.user_id)];
+    const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
+      ? String(member.PhoneNumber).trim()
+      : null;
     return {
       id:           card.id,
       userId:       card.user_id,
       name:         card.name,
-      phoneNumber:  member?.PhoneNumber || null,
+      phoneNumber:  phone,
       age:          card.age,
       gender:       card.gender,
       heightCm:     card.height_cm,
