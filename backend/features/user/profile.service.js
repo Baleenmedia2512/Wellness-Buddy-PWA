@@ -209,10 +209,11 @@ export async function updateProfile(input) {
       }
     }
   } catch (syncErr) {
-    logger.warn('[profile/update] body-params card sync failed (non-fatal)', {
+    logger.error('[profile/update] body-params card sync failed', {
       userId,
       message: syncErr?.message,
     });
+    throw syncErr;
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }

@@ -11,6 +11,7 @@ import {
   buildWeightInsertIfChanged,
   hasSyncWrites,
 } from '../domain/sync.rules.js';
+import { ensureCardLinkedToUser } from './card.repo.js';
 
 const TEAM = 'team_table';
 const WEIGHT = 'weight_records_table';
@@ -20,11 +21,12 @@ const WEIGHT = 'weight_records_table';
  * @returns {Promise<{ userName: string|null, height: number|null, bmr: number|null, email: string|null }|null>}
  */
 export async function getTeamProfileSnapshot(userId) {
+  const uid = parseInt(userId, 10);
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserName, Height, Bmr, Email')
-    .eq('UserId', parseInt(userId, 10))
+    .select('"UserName", "Height", "Bmr", "Email"')
+    .eq('"UserId"', uid)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -41,16 +43,17 @@ export async function getTeamProfileSnapshot(userId) {
  * @returns {Promise<{ weight: number|null, bodyFat: number|null, bmi: number|null, bmr: number|null }|null>}
  */
 export async function getLatestWeightSnapshot(userId) {
+  const uid = parseInt(userId, 10);
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from(WEIGHT)
-    .select('Weight, BodyFat, Bmi, Bmr')
-    .eq('UserId', parseInt(userId, 10))
-    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
-    .order('CreatedAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .select('"Weight", "BodyFat", "Bmi", "Bmr"')
+    .eq('"UserId"', uid)
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
+    .order('"CreatedAt"', { ascending: false })
+    .limit(1);
   if (error) throw error;
+  const data = rows?.[0];
   if (!data) return null;
   return {
     weight: data.Weight != null ? parseFloat(data.Weight) : null,
@@ -67,11 +70,12 @@ export async function getLatestWeightSnapshot(userId) {
  */
 export async function patchTeamProfile(userId, diff) {
   if (!diff || Object.keys(diff).length === 0) return;
+  const uid = parseInt(userId, 10);
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from(TEAM)
     .update(diff)
-    .eq('UserId', parseInt(userId, 10));
+    .eq('"UserId"', uid);
   if (error) throw error;
 }
 
@@ -86,10 +90,8 @@ export async function insertWeightRecord(row) {
 }
 
 /**
- * Sync a persisted card into the linked user's Profile.
+ * Sync a persisted card into the linked user's Profile (team_table + weight).
  * Compares before write; skips DB when nothing changed.
- * Writes via this repo only — never through profile.service — so Profile→Card
- * sync does not re-enter.
  *
  * @param {object} card - body_parameters_cards row (snake_case) with user_id
  * @returns {Promise<{ synced: boolean, teamFields: string[], weightInserted: boolean }>}
@@ -109,6 +111,7 @@ export async function syncCardToProfile(card) {
   const weightRow = buildWeightInsertIfChanged(card, userId, latestWeight);
 
   if (!hasSyncWrites(teamDiff, weightRow)) {
+    logger.info('[bpc-sync] card → profile skipped (already in sync)', { userId, cardId: card.id });
     return { synced: false, teamFields: [], weightInserted: false };
   }
 
@@ -129,6 +132,7 @@ export async function syncCardToProfile(card) {
 
   logger.info('[bpc-sync] card → profile', {
     userId,
+    cardId: card.id,
     teamFields: Object.keys(teamDiff),
     weightInserted: Boolean(weightRow),
   });
@@ -138,4 +142,22 @@ export async function syncCardToProfile(card) {
     teamFields: Object.keys(teamDiff),
     weightInserted: Boolean(weightRow),
   };
+}
+
+/**
+ * Link card to member (if needed) then sync card → team_table / weight records.
+ *
+ * @param {object} card - persisted card row
+ * @param {object} linkPayload - phone/name/coachId/metrics for linking
+ * @returns {Promise<{ synced: boolean, userId: number|null, teamFields: string[], weightInserted: boolean }>}
+ */
+export async function syncCardToProfileAfterSave(card, linkPayload = {}) {
+  const userId = await ensureCardLinkedToUser(card, linkPayload);
+  if (!userId) {
+    logger.warn('[bpc-sync] card → profile skipped — no phone/user link', { cardId: card?.id });
+    return { synced: false, userId: null, teamFields: [], weightInserted: false };
+  }
+
+  const result = await syncCardToProfile({ ...card, user_id: userId });
+  return { ...result, userId };
 }

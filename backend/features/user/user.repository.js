@@ -4,6 +4,7 @@
  */
 import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
+import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
@@ -235,17 +236,7 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
   const hasAny = Object.keys(fields).some((k) => fields[k] !== undefined);
   if (!hasAny) return { synced: false, fields: [] };
 
-  const supabase = getSupabaseClient();
-  const { data: rows, error: findErr } = await supabase
-    .from('body_parameters_cards')
-    .select('id, name, height_cm, bmr, weight_kg, fat_percent, bmi')
-    .eq('user_id', uid)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (findErr) throw findErr;
-  const card = rows?.[0] ?? null;
+  const card = await findLatestCardForProfileSync(uid);
   if (!card) return { synced: false, fields: [] };
 
   const patch = buildCardPatchFromProfile(card, fields);
@@ -253,6 +244,7 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     return { synced: false, fields: [] };
   }
 
+  const supabase = getSupabaseClient();
   const { error: updateErr } = await supabase
     .from('body_parameters_cards')
     .update(patch)
@@ -260,7 +252,7 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     .eq('is_deleted', false);
   if (updateErr) throw updateErr;
 
-  return { synced: true, fields: Object.keys(patch) };
+  return { synced: true, fields: Object.keys(patch), cardId: card.id };
 }
 
 /** Fetch raw food correction / nutrition data needed by user context. */
