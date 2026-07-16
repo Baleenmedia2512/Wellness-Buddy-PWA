@@ -60,6 +60,8 @@ import React, {
   startTransition,
 } from "react";
 import ReactDOM, { flushSync } from "react-dom";
+import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
+import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
@@ -93,6 +95,8 @@ import {
 } from "./features/nutrition";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import * as captureQueue from './shared/services/captureQueue';
+import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
+import { useWeightCapture } from './hooks/useWeightCapture';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
@@ -111,10 +115,7 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
-import {
-  locationAttendanceService,
-  getClubLocationIfNearby,
-} from "./features/nutrition-centers";
+import { resolveLocationFields } from "./shared/utils/resolveLocationFields";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -146,7 +147,6 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
 import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import EmailGateModal from "./features/user/components/EmailGateModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
@@ -389,55 +389,12 @@ function WellnessValleyApp() {
     captureId: null,
   });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
-  const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   // Education time window fetched from DB (e.g. 07:15 - 08:45) ? no hardcoding
   const [educationWindow, setEducationWindow] = useState(null);
-  const [weightResult, setWeightResult] = useState(null); // Store weight detection results
-  const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
-  // --- savedWeightIdRef ----------------------------------------------------
-  // INTENTIONAL ref-mirror of `savedWeightId` state.
-  //
-  // Why both exist:
-  //   - `savedWeightId` (state) drives JSX (e.g. enabling the inline-edit
-  //     pencil button, conditional render of the edit overlay).
-  //   - `savedWeightIdRef` (ref) is read inside async handlers that are
-  //     created/closed-over BEFORE the state setter resolves ? specifically:
-  //       ? performWeightSave    ? writes the new id (line ~1884)
-  //       ? handleWeightEditSave ? reads the current id mid-flight (line ~1947)
-  //                                so a user editing immediately after save
-  //                                hits the right entryId without waiting
-  //                                for React to re-render the handler.
-  //       ? saveWeightEntry      ? updates id after a manual save (line ~1973)
-  //   - Cleared together with state in showMainPage / showDashboardPage /
-  //     handleSignOut so they cannot diverge across navigation.
-  //
-  // Stale-closure risk (documented, NOT fixed in hygiene phase):
-  //   - The inline edit handler captures `weightResult` and `user` by closure
-  //     but reads `savedWeightIdRef.current` directly. If a second weight
-  //     save lands between two clicks of the edit button, the edit can race
-  //     onto the *new* entry id while the user thinks they are editing the
-  //     prior result. This is currently masked by the UI clearing the result
-  //     card on save, so practically unreachable. To eliminate fully, a
-  //     state-machine extraction of weight-save (later phase) should pair
-  //     `entryId` with the result object instead of using a sibling ref.
-  const savedWeightIdRef = useRef(null);
-  const [isEditingWeight, setIsEditingWeight] = useState(false); // Inline edit mode
-  const [editWeightValue, setEditWeightValue] = useState(""); // Value being edited
-  const [isSavingWeightEdit, setIsSavingWeightEdit] = useState(false); // Loading for edit save
-  const [weightEditError, setWeightEditError] = useState(""); // Edit validation error
-  const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
-  const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
-  const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
-  const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
-  const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(""); // Celebration message
-
-  // Weight Progress Tips feature (reverse progress detection)
-  const weightProgressCheck = useWeightProgressCheck();
-  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
 
   // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
   const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
@@ -727,10 +684,6 @@ function WellnessValleyApp() {
   }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
-  const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
-    useState(false);
-  const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
-  const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // Club selection state
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
@@ -1941,11 +1894,7 @@ function WellnessValleyApp() {
       setImagePreview(null);
       setWatchResult(null);
       setEducationResult(null);
-      setWeightResult(null);
-      setPendingWeightImage(null);
-      setWeightEntrySaved(false);
-      setSavedWeightId(null);
-      savedWeightIdRef.current = null;
+      clearWeightState();
       setSelectedImage(null);
       setImageType(null);
 
@@ -2007,11 +1956,7 @@ function WellnessValleyApp() {
     setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
-    setWeightResult(null);
-    setPendingWeightImage(null);
-    setWeightEntrySaved(false);
-    setSavedWeightId(null);
-    savedWeightIdRef.current = null;
+    clearWeightState();
     setEducationResult(null);
     setWatchResult(null);
     setNutritionData(null);
@@ -3699,599 +3644,29 @@ function WellnessValleyApp() {
    * Checks if user's weight moved in wrong direction (reverse progress)
    * and shows personalized tips if needed
    */
-  const triggerReverseProgressModal = async (userId, weightId) => {
-    if (!userId || !weightId) return;
-    try {
-      console.log(
-        "?? [triggerReverseProgressModal] Checking progress for userId:",
-        userId,
-        "weightId:",
-        weightId,
-      );
-      const result = await weightProgressCheck.checkProgress(userId, weightId);
-      console.log("?? [triggerReverseProgressModal] Result:", result);
-      if (result?.shouldShow) {
-        console.log("? [triggerReverseProgressModal] Showing modal");
-        setShowWeightProgressModal(true);
-      }
-    } catch (err) {
-      console.error("? Error checking weight progress:", err);
-    }
-  };
-
-  /**
-   * Perform actual weight save to database (called after duplicate check)
-   */
-  const performWeightSave = async (
-    weightData,
-    imageBase64,
-    cachedUserId = null,
-    captureTimestamp = null,
-  ) => {
-    console.log("?? [performWeightSave] FUNCTION CALLED with:", {
-      weightValue: weightData.weightValue,
-      unit: weightData.unit,
-      hasCachedUserId: !!cachedUserId,
-      hasCaptureTimestamp: !!captureTimestamp,
-    });
-
-    try {
-      // Use cached userId if provided, otherwise get it
-      let userId = cachedUserId || user?.id;
-      console.log("?? [performWeightSave] Step 1: Getting userId...", {
-        cachedUserId,
-        hasUser: !!user,
-      });
-
-      if (!userId) {
-        userId = await getUserId(user);
-        console.log("?? [performWeightSave] userId fetched:", userId);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      console.log("?? [performWeightSave] Step 2: Building payload...");
-
-      const payload = {
-        userId,
-        weightValue: weightData.weightValue,
-        unit: weightData.unit,
-        bmi: weightData.bmi,
-        bodyFat: weightData.bodyFat,
-        muscleMass: weightData.muscleMass,
-        bmr: weightData.bmr,
-        imageBase64ToSave: imageBase64,
-        // Use EXIF capture timestamp if available ? otherwise fall back to upload time
-        clientTimestamp: captureTimestamp || new Date().toISOString(),
-        clientTimezoneOffset: new Date().getTimezoneOffset(),
-        // PR 6 � link the weight record to its captures_table row so the backend
-        // can promote the capture pending ? weight in the same request.
-        // `share.id` now semantically IS the CaptureID (the speculative food-row
-        // pre-insert was removed). Undefined when no share was created (e.g. the
-        // background-analysis worker bypassed share creation).
-        captureId: foodCaptureIdRef.current || undefined,
-      };
-
-      console.log("?? [performWeightSave] Step 3: Capturing GPS location...");
-
-      // Capture GPS location for every weight photo � not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Fails gracefully � weight save is never blocked by a GPS timeout.
-      let attendance;
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        console.log(
-          "?? [performWeightSave] GPS location captured successfully",
-        );
-        debugLog("?? [weight] Attendance determined:", attendance);
-
-        if (attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "?? [weight] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "? [weight] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
-        }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          payload.latitude = attendance.latitude;
-          payload.longitude = attendance.longitude;
-          payload.attendanceType = attendance.attendanceType;
-          payload.nutritionCenterId = attendance.nutritionCenterId || null;
-          payload.centerName = attendance.centerName || null;
-          debugLog(
-            "?? [weight] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          payload.city = city;
-          payload.village = village;
-        }
-      } catch (gpsErr) {
-        console.log(
-          "?? [performWeightSave] GPS failed, proceeding without location:",
-          gpsErr.message,
-        );
-        debugLog(
-          "?? [weight] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        // Fallback to remote attendance
-        payload.attendanceType = "remote";
-      }
-
-      console.log(
-        "?? [performWeightSave] GPS location captured, payload ready",
-      );
-
-      // ? REMOVED: Don't reuse weight entry IDs - always create new records
-      // This allows multiple weight entries per day with different timestamps
-      // if (savedWeightIdRef.current) {
-      //   payload.entryId = savedWeightIdRef.current;
-      //   debugLog("?? Reusing existing weight entry ID:", savedWeightIdRef.current);
-      // }
-
-      // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
-
-      console.log(
-        "?? [performWeightSave] Step 4: Calling API /api/weight/save...",
-      );
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      console.log("?? [performWeightSave] API response received:", {
-        ok: response.ok,
-        status: response.status,
-        success: data.success,
-        hasData: !!data.data,
-        hasCorrection: !!data.correction,
-      });
-
-      if (!response.ok || !data.success) {
-        debugLog("? Weight save failed:", {
-          status: response.status,
-          validation: data.validation,
-          message: data.message,
-        });
-
-        // Even though weight was rejected, BMR may have been saved by the backend.
-        // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
-        if (data.bmrSaved || data.data?.bmr) {
-          debugLog(
-            "?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:",
-            data.data?.bmr,
-          );
-          setBmrUpdateKey((prev) => prev + 1);
-        }
-
-        // Distinguish a server/infrastructure failure (5xx) from a business validation
-        // failure (400/422). Showing "Unrealistic Weight Change" for a DB outage is
-        // misleading and confusing for the user.
-        if (response.status >= 500) {
-          setAlertModal({
-            isOpen: true,
-            title: "?? Couldn't Save Your Weight",
-            message:
-              "We couldn't save your weight entry right now. Please try again in a moment.",
-            type: "error",
-          });
-        } else {
-          // Validation failure � build a friendly, supportive message
-          let alertMessage = `We noticed a significant change from your last weigh-in.`;
-          if (data.validation && data.message) {
-            const detail =
-              data.message.charAt(0).toUpperCase() + data.message.slice(1);
-            alertMessage = detail;
-          }
-          setAlertModal({
-            isOpen: true,
-            title: "?? Unrealistic Weight Change",
-            message: alertMessage,
-            type: "warning",
-          });
-        }
-
-        // Clear loading states
-        setSaveLoading(false);
-        setLoadingState("idle");
-
-        // Throw so the caller knows the save failed
-        throw new Error(data.message || "Weight save failed");
-      }
-
-      debugLog("? Weight entry saved successfully");
-
-      // ? Update weight result with final saved weight (may be corrected by backend)
-      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
-      const finalSavedWeight =
-        data.data?.weightValue ||
-        data.correction?.correctedWeight ||
-        weightData.weightValue;
-      const corrInfo = data.correction || null;
-      console.log("?? [DEBUG] Updating weightResult with final saved weight:", {
-        finalSavedWeight,
-        wasCorrected: !!corrInfo?.wasCorrected,
-        corrInfo,
-      });
-
-      // Update weightResult with final backend value (overwrites the pre-save value set earlier)
-      setWeightResult((prev) => ({
-        ...prev,
-        weightValue: finalSavedWeight,
-        originalWeight: corrInfo?.originalWeight || weightData.weightValue,
-        loggedAt: captureTimestamp || new Date().toISOString(),
-      }));
-
-      // Fetch previous weight to show "vs Previous entry" diff immediately
-      try {
-        const histRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const histData = await histRes.json();
-        console.log("?? [celebration] Weight history data:", {
-          success: histData.success,
-          hasPrevious: !!histData.stats?.previousWeight,
-          previousWeight: histData.stats?.previousWeight?.value,
-          latestWeight: histData.stats?.latestWeight?.value,
-          finalSavedWeight,
-        });
-
-        if (histData.success && histData.stats?.previousWeight) {
-          const prevWeight = parseFloat(histData.stats.previousWeight.value);
-          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          const latestDate = histData.stats.latestWeight?.date;
-          const prevDate = histData.stats.previousWeight.date;
-          const isDifferentDay =
-            latestDate &&
-            prevDate &&
-            getISTDateStr(latestDate) !== getISTDateStr(prevDate);
-
-          console.log("?? [celebration] Weight comparison:", {
-            prevWeight,
-            finalSavedWeight,
-            weightChange,
-            isDifferentDay,
-            latestDate,
-            prevDate,
-          });
-
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (isDifferentDay) {
-            setWeightDiff({
-              previous: Math.round(prevWeight * 100) / 100,
-              previousDate: prevDate,
-              change: Math.round(weightChange * 100) / 100,
-            });
-          } else {
-            setWeightDiff(null);
-          }
-
-          // ?? Trigger celebration if weight loss detected (at least 0.1 kg)
-          // CELEBRATION TRIGGERS REGARDLESS OF DATE - we celebrate ANY progress!
-          if (weightChange < -0.1) {
-            const lossAmount = Math.abs(weightChange).toFixed(1);
-            setWeightCelebrationMessage(
-              `You lost ${lossAmount} kg! Keep it up! ??`,
-            );
-            setShowWeightCelebration(true);
-            console.log(
-              "?? [celebration] TRIGGERING celebration! Weight loss:",
-              lossAmount,
-              "kg",
-            );
-            debugLog(
-              "?? [celebration] Weight loss detected, triggering celebration:",
-              lossAmount,
-            );
-          } else {
-            console.log(
-              "?? [celebration] No celebration - weight change:",
-              weightChange,
-              "kg (need < -0.1)",
-            );
-          }
-        } else {
-          console.log(
-            "?? [celebration] No celebration - no previous weight found",
-          );
-          setWeightDiff(null);
-        }
-      } catch (histErr) {
-        console.error(
-          "? [celebration] Failed to fetch weight history:",
-          histErr,
-        );
-        /* non-critical */
-      }
-
-      // Fetch user height ? compute ideal weight for the share card
-      refreshIdealWeight();
-
-      // Check if weight was auto-corrected
-      if (corrInfo && corrInfo.wasCorrected) {
-        // Show custom alert modal about auto-correction with user-friendly message
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "? Weight Adjusted",
-            message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
-            type: "info",
-          });
-        }, 500);
-
-        debugLog("?? Weight auto-corrected:", corrInfo);
-      } else if (corrInfo && corrInfo.message) {
-        // Weight changed significantly but within limits � only surface if notable
-        const change = Math.abs(corrInfo.difference || 0);
-        if (change > 1.5) {
-          setTimeout(() => {
-            setAlertModal({
-              isOpen: true,
-              title: "?? Weight Updated",
-              message: `Your weight changed by ${change.toFixed(
-                1,
-              )} kg. Keep up the great work!`,
-              type: "info",
-            });
-          }, 500);
-        }
-      }
-
-      // Store the saved entry ID for potential editing
-      if (data?.id) {
-        setSavedWeightId(data.id);
-        savedWeightIdRef.current = data.id;
-      }
-
-      // BMR synced to team_table by the backend (calculated or preserved)
-      const savedBmr = data.data?.bmr;
-      if (savedBmr) {
-        setBmrUpdateKey((prev) => prev + 1);
-        debugLog(
-          "?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:",
-          savedBmr,
-        );
-      }
-
-      // Hide saving overlay
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Show success popup (similar to nutrition save)
-      setError(null);
-
-      // Background refresh to pick up other users' data from server
-      setTimeout(() => {
-        handleLeaderboardRefresh();
-      }, 3000);
-
-      const savedId = savedWeightIdRef.current || data?.id || null;
-      await triggerReverseProgressModal(userId, savedId);
-
-      // Keep imagePreview and selectedImage visible (like food images)
-      // Don't reset them here
-    } catch (err) {
-      console.error("? Save weight error:", err);
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Weight validation errors are already shown via alertModal ? don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        setError(err.message || "Failed to save weight entry");
-      }
-      throw err;
-    }
-  };
-
-  /**
-   * Save weight entry to database with duplicate check
-   */
-  /**
-   * UPDATE the already-saved weight entry with the edited value.
-   * Only called after the initial auto-save has completed (savedWeightId is set).
-   */
-  const handleWeightEditSave = async () => {
-    const val = parseFloat(editWeightValue);
-    if (isNaN(val) || val < 20 || val > 300) {
-      setWeightEditError("Weight must be between 20 and 300 kg");
-      return;
-    }
-    setIsSavingWeightEdit(true);
-    setWeightEditError("");
-    try {
-      let userId = user?.id;
-      if (!userId) userId = await getUserId(user);
-
-      // Build payload ? include entryId to update the specific weight entry.
-      // If no entryId, backend will create a new entry instead of updating.
-      const payload = {
-        userId,
-        weightValue: val,
-        unit: weightResult?.unit || "kg",
-      };
-      const currentEntryId = savedWeightIdRef.current;
-      if (currentEntryId) payload.entryId = currentEntryId;
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        // Show the same friendly alert modal as photo upload validation
-        if (result.validation) {
-          setIsEditingWeight(false);
-          setAlertModal({
-            isOpen: true,
-            title: "?? Unrealistic Weight Change",
-            message: result.message
-              ? result.message.charAt(0).toUpperCase() + result.message.slice(1)
-              : `We noticed a significant change from your last weigh-in.`,
-            type: "warning",
-          });
-        }
-        throw new Error(result.message || "Failed to update");
-      }
-
-      // Keep the ref in sync with whichever row was actually updated
-      if (result?.id) {
-        setSavedWeightId(result.id);
-        savedWeightIdRef.current = result.id;
-      }
-
-      setWeightResult((prev) => ({ ...prev, weightValue: val }));
-      setIsEditingWeight(false);
-      // Refresh diff after manual edit
-      try {
-        let diffUserId = user?.id || (await getUserId(user));
-        const diffRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const diffData = await diffRes.json();
-        if (diffData.success && diffData.stats?.previousWeight) {
-          const prevWeight = parseFloat(diffData.stats.previousWeight.value);
-          const weightChange = val - prevWeight;
-          // Always compare against the immediately previous entry � same day is fine
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
-        }
-      } catch (_) {
-        /* non-critical */
-      }
-      // Refresh ideal weight in case the user updated their height in profile
-      refreshIdealWeight();
-
-      // ? Check for reverse weight progress after an edit-save too
-      const editWeightId = savedWeightIdRef.current || result?.id || null;
-      await triggerReverseProgressModal(userId, editWeightId);
-    } catch (err) {
-      setWeightEditError(err.message || "Failed to save");
-    } finally {
-      setIsSavingWeightEdit(false);
-    }
-  };
-
-  const saveWeightEntry = async (
-    weightData,
-    imageBase64,
-    captureTimestamp = null,
-  ) => {
-    try {
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      // Check for duplicate weight before saving (fail-safe: proceed if check fails)
-      try {
-        const duplicateCheck =
-          await duplicateDetectionService.checkForDuplicateWeight({
-            userId: userId,
-            weightValue: weightData.weightValue,
-            unit: weightData.unit || "kg",
-          });
-
-        if (false && duplicateCheck.isDuplicate) {
-          // Found duplicate - hide saving overlay and show confirmation modal
-          // debugLog('?? Duplicate weight detected:', duplicateCheck);
-          setSaveLoading(false); // Hide saving overlay while showing duplicate modal
-          setLoadingState("idle");
-          setDuplicateWeightInfo(duplicateCheck);
-          setPendingWeightSaveData({
-            weightData: weightData,
-            imageBase64: imageBase64,
-            userId: userId, // Cache userId for later use
-            captureTimestamp: captureTimestamp, // Preserve EXIF timestamp through duplicate flow
-          });
-          setShowDuplicateWeightModal(true);
-          return; // Stop here to wait for user confirmation
-        }
-      } catch (duplicateCheckErr) {
-        // If duplicate check fails, log it but continue with save (fail-open)
-        console.warn(
-          "?? Duplicate check failed, proceeding with save:",
-          duplicateCheckErr,
-        );
-      }
-
-      // No duplicate or duplicate check failed - proceed with save (pass cached userId)
-      await performWeightSave(
-        weightData,
-        imageBase64,
-        userId,
-        captureTimestamp,
-      );
-    } catch (err) {
-      console.error("? Save weight error:", err);
-      // Weight validation errors are already shown via alertModal � don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        const rawMsg = err.message || "";
-        const isNetworkErr =
-          rawMsg.toLowerCase().includes("load failed") ||
-          rawMsg.includes("Failed to fetch") ||
-          rawMsg.includes("network") ||
-          rawMsg.includes("connection");
-        setError(
-          isNetworkErr
-            ? "?? Please check your internet connection (WiFi or mobile data) and try again."
-            : rawMsg || "Failed to save weight entry",
-        );
-      }
-      throw err;
-    }
-  };
+  // Weight capture state + save pipeline (hooks/useWeightCapture.js)
+  const {
+    weightResult, setWeightResult,
+    savedWeightId, setSavedWeightId, savedWeightIdRef,
+    weightDiff, setWeightDiff,
+    showWeightCelebration, setShowWeightCelebration, weightCelebrationMessage,
+    weightEntrySaved, setWeightEntrySaved,
+    pendingWeightImage, setPendingWeightImage,
+    showWeightProgressModal, setShowWeightProgressModal,
+    lastWeight,
+    isEditingWeight, setIsEditingWeight,
+    editWeightValue, setEditWeightValue,
+    isSavingWeightEdit, weightEditError,
+    showDuplicateWeightModal, setShowDuplicateWeightModal,
+    duplicateWeightInfo, setDuplicateWeightInfo,
+    pendingWeightSaveData, setPendingWeightSaveData,
+    saveWeightEntry, performWeightSave, handleWeightEditSave, fetchLastWeight,
+    clearWeightState,
+  } = useWeightCapture({
+    user, apiBaseUrl, foodCaptureIdRef,
+    setAlertModal, setSaveLoading, setLoadingState,
+    setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+  });
 
   /**
    * Handle manual weight entry from modal
@@ -4412,26 +3787,6 @@ function WellnessValleyApp() {
   };
 
   /** Fetch the user's most recent weight entry for the hint card */
-  const fetchLastWeight = async () => {
-    try {
-      let uid = user?.id;
-      if (!uid) uid = await getUserId(user);
-      if (!uid) return;
-      const res = await fetch(
-        `${apiBaseUrl}/api/weight/history?userId=${uid}&includeImage=false&_t=${Date.now()}`,
-      );
-      const data = await res.json();
-      if (data.success && data.stats?.latestWeight) {
-        setLastWeight({
-          value: data.stats.latestWeight.value,
-          unit: "kg",
-          date: data.stats.latestWeight.date,
-        });
-      }
-    } catch {
-      /* non-critical */
-    }
-  };
 
   /**
    * Handle manual food entry from modal (used when AI is unavailable)
@@ -4795,77 +4150,25 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
-      // If within 100m of club ? club attendance
-      // If not near club ? remote attendance
-      debugLog("?? Checking GPS for nearby clubs...");
-
-      let attendance;
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        debugLog("? Attendance determined:", attendance);
-
-        // Check if location permission was denied
-        if (attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-      } catch (gpsError) {
-        console.warn(
-          "?? GPS check failed, defaulting to remote attendance:",
-          gpsError,
-        );
-        // Fallback to remote attendance if GPS fails
-        attendance = {
-          attendanceType: "remote",
-          nutritionCenterId: null,
-          centerName: null,
-          nearbyCenters: [],
-          locationError: "UNKNOWN",
-        };
+      // Resolve GPS + nutrition-center attendance fields in a single call.
+      const { permissionDenied: gpsDenied, ...locationFields } =
+        await resolveLocationFields(apiBaseUrl, userId);
+      if (gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
       }
 
-      // If multiple clubs detected, auto-select the closest one (first in array)
-      if (
-        attendance.nearbyCenters &&
-        attendance.nearbyCenters.length > 1 &&
-        !selectedClub
-      ) {
-        debugLog("?? Multiple clubs detected, auto-selecting closest club");
-        const closestClub = attendance.nearbyCenters[0];
-        debugLog(
-          "? Auto-selected closest club:",
-          closestClub.center.center_name,
-          `(${Math.round(closestClub.distance)}m)`,
-        );
-
-        // Update attendance to use the closest club
-        attendance.nutritionCenterId = closestClub.center.id;
-        attendance.centerName = closestClub.center.center_name;
-        attendance.attendanceType = "club";
-      }
-
-      // Reverse-geocode GPS coordinates into city + village via shared helper.
-      // fetchCityVillage never throws � returns null fields on failure.
-      const { city: userCity, village: userVillage } = await fetchCityVillage(
-        attendance.latitude,
-        attendance.longitude,
-      );
-
-      // Determine final values
-      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      // selectedClub (from club-selection modal) overrides the auto-detected club.
+      const finalCenterId = selectedClub?.id || locationFields.nutritionCenterId;
       const finalCenterName =
-        selectedClub?.center_name || attendance.centerName;
+        selectedClub?.center_name || locationFields.centerName;
       const finalPlatform =
-        attendance.attendanceType === "club" ? "Club" : educationData.platform;
+        locationFields.attendanceType === "club" ? "Club" : educationData.platform;
 
       // Use captureTimestamp (passed directly) ? imageTimestamp state ? current time
       // Using the direct parameter avoids reading stale React state
@@ -4894,14 +4197,14 @@ function WellnessValleyApp() {
           deviceInfo: window.navigator.userAgent,
           clientTimestamp: new Date().toISOString(),
           clientTimezoneOffset: new Date().getTimezoneOffset(),
-          latitude: attendance.latitude,
-          longitude: attendance.longitude,
-          attendanceType: attendance.attendanceType,
+          latitude: locationFields.latitude,
+          longitude: locationFields.longitude,
+          attendanceType: locationFields.attendanceType,
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
-          city: userCity,
-          village: userVillage,
+          city: locationFields.city,
+          village: locationFields.village,
           // PR 6 � captureId is passed explicitly as a param so it is always
           // the value resolved BEFORE the GPS / geocoding awaits, not the
           // potentially-stale ref value read after several async hops.
@@ -4920,7 +4223,7 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
-      debugLog(`   ?? Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      debugLog(`   ?? Attendance: ${locationFields.attendanceType.toUpperCase()}`);
       if (finalCenterName) {
         debugLog(`   ?? Club: ${finalCenterName}`);
       }
@@ -5172,81 +4475,25 @@ function WellnessValleyApp() {
       // Capture GPS location for every food photo � not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
-      // caused false "Remote" saves when GPS was still acquiring a fix.
-      let clubLocationFields = {};
-      let attendance;
-      // Stage 10 � GPS started
+      // Stage 10 — GPS started
       const _gpsStart = Date.now();
       _ctLog(10, 'GPS started', {});
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          saveData.userId,
-        );
-        // Stage 11 � GPS finished
-        _ctLog(11, 'GPS finished', {
-          attendanceType: attendance?.attendanceType,
-          hasCoords: !!(attendance?.latitude && attendance?.longitude),
-          gpsLatencyMs: Date.now() - _gpsStart,
-          locationError: attendance?.locationError || null,
+      const { permissionDenied: gpsDenied, ...clubLocationFields } =
+        await resolveLocationFields(apiBaseUrl, saveData.userId);
+      _ctLog(11, 'GPS finished', {
+        attendanceType: clubLocationFields.attendanceType,
+        hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
+        gpsLatencyMs: Date.now() - _gpsStart,
+        locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+      });
+      if (!silent && gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
         });
-        debugLog("?? [nutrition] Attendance determined:", attendance);
-
-        if (!silent && attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "?? [nutrition] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "? [nutrition] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
-        }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          clubLocationFields.latitude = attendance.latitude;
-          clubLocationFields.longitude = attendance.longitude;
-          clubLocationFields.attendanceType = attendance.attendanceType;
-          clubLocationFields.nutritionCenterId =
-            attendance.nutritionCenterId || null;
-          clubLocationFields.centerName = attendance.centerName || null;
-          debugLog(
-            "?? [nutrition] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          clubLocationFields.city = city;
-          clubLocationFields.village = village;
-        }
-      } catch (gpsErr) {
-        debugLog(
-          "?? [nutrition] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        clubLocationFields.attendanceType = "remote";
       }
 
       const saveRes = await saveNutritionAnalysis({
@@ -6953,47 +6200,8 @@ function WellnessValleyApp() {
     }
   };
 
-  // ── Offline capture queue ─────────────────────────────────────────────────────────
-  // Photos taken while offline are stored in localStorage and resubmitted
-  // automatically when connectivity is restored. Multiple photos queued
-  // in a row are processed sequentially with a 3 s gap to avoid flooding.
-  const [_offlineQueueTrigger, setOfflineQueueTrigger] = useState(0);
-
-  useEffect(() => {
-    // state-setter as the trigger means the second effect always has the latest
-    // handleImageSelect via its own dep without a ref.
-    const wake = () => setOfflineQueueTrigger((n) => n + 1);
-    window.addEventListener('online', wake);
-    // Process any items queued during a previous offline session on mount.
-    if (navigator.onLine && captureQueue.size() > 0) wake();
-    return () => window.removeEventListener('online', wake);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- wake only uses stable setter
-
-  useEffect(() => {
-    if (_offlineQueueTrigger === 0 || !navigator.onLine) return;
-    const items = captureQueue.flush();
-    if (items.length === 0) return;
-    showToast(`📶 Back online — processing ${items.length} queued photo${items.length === 1 ? '' : 's'}…`);
-    let idx = 0;
-    const processNext = async () => {
-      if (idx >= items.length) return;
-      const item = items[idx++];
-      try {
-        const dataUrl = item.imageBase64.startsWith('data:')
-          ? item.imageBase64
-          : `data:image/jpeg;base64,${item.imageBase64}`;
-        const res  = await fetch(dataUrl);
-        const blob = await res.blob();
-        const file = new File([blob], 'queued-capture.jpg', { type: 'image/jpeg' });
-        handleImageSelect(file, item.exifTimestamp);
-        setTimeout(processNext, 3000); // 3 s gap — avoids server flooding
-      } catch (err) {
-        console.warn('[CaptureQueue] Failed to process queued item:', err);
-        setTimeout(processNext, 1000);
-      }
-    };
-    processNext();
-  }, [_offlineQueueTrigger, handleImageSelect]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Offline capture queue: drain queued photos on network reconnection.
+  useOfflineCaptureQueue(handleImageSelect, showToast);
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";
@@ -7712,72 +6920,7 @@ function WellnessValleyApp() {
     return (
       <>
         {alertModalPortal}
-        <div
-        data-waiting-modal="true"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 999999,
-          background: "rgba(0,0,0,0.75)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "16px",
-        }}
-      >
-        <div
-          style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "40px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 25px 50px rgba(0,0,0,0.4)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "28px",
-            }}
-          >
-            <div
-              style={{
-                width: "72px",
-                height: "72px",
-                border: "5px solid #22c55e",
-                borderTopColor: "transparent",
-                borderRadius: "50%",
-                animation: "wv-spin 1s linear infinite",
-              }}
-            ></div>
-          </div>
-          <h2
-            style={{
-              fontSize: "26px",
-              fontWeight: "bold",
-              color: "#111827",
-              marginBottom: "14px",
-            }}
-          >
-            Contacting Your Coach...
-          </h2>
-          <p
-            style={{
-              color: "#6b7280",
-              fontSize: "16px",
-              lineHeight: "1.7",
-              margin: 0,
-            }}
-          >
-            Sending a verification request to your coach. This usually takes a
-            few seconds.
-          </p>
-        </div>
-        <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-      </div>
+        <WaitingForCoachModal />
       </>
     );
   }
@@ -8002,77 +7145,7 @@ function WellnessValleyApp() {
           />
         )}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED (branch1) ???",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
@@ -8118,77 +7191,7 @@ function WellnessValleyApp() {
         )}
         {/* Waiting for Coach OTP - Portal renders to document.body */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED AND VISIBLE ???",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
@@ -9122,399 +8125,18 @@ function WellnessValleyApp() {
 
             {imageType === "weight" && weightResult && (
               <>
-                {/* Hidden container for sharing - includes image + card */}
-                <div
+                {/* Off-screen weight share card \xe2\x80\x94 captured by precaptureShareImage for instant share */}
+                <WeightShareCard
                   ref={weightAnalysisShareRef}
-                  className="fixed -left-[9999px] top-0"
-                  style={{ position: "fixed", left: "-9999px", width: 460 }}
-                >
-                  <div
-                    style={{
-                      background: "white",
-                      borderRadius: 20,
-                      boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
-                      border: "2px solid #2dd4bf",
-                    }}
-                  >
-                    {/* User header strip */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 16,
-                        padding: "32px 28px",
-                        background:
-                          "linear-gradient(135deg, #0d9488 0%, #059669 100%)",
-                        borderRadius: "18px 18px 0 0",
-                        minHeight: 110,
-                      }}
-                    >
-                      {/* Profile photo ? div+backgroundImage for reliable html2canvas rendering */}
-                      {savedProfileImage ||
-                      sharePhotoBase64 ||
-                      user?.photoURL ? (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.95)",
-                            backgroundImage: `url(${
-                              savedProfileImage ||
-                              sharePhotoBase64 ||
-                              user.photoURL
-                            })`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                            flexShrink: 0,
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.9)",
-                            background: "rgba(255,255,255,0.25)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              color: "white",
-                              fontWeight: 800,
-                              fontSize: 26,
-                              lineHeight: 1,
-                            }}
-                          >
-                            {(user?.displayName || user?.email || "U")
-                              .charAt(0)
-                              .toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            color: "white",
-                            fontWeight: 800,
-                            fontSize: 19,
-                            lineHeight: 1.2,
-                            margin: "0 0 6px 0",
-                          }}
-                        >
-                          {savedUserName ||
-                            user?.displayName ||
-                            user?.name ||
-                            "Wellness User"}
-                        </p>
-                        <p
-                          style={{
-                            color: "rgba(187,247,236,0.95)",
-                            fontSize: 13,
-                            margin: 0,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {new Date().toLocaleDateString(undefined, {
-                            dateStyle: "medium",
-                          })}{" "}
-                          {new Date().toLocaleTimeString(undefined, {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <p
-                        style={{
-                          color: "rgba(187,247,236,0.85)",
-                          fontSize: 16,
-                          margin: 0,
-                          lineHeight: 1,
-                          alignSelf: "flex-end",
-                          flexShrink: 0,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {getVersionString()}
-                      </p>
-                    </div>
-
-                    {/* Weight Image for sharing */}
-                    {imagePreview && (
-                      <div style={{ background: "black", overflow: "hidden" }}>
-                        <img
-                          src={imagePreview}
-                          alt="Weight Scale"
-                          style={{
-                            width: "100%",
-                            height: 256,
-                            objectFit: "contain",
-                            display: "block",
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Yesterday Weight label */}
-                    {weightDiff && weightDiff.previous != null && (
-                      <div
-                        style={{
-                          background: "linear-gradient(to right, #0d9488, #059669)",
-                          color: "white",
-                          textAlign: "center",
-                          padding: "12px 24px",
-                          fontSize: 18,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Yesterday: {parseFloat((+weightDiff.previous).toFixed(2))} {weightResult.unit}
-                      </div>
-                    )}
-
-                    {/* Card content for sharing - Simple and Clean */}
-                    <div
-                      style={{
-                        background: "white",
-                        padding: 32,
-                        borderRadius: "0 0 18px 18px",
-                      }}
-                    >
-                      <h2
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 700,
-                          color: "#059669",
-                          textAlign: "center",
-                          margin: "0 0 24px 0",
-                        }}
-                      >
-                        Weight Analysis
-                      </h2>
-
-                      <div
-                        style={{
-                          background: "#f5f3ff",
-                          borderRadius: 16,
-                          padding: 24,
-                          textAlign: "center",
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "#7c3aed",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                            margin: "0 0 8px 0",
-                          }}
-                        >
-                          Weight
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 48,
-                            fontWeight: 700,
-                            color: "#6d28d9",
-                            margin: 0,
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {parseFloat((+weightResult.weightValue).toFixed(2))}
-                          <span
-                            style={{
-                              fontSize: 22,
-                              fontWeight: 400,
-                              marginLeft: 8,
-                            }}
-                          >
-                            {weightResult.unit}
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Ideal Weight Strip (share card) */}
-                      {idealWeight && (
-                        <div
-                          style={{
-                            marginTop: 16,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background: "#eff6ff",
-                            border: "1px solid #bfdbfe",
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#2563eb",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              Ideal Weight
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#6b7280",
-                                margin: 0,
-                              }}
-                            >
-                              Based on height {idealWeight.heightCm} cm
-                            </p>
-                          </div>
-                          <div style={{ textAlign: "right", color: "#1d4ed8" }}>
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: 0,
-                              }}
-                            >
-                              {(() => {
-                                const current = weightResult?.weightValue;
-                                const isLoss =
-                                  current && current > idealWeight.value + 0.5;
-                                const isGain =
-                                  current && current < idealWeight.min - 0.5;
-                                if (isLoss)
-                                  return `${idealWeight.value} ${idealWeight.unit}`;
-                                if (isGain)
-                                  return `${idealWeight.min} ${idealWeight.unit}`;
-                                return `${idealWeight.value} ${idealWeight.unit}`;
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Weight Diff Strip */}
-                      {weightDiff && (
-                        <div
-                          style={{
-                            marginTop: 20,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background:
-                              weightDiff.change < 0
-                                ? "#f0fdf4"
-                                : weightDiff.change > 0
-                                ? "#fff1f2"
-                                : "#f9fafb",
-                            border: `1px solid ${
-                              weightDiff.change < 0
-                                ? "#bbf7d0"
-                                : weightDiff.change > 0
-                                ? "#fecdd3"
-                                : "#e5e7eb"
-                            }`,
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#6b7280",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              vs Previous
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 16,
-                                fontWeight: 700,
-                                color: "#374151",
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.previous} {weightResult.unit}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#9ca3af",
-                                margin: 0,
-                              }}
-                            >
-                              {new Date(
-                                weightDiff.previousDate,
-                              ).toLocaleDateString(undefined, {
-                                dateStyle: "medium",
-                              })}
-                            </p>
-                          </div>
-                          <div
-                            style={{
-                              textAlign: "right",
-                              color:
-                                weightDiff.change < 0
-                                  ? "#16a34a"
-                                  : weightDiff.change > 0
-                                  ? "#ef4444"
-                                  : "#6b7280",
-                            }}
-                          >
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.change > 0
-                                ? "?"
-                                : weightDiff.change < 0
-                                ? "?"
-                                : "�"}{" "}
-                              {weightDiff.change === 0
-                                ? "No change"
-                                : Math.abs(weightDiff.change) < 1
-                                ? `${Math.round(
-                                    Math.abs(weightDiff.change) * 1000,
-                                  )} g`
-                                : `${Math.abs(weightDiff.change).toFixed(2)} ${
-                                    weightResult.unit
-                                  }`}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 600,
-                                margin: 0,
-                              }}
-                            >
-                              {weightDiff.change < 0
-                                ? "Lost"
-                                : weightDiff.change > 0
-                                ? "Gained"
-                                : ""}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  user={user}
+                  savedUserName={savedUserName}
+                  savedProfileImage={savedProfileImage}
+                  sharePhotoBase64={sharePhotoBase64}
+                  imagePreview={imagePreview}
+                  weightResult={weightResult}
+                  weightDiff={weightDiff}
+                  idealWeight={idealWeight}
+                />
 
                 {/* Visible card */}
                 <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
@@ -10576,35 +9198,9 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
+        {/* Waiting for coach OTP — portal so it renders above all other layers */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-              style={{ zIndex: 999999 }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED AND VISIBLE ???",
-                  );
-              }}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-fadeIn">
-                <div className="flex justify-center mb-6">
-                  <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-green-500"></div>
-                </div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Contacting Your Coach...
-                </h2>
-                <p className="text-gray-600 text-lg leading-relaxed">
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </div>
     </LocationGuard>
       </div>
@@ -10621,5 +9217,7 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
+
+
 
 
