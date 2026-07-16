@@ -111,10 +111,7 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
-import {
-  locationAttendanceService,
-  getClubLocationIfNearby,
-} from "./features/nutrition-centers";
+import { resolveLocationFields } from "./shared/utils/resolveLocationFields";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -3776,80 +3773,18 @@ function WellnessValleyApp() {
 
       console.log("?? [performWeightSave] Step 3: Capturing GPS location...");
 
-      // Capture GPS location for every weight photo � not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Fails gracefully � weight save is never blocked by a GPS timeout.
-      let attendance;
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        console.log(
-          "?? [performWeightSave] GPS location captured successfully",
-        );
-        debugLog("?? [weight] Attendance determined:", attendance);
-
-        if (attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "?? [weight] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "? [weight] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
-        }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          payload.latitude = attendance.latitude;
-          payload.longitude = attendance.longitude;
-          payload.attendanceType = attendance.attendanceType;
-          payload.nutritionCenterId = attendance.nutritionCenterId || null;
-          payload.centerName = attendance.centerName || null;
-          debugLog(
-            "?? [weight] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          payload.city = city;
-          payload.village = village;
-        }
-      } catch (gpsErr) {
-        console.log(
-          "?? [performWeightSave] GPS failed, proceeding without location:",
-          gpsErr.message,
-        );
-        debugLog(
-          "?? [weight] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        // Fallback to remote attendance
-        payload.attendanceType = "remote";
+      const { permissionDenied: gpsDenied, ...locationFields } =
+        await resolveLocationFields(apiBaseUrl, userId);
+      if (gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
       }
+      Object.assign(payload, locationFields);
 
       console.log(
         "?? [performWeightSave] GPS location captured, payload ready",
@@ -4795,77 +4730,25 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
-      // If within 100m of club ? club attendance
-      // If not near club ? remote attendance
-      debugLog("?? Checking GPS for nearby clubs...");
-
-      let attendance;
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        debugLog("? Attendance determined:", attendance);
-
-        // Check if location permission was denied
-        if (attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-      } catch (gpsError) {
-        console.warn(
-          "?? GPS check failed, defaulting to remote attendance:",
-          gpsError,
-        );
-        // Fallback to remote attendance if GPS fails
-        attendance = {
-          attendanceType: "remote",
-          nutritionCenterId: null,
-          centerName: null,
-          nearbyCenters: [],
-          locationError: "UNKNOWN",
-        };
+      // Resolve GPS + nutrition-center attendance fields in a single call.
+      const { permissionDenied: gpsDenied, ...locationFields } =
+        await resolveLocationFields(apiBaseUrl, userId);
+      if (gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
       }
 
-      // If multiple clubs detected, auto-select the closest one (first in array)
-      if (
-        attendance.nearbyCenters &&
-        attendance.nearbyCenters.length > 1 &&
-        !selectedClub
-      ) {
-        debugLog("?? Multiple clubs detected, auto-selecting closest club");
-        const closestClub = attendance.nearbyCenters[0];
-        debugLog(
-          "? Auto-selected closest club:",
-          closestClub.center.center_name,
-          `(${Math.round(closestClub.distance)}m)`,
-        );
-
-        // Update attendance to use the closest club
-        attendance.nutritionCenterId = closestClub.center.id;
-        attendance.centerName = closestClub.center.center_name;
-        attendance.attendanceType = "club";
-      }
-
-      // Reverse-geocode GPS coordinates into city + village via shared helper.
-      // fetchCityVillage never throws � returns null fields on failure.
-      const { city: userCity, village: userVillage } = await fetchCityVillage(
-        attendance.latitude,
-        attendance.longitude,
-      );
-
-      // Determine final values
-      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      // selectedClub (from club-selection modal) overrides the auto-detected club.
+      const finalCenterId = selectedClub?.id || locationFields.nutritionCenterId;
       const finalCenterName =
-        selectedClub?.center_name || attendance.centerName;
+        selectedClub?.center_name || locationFields.centerName;
       const finalPlatform =
-        attendance.attendanceType === "club" ? "Club" : educationData.platform;
+        locationFields.attendanceType === "club" ? "Club" : educationData.platform;
 
       // Use captureTimestamp (passed directly) ? imageTimestamp state ? current time
       // Using the direct parameter avoids reading stale React state
@@ -4894,14 +4777,14 @@ function WellnessValleyApp() {
           deviceInfo: window.navigator.userAgent,
           clientTimestamp: new Date().toISOString(),
           clientTimezoneOffset: new Date().getTimezoneOffset(),
-          latitude: attendance.latitude,
-          longitude: attendance.longitude,
-          attendanceType: attendance.attendanceType,
+          latitude: locationFields.latitude,
+          longitude: locationFields.longitude,
+          attendanceType: locationFields.attendanceType,
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
-          city: userCity,
-          village: userVillage,
+          city: locationFields.city,
+          village: locationFields.village,
           // PR 6 � captureId is passed explicitly as a param so it is always
           // the value resolved BEFORE the GPS / geocoding awaits, not the
           // potentially-stale ref value read after several async hops.
@@ -4920,7 +4803,7 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
-      debugLog(`   ?? Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      debugLog(`   ?? Attendance: ${locationFields.attendanceType.toUpperCase()}`);
       if (finalCenterName) {
         debugLog(`   ?? Club: ${finalCenterName}`);
       }
@@ -5172,81 +5055,25 @@ function WellnessValleyApp() {
       // Capture GPS location for every food photo � not just when inside a club.
       // Raw lat/lng + city/village are always recorded; club fields added when nearby.
       // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
-      // caused false "Remote" saves when GPS was still acquiring a fix.
-      let clubLocationFields = {};
-      let attendance;
-      // Stage 10 � GPS started
+      // Stage 10 — GPS started
       const _gpsStart = Date.now();
       _ctLog(10, 'GPS started', {});
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          saveData.userId,
-        );
-        // Stage 11 � GPS finished
-        _ctLog(11, 'GPS finished', {
-          attendanceType: attendance?.attendanceType,
-          hasCoords: !!(attendance?.latitude && attendance?.longitude),
-          gpsLatencyMs: Date.now() - _gpsStart,
-          locationError: attendance?.locationError || null,
+      const { permissionDenied: gpsDenied, ...clubLocationFields } =
+        await resolveLocationFields(apiBaseUrl, saveData.userId);
+      _ctLog(11, 'GPS finished', {
+        attendanceType: clubLocationFields.attendanceType,
+        hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
+        gpsLatencyMs: Date.now() - _gpsStart,
+        locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+      });
+      if (!silent && gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
         });
-        debugLog("?? [nutrition] Attendance determined:", attendance);
-
-        if (!silent && attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "?? [nutrition] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "? [nutrition] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
-        }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          clubLocationFields.latitude = attendance.latitude;
-          clubLocationFields.longitude = attendance.longitude;
-          clubLocationFields.attendanceType = attendance.attendanceType;
-          clubLocationFields.nutritionCenterId =
-            attendance.nutritionCenterId || null;
-          clubLocationFields.centerName = attendance.centerName || null;
-          debugLog(
-            "?? [nutrition] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          clubLocationFields.city = city;
-          clubLocationFields.village = village;
-        }
-      } catch (gpsErr) {
-        debugLog(
-          "?? [nutrition] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        clubLocationFields.attendanceType = "remote";
       }
 
       const saveRes = await saveNutritionAnalysis({
