@@ -3,7 +3,12 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { maxWatchCaloriesFromRows, parseWatchKcalFromTopic } from '../domain/watch-calories.helpers.js';
+import {
+  maxStepCaloriesFromRows,
+  maxWatchCaloriesFromRows,
+  parseWatchKcalFromTopic,
+  resolveDailyExerciseCalories,
+} from '../domain/watch-calories.helpers.js';
 
 describe('parseWatchKcalFromTopic', () => {
   it('parses standard topic', () => {
@@ -26,5 +31,35 @@ describe('maxWatchCaloriesFromRows', () => {
 
   it('returns 0 for empty rows', () => {
     assert.equal(maxWatchCaloriesFromRows([]), 0);
+  });
+});
+
+describe('resolveDailyExerciseCalories', () => {
+  it('uses highest watch kcal when two smartwatch uploads same day', () => {
+    const watchRows = [
+      { Topic: 'Calories Burned: 150 kcal' },
+      { Topic: 'Calories Burned: 300 kcal' },
+    ];
+    assert.equal(resolveDailyExerciseCalories([], watchRows), 300);
+  });
+
+  it('uses highest step row, not sum, when multiple step syncs exist', () => {
+    const stepRows = [
+      { Steps: 1000, CaloriesBurned: 150 },
+      { Steps: 2000, CaloriesBurned: 300 },
+    ];
+    assert.equal(resolveDailyExerciseCalories(stepRows, []), 300);
+  });
+
+  it('adds step max and watch max from different sources', () => {
+    const stepRows = [{ Steps: 5000, CaloriesBurned: 200 }];
+    const watchRows = [{ Topic: 'Calories Burned: 300 kcal' }];
+    assert.equal(resolveDailyExerciseCalories(stepRows, watchRows), 500);
+  });
+});
+
+describe('maxStepCaloriesFromRows', () => {
+  it('ignores empty step rows', () => {
+    assert.equal(maxStepCaloriesFromRows([{ Steps: 0, CaloriesBurned: 0 }]), 0);
   });
 });

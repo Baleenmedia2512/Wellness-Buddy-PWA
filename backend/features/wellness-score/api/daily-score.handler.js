@@ -4,7 +4,7 @@ import * as waterRepo from '../../water/data/water.repo.js';
 import { fetchMealsForDate } from '../../food-corrections/food-corrections.repository.js';
 import { getUserWeightGoal } from '../../weight-progress-tips/data/weight-progress.repo.js';
 import * as activityRepo from '../../activity/activity.repository.js';
-import { maxWatchCaloriesFromRows } from '../../activity/domain/watch-calories.helpers.js';
+import { resolveDailyExerciseCalories } from '../../activity/domain/watch-calories.helpers.js';
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
 import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
@@ -47,10 +47,6 @@ function pickCurrentWeight(weightRecords, latestWeightRow) {
     if (w != null) return w;
   }
   return parseWeightKg(latestWeightRow);
-}
-
-function sumStepCalories(stepRows = []) {
-  return stepRows.reduce((sum, row) => sum + (Number(row.CaloriesBurned) || 0), 0);
 }
 
 function buildScorePayload({ userId, date, userGoal, scores }) {
@@ -136,7 +132,7 @@ export async function computeDailyScoreForDate({ userId, date }) {
   const weightKg = latestWeightKg;
   const dailyStats = aggregateDailyFoodStats(foodRecords);
   const nutritionTargets = computeNutritionTargets({ bmr: calorieTarget, weightKg });
-  const exerciseCalories = sumStepCalories(stepRows) + maxWatchCaloriesFromRows(watchRows);
+  const exerciseCalories = resolveDailyExerciseCalories(stepRows, watchRows);
   const currentWeight = pickCurrentWeight(weightRecords, latestWeightRow);
   const previousWeight = previousWeightRow ? parseFloat(previousWeightRow.Weight) : null;
 

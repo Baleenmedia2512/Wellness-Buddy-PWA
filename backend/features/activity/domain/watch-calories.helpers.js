@@ -30,3 +30,34 @@ export function maxWatchCaloriesFromRows(rows) {
   }
   return max;
 }
+
+/**
+ * Highest step-calorie row for one day (multiple sync rows → max, not sum).
+ *
+ * @param {Array<{ Steps?: number|null, CaloriesBurned?: number|null }>|null|undefined} rows
+ * @returns {number}
+ */
+export function maxStepCaloriesFromRows(rows) {
+  if (!rows?.length) return 0;
+  let max = 0;
+  for (const row of rows) {
+    const burned = Math.abs(Number(row.CaloriesBurned) || 0);
+    if ((row.Steps || 0) > 0 || burned > 0) {
+      max = Math.max(max, burned);
+    }
+  }
+  return max;
+}
+
+/**
+ * Daily exercise calories for wellness / activity totals.
+ * Multiple watch screenshots → highest kcal only (150 + 300 → 300).
+ * Multiple step rows → highest step burn, then add watch (different sources).
+ *
+ * @param {Array<{ Steps?: number|null, CaloriesBurned?: number|null }>|null|undefined} stepRows
+ * @param {Array<{ Topic?: string|null }>|null|undefined} watchRows
+ * @returns {number}
+ */
+export function resolveDailyExerciseCalories(stepRows, watchRows) {
+  return maxStepCaloriesFromRows(stepRows) + maxWatchCaloriesFromRows(watchRows);
+}
