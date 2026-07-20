@@ -5,6 +5,8 @@
  * value is fetched from the DB; if the parent just uploaded a watch screenshot
  * (passed via watchBurnedCalories prop), we use the higher of the two values
  * so the UI reflects the upload before the DB round-trip completes.
+ * Multiple watch uploads per day are aggregated server-side as the **highest**
+ * kcal (not sum).
  */
 import { useState, useEffect, useCallback } from 'react';
 import { fetchWatchBurnedCalories } from '../services/nutritionDashboard';
