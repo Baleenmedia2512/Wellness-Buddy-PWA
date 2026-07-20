@@ -2123,6 +2123,14 @@ function WellnessValleyApp() {
         const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
+        if (type === 'location') {
+          const gpsOn = await nativeLifecycle.checkGpsEnabled();
+          if (!gpsOn) {
+            setShowGpsRequired(true);
+            return;
+          }
+        }
+
         // Not granted � request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
@@ -2170,6 +2178,15 @@ function WellnessValleyApp() {
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
     try {
+      if (type === 'location') {
+        const gpsOn = await nativeLifecycle.checkGpsEnabled();
+        if (!gpsOn) {
+          setActivePermission(null);
+          setShowGpsRequired(true);
+          return;
+        }
+      }
+
       const { granted } = await PermissionManager.requestPermission(type);
       if (granted) {
         setActivePermission(null);
@@ -3237,7 +3254,8 @@ function WellnessValleyApp() {
           const gpsOn = await nativeLifecycle.checkGpsEnabled();
           if (!cancelled && gpsOn) {
             setShowGpsRequired(false);
-            setPermissionsReady(true);
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
           }
           return;
         }
@@ -7605,7 +7623,13 @@ function WellnessValleyApp() {
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => PermissionManager.openAppSettings()}
+            onOpenSettings={() => {
+              if (activePermission.type === 'location') {
+                nativeLifecycle.openLocationPermissionSettings();
+              } else {
+                PermissionManager.openAppSettings();
+              }
+            }}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
