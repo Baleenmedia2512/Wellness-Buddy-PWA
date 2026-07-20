@@ -7540,6 +7540,7 @@ function WellnessValleyApp() {
         <WellnessScorePage
           user={user}
           apiBaseUrl={apiBaseUrl}
+          nutritionRefreshKey={nutritionRefreshKey}
           onBack={() => {
             setShowWellnessScore(false);
             const currentWvPage = window.history.state?.wvPage;

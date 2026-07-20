@@ -11,6 +11,7 @@ export function useWellnessScoreHistory({
   startDate,
   endDate,
   selectedDate,
+  nutritionRefreshKey = 0,
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,7 +50,7 @@ export function useWellnessScoreHistory({
 
   useEffect(() => {
     reload();
-  }, [reload]);
+  }, [reload, nutritionRefreshKey]);
 
   useEffect(() => {
     const onVisible = () => {
