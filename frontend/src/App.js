@@ -199,8 +199,8 @@ import LocationGuard from "./shared/components/LocationGuard";
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
 );
-const DisciplineLeaderboard = lazy(() =>
-  import("./features/leaderboard/components/DisciplineLeaderboard"),
+const WellnessScoreLeaderboard = lazy(() =>
+  import("./features/leaderboard/components/WellnessScoreLeaderboard"),
 );
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
@@ -883,7 +883,7 @@ function WellnessValleyApp() {
 
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
-  const disciplineLeaderboardRef = useRef(null);
+  const wellnessLeaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -1820,8 +1820,8 @@ function WellnessValleyApp() {
     if (leaderboardRef.current) {
       leaderboardRef.current.refresh();
     }
-    if (disciplineLeaderboardRef.current) {
-      disciplineLeaderboardRef.current.refresh();
+    if (wellnessLeaderboardRef.current) {
+      wellnessLeaderboardRef.current.refresh();
     }
   }, []);
 
@@ -7939,12 +7939,14 @@ function WellnessValleyApp() {
           topN={LEADERBOARD_CONFIG.TOP_N}
         />
 
-        {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
-        <DisciplineLeaderboard
-          ref={disciplineLeaderboardRef}
-          apiBaseUrl={apiBaseUrl}
-          topN={10}
-        />
+        {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
+        {isFlagEnabled('ff.wellness-score-sheet') && (
+          <WellnessScoreLeaderboard
+            ref={wellnessLeaderboardRef}
+            apiBaseUrl={apiBaseUrl}
+            topN={10}
+          />
+        )}
 
         <div
           className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
