@@ -56,8 +56,9 @@ export default function LeadDetailsSection({ leadDetails, onChange }) {
             Mobile Number <span className="text-red-500 ml-0.5">*</span>
           </label>
           <input
-            type="tel"
-            inputMode="tel"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={leadDetails.phone || ''}
             onChange={set('phone')}
             placeholder="e.g. +91 9876543210"

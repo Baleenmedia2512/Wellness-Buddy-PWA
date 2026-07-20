@@ -95,7 +95,9 @@ export default function WellnessScoreSetupRow({ category, config, onChange }) {
           </label>
           <input
             id={`max-${category.key}`}
-            type="number"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             min={0}
             max={1000}
             disabled={!enabled}

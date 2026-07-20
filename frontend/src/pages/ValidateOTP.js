@@ -6,6 +6,7 @@ import useOtpInput from '../features/user/hooks/useOtpInput';
 import useWebOtp from '../features/user/hooks/useWebOtp';
 import storage from '../shared/lib/storage';
 import { debugLog } from '../shared/utils/logger';
+import NativeInput, { otpAutoCompleteForCell } from '../shared/components/NativeInput.jsx';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
@@ -270,13 +271,14 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
         <div className="px-8 pb-10 flex-1 overflow-y-auto custom-scrollbar">
           <div className="flex justify-center gap-2 sm:gap-3 mb-6">
             {otp.map((digit, index) => (
-              <input
+              <NativeInput
                 key={index}
+                otp
                 ref={(el) => { refs.current[index] = el; }}
-                type="tel"
+                type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                autoComplete={otpAutoCompleteForCell(index)}
                 maxLength={1}
                 className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${
                   error ? 'border-red-200 bg-red-50 text-red-600' :

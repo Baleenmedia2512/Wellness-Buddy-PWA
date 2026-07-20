@@ -46,7 +46,7 @@ const CompleteRequiredFields = ({
         </label>
         <div className="relative">
           <Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-          <input type="number" inputMode="decimal" value={height}
+          <input type="text" inputMode="decimal" pattern="[0-9]*" value={height}
             onChange={(e) => setHeight(e.target.value)} placeholder="e.g. 170"
             className={inputCls(height && !heightValid)} style={{ fontSize: '16px' }}
             min="50" max="250" />
@@ -61,7 +61,7 @@ const CompleteRequiredFields = ({
         </label>
         <div className="relative">
           <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-          <input type="tel" inputMode="tel" value={phone}
+          <input type="text" inputMode="numeric" pattern="[0-9]*" value={phone}
             onChange={(e) => setPhone(e.target.value)} placeholder="e.g. +91 9876543210"
             className={inputCls(phone && !phoneValid)} style={{ fontSize: '16px' }} />
         </div>

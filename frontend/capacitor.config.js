@@ -7,7 +7,9 @@ const config = {
   // ✅ ANDROID PERFORMANCE: Optimize for fast image loading
   android: {
     allowMixedContent: true,
-    captureInput: true,
+    // Must stay false: captureInput=true replaces the WebView IME with a generic
+    // BaseInputConnection, which always shows QWERTY and ignores type="tel"/inputmode.
+    captureInput: false,
     webContentsDebuggingEnabled: false,
     backgroundColor: '#ffffff',
     loggingBehavior: 'none',

@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialOtp, verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
 
 /**
@@ -44,9 +45,12 @@ export default function OtpInline({ testimonialId, type, onVerified, className =
       <p className="text-xs text-amber-700 leading-relaxed">
         Your coach received a 6-digit verification code by email. Ask them to share it with you.
       </p>
-      <input
-        type="tel"
+      <NativeInput
+        otp
+        type="text"
         inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
         maxLength={6}
         placeholder="_ _ _ _ _ _"
         value={otp}

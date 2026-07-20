@@ -5,6 +5,7 @@ import WellnessValleyApp from './App';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from './shared/utils/logger.js';
+import { installNativeInputModeSync } from './shared/utils/nativeInputMode.js';
 
 // ✅ PERFORMANCE: Suppress all console output in production
 // In iOS WKWebView, every console.log bridges to native — very expensive
@@ -19,9 +20,11 @@ if (process.env.NODE_ENV === 'production') {
 
 // ✅ CRITICAL FIX: Explicitly hide splash screen to prevent text selection overlay issue //
 if (Capacitor.isNativePlatform()) {
-  // Hide splash screen immediately to remove window layer
   SplashScreen.hide().catch(() => {});
 }
+
+// Sync type="tel" + inputmode onto DOM before mobile IME opens.
+installNativeInputModeSync();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 

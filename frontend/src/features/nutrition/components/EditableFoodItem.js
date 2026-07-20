@@ -1393,7 +1393,7 @@ const EditableFoodItem = forwardRef(
               <input
                 type="text"
                 inputMode="decimal"
-                pattern="[0-9]*\.?[0-9]*"
+                pattern="[0-9]*"
                 value={customGrams}
                 onChange={handleGramsChange}
                 onPaste={(e) => {

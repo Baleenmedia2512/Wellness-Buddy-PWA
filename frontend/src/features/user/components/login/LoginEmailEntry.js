@@ -13,7 +13,7 @@ import { useContactPicker } from '../../hooks/useContactPicker';
 import { isFlagEnabled } from '../../../../config/featureFlags';
 import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
 import { isIOS } from '../../../../shared/utils/platform';
-
+import NativeInput from '../../../../shared/components/NativeInput.jsx';
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -90,12 +90,13 @@ const LoginEmailEntry = ({
               ))}
             </select>
           </div>
-          <input
+          <NativeInput
             ref={inputRef}
             id="recipient"
             type="tel"
             inputMode="numeric"
-            autoComplete="tel"
+            pattern="[0-9]*"
+            autoComplete="off"
             name="tel"
             value={email}
             onChange={(e) => {

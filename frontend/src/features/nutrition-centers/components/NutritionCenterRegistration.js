@@ -842,7 +842,9 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
                 {/* Phone Number Input */}
                 <div className="flex-1">
                   <input
-                    type="tel"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={ownerPhone}
                     onChange={(e) => handlePhoneInput(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"

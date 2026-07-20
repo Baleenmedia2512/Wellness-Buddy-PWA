@@ -60,11 +60,12 @@ export function WeightResultCard({
                       <div className="w-full mt-1">
                         <div className="flex items-center gap-2">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*"
                             value={editWeightValue}
                             onChange={(e) => setEditWeightValue(e.target.value)}
                             className="flex-1 border border-purple-300 rounded-lg px-3 py-2 text-xl font-bold text-purple-700 text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            inputMode="decimal"
                             step="0.1"
                             min="20"
                             max="300"
