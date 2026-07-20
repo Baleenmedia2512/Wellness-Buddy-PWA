@@ -148,7 +148,6 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import EmailGateModal from "./features/user/components/EmailGateModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
@@ -399,8 +398,6 @@ function WellnessValleyApp() {
   const [educationWindow, setEducationWindow] = useState(null);
 
   // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
-  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
-  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
   // Email gate � forced for phone-OTP users who have no email in their profile
   const [showEmailGate, setShowEmailGate] = useState(false);
@@ -2546,14 +2543,6 @@ function WellnessValleyApp() {
         setShowCompleteProfile(false);
         // Profile fields complete � check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-        // Force goal mode setup if user has never set it
-        if (
-          result.data?.weightGoalMode === null ||
-          result.data?.weightGoalMode === undefined
-        ) {
-          setGoalModePromptEmail(userEmail);
-          setShowGoalModePrompt(true);
-        }
         return;
       }
 
@@ -8588,24 +8577,6 @@ function WellnessValleyApp() {
           userName={savedUserName}
         />
 
-        {/* Weight Goal Mode Setup Prompt � forced for users who never set their goal */}
-        <WeightGoalSetupPrompt
-          isOpen={showGoalModePrompt}
-          onSave={async (selectedMode) => {
-            const email = goalModePromptEmail || user?.email;
-            if (!email) return;
-            const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, weightGoalMode: selectedMode }),
-            });
-            if (!res.ok) throw new Error("Failed to save goal mode");
-            setShowGoalModePrompt(false);
-            setGoalModePromptEmail(null);
-          }}
-        />
-
-        {/* New User Profile Modal - shown for first-time users to complete their profile */}
         <UserProfileModal
           isOpen={showNewUserProfileModal}
           onClose={() => setShowNewUserProfileModal(false)}
