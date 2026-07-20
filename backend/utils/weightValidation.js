@@ -232,3 +232,19 @@ export function computeIdealWeightRange(heightCm) {
     idealMax: parseFloat((23 * heightM * heightM).toFixed(1)),
   };
 }
+
+/**
+ * Derive weight goal mode from current weight vs ideal BMI range (19–23).
+ * Above ideal → loss · below ideal → gain · within range → maintain.
+ *
+ * @param {{ heightCm?: number|string|null, currentWeightKg?: number|string|null }} params
+ * @returns {'loss'|'gain'|'maintain'|null}
+ */
+export function deriveWeightGoalMode({ heightCm, currentWeightKg }) {
+  const range = computeIdealWeightRange(heightCm);
+  const current = parseFloat(currentWeightKg);
+  if (!range || !Number.isFinite(current) || current <= 0) return null;
+  if (current > range.idealMax) return 'loss';
+  if (current < range.idealMin) return 'gain';
+  return 'maintain';
+}

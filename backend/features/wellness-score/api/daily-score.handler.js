@@ -5,6 +5,7 @@ import { fetchMealsForDate } from '../../food-corrections/food-corrections.repos
 import { getUserWeightGoal } from '../../weight-progress-tips/data/weight-progress.repo.js';
 import * as activityRepo from '../../activity/activity.repository.js';
 import { resolveDailyExerciseCalories } from '../../activity/domain/watch-calories.helpers.js';
+import { deriveWeightGoalMode } from '../../../utils/weightValidation.js';
 import { normalizeParameterConfig, DEFAULT_PARAMETER_CONFIG } from '../domain/parameter-registry.js';
 import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
@@ -49,14 +50,14 @@ function pickCurrentWeight(weightRecords, latestWeightRow) {
   return parseWeightKg(latestWeightRow);
 }
 
-function buildScorePayload({ userId, date, userGoal, scores }) {
+function buildScorePayload({ userId, date, goalMode, scores }) {
   return {
     date,
     userId,
     totalEarned: scores.totalEarned,
     totalPossible: scores.totalPossible,
     percentage: scores.percentage,
-    goalMode: userGoal?.WeightGoalMode || 'loss',
+    goalMode: goalMode || 'loss',
     parameters: scores.parameters,
   };
 }
@@ -135,6 +136,10 @@ export async function computeDailyScoreForDate({ userId, date }) {
   const exerciseCalories = resolveDailyExerciseCalories(stepRows, watchRows);
   const currentWeight = pickCurrentWeight(weightRecords, latestWeightRow);
   const previousWeight = previousWeightRow ? parseFloat(previousWeightRow.Weight) : null;
+  const resolvedGoalMode = deriveWeightGoalMode({
+    heightCm: userGoal?.Height,
+    currentWeightKg: currentWeight,
+  }) || userGoal?.WeightGoalMode || 'loss';
 
   const scores = calculateWellnessScore({
     parameterConfig,
@@ -148,12 +153,12 @@ export async function computeDailyScoreForDate({ userId, date }) {
     nutritionTargets,
     currentWeight,
     previousWeight,
-    goalMode: userGoal?.WeightGoalMode,
+    goalMode: resolvedGoalMode,
     exerciseCalories,
     bmr,
   });
 
-  const payload = buildScorePayload({ userId, date, userGoal, scores });
+  const payload = buildScorePayload({ userId, date, goalMode: resolvedGoalMode, scores });
   await persistDailyScore(userId, payload);
   return payload;
 }

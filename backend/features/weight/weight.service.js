@@ -6,7 +6,7 @@ import {
   getISTTimestamp,
   convertToIST,
 } from '../../utils/supabaseClient.js';
-import { validateAndCorrectWeight } from '../../utils/weightValidation.js';
+import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
 import * as repo from './weight.repository.js';
@@ -18,6 +18,7 @@ import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_WEIGHT } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import * as userRepo from '../user/user.repository.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -160,6 +161,22 @@ export async function saveWeight(input) {
 
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
+
+  try {
+    const profileRow = await userRepo.findByUserId(parseInt(userId, 10), '"Height"');
+    const derivedGoalMode = deriveWeightGoalMode({
+      heightCm: profileRow?.Height ? parseFloat(profileRow.Height) : null,
+      currentWeightKg: weight,
+    });
+    if (derivedGoalMode) {
+      await userRepo.updateUserById(parseInt(userId, 10), { WeightGoalMode: derivedGoalMode });
+    }
+  } catch (goalModeErr) {
+    logger.warn('weight.saveWeight: failed to sync derived goal mode', {
+      userId: String(userId),
+      err: goalModeErr?.message,
+    });
+  }
 
   // PR 6 — promote the capture pending → weight. Best-effort: the weight row
   // is already persisted, the state machine is idempotent, and a transient
