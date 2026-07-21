@@ -1,6 +1,9 @@
 import React from 'react';
 import { ArrowLeft, ClipboardList, Loader2, Trophy } from 'lucide-react';
-import { todayDateInIST } from '../../../shared/utils/timezoneUtils';
+import {
+  todayBusinessDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
@@ -24,7 +27,7 @@ export default function WellnessScoreSheet({
   loading = false,
   error = null,
   onRetry,
-  today = todayDateInIST(),
+  today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE),
   dateRange = 'today',
   onDateRangeChange,
   customStartDate = null,
@@ -35,7 +38,7 @@ export default function WellnessScoreSheet({
   onSelectDate,
   isMultiDay = false,
 }) {
-  const dateStr = scoreData?.date || selectedDate || todayDateInIST();
+  const dateStr = scoreData?.date || selectedDate || todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
   const parameters = scoreData?.parameters || [];
   const grouped = parametersBySection(parameters);
   const progressPct = scoreData?.percentage ?? 0;

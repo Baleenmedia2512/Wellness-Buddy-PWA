@@ -2,12 +2,12 @@
  * educationFormatter.js — pure helpers for the education slice.
  * No React, no fetch. Date/string formatting and small parsers only.
  */
-import { formatISTToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
+import { formatUtcDate, formatUtcTime, formatUtcDateTime } from '../../../shared/utils/datetimeUtils';
 
 /** Long-form date used in the detail modal ("May 13, 2026"). */
 export function formatLogDate(dateString) {
   if (!dateString) return '';
-  return formatISTToLocalDate(dateString, {
+  return formatUtcDate(dateString, {
     month: 'long', day: 'numeric', year: 'numeric',
   });
 }
@@ -15,13 +15,15 @@ export function formatLogDate(dateString) {
 /** Short clock time used everywhere ("09:42 AM"). */
 export function formatLogTime(dateString) {
   if (!dateString) return '';
-  return formatISTToLocalTime(dateString, { hour: '2-digit', minute: '2-digit' });
+  return formatUtcTime(dateString, { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Long locale string used in the share/log card timestamp row. */
+/** Full UTC timestamp for share/log card rows. */
 export function formatLoggedAtFull(loggedAt) {
-  return new Date(loggedAt || Date.now()).toLocaleString('en-US', {
+  if (!loggedAt) return '';
+  return formatUtcDateTime(loggedAt, {
     month: 'short', day: 'numeric', year: 'numeric',
+  }, {
     hour: 'numeric', minute: '2-digit', hour12: true,
   });
 }

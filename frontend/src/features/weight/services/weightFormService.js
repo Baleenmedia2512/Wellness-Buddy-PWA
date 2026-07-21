@@ -2,7 +2,13 @@
  * weightFormService.js — pure helpers for the weight slice.
  * No React, no fetch. Validation, formatting and small calculations only.
  */
-import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
+import {
+  formatUtcDate,
+  formatUtcTime,
+  isBusinessToday,
+  isBusinessYesterday,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
 export const WEIGHT_LIMITS = {
   kg: { min: 20, max: 300 },
@@ -44,22 +50,16 @@ export function validateEditWeight(value) {
 
 /** Compact "Today · 09:42" / "Yesterday · …" / "Mar 3 · …" label for the history card. */
 export function formatHistoryDate(dateString) {
-  const date = istToLocalDate(dateString);
-  if (!date) return '';
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  if (date.toDateString() === today.toDateString()) return `Today · ${time}`;
-  if (date.toDateString() === yesterday.toDateString()) return `Yesterday · ${time}`;
-  return (
-    date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + time
-  );
+  if (!dateString) return '';
+  const time = formatUtcTime(dateString, { hour: '2-digit', minute: '2-digit' });
+  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Today · ${time}`;
+  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Yesterday · ${time}`;
+  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric' })} · ${time}`;
 }
 
 /** Long-form date for the detail modal header. */
 export function formatDetailDate(dateString) {
-  return formatISTToLocalDate(dateString, {
+  return formatUtcDate(dateString, {
     weekday: 'long', year: 'numeric', month: 'short', day: 'numeric',
   });
 }

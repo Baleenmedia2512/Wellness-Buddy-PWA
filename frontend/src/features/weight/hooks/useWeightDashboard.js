@@ -13,7 +13,7 @@ import { useWeightUndoActions } from './useWeightUndoActions';
 import {
   buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries, filterHistoryByDay,
 } from '../services/weightDashboardFormatter';
-import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import { compareUtcTimestampsDesc } from '../../../shared/utils/datetimeUtils';
 
 export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
   const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
@@ -129,7 +129,7 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
     if (!selectedEntry) return null;
     const sorted = data.weightHistory
       .filter((e) => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
-      .sort((a, b) => istToLocalDate(b.CreatedAt) - istToLocalDate(a.CreatedAt));
+      .sort((a, b) => compareUtcTimestampsDesc(a.CreatedAt, b.CreatedAt));
     const idx = sorted.findIndex((e) => e.ID === selectedEntry.ID);
     return idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
   };

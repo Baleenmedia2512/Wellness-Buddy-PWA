@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronRight, Trophy } from 'lucide-react';
-import { useISTToday } from '../hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
 function scoreTone(pct) {
@@ -18,7 +18,7 @@ export default function WellnessScoreHomeTile({
   onOpen,
   nutritionRefreshKey = 0,
 }) {
-  const today = useISTToday();
+  const today = useBusinessToday(user);
   const { loading, data } = useWellnessScore({
     user,
     apiBaseUrl,

@@ -9,15 +9,7 @@ import { resolveLocationFields } from '../shared/utils/resolveLocationFields';
 import { duplicateDetectionService } from '../features/nutrition';
 import { debugLog } from '../shared/utils/logger';
 import { useWeightProgressCheck } from '../features/weight-progress-tips/hooks/useWeightProgressCheck';
-
-/** Convert timestamp to IST YYYY-MM-DD. Guards same-day weight diffs. */
-const getISTDateStr = (ts) => {
-  if (!ts) return null;
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return String(ts).substring(0, 10);
-  const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-  return istTime.toISOString().substring(0, 10);
-};
+import { isSameBusinessDay, DEFAULT_BUSINESS_TIMEZONE } from '../shared/utils/datetimeUtils';
 
 export function useWeightCapture({
   user, apiBaseUrl, foodCaptureIdRef,
@@ -304,7 +296,7 @@ export function useWeightCapture({
           const isDifferentDay =
             latestDate &&
             prevDate &&
-            getISTDateStr(latestDate) !== getISTDateStr(prevDate);
+            !isSameBusinessDay(latestDate, prevDate, DEFAULT_BUSINESS_TIMEZONE);
 
           console.log("?? [celebration] Weight comparison:", {
             prevWeight,
@@ -315,7 +307,7 @@ export function useWeightCapture({
             prevDate,
           });
 
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
+          // Safety guard: only show diff if previous entry is from a different business calendar date
           if (isDifferentDay) {
             setWeightDiff({
               previous: Math.round(prevWeight * 100) / 100,

@@ -7,7 +7,7 @@ export { fetchWatchBurnedCalories } from './burnedCaloriesApi';
 export { fetchUserCalorieTarget, fetchUserBmr, DEFAULT_CALORIE_TARGET } from './userBmrApi';
 export { fetchUserLatestWeight } from './userProfileApi';
 export {
-  istToLocalDate,
+  parseMealTimestamp,
   getMealCategory,
   toLocalDateString,
   parseAnalysisData,

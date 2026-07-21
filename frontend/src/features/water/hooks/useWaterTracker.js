@@ -15,6 +15,7 @@ import {
   fetchWaterIntake,
   logWaterIntake,
 } from '../services/waterStorageService';
+import { formatUtcTime } from '../../../shared/utils/datetimeUtils';
 import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 const SUCCESS_TOAST_MS = 3000;
@@ -123,9 +124,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
 
   const logs = (waterData?.logs || []).map((log) => ({
     key: log.loggedAt,
-    timeLabel: new Date(log.loggedAt).toLocaleTimeString([], {
-      hour: '2-digit', minute: '2-digit',
-    }),
+    timeLabel: formatUtcTime(log.loggedAt, { hour: '2-digit', minute: '2-digit' }),
     volumeLabel: formatMl(log.volumeMl),
   }));
 

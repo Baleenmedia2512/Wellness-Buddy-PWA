@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
-import { istToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
+import {
+  formatUtcTime,
+  formatUtcDate,
+  isBusinessToday,
+  isBusinessYesterday,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -31,35 +37,23 @@ const getPlatformColor = (platform) => {
 };
 
 /**
- * Format date with day and time (matching WeightCard style)
- * Converts IST timestamps to user's local timezone
+ * Format date with day and time — UTC clock, business-day labels.
  */
 const formatDate = (dateString) => {
   if (!dateString) return '';
-  
-  const date = istToLocalDate(dateString);
-  if (!date || isNaN(date.getTime())) return '';
-  
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  // Check if it's today
-  if (date.toDateString() === today.toDateString()) {
-    return `Today ${formatISTToLocalTime(dateString)}`;
+
+  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
+    return `Today ${formatUtcTime(dateString)}`;
   }
-  
-  // Check if it's yesterday
-  if (date.toDateString() === yesterday.toDateString()) {
-    return `Yesterday ${formatISTToLocalTime(dateString)}`;
+
+  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
+    return `Yesterday ${formatUtcTime(dateString)}`;
   }
-  
-  // For other dates, show the date
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
+
+  return formatUtcDate(dateString, {
+    month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+    year: 'numeric',
   });
 };
 

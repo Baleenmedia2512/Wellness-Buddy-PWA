@@ -4,7 +4,8 @@ import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButt
 import EditableFoodItem from '../EditableFoodItem';
 import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
-import { parseAnalysisData, istToLocalDate, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
+import { formatUtcTime } from '../../../../shared/utils/datetimeUtils';
 
 const GIPill = ({ value }) => {
   if (value == null) return null;
@@ -55,7 +56,7 @@ const NutritionAnalysisPanel = ({
 
   if (!selectedMeal) return null;
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
-  const mealTime = istToLocalDate(selectedMeal.CreatedAt).toLocaleTimeString('en-US', {
+  const mealTime = formatUtcTime(selectedMeal.CreatedAt, {
     hour: '2-digit', minute: '2-digit',
   });
   const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ChevronRight, Settings, Trophy } from 'lucide-react';
 import CircularProgress from '../../nutrition/components/dashboard/carousel/CircularProgress';
 import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/CarouselPeriodHeader';
-import { useISTToday } from '../hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
@@ -38,7 +38,7 @@ export default function WellnessScoreCarouselCard({
   scoreSubtitle = 'Daily Score',
   periodContext,
 }) {
-  const today = useISTToday();
+  const today = useBusinessToday(user);
   const internal = useWellnessScore({
     user: scoreDataProp == null ? user : null,
     apiBaseUrl,

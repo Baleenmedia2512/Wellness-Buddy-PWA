@@ -28,23 +28,15 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+import { formatUtcTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 
 const SKELETON_ROWS = 6;
 
-// ─── Timeline helpers ────────────────────────────────────────────────────────
-
-/**
- * Formats `capturedAt` (ISO string) to a short time label for the
- * left-hand column of the timeline (e.g. "08:15 AM").
- * Uses IST locale string so the time matches the business day the
- * backend already scoped the query to.
- */
 function formatTimelineTime(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', {
-    hour:   'numeric',
+  return formatUtcTime(iso, {
+    hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
@@ -56,26 +48,26 @@ function formatTimelineTime(iso) {
  *   yesterday → "Yesterday · Jun 17, 2026"
  *   other     → "Jun 16, 2026"
  *
- * `dateStr` is `YYYY-MM-DD` in IST (the value the backend echoes back).
+ * `dateStr` is `YYYY-MM-DD` business calendar date from the API.
  */
-function formatTimelineDate(dateStr) {
+function formatTimelineDate(dateStr, timezoneIana) {
   if (!dateStr) return '';
-  // Parse as a local-midnight date (no timezone shift) so the header
-  // matches the IST business-date used throughout the diary feature.
   const [y, m, d] = dateStr.split('-').map(Number);
-  const target   = new Date(y, m - 1, d);
-  const today    = new Date();
+  const target = new Date(y, m - 1, d);
+  const todayYmd = todayBusinessDate(timezoneIana);
+  const [ty, tm, td] = todayYmd.split('-').map(Number);
+  const today = new Date(ty, tm - 1, td);
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
 
   const isToday =
     target.getFullYear() === today.getFullYear() &&
-    target.getMonth()    === today.getMonth() &&
-    target.getDate()     === today.getDate();
+    target.getMonth() === today.getMonth() &&
+    target.getDate() === today.getDate();
   const isYesterday =
     target.getFullYear() === yesterday.getFullYear() &&
-    target.getMonth()    === yesterday.getMonth() &&
-    target.getDate()     === yesterday.getDate();
+    target.getMonth() === yesterday.getMonth() &&
+    target.getDate() === yesterday.getDate();
 
   const long = target.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -217,6 +209,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
  * @param {Date|string} props.date     selected calendar day
+ * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
@@ -235,6 +228,7 @@ export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
   date,
+  timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
   onEntryOpen,
   onEntryDelete,
@@ -243,10 +237,12 @@ export default function DiaryFeed({
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
 }) {
+  const timezoneIana = resolveDiaryTimezone(timezoneSource);
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
+    timezoneSource: timezoneIana,
     refreshKey: externalRefreshKey,
   });
 
@@ -282,13 +278,14 @@ export default function DiaryFeed({
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
           hideTime={hideTime}
+          timezoneIana={timezoneIana}
           {...(entry.kind === 'unknown'
             ? { isAnalyzing, isBackgroundPending }
             : {})}
         />
       );
     },
-    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta],
+    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta, timezoneIana],
   );
 
   /** Build optimistic unknown rows for captures still being classified. */
@@ -378,7 +375,7 @@ export default function DiaryFeed({
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
-            {formatTimelineDate(dateStr)}
+            {formatTimelineDate(dateStr, timezoneIana)}
           </span>
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>

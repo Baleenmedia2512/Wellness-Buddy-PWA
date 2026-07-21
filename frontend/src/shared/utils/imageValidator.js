@@ -489,6 +489,34 @@ function toLocalISOString(date) {
 }
 
 /**
+ * Convert EXIF "YYYY:MM:DD HH:MM:SS" (local wall time) to offset-aware ISO for the API.
+ * @param {string} exifDateStr
+ * @returns {string|null}
+ */
+export function parseExifDateStringToLocalIso(exifDateStr) {
+  const parsed = parseExifDateString(exifDateStr);
+  return parsed && !Number.isNaN(parsed.getTime()) ? toLocalISOString(parsed) : null;
+}
+
+/**
+ * Resolve clientTimestamp for a food/weight upload on web.
+ * Prefers EXIF shutter time; falls back to upload time (not file.lastModified).
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
+export async function resolveUploadCaptureTimestamp(file) {
+  try {
+    const metadata = await extractImageMetadata(file);
+    if (metadata.hasExif && metadata.dateTime && !Number.isNaN(metadata.dateTime.getTime())) {
+      return toLocalISOString(metadata.dateTime);
+    }
+  } catch {
+    // Fall through to upload time.
+  }
+  return toLocalISOString(new Date());
+}
+
+/**
  * Validate if image was taken during valid education timing
  * @param {File} file - Image file to validate
  * @param {Object|null} educationWindow - Education timing window from DB {start: 'HH:MM:SS', end: 'HH:MM:SS'}. Must be provided — no hardcoded fallback.

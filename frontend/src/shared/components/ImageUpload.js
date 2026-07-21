@@ -17,6 +17,8 @@ import { debugLog } from '../utils/logger.js';
 import {
   validateImageFreshness,
   validateImageForEducation,
+  resolveUploadCaptureTimestamp,
+  parseExifDateStringToLocalIso,
 } from "../utils/imageValidator";
 
 /**
@@ -172,8 +174,10 @@ const ImageUpload = forwardRef(
           return;
         }
 
-        // Non-education: use file.lastModified (reflects actual file creation time on web)
-        onImageSelect(file, toLocalISOString(new Date(file.lastModified)));
+        // Non-education: EXIF shutter time when present; otherwise upload time.
+        // Do NOT use file.lastModified — it is when the file was saved, not when eaten.
+        const captureTimestamp = await resolveUploadCaptureTimestamp(file);
+        onImageSelect(file, captureTimestamp);
       }
     };
 
@@ -451,12 +455,8 @@ const ImageUpload = forwardRef(
                 photo.exif.DateTime ||
                 photo.exif.dateTime;
               if (exifDateStr) {
-                const iso = exifDateStr.replace(
-                  /^(\d{4}):(\d{2}):(\d{2})/,
-                  "$1-$2-$3",
-                );
-                const parsed = new Date(iso);
-                if (!isNaN(parsed.getTime())) {
+                galleryTimestamp = parseExifDateStringToLocalIso(exifDateStr);
+                if (galleryTimestamp) {
                   /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
                   // Validate photo is from today
                   const now = new Date();
@@ -476,7 +476,6 @@ const ImageUpload = forwardRef(
                   }
                   GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
-                  galleryTimestamp = toLocalISOString(parsed);
                   debugLog(
                     "✅ Non-education gallery image validated via EXIF:",
                     galleryTimestamp,

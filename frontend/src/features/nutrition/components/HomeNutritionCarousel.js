@@ -18,7 +18,7 @@ import ReportDateRangeFilter from '../../../shared/components/common/ReportDateR
 
 import { HOME_NUTRITION_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 
-import { useISTToday } from '../../wellness-score-sheet/hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 
 import WellnessScoreCarouselCard from '../../wellness-score-sheet/components/WellnessScoreCarouselCard';
 
@@ -54,7 +54,7 @@ export default function HomeNutritionCarousel({
 
 }) {
 
-  const today = useISTToday();
+  const today = useBusinessToday(user);
 
   const [dateRange, setDateRange] = useState('today');
 
