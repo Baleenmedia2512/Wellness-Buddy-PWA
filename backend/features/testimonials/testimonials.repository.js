@@ -2,7 +2,8 @@
  * testimonials.repository.js — Data layer for testimonials_table + Supabase Storage.
  * The ONLY place in this feature that talks to the database or storage.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 
 const TABLE = 'testimonials_table';
@@ -259,7 +260,7 @@ export async function findById(id) {
  */
 export async function insertTestimonial(payload) {
   const supabase = getSupabaseClient();
-  const now = getISTTimestamp();
+  const now = nowUtc();
   const { data, error } = await supabase
     .from(TABLE)
     .insert({
@@ -313,7 +314,7 @@ export async function insertVideoOnlyTestimonial({ userId, coachId }) {
  */
 export async function updateTestimonial(id, payload) {
   const supabase = getSupabaseClient();
-  const updates = { updated_at: getISTTimestamp() };
+  const updates = { updated_at: nowUtc() };
   if (payload.beforeImagePath       !== undefined) updates.before_image_path        = payload.beforeImagePath;
   if (payload.afterImagePath         !== undefined) updates.after_image_path         = payload.afterImagePath;
   if (payload.beforeWeightKg         !== undefined) updates.before_weight_kg         = payload.beforeWeightKg;
@@ -345,7 +346,7 @@ export async function updateTestimonial(id, payload) {
  */
 export async function updateTestimonialVideos(id, payload) {
   const supabase = getSupabaseClient();
-  const updates  = { updated_at: getISTTimestamp() };
+  const updates  = { updated_at: nowUtc() };
   if (payload.healthVideoPath    !== undefined) updates.health_video_path      = payload.healthVideoPath;
   if (payload.businessVideoPath  !== undefined) updates.business_video_path    = payload.businessVideoPath;
   if (payload.videoStatus        !== undefined) updates.video_status           = payload.videoStatus;

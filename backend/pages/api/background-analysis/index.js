@@ -2,16 +2,16 @@ import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateSave, validateList, validateDelete } from '../../../features/background-analysis/analysis.validators.js';
 import { save, list, deleteAnalysis } from '../../../features/background-analysis/analysis.service.js';
-import { convertToIST, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { nowUtc, parseClientTimestampToUtc } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 
 export { config };
 
-function deriveIstTimestampFromAnalysisInput(input) {
+function deriveTimestampFromAnalysisInput(input) {
   if (input.clientTimestamp) {
-    return convertToIST(input.clientTimestamp).istTimestamp.substring(0, 19);
+    return parseClientTimestampToUtc(input.clientTimestamp).utcIso.substring(0, 19);
   }
-  return getISTTimestamp().substring(0, 19);
+  return nowUtc().substring(0, 19);
 }
 
 export default async function handler(req, res) {

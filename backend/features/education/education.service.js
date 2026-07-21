@@ -9,8 +9,13 @@ import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
-
-const { getISTTimestamp, convertToIST } = repo;
+import {
+  nowUtc,
+  parseClientTimestampToUtc,
+  timeOfDayInTimezone,
+  timestampToCalendarYmd,
+  IANA_IST,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── save log ────────────────────────────────────────────────────────────────
 export async function saveLog(input) {
@@ -26,18 +31,18 @@ export async function saveLog(input) {
   const timeWindows = await getTimeWindows();
   const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
 
-  let logTimestampIST, logTimeOnlyIST, deviceTime;
+  let logTimestamp, logTimeOnly, deviceTime;
   if (imageTimestamp) {
-    const ist = convertToIST(imageTimestamp);
-    logTimestampIST = ist.istTimestamp;
-    logTimeOnlyIST = ist.istTimeOnly;
-    deviceTime = ist.originalDeviceTime;
+    const { utcIso } = parseClientTimestampToUtc(imageTimestamp);
+    logTimestamp = utcIso;
+    logTimeOnly = timeOfDayInTimezone(utcIso, IANA_IST);
+    deviceTime = String(imageTimestamp);
   } else {
-    logTimestampIST = getISTTimestamp();
-    logTimeOnlyIST = logTimestampIST.substring(11, 19);
+    logTimestamp = nowUtc();
+    logTimeOnly = timeOfDayInTimezone(logTimestamp, IANA_IST);
     deviceTime = null;
   }
-  const isOnTime = logTimeOnlyIST >= educationWindow.start && logTimeOnlyIST <= educationWindow.end;
+  const isOnTime = logTimeOnly >= educationWindow.start && logTimeOnly <= educationWindow.end;
 
   const data = await repo.insertLog({
     UserId: userId,
@@ -56,8 +61,8 @@ export async function saveLog(input) {
     Village: village || null,
     CaptureID: captureId || null,
     IsDeleted: false,
-    CreatedAt: logTimestampIST,
-    UpdatedAt: logTimestampIST,
+    CreatedAt: logTimestamp,
+    UpdatedAt: logTimestamp,
   });
 
   await repo.touchLastActive(userId);
@@ -91,11 +96,11 @@ export async function saveLog(input) {
       attendanceType,
       isOnTime,
       timeWindow: educationWindow,
-      uploadTime: logTimeOnlyIST,
-      logTimestamp: logTimestampIST,
+      uploadTime: logTimeOnly,
+      logTimestamp,
       deviceTime,
-      timestampSource: imageTimestamp ? 'EXIF (converted to IST)' : 'server (IST)',
-      timezone: 'IST (UTC+5:30)',
+      timestampSource: imageTimestamp ? 'EXIF (UTC)' : 'server (UTC)',
+      timezone: 'UTC',
     },
   };
 }

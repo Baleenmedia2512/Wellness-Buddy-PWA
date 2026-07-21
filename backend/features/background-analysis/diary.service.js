@@ -40,6 +40,8 @@ import {
 } from '../captures/domain/permissions/retry.policy.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { assertNotFutureDateYmd } from '../../shared/lib/datetime/index.js';
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
 
@@ -272,6 +274,8 @@ export async function retryPromotionToFood(input) {
 //     `activity.service.getWatchBurnedCalories` parser.
 export async function listDiaryEntries(input) {
   const { ownerUserId, viewerUserId, date } = input;
+  const timezoneIana = await getUserTimezoneIana(ownerUserId);
+  assertNotFutureDateYmd(date, timezoneIana);
 
   // 1. Permission. The diary aggregates four verticals' data, so the gate
   // must cover all of them — same gate `canRetryCapture` uses for the
@@ -323,14 +327,14 @@ export async function listDiaryEntries(input) {
     }
   };
   const reads = [
-    safe('food',      () => diaryRepo.fetchFoodForDay(ownerUserId, date)),
-    safe('weight',    () => diaryRepo.fetchWeightForDay(ownerUserId, date)),
-    safe('education', () => diaryRepo.fetchEducationForDay(ownerUserId, date)),
-    safe('watch',     () => diaryRepo.fetchWatchForDay(ownerUserId, date)),
+    safe('food',      () => diaryRepo.fetchFoodForDay(ownerUserId, date, timezoneIana)),
+    safe('weight',    () => diaryRepo.fetchWeightForDay(ownerUserId, date, timezoneIana)),
+    safe('education', () => diaryRepo.fetchEducationForDay(ownerUserId, date, timezoneIana)),
+    safe('watch',     () => diaryRepo.fetchWatchForDay(ownerUserId, date, timezoneIana)),
   ];
   if (includesUnknown) {
-    reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date)));
-    reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date)));
+    reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana)));
+    reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date, timezoneIana)));
   }
   const results = await Promise.all(reads);
 

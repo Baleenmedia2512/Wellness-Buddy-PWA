@@ -2,7 +2,8 @@
  * Weight feature — repository layer.
  * The ONLY place in this feature allowed to talk to Supabase / weight_records_table.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 const TABLE = 'weight_records_table';
 
@@ -74,7 +75,7 @@ export async function updateEntry(entryId, userId, updates) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ ...updates, UpdatedAt: getISTTimestamp() })
+    .update({ ...updates, UpdatedAt: nowUtc() })
     .eq('ID', entryId)
     .eq('UserId', parseInt(userId))
     .or('IsDeleted.is.null,IsDeleted.eq.0')
@@ -147,7 +148,7 @@ export async function softDelete(entryId, userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ IsDeleted: 1, UpdatedAt: getISTTimestamp() })
+    .update({ IsDeleted: 1, UpdatedAt: nowUtc() })
     .eq('ID', entryId)
     .eq('UserId', userId)
     .select();
@@ -171,7 +172,7 @@ export async function restoreEntry(entryId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ IsDeleted: 0, UpdatedAt: getISTTimestamp() })
+    .update({ IsDeleted: 0, UpdatedAt: nowUtc() })
     .eq('"ID"', entryId)
     .select();
   if (error) throw error;

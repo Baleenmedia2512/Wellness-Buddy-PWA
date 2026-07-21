@@ -2,7 +2,8 @@
  * User feature — repository layer. Owns team_table + cross-cutting deletes
  * needed for account removal.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 
@@ -62,7 +63,7 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   return findByEmail(
     email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId"'
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana'
   );
 }
 
@@ -103,7 +104,7 @@ export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserId, Height, DietType, PhoneNumber, "CommunityId"')
+    .select('UserId, Height, DietType, PhoneNumber, "CommunityId", timezone_iana')
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw error;
@@ -284,5 +285,3 @@ export async function getUserContextData(userId) {
       .limit(3),
   ]);
 }
-
-export { getISTTimestamp };

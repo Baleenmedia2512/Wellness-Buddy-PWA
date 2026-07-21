@@ -1,13 +1,7 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { DATE_YMD_RE } from '../../shared/lib/datetime/index.js';
 
 const ALLOWED_ACTIVITY_TYPES = new Set(['walking']);
-
-function toDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 export function validateGetDaily(query) {
   if (!query?.userId) throw new ValidationError(400, 'userId is required');
@@ -16,8 +10,8 @@ export function validateGetDaily(query) {
     throw new ValidationError(400, 'Invalid activityType. Only walking is supported.');
   }
   const trendDays = Math.min(30, Math.max(1, parseInt(query.days, 10) || 7));
-  const targetDate = query.targetDate && /^\d{4}-\d{2}-\d{2}$/.test(query.targetDate)
-    ? query.targetDate : toDateKey();
+  const targetDate = query.targetDate && DATE_YMD_RE.test(String(query.targetDate))
+    ? String(query.targetDate) : null;
   return { userId: query.userId, trendDays, activityType, targetDate };
 }
 
@@ -33,7 +27,8 @@ export function validateSaveDaily(body) {
   }
   return {
     userId,
-    activityDate: body.activityDate || toDateKey(),
+    activityDate: body.activityDate && DATE_YMD_RE.test(String(body.activityDate))
+      ? String(body.activityDate) : null,
     steps,
     activityType,
     caloriesBurned: body.caloriesBurned,
@@ -43,7 +38,8 @@ export function validateSaveDaily(body) {
 
 export function validateWatchCalories(query) {
   if (!query?.userId) throw new ValidationError(400, 'userId is required');
-  const targetDate = query.date || new Date().toISOString().slice(0, 10);
+  const targetDate = query.date && DATE_YMD_RE.test(String(query.date))
+    ? String(query.date) : null;
   return { userId: query.userId, targetDate };
 }
 
@@ -86,5 +82,3 @@ export function validateTimeReport(query) {
     tzOffset: Number.isNaN(tzOffset) ? 0 : tzOffset,
   };
 }
-
-export { toDateKey };

@@ -5,8 +5,7 @@
  * the legacy handler.
  */
 import * as repo from './user.repository.js';
-
-const { getISTTimestamp } = repo;
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 const existingUserResponse = (existing) => ({
   httpStatus: 200,
@@ -49,7 +48,7 @@ export async function saveGoogleUser({ email, displayName, photoURL }) {
   }
 
   const username = await pickUniqueUsername({ displayName, email });
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const insertPayload = {
     EntryDateTime: currentTime,
     LastActiveAt: currentTime,

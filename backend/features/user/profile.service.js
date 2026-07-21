@@ -6,6 +6,7 @@
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
 import logger from '../../shared/lib/logger.js';
+import { nowUtc, addUtcDays } from '../../shared/lib/datetime/index.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import {
@@ -20,8 +21,8 @@ import {
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
+import { resolveProfileTimezone } from './domain/profileTimezone.js';
 
-const { getISTTimestamp } = repo;
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
 export async function getProfile({ email }) {
@@ -71,6 +72,7 @@ export async function getProfile({ email }) {
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
+        timezone: resolveProfileTimezone(user.timezone_iana),
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
@@ -80,7 +82,7 @@ export async function getProfile({ email }) {
 }
 
 function buildProfileUpdate({
-  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, communityId,
+  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
@@ -94,6 +96,7 @@ function buildProfileUpdate({
     updateData.PhysicalActivityLevel = physicalActivityLevel;
   }
   if (communityId !== undefined) updateData.CommunityId = communityId;
+  if (timezoneIana !== undefined) updateData.timezone_iana = timezoneIana;
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
     if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
@@ -105,7 +108,7 @@ function buildProfileUpdate({
   return { updateData, cleanedPhoneNumber };
 }
 
-function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId }) {
+function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId, timezoneIana }) {
   if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
     throw new Error('Phone number was not saved. Please try again.');
   }
@@ -122,12 +125,17 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
     const saved = verifyRow.CommunityId ?? null;
     if (saved !== expected) throw new Error('Community ID was not saved. Please try again.');
   }
+  if (timezoneIana !== undefined) {
+    const expected = updateData.timezone_iana;
+    const saved = verifyRow.timezone_iana ?? null;
+    if (saved !== expected) throw new Error('Timezone was not saved. Please try again.');
+  }
 }
 
 export async function updateProfile(input) {
   const {
     email, name, height, bmr, dietType, profileImage, phoneNumber,
-    weightGoalMode, physicalActivityLevel, communityId,
+    weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   } = input;
 
   logger.info('[profile/update] incoming request', {
@@ -161,10 +169,10 @@ export async function updateProfile(input) {
       updatedFields: Object.keys(updateData),
       communityIdSaved: updateData.CommunityId ?? null,
     });
-    try { await repo.updateUserById(userId, { LastActiveAt: getISTTimestamp() }); } catch { /* non-fatal */ }
+    try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
-    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId });
+    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId, timezoneIana });
     if (communityId !== undefined) savedCommunityId = communityId;
   }
 
@@ -265,6 +273,7 @@ export async function updateProfile(input) {
       communityId: savedCommunityId !== undefined
         ? savedCommunityId
         : refreshedUser?.CommunityId ?? undefined,
+      timezone: resolveProfileTimezone(refreshedUser?.timezone_iana),
       calorieTarget: calorieTarget || undefined,
       profileImageUpdated: !!profileImage,
     },
@@ -290,7 +299,7 @@ export async function snoozeProfilePic({ userId }) {
   if (!row) return notFound();
   const existing = row.profile_pic_snooze || {};
   const newSnooze = {
-    until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    until: addUtcDays(nowUtc(), 1),
     count: (existing.count ?? 0) + 1,
     max: existing.max ?? 5,
   };

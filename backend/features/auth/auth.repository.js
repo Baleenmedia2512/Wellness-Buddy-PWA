@@ -1,4 +1,5 @@
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { buildPhoneLookupVariants } from './domain/phone-identity.rules.js';
 
 export async function deactivateActiveOtps(recipient, contactType) {
@@ -140,5 +141,3 @@ export async function findOrInsertUserByPhone(payload, phone) {
   }
   throw error;
 }
-
-export { getISTTimestamp };

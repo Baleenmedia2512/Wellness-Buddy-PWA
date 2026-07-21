@@ -24,7 +24,7 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
 } from './testimonials.validators.js';
-import { getISTTimestamp } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
   buildTestimonialCoachEmailText,
@@ -367,7 +367,7 @@ export async function verifyOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP');
 
-  const verifiedAt = getISTTimestamp();
+  const verifiedAt = nowUtc();
   await repo.updateTestimonial(testimonialId, { status: 'verified', verifiedAt, otpHash: null });
 
   return {
@@ -887,7 +887,7 @@ export async function verifyVideoOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.video_otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP');
 
-  const videoVerifiedAt = getISTTimestamp();
+  const videoVerifiedAt = nowUtc();
   await repo.updateTestimonialVideos(testimonialId, {
     videoStatus:     'verified',
     videoVerifiedAt,
@@ -1234,7 +1234,7 @@ export async function verifyUnifiedOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP. Please check with your coach and try again.');
 
-  const verifiedAt = getISTTimestamp();
+  const verifiedAt = nowUtc();
 
   // Mark photo as verified if it was pending
   const photoPending = row.status === 'pending';

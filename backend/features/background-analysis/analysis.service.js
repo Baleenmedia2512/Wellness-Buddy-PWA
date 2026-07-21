@@ -11,10 +11,9 @@ import * as captures from '../captures/captures.service.js';
 import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
+import { nowUtc, addUtcDays, parseClientTimestampToUtc } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
-
-const { getISTTimestamp, convertToIST } = repo;
 
 const convertConfidenceToNumeric = (confidence) => {
   if (typeof confidence === 'number') return confidence;
@@ -176,13 +175,13 @@ export async function save(input) {
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
   const analysisDataJson = typeof analysisResult === 'string'
     ? analysisResult : JSON.stringify(analysisResult);
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
 
-  let createdAtIST;
+  let createdAtUtc;
   if (clientTimestamp) {
-    createdAtIST = convertToIST(clientTimestamp).istTimestamp;
+    createdAtUtc = parseClientTimestampToUtc(clientTimestamp).utcIso;
   } else {
-    createdAtIST = currentTime;
+    createdAtUtc = currentTime;
   }
 
   const analysisPayload = {
@@ -229,7 +228,7 @@ export async function save(input) {
           UserID: userId.toString(),
           CaptureID: captureId,
           ...analysisPayload,
-          CreatedAt: createdAtIST,
+          CreatedAt: createdAtUtc,
           UpdatedAt: currentTime,
           City: city || null,
           Village: village || null,
@@ -244,7 +243,7 @@ export async function save(input) {
       data = await repo.insertAnalysis({
         UserID: userId.toString(),
         ...analysisPayload,
-        CreatedAt: createdAtIST,
+        CreatedAt: createdAtUtc,
         UpdatedAt: currentTime,
         City: city || null,
         Village: village || null,
@@ -354,7 +353,7 @@ export async function save(input) {
           fiber: totalFiber,
         },
         confidence: confidenceScore,
-        timestamp: new Date().toISOString(),
+        timestamp: nowUtc(),
       },
     },
   };
@@ -464,7 +463,7 @@ export async function updateCaptureType({ id, userId, imageType }) {
 export async function createPendingCapture({ userId, imageBase64, token: clientToken, shareCode: clientShareCode }) {
   const token = clientToken || randomUUID();
   let shareCode = clientShareCode || generateShareCode();
-  const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const shareExpiresAt = addUtcDays(nowUtc(), 30);
 
   // PR 6 — captures_table is the ONLY at-capture-time write. No speculative
   // food row: that previously polluted the nutrition feed with "Unknown Food

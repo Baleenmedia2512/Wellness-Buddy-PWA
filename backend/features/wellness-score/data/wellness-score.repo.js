@@ -1,6 +1,12 @@
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { filterEducationLogsOnly } from '../domain/education-log.helpers.js';
+import {
+  applyDayFilter,
+  applyBeforeDayFilter,
+} from '../../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
 function parseUserId(userId) {
   const uid = Number.parseInt(String(userId), 10);
@@ -24,7 +30,7 @@ export async function getLatestConfig() {
 
 export async function insertConfig({ parameters, updatedByUserId }) {
   const supabase = getSupabaseClient();
-  const now = getISTTimestamp();
+  const now = nowUtc();
   const { data, error } = await supabase
     .from('wellness_score_config_table')
     .insert({
@@ -38,17 +44,17 @@ export async function insertConfig({ parameters, updatedByUserId }) {
   return data;
 }
 
-export async function getEducationLogsForDate(userId, date) {
+export async function getEducationLogsForDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return [];
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('education_logs_table')
     .select('"CreatedAt", "Topic", "Platform"')
     .eq('"UserId"', uid)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .gte('CreatedAt', `${date}T00:00:00`)
-    .lte('CreatedAt', `${date}T23:59:59`);
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
   if (error) {
     logger.error('[wellness-score.repo] education logs failed', { userId: uid, date, err: error.message });
     return [];
@@ -56,17 +62,17 @@ export async function getEducationLogsForDate(userId, date) {
   return filterEducationLogsOnly(data || []);
 }
 
-export async function getWeightRecordsForDate(userId, date) {
+export async function getWeightRecordsForDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return [];
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('weight_records_table')
     .select('Weight, CreatedAt')
     .eq('UserId', uid)
-    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
-    .gte('CreatedAt', `${date}T00:00:00`)
-    .lte('CreatedAt', `${date}T23:59:59`);
+    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false');
+  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
   if (error) {
     logger.error('[wellness-score.repo] weight records failed', { userId: uid, date, err: error.message });
     return [];
@@ -74,16 +80,17 @@ export async function getWeightRecordsForDate(userId, date) {
   return data || [];
 }
 
-export async function getPreviousWeightBeforeDate(userId, date) {
+export async function getPreviousWeightBeforeDate(userId, date, timezoneIana = IANA_IST) {
   const uid = parseUserId(userId);
   if (!uid) return null;
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('weight_records_table')
     .select('Weight, CreatedAt')
     .eq('UserId', uid)
-    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
-    .lt('CreatedAt', `${date}T00:00:00`)
+    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false');
+  query = applyBeforeDayFilter(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query
     .order('CreatedAt', { ascending: false })
     .limit(1);
   if (error) {
@@ -105,7 +112,7 @@ export async function upsertDailyScore({
   const uid = parseUserId(userId);
   if (!uid) return null;
   const supabase = getSupabaseClient();
-  const now = getISTTimestamp();
+  const now = nowUtc();
   const row = {
     user_id: uid,
     score_date: scoreDate,
