@@ -15,7 +15,7 @@
  *   - Each row is stateless; delete callbacks are passed from parent DiaryFeed
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
@@ -542,10 +542,34 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
 // prevents duplicate AI requests. Swipe-to-delete is also disabled during
 // analysis to avoid race conditions with the pending AI request.
 
+/** Format elapsed seconds as M:SS (e.g. 0:05, 1:23). */
+function formatElapsed(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackgroundPending = false, hideTime = false }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
+
+  // Elapsed-time ticker — starts when isAnalyzing becomes true, resets when it clears.
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const startRef = useRef(null);
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setElapsedSecs(0);
+      startRef.current = null;
+      return undefined;
+    }
+    startRef.current = Date.now();
+    setElapsedSecs(0);
+    const id = setInterval(() => {
+      setElapsedSecs(Math.floor((Date.now() - startRef.current) / 1_000));
+    }, 1_000);
+    return () => clearInterval(id);
+  }, [isAnalyzing]);
 
   return (
     <div
@@ -627,7 +651,12 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
         <div className="flex-1 min-w-0">
           {isAnalyzing ? (
             <>
-              <h4 className="font-semibold text-emerald-700 truncate">Detecting entry…</h4>
+              <h4 className="font-semibold text-emerald-700 truncate">
+                Detecting entry…
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
+                  {formatElapsed(elapsedSecs)}
+                </span>
+              </h4>
               <p className="text-xs text-emerald-600/80">
                 {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt)} · AI is analysing`}
               </p>

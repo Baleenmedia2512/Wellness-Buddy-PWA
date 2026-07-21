@@ -20,10 +20,23 @@
  *   await saveMeal();
  *   triggerRefresh({ immediate: true, source: 'meal-edit' });
  */
-import React, { createContext, useContext, useState, useCallback, startTransition } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
 import { recordDashboardActivity } from '../services/homeDashboardActivity';
 
 const NutritionRefreshContext = createContext(null);
+
+/**
+ * Safety-net timeout for the "Analyzing…" diary row state.
+ *
+ * If clearCaptureAnalyzing() is never reached (unhandled error path, PWA kept
+ * open all day without a refresh), this timeout auto-expires the entry so the
+ * user never sees "AI is analysing your photo" indefinitely.
+ *
+ * 5 minutes is well beyond the longest realistic AI pipeline:
+ *   Phase 1 fast call: up to 3 frontend attempts × ~30 s each  ≈  90 s max
+ *   Phase 2 enrichment job: background worker, no UI dependency
+ */
+const ANALYZING_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 export function NutritionRefreshProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -33,9 +46,22 @@ export function NutritionRefreshProvider({ children }) {
   /** Optimistic diary metadata keyed by capture ID (image shown before list refetch). */
   const [pendingCaptureMeta, setPendingCaptureMeta] = useState(() => new Map());
 
+  /**
+   * Map of captureId → timeoutId for the ANALYZING_TIMEOUT_MS safety-net timers.
+   * Stored in a ref so it is stable across renders without needing to be in
+   * any useCallback dependency array.
+   */
+  const _analyzingTimers = useRef(new Map());
+
   const markCaptureAnalyzing = useCallback((captureId, meta = {}) => {
     if (captureId == null || captureId === '') return;
     const id = String(captureId);
+
+    // Cancel any existing auto-clear timer (e.g. re-analysis of the same capture).
+    if (_analyzingTimers.current.has(id)) {
+      clearTimeout(_analyzingTimers.current.get(id));
+    }
+
     setAnalyzingCaptureIds((prev) => {
       if (prev.has(id)) return prev;
       return new Set([...prev, id]);
@@ -51,11 +77,38 @@ export function NutritionRefreshProvider({ children }) {
         return next;
       });
     }
+
+    // Safety net: auto-clear after ANALYZING_TIMEOUT_MS so diary rows never
+    // show "AI is analysing…" for hours when a code path misses the manual clear.
+    const timerId = setTimeout(() => {
+      _analyzingTimers.current.delete(id);
+      setAnalyzingCaptureIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setPendingCaptureMeta((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }, ANALYZING_TIMEOUT_MS);
+
+    _analyzingTimers.current.set(id, timerId);
   }, []);
 
   const clearCaptureAnalyzing = useCallback((captureId) => {
     if (captureId == null || captureId === '') return;
     const id = String(captureId);
+
+    // Cancel the safety-net timer since we're clearing manually.
+    if (_analyzingTimers.current.has(id)) {
+      clearTimeout(_analyzingTimers.current.get(id));
+      _analyzingTimers.current.delete(id);
+    }
+
     setAnalyzingCaptureIds((prev) => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
