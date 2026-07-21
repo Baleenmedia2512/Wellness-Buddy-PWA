@@ -363,6 +363,7 @@ export async function listDiaryEntries(input) {
       data: {
         date,
         ownerUserId,
+        ownerTimezoneIana: timezoneIana,
         isSelf,
         includesUnknown,
         entries,

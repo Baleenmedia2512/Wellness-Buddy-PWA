@@ -20,7 +20,7 @@ import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
-import { formatUtcTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
 
 function resolveFoodShareTotals(payload, foodData) {
   const t = payload?.totals || {};
@@ -62,13 +62,7 @@ const WeighingScaleIcon = ({ className }) => (
 // ─── shared chrome ──────────────────────────────────────────────────────────
 
 function formatTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
-  if (!iso) return '';
-  return formatUtcTime(iso, {
-    timeZone: timezoneIana,
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return formatBusinessTime(iso, timezoneIana);
 }
 
 const MEAL_BADGE_BY_CATEGORY = {

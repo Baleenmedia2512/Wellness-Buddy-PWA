@@ -69,10 +69,29 @@ export function formatUtcDate(ts, options = {}) {
 export function formatUtcTime(ts, options = {}) {
   const date = parseUtcTimestamp(ts);
   if (!date) return '';
+  const { timeZone, ...rest } = options;
   return date.toLocaleTimeString('en-US', {
-    ...UTC_DISPLAY,
     hour: '2-digit',
     minute: '2-digit',
+    ...(timeZone ? { timeZone } : UTC_DISPLAY),
+    ...rest,
+  });
+}
+
+/**
+ * Format a stored API timestamp in the owner's business timezone.
+ * @param {unknown} ts
+ * @param {string} [timezoneIana]
+ * @param {Intl.DateTimeFormatOptions} [options]
+ */
+export function formatBusinessTime(ts, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, options = {}) {
+  const date = parseUtcTimestamp(ts);
+  if (!date) return '';
+  return date.toLocaleTimeString('en-US', {
+    timeZone: timezoneIana,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
     ...options,
   });
 }

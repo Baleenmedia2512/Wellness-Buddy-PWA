@@ -23,23 +23,20 @@
  * unchanged — the timeline is a presentation wrapper only.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
-import { formatUtcTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
 
-function formatTimelineTime(iso) {
+function formatTimelineTime(iso, timezoneIana) {
   if (!iso) return '';
-  return formatUtcTime(iso, {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return formatBusinessTime(iso, timezoneIana);
 }
 
 /**
@@ -237,14 +234,47 @@ export default function DiaryFeed({
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
 }) {
-  const timezoneIana = resolveDiaryTimezone(timezoneSource);
+  const fallbackTimezoneIana = resolveDiaryTimezone(timezoneSource);
+  const [profileOwnerTimezone, setProfileOwnerTimezone] = useState(null);
+
+  // Coach/admin views: member objects from team search lack timezone — fetch from profile.
+  useEffect(() => {
+    const email = timezoneSource?.email || timezoneSource?.Email;
+    const viewingOther = Boolean(
+      ownerUserId
+      && viewerUserId
+      && String(ownerUserId) !== String(viewerUserId),
+    );
+    if (!viewingOther || !email) {
+      setProfileOwnerTimezone(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    getProfile(email, { cacheBust: true })
+      .then((res) => {
+        if (cancelled) return;
+        const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
+        setProfileOwnerTimezone(tz);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileOwnerTimezone(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
+
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
-    timezoneSource: timezoneIana,
+    timezoneSource: profileOwnerTimezone || fallbackTimezoneIana,
     refreshKey: externalRefreshKey,
   });
+
+  const ownerTimezoneIana = data?.ownerTimezoneIana
+    || profileOwnerTimezone
+    || fallbackTimezoneIana;
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
@@ -278,14 +308,14 @@ export default function DiaryFeed({
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
           hideTime={hideTime}
-          timezoneIana={timezoneIana}
+          timezoneIana={ownerTimezoneIana}
           {...(entry.kind === 'unknown'
             ? { isAnalyzing, isBackgroundPending }
             : {})}
         />
       );
     },
-    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta, timezoneIana],
+    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta, ownerTimezoneIana],
   );
 
   /** Build optimistic unknown rows for captures still being classified. */
@@ -375,7 +405,7 @@ export default function DiaryFeed({
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
-            {formatTimelineDate(dateStr, timezoneIana)}
+            {formatTimelineDate(dateStr, ownerTimezoneIana)}
           </span>
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>
