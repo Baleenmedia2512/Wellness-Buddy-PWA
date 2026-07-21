@@ -11,17 +11,14 @@
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
+import { todayBusinessDate, DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
 
 const STORAGE_KEY_USER_ID = 'dbUserId';
 const STORAGE_KEY_EMAIL = 'userEmail';
 
-/** Returns today's date as YYYY-MM-DD in the user's local timezone. */
-export function todayLocal() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+/** Returns today's business-calendar date as YYYY-MM-DD. */
+export function todayLocal(timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  return todayBusinessDate(timezoneIana);
 }
 
 /** Pure formatter: 1500 -> "1.5 L", 250 -> "250 ml". */

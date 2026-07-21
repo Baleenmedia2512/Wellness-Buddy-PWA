@@ -40,6 +40,14 @@ import {
 } from '../captures/domain/permissions/retry.policy.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import {
+  IANA_IST,
+  assertNotFutureDateYmd,
+  normalizeStoredTimestampToUtcIso,
+  timestampToCalendarYmd,
+} from '../../shared/lib/datetime/index.js';
+
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
 
@@ -80,10 +88,10 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
-  // correct local date. Using toISOString() would shift a late-evening IST
-  // timestamp to the next UTC day, showing the wrong nutrition entries.
-  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
+  // Timezone-less CreatedAt is IST wall time; map to owner calendar day (not UTC).
+  const mealDate = row.CreatedAt
+    ? timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST), IANA_IST)
+    : null;
 
   return {
     httpStatus: 200,
@@ -272,6 +280,8 @@ export async function retryPromotionToFood(input) {
 //     `activity.service.getWatchBurnedCalories` parser.
 export async function listDiaryEntries(input) {
   const { ownerUserId, viewerUserId, date } = input;
+  const timezoneIana = await getUserTimezoneIana(ownerUserId);
+  assertNotFutureDateYmd(date, timezoneIana);
 
   // 1. Permission. The diary aggregates four verticals' data, so the gate
   // must cover all of them — same gate `canRetryCapture` uses for the
@@ -323,14 +333,14 @@ export async function listDiaryEntries(input) {
     }
   };
   const reads = [
-    safe('food',      () => diaryRepo.fetchFoodForDay(ownerUserId, date)),
-    safe('weight',    () => diaryRepo.fetchWeightForDay(ownerUserId, date)),
-    safe('education', () => diaryRepo.fetchEducationForDay(ownerUserId, date)),
-    safe('watch',     () => diaryRepo.fetchWatchForDay(ownerUserId, date)),
+    safe('food',      () => diaryRepo.fetchFoodForDay(ownerUserId, date, timezoneIana)),
+    safe('weight',    () => diaryRepo.fetchWeightForDay(ownerUserId, date, timezoneIana)),
+    safe('education', () => diaryRepo.fetchEducationForDay(ownerUserId, date, timezoneIana)),
+    safe('watch',     () => diaryRepo.fetchWatchForDay(ownerUserId, date, timezoneIana)),
   ];
   if (includesUnknown) {
-    reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date)));
-    reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date)));
+    reads.push(safe('unknown', () => diaryRepo.fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana)));
+    reads.push(safe('pending', () => diaryRepo.fetchPendingCapturesForDay(ownerUserId, date, timezoneIana)));
   }
   const results = await Promise.all(reads);
 
@@ -342,13 +352,27 @@ export async function listDiaryEntries(input) {
   for (const { kind, rows } of results) {
     for (const row of rows) {
       if (kind === 'pending') {
-        entries.push(toDiaryEntry('unknown', row, { isPendingAnalysis: true }));
+        entries.push(toDiaryEntry('unknown', row, {
+          isPendingAnalysis: true,
+          timezoneIana,
+        }));
       } else {
-        entries.push(toDiaryEntry(kind, row));
+        entries.push(toDiaryEntry(kind, row, { timezoneIana }));
       }
     }
   }
-  entries.sort((a, b) =>
+
+  // Widen SQL day window can pull adjacent calendar days when CreatedAt is
+  // stored as IST wall-clock without a zone. Keep only the requested day.
+  const dayEntries = entries.filter((entry) => {
+    try {
+      return timestampToCalendarYmd(entry.capturedAt, timezoneIana) === date;
+    } catch {
+      return false;
+    }
+  });
+
+  dayEntries.sort((a, b) =>
     new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
   );
 
@@ -359,9 +383,10 @@ export async function listDiaryEntries(input) {
       data: {
         date,
         ownerUserId,
+        ownerTimezoneIana: timezoneIana,
         isSelf,
         includesUnknown,
-        entries,
+        entries: dayEntries,
       },
     },
   };
@@ -372,14 +397,21 @@ export async function listDiaryEntries(input) {
  * No DB, no I/O. Exported only for tests; production callers should
  * always go through `listDiaryEntries`.
  *
+ * @param {string} [options.timezoneIana]
+ *   Owner zone used when `CreatedAt` has no offset (IST wall-clock convention).
  * @internal
  */
-export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
+export function toDiaryEntry(
+  kind,
+  row,
+  { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
+) {
+  const capturedAt = normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
   switch (kind) {
     case 'food':
       return {
         kind: 'food',
-        capturedAt: row.CreatedAt,
+        capturedAt,
         capture: row.CaptureID ? { id: row.CaptureID } : null,
         payload: {
           id:           row.ID,
@@ -405,7 +437,7 @@ export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
     case 'weight':
       return {
         kind: 'weight',
-        capturedAt: row.CreatedAt,
+        capturedAt,
         capture: null,
         payload: {
           id:           row.ID,
@@ -421,7 +453,7 @@ export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
     case 'education':
       return {
         kind: 'education',
-        capturedAt: row.CreatedAt,
+        capturedAt,
         capture: null,
         payload: {
           id:          row.Id,
@@ -441,7 +473,7 @@ export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
       const kcal = match ? Math.round(parseFloat(match[1])) : 0;
       return {
         kind: 'watch',
-        capturedAt: row.CreatedAt,
+        capturedAt,
         capture: null,
         payload: {
           id:    row.Id,
@@ -454,7 +486,7 @@ export function toDiaryEntry(kind, row, { isPendingAnalysis = false } = {}) {
     case 'unknown':
       return {
         kind: 'unknown',
-        capturedAt: row.CreatedAt,
+        capturedAt,
         capture: {
           id:               row.ID,
           type:             row.ImageType,

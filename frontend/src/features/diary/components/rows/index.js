@@ -18,8 +18,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
-import { parseAnalysisData, recalculateTotals } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
+import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
 
 function resolveFoodShareTotals(payload, foodData) {
   const t = payload?.totals || {};
@@ -60,27 +61,24 @@ const WeighingScaleIcon = ({ className }) => (
 
 // ─── shared chrome ──────────────────────────────────────────────────────────
 
-function formatTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+function formatTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  return formatBusinessTime(iso, timezoneIana);
 }
 
-/** Returns a meal-type badge descriptor based on the hour of capturedAt. */
-function getMealLabel(iso) {
+const MEAL_BADGE_BY_CATEGORY = {
+  breakfast: { label: 'Breakfast', cls: 'text-orange-600 bg-orange-50' },
+  'morning-snack': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+  lunch: { label: 'Lunch', cls: 'text-emerald-600 bg-emerald-50' },
+  'evening-snack': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+  dinner: { label: 'Dinner', cls: 'text-purple-600 bg-purple-50' },
+  'late-night': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+};
+
+/** Returns a meal-type badge based on capturedAt in the owner's business timezone. */
+function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const h = d.getHours();
-  if (h >= 5  && h < 11) return { label: 'Breakfast', cls: 'text-orange-600 bg-orange-50' };
-  if (h >= 11 && h < 16) return { label: 'Lunch',     cls: 'text-emerald-600 bg-emerald-50' };
-  if (h >= 16 && h < 21) return { label: 'Dinner',    cls: 'text-purple-600 bg-purple-50' };
-  return { label: 'Snack', cls: 'text-blue-600 bg-blue-50' };
+  const category = getMealCategory(iso, timezoneIana);
+  return MEAL_BADGE_BY_CATEGORY[category] || MEAL_BADGE_BY_CATEGORY['late-night'];
 }
 
 function Thumb({ imageBase64, imagePath, fallback }) {
@@ -110,7 +108,7 @@ function Thumb({ imageBase64, imagePath, fallback }) {
 
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
-export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function FoodRow({ entry, onOpen, onDelete, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
@@ -120,7 +118,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
   // Parse analysisData to extract meal name and item details
   const foodData = parseAnalysisData(p.analysisData);
   const mealName = foodData.name || 'Food';
-  const meal = getMealLabel(entry.capturedAt);
+  const meal = getMealLabel(entry.capturedAt, timezoneIana);
   // Individual food items for the share card
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
 
@@ -267,7 +265,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
             )}
           </div>
           {!hideTime && (
-            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt, timezoneIana)}</p>
           )}
           {(p.totals?.protein > 0 || p.totals?.carbs > 0 || p.totals?.fat > 0) && (
             <p className="text-[10px] text-gray-400 mt-0.5">
@@ -297,7 +295,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: weight ───────────────────────────────────────────────────────────
 
-export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function WeightRow({ entry, onOpen, onDelete, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
   const [isSharing, setIsSharing] = useState(false);
@@ -372,7 +370,7 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
           <h4 className="font-semibold text-gray-900 truncate">Weight</h4>
           {!hideTime && (
             <p className="text-xs text-gray-500">
-              {formatTime(entry.capturedAt)}
+              {formatTime(entry.capturedAt, timezoneIana)}
               {typeof p.bmi === 'number' ? ` · BMI ${p.bmi.toFixed(1)}` : ''}
             </p>
           )}
@@ -399,7 +397,7 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: education ────────────────────────────────────────────────────────
 
-export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function EducationRow({ entry, onOpen, onDelete, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -455,7 +453,7 @@ export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
           <h4 className="font-semibold text-gray-900 truncate">{p.topic || 'Education'}</h4>
           {!hideTime && (
             <p className="text-xs text-gray-500">
-              {formatTime(entry.capturedAt)}
+              {formatTime(entry.capturedAt, timezoneIana)}
               {p.platform ? ` · ${p.platform}` : ''}
             </p>
           )}
@@ -467,7 +465,7 @@ export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: watch ────────────────────────────────────────────────────────────
 
-export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function WatchRow({ entry, onOpen, onDelete, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
 
@@ -522,7 +520,7 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Smartwatch</h4>
           {!hideTime && (
-            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt, timezoneIana)}</p>
           )}
         </div>
         <div className="text-right">
@@ -549,7 +547,7 @@ function formatElapsed(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackgroundPending = false, hideTime = false }) {
+export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
@@ -658,7 +656,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
                 </span>
               </h4>
               <p className="text-xs text-emerald-600/80">
-                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt)} · AI is analysing`}
+                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
               </p>
             </>
           ) : showBackgroundHint ? (
@@ -667,7 +665,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
               <p className="text-xs text-emerald-600/80">
                 {hideTime
                   ? 'Your photo is being analyzed'
-                  : `${formatTime(entry.capturedAt)} · AI analysis in progress`}
+                  : `${formatTime(entry.capturedAt, timezoneIana)} · AI analysis in progress`}
               </p>
             </>
           ) : (
@@ -676,7 +674,7 @@ export function OtherRow({ entry, onOpen, onDelete, isAnalyzing = false, isBackg
               <p className="text-xs text-gray-500">
                 {hideTime
                   ? "couldn't identify"
-                  : `${formatTime(entry.capturedAt)} · couldn't identify`}
+                  : `${formatTime(entry.capturedAt, timezoneIana)} · couldn't identify`}
               </p>
             </>
           )}

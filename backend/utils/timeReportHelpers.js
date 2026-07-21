@@ -1,19 +1,20 @@
 ﻿/**
  * Time Report Helper Functions
- * ΓÜá∩╕Å  INDEPENDENT MODULE ΓÇö does NOT import from or modify disciplineHelpers.js
+ * ⚠️  INDEPENDENT MODULE — does NOT import from or modify disciplineHelpers.js
  *
  * Provides utilities for the /api/activity/time-report endpoint:
- *   parseDateRangeIST, formatDateIST, convertISTToLocalDate,
  *   extractTimeHHMM, extractLocalDateString, getActivityStatus,
- *   groupRecordsByDate, pickEarliestRecordPerActivity,
- *   buildDateList, computeAverageTime
+ *   groupRecordsByDate, pickEarliestRecordPerActivity, computeAverageTime
  */
+import { timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
 
 /**
  * Parse a date-range string to { start, end } Date objects.
  * "Today" is always computed in IST (UTC+5:30) so server timezone differences
  * do not affect which day is considered current.
  *
+ * @deprecated Use `toUtcRangeInclusive()` / `todayInTimezone()` from `shared/lib/datetime`.
+ *   See `docs/utc-foundation-migration-report.md`.
  * @param {"today"|"yesterday"|"last7days"|"last30days"|"custom"} range
  * @param {string} [customStart]  YYYY-MM-DD  (required when range === "custom")
  * @param {string} [customEnd]    YYYY-MM-DD  (required when range === "custom")
@@ -71,6 +72,7 @@ export function parseDateRangeIST(range, customStart, customEnd) {
  * Format a Date object to a YYYY-MM-DD string using its UTC date parts.
  * (Works correctly because parseDateRangeIST stores IST dates as UTC midnight.)
  *
+ * @deprecated Use `todayInTimezone()` / `formatUtcForDisplay()` from `shared/lib/datetime`.
  * @param {Date} date
  * @returns {string}
  */
@@ -83,6 +85,9 @@ export function formatDateIST(date) {
 
 /**
  * Convert an IST timestamp string to a user-local Date object.
+ *
+ * @deprecated IST-specific conversion — migrate to `formatUtcForDisplay()` with IANA
+ *   timezones via `shared/lib/datetime`. See `docs/utc-foundation-migration-report.md`.
  *
  * The database stores timestamps WITHOUT timezone info but in IST (UTC+5:30).
  * userTimezoneOffset follows the JavaScript convention:
@@ -170,12 +175,14 @@ export function getActivityStatus(timeHHMM, window) {
  * @param {number}        userTimezoneOffset (minutes, JS convention)
  * @returns {Map<string, Array<Object>>}  "YYYY-MM-DD" ΓåÆ enriched record[]
  */
-export function groupRecordsByDate(records, userTimezoneOffset) {
+export function groupRecordsByDate(records, timezoneIana) {
   const map = new Map();
   for (const record of records) {
-    const localDate = convertISTToLocalDate(record.CreatedAt, userTimezoneOffset);
-    const dateKey   = extractLocalDateString(localDate);
+    const dateKey = timestampToCalendarYmd(record.CreatedAt, timezoneIana);
     if (!dateKey) continue;
+    const timeOnly = timeOfDayInTimezone(record.CreatedAt, timezoneIana);
+    const [h, m] = timeOnly.split(':').map(Number);
+    const localDate = { getUTCHours: () => h, getUTCMinutes: () => m };
     if (!map.has(dateKey)) map.set(dateKey, []);
     map.get(dateKey).push({ ...record, _localDate: localDate });
   }

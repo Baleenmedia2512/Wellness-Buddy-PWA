@@ -11,6 +11,8 @@
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
+import { applyDayFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Returns the user's most-recent non-deleted weight row, or null.
@@ -43,15 +45,15 @@ export async function getLatestWeight(userId) {
  * @param {string} date YYYY-MM-DD
  * @returns {Promise<Array<{ CreatedAt: string, AnalysisData: unknown }>>}
  */
-export async function getFoodRowsForDate(userId, date) {
+export async function getFoodRowsForDate(userId, date, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('food_nutrition_data_table')
     .select('CreatedAt, AnalysisData')
     .eq('UserID', String(userId))
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .gte('CreatedAt', `${date}T00:00:00`)
-    .lte('CreatedAt', `${date}T23:59:59`);
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
 
   if (error) {
     logger.error('[water.repo] food query failed', {

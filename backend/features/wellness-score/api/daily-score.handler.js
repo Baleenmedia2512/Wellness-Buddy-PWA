@@ -15,8 +15,12 @@ import {
 } from '../domain/score.rules.js';
 import { enumerateScoreDates } from '../domain/date-range.js';
 import * as repo from '../data/wellness-score.repo.js';
-import { todayInIST } from '../validation/wellness-score.schema.js';
-
+import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
+import {
+  resolveRequestedDateYmd,
+  assertNotFutureDateYmd,
+  todayInTimezone,
+} from '../../../shared/lib/datetime/index.js';
 function mapStoredDailyScoreRow(row, userId) {
   return {
     date: row.score_date,
@@ -81,9 +85,9 @@ async function persistDailyScore(userId, payload) {
 /**
  * Compute wellness score for one IST business date and persist snapshot.
  */
-export async function computeDailyScoreForDate({ userId, date }) {
-  const [
-    configRow,
+export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
+  const tz = timezoneIana || await getUserTimezoneIana(userId);
+  const [    configRow,
     userGoal,
     timeWindowsRaw,
     educationLogs,
@@ -98,15 +102,14 @@ export async function computeDailyScoreForDate({ userId, date }) {
     repo.getLatestConfig(),
     getUserWeightGoal(userId),
     getTimeWindows(),
-    repo.getEducationLogsForDate(userId, date),
-    repo.getWeightRecordsForDate(userId, date),
-    repo.getPreviousWeightBeforeDate(userId, date),
-    fetchMealsForDate(userId, date),
+    repo.getEducationLogsForDate(userId, date, tz),
+    repo.getWeightRecordsForDate(userId, date, tz),
+    repo.getPreviousWeightBeforeDate(userId, date, tz),
+    fetchMealsForDate(userId, date, tz),
     waterRepo.getLatestWeight(userId),
-    waterRepo.getFoodRowsForDate(userId, date),
-    activityRepo.fetchDailyRows(userId, date, date),
-    activityRepo.fetchWatchCalorieRows(userId, date),
-  ]);
+    waterRepo.getFoodRowsForDate(userId, date, tz),
+    activityRepo.fetchDailyRows(userId, date, date, null, tz),
+    activityRepo.fetchWatchCalorieRows(userId, date, tz),  ]);
 
   const parameterConfig = normalizeParameterConfig(configRow?.parameters ?? DEFAULT_PARAMETER_CONFIG);
   const timeWindows = {
@@ -167,8 +170,10 @@ export async function computeDailyScoreForDate({ userId, date }) {
  * GET /api/wellness-score/daily
  */
 export async function getDailyScore({ userId, date }) {
-  const data = await computeDailyScoreForDate({ userId, date });
-  return {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
+  assertNotFutureDateYmd(resolvedDate, timezoneIana);
+  const data = await computeDailyScoreForDate({ userId, date: resolvedDate, timezoneIana });  return {
     httpStatus: 200,
     body: {
       ok: true,
@@ -181,9 +186,9 @@ export async function getDailyScore({ userId, date }) {
  * GET /api/wellness-score/history
  */
 export async function getScoreHistory({ userId, startDate, endDate }) {
+  const timezoneIana = await getUserTimezoneIana(userId);
   const dates = enumerateScoreDates(startDate, endDate);
-  const today = todayInIST();
-  const storedRows = await repo.getStoredScoresInRange(userId, startDate, endDate);
+  const today = todayInTimezone(timezoneIana);  const storedRows = await repo.getStoredScoresInRange(userId, startDate, endDate);
   const storedByDate = new Map(storedRows.map((row) => [row.score_date, row]));
 
   const days = await Promise.all(
@@ -192,8 +197,7 @@ export async function getScoreHistory({ userId, startDate, endDate }) {
       if (stored && date < today) {
         return mapStoredDailyScoreRow(stored, userId);
       }
-      return computeDailyScoreForDate({ userId, date });
-    }),
+      return computeDailyScoreForDate({ userId, date, timezoneIana });    }),
   );
 
   return {

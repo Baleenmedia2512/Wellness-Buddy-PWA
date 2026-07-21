@@ -2,7 +2,8 @@
  * Cross-feature user activity helpers.
  * Used by every feature that mutates user data (weight, education, screen, etc.).
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 /**
@@ -15,7 +16,7 @@ export async function touchUserActivity(userId) {
     const supabase = getSupabaseClient();
     const { error } = await supabase
       .from('team_table')
-      .update({ LastActiveAt: getISTTimestamp() })
+      .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);
     if (error) console.warn('[userActivity] LastActiveAt update failed:', error.message);
   } catch (err) {

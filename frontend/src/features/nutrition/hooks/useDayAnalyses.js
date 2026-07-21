@@ -20,6 +20,7 @@ import {
   getHomeDashboardSnapshot,
   setHomeDashboardSnapshot,
 } from '../../../shared/services/homeDashboardActivity';
+import { parseAnalysisData } from '../services/nutritionDashboard/analysisHelpers';
 
 // camelCase dailyStats key ↔ snake_case AI key ↔ PascalCase DB column.
 // Source of truth list lives in micronutrientRules.js; this table only adds

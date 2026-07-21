@@ -179,6 +179,7 @@ import {
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
+import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
 import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
 import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
@@ -402,16 +403,6 @@ function WellnessValleyApp() {
   // Email gate � forced for phone-OTP users who have no email in their profile
   const [showEmailGate, setShowEmailGate] = useState(false);
   const [showPhysicalActivitySetup, setShowPhysicalActivitySetup] = useState(false);
-
-  // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
-  // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
-  const getISTDateStr = (ts) => {
-    if (!ts) return null;
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return String(ts).substring(0, 10);
-    const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-    return istTime.toISOString().substring(0, 10);
-  };
 
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
@@ -6597,6 +6588,7 @@ function WellnessValleyApp() {
           displayName: user.displayName || user.email.split("@")[0],
           photoURL: user.photoURL || null,
           uid: user.uid,
+          timezoneIana: getDeviceTimezoneIana() ?? "",
         }),
       });
 

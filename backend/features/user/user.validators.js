@@ -2,6 +2,7 @@
  * User feature — input validators.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
@@ -29,6 +30,29 @@ export function validateCommunityId(raw) {
     return { valid: false, message: 'Community ID may only contain letters and numbers.' };
   }
   return { valid: true, value: normalized };
+}
+
+/**
+ * Validate an IANA timezone for profile updates.
+ * Empty string clears to the default (Asia/Kolkata).
+ *
+ * @param {unknown} raw
+ * @returns {{ valid: true, value: string } | { valid: false, message: string }}
+ */
+export function validateTimezoneIana(raw) {
+  if (raw === null || raw === undefined) {
+    return { valid: true, value: undefined };
+  }
+  const trimmed = String(raw).trim();
+  if (trimmed === '') {
+    return { valid: true, value: IANA_IST };
+  }
+  try {
+    assertIanaTimezone(trimmed);
+    return { valid: true, value: trimmed };
+  } catch {
+    return { valid: false, message: 'Invalid timezone. Provide a valid IANA timezone (e.g. Asia/Kolkata).' };
+  }
 }
 
 export function normalizeEmail(raw) {
@@ -63,6 +87,16 @@ export function validateUpdateProfile(body) {
     communityId = validation.value;
   }
 
+  let timezoneIana;
+  if ('timezone' in body || 'timezoneIana' in body || 'timezone_iana' in body) {
+    const timezoneRaw = body.timezone !== undefined
+      ? body.timezone
+      : (body.timezoneIana !== undefined ? body.timezoneIana : body.timezone_iana);
+    const validation = validateTimezoneIana(timezoneRaw);
+    if (!validation.valid) throw new ValidationError(400, validation.message);
+    timezoneIana = validation.value;
+  }
+
   return {
     email,
     name: body.name,
@@ -74,6 +108,7 @@ export function validateUpdateProfile(body) {
     weightGoalMode: weightGoalMode || undefined,
     physicalActivityLevel: physicalActivityLevel || undefined,
     communityId,
+    timezoneIana,
   };
 }
 
@@ -84,10 +119,14 @@ export function validateUserId(query) {
 }
 
 export function validateLookup(req) {
-  const raw = req.method === 'GET' ? req.query?.email : req.body?.email;
+  const isGet = req.method === 'GET';
+  const raw = isGet ? req.query?.email : req.body?.email;
   const email = normalizeEmail(raw);
   if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const timezoneRaw = isGet
+    ? (req.query?.timezoneIana ?? req.query?.timezone)
+    : (req.body?.timezoneIana ?? req.body?.timezone);
+  return { email, timezoneIana: timezoneRaw };
 }
 
 export function validateGoogleUser(body) {
@@ -96,7 +135,7 @@ export function validateGoogleUser(body) {
   if (!email || !displayName) {
     throw new ValidationError(400, 'Email and Display Name are required');
   }
-  return { email, displayName, photoURL: body?.photoURL || null };
+  return { email, displayName, photoURL: body?.photoURL || null, timezoneIana: body?.timezoneIana ?? body?.timezone ?? undefined };
 }
 
 export function validateSnooze(body) {

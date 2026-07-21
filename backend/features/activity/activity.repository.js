@@ -1,30 +1,33 @@
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
+import {
+  applyDayFilter,
+  applyDateRangeFilter,
+} from '../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../shared/lib/datetime/index.js';
 
-export async function fetchDailyRows(userId, startDate, endDate, activityType = null) {
+export async function fetchDailyRows(userId, startDate, endDate, activityType = null, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   let query = supabase
     .from('daily_step_activity')
     .select('*')
-    .eq('UserId', userId)
-    .gte('CreatedAt', `${startDate}T00:00:00+05:30`)
-    .lte('CreatedAt', `${endDate}T23:59:59+05:30`)
-    .order('CreatedAt', { ascending: true });
+    .eq('UserId', userId);
+  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  query = query.order('CreatedAt', { ascending: true });
   if (activityType) query = query.eq('ActivityType', activityType);
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function findExistingDailyRows(userId, activityDate) {
+export async function findExistingDailyRows(userId, activityDate, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  const dayStart = `${activityDate}T00:00:00`;
-  const dayEnd = `${activityDate}T23:59:59`;
-  const { data, error } = await supabase
+  let query = supabase
     .from('daily_step_activity')
     .select('Id, Steps, CaloriesBurned')
-    .eq('UserId', userId)
-    .gte('CreatedAt', dayStart)
-    .lte('CreatedAt', dayEnd)
+    .eq('UserId', userId);
+  query = applyDayFilter(query, 'CreatedAt', activityDate, timezoneIana);
+  const { data, error } = await query
     .order('CreatedAt', { ascending: false })
     .limit(2);
   if (error) throw error;
@@ -53,20 +56,16 @@ export async function insertDailyRow(payload) {
   return { data, error };
 }
 
-export async function fetchWatchCalorieRows(userId, targetDate) {
+export async function fetchWatchCalorieRows(userId, targetDate, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  // IST-offset day bounds: education_logs_table timestamps are stored in IST.
-  const startOfDayIST = `${targetDate}T00:00:00+05:30`;
-  const endOfDayIST   = `${targetDate}T23:59:59+05:30`;
-  const { data, error } = await supabase
+  let query = supabase
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
     .eq('UserId', userId)
     .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .ilike('Topic', 'Calories Burned:%')
-    .gte('CreatedAt', startOfDayIST)
-    .lte('CreatedAt', endOfDayIST)
-    .order('CreatedAt', { ascending: false });
+    .ilike('Topic', 'Calories Burned:%');
+  query = applyDayFilter(query, 'CreatedAt', targetDate, timezoneIana);
+  const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
   return data || [];
 }
@@ -75,8 +74,6 @@ export async function touchLastActive(userId) {
   if (!userId) return;
   try {
     const supabase = getSupabaseClient();
-    await supabase.from('team_table').update({ LastActiveAt: getISTTimestamp() }).eq('UserId', userId);
+    await supabase.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }
-
-export { getISTTimestamp };

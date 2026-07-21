@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import { formatUtcDate } from '../../../shared/utils/datetimeUtils';
 
 const renderDiff = (latest, previous) => {
   if (!latest || previous === null || previous === undefined) {
@@ -65,8 +65,9 @@ const WeightSummaryCards = ({ summaryRef, latestWeight, previousWeight, globalSt
             <span className="text-xs xs:text-sm sm:text-base font-normal ml-0.5 sm:ml-1 text-gray-600">kg</span>
           </div>
           <p className="text-[10px] xs:text-xs text-gray-500 mt-0.5 sm:mt-1">
-            {(latestWeight ? istToLocalDate(latestWeight.CreatedAt) : new Date())
-              .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {formatUtcDate(latestWeight?.CreatedAt || new Date(), {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })}
           </p>
         </div>
         <div className="flex-1 min-w-0 text-right">

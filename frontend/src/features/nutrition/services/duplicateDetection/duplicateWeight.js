@@ -1,6 +1,12 @@
 // Detect whether a new weight entry is "essentially the same" as one already
 // logged today (within 0.5 unit). Always fail-open on errors.
-import { istToLocalDate } from '../../../../shared/utils/timezoneUtils';
+import {
+  parseUtcTimestamp,
+  formatUtcTime,
+  timestampToBusinessYmd,
+  todayBusinessDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../../shared/utils/datetimeUtils';
 import { debugLog } from '../../../../shared/utils/logger.js';
 
 const TOLERANCE = 0.5; // kg or lbs
@@ -28,15 +34,12 @@ const fetchRecentWeights = async (apiBaseUrl, userId) => {
   catch (e) { console.error('Invalid JSON response from weight history:', e); return null; }
 };
 
-const filterTodaysEntries = (entries, currentTime) => {
-  const todayStart = new Date(currentTime); todayStart.setHours(0, 0, 0, 0);
-  return entries.filter((entry) => {
-    if (!entry || typeof entry !== 'object' || !entry.CreatedAt) return false;
-    try {
-      const t = istToLocalDate(entry.CreatedAt);
-      return !isNaN(t.getTime()) && t >= todayStart;
-    } catch { return false; }
-  });
+const filterTodaysEntries = (entries) => {
+  const today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+  return entries.filter((entry) => (
+    entry?.CreatedAt
+    && timestampToBusinessYmd(entry.CreatedAt, DEFAULT_BUSINESS_TIMEZONE) === today
+  ));
 };
 
 const findMatchingWeight = (entries, newWeight) => {
@@ -72,16 +75,16 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
       return { isDuplicate: false };
     }
 
-    const todayEntries = filterTodaysEntries(data.data, currentTime);
+    const todayEntries = filterTodaysEntries(data.data);
     if (!todayEntries.length) return { isDuplicate: false };
 
     const match = findMatchingWeight(todayEntries, newWeight);
     if (!match) return { isDuplicate: false };
 
     try {
-      const entryTime = istToLocalDate(match.entry.CreatedAt);
+      const entryTime = parseUtcTimestamp(match.entry.CreatedAt);
       const timeDifference = formatTimeAgo(currentTime, entryTime);
-      const existingTime = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const existingTime = formatUtcTime(match.entry.CreatedAt, { hour: '2-digit', minute: '2-digit' });
       debugLog('✅ Duplicate weight found:', { newWeight, existingWeight: match.existing, timeDifference });
       return { isDuplicate: true, existingWeight: match.existing, timeDifference, existingTime, unit };
     } catch (timeError) {

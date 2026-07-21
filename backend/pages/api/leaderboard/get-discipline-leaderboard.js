@@ -1,12 +1,14 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
-import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from "../../../utils/foodTypeDetection.js";
 import {
-  parseDateRange,
   calculateDisciplinePercentage,
-  formatDateForMySQL,
-  getDaysBetween,
 } from "../../../utils/disciplineHelpers.js";
+import {
+  parseRelativeDateRangeYmd,
+  IANA_IST,
+} from "../../../shared/lib/datetime/index.js";
+import { enumerateScoreDates } from "../../../features/wellness-score/domain/date-range.js";
+import * as activityReportRepo from "../../../features/activity/activity-report.repository.js";
 import logger from '../../../shared/lib/logger.js';
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
@@ -119,11 +121,11 @@ export default async function handler(req, res) {
       u.CoachName = u.CoachId ? coachNameMap[u.CoachId] : null;
     });
 
-    // Step 3: Calculate date range (last 10 days)
-    const dates = parseDateRange("last10days");
-    const startDateStr = formatDateForMySQL(dates.start);
-    const endDateStr = formatDateForMySQL(dates.end);
-    const daysInPeriod = getDaysBetween(dates.start, dates.end);
+    // Step 3: Calculate date range (last 10 days) in platform timezone
+    const { startDate: startDateStr, endDate: endDateStr } = parseRelativeDateRangeYmd(
+      'last10days', null, null, IANA_IST,
+    );
+    const daysInPeriod = enumerateScoreDates(startDateStr, endDateStr).length;
 
     logger.debug(
       `📅 [DISCIPLINE-LEADERBOARD] Period: ${startDateStr} to ${endDateStr} (${daysInPeriod} days)`,
@@ -162,42 +164,17 @@ export default async function handler(req, res) {
     // Step 5: Fetch all activity data in bulk
     const allUserIds = activeUsers.map((u) => u.UserId);
 
-    const [weightData, educationData, foodData, stepData] = await Promise.all([
-      // Weight records
-      supabase
-        .from("weight_records_table")
-        .select("UserId, CreatedAt")
-        .in("UserId", allUserIds)
-        .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + "T23:59:59")
-        .or("IsDeleted.is.null,IsDeleted.eq.0"),
-
-      // Education records
-      supabase
-        .from("education_logs_table")
-        .select("UserId, CreatedAt")
-        .in("UserId", allUserIds)
-        .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + "T23:59:59")
-        .or("IsDeleted.is.null,IsDeleted.eq.0"),
-
-      // Food/nutrition records (include AnalysisData to split meal vs water entries)
-      supabase
-        .from("food_nutrition_data_table")
-        .select("UserID, CreatedAt, AnalysisData")
-        .in("UserID", allUserIds.map(String))
-        .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + "T23:59:59")
-        .or("IsDeleted.is.null,IsDeleted.eq.0"),
-
-      // Step activity records (for Calories Burned discipline)
-      supabase
-        .from("daily_step_activity")
-        .select("UserId, CreatedAt, Steps, CaloriesBurned")
-        .in("UserId", allUserIds)
-        .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + "T23:59:59"),
+    const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
+      activityReportRepo.fetchWeightRecords(allUserIds, startDateStr, endDateStr, IANA_IST),
+      activityReportRepo.fetchEducationRecords(allUserIds, startDateStr, endDateStr, IANA_IST),
+      activityReportRepo.fetchFoodRecords(allUserIds, startDateStr, endDateStr, IANA_IST),
+      activityReportRepo.fetchStepRecords(allUserIds, startDateStr, endDateStr, IANA_IST),
     ]);
+
+    const weightData = { data: weightRecords };
+    const educationData = { data: educationRecords };
+    const foodData = { data: foodRecords };
+    const stepData = { data: stepRecords };
 
     // Separate water (beverage-only) from meal food records
     const waterFoodRecords = (foodData.data || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
@@ -235,6 +212,8 @@ export default async function handler(req, res) {
       return time >= windowStart && time <= addBufferToTime(windowEnd);
     };
 
+    const recordDateYmd = (createdAt) => String(createdAt || '').slice(0, 10);
+
     // Helper to get unique dates
     const getUniqueDates = (records, userId, userIdField = "UserId") => {
       const dates = new Set();
@@ -243,9 +222,7 @@ export default async function handler(req, res) {
           (r) => r[userIdField] === userId || r[userIdField] === String(userId),
         )
         .forEach((r) => {
-          const date = new Date(r.CreatedAt);
-          const dateStr = formatDateForMySQL(date);
-          dates.add(dateStr);
+          dates.add(recordDateYmd(r.CreatedAt));
         });
       return dates.size;
     };
@@ -270,7 +247,7 @@ export default async function handler(req, res) {
       const dinnerDays = new Set();
 
       userFoodRecords.forEach((record) => {
-        const dateStr = formatDateForMySQL(new Date(record.CreatedAt));
+        const dateStr = recordDateYmd(record.CreatedAt);
 
         if (
           isTimeInWindow(
@@ -312,7 +289,7 @@ export default async function handler(req, res) {
       waterFoodRecords
         .filter((r) => r.UserID === userId || r.UserID === String(userId))
         .forEach((r) => {
-          const dateStr = formatDateForMySQL(new Date(r.CreatedAt));
+          const dateStr = recordDateYmd(r.CreatedAt);
           if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
           try {
             const analysisData = typeof r.AnalysisData === 'string'
@@ -342,7 +319,7 @@ export default async function handler(req, res) {
           return r.UserId === userId && ((r.Steps || 0) > 0 || burned > 0);
         })
         .forEach((r) => {
-          caloriesBurnedDays.add(formatDateForMySQL(new Date(r.CreatedAt)));
+          caloriesBurnedDays.add(recordDateYmd(r.CreatedAt));
         });
 
       // Calculate total on-time posts

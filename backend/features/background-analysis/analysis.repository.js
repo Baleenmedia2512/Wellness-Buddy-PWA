@@ -1,4 +1,5 @@
-import { getSupabaseClient, getISTTimestamp, convertToIST } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
@@ -64,7 +65,7 @@ export async function listAnalyses({ userId, limit, offset }) {
 
 export async function softDeleteAnalysis(id, userId) {
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 1, UpdatedAt: currentTime })
@@ -89,7 +90,7 @@ export async function checkOwnership(id, userId) {
 
 export async function restoreAnalysis(id) {
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 0, UpdatedAt: currentTime })
@@ -105,7 +106,7 @@ export async function touchLastActive(userId) {
     const supabase = getSupabaseClient();
     await supabase
       .from('team_table')
-      .update({ LastActiveAt: getISTTimestamp() })
+      .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }
@@ -145,7 +146,7 @@ export async function findFoodByCaptureId(captureId, userId) {
  */
 export async function updateWithAnalysisResult(id, userId, analysisFields) {
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update({ ...analysisFields, UpdatedAt: currentTime })
@@ -348,5 +349,3 @@ export async function findUserName(userId) {
   if (error) throw error;
   return data?.UserName || null;
 }
-
-export { getISTTimestamp, convertToIST };

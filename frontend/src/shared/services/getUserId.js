@@ -1,4 +1,5 @@
 import { debugLog } from '../utils/logger.js';
+import { getDeviceTimezoneIana } from '../utils/deviceTimezone.js';
 
 /**
  * @file getUserId — looks up the canonical database UserID for an
@@ -42,7 +43,10 @@ export async function getUserId(user) {
     const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+        timezoneIana: getDeviceTimezoneIana() ?? '',
+      }),
     });
     const data = await res.json();
     if (data.success && data.userId) {
@@ -72,7 +76,10 @@ export async function lookupUserByEmail(email) {
     const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+        timezoneIana: getDeviceTimezoneIana() ?? '',
+      }),
     });
     const data = await res.json();
     

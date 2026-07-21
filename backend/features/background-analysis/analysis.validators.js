@@ -1,4 +1,5 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { DATE_YMD_RE, assertCalendarDateYmd } from '../../shared/lib/datetime/index.js';
 
 export function validateSave(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');
@@ -170,37 +171,19 @@ export function validateRetryPromotion(body) {
  *   - ownerUserId  required — the diary subject. Coach reads pass the
  *                  member's id; self reads pass the viewer's own id.
  *   - viewerUserId required — the authenticated session user.
- *   - date         required — `YYYY-MM-DD` in IST. Future dates are
- *                  rejected because no per-vertical write produces a
- *                  future row, and the predicate prevents callers from
- *                  trivially scanning years of history with a single
- *                  request.
+ *   - date         required — `YYYY-MM-DD` calendar date in the owner's timezone.
  */
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 export function validateDiaryList(query) {
   const { ownerUserId, viewerUserId, date } = query || {};
   if (!ownerUserId) throw new ValidationError(400, 'ownerUserId is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
   if (!date) throw new ValidationError(400, 'date is required (YYYY-MM-DD)');
-  if (!DATE_RE.test(date)) {
+  if (!DATE_YMD_RE.test(date)) {
     throw new ValidationError(400, 'date must match YYYY-MM-DD');
   }
-  // Guard against impossible dates that pass the regex (e.g. 2026-02-31).
-  // Parsing as UTC because the format itself is calendar-only.
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-    throw new ValidationError(400, 'date is not a valid calendar date');
-  }
-  // Reject future dates (per ADR-0003 PR-B test plan).
-  // Use IST (UTC+5:30) so dates before 05:30 AM IST are not wrongly rejected
-  // — at 05:28 IST the UTC date is still yesterday, causing false "future" errors.
-  const todayIst = new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10);
-  if (date > todayIst) {
-    throw new ValidationError(400, 'date cannot be in the future');
-  }
+  assertCalendarDateYmd(date);
   return {
-    ownerUserId:  ownerUserId.toString(),
+    ownerUserId: ownerUserId.toString(),
     viewerUserId: viewerUserId.toString(),
     date,
   };

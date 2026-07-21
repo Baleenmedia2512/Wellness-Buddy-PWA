@@ -11,6 +11,7 @@
 import { findIdleUsers, batchDeactivateUsers } from '../../../features/idle-cleanup/data/idle-repo.js';
 import { INACTIVITY_THRESHOLD_DAYS } from '../../../features/idle-cleanup/domain/inactivity-rules.js';
 import logger from '../../../shared/lib/logger.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Vercel Cron handler.
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
   logger.info('Cron job started: deactivate-idle-users', {
     correlationId,
     thresholdDays: INACTIVITY_THRESHOLD_DAYS,
-    timestamp: new Date().toISOString(),
+    timestamp: nowUtc(),
   });
 
   try {

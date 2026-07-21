@@ -6,7 +6,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { formatWeightImageSrc, formatDetailDate } from '../services/weightFormService';
-import { formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
+import { formatUtcTime } from '../../../shared/utils/datetimeUtils';
 
 const FALLBACK = 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?w=800&q=80';
 
@@ -41,7 +41,7 @@ export default function WeightDetailHeader({
               {displayWeight} kg
             </h2>
             <div className="text-xs text-white/90 mt-0.5 drop-shadow">
-              <p>Logged at {formatISTToLocalTime(data.CreatedAt)}</p>
+              <p>Logged at {formatUtcTime(data.CreatedAt)}</p>
               <p className="text-xs text-white/75">{formatDetailDate(data.CreatedAt)}</p>
             </div>
           </div>

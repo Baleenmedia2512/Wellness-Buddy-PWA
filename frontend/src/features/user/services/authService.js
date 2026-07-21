@@ -2,6 +2,7 @@
 import * as Session from '../../../shared/services/sessionStorage';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 
 const API = getApiBaseUrl();
 
@@ -39,7 +40,12 @@ export const sendOtp = (recipient, contactType = 'email') =>
   post('/api/auth/send-otp', { recipient, contactType });
 
 export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
-  const body = { recipient, otp, contactType };
+  const body = {
+    recipient,
+    otp,
+    contactType,
+    timezoneIana: getDeviceTimezoneIana() ?? '',
+  };
   if (purpose) body.purpose = purpose;
   return post('/api/auth/verify-otp', body);
 };

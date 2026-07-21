@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useISTToday } from '../hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScoreHistory } from '../hooks/useWellnessScoreHistory';
 import { dateFromPickerValue, resolveWellnessDateRange } from '../domain/dateRange';
 import WellnessScoreSheet from './WellnessScoreSheet';
@@ -8,7 +8,7 @@ import WellnessScoreSheet from './WellnessScoreSheet';
  * Full-page wellness score view for members (no configuration UI).
  */
 export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionRefreshKey = 0 }) {
-  const today = useISTToday();
+  const today = useBusinessToday(user);
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);

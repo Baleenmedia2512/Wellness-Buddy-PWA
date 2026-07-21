@@ -2,7 +2,8 @@
  * card.repo.js — Data layer for body_parameters_cards.
  * The ONLY place in this feature that talks to Supabase.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import { buildTeamMemberInsert } from '../domain/card.rules.js';
 import logger from '../../../shared/lib/logger.js';
@@ -176,7 +177,7 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
 
   // STEP 3: Phone doesn't exist, CREATE new member
   const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr, weightKg, fatPercent });
-  const now = getISTTimestamp();
+  const now = nowUtc();
   const insertPayload = {
     EntryDateTime: now,
     LastActiveAt: now,

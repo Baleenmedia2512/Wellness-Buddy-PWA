@@ -1,4 +1,5 @@
-﻿import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+﻿import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
       }
 
       // Insert new window
-      const currentTime = getISTTimestamp();
+      const currentTime = nowUtc();
       const { data: insertResult, error: insertError } = await supabase
         .from('activity_time_windows_table')
         .insert({

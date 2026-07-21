@@ -4,7 +4,10 @@
  */
 
 /**
- * Convert IST timestamp to user's local time
+ * Convert IST timestamp to user's local time.
+ *
+ * @deprecated IST-specific discipline conversion — migrate to `formatUtcForDisplay()`
+ *   with IANA timezones via `shared/lib/datetime`. See `docs/utc-foundation-migration-report.md`.
  * @param {string} istTimestamp - Timestamp in IST format "YYYY-MM-DD HH:MM:SS"
  * @param {number} userTimezoneOffset - User's timezone offset in minutes (from Date.getTimezoneOffset())
  * @returns {string} Time in user's local timezone "HH:MM:SS"
@@ -58,8 +61,10 @@ export function convertISTToUserLocalTime(istTimestamp, userTimezoneOffset) {
 }
 
 /**
- * Get user's timezone offset in minutes
- * This should be sent from frontend: new Date().getTimezoneOffset()
+ * Get user's timezone offset in minutes.
+ *
+ * @deprecated Offset-minute timezone handling — migrate to IANA zones via
+ *   `assertIanaTimezone()` / `formatUtcForDisplay()` in `shared/lib/datetime`.
  * @param {number} offsetMinutes - Timezone offset in minutes
  * @returns {string} Human readable timezone info
  */

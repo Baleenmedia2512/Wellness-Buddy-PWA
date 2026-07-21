@@ -1,6 +1,10 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
-import { todayInIST } from '../../../features/wellness-score/validation/wellness-score.schema.js';
+import {
+  resolveRequestedDateYmd,
+  todayInTimezone,
+  IANA_IST,
+} from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 
 /**
@@ -32,9 +36,9 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
-    const scoreDate = req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date))
-      ? String(req.query.date)
-      : todayInIST();
+    const scoreDate = req.query.date
+      ? resolveRequestedDateYmd(req.query.date, IANA_IST)
+      : todayInTimezone(IANA_IST);
 
     logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
 

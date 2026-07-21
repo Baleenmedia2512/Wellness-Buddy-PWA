@@ -1,11 +1,12 @@
 // Detect whether a new meal upload duplicates a meal already logged in the
 // same time-of-day slot today. Always fail-open (returns isDuplicate:false on error).
-import { istToLocalDate } from '../../../../shared/utils/timezoneUtils';
+import {
+  parseUtcTimestamp,
+  todayBusinessDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../../shared/utils/datetimeUtils';
 import { getMealCategory, getMealCategoryName } from './mealCategory';
 import { extractFoodNames, parseAnalysisData } from './foodNameExtractor';
-
-const buildDateString = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const fetchTodaysMeals = async (apiBaseUrl, userId, dateString) => {
   const cacheBuster = Date.now();
@@ -63,7 +64,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     if (!apiBaseUrl) { console.warn('REACT_APP_API_BASE_URL not configured'); return { isDuplicate: false }; }
 
     let data;
-    try { data = await fetchTodaysMeals(apiBaseUrl, userId, buildDateString(currentTime)); }
+    try { data = await fetchTodaysMeals(apiBaseUrl, userId, todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE)); }
     catch (e) { console.error('Network error during duplicate check:', e); return { isDuplicate: false }; }
     if (!data || !data.success || !Array.isArray(data.data) || data.data.length === 0) {
       return { isDuplicate: false };
@@ -72,8 +73,8 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     const mealsInSlot = data.data.filter((meal) => {
       if (!meal || typeof meal !== 'object' || !meal.CreatedAt) return false;
       try {
-        const t = istToLocalDate(meal.CreatedAt);
-        if (isNaN(t.getTime())) return false;
+        const t = parseUtcTimestamp(meal.CreatedAt);
+        if (!t) return false;
         return getMealCategory(t) === mealCategory;
       } catch (e) { console.error('Error processing meal time:', e); return false; }
     });
