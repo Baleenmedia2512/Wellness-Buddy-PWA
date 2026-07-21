@@ -324,7 +324,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
     case 'weight':
       {
         const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr);
-        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords);
+        const dedupedWeight = repo.dedupeLatestLogPerMemberPerDay(weightRecords);
 
         const centerIds = [...new Set(
           dedupedWeight
