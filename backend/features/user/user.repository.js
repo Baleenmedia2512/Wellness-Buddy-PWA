@@ -2,7 +2,10 @@
  * User feature — repository layer. Owns team_table + cross-cutting deletes
  * needed for account removal.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
+import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
@@ -13,9 +16,9 @@ export async function findByEmail(email, columns = '"UserId", "UserName", "Email
     .from(TEAM)
     .select(columns)
     .ilike('Email', email)
-    .maybeSingle();
+    .limit(1);
   if (error) throw error;
-  return data || null;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
 export async function findByExactEmail(email, columns) {
@@ -24,6 +27,23 @@ export async function findByExactEmail(email, columns) {
     .from(TEAM)
     .select(columns)
     .eq('"Email"', email)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
+ * @param {string|number} userId
+ * @param {string} [columns]
+ */
+export async function findByUserId(userId, columns = '"UserId", "Role"') {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select(columns)
+    .eq('"UserId"', uid)
     .limit(1);
   if (error) throw error;
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -43,7 +63,7 @@ export async function findByUsername(username) {
 export async function getProfile(email) {
   return findByEmail(
     email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode"'
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana'
   );
 }
 
@@ -51,9 +71,9 @@ export async function getLatestWeight(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('weight_records_table')
-    .select('"Weight", "CreatedAt"')
+    .select('"Weight", "BodyFat", "Bmi", "CreatedAt"')
     .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false')
+    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
     .order('"CreatedAt"', { ascending: false })
     .limit(1);
   if (error) return null;
@@ -84,7 +104,7 @@ export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserId, Height, DietType, PhoneNumber')
+    .select('UserId, Height, DietType, PhoneNumber, "CommunityId", timezone_iana')
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw error;
@@ -111,7 +131,7 @@ export async function setUserStatus(userId, status) {
 }
 
 export async function getStatusFields(email) {
-  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped"');
+  return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
 export async function getPendingApproval(userId) {
@@ -181,10 +201,12 @@ export async function purgeUserData(userId, normalizedEmail) {
     supabase.from('weight_records_table').delete().eq('UserId', userId),
     supabase.from('education_logs_table').delete().eq('UserId', userId),
     supabase.from('daily_step_activity').delete().eq('UserId', userId),
-    supabase.from('ai_token_usage_table').delete().eq('UserId', userId),
     supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
     supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
     supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+    // Null-out ownership before team_table row is removed — prevents the FK
+    // constraint violation on nutrition_centers_table.owner_user_id.
+    supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
   ]);
   return results;
 }
@@ -196,6 +218,42 @@ export async function deleteTeamRow(userId) {
     .delete()
     .eq('UserId', userId);
   if (error) throw error;
+}
+
+/**
+ * Sync Profile fields onto the user's latest Body Parameters Card.
+ * Only the latest card is patched; historical cards are never touched.
+ *
+ * @param {number} userId
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
+ * @returns {Promise<{ synced: boolean, fields: string[] }>}
+ */
+export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) {
+    return { synced: false, fields: [] };
+  }
+
+  const hasAny = Object.keys(fields).some((k) => fields[k] !== undefined);
+  if (!hasAny) return { synced: false, fields: [] };
+
+  const card = await findLatestCardForProfileSync(uid);
+  if (!card) return { synced: false, fields: [] };
+
+  const patch = buildCardPatchFromProfile(card, fields);
+  if (Object.keys(patch).length === 0) {
+    return { synced: false, fields: [] };
+  }
+
+  const supabase = getSupabaseClient();
+  const { error: updateErr } = await supabase
+    .from('body_parameters_cards')
+    .update(patch)
+    .eq('id', card.id)
+    .eq('is_deleted', false);
+  if (updateErr) throw updateErr;
+
+  return { synced: true, fields: Object.keys(patch), cardId: card.id };
 }
 
 /** Fetch raw food correction / nutrition data needed by user context. */
@@ -227,5 +285,3 @@ export async function getUserContextData(userId) {
       .limit(3),
   ]);
 }
-
-export { getISTTimestamp };

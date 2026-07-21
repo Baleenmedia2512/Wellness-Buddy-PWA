@@ -179,18 +179,6 @@ function calculateFullTeamClubs(children) {
  *   (child) => child.metrics?.attended === true
  * );
  * 
- * // For discipline report
- * const hierarchy = buildHierarchyWithMetricCounts(
- *   teamHierarchy,
- *   disciplineMap,
- *   (userId, map, data) => ({
- *     score: data?.score || 0,
- *     grade: data?.grade || 'N/A',
- *     onTime: data?.onTime || 0
- *   }),
- *   (child) => child.metrics?.score >= 80
- * );
- * 
  * // For weight loss report
  * const hierarchy = buildHierarchyWithMetricCounts(
  *   teamHierarchy,

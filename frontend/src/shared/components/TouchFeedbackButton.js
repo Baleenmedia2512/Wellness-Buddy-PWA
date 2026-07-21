@@ -70,12 +70,17 @@ const TouchFeedbackButton = ({
     const touch = e.touches[0];
     createRipple(touch);
     
-    // Haptic feedback on mobile
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    // Haptic feedback on mobile — only when this frame has an active user-activation
+    // (avoids the [Intervention] warning when the tap landed on an embedded frame, e.g. Google Maps)
+    if (
+      typeof navigator !== 'undefined' &&
+      'vibrate' in navigator &&
+      navigator.userActivation?.isActive !== false
+    ) {
       try {
         navigator.vibrate(10);
       } catch (err) {
-        // Ignore vibration errors
+        // Ignore vibration errors silently
       }
     }
   };

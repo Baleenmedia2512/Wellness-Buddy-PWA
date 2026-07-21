@@ -23,30 +23,20 @@
  * unchanged — the timeline is a presentation wrapper only.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
 
-// ─── Timeline helpers ────────────────────────────────────────────────────────
-
-/**
- * Formats `capturedAt` (ISO string) to a short time label for the
- * left-hand column of the timeline (e.g. "08:15 AM").
- * Uses IST locale string so the time matches the business day the
- * backend already scoped the query to.
- */
-function formatTimelineTime(iso) {
+function formatTimelineTime(iso, timezoneIana) {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', {
-    hour:   'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return formatBusinessTime(iso, timezoneIana);
 }
 
 /**
@@ -55,26 +45,26 @@ function formatTimelineTime(iso) {
  *   yesterday → "Yesterday · Jun 17, 2026"
  *   other     → "Jun 16, 2026"
  *
- * `dateStr` is `YYYY-MM-DD` in IST (the value the backend echoes back).
+ * `dateStr` is `YYYY-MM-DD` business calendar date from the API.
  */
-function formatTimelineDate(dateStr) {
+function formatTimelineDate(dateStr, timezoneIana) {
   if (!dateStr) return '';
-  // Parse as a local-midnight date (no timezone shift) so the header
-  // matches the IST business-date used throughout the diary feature.
   const [y, m, d] = dateStr.split('-').map(Number);
-  const target   = new Date(y, m - 1, d);
-  const today    = new Date();
+  const target = new Date(y, m - 1, d);
+  const todayYmd = todayBusinessDate(timezoneIana);
+  const [ty, tm, td] = todayYmd.split('-').map(Number);
+  const today = new Date(ty, tm - 1, td);
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
 
   const isToday =
     target.getFullYear() === today.getFullYear() &&
-    target.getMonth()    === today.getMonth() &&
-    target.getDate()     === today.getDate();
+    target.getMonth() === today.getMonth() &&
+    target.getDate() === today.getDate();
   const isYesterday =
     target.getFullYear() === yesterday.getFullYear() &&
-    target.getMonth()    === yesterday.getMonth() &&
-    target.getDate()     === yesterday.getDate();
+    target.getMonth() === yesterday.getMonth() &&
+    target.getDate() === yesterday.getDate();
 
   const long = target.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -161,17 +151,25 @@ function FeedError({ error, onRetry }) {
 }
 
 function FeedEmpty({ date, isSelf, filterKinds }) {
-  // The "Other" tab (filterKinds === ['unknown']) gets its own copy so an
-  // empty list doesn't read like the whole day is empty.
   const isUnknownOnly =
     Array.isArray(filterKinds) &&
     filterKinds.length === 1 &&
     filterKinds[0] === 'unknown';
 
+  const emptyEmoji = isUnknownOnly ? '🗂️' : '📔';
+  const emptyIcon = (
+    <div className="flex justify-center mb-4">
+      <EmojiOrNative emoji={emptyEmoji} className="w-14 h-14" nativeClassName="text-5xl" />
+    </div>
+  );
+
   if (isUnknownOnly) {
     return (
-      <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-        <p className="text-5xl mb-4" aria-hidden="true">🗂️</p>
+      <div
+        className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+        data-testid="diary-feed-empty"
+      >
+        {emptyIcon}
         <p className="text-base font-semibold text-gray-900 mb-1">
           No unrecognised captures
         </p>
@@ -185,8 +183,11 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
   }
 
   return (
-    <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-      <p className="text-5xl mb-4" aria-hidden="true">📔</p>
+    <div
+      className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+      data-testid="diary-feed-empty"
+    >
+      {emptyIcon}
       <p className="text-base font-semibold text-gray-900 mb-1">
         {isSelf ? 'No entries yet for this day' : 'Nothing logged on this day'}
       </p>
@@ -205,6 +206,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
  * @param {Date|string} props.date     selected calendar day
+ * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
@@ -214,29 +216,91 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {boolean} [props.showTimeline]  when true the feed is rendered as a
  *        vertical activity timeline with a date-group header and left-side
  *        time labels (ff.diary-timeline). Default false (flat card list).
+ * @param {Set<string>} [props.analyzingCaptureIds]  capture IDs with a
+ *        user-initiated pre-flight AI run (handleEntryOpen). Locks tap/swipe.
+ * @param {Map<string, { imageBase64?: string, imagePath?: string, capturedAt?: string }>} [props.pendingCaptureMeta]
+ *        optimistic diary rows for in-flight background analysis (Phase 2).
  */
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
   date,
+  timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
   onEntryOpen,
   onEntryDelete,
   filterKinds = null,
   showTimeline = false,
+  analyzingCaptureIds = null,
+  pendingCaptureMeta = null,
 }) {
+  const fallbackTimezoneIana = resolveDiaryTimezone(timezoneSource);
+  const [profileOwnerTimezone, setProfileOwnerTimezone] = useState(null);
+
+  // Coach/admin views: member objects from team search lack timezone — fetch from profile.
+  useEffect(() => {
+    const email = timezoneSource?.email || timezoneSource?.Email;
+    const viewingOther = Boolean(
+      ownerUserId
+      && viewerUserId
+      && String(ownerUserId) !== String(viewerUserId),
+    );
+    if (!viewingOther || !email) {
+      setProfileOwnerTimezone(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    getProfile(email, { cacheBust: true })
+      .then((res) => {
+        if (cancelled) return;
+        const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
+        setProfileOwnerTimezone(tz);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileOwnerTimezone(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
+
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
+    timezoneSource: profileOwnerTimezone || fallbackTimezoneIana,
     refreshKey: externalRefreshKey,
   });
+
+  const ownerTimezoneIana = data?.ownerTimezoneIana
+    || profileOwnerTimezone
+    || fallbackTimezoneIana;
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
     () => (entry, { hideTime = false } = {}) => {
       const Row = ROWS_BY_KIND[entry.kind] || OtherRow;
+      // Resolve the capture ID the same way Dashboard.js does so the
+      // Set lookup always matches (entry.capture?.id takes precedence).
+      const captureId = entry.capture?.id ?? entry.payload?.id;
+      const captureIdStr =
+        captureId != null && captureId !== '' ? String(captureId) : '';
+      // Only lock tap while Dashboard is running a user-initiated pre-flight AI
+      // (handleEntryOpen). Background analysis from the capture flow must NOT
+      // block tap-to-fix — the user can always tap to re-run detection.
+      const isAnalyzing =
+        entry.kind === 'unknown' &&
+        captureIdStr !== '' &&
+        analyzingCaptureIds != null &&
+        analyzingCaptureIds.has(captureIdStr);
+      const isBackgroundPending =
+        entry.kind === 'unknown' &&
+        (entry.payload?.isPendingAnalysis === true ||
+          (captureIdStr !== '' &&
+            pendingCaptureMeta != null &&
+            pendingCaptureMeta.has(captureIdStr))) &&
+        !isAnalyzing;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -244,15 +308,71 @@ export default function DiaryFeed({
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
           hideTime={hideTime}
+          timezoneIana={ownerTimezoneIana}
+          {...(entry.kind === 'unknown'
+            ? { isAnalyzing, isBackgroundPending }
+            : {})}
         />
       );
     },
-    [onEntryOpen, onEntryDelete],
+    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta, ownerTimezoneIana],
   );
 
-  if (loading && !data) return <FeedSkeleton />;
-  if (error && !data)   return <FeedError error={error} onRetry={refresh} />;
-  if (!data)            return <FeedSkeleton />;
+  /** Build optimistic unknown rows for captures still being classified. */
+  const withOptimisticEntries = useMemo(() => {
+    const base = Array.isArray(data?.entries) ? data.entries : [];
+    if (!pendingCaptureMeta || pendingCaptureMeta.size === 0) return base;
+
+    const existingIds = new Set(
+      base
+        .map((e) => e.capture?.id ?? e.payload?.id)
+        .filter((id) => id != null && id !== '')
+        .map(String),
+    );
+
+    const optimistic = [];
+    pendingCaptureMeta.forEach((meta, captureId) => {
+      if (existingIds.has(captureId)) return;
+      optimistic.push({
+        kind: 'unknown',
+        capturedAt: meta.capturedAt || new Date().toISOString(),
+        capture: { id: captureId, type: 'pending' },
+        payload: {
+          id: captureId,
+          imageBase64: meta.imageBase64 ?? null,
+          imagePath: meta.imagePath ?? null,
+          isPendingAnalysis: true,
+        },
+      });
+    });
+
+    if (optimistic.length === 0) return base;
+    return [...optimistic, ...base].sort(
+      (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+    );
+  }, [data?.entries, pendingCaptureMeta]);
+
+  if (loading && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+    return <FeedSkeleton />;
+  }
+  if (error && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+    return <FeedError error={error} onRetry={refresh} />;
+  }
+  if (!data && pendingCaptureMeta && pendingCaptureMeta.size > 0) {
+    const optimisticOnly = withOptimisticEntries;
+    const visibleOnly = Array.isArray(filterKinds)
+      ? optimisticOnly.filter((e) => filterKinds.includes(e.kind))
+      : optimisticOnly;
+    if (visibleOnly.length === 0) return <FeedSkeleton />;
+    return (
+      <div data-testid="diary-feed">
+        <div className="space-y-3">
+          {visibleOnly.map(renderRow)}
+        </div>
+      </div>
+    );
+  }
+  if (!data) return <FeedSkeleton />;
 
   const { entries = [], date: dateStr, isSelf } = data;
 
@@ -260,8 +380,8 @@ export default function DiaryFeed({
   // tab only renders `unknown` rows). When no filter is supplied the full
   // merged feed is shown (backward-compatible default).
   const visibleEntries = Array.isArray(filterKinds)
-    ? entries.filter((e) => filterKinds.includes(e.kind))
-    : entries;
+    ? withOptimisticEntries.filter((e) => filterKinds.includes(e.kind))
+    : withOptimisticEntries;
 
   if (visibleEntries.length === 0) {
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
@@ -285,7 +405,7 @@ export default function DiaryFeed({
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
-            {formatTimelineDate(dateStr)}
+            {formatTimelineDate(dateStr, ownerTimezoneIana)}
           </span>
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>

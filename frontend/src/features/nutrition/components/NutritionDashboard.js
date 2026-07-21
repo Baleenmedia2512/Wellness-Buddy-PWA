@@ -27,8 +27,13 @@ import {
   useInfiniteScroll,
   useSwipePanelHeight,
   useMealMutations,
+  useUserLatestWeight,
 } from "../hooks";
+import { computeMacroTargets } from '../domain/carouselRules';
 import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshContext";
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
+import ShakeCalculatorModal from './ShakeCalculatorModal';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -121,6 +126,10 @@ const NutritionDashboard = ({
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
   const { refreshKey: nutritionRefreshKey } = useNutritionRefresh();
+  // ff.shake-calculator — Herbalife Shake Calculator entry point.
+  // Resolved once per mount; flag change requires re-mount.
+  const shakeCalculatorEnabled = isFlagEnabled('ff.shake-calculator');
+  const [shakeOpen, setShakeOpen] = useState(false);
 
   // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
   React.useEffect(() => {
@@ -163,6 +172,10 @@ const NutritionDashboard = ({
     watchBurnedCalories,
   });
 
+  // Latest body weight for personalised macro targets on the summary panel.
+  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({ latestWeight, calorieTarget });
+
   // Multi-day calorie totals for the trend chart
   const { calorieTrendData, trendLoading, showTrendCard } = useCalorieTrend({
     user,
@@ -193,6 +206,7 @@ const NutritionDashboard = ({
   const {
     isSaving,
     setIsSaving,
+    persistMealItems,
     handleFoodUpdate,
     handleDeleteFoodItem,
     handleRestoreFoodItem,
@@ -479,11 +493,17 @@ const NutritionDashboard = ({
   // handleOptimisticDelete moved to useMealMutations hook (declared above).
 
   const consumedCalories = dailyStats.totalCalories || 0;
+  // Net Calories = Food Calories - Smartwatch Burned Calories (step counter disabled).
+  // Canonical formula: Net = Food - Exercise - Smartwatch Burned.
+  // Both smartwatch and step-based burns are treated as exercise calories.
+  const netCalories = Math.max(0, consumedCalories - burnedCalories);
+
+  // Progress bar and status badge reflect NET calories against the daily target.
   const caloriesProgressPercent = Math.min(
     100,
-    (consumedCalories / Math.max(calorieTarget, 1)) * 100,
+    (netCalories / Math.max(calorieTarget, 1)) * 100,
   );
-  const caloriesDelta = consumedCalories - calorieTarget;
+  const caloriesDelta = netCalories - calorieTarget;
   const calorieStatus =
     Math.abs(caloriesDelta) <= 100
       ? {
@@ -503,13 +523,15 @@ const NutritionDashboard = ({
             hint: `${Math.abs(caloriesDelta)} kcal below target`,
           };
 
-  // â”€â”€â”€ Burn-to-Balance derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const isOverTarget   = consumedCalories > calorieTarget;
-  const extraCalories  = isOverTarget ? Math.round(consumedCalories - calorieTarget) : 0;
-  const burnProgress   = extraCalories > 0
+  // Burn-to-Balance: uses RAW food overage so the section shows how much of
+  // the food-vs-target gap has been covered by exercise.
+  const rawExcess     = Math.max(0, consumedCalories - calorieTarget);
+  const isOverTarget  = rawExcess > 0;
+  const extraCalories = rawExcess;
+  const burnProgress  = extraCalories > 0
     ? Math.min(100, Math.round((burnedCalories / extraCalories) * 100))
     : 0;
-  const isBalanced     = isOverTarget && burnedCalories >= extraCalories;
+  const isBalanced    = isOverTarget && burnedCalories >= extraCalories;
 
   const trendAverageCalories = calorieTrendData.length
     ? Math.round(
@@ -671,7 +693,7 @@ const NutritionDashboard = ({
                 summaryPanelRef={summaryPanelRef}
                 dailyStats={dailyStats}
                 calorieTarget={calorieTarget}
-                consumedCalories={consumedCalories}
+                consumedCalories={netCalories}
                 caloriesProgressPercent={caloriesProgressPercent}
                 calorieStatus={calorieStatus}
                 isOverTarget={isOverTarget}
@@ -681,6 +703,9 @@ const NutritionDashboard = ({
                 isBalanced={isBalanced}
                 watchBurned={watchBurned}
                 stepsBurned={stepsBurned}
+                proteinTarget={proteinTarget}
+                fatTarget={fatTarget}
+                carbsTarget={carbsTarget}
                 trendPanelRef={trendPanelRef}
                 trendRangeDays={trendRangeDays}
                 setTrendRangeDays={setTrendRangeDays}
@@ -697,6 +722,19 @@ const NutritionDashboard = ({
             )}
             {/* Meals */}
             <div className="px-3 md:px-4 space-y-3">
+              {/* Shake Calculator entry point — visible only when ff.shake-calculator is ON */}
+              {shakeCalculatorEnabled && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShakeOpen(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-full transition-colors"
+                    aria-label="Open Shake Calculator"
+                  >
+                    <span>🥤</span>
+                    <span>Shake Calculator</span>
+                  </button>
+                </div>
+              )}
               <NutritionMealList
                 analyses={analyses}
                 displayedMeals={displayedMeals}
@@ -738,7 +776,30 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        persistMealItems={persistMealItems}
+        setLocalDetailedItems={setLocalDetailedItems}
+        setLocalNutrition={setLocalNutrition}
       />
+
+      {/* Shake Calculator modal — gated by ff.shake-calculator */}
+      {shakeCalculatorEnabled && (
+        <ShakeCalculatorModal
+          isOpen={shakeOpen}
+          onClose={() => setShakeOpen(false)}
+          onLog={async (payload) => {
+            const userId = await resolveUserId();
+            if (!userId) throw new Error('User not authenticated');
+            await saveNutritionAnalysis({
+              userId,
+              analysisResult: payload,
+              userEmail: user?.email || '',
+              captureTimestamp: new Date().toISOString(),
+            });
+            // Refresh the meal list so the logged shake appears immediately.
+            await fetchDayAnalyses(selectedDate);
+          }}
+        />
+      )}
     </div>
   );
 };

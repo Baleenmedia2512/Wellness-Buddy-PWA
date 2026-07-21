@@ -7,6 +7,12 @@
       "memory": 1024
     }
   },
+  "crons": [
+    {
+      "path": "/api/ai/worker",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/get-global-corrections",
@@ -76,7 +82,15 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, s-maxage=300, stale-while-revalidate=600"
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
         },
         {
           "key": "Access-Control-Allow-Origin",
@@ -104,10 +118,6 @@
     },
     {
       "path": "/api/cron/water",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/marathon-finalize",
       "schedule": "* * * * *"
     },
     {

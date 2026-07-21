@@ -1,18 +1,15 @@
 // Step 2 — OTP verification.
 import React from 'react';
-import { Capacitor } from '@capacitor/core';
 import { Loader, Mail, ShieldCheck, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
-import InlineNumericKeypad from '../InlineNumericKeypad';
-
-const USE_CUSTOM = Capacitor.isNativePlatform();
+import NativeInput, { otpAutoCompleteForCell } from '../../../../shared/components/NativeInput.jsx';
 
 const DeleteStepOtp = ({
   userEmail, otpCtl, onVerify, verifying,
   countdown, canResend, onResend, sending,
   errorMessage, onBack, onClose,
 }) => {
-  const { otp, refs, isComplete, handleChange, handleKeyDown, handlePaste, handleKeypadDigit, handleKeypadBackspace } = otpCtl;
+  const { otp, refs, isComplete, handleChange, handleKeyDown, handlePaste } = otpCtl;
   return (
     <>
       <div className="flex justify-center pt-3 pb-1 sm:hidden"><div className="w-10 h-1 rounded-full bg-gray-300" /></div>
@@ -33,22 +30,21 @@ const DeleteStepOtp = ({
         </div>
         <p className="text-sm text-gray-700 text-center mb-1">We sent a 6-digit OTP to:</p>
         <p className="text-sm font-semibold text-gray-900 text-center mb-5 truncate px-2">{userEmail}</p>
-        <div className="flex justify-center gap-2 mb-3" onPaste={USE_CUSTOM ? undefined : handlePaste}>
+        <div className="flex justify-center gap-2 mb-3" onPaste={handlePaste}>
           {otp.map((digit, i) => (
-            <input key={i} ref={(el) => { refs.current[i] = el; }}
-              type={USE_CUSTOM ? 'text' : 'tel'} inputMode={USE_CUSTOM ? 'none' : 'numeric'}
-              pattern="[0-9]*" readOnly={USE_CUSTOM} maxLength={1} value={digit}
-              onChange={(e) => !USE_CUSTOM && handleChange(i, e.target.value)}
-              onKeyDown={(e) => !USE_CUSTOM && handleKeyDown(i, e)}
-              onFocus={USE_CUSTOM ? (e) => e.target.blur() : undefined}
-              onContextMenu={USE_CUSTOM ? (e) => e.preventDefault() : undefined}
-              className={`w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px] ${USE_CUSTOM ? 'caret-transparent' : ''}`}
+            <NativeInput key={i} otp ref={(el) => { refs.current[i] = el; }}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete={otpAutoCompleteForCell(i)}
+              maxLength={1}
+              value={digit}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px]"
               style={{ borderColor: digit ? '#dc2626' : '#e5e7eb' }} />
           ))}
         </div>
-        {USE_CUSTOM && (
-          <div className="mb-3"><InlineNumericKeypad onDigit={handleKeypadDigit} onBackspace={handleKeypadBackspace} /></div>
-        )}
         <div className="text-center mb-3">
           {canResend ? (
             <TouchFeedbackButton onClick={onResend} disabled={sending} className="text-xs text-red-600 font-semibold underline disabled:opacity-50" ariaLabel="Resend OTP">

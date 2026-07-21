@@ -7,7 +7,7 @@ import {
   preloadBodyParamsShareAssets,
   listBodyParamsCards
 } from "../features/body-parameters-card";
-import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/TeamScopeLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
@@ -17,6 +17,8 @@ import { WellnessCounsellingForm } from "../features/counselling";
 import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
 import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
 import { debugLog } from '../shared/utils/logger.js';
+import { shareTextViaWhatsApp } from '../shared/utils/shareUtils.js';
+import { getApiBaseUrl } from '../config/api.config.js';
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -56,6 +58,12 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [assessmentData, setAssessmentData] = useState({});
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+
+  const handleShareCounsellingLink = async () => {
+    const shareUrl = `${getApiBaseUrl()}/share/counselling`;
+    const text = `Complete your wellness counselling assessment. Click the link\n${shareUrl}`;
+    await shareTextViaWhatsApp(text);
+  };
 
   const getUserId = async (email) => {
     if (!email) {
@@ -501,8 +509,11 @@ const WellnessCounselling = ({ user, onBack }) => {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
-          // A-Z / Z-A name sort
+          // Counselled members always float to the top, then A-Z / Z-A by name
           if (sortBy === "name") {
+            const counselledA = assessmentData[a.userId] ? 1 : 0;
+            const counselledB = assessmentData[b.userId] ? 1 : 0;
+            if (counselledB !== counselledA) return counselledB - counselledA;
             const nameA = (a.userName || a.name || "").toLowerCase();
             const nameB = (b.userName || b.name || "").toLowerCase();
             const cmp = nameA.localeCompare(nameB);
@@ -532,6 +543,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         subtitle={`${stats.total} Members • ${stats.counselled} Counselled`}
         onBack={onBack}
         onRefresh={handleManualRefresh}
+        onShare={handleShareCounsellingLink}
         loading={refreshing}
         error={error}
         onRetry={fetchData}

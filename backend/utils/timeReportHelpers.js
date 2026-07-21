@@ -1,19 +1,20 @@
-/**
+﻿/**
  * Time Report Helper Functions
  * ⚠️  INDEPENDENT MODULE — does NOT import from or modify disciplineHelpers.js
  *
  * Provides utilities for the /api/activity/time-report endpoint:
- *   parseDateRangeIST, formatDateIST, convertISTToLocalDate,
  *   extractTimeHHMM, extractLocalDateString, getActivityStatus,
- *   groupRecordsByDate, pickEarliestRecordPerActivity,
- *   buildDateList, computeAverageTime
+ *   groupRecordsByDate, pickEarliestRecordPerActivity, computeAverageTime
  */
+import { timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
 
 /**
  * Parse a date-range string to { start, end } Date objects.
  * "Today" is always computed in IST (UTC+5:30) so server timezone differences
  * do not affect which day is considered current.
  *
+ * @deprecated Use `toUtcRangeInclusive()` / `todayInTimezone()` from `shared/lib/datetime`.
+ *   See `docs/utc-foundation-migration-report.md`.
  * @param {"today"|"yesterday"|"last7days"|"last30days"|"custom"} range
  * @param {string} [customStart]  YYYY-MM-DD  (required when range === "custom")
  * @param {string} [customEnd]    YYYY-MM-DD  (required when range === "custom")
@@ -71,6 +72,7 @@ export function parseDateRangeIST(range, customStart, customEnd) {
  * Format a Date object to a YYYY-MM-DD string using its UTC date parts.
  * (Works correctly because parseDateRangeIST stores IST dates as UTC midnight.)
  *
+ * @deprecated Use `todayInTimezone()` / `formatUtcForDisplay()` from `shared/lib/datetime`.
  * @param {Date} date
  * @returns {string}
  */
@@ -84,10 +86,13 @@ export function formatDateIST(date) {
 /**
  * Convert an IST timestamp string to a user-local Date object.
  *
+ * @deprecated IST-specific conversion — migrate to `formatUtcForDisplay()` with IANA
+ *   timezones via `shared/lib/datetime`. See `docs/utc-foundation-migration-report.md`.
+ *
  * The database stores timestamps WITHOUT timezone info but in IST (UTC+5:30).
  * userTimezoneOffset follows the JavaScript convention:
- *   positive value = west of UTC  (e.g. EST → +300)
- *   negative value = east of UTC  (e.g. IST → -330)
+ *   positive value = west of UTC  (e.g. EST ΓåÆ +300)
+ *   negative value = east of UTC  (e.g. IST ΓåÆ -330)
  *
  * Internally we:
  *   1. Parse the IST string as-if it were UTC (append 'Z').
@@ -154,10 +159,10 @@ export function getActivityStatus(timeHHMM, window) {
   if (!timeHHMM) return 'missed';
   if (!window?.start || !window?.end) return 'on-time'; // no window configured
 
-  const t = timeHHMM + ':00'; // "HH:mm" → "HH:mm:ss" for lexicographic comparison
+  const t = timeHHMM + ':00'; // "HH:mm" ΓåÆ "HH:mm:ss" for lexicographic comparison
   if (t >= window.start && t <= window.end) return 'on-time';
   if (t > window.end) return 'late';
-  // t < window.start: recorded before the window opened — treat as late
+  // t < window.start: recorded before the window opened ΓÇö treat as late
   return 'late';
 }
 
@@ -168,14 +173,16 @@ export function getActivityStatus(timeHHMM, window) {
  *
  * @param {Array<Object>} records          Must include `CreatedAt` (IST string)
  * @param {number}        userTimezoneOffset (minutes, JS convention)
- * @returns {Map<string, Array<Object>>}  "YYYY-MM-DD" → enriched record[]
+ * @returns {Map<string, Array<Object>>}  "YYYY-MM-DD" ΓåÆ enriched record[]
  */
-export function groupRecordsByDate(records, userTimezoneOffset) {
+export function groupRecordsByDate(records, timezoneIana) {
   const map = new Map();
   for (const record of records) {
-    const localDate = convertISTToLocalDate(record.CreatedAt, userTimezoneOffset);
-    const dateKey   = extractLocalDateString(localDate);
+    const dateKey = timestampToCalendarYmd(record.CreatedAt, timezoneIana);
     if (!dateKey) continue;
+    const timeOnly = timeOfDayInTimezone(record.CreatedAt, timezoneIana);
+    const [h, m] = timeOnly.split(':').map(Number);
+    const localDate = { getUTCHours: () => h, getUTCMinutes: () => m };
     if (!map.has(dateKey)) map.set(dateKey, []);
     map.get(dateKey).push({ ...record, _localDate: localDate });
   }
@@ -187,10 +194,10 @@ export function groupRecordsByDate(records, userTimezoneOffset) {
  * one activity's time window and return its status.
  *
  * Algorithm (in priority order):
- *   1. Earliest record whose local time falls WITHIN [window.start, window.end] → "on-time"
- *   2. Earliest record whose local time is AFTER window.end → "late"
+ *   1. Earliest record whose local time falls WITHIN [window.start, window.end] ΓåÆ "on-time"
+ *   2. Earliest record whose local time is AFTER window.end ΓåÆ "late"
  *   3. Records before window.start are ignored (belong to an earlier activity).
- *   4. No qualifying record → "missed"
+ *   4. No qualifying record ΓåÆ "missed"
  *
  * Records must already be enriched with `_localDate` (see groupRecordsByDate).
  *
@@ -209,7 +216,7 @@ export function pickEarliestRecordPerActivity(dayRecords, window, nextWindowStar
   );
 
   if (window?.start && window?.end) {
-    // Priority 1: earliest within the window → on-time
+    // Priority 1: earliest within the window ΓåÆ on-time
     const withinWindow = sorted.find((r) => {
       const t = extractTimeHHMM(r._localDate);
       if (!t) return false;
@@ -220,7 +227,7 @@ export function pickEarliestRecordPerActivity(dayRecords, window, nextWindowStar
       return { timeHHMM: extractTimeHHMM(withinWindow._localDate), status: 'on-time' };
     }
 
-    // Priority 2: earliest after window end but BEFORE next meal's window start → late
+    // Priority 2: earliest after window end but BEFORE next meal's window start ΓåÆ late
     // (prevents a dinner-time entry from being counted as late breakfast/lunch)
     const afterWindow = sorted.find((r) => {
       const t = extractTimeHHMM(r._localDate);
@@ -238,7 +245,7 @@ export function pickEarliestRecordPerActivity(dayRecords, window, nextWindowStar
     return { timeHHMM: null, status: 'missed' };
   }
 
-  // No window configured → return the earliest record as on-time
+  // No window configured ΓåÆ return the earliest record as on-time
   const earliest = sorted[0];
   return { timeHHMM: extractTimeHHMM(earliest._localDate), status: 'on-time' };
 }

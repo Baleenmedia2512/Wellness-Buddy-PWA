@@ -2,8 +2,13 @@ import * as repo from './food-corrections.repository.js';
 import { identifyFoodType } from '../../utils/foodTypeDetection.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { buildGlobalCorrections } from './global-corrections.service.js';
-
-const { getISTTimestamp } = repo;
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import {
+  resolveRequestedDateYmd,
+  assertNotFutureDateYmd,
+  nowUtc,
+  timestampToCalendarYmd,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -31,7 +36,7 @@ export async function saveCorrection(input) {
   } = input;
 
   const correctedFoodType = identifyFoodType({ name: userCorrected, unit: correctedUnit });
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const existing = await repo.findCorrection(userId, aiDetected, userCorrected);
 
   const optionalFields = {};
@@ -146,17 +151,48 @@ export async function searchFoodHistory({ userId, searchTerm }) {
 
 // ─── update meal analysis ───────────────────────────────────────────────────
 export async function updateAnalysis(input) {
-  const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = input;
-  const currentTime = getISTTimestamp();
-  const data = await repo.updateMealAnalysis(id, userId, {
+  const {
+    id, userId, analysisData,
+    totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
+    totalSugar, totalSodium, totalCholesterol, glycemicIndex,
+    totalVitaminA, totalVitaminC, totalVitaminD, totalVitaminE, totalVitaminK,
+    totalVitaminB1, totalVitaminB2, totalVitaminB3, totalVitaminB6, totalVitaminB9, totalVitaminB12,
+    totalCalcium, totalIron, totalMagnesium, totalPotassium, totalZinc, totalPhosphorus,
+  } = input;
+  const currentTime = nowUtc();
+  const updatePayload = {
     AnalysisData: JSON.stringify(analysisData),
-    TotalCalories: totalCalories || 0,
-    TotalProtein: totalProtein || 0,
-    TotalCarbs: totalCarbs || 0,
-    TotalFat: totalFat || 0,
-    TotalFiber: totalFiber || 0,
-    UpdatedAt: currentTime,
-  });
+    TotalCalories:    totalCalories    || 0,
+    TotalProtein:     totalProtein     || 0,
+    TotalCarbs:       totalCarbs       || 0,
+    TotalFat:         totalFat         || 0,
+    TotalFiber:       totalFiber       || 0,
+    UpdatedAt:        currentTime,
+  };
+  // Only update extended fields when provided (undefined = not edited, keep existing DB value)
+  if (totalSugar       != null) updatePayload.TotalSugar       = totalSugar;
+  if (totalSodium      != null) updatePayload.TotalSodium      = totalSodium;
+  if (totalCholesterol != null) updatePayload.TotalCholesterol  = totalCholesterol;
+  if (glycemicIndex    != null) updatePayload.GlycemicIndex     = glycemicIndex;
+  if (totalVitaminA    != null) updatePayload.TotalVitaminA     = totalVitaminA;
+  if (totalVitaminC    != null) updatePayload.TotalVitaminC     = totalVitaminC;
+  if (totalVitaminD    != null) updatePayload.TotalVitaminD     = totalVitaminD;
+  if (totalVitaminE    != null) updatePayload.TotalVitaminE     = totalVitaminE;
+  if (totalVitaminK    != null) updatePayload.TotalVitaminK     = totalVitaminK;
+  if (totalVitaminB1   != null) updatePayload.TotalVitaminB1    = totalVitaminB1;
+  if (totalVitaminB2   != null) updatePayload.TotalVitaminB2    = totalVitaminB2;
+  if (totalVitaminB3   != null) updatePayload.TotalVitaminB3    = totalVitaminB3;
+  if (totalVitaminB6   != null) updatePayload.TotalVitaminB6    = totalVitaminB6;
+  if (totalVitaminB9   != null) updatePayload.TotalVitaminB9    = totalVitaminB9;
+  if (totalVitaminB12  != null) updatePayload.TotalVitaminB12   = totalVitaminB12;
+  if (totalCalcium     != null) updatePayload.TotalCalcium      = totalCalcium;
+  if (totalIron        != null) updatePayload.TotalIron         = totalIron;
+  if (totalMagnesium   != null) updatePayload.TotalMagnesium    = totalMagnesium;
+  if (totalPotassium   != null) updatePayload.TotalPotassium    = totalPotassium;
+  if (totalZinc        != null) updatePayload.TotalZinc         = totalZinc;
+  if (totalPhosphorus  != null) updatePayload.TotalPhosphorus   = totalPhosphorus;
+
+  const data = await repo.updateMealAnalysis(id, userId, updatePayload);
   if (data.length === 0) {
     return { httpStatus: 403, body: { success: false, message: 'Unauthorized or meal not found' } };
   }
@@ -190,8 +226,12 @@ export async function getStats({ userId, date, detailed }) {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
+  const timezoneIana = await getUserTimezoneIana(userId);
+
   if (detailed && date) {
-    const meals = await repo.fetchMealsForDate(userId, date);
+    const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
+    assertNotFutureDateYmd(resolvedDate, timezoneIana);
+    const meals = await repo.fetchMealsForDate(userId, resolvedDate, timezoneIana);
     const filtered = meals.filter((record) => {
       try {
         const data = JSON.parse(record.AnalysisData);
@@ -264,12 +304,12 @@ export async function getStats({ userId, date, detailed }) {
           totalCholesterol: round2(dailyTotals.totalCholesterol),
           ...roundedMicros,
         },
-        queryInfo: { userId, date, recordCount: filtered.length },
+        queryInfo: { userId, date: resolvedDate, recordCount: filtered.length },
       },
     };
   }
 
-  const counts = await repo.getStatsCounts(userId);
+  const counts = await repo.getStatsCounts(userId, timezoneIana);
   const weeklyNutrition = counts.weeklyData.reduce((t, r) => ({
     totalCalories: t.totalCalories + (r.TotalCalories || 0),
     totalProtein: t.totalProtein + (r.TotalProtein || 0),
@@ -280,7 +320,7 @@ export async function getStats({ userId, date, detailed }) {
 
   const dailyMap = {};
   counts.weeklyData.forEach((record) => {
-    const d = new Date(record.CreatedAt).toISOString().split('T')[0];
+    const d = timestampToCalendarYmd(record.CreatedAt, timezoneIana);
     if (!dailyMap[d]) dailyMap[d] = { date: d, calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
     dailyMap[d].calories += record.TotalCalories || 0;
     dailyMap[d].protein += record.TotalProtein || 0;

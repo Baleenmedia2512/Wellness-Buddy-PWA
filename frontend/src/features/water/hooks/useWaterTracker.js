@@ -15,11 +15,14 @@ import {
   fetchWaterIntake,
   logWaterIntake,
 } from '../services/waterStorageService';
-import { updateWaterIntakeCache } from '../../../shared/services/reminderService';
+import { formatUtcTime } from '../../../shared/utils/datetimeUtils';
+import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 const SUCCESS_TOAST_MS = 3000;
 
 export function useWaterTracker({ user, userId: propUserId } = {}) {
+  const nutritionRefresh = useNutritionRefreshOptional();
+  const triggerRefresh = nutritionRefresh?.triggerRefresh;
   const [resolvedUserId, setResolvedUserId] = useState(propUserId || null);
   const [waterData, setWaterData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -82,11 +85,10 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
           userEmail: user?.email || getCachedUserEmail(),
         });
         setSaveSuccess({ amount: ml });
-        const freshData = await refresh();
-        // Push updated totals to the native SharedPreferences cache so
-        // water alarm notifications can show a smart remaining-balance message.
-        if (freshData) {
-          updateWaterIntakeCache(freshData.totalMl ?? 0, freshData.requiredMl ?? 2500);
+        await refresh();
+        // Async activity log → Home dashboard refreshes when this watermark is newer
+        if (triggerRefresh) {
+          triggerRefresh({ immediate: true, source: 'water-intake' });
         }
       } catch (err) {
         console.error('[useWaterTracker] logWater error:', err);
@@ -96,7 +98,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
         setTimeout(() => setSaveSuccess(null), SUCCESS_TOAST_MS);
       }
     },
-    [resolvedUserId, saving, user, refresh],
+    [resolvedUserId, saving, user, refresh, triggerRefresh],
   );
 
   const submitCustom = useCallback(() => {
@@ -122,9 +124,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
 
   const logs = (waterData?.logs || []).map((log) => ({
     key: log.loggedAt,
-    timeLabel: new Date(log.loggedAt).toLocaleTimeString([], {
-      hour: '2-digit', minute: '2-digit',
-    }),
+    timeLabel: formatUtcTime(log.loggedAt, { hour: '2-digit', minute: '2-digit' }),
     volumeLabel: formatMl(log.volumeMl),
   }));
 

@@ -85,6 +85,15 @@ export class IdempotencyGuard {
       return { duplicate: false };
     }
 
+    // FAILED entries should NOT be treated as duplicates — they represent
+    // captures that were previously misclassified ("other") and are being
+    // retried by the user. Always allow a retry for failed entries so the
+    // AI gets another chance to classify the image correctly.
+    if (entry.status === JOB_STATUS.FAILED) {
+      this._store.delete(String(captureId));
+      return { duplicate: false };
+    }
+
     logger.info('idempotency: duplicate capture detected', {
       captureId: String(captureId),
       status:    entry.status,

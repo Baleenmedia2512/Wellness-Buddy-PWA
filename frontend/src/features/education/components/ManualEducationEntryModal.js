@@ -9,8 +9,23 @@ import EducationFormFields from './EducationFormFields';
 import { EducationFormActions } from './EducationActionButtons';
 import { useEducationEntry } from '../hooks/useEducationEntry';
 
-const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
-  const vm = useEducationEntry({ onSave, onClose });
+const ManualEducationEntryModal = ({
+  isOpen,
+  onClose,
+  onSave,
+  onBack,
+  skipTypeSelect = false,
+  initialPlatform,
+  initialTopic,
+}) => {
+  const vm = useEducationEntry({
+    onSave,
+    onClose,
+    isOpen,
+    skipTypeSelect,
+    initialPlatform,
+    initialTopic,
+  });
   if (!isOpen) return null;
 
   return (

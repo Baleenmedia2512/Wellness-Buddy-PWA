@@ -3,12 +3,16 @@
  * All business logic lives here. No HTTP, no DB calls (only via repository).
  */
 import {
-  getISTTimestamp,
-  convertToIST,
-} from '../../utils/supabaseClient.js';
-import { validateAndCorrectWeight } from '../../utils/weightValidation.js';
+  nowUtc,
+  timestampToCalendarYmd,
+  parseClientTimestampToUtc,
+  normalizeStoredTimestampToUtcIso,
+} from '../../shared/lib/datetime/index.js';
+import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
+import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
 import * as repo from './weight.repository.js';
+import * as userRepo from '../user/user.repository.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
 // weight save endpoint promotes the linked capture pending → weight when
 // `captureId` is supplied. Best-effort: a captures-side failure is logged
@@ -17,6 +21,7 @@ import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_WEIGHT } from '../captures/domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -24,21 +29,33 @@ function toNumberOrNull(v) {
   return isNaN(n) ? null : n;
 }
 
+async function resolveEffectiveBodyFat(userId, bodyFatValue, entryId) {
+  if (bodyFatValue !== null) return bodyFatValue;
+  if (entryId) {
+    const entry = await repo.findEntryById(entryId);
+    if (entry?.BodyFat != null) {
+      const bf = parseFloat(entry.BodyFat);
+      if (Number.isFinite(bf)) return bf;
+    }
+  }
+  return repo.findLatestBodyFat(userId);
+}
+
 function deriveCreatedAt(clientTimestamp) {
-  if (!clientTimestamp) return getISTTimestamp();
-  return convertToIST(clientTimestamp).istTimestamp;
+  if (!clientTimestamp) return nowUtc();
+  return parseClientTimestampToUtc(clientTimestamp).utcIso;
 }
 
 function formatRow(row) {
-  if (!(row.CreatedAt instanceof Date)) return row;
-  const d = row.CreatedAt;
-  const pad = (n) => String(n).padStart(2, '0');
-  return {
-    ...row,
-    CreatedAt:
-      d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' +
-      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()),
-  };
+  if (row?.CreatedAt == null) return row;
+  try {
+    return {
+      ...row,
+      CreatedAt: normalizeStoredTimestampToUtcIso(row.CreatedAt),
+    };
+  } catch {
+    return row;
+  }
 }
 
 function buildStats(rows) {
@@ -77,8 +94,12 @@ export async function saveWeight(input) {
   const bmiValue = toNumberOrNull(bmi);
   const bodyFatValue = toNumberOrNull(bodyFat);
   const muscleMassValue = toNumberOrNull(muscleMass);
-  const bmrValue = toNumberOrNull(bmr);
+  const manualBmrValue = toNumberOrNull(bmr);
   const imageBase64ToSave = rawImage && rawImage.trim() !== '' ? rawImage : null;
+
+  const effectiveBodyFat = await resolveEffectiveBodyFat(userId, bodyFatValue, entryId);
+  const calculatedBmr = computeKatchMcArdleBmr(weight, effectiveBodyFat);
+  const bmrValue = calculatedBmr ?? manualBmrValue;
 
   // BMR sync runs FIRST so it persists even if weight validation later fails.
   if (bmrValue) await repo.syncBmrToTeamTable(userId, bmrValue);
@@ -104,7 +125,7 @@ export async function saveWeight(input) {
   }
 
   const createdAtIST = deriveCreatedAt(clientTimestamp);
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
 
   let data;
   let wasUpdated = false;
@@ -144,6 +165,22 @@ export async function saveWeight(input) {
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
 
+  try {
+    const profileRow = await userRepo.findByUserId(parseInt(userId, 10), '"Height"');
+    const derivedGoalMode = deriveWeightGoalMode({
+      heightCm: profileRow?.Height ? parseFloat(profileRow.Height) : null,
+      currentWeightKg: weight,
+    });
+    if (derivedGoalMode) {
+      await userRepo.updateUserById(parseInt(userId, 10), { WeightGoalMode: derivedGoalMode });
+    }
+  } catch (goalModeErr) {
+    logger.warn('weight.saveWeight: failed to sync derived goal mode', {
+      userId: String(userId),
+      err: goalModeErr?.message,
+    });
+  }
+
   // PR 6 — promote the capture pending → weight. Best-effort: the weight row
   // is already persisted, the state machine is idempotent, and a transient
   // failure here must not surface to the user. Only attempted on initial
@@ -182,24 +219,18 @@ export async function saveWeight(input) {
         weightValue: weight,
         unit,
         bmr: bmrValue,
+        bmrCalculated: calculatedBmr !== null,
         bmrPreserved: !bmr && bmrValue ? true : false,
         imageBase64: imageBase64ToSave,
-        timestamp: new Date().toISOString(),
+        timestamp: nowUtc(),
       },
     },
   };
 }
 
-function getISTDateStr(ts) {
-  if (!ts) return null;
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return String(ts).substring(0, 10);
-  const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-  return istTime.toISOString().substring(0, 10);
-}
-
 export async function getHistory({ userId, includeImage, limit = null, offset = 0 }) {
   const useLimit = Number.isFinite(limit) && limit > 0;
+  const timezoneIana = await getUserTimezoneIana(userId);
 
   // Step 1: lightweight rows (no image when not requested)
   const rows = await repo.listHistory(userId, false, { limit, offset });
@@ -257,9 +288,9 @@ export async function getHistory({ userId, includeImage, limit = null, offset = 
   if (latestRow) {
     stats.latestWeight = { value: parseFloat(latestRow.Weight), date: latestRow.CreatedAt };
     if (formattedRows[0]) {
-      const latestDateStr = getISTDateStr(formattedRows[0].CreatedAt);
+      const latestDateStr = timestampToCalendarYmd(formattedRows[0].CreatedAt, timezoneIana);
       const prevEntry = formattedRows.find(
-        (r, idx) => idx > 0 && getISTDateStr(r.CreatedAt) !== latestDateStr,
+        (r, idx) => idx > 0 && timestampToCalendarYmd(r.CreatedAt, timezoneIana) !== latestDateStr,
       );
       if (prevEntry) {
         stats.previousWeight = { value: parseFloat(prevEntry.Weight), date: prevEntry.CreatedAt };

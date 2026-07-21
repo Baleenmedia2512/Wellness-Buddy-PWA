@@ -8,11 +8,70 @@
 
 import {
   getSupabaseClient,
-  getISTTimestamp,
 } from "../../../utils/supabaseClient.js";
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
+import { resolveActiveCoach } from "../../../utils/hierarchyHelpers.js";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import logger from '../../../shared/lib/logger.js';
+
+/** Resolve requester row by userId, email (case-insensitive), or phone. */
+async function findRequester(supabase, { userId, email, phone }) {
+  const cols = "UserId, UserName, Email, TeamId, CoachId, Status, PhoneNumber";
+
+  if (userId) {
+    const { data, error } = await supabase
+      .from("team_table")
+      .select(cols)
+      .eq("UserId", userId)
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  }
+
+  if (email) {
+    const { data, error } = await supabase
+      .from("team_table")
+      .select(cols)
+      .ilike("Email", email.trim())
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  }
+
+  if (phone) {
+    const normalized = String(phone).trim();
+    const { data, error } = await supabase
+      .from("team_table")
+      .select(cols)
+      .eq("PhoneNumber", normalized)
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+
+    const digits = normalized.replace(/\D/g, "");
+    if (digits.length >= 10) {
+      const { data: bySuffix, error: suffixErr } = await supabase
+        .from("team_table")
+        .select(cols)
+        .ilike("PhoneNumber", `%${digits.slice(-10)}`)
+        .limit(1);
+      if (suffixErr) throw suffixErr;
+      if (bySuffix?.[0]) return bySuffix[0];
+    }
+  }
+
+  return null;
+}
+
+/** Resolve coach id for inactive reactivation when client did not supply one. */
+async function resolveCoachForReactivation(supabase, requester, explicitCoachId) {
+  if (explicitCoachId) return explicitCoachId;
+  if (!requester.CoachId) return null;
+
+  const { coachId } = await resolveActiveCoach(requester.UserId, supabase);
+  return coachId || requester.CoachId;
+}
 
 // Production email service using nodemailer (same as send-otp.js)
 const sendEmail = async ({ to, subject, html }) => {
@@ -73,26 +132,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get email and coachId from body
-    const { coachId, email } = req.body;
+    const { coachId: bodyCoachId, email, phone, userId } = req.body;
 
-    if (!email) {
+    if (!email && !phone && !userId) {
       res.status(400).json({
         success: false,
-        error: "Email is required",
+        error: "Email, phone, or userId is required",
       });
       return;
     }
 
-    if (!coachId) {
-      res.status(400).json({
-        success: false,
-        error: "Coach ID is required",
-      });
-      return;
-    }
-
-    // Connect to Supabase
     const supabase = getSupabaseClient();
 
     // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 000000 ──
@@ -135,7 +184,7 @@ export default async function handler(req, res) {
       // Cancel any existing pending requests
       await supabase
         .from('approval_requests_table')
-        .update({ Status: 'cancelled', ProcessedAt: new Date().toISOString() })
+        .update({ Status: 'cancelled', ProcessedAt: nowUtc() })
         .eq('RequesterId', demoRequester.UserId)
         .eq('Status', 'pending');
 
@@ -172,16 +221,9 @@ export default async function handler(req, res) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Get requester's UserId and details
-    const { data: requesterRows, error: requesterError } = await supabase
-      .from("team_table")
-      .select("UserId, UserName, Email, TeamId, CoachId, Status")
-      .eq("Email", email)
-      .limit(1);
+    const requester = await findRequester(supabase, { userId, email, phone });
 
-    if (requesterError) throw requesterError;
-
-    if (!requesterRows || requesterRows.length === 0) {
+    if (!requester) {
       res.status(404).json({
         success: false,
         error: "User not found",
@@ -189,18 +231,31 @@ export default async function handler(req, res) {
       return;
     }
 
-    const requesterId = requesterRows[0].UserId;
+    const requesterId = requester.UserId;
+    const coachId = await resolveCoachForReactivation(
+      supabase,
+      requester,
+      bodyCoachId,
+    );
+
+    if (!coachId) {
+      res.status(400).json({
+        success: false,
+        error: "NO_COACH_ASSIGNED",
+        message:
+          "No coach is assigned to your account. Please ask your wellness center to link you to a coach.",
+      });
+      return;
+    }
 
     // Prevent self-approval
-    if (coachId === requesterId) {
+    if (String(coachId) === String(requesterId)) {
       res.status(400).json({
         success: false,
         error: "You cannot select yourself as your coach",
       });
       return;
     }
-
-    const requester = requesterRows[0];
 
     // Team ID is now optional - user can proceed without claiming it first
     // This allows flexible onboarding flow
@@ -217,7 +272,7 @@ export default async function handler(req, res) {
     }
 
     // Cancel any existing pending requests for this user
-    const now = new Date().toISOString();
+    const now = nowUtc();
     await supabase
       .from("approval_requests_table")
       .update({ Status: "cancelled", ProcessedAt: now })
@@ -250,7 +305,7 @@ export default async function handler(req, res) {
     // Calculate 24-hour expiry
     const requestedAt = new Date();
     const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
-    const currentTime = getISTTimestamp();
+    const currentTime = nowUtc();
 
     // Create approval request with 24-hour expiry
     const { data: insertResult, error: insertError } = await supabase

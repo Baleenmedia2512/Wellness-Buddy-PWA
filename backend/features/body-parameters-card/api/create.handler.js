@@ -4,7 +4,9 @@
  */
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
-import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard } from '../data/card.repo.js';
+import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
+import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard, findTeamPhoneByUserId, linkCardToUser } from '../data/card.repo.js';
+import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -15,7 +17,7 @@ import logger from '../../../shared/lib/logger.js';
 export async function handleCreateCard(body) {
   logger.info('[handleCreateCard] 🔍 REQUEST RECEIVED', { body });
   
-  const payload = validateCreateCard(body);
+  const payload = enrichPayloadWithCalculatedBmr(validateCreateCard(body));
   logger.info('[handleCreateCard] ✅ Validation passed', { 
     createdBy: payload.createdBy, 
     phoneNumber: payload.phoneNumber,
@@ -40,6 +42,8 @@ export async function handleCreateCard(body) {
       coachId:     payload.createdBy,
       heightCm:    payload.heightCm,
       bmr:         payload.bmr,
+      weightKg:    payload.weightKg,
+      fatPercent:  payload.fatPercent,
     });
     userId = memberId;
     logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
@@ -74,6 +78,10 @@ export async function handleCreateCard(body) {
       locationName: payload.locationName,
     });
     logger.info('[body-params-card] ✅ Card updated', { cardId: card.id, created_by: card.created_by });
+    if (userId && !card.user_id) {
+      await linkCardToUser(card.id, userId);
+      card.user_id = userId;
+    }
   } else {
     // CREATE new card
     logger.info('[body-params-card] 🆕 CREATING new card', { userId, createdBy: payload.createdBy });
@@ -86,11 +94,38 @@ export async function handleCreateCard(body) {
     });
   }
 
+  const linkPayload = {
+    phoneNumber: payload.phoneNumber,
+    name:        payload.name,
+    coachId:     payload.createdBy,
+    heightCm:    payload.heightCm,
+    bmr:         payload.bmr,
+    weightKg:    payload.weightKg,
+    fatPercent:  payload.fatPercent,
+  };
+
+  let syncResult = { synced: false, userId: card.user_id ?? userId ?? null };
+  try {
+    syncResult = await syncCardToProfileAfterSave(card, linkPayload);
+    if (syncResult.userId) card.user_id = syncResult.userId;
+  } catch (syncErr) {
+    logger.error('[handleCreateCard] profile sync failed', {
+      cardId: card.id,
+      userId: card.user_id,
+      message: syncErr?.message,
+    });
+    throw syncErr;
+  }
+
   // Fetch the previous card for this user so the frontend can show the
   // CURRENT vs PREV vs REFERENCE 3-column layout on the share card.
   const previousCard = userId
     ? await findPreviousCardByUserId(userId, card.id)
     : null;
+
+  const phoneNumber = card.user_id
+    ? await findTeamPhoneByUserId(card.user_id)
+    : (payload.phoneNumber || null);
 
   return {
     httpStatus: existingCard ? 200 : 201,
@@ -115,7 +150,9 @@ export async function handleCreateCard(body) {
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
-        phoneNumber:      payload.phoneNumber, // Include phone from request
+        phoneNumber:      phoneNumber || payload.phoneNumber || null,
+        userId:           card.user_id ?? userId ?? null,
+        profileSynced:    syncResult.synced,
         previousCard,
       },
     },

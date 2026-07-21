@@ -204,34 +204,6 @@ public class DatabaseSyncClient {
         }
     }
 
-    // Save daily screen time to the backend (called by GalleryMonitorService UsageStats tracker)
-    public boolean saveScreenTime(String userId, String date, long totalScreenTimeSeconds) {
-        try {
-            JSONObject body = new JSONObject();
-            body.put("userId", userId);
-            body.put("date", date);
-            body.put("totalScreenTimeSeconds", totalScreenTimeSeconds);
-
-            Request request = new Request.Builder()
-                .url(apiBaseUrl + "/api/save-screen-time")
-                .post(RequestBody.create(
-                    body.toString(),
-                    MediaType.parse("application/json")
-                ))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("User-Agent", "WellnessValley-Android/1.0")
-                .build();
-
-            Response response = client.newCall(request).execute();
-            boolean success = response.isSuccessful();
-            response.close();
-            return success;
-        } catch (Exception e) {
-            Log.e(TAG, "❌ saveScreenTime failed", e);
-            return false;
-        }
-    }
-
     // Health check method to test database connectivity
     public boolean testConnection() {        try {
             Request request = new Request.Builder()

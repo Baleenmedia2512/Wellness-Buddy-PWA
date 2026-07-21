@@ -3,6 +3,7 @@ package com.wellnessvalley.app.plugins;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
@@ -209,6 +210,75 @@ public class GalleryMonitorPlugin extends Plugin {
 
 
 
+    /**
+     * Opens the Android Location Settings screen so the user can toggle GPS on.
+     * Mapped from JS: nativeLifecycle.openLocationSettings() → GalleryMonitorPlugin.openLocationSettings()
+     */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            Log.d(TAG, "✅ Location settings opened");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to open location settings", e);
+            call.reject("Failed to open location settings", e);
+        }
+    }
+
+    /**
+     * Opens this app's own Settings page (Permissions, Notifications, etc.).
+     * Uses ACTION_APPLICATION_DETAILS_SETTINGS with the app's package name.
+     * Called from permissionManager.openAppSettings() on Android when a
+     * permission is permanently denied and the user taps "Open App Settings".
+     */
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + getContext().getPackageName())
+            );
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            Log.d(TAG, "✅ App settings opened");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to open app settings", e);
+            call.reject("Failed to open app settings", e);
+        }
+    }
+
+    /**
+     * Returns { enabled: boolean } indicating whether Location Services (GPS) are
+     * currently active on the device — instant, no timeout required.
+     * API 28+ uses LocationManager.isLocationEnabled();
+     * older APIs check GPS_PROVIDER or NETWORK_PROVIDER individually.
+     */
+    @PluginMethod
+    public void isLocationEnabled(PluginCall call) {
+        try {
+            LocationManager locationManager =
+                (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            boolean isEnabled;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                isEnabled = locationManager.isLocationEnabled();
+            } else {
+                isEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                         || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            }
+            JSObject result = new JSObject();
+            result.put("enabled", isEnabled);
+            Log.d(TAG, "✅ isLocationEnabled: " + isEnabled);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to check location enabled", e);
+            call.reject("Failed to check location enabled", e);
+        }
+    }
+
     @PluginMethod
     public void getCurrentUser(PluginCall call) {
         try {
@@ -242,63 +312,6 @@ public class GalleryMonitorPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to clear current user", e);
             call.reject("Failed to clear current user", e);
-        }
-    }
-
-    /**
-     * Called by React StepCounter backfill when it detects that SharedPreferences
-     * holds a value much larger than the DB (stale phantom data from testing).
-     * Sends an Intent to the running service so it resets both its on-disk
-     * SharedPreferences key AND its in-memory stepStoredBaseline for today.
-     */
-    @PluginMethod
-    public void syncDailySteps(PluginCall call) {
-        try {
-            String date  = call.getString("date");
-            int    steps = call.getInt("steps", 0);
-            if (date == null || date.isEmpty()) {
-                call.reject("date is required");
-                return;
-            }
-            Context context = getContext();
-            Intent intent = new Intent(context, GalleryMonitorService.class);
-            intent.putExtra("resetStepsDate", date);
-            intent.putExtra("resetStepsValue", steps);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to sync daily steps", e);
-            call.reject("Failed to sync daily steps", e);
-        }
-    }
-
-    /**
-     * Request an immediate service-side flush of today's steps to DB.
-     * Useful for manual refresh while keeping service as the single writer.
-     */
-    @PluginMethod
-    public void forceSaveTodaySteps(PluginCall call) {
-        try {
-            Context context = getContext();
-            Intent intent = new Intent(context, GalleryMonitorService.class);
-            intent.putExtra("forceSaveTodaySteps", true);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to force-save today steps", e);
-            call.reject("Failed to force-save today steps", e);
         }
     }
 }

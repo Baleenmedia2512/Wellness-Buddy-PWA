@@ -5,10 +5,28 @@
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
 
 /** Coach-like roles that may search/view other team members. */
-const COACH_ROLES = new Set(['coach', 'coCoach', 'admin', 'developer']);
+const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
 
 export function isCoachRole(role) {
-  return COACH_ROLES.has(role);
+  return COACH_ROLES.has(String(role || '').toLowerCase());
+}
+
+/** True when role grants search or user coaches at least one team_table row. */
+export function canUseTeamSearch(role, hasTeamMembers) {
+  return isCoachRole(role) || Boolean(hasTeamMembers);
+}
+
+/** Check team_table: does any user list this userId as their CoachId? */
+export async function fetchHasTeamMembers(userId) {
+  if (!userId) return false;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const res = await fetch(
+    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
+    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  );
+  if (!res.ok) return false;
+  const data = await res.json();
+  return Boolean(data?.hasTeamMembers);
 }
 
 /** Fetch the saved profile name for the current user (best-effort). */
@@ -25,16 +43,23 @@ export async function fetchSavedUserName(email) {
   return (data?.success && data?.data?.userName) || '';
 }
 
-/** Fetch the coach's full team and prepend the coach themselves. */
+/** Fetch the coach's full team (Active members only) and prepend the coach themselves. */
 export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRole }) {
   const flatList = await teamHierarchyService.getFlatTeamList(coachId);
-  const filtered = flatList.filter((m) => m.userId !== coachId);
+  // Defense-in-depth: backend already returns Active-only; drop any Inactive rows.
+  const activeOnly = flatList.filter((m) => {
+    if (m.userId === coachId) return true;
+    if (m.status == null) return true;
+    return String(m.status).toLowerCase() === 'active';
+  });
+  const filtered = activeOnly.filter((m) => m.userId !== coachId);
   const withCoach = [
     {
       userId: coachId,
       userName: coachName,
       email: coachEmail,
       role: coachRole,
+      status: 'Active',
       isSelf: true,
     },
     ...filtered,
@@ -42,12 +67,17 @@ export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRo
   return Array.from(new Map(withCoach.map((m) => [m.userId, m])).values());
 }
 
-/** Case-insensitive name/email substring filter. */
+/**
+ * Case-insensitive name/email substring filter over the Active-only member list.
+ * Empty query returns [] (dropdown stays closed until the user types).
+ */
 export function filterMembers(members, query) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   return members.filter(
-    (m) => m.userName.toLowerCase().includes(q) || m.email.toLowerCase().includes(q),
+    (m) =>
+      (m.userName || '').toLowerCase().includes(q) ||
+      (m.email || '').toLowerCase().includes(q),
   );
 }
 

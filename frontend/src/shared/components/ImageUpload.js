@@ -17,6 +17,8 @@ import { debugLog } from '../utils/logger.js';
 import {
   validateImageFreshness,
   validateImageForEducation,
+  resolveUploadCaptureTimestamp,
+  parseExifDateStringToLocalIso,
 } from "../utils/imageValidator";
 
 /**
@@ -172,8 +174,10 @@ const ImageUpload = forwardRef(
           return;
         }
 
-        // Non-education: use file.lastModified (reflects actual file creation time on web)
-        onImageSelect(file, toLocalISOString(new Date(file.lastModified)));
+        // Non-education: EXIF shutter time when present; otherwise upload time.
+        // Do NOT use file.lastModified — it is when the file was saved, not when eaten.
+        const captureTimestamp = await resolveUploadCaptureTimestamp(file);
+        onImageSelect(file, captureTimestamp);
       }
     };
 
@@ -189,6 +193,7 @@ const ImageUpload = forwardRef(
           const photo = await Camera.getPhoto({
             quality: 85,
             resultType: CameraResultType.Base64,
+            // Open the camera directly. Gallery is accessible via the separate gallery button.
             source: CameraSource.Camera,
             allowEditing: false,
             correctOrientation: true,
@@ -436,6 +441,12 @@ const ImageUpload = forwardRef(
             // Non-education native gallery: extract EXIF for accurate timestamp + validate same-day
             let galleryTimestamp = null;
 
+            // TODO: Re-enable gallery date restrictions before production release.
+            // TEMPORARILY DISABLED: same-day validation is commented out to allow users
+            // to select images from WhatsApp, older gallery photos, and any available folder.
+            // The original restriction logic is preserved below inside the disabled block.
+            const GALLERY_DATE_RESTRICTION_ENABLED = false; // eslint-disable-line no-unused-vars -- temporary flag
+
             // Try EXIF first
             if (photo.exif) {
               const exifDateStr =
@@ -444,12 +455,9 @@ const ImageUpload = forwardRef(
                 photo.exif.DateTime ||
                 photo.exif.dateTime;
               if (exifDateStr) {
-                const iso = exifDateStr.replace(
-                  /^(\d{4}):(\d{2}):(\d{2})/,
-                  "$1-$2-$3",
-                );
-                const parsed = new Date(iso);
-                if (!isNaN(parsed.getTime())) {
+                galleryTimestamp = parseExifDateStringToLocalIso(exifDateStr);
+                if (galleryTimestamp) {
+                  /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
                   // Validate photo is from today
                   const now = new Date();
                   const isSameDay =
@@ -466,8 +474,8 @@ const ImageUpload = forwardRef(
                     });
                     return;
                   }
+                  GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
-                  galleryTimestamp = toLocalISOString(parsed);
                   debugLog(
                     "✅ Non-education gallery image validated via EXIF:",
                     galleryTimestamp,
@@ -482,6 +490,7 @@ const ImageUpload = forwardRef(
                 "⚠️ No EXIF metadata, checking Filesystem.stat() for non-education image",
               );
 
+              /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
               // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
               if (!photo.path) {
                 console.warn(
@@ -531,6 +540,14 @@ const ImageUpload = forwardRef(
                 });
                 return;
               }
+              GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
+
+              // When restrictions are disabled: fall back to current time as timestamp
+              // (base64ToFile always gives lastModified=now, so file date is unreliable here)
+              galleryTimestamp = toLocalISOString(new Date());
+              debugLog(
+                "⚠️ Gallery date restriction disabled — using current time as fallback timestamp",
+              );
             }
 
             onImageSelect(file, galleryTimestamp);
@@ -576,100 +593,7 @@ const ImageUpload = forwardRef(
       isCameraActive: () => cameraActiveRef.current,
     }));
 
-    // Taglines for loading overlay based on state and image type
-    const getTaglines = () => {
-      if (loadingState === "saving") {
-        if (imageType === "weight") {
-          return [
-            "Saving your progress...",
-            "Updating your wellness journey...",
-            "Recording your achievement...",
-            "Your transformation is being tracked...",
-            "Almost there...",
-          ];
-        }
-        if (imageType === "education") {
-          return [
-            "Logging your learning session...",
-            "Recording your education time...",
-            "Saving your study progress...",
-            "Updating your education log...",
-            "Almost done...",
-          ];
-        }
-        return [
-          "Saving your delicious meal...",
-          "Recording your nutrition...",
-          "Updating your food diary...",
-          "Your healthy choice is being saved...",
-          "Almost there...",
-        ];
-      }
-
-      // When image type is not yet detected
-      if (!imageType) {
-        return [
-          "Discovering what you've got...",
-          "AI magic in progress...",
-          "Smart detection underway...",
-          "Let's see what we have here...",
-          "Analyzing your image...",
-        ];
-      }
-
-      if (imageType === "weight") {
-        return [
-          "Reading your scale...",
-          "Tracking your body metrics...",
-          "Calculating your progress...",
-          "Measuring your transformation...",
-          "Your wellness data is loading...",
-        ];
-      }
-
-      if (imageType === "education") {
-        return [
-          "Detecting your learning session...",
-          "Recognizing your study platform...",
-          "Identifying your meeting...",
-          "Logging your education time...",
-          "Processing your study session...",
-        ];
-      }
-
-      return [
-        "Analyzing your delicious meal...",
-        "Discovering ingredients...",
-        "Calculating your nutrition...",
-        "Breaking down macros & calories...",
-        "Smart portion sizing...",
-        "AI-powered food recognition...",
-        "Your healthy choice matters...",
-        "Nutrition facts loading...",
-        "USDA database lookup...",
-        "Creating your meal summary...",
-      ];
-    };
-
-    const taglines = getTaglines();
-
-    const [currentTaglineIndex, setCurrentTaglineIndex] = useState(0);
-
-    // Reset tagline index when loading state or image type changes
-    useEffect(() => {
-      setCurrentTaglineIndex(0);
-    }, [loadingState, imageType]);
-
-    useEffect(() => {
-      if (loading) {
-        const interval = setInterval(() => {
-          setCurrentTaglineIndex(
-            (prevIndex) => (prevIndex + 1) % taglines.length,
-          );
-        }, 2500);
-        return () => clearInterval(interval);
-      }
-    }, [loading, taglines.length, loadingState, imageType]);
+    // Taglines removed — Home only shows upload/saved states; AI runs in Diary.
 
     return (
       <>
@@ -712,8 +636,8 @@ const ImageUpload = forwardRef(
                   title="Click to view full size"
                 />
 
-                {/* Non-Blocking Loading Indicator - Top Right Corner */}
-                {loading && (
+                {/* Upload in progress — only while persisting the capture row */}
+                {loading && loadingState === "uploading" && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -723,25 +647,29 @@ const ImageUpload = forwardRef(
                       <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
                     </div>
                     <span className="text-[10px] sm:text-xs font-semibold">
-                      {loadingState === "saving" ? "Saving..." : "Analyzing..."}
+                      Saving...
                     </span>
                   </motion.div>
                 )}
 
-                {/* Success Badge — only when analysis produced a recognised type.
-                    When imageType is null (analysis failed / FALLBACK) we show
-                    nothing here; App.js surfaces an error message instead. */}
-                {!loading && imageType && (
+                {/* Saved badge — image persisted; analysis runs in Diary only */}
+                {!loading && loadingState === "saved" && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-green-500 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-semibold shadow-lg flex items-center gap-1"
+                    className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-emerald-600 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-semibold shadow-lg flex items-center gap-1"
                   >
                     <span>✓</span>
-                    <span>Ready</span>
+                    <span>Photo Saved</span>
                   </motion.div>
                 )}
               </div>
+
+              {!loading && loadingState === "saved" && (
+                <p className="text-center text-sm text-emerald-700 font-medium">
+                  Image saved — your diary will update shortly.
+                </p>
+              )}
 
               {/* Camera access moved to floating button - no UI shown here */}
             </div>

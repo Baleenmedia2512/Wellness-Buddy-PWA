@@ -3,33 +3,48 @@
  * Calls validation → data. No HTTP concerns here.
  */
 import { validateUpdateCard } from '../validation/card.schema.js';
+import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
 import {
   updateCard,
-  createTeamMemberFromPhone,
-  linkCardToUser,
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
 } from '../data/card.repo.js';
+import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
+import logger from '../../../shared/lib/logger.js';
+
+function buildLinkPayload(payload, card) {
+  return {
+    phoneNumber: payload.phoneNumber,
+    name:        payload.name,
+    coachId:     card.created_by,
+    heightCm:    payload.heightCm,
+    bmr:         payload.bmr,
+    weightKg:    payload.weightKg,
+    fatPercent:  payload.fatPercent,
+  };
+}
 
 /**
  * @param {object} body - raw request body (must include `id`)
  * @returns {{ httpStatus: number, body: object }}
  */
 export async function handleUpdateCard(body) {
-  const payload = validateUpdateCard(body);
+  const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
+  const linkPayload = buildLinkPayload(payload, card);
 
-  if (payload.phoneNumber && !card.user_id) {
-    const { userId } = await createTeamMemberFromPhone({
-      name:        payload.name,
-      phoneNumber: payload.phoneNumber,
-      coachId:     card.created_by,
-      heightCm:    payload.heightCm,
-      bmr:         payload.bmr,
+  let syncResult = { synced: false, userId: card.user_id ?? null };
+  try {
+    syncResult = await syncCardToProfileAfterSave(card, linkPayload);
+    if (syncResult.userId) card.user_id = syncResult.userId;
+  } catch (syncErr) {
+    logger.error('[handleUpdateCard] profile sync failed', {
+      cardId: card.id,
+      userId: card.user_id,
+      message: syncErr?.message,
     });
-    await linkCardToUser(payload.id, userId);
-    card.user_id = userId;
+    throw syncErr;
   }
 
   const previousCard = card.user_id
@@ -64,6 +79,8 @@ export async function handleUpdateCard(body) {
         recordedDate:     card.recorded_date,
         locationName:     card.location_name,
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
+        userId:           card.user_id ?? null,
+        profileSynced:    syncResult.synced,
         previousCard,
       },
     },

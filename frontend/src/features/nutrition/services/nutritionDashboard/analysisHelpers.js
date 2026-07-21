@@ -1,23 +1,49 @@
 // Pure helpers used across the nutrition dashboard.
 // These do NOT touch the network — see *Api.js modules for fetches.
-import React from 'react';
 
-/** Treat API timestamps without trailing-Z as local time. */
-export const istToLocalDate = (value) => {
-  if (!value) return new Date(NaN);
-  if (value instanceof Date) return new Date(value.getTime());
-  if (typeof value === 'string') {
-    // Normalise MySQL datetime strings ("YYYY-MM-DD HH:MM:SS") to ISO-8601
-    // ("YYYY-MM-DDTHH:MM:SS") so all browsers parse them correctly.
-    const normalized = value.replace(' ', 'T').replace(/Z$/, '');
-    const localDate = new Date(normalized);
-    if (!Number.isNaN(localDate.getTime())) return localDate;
-  }
-  return new Date(value);
+/** Calories for a single food item from canonical or legacy shapes. */
+const foodItemCalories = (food) =>
+  Number(food?.nutrition?.calories ?? food?.calories ?? 0);
+
+/**
+ * Compact multi-food title: highest-calorie dish + extra count.
+ * e.g. "Dosa+2more" for 3 items when Dosa has the most kcal.
+ */
+export const formatFoodsTitle = (foods) => {
+  const items = Array.isArray(foods) ? foods.filter(Boolean) : [];
+  const count = items.length;
+  if (count === 0) return 'Unknown Food';
+  if (count === 1) return (items[0]?.name || 'Unknown Food').trim();
+
+  const top = [...items].sort((a, b) => foodItemCalories(b) - foodItemCalories(a))[0];
+  const topName = (top?.name || 'Unknown Food').trim();
+  return `${topName}+${count - 1}more`;
 };
 
-export const getMealCategory = (timeString) => {
-  const hour = istToLocalDate(timeString).getHours();
+/** Treat API timestamps without trailing-Z as UTC wall time. */
+export const parseMealTimestamp = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return new Date(value.getTime());
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(' ', 'T');
+    const withZone = normalized.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(normalized)
+      ? normalized
+      : `${normalized}Z`;
+    const parsed = new Date(withZone);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const fallback = new Date(value);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
+export const getMealCategory = (timeString, timezoneIana = 'Asia/Kolkata') => {
+  const date = parseMealTimestamp(timeString);
+  if (!date) return 'late-night';
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: timezoneIana,
+    hour: 'numeric',
+    hour12: false,
+  }).format(date));
   if (hour >= 5 && hour < 10) return 'breakfast';
   if (hour >= 10 && hour < 12) return 'morning-snack';
   if (hour >= 12 && hour < 16) return 'lunch';
@@ -33,33 +59,13 @@ export const toLocalDateString = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-const formatFoodsTitle = (foods, moreTextColor) => {
-  const count = foods.length || 0;
-  if (count === 0) return 'Unknown Food';
-  const first = (foods[0]?.name || 'Unknown Food').trim();
-  if (count === 1) return first;
-  if (count === 2) {
-    const second = (foods[1]?.name || 'another item').trim();
-    return `${first} & ${second}`;
-  }
-  const others = count - 1;
-  return (
-    <>
-      {first}{' '}
-      <span className={`${moreTextColor} text-sm font-normal`}>
-        + {others} more
-      </span>
-    </>
-  );
-};
-
 /** Parse a meal's AnalysisData column into { name, nutrition, detailedItems }. */
-export const parseAnalysisData = (analysisData, moreTextColor = 'text-gray-500') => {
+export const parseAnalysisData = (analysisData) => {
   try {
     const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
     if (parsed?.foods?.length > 0 && parsed?.total) {
       return {
-        name: formatFoodsTitle(parsed.foods, moreTextColor),
+        name: formatFoodsTitle(parsed.foods),
         nutrition: {
           calories: parsed.total.calories || 0,
           protein:  parsed.total.protein  || 0,
@@ -69,16 +75,40 @@ export const parseAnalysisData = (analysisData, moreTextColor = 'text-gray-500')
           sugar:       parsed.total.sugar       ?? null,
           sodium:      parsed.total.sodium      ?? null,
           cholesterol: parsed.total.cholesterol ?? null,
+          glycemic_index: parsed.total.glycemic_index ?? null,
+          // 17 vitamin/mineral fields — populated when AI returns full schema
+          vitamin_a:   parsed.total.vitamin_a   ?? null,
+          vitamin_c:   parsed.total.vitamin_c   ?? null,
+          vitamin_d:   parsed.total.vitamin_d   ?? null,
+          vitamin_e:   parsed.total.vitamin_e   ?? null,
+          vitamin_k:   parsed.total.vitamin_k   ?? null,
+          vitamin_b1:  parsed.total.vitamin_b1  ?? null,
+          vitamin_b2:  parsed.total.vitamin_b2  ?? null,
+          vitamin_b3:  parsed.total.vitamin_b3  ?? null,
+          vitamin_b6:  parsed.total.vitamin_b6  ?? null,
+          vitamin_b9:  parsed.total.vitamin_b9  ?? null,
+          vitamin_b12: parsed.total.vitamin_b12 ?? null,
+          calcium:     parsed.total.calcium     ?? null,
+          iron:        parsed.total.iron        ?? null,
+          magnesium:   parsed.total.magnesium   ?? null,
+          potassium:   parsed.total.potassium   ?? null,
+          zinc:        parsed.total.zinc        ?? null,
+          phosphorus:  parsed.total.phosphorus  ?? null,
         },
         detailedItems: parsed.foods || [],
       };
     }
     if (parsed?.category?.name) {
-      return { name: parsed.category.name, nutrition: parsed.nutrition || {}, detailedItems: parsed.detailedItems || [] };
+      const items = parsed.detailedItems || [];
+      return {
+        name: items.length > 1 ? formatFoodsTitle(items) : parsed.category.name,
+        nutrition: parsed.nutrition || {},
+        detailedItems: items,
+      };
     }
     if (parsed?.foods?.length > 0) {
       const firstFood = parsed.foods[0] || {};
-      return { name: formatFoodsTitle(parsed.foods, moreTextColor), nutrition: firstFood.nutrition || {}, detailedItems: parsed.foods || [] };
+      return { name: formatFoodsTitle(parsed.foods), nutrition: firstFood.nutrition || {}, detailedItems: parsed.foods || [] };
     }
     return { name: 'Unknown Food', nutrition: {}, detailedItems: [] };
   } catch {

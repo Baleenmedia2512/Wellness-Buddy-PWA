@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+ * FONT SCALE LOCK
+ * Prevents the OS Accessibility → Font Size setting from
+ * scaling the app's text on all platforms:
+ *
+ *   iOS WKWebView       — -webkit-text-size-adjust: 100%
+ *   Android WebView     — setTextZoom(100) in MainActivity.java
+ *                         (CSS alone cannot override WebSettings.textZoom)
+ *   Mobile browsers     — text-size-adjust: 100% (all prefixes)
+ *   Desktop / tablet    — no effect; desktop OSes do not apply
+ *                         text zoom to web views
+ *
+ * Value is 100% (not none) so the browser can still honour
+ * author-specified rem/em sizes and pinch-to-zoom remains
+ * functional for accessibility on the web PWA surface.
+ * ============================================================ */
+html {
+  -webkit-text-size-adjust: 100%; /* iOS Safari / Chrome iOS / Android Chrome */
+  -moz-text-size-adjust: 100%;    /* Firefox (older) */
+  -ms-text-size-adjust: 100%;     /* IE / Edge legacy */
+  text-size-adjust: 100%;         /* Unprefixed standard */
+}
+
 @keyframes fadeSlideDown {
   from { opacity: 0; transform: translate(-50%, -12px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
@@ -79,13 +102,73 @@ button, a, [role="button"] {
 }
 
 /* Full-bleed iOS safe area helper */
-.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-top    { padding-top:    max(env(safe-area-inset-top, 0px), 8px); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
 .safe-left   { padding-left:   env(safe-area-inset-left, 0px); }
 .safe-right  { padding-right:  env(safe-area-inset-right, 0px); }
 
 /* Margin equivalents */
 .safe-mb { margin-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ── iOS full-page shell (SE → Pro Max) ─────────────────────────────────── */
+.ios-full-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  height: 100vh; /* fallback for older WebViews */
+  overflow: hidden;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.ios-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Compact tap targets — overrides global 44px min-height for pill buttons */
+.compact-touch {
+  min-height: auto !important;
+}
+
+/* Responsive action grid: 2 cols on narrow phones, 4 cols on wider iPhones */
+.ios-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (min-width: 375px) {
+  .ios-action-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ios-action-grid > * {
+  min-width: 0;
+}
+
+/* Program / list row: checkbox + icon + text — scales on all iPhone widths */
+.ios-list-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  column-gap: 0.625rem;
+}
+
+@media (min-width: 375px) {
+  .ios-list-row {
+    column-gap: 0.875rem;
+  }
+}
+
+@media (min-width: 390px) {
+  .ios-list-row {
+    column-gap: 1rem;
+  }
+}
 
 /* ── Leaflet route labels (Start / End) ─────────────────────────────────── */
 .leaflet-label-start,
@@ -290,12 +373,11 @@ img[class*="logo"],
   /* Prevent touch callout on iOS/Android */
   -webkit-touch-callout: none !important;
   
-  /* Disable drag */
+  /* Disable drag (vendor prefixes cover all browsers; no unprefixed standard exists) */
   -webkit-user-drag: none;
   -khtml-user-drag: none;
   -moz-user-drag: none;
   -o-user-drag: none;
-  user-drag: none;
   
   /* Prevent image from being copied */
   -webkit-user-modify: read-only;

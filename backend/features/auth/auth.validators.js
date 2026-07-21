@@ -32,6 +32,7 @@ export function validateVerifyOtp(body) {
     otp: String(otp),
     contactType,
     purpose: body.purpose || '',
+    timezoneIana: body.timezoneIana ?? body.timezone ?? undefined,
   };
 }
 

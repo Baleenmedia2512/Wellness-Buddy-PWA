@@ -165,33 +165,237 @@ export async function getLaunchUrl() {
  * re-enablement, not as live code.
  */
 /**
- * Request all required permissions in order: camera → push → geolocation.
- * Returns { locationGranted: boolean } so callers can gate app access.
- * On web always returns { locationGranted: true } (no-op).
+ * Request all required permissions sequentially.
+ *
+ * Each permission step has its own try/catch so one failure can NEVER skip
+ * the remaining steps (the original single-try-catch was the primary reason
+ * Location was never requested during onboarding).
+ *
+ * Order follows the required UX spec:
+ *   1. Camera + Photos  (REQUIRED)
+ *   2. Location         (REQUIRED — must be granted before home access)
+ *   3. Notifications    (OPTIONAL — failure never blocks the flow)
+ *
+ * Returns { cameraGranted, locationGranted } so callers can enforce mandatory
+ * permission gates. On web always returns fully-granted (no-op).
+ *
+ * @returns {Promise<{ cameraGranted: boolean, locationGranted: boolean }>}
  */
 export async function requestAllPermissions() {
-  if (!Capacitor.isNativePlatform()) return { locationGranted: true };
+  if (!Capacitor.isNativePlatform()) {
+    return { cameraGranted: true, locationGranted: true };
+  }
+
+  debugLog('📱 Requesting permissions sequentially…');
+
+  // ── Step 1: Camera + Photos (REQUIRED) ───────────────────────────────────
+  // Isolated try/catch: failure here must never prevent Location from being requested.
+  let cameraGranted = false;
   try {
-    debugLog("📱 Requesting all permissions at once...");
-
-    // Request camera/gallery permissions
-    await Camera.requestPermissions({ permissions: ["camera", "photos"] });
-
-    // Request push notification permissions
-    const pushPermission = await PushNotifications.requestPermissions();
-
-    if (pushPermission.receive === 'granted') {
-      await PushNotifications.register();
-      debugLog('Push notification registration requested');
-    }
-    // Request location permissions for attendance tracking
-    await Geolocation.requestPermissions();
-
-    // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
-    // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
-
-    debugLog("✅ All permissions requested");
+    const result = await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+    cameraGranted = result?.camera === 'granted';
+    debugLog('📷 Camera:', result?.camera, '| Photos:', result?.photos);
   } catch (err) {
-    console.warn("❌ Permission request failed:", err);
+    console.warn('❌ Camera/Photos permission request failed:', err);
+  }
+
+  // ── Step 2: Location (REQUIRED — MANDATORY) ───────────────────────────────
+  // Isolated try/catch: failure here must never prevent Notifications being requested.
+  let locationGranted = false;
+  try {
+    const result = await Geolocation.requestPermissions();
+    locationGranted =
+      result?.location === 'granted' || result?.coarseLocation === 'granted';
+    debugLog('📍 Location:', result?.location, '| Coarse:', result?.coarseLocation);
+  } catch (err) {
+    console.warn('❌ Location permission request failed:', err);
+  }
+
+  // ── Step 3: Notifications (OPTIONAL — never blocks the flow) ─────────────
+  try {
+    const push = await PushNotifications.requestPermissions();
+    if (push?.receive === 'granted') {
+      await PushNotifications.register().catch((e) =>
+        console.warn('Push register failed (non-fatal):', e),
+      );
+    }
+    debugLog('🔔 Notifications:', push?.receive);
+  } catch (err) {
+    // Notifications are optional — log but never throw.
+    console.warn('⚠️ Notification permission request failed (non-fatal):', err);
+  }
+
+  // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
+  // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
+
+  debugLog('✅ Permission requests complete:', { cameraGranted, locationGranted });
+  return { cameraGranted, locationGranted };
+}
+
+/**
+ * Check whether Location Services (GPS) are currently enabled on the device.
+ *
+ * - Android: delegates to the native GalleryMonitorPlugin.isLocationEnabled()
+ *   for an instant synchronous check (no timeout, no GPS warm-up required).
+ * - iOS + Android fallback: attempts getCurrentPosition with a 5 s timeout and
+ *   a zero maximumAge so a stale cached fix cannot mask a disabled service.
+ *   POSITION_UNAVAILABLE (code 2) means Location Services are off.
+ * - Web: always returns true (no-op).
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function checkGpsEnabled() {
+  if (!Capacitor.isNativePlatform()) return true;
+
+  const platform = Capacitor.getPlatform();
+
+  if (platform === 'android') {
+    try {
+      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
+      const result = await GalleryMonitorPlugin.isLocationEnabled();
+      return result?.enabled === true;
+    } catch (err) {
+      debugLog('Native GPS check failed, falling back to getCurrentPosition:', err?.message);
+      // Fall through to getCurrentPosition fallback below.
+    }
+  }
+
+  // iOS or Android fallback: getCurrentPosition fails fast when Location
+  // Services are off (code 2 = POSITION_UNAVAILABLE).
+  try {
+    await Geolocation.getCurrentPosition({
+      timeout: 5000,
+      enableHighAccuracy: false,
+      maximumAge: 0, // No cache — we need to know the service is live right now.
+    });
+    return true;
+  } catch (err) {
+    if (err?.code === 2) return false; // POSITION_UNAVAILABLE → Location Services off.
+    return true; // TIMEOUT (code 3) or PERMISSION_DENIED (code 1) — don't block on these.
+  }
+}
+
+/**
+ * Open the right Settings screen for location access.
+ *
+ * Many users grant app-level Location permission but leave device Location
+ * Services (GPS) off — sending them to App Settings feels broken. When GPS is
+ * off we deep-link to the system Location toggle; otherwise App Settings.
+ *
+ * @returns {Promise<'location'|'app'>} Which screen was opened.
+ */
+export async function openLocationPermissionSettings() {
+  if (!Capacitor.isNativePlatform()) return 'app';
+  const gpsOn = await checkGpsEnabled();
+  if (!gpsOn) {
+    await openLocationSettings();
+    return 'location';
+  }
+  await openAppSettings();
+  return 'app';
+}
+
+/**
+ * Open the device Location Settings screen so the user can enable GPS.
+ *
+ * - Android: opens ACTION_LOCATION_SOURCE_SETTINGS (the Location on/off toggle)
+ *   via the native GalleryMonitorPlugin.
+ * - iOS: opens this app's own Settings pane. iOS restricts deep-linking to the
+ *   system Privacy → Location Services screen since iOS 15.
+ * - Web: no-op.
+ */
+export async function openLocationSettings() {
+  if (!Capacitor.isNativePlatform()) return;
+  const platform = Capacitor.getPlatform();
+  try {
+    if (platform === 'android') {
+      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
+      await GalleryMonitorPlugin.openLocationSettings();
+    } else {
+      // iOS: opens this app's specific Settings pane where the user can adjust
+      // the Location permission. There is no public API to open the system
+      // Location Services toggle directly on iOS 15+.
+      await CapacitorApp.openUrl({ url: 'app-settings:' });
+    }
+  } catch (err) {
+    console.warn('Failed to open Location Settings:', err);
+  }
+}
+
+/**
+ * Check the current status of the location permission without prompting the user.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unknown'>}
+ */
+export async function checkLocationPermission() {
+  if (!Capacitor.isNativePlatform()) return 'granted';
+  try {
+    const result = await Geolocation.checkPermissions();
+    const status = result?.location;
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'prompt';
+  } catch (err) {
+    console.warn('Failed to check location permission:', err);
+    return 'unknown';
+  }
+}
+
+/**
+ * Check the current status of the camera permission without prompting the user.
+ * 'limited' (iOS partial photos) is mapped to 'granted'.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unknown'>}
+ */
+export async function checkCameraPermission() {
+  if (!Capacitor.isNativePlatform()) return 'granted';
+  try {
+    const result = await Camera.checkPermissions();
+    const status = result?.camera;
+    if (status === 'granted' || status === 'limited') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'prompt';
+  } catch (err) {
+    console.warn('Failed to check camera permission:', err);
+    return 'unknown';
+  }
+}
+
+/**
+ * Check the current status of the push-notification permission without prompting.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unknown'>}
+ */
+export async function checkNotificationPermission() {
+  if (!Capacitor.isNativePlatform()) return 'granted';
+  try {
+    const result = await PushNotifications.checkPermissions();
+    const status = result?.receive;
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'prompt';
+  } catch (err) {
+    console.warn('Failed to check notification permission:', err);
+    return 'unknown';
+  }
+}
+
+/**
+ * Open this app's entry in the OS Settings app.
+ * Used when a permission is permanently denied and cannot be re-requested.
+ * On web: no-op.
+ */
+export async function openAppSettings() {
+  if (!Capacitor.isNativePlatform()) return;
+  const platform = Capacitor.getPlatform();
+  try {
+    if (platform === 'android') {
+      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
+      await GalleryMonitorPlugin.openAppSettings();
+    } else {
+      await CapacitorApp.openUrl({ url: 'app-settings:' });
+    }
+  } catch (err) {
+    console.warn('Failed to open App Settings:', err);
   }
 }

@@ -7,5 +7,6 @@
 const FALLBACK = 'http://localhost:3000';
 
 export function getApiBaseUrl() {
-  return process.env.REACT_APP_API_BASE_URL || FALLBACK;
+  const raw = process.env.REACT_APP_API_BASE_URL || FALLBACK;
+  return raw.replace(/\/+$/, '');
 }

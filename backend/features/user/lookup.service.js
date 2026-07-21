@@ -5,11 +5,12 @@
  * days. Preserves response shape byte-identical to the legacy handler.
  */
 import * as repo from './user.repository.js';
+import { syncUserTimezoneIfChanged } from './timezone-sync.service.js';
 
 const INACTIVITY_DAYS = 31;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export async function lookupUser({ email }) {
+export async function lookupUser({ email, timezoneIana }) {
   const user = await repo.findByEmail(
     email,
     '"UserId", "UserName", "Email", "Status", "Role", "LastActiveAt", "EntryDateTime"',
@@ -28,6 +29,8 @@ export async function lookupUser({ email }) {
       }
     }
   }
+
+  await syncUserTimezoneIfChanged(user.UserId, timezoneIana);
 
   return {
     httpStatus: 200,

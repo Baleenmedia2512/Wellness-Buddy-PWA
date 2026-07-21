@@ -19,8 +19,17 @@ import logger from '../logger.js';
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
 
-export const MODEL_NAME = 'gemini-2.5-flash-lite';
+export const MODEL_NAME          = 'gemini-2.5-flash';
+/** Fallback when the primary model is saturated (502 / 503 / 429 / high-demand). */
+export const FALLBACK_MODEL_NAME = 'gemini-2.5-pro';
 
+/**
+ * NOTE: thinkingBudget is intentionally NOT set for gemini-2.5-flash.
+ * Flash is a thinking model — disabling thinking (thinkingBudget: 0) causes
+ * structured-output failures on complex 26-field nutrition schemas.
+ * Flash uses its natural dynamic thinking for reliable JSON generation.
+ * The fallback (gemini-2.5-pro) also uses full thinking via the same path.
+ */
 export const MODEL_CONFIGS = {
   /**
    * Fast, low-token classification. No structured schema enforcement here
@@ -63,15 +72,26 @@ export const MODEL_CONFIGS = {
   /**
    * Unified single-call inference (AIGateway.analyzeUnified).
    * Replaces the old classify→nutrition two-call chain.
-   * Food plates rarely exceed 800 tokens; 2048 gives 2.5× headroom while
-   * halving the previous 4096 allocation → less memory pre-reserved per call.
+   *
+   * Token budget breakdown for gemini-2.5-flash (thinking model):
+   *   maxOutputTokens includes BOTH thinking and actual output tokens.
+   *   A complex food plate analysis uses ~2000 thinking tokens.
+   *   A full 26-field × 3 food item response needs ~800–1500 output tokens.
+   *   Previous budget of 2048 left only ~86 tokens for output → MAX_TOKENS
+   *   truncation → incomplete JSON → parse failure → routes to "other".
+   *
+   *   thinkingBudget: 2048  — caps model introspection (enough for accuracy)
+   *   maxOutputTokens: 8192 — 2048 thinking + up to 6144 for JSON output
    */
   unified: {
     temperature: 0,
     topK: 1,
     topP: 1.0,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
     responseMimeType: 'application/json',
+    thinkingConfig: {
+      thinkingBudget: 2048,
+    },
   },
 };
 
@@ -104,12 +124,16 @@ function getGenAI() {
 /**
  * Return a cached Gemini model for the given configuration key.
  *
- * @param {'classify' | 'nutrition' | 'weight'} configKey
+ * @param {'classify' | 'nutrition' | 'weight' | 'unified'} configKey
  * @param {object} [responseSchema]  Optional structured response schema (SDK SchemaType).
+ * @param {string} [modelOverride]   Override the default model name (e.g. FALLBACK_MODEL_NAME).
  * @returns {import('@google/generative-ai').GenerativeModel}
  */
-export function getModel(configKey, responseSchema = null) {
-  const cacheKey = responseSchema ? `${configKey}:schema` : configKey;
+export function getModel(configKey, responseSchema = null, modelOverride = null) {
+  const modelName = modelOverride ?? MODEL_NAME;
+  const cacheKey  = responseSchema
+    ? `${modelName}:${configKey}:schema`
+    : `${modelName}:${configKey}`;
 
   if (!_modelCache.has(cacheKey)) {
     const genAI = getGenAI();
@@ -123,15 +147,25 @@ export function getModel(configKey, responseSchema = null) {
       : baseConfig;
 
     const model = genAI.getGenerativeModel({
-      model: MODEL_NAME,
+      model: modelName,
       generationConfig,
     });
 
     _modelCache.set(cacheKey, model);
-    logger.debug('geminiClient: model cached', { cacheKey });
+    logger.debug('geminiClient: model cached', { cacheKey, modelName });
   }
 
   return _modelCache.get(cacheKey);
+}
+
+/**
+ * Clear all cached model instances.
+ * Call this in development when MODEL_CONFIGS is changed at runtime.
+ * Not needed in production (Vercel serverless — each cold start is fresh).
+ */
+export function clearModelCache() {
+  _modelCache.clear();
+  logger.debug('geminiClient: model cache cleared');
 }
 
 /**

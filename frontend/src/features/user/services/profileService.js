@@ -37,7 +37,10 @@ export const saveProfile = async (payload) => {
   }
   const data = await res.json();
   if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Failed to save profile.');
+    // Never surface raw Supabase / PostgREST error strings to the user.
+    const raw = data.message || '';
+    const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist/i.test(raw);
+    throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {
@@ -50,7 +53,8 @@ export const saveProfile = async (payload) => {
       if (payload.dietType !== undefined) merged.dietType = payload.dietType;
       if (payload.phoneNumber !== undefined) merged.phoneNumber = payload.phoneNumber;
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
-      if (payload.weightGoalMode !== undefined) merged.weightGoalMode = payload.weightGoalMode;
+      if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
+      if (payload.communityId !== undefined) merged.communityId = payload.communityId;
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }

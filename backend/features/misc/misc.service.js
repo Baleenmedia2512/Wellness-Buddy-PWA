@@ -1,18 +1,20 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as repo from './misc.repository.js';
 import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
-import { formatDateForMySQL } from '../../utils/disciplineHelpers.js';
+import { todayInTimezone } from '../../shared/lib/datetime/index.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
+import { MODEL_NAME } from '../../shared/lib/gemini/geminiClient.js';
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
   const now = Date.now();
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const istDate = new Date(now + IST_OFFSET_MS).toISOString().split('T')[0];
+  const timezone = 'Asia/Kolkata';
   return {
     httpStatus: 200,
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
-    body: { date: istDate, ts: now, timezone: 'Asia/Kolkata' },
+    body: { date: todayInTimezone(timezone), ts: now, timezone },
   };
 }
 
@@ -48,7 +50,7 @@ export async function detectFace({ imageBase64 }) {
     const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const result = await model.generateContent([
       { inlineData: { mimeType, data: base64Data } },
@@ -70,17 +72,21 @@ export async function detectFace({ imageBase64 }) {
 
 // ─── club-attendance ────────────────────────────────────────────────────────
 export async function getClubAttendance({ userId, startDate, endDate }) {
-  const start = (startDate || formatDateForMySQL(new Date())) + 'T00:00:00';
-  const end = (endDate || formatDateForMySQL(new Date())) + 'T23:59:59';
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const todayYmd = todayInTimezone(timezoneIana);
+  const startYmd = startDate ? String(startDate) : todayYmd;
+  const endYmd = endDate ? String(endDate) : todayYmd;
+  if (startDate) assertCalendarDateYmd(startYmd, 'startDate');
+  if (endDate) assertCalendarDateYmd(endYmd, 'endDate');
 
-  const educationLogs = await repo.fetchEducationLogs(userId, start, end);
+  const educationLogs = await repo.fetchEducationLogs(userId, startYmd, endYmd, timezoneIana);
 
   if (educationLogs.length === 0) {
     return {
       httpStatus: 200,
       body: {
         success: true,
-        data: { attendanceRecords: [], clubSummary: [], dateRange: { start, end }, totalAttendance: 0 },
+        data: { attendanceRecords: [], clubSummary: [], dateRange: { start: startYmd, end: endYmd }, totalAttendance: 0 },
       },
     };
   }
@@ -136,7 +142,7 @@ export async function getClubAttendance({ userId, startDate, endDate }) {
       data: {
         attendanceRecords,
         clubSummary,
-        dateRange: { start, end },
+        dateRange: { start: startYmd, end: endYmd },
         totalAttendance: attendanceRecords.length,
       },
     },

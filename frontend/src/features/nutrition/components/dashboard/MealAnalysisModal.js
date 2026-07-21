@@ -26,6 +26,9 @@ function MealAnalysisModal({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  persistMealItems,
+  setLocalDetailedItems,
+  setLocalNutrition,
 }) {
   return (
     <NutritionAnalysisPanel
@@ -48,6 +51,9 @@ function MealAnalysisModal({
       handleCloseModal={handleCloseModal}
       handleDeleteMeal={handleDeleteMeal}
       user={user}
+      persistMealItems={persistMealItems}
+      setLocalDetailedItems={setLocalDetailedItems}
+      setLocalNutrition={setLocalNutrition}
     />
   );
 }

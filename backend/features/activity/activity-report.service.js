@@ -1,62 +1,22 @@
-/**
+﻿/**
  * Activity Report Service
  * Orchestrates activity report generation for downline members
  */
 import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
 
 /**
- * Parse date range and return start/end dates
+ * Resolve date range for activity reports using the requesting user's timezone.
  */
-function parseDateRange(dateRange, customStartDate, customEndDate) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  let startDate, endDate;
-  
-  switch (dateRange) {
-    case 'today':
-      startDate = new Date(today);
-      endDate = new Date(today);
-      break;
-    case 'yesterday':
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 1);
-      endDate = new Date(startDate);
-      break;
-    case 'last7days':
-      endDate = new Date(today);
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 6);
-      break;
-    case 'last30days':
-      endDate = new Date(today);
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 29);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new ValidationError(400, 'Custom date range requires startDate and endDate');
-      }
-      startDate = new Date(customStartDate);
-      endDate = new Date(customEndDate);
-      break;
-    default:
-      throw new ValidationError(400, 'Invalid dateRange');
-  }
-  
-  return { startDate, endDate };
-}
-
-/**
- * Format date for SQL query (YYYY-MM-DD)
- */
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+async function resolveReportDateRange(userId, dateRange, customStart, customEnd) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  return {
+    timezoneIana,
+    ...parseRelativeDateRangeYmd(dateRange, customStart, customEnd, timezoneIana),
+  };
 }
 
 /**
@@ -75,15 +35,14 @@ function extractDateTime(timestamp) {
  * Get activity counts summary for all activity types
  */
 export async function getActivitySummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
-  // Parse date range
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
   
   // Get downline members
-  // admin/developer → all active members
-  // coach          → their full downline hierarchy
-  // member         → only themselves
+  // admin/developer ΓåÆ all active members
+  // coach          ΓåÆ their full downline hierarchy
+  // member         ΓåÆ only themselves
   let downlineMembers = [];
   if (role === 'admin' || role === 'developer') {
     downlineMembers = await repo.fetchAllActiveMembers();
@@ -120,10 +79,10 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
   
   // Fetch all activity records
   const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
-    repo.fetchWeightRecords(userIds, startStr, endStr),
-    repo.fetchEducationRecords(userIds, startStr, endStr),
-    repo.fetchFoodRecords(userIds, startStr, endStr),
-    repo.fetchStepRecords(userIds, startStr, endStr),
+    repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
   ]);
   
   // Get time windows for meal filtering
@@ -157,9 +116,9 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
  * Includes members with 0 attendance so coaches can spot who hasn't attended.
  */
 export async function getActivityMemberSummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
 
   // Get downline members
   let downlineMembers = [];
@@ -205,15 +164,16 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
     memberMap[String(member.UserId)] = info;
   });
 
-  // Fetch education records and count per member
-  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr);
+  // Fetch education records — count first log per member per day only
+  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
   const countMap = {};
-  educationRecords.forEach(record => {
+  dedupedEducation.forEach(record => {
     const key = String(record.UserId);
     countMap[key] = (countMap[key] || 0) + 1;
   });
 
-  // Build member list with counts — include ALL downline members (even 0 attendance)
+  // Build member list with counts ΓÇö include ALL downline members (even 0 attendance)
   const memberList = userIds.map(uid => {
     const info = memberMap[uid] || memberMap[String(uid)] || {};
     return {
@@ -256,15 +216,14 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
  * Get detailed activity records for a specific activity type
  */
 export async function getActivityDetails({ userId, role, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
-  // Parse date range
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
   
   // Get downline members
-  // admin/developer → all active members
-  // coach          → their full downline hierarchy
-  // member         → only themselves
+  // admin/developer ΓåÆ all active members
+  // coach          ΓåÆ their full downline hierarchy
+  // member         ΓåÆ only themselves
   let downlineMembers = [];
   if (role === 'admin' || role === 'developer') {
     downlineMembers = await repo.fetchAllActiveMembers();
@@ -297,9 +256,9 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
   const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
   const coachNames = await repo.fetchCoachNames(coachIds);
   
-  // Build member info map — keyed by both numeric and string UserId
+  // Build member info map ΓÇö keyed by both numeric and string UserId
   // because education_logs_table stores UserId as string while others are numeric
-  // NOTE: team_table does NOT have City/Village columns — education records
+  // NOTE: team_table does NOT have City/Village columns ΓÇö education records
   // carry their own City/Village from education_logs_table directly.
   const memberMap = {};
   members.forEach(member => {
@@ -322,10 +281,20 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
   switch (activityType) {
     case 'weight':
       {
-        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr);
-        records = weightRecords.map(record => {
+        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana);
+        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords);
+
+        const centerIds = [...new Set(
+          dedupedWeight
+            .filter(r => !r.CenterName && r.NutritionCenterId)
+            .map(r => r.NutritionCenterId)
+        )];
+        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+
+        records = dedupedWeight.map(record => {
           const member = memberMap[record.UserId] || {};
           const { date, time } = extractDateTime(record.CreatedAt);
+          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
           return {
             userId: record.UserId,
             memberName: member.name,
@@ -335,7 +304,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
             coachName: member.coachName,
             date,
             time,
-            clubName: record.CenterName || 'N/A',
+           clubName: record.CenterName || 'N/A',
             weight: record.Weight || 'N/A',
           };
         });
@@ -344,24 +313,25 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'education':
       {
-        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr);
-        
+        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
+        const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
+
         // Fetch nutrition center names for records that don't have center_name stored
         const centerIds = [...new Set(
-          educationRecords
+          dedupedEducation
             .filter(r => !r.center_name && r.nutrition_center_id)
             .map(r => r.nutrition_center_id)
         )];
         const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-        
-        records = educationRecords.map(record => {
+
+        records = dedupedEducation.map(record => {
           // UserId in education_logs_table is stored as string
           const uidKey = String(record.UserId);
           const member = memberMap[uidKey] || {};
           const { date, time } = extractDateTime(record.CreatedAt);
           // Prefer the stored center_name; fall back to looked-up center name
           const clubName = record.center_name || centerMap[record.nutrition_center_id] || 'N/A';
-          
+
           return {
             userId: uidKey,
             memberName: member.name || 'N/A',
@@ -383,15 +353,25 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
     case 'lunch':
     case 'dinner':
       {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr);
+        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const timeWindows = await repo.fetchTimeWindows();
         const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows);
-        
-        records = mealRecords.map(record => {
+        // One row per member per day — first meal log only (matches summary counts)
+        const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords);
+
+        const centerIds = [...new Set(
+          dedupedMeals
+            .filter(r => !r.CenterName && r.NutritionCenterId)
+            .map(r => r.NutritionCenterId)
+        )];
+        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+
+        records = dedupedMeals.map(record => {
           const memberUserId = parseInt(record.UserID, 10);
           const member = memberMap[memberUserId] || {};
           const { date, time } = extractDateTime(record.CreatedAt);
-          
+          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
+
           return {
             userId: memberUserId,
             memberName: member.name,
@@ -401,7 +381,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
             coachName: member.coachName,
             date,
             time,
-            clubName: record.CenterName || 'N/A',
+            clubName,
             calories: record.TotalCalories || 0,
             mealType: activityType,
           };
@@ -411,15 +391,23 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'water':
       {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr);
+        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const waterRecords = repo.filterWaterRecords(foodRecords);
-        
+
+        const centerIds = [...new Set(
+          waterRecords
+            .filter(r => !r.CenterName && r.NutritionCenterId)
+            .map(r => r.NutritionCenterId)
+        )];
+        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+
         records = waterRecords.map(record => {
           const memberUserId = parseInt(record.UserID, 10);
           const member = memberMap[memberUserId] || {};
           const { date, time } = extractDateTime(record.CreatedAt);
           const volumeLiters = repo.calculateWaterVolume(record);
-          
+          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
+
           return {
             userId: memberUserId,
             memberName: member.name,
@@ -429,7 +417,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
             coachName: member.coachName,
             date,
             time,
-            clubName: record.CenterName || 'N/A',
+            clubName,
             waterLiters: volumeLiters,
           };
         });
@@ -438,7 +426,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'calories':
       {
-        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr);
+        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana);
         
         records = stepRecords.map(record => {
           const member = memberMap[record.UserId] || {};

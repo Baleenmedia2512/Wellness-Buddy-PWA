@@ -4,18 +4,11 @@ import { X, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { debugLog } from '../../../shared/utils/logger.js';
 
-/**
- * Helper to format timestamp as human-readable time
- */
-const formatTime = (timestamp) => {
-  if (!timestamp) return '';
-  try {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  } catch {
-    return '';
-  }
-};
+import { formatUtcTime } from '../../../shared/utils/datetimeUtils';
+
+const formatTime = (timestamp) => formatUtcTime(timestamp, {
+  hour: 'numeric', minute: '2-digit', hour12: true,
+});
 
 /**
  * Helper to get icon/emoji for log type

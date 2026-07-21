@@ -7,11 +7,19 @@
  */
 import { Sun, Sunset, Moon } from 'lucide-react';
 import React from 'react';
-import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import {
+  dateToBusinessYmd,
+  timestampToBusinessYmd,
+  parseUtcTimestamp,
+  getBusinessHour,
+  todayBusinessDate,
+  formatCalendarPickerDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
 export const toDateKey = (value) => {
-  const d = new Date(value);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (value instanceof Date) return formatCalendarPickerDate(value);
+  return timestampToBusinessYmd(value) || formatCalendarPickerDate(new Date(value));
 };
 
 export const isSmallChartDevice = () =>
@@ -22,13 +30,12 @@ export const isSmallChartDevice = () =>
  * log is displayed under, i.e. its IST-local date). Returns the full
  * list when `selectedDate` is falsy. Pure — no IO.
  */
-export const filterLogsByDay = (logs, selectedDate) => {
+export const filterLogsByDay = (logs, selectedDate, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) => {
   if (!selectedDate) return logs || [];
-  const target = toDateKey(selectedDate);
+  const target = dateToBusinessYmd(selectedDate, timezoneIana);
   return (logs || []).filter((log) => {
-    if (!log || !log.CreatedAt) return false;
-    const d = istToLocalDate(log.CreatedAt);
-    return d && !isNaN(d.getTime()) && toDateKey(d) === target;
+    if (!log?.CreatedAt) return false;
+    return timestampToBusinessYmd(log.CreatedAt, timezoneIana) === target;
   });
 };
 
@@ -36,15 +43,15 @@ export const buildMonthlyGroups = (logs) => {
   const grouped = {};
   logs.forEach((log) => {
     if (!log || !log.CreatedAt) return;
-    const date = istToLocalDate(log.CreatedAt);
-    if (!date || isNaN(date.getTime())) return;
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const date = parseUtcTimestamp(log.CreatedAt);
+    if (!date) return;
+    const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     if (!grouped[monthKey]) {
       grouped[monthKey] = {
         monthKey,
-        monthName: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        monthName: date.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' }),
         entries: [],
-        sortDate: new Date(date.getFullYear(), date.getMonth(), 1),
+        sortDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)),
       };
     }
     grouped[monthKey].entries.push(log);
@@ -76,7 +83,7 @@ export const detectPersona = (logs) => {
   if (!logs || logs.length === 0) return null;
   const slots = { morning: 0, afternoon: 0, evening: 0, night: 0 };
   logs.forEach((log) => {
-    const hour = istToLocalDate(log.CreatedAt).getHours();
+    const hour = getBusinessHour(log.CreatedAt);
     if (hour >= 5 && hour < 12) slots.morning++;
     else if (hour >= 12 && hour < 17) slots.afternoon++;
     else if (hour >= 17 && hour < 22) slots.evening++;
@@ -96,10 +103,12 @@ export const buildTrendSeries = (logs, rangeDays) => {
   const countByDate = new Map();
   logs.forEach((log) => {
     if (!log || !log.CreatedAt || log.isUndoPlaceholder) return;
-    const key = toDateKey(log.CreatedAt);
+    const key = timestampToBusinessYmd(log.CreatedAt);
     countByDate.set(key, (countByDate.get(key) || 0) + 1);
   });
-  const today = new Date();
+  const todayYmd = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+  const [y, m, d] = todayYmd.split('-').map(Number);
+  const today = new Date(y, m - 1, d);
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
   start.setDate(today.getDate() - (rangeDays - 1));
@@ -122,15 +131,16 @@ export const buildTrendSeries = (logs, rangeDays) => {
 export const buildWeekDays = (summary, logs) => {
   const today = new Date();
   const activeDates = summary?.last7DaysDates
-    ? summary.last7DaysDates.map((d) => new Date(d).toDateString())
-    : (logs || []).map((log) => istToLocalDate(log.CreatedAt).toDateString());
+    ? summary.last7DaysDates.map((day) => String(day).slice(0, 10))
+    : (logs || []).map((log) => timestampToBusinessYmd(log.CreatedAt));
   const days = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
+    const key = formatCalendarPickerDate(d);
     days.push({
       i,
-      hasLog: activeDates.includes(d.toDateString()),
+      hasLog: activeDates.includes(key),
       isToday: i === 0,
       label: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
     });

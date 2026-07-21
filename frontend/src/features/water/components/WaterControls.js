@@ -49,7 +49,9 @@ export default function WaterControls({
       {showCustom ? (
         <div className="flex gap-2">
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             min="1"
             max="5000"
             placeholder="Amount in ml"

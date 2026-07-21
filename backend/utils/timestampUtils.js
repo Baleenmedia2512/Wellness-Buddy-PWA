@@ -2,6 +2,7 @@
  * Timestamp Utility Functions
  * Functions for normalizing and handling timestamps from different sources
  */
+import { nowUtc } from '../shared/lib/datetime/index.js';
 
 /**
  * Normalize timestamp to ISO string format
@@ -11,7 +12,7 @@
  */
 export function normalizeTimestamp(timestamp) {
   if (!timestamp) {
-    return new Date().toISOString();
+    return nowUtc();
   }
   
   // If already a Date object, convert to ISO
@@ -26,7 +27,7 @@ export function normalizeTimestamp(timestamp) {
   }
   
   // Fallback: return current time
-  return new Date().toISOString();
+  return nowUtc();
 }
 
 /**

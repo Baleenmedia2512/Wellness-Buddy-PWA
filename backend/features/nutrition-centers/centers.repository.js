@@ -1,4 +1,6 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { applyDateRangeFilter } from '../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../shared/lib/datetime/index.js';
 
 export async function findByName(name) {
   const supabase = getSupabaseClient();
@@ -155,32 +157,34 @@ export async function getOwnerNames(ownerIds) {
   return data || [];
 }
 
-export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
+export async function attendanceForCenter(centerId, startDate, endDate, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   
-  // Fetch from all three log types: education, weight, food
+  let eduQuery = supabase
+    .from('education_logs_table')
+    .select('"UserId"')
+    .eq('nutrition_center_id', centerId)
+    .eq('"IsDeleted"', 0);
+  eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
+  let weightQuery = supabase
+    .from('weight_records_table')
+    .select('"UserId"')
+    .eq('"NutritionCenterId"', centerId)
+    .eq('"IsDeleted"', 0);
+  weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
+  let foodQuery = supabase
+    .from('food_nutrition_data_table')
+    .select('"UserID"')
+    .eq('"NutritionCenterId"', centerId)
+    .eq('"IsDeleted"', 0);
+  foodQuery = applyDateRangeFilter(foodQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
   const [eduRes, weightRes, foodRes] = await Promise.all([
-    supabase
-      .from('education_logs_table')
-      .select('"UserId"')
-      .eq('nutrition_center_id', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
-    supabase
-      .from('weight_records_table')
-      .select('"UserId"')
-      .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
-    supabase
-      .from('food_nutrition_data_table')
-      .select('"UserID"')
-      .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
+    eduQuery,
+    weightQuery,
+    foodQuery,
   ]);
   
   // Check for errors
@@ -198,32 +202,34 @@ export async function attendanceForCenter(centerId, rangeStart, rangeEnd) {
   return allLogs;
 }
 
-export async function getAttendeeList(centerId, rangeStart, rangeEnd) {
+export async function getAttendeeList(centerId, startDate, endDate, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   
-  // Fetch from all three log types: education, weight, food - NOW INCLUDING CreatedAt
+  let eduQuery = supabase
+    .from('education_logs_table')
+    .select('"UserId", "CreatedAt"')
+    .eq('nutrition_center_id', centerId)
+    .eq('"IsDeleted"', 0);
+  eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
+  let weightQuery = supabase
+    .from('weight_records_table')
+    .select('"UserId", "CreatedAt"')
+    .eq('"NutritionCenterId"', centerId)
+    .eq('"IsDeleted"', 0);
+  weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
+  let foodQuery = supabase
+    .from('food_nutrition_data_table')
+    .select('"UserID", "CreatedAt"')
+    .eq('"NutritionCenterId"', centerId)
+    .eq('"IsDeleted"', 0);
+  foodQuery = applyDateRangeFilter(foodQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
+
   const [eduRes, weightRes, foodRes] = await Promise.all([
-    supabase
-      .from('education_logs_table')
-      .select('"UserId", "CreatedAt"')
-      .eq('nutrition_center_id', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
-    supabase
-      .from('weight_records_table')
-      .select('"UserId", "CreatedAt"')
-      .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
-    supabase
-      .from('food_nutrition_data_table')
-      .select('"UserID", "CreatedAt"')
-      .eq('"NutritionCenterId"', centerId)
-      .eq('"IsDeleted"', 0)
-      .gte('"CreatedAt"', rangeStart)
-      .lte('"CreatedAt"', rangeEnd),
+    eduQuery,
+    weightQuery,
+    foodQuery,
   ]);
   
   // Check for errors

@@ -1,4 +1,4 @@
-import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
+﻿import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateTimeReport } from '../../../features/activity/activity.validators.js';
 import { getTimeReport } from '../../../features/activity/time-report.service.js';
 

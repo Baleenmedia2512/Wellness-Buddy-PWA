@@ -1,16 +1,11 @@
 // Authentication flow controller — OTP send + verify.
-// Supports TWO recipient channels through a single state machine:
-//   - email   → backend OTP via /api/auth/send-otp + verify-otp (SMTP)
-//   - phone   → backend OTP via /api/auth/send-otp + verify-otp (MDT SMS)
-//
-// Owns loading/error/success state. Google sign-in stays in caller because it
-// is an injected `onSignIn` prop (Firebase). Returns helpers a UI consumes.
+// Phone-only channel: MDT SMS OTP via /api/auth/send-otp + verify-otp.
+// WebOTP API (navigator.credentials.get) auto-reads the code on Android.
+// iOS: autoComplete="one-time-code" on the OTP field surfaces the SMS suggestion.
 import { useRef, useState } from 'react';
 import { sendOtp as sendOtpApi, verifyOtp as verifyOtpApi } from '../services/authService';
 import {
-  detectContactType,
   normalizePhone,
-  isValidEmail,
   isValidPhoneE164,
   DEFAULT_COUNTRY,
 } from '../domain/contactIdentifier';
@@ -39,56 +34,37 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
     setErrorMessage('');
     setLoading(true);
     try {
-      const channel = detectContactType(email);
-      if (channel === 'email') {
-        if (!isValidEmail(email)) {
-          setErrorMessage('Please enter a valid email address.');
-          return false;
-        }
-        const data = await sendOtpApi(email, 'email');
-        if (data.success) {
-          setActiveChannel('email');
-          setOtpSent(true);
-          return true;
-        }
-        setErrorMessage(data.message || 'Failed to send OTP.');
+      const e164 = normalizePhone(email, countryDial);
+      if (!isValidPhoneE164(e164)) {
+        setErrorMessage('Please enter a valid phone number.');
         return false;
       }
-      if (channel === 'phone') {
-        const e164 = normalizePhone(email, countryDial);
-        if (!isValidPhoneE164(e164)) {
-          setErrorMessage('Please enter a valid phone number.');
-          return false;
-        }
-        const data = await sendOtpApi(e164, 'phone');
-        const phoneLog = {
-          httpStatus: data?._httpStatus,
-          success: data?.success,
-          hasOtpInResponse: Object.prototype.hasOwnProperty.call(data || {}, 'otp'),
-          message: data?.message || '',
-          providerError: data?.providerError || '',
-          missingConfig: data?.missingConfig || [],
-        };
-        debugLog('[OTP/SMS] phone sendOtp result', phoneLog);
-        if (!data?.success || phoneLog.hasOtpInResponse) {
-          // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
-          console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
-        }
-        if (data.success) {
-          phoneRecipientRef.current = e164;
-          setActiveChannel('phone');
-          setOtpSent(true);
-          return true;
-        }
-        const missing = Array.isArray(data?.missingConfig) ? data.missingConfig.filter(Boolean) : [];
-        setErrorMessage(
-          missing.length > 0
-            ? `${data.message || 'SMS not configured.'} Missing: ${missing.join(', ')}.`
-            : (data.message || 'Failed to send OTP.'),
-        );
-        return false;
+      const data = await sendOtpApi(e164, 'phone');
+      const phoneLog = {
+        httpStatus: data?._httpStatus,
+        success: data?.success,
+        hasOtpInResponse: Object.prototype.hasOwnProperty.call(data || {}, 'otp'),
+        message: data?.message || '',
+        providerError: data?.providerError || '',
+        missingConfig: data?.missingConfig || [],
+      };
+      debugLog('[OTP/SMS] phone sendOtp result', phoneLog);
+      if (!data?.success || phoneLog.hasOtpInResponse) {
+        // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
+        console.warn('[OTP/SMS] phone OTP not sent via SMS', phoneLog);
       }
-      setErrorMessage('Enter an email address or phone number.');
+      if (data.success) {
+        phoneRecipientRef.current = e164;
+        setActiveChannel('phone');
+        setOtpSent(true);
+        return true;
+      }
+      const missing = Array.isArray(data?.missingConfig) ? data.missingConfig.filter(Boolean) : [];
+      setErrorMessage(
+        missing.length > 0
+          ? `${data.message || 'SMS not configured.'} Missing: ${missing.join(', ')}.`
+          : (data.message || 'Failed to send OTP.'),
+      );
       return false;
     } catch {
       setErrorMessage('Failed to send OTP. Please try again.');
@@ -113,7 +89,8 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
         }
         data = await verifyOtpApi(phoneRecipient, otpValue, undefined, 'phone');
       } else {
-        data = await verifyOtpApi(email, otpValue, undefined, 'email');
+        setErrorMessage('Session expired. Please resend the OTP.');
+        return false;
       }
       if (!data.success) {
         setErrorMessage(data.message || 'Invalid OTP.');

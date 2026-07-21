@@ -1,4 +1,4 @@
-import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
+﻿import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateActivityReport } from '../../../features/activity/activity-report.validators.js';
 import { getActivitySummary, getActivityDetails, getActivityMemberSummary } from '../../../features/activity/activity-report.service.js';
 
