@@ -176,7 +176,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
         <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
             <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
-              Top {topN}<br />Wellness
+              Top {topN}<br />Score
             </div>
           </div>
 
