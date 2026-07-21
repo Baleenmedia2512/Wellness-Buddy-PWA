@@ -1,6 +1,8 @@
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { enumerateScoreDates } from '../domain/date-range.js';
 import { DATE_YMD_RE } from '../../../shared/lib/datetime/index.js';
+
+export function validateGetDailyScore(query) {
   const userIdRaw = query?.userId;
   if (userIdRaw == null || userIdRaw === '') {
     throw new ValidationError(400, 'userId is required');
@@ -13,6 +15,7 @@ import { DATE_YMD_RE } from '../../../shared/lib/datetime/index.js';
   const date = dateRaw && DATE_YMD_RE.test(String(dateRaw)) ? String(dateRaw) : null;
   return { userId, date };
 }
+
 export function validateGetScoreHistory(query) {
   const userIdRaw = query?.userId;
   if (userIdRaw == null || userIdRaw === '') {
