@@ -19,6 +19,7 @@ import {
   isProfileComplete,
 } from './domain/profileCompleteness.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
+import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 
 const { getISTTimestamp } = repo;
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
@@ -29,6 +30,8 @@ export async function getProfile({ email }) {
 
   const latestWeight = await repo.getLatestWeight(user.UserId);
   const height = user.Height ? parseFloat(user.Height) : null;
+  const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
+  const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
   const latestBmr = user.Bmr ? parseFloat(user.Bmr) : null;
@@ -48,7 +51,8 @@ export async function getProfile({ email }) {
         userName: user.UserName,
         email: user.Email,
         height, dietType, phoneNumber,
-        weightGoalMode: user.WeightGoalMode || 'loss',
+        weightGoalMode: derivedGoalMode || user.WeightGoalMode || 'loss',
+        weightGoalModeAuto: derivedGoalMode != null,
         profileComplete: isProfileComplete({
           height,
           dietType,
@@ -184,6 +188,18 @@ export async function updateProfile(input) {
     }
   }
 
+  const profileHeightRow = await repo.findByUserId(userId, '"Height"');
+  const effectiveHeight = height != null
+    ? parseFloat(height)
+    : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
+  const derivedGoalMode = deriveWeightGoalMode({
+    heightCm: effectiveHeight,
+    currentWeightKg: latestWeightRow?.Weight ? parseFloat(latestWeightRow.Weight) : null,
+  });
+  if (derivedGoalMode) {
+    await repo.updateUserById(userId, { WeightGoalMode: derivedGoalMode });
+  }
+
   // Profile → latest Body Parameters Card (direct DB patch — no BPC handler — prevents loops).
   try {
     const dbProfile = await repo.findByUserId(
@@ -244,7 +260,7 @@ export async function updateProfile(input) {
       bmr: savedBmr || undefined,
       dietType: dietType || undefined,
       phoneNumber: cleanedPhoneNumber || undefined,
-      weightGoalMode: weightGoalMode || undefined,
+      weightGoalMode: derivedGoalMode || weightGoalMode || undefined,
       physicalActivityLevel: savedPhysicalActivityLevel || undefined,
       communityId: savedCommunityId !== undefined
         ? savedCommunityId

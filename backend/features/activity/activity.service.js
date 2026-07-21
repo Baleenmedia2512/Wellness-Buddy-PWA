@@ -1,5 +1,6 @@
 import * as repo from './activity.repository.js';
 import { toDateKey } from './activity.validators.js';
+import { maxWatchCaloriesFromRows, parseWatchKcalFromTopic } from './domain/watch-calories.helpers.js';
 
 const { getISTTimestamp } = repo;
 
@@ -147,20 +148,17 @@ export async function getWatchBurnedCalories({ userId, targetDate }) {
     return { httpStatus: 200, body: { success: true, caloriesBurned: 0, entries: [] } };
   }
   const rows = await repo.fetchWatchCalorieRows(userId, targetDate);
-  let totalCalories = 0;
   const entries = rows.map((row) => {
-    const match = (row.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
-    const kcal = match ? Math.round(parseFloat(match[1])) : 0;
-    totalCalories += kcal;
+    const kcal = parseWatchKcalFromTopic(row.Topic);
     return { id: row.Id, topic: row.Topic, kcal, createdAt: row.CreatedAt };
   });
-  const latestKcal = entries.length > 0 ? entries[0].kcal : 0;
+  const maxKcal = maxWatchCaloriesFromRows(rows);
   return {
     httpStatus: 200,
     body: {
       success: true, date: targetDate,
-      caloriesBurned: latestKcal,
-      totalCaloriesBurned: totalCalories,
+      caloriesBurned: maxKcal,
+      totalCaloriesBurned: maxKcal,
       entryCount: entries.length, entries,
     },
   };

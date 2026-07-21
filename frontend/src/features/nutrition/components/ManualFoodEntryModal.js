@@ -160,8 +160,9 @@ const ManualFoodEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               Calories (kcal) <span className="text-red-500">*</span>
             </label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
+              pattern="[0-9]*"
               value={calories}
               onChange={(e) => setCalories(e.target.value)}
               placeholder="e.g., 450"
@@ -180,8 +181,9 @@ const ManualFoodEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               <div>
                 <label className="block text-xs text-blue-600 font-medium mb-1">Protein</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
                   step="0.1"
                   value={protein}
                   onChange={(e) => setProtein(e.target.value)}
@@ -194,8 +196,9 @@ const ManualFoodEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               <div>
                 <label className="block text-xs text-yellow-600 font-medium mb-1">Carbs</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
                   step="0.1"
                   value={carbs}
                   onChange={(e) => setCarbs(e.target.value)}
@@ -208,8 +211,9 @@ const ManualFoodEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               <div>
                 <label className="block text-xs text-purple-600 font-medium mb-1">Fat</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
                   step="0.1"
                   value={fat}
                   onChange={(e) => setFat(e.target.value)}
@@ -222,8 +226,9 @@ const ManualFoodEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               <div>
                 <label className="block text-xs text-green-600 font-medium mb-1">Fiber</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
                   step="0.1"
                   value={fiber}
                   onChange={(e) => setFiber(e.target.value)}

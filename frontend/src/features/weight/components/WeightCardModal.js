@@ -91,7 +91,10 @@ const WeightCardModal = ({
             {isEditing ? (
               <div className="mt-2 space-y-2">
                 <input
-                  type="number" step="0.01" inputMode="decimal" autoFocus
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*"
+                  autoFocus
                   value={editWeight}
                   onChange={(e) => setEditWeight(e.target.value)}
                   className="w-full px-3 py-2 border-2 border-emerald-300 rounded-lg focus:border-emerald-500 focus:outline-none text-lg font-bold"

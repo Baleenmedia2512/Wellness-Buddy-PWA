@@ -73,6 +73,7 @@ export function getCarouselPeriodContext({
   let title = 'Today';
   if (preset === 'yesterday') title = 'Yesterday';
   else if (preset === 'last7days') title = 'Last 7 days';
+  else if (preset === 'last10days') title = 'Last 10 days';
   else if (preset === 'custom' && startDate && endDate) {
     title = startDate === endDate
       ? formatWellnessDayLabel(startDate, today)

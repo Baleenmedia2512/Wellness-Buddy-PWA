@@ -415,8 +415,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
 
-    // Also add watch-burned calories from education_logs_table
-    // Topic format: "Calories Burned: 2000 kcal" — use latest entry per day
+    // Watch screenshots: multiple uploads same day → highest kcal wins (not sum).
     (watchBurnRecords || []).forEach(r => {
       const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
       if (!match) return;
@@ -424,8 +423,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       if (kcal <= 0) return;
       const normalizedDate = normalizeTimestamp(r.CreatedAt);
       const date = normalizedDate.split('T')[0];
-      // ADD watch calories on top of step calories for the day
-      caloriesBurnedByDate[date] = (caloriesBurnedByDate[date] || 0) + kcal;
+      if ((caloriesBurnedByDate[date] || 0) < kcal) {
+        caloriesBurnedByDate[date] = kcal;
+      }
     });
 
     // A day is disciplined if net calories (consumed - burned) <= BMR target

@@ -238,7 +238,9 @@ export default function MealAddItemForm({
           )}
         </div>
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
+          pattern="[0-9]*"
           min="1"
           step="0.1"
           placeholder="Quantity"

@@ -16,7 +16,7 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 
-import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import { HOME_NUTRITION_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 
 import { useISTToday } from '../../wellness-score-sheet/hooks/useISTToday';
 
@@ -205,7 +205,7 @@ export default function HomeNutritionCarousel({
 
           <ReportDateRangeFilter
 
-            ranges={WELLNESS_SCORE_DATE_RANGES}
+            ranges={HOME_NUTRITION_DATE_RANGES}
 
             dateRange={dateRange}
 

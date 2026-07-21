@@ -148,7 +148,6 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
 import EmailGateModal from "./features/user/components/EmailGateModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
@@ -199,8 +198,8 @@ import LocationGuard from "./shared/components/LocationGuard";
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
 );
-const DisciplineLeaderboard = lazy(() =>
-  import("./features/leaderboard/components/DisciplineLeaderboard"),
+const WellnessScoreLeaderboard = lazy(() =>
+  import("./features/leaderboard/components/WellnessScoreLeaderboard"),
 );
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
@@ -399,8 +398,6 @@ function WellnessValleyApp() {
   const [educationWindow, setEducationWindow] = useState(null);
 
   // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
-  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
-  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
   // Email gate � forced for phone-OTP users who have no email in their profile
   const [showEmailGate, setShowEmailGate] = useState(false);
@@ -883,7 +880,7 @@ function WellnessValleyApp() {
 
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
-  const disciplineLeaderboardRef = useRef(null);
+  const wellnessLeaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -1820,8 +1817,8 @@ function WellnessValleyApp() {
     if (leaderboardRef.current) {
       leaderboardRef.current.refresh();
     }
-    if (disciplineLeaderboardRef.current) {
-      disciplineLeaderboardRef.current.refresh();
+    if (wellnessLeaderboardRef.current) {
+      wellnessLeaderboardRef.current.refresh();
     }
   }, []);
 
@@ -2123,6 +2120,14 @@ function WellnessValleyApp() {
         const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
+        if (type === 'location') {
+          const gpsOn = await nativeLifecycle.checkGpsEnabled();
+          if (!gpsOn) {
+            setShowGpsRequired(true);
+            return;
+          }
+        }
+
         // Not granted � request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
@@ -2170,6 +2175,15 @@ function WellnessValleyApp() {
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
     try {
+      if (type === 'location') {
+        const gpsOn = await nativeLifecycle.checkGpsEnabled();
+        if (!gpsOn) {
+          setActivePermission(null);
+          setShowGpsRequired(true);
+          return;
+        }
+      }
+
       const { granted } = await PermissionManager.requestPermission(type);
       if (granted) {
         setActivePermission(null);
@@ -2529,14 +2543,6 @@ function WellnessValleyApp() {
         setShowCompleteProfile(false);
         // Profile fields complete � check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-        // Force goal mode setup if user has never set it
-        if (
-          result.data?.weightGoalMode === null ||
-          result.data?.weightGoalMode === undefined
-        ) {
-          setGoalModePromptEmail(userEmail);
-          setShowGoalModePrompt(true);
-        }
         return;
       }
 
@@ -3237,7 +3243,8 @@ function WellnessValleyApp() {
           const gpsOn = await nativeLifecycle.checkGpsEnabled();
           if (!cancelled && gpsOn) {
             setShowGpsRequired(false);
-            setPermissionsReady(true);
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
           }
           return;
         }
@@ -7522,6 +7529,7 @@ function WellnessValleyApp() {
         <WellnessScorePage
           user={user}
           apiBaseUrl={apiBaseUrl}
+          nutritionRefreshKey={nutritionRefreshKey}
           onBack={() => {
             setShowWellnessScore(false);
             const currentWvPage = window.history.state?.wvPage;
@@ -7605,7 +7613,13 @@ function WellnessValleyApp() {
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => PermissionManager.openAppSettings()}
+            onOpenSettings={() => {
+              if (activePermission.type === 'location') {
+                nativeLifecycle.openLocationPermissionSettings();
+              } else {
+                PermissionManager.openAppSettings();
+              }
+            }}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
@@ -7915,12 +7929,14 @@ function WellnessValleyApp() {
           topN={LEADERBOARD_CONFIG.TOP_N}
         />
 
-        {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
-        <DisciplineLeaderboard
-          ref={disciplineLeaderboardRef}
-          apiBaseUrl={apiBaseUrl}
-          topN={10}
-        />
+        {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
+        {isFlagEnabled('ff.wellness-score-sheet') && (
+          <WellnessScoreLeaderboard
+            ref={wellnessLeaderboardRef}
+            apiBaseUrl={apiBaseUrl}
+            topN={10}
+          />
+        )}
 
         <div
           className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
@@ -8561,24 +8577,6 @@ function WellnessValleyApp() {
           userName={savedUserName}
         />
 
-        {/* Weight Goal Mode Setup Prompt � forced for users who never set their goal */}
-        <WeightGoalSetupPrompt
-          isOpen={showGoalModePrompt}
-          onSave={async (selectedMode) => {
-            const email = goalModePromptEmail || user?.email;
-            if (!email) return;
-            const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, weightGoalMode: selectedMode }),
-            });
-            if (!res.ok) throw new Error("Failed to save goal mode");
-            setShowGoalModePrompt(false);
-            setGoalModePromptEmail(null);
-          }}
-        />
-
-        {/* New User Profile Modal - shown for first-time users to complete their profile */}
         <UserProfileModal
           isOpen={showNewUserProfileModal}
           onClose={() => setShowNewUserProfileModal(false)}

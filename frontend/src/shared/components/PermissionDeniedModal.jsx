@@ -13,7 +13,9 @@
  * Never shown before the first native permission request.
  * Never shown for permanently denied permissions (use PermissionBlockedPage).
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import * as nativeLifecycle from '../services/nativeLifecycle/index.js';
 
 const ACCENT = {
   camera:        '#16a34a',
@@ -29,6 +31,18 @@ export default function PermissionDeniedModal({
   loading = false,
 }) {
   const accent = ACCENT[type] ?? '#111827';
+  const [gpsOff, setGpsOff] = useState(false);
+
+  useEffect(() => {
+    if (type !== 'location' || !Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+    nativeLifecycle.checkGpsEnabled().then((on) => {
+      if (!cancelled) setGpsOff(!on);
+    });
+    return () => { cancelled = true; };
+  }, [type]);
+
+  const showLocationSettings = type === 'location' && gpsOff;
 
   return (
     <div
@@ -77,11 +91,27 @@ export default function PermissionDeniedModal({
           {config.label} permission is required to continue.
         </p>
 
-        {/* Allow Again */}
+        {showLocationSettings && (
+          <p
+            style={{
+              fontSize: 13,
+              color: '#6b7280',
+              textAlign: 'center',
+              margin: '0 0 20px',
+              lineHeight: 1.5,
+            }}
+          >
+            Turn on Location Services on your device first.
+          </p>
+        )}
+
+        {/* Allow Again / Open Location Settings */}
         <button
           type="button"
-          onClick={onAllow}
-          disabled={loading}
+          onClick={showLocationSettings
+            ? () => nativeLifecycle.openLocationSettings()
+            : onAllow}
+          disabled={loading && !showLocationSettings}
           style={{
             width: '100%',
             padding: '14px',
@@ -97,7 +127,11 @@ export default function PermissionDeniedModal({
             transition: 'opacity 0.15s',
           }}
         >
-          {loading ? 'Requesting\u2026' : 'Allow Again'}
+          {showLocationSettings
+            ? 'Open Location Settings'
+            : loading
+              ? 'Requesting\u2026'
+              : 'Allow Again'}
         </button>
 
         {/* Exit */}

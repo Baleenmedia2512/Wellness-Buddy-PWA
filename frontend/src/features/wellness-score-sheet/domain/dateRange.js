@@ -49,6 +49,12 @@ export function resolveWellnessDateRange({
         endDate: today,
         isMultiDay: true,
       };
+    case 'last10days':
+      return {
+        startDate: addDaysYmd(today, -9),
+        endDate: today,
+        isMultiDay: true,
+      };
     case 'custom': {
       const start = ymdFromValue(customStartDate) || today;
       const end = ymdFromValue(customEndDate) || start;

@@ -97,6 +97,19 @@ export function computeIdealWeightRange(heightCm) {
   };
 }
 
+/**
+ * Derive weight goal mode from current weight vs ideal BMI range (19–23).
+ * @returns {'loss'|'gain'|'maintain'|null}
+ */
+export function deriveWeightGoalMode({ heightCm, currentWeightKg }) {
+  const range = computeIdealWeightRange(heightCm);
+  const current = parseFloat(currentWeightKg);
+  if (!range || !Number.isFinite(current) || current <= 0) return null;
+  if (current > range.value) return 'loss';
+  if (current < range.min) return 'gain';
+  return 'maintain';
+}
+
 /** Pick the display target for the user's current weight vs ideal range. */
 export function pickIdealWeightDisplay(currentKg, idealWeight) {
   if (!idealWeight || currentKg == null || Number.isNaN(Number(currentKg))) {

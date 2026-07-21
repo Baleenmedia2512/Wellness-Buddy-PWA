@@ -13,7 +13,7 @@
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
@@ -26,6 +26,7 @@ import UserProfileFields from './profile/UserProfileFields';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import FaceDetectionToast from './profile/FaceDetectionToast';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -195,6 +196,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     !form.height || form.height.trim() === '' ||
     !form.phone || form.phone.trim() === '';
 
+  const derivedWeightGoalMode = useMemo(
+    () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
+    [form.height, latestWeight],
+  );
+
+  useEffect(() => {
+    if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
+  }, [derivedWeightGoalMode, form.setWeightGoalMode]);
+
+  const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = form.name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'Member';
 
@@ -258,10 +269,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>
-              {form.weightGoalMode && (
+              {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
-                  ${form.weightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : form.weightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  {form.weightGoalMode === 'loss' ? '🔥 Loss Mode' : form.weightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
+                  ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
+                  {displayWeightGoalMode === 'loss' ? '🔥 Loss Mode' : displayWeightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
                 </span>
               )}
             </div>
@@ -303,7 +314,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 />
                 <IdealWeightCards height={form.height} latestWeight={latestWeight} />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
-                <WeightModeSelector value={form.weightGoalMode || 'loss'} onChange={form.setWeightGoalMode} />
+                <WeightModeSelector
+                  height={form.height}
+                  currentWeight={latestWeight}
+                  fallbackMode={form.weightGoalMode || 'loss'}
+                />
               </div>
             )}
           </div>

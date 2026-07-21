@@ -40,6 +40,7 @@ const IdealWeightCards = ({ height, latestWeight }) => {
         <Row wrapper="bg-red-50 border border-red-200 text-red-600"
           label="Weight Loss Phase"
           labelIcon={<EmojiOrNative emoji="🔥" className="w-4 h-4" nativeClassName="text-sm" />}
+          sub={`${Math.abs(current - idealMax).toFixed(1)} kg above ideal weight`}
           value={`−${Math.abs(current - idealMax).toFixed(1)} kg`} valueClass="text-red-500" />
       )}
       {current != null && isGain && (
@@ -53,6 +54,7 @@ const IdealWeightCards = ({ height, latestWeight }) => {
         <Row wrapper="bg-green-50 border border-green-200 text-green-600"
           label="At Ideal Weight"
           labelIcon={<EmojiOrNative emoji="✅" className="w-4 h-4" nativeClassName="text-sm" />}
+          sub="You are within the healthy BMI range (19–23)"
           value={<EmojiOrNative emoji="🎯" className="w-5 h-5" nativeClassName="text-base" />}
           valueClass="text-green-500" />
       )}

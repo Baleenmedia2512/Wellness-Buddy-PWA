@@ -7,19 +7,17 @@
  *
  * The only way to grant the permission at this point is via the OS Settings
  * app. This page explains clearly why the permission is needed and provides
- * a direct "Open App Settings" action.
+ * a direct settings action.
  *
  * Behaviour:
- *   • "Open App Settings" → opens this app's entry in the OS Settings app.
- *     The app's resume listener re-checks the permission and dismisses this
- *     page automatically if the user grants it there.
+ *   • Location + GPS off → opens system Location Services (device toggle).
+ *   • Location + GPS on  → opens this app's Permissions page.
+ *   • Other permissions    → opens App Settings.
  *   • "Exit App" → closes the application.
- *
- * Per-permission content (title + description) is defined in PAGE_CONTENT
- * below. The component is intentionally self-contained — no external content
- * dependencies — so it renders correctly in any state.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import * as nativeLifecycle from '../services/nativeLifecycle/index.js';
 
 const PAGE_CONTENT = {
   camera: {
@@ -52,6 +50,28 @@ export default function PermissionBlockedPage({
   onExit,
 }) {
   const content = PAGE_CONTENT[type] ?? PAGE_CONTENT.camera;
+  const [gpsOff, setGpsOff] = useState(false);
+
+  useEffect(() => {
+    if (type !== 'location' || !Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+    nativeLifecycle.checkGpsEnabled().then((on) => {
+      if (!cancelled) setGpsOff(!on);
+    });
+    return () => { cancelled = true; };
+  }, [type]);
+
+  const settingsLabel = type === 'location' && gpsOff
+    ? 'Open Location Settings'
+    : 'Open App Settings';
+
+  const handleOpenSettings = () => {
+    if (type === 'location') {
+      nativeLifecycle.openLocationPermissionSettings();
+    } else if (onOpenSettings) {
+      onOpenSettings();
+    }
+  };
 
   return (
     <div
@@ -117,10 +137,26 @@ export default function PermissionBlockedPage({
         {content.description}
       </p>
 
-      {/* Open App Settings — primary action */}
+      {type === 'location' && gpsOff && (
+        <p
+          style={{
+            fontSize: 13,
+            color: '#9ca3af',
+            textAlign: 'center',
+            margin: '0 0 24px',
+            lineHeight: 1.5,
+            maxWidth: 300,
+          }}
+        >
+          Your device Location Services are turned off. Turn on &quot;Use location&quot;
+          in Settings, then return here.
+        </p>
+      )}
+
+      {/* Settings action — primary */}
       <button
         type="button"
-        onClick={onOpenSettings}
+        onClick={handleOpenSettings}
         style={{
           width: '100%',
           maxWidth: 320,
@@ -139,7 +175,7 @@ export default function PermissionBlockedPage({
           flexShrink: 0,
         }}
       >
-        Open App Settings
+        {settingsLabel}
       </button>
 
       {/* Exit App — secondary action */}
