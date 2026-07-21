@@ -36,7 +36,7 @@ const ACTIVITY_META = {
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
   education:      { label: "Education", short: "EDU", Icon: BookOpen, color: "indigo" },
   water:          { label: "Water",     short: "WAT", Icon: Droplets, color: "cyan"   },
-  caloriesBurned: { label: "Calories",  short: "CAL", Icon: Flame,    color: "red"    },
+  caloriesBurned: { label: "Exercise",  short: "EXR", Icon: Flame,    color: "red"    },
 };
 
 const STATUS_DOT = {
@@ -68,7 +68,7 @@ const FILTER_OPTIONS = [
   { value: "dinner",         label: "Dinner"         },
   { value: "education",      label: "Education"      },
   { value: "water",          label: "Water"          },
-  { value: "caloriesBurned", label: "Calories"       },
+  { value: "caloriesBurned", label: "Exercise"       },
 ];
 
 // ΓöÇΓöÇΓöÇ Pure helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

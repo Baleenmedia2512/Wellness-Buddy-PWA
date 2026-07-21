@@ -26,9 +26,29 @@ const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 const REQUEST_TIMEOUT_MS = 60_000; // 60 s — parity with old imageTypeDetector
 
-/** Maximum total attempts (2× Flash + 1× Pro escalation). */
+// ── Retry budget — PHASE 1: fast unified call (type + macros) ─────────────────
+//
+// The frontend retries the POST /api/ai/orchestrate endpoint up to MAX_ATTEMPTS
+// times before giving up and returning imageType:'other' to the caller.
+//
+// Attempt allocation:
+//   Attempt 1 → Gemini Flash  (fast, cheap)
+//   Attempt 2 → Gemini Flash  (retry after transient failure, 1.5 s back-off)
+//   Attempt 3 → Gemini Pro    (escalation for hard / ambiguous images, 3 s back-off)
+//
+// Inside each attempt the backend also has its own per-call retry policy
+// (RetryPolicy.js): Flash ≤ 2 backend retries, Pro ≤ 3 backend retries.
+//
+// ── PHASE 2: background enrichment job (21 micronutrients) ───────────────────
+//
+// After a successful Phase 1, the backend enqueues an enrichment job
+// (JobQueue → JobWorker). That job has its own independent retry budget
+// (MAX_RETRIES in JobQueue.js). The frontend has no retry involvement in
+// Phase 2 — it just polls / receives a Realtime notification when done.
+//
+/** Maximum Phase 1 frontend attempts (2× Flash + 1× Pro escalation). */
 const MAX_ATTEMPTS    = 3;
-/** Base delay between retries in ms. Doubles each attempt: 1.5 s → 3 s. */
+/** Base back-off between Phase 1 retries (doubles per attempt: 1.5 s → 3 s). */
 const RETRY_DELAY_MS  = 1_500;
 
 /**

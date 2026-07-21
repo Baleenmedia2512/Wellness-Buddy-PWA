@@ -39,7 +39,7 @@ export default function ReportDateRangeFilter({
           <TouchFeedbackButton
             key={range.value}
             onClick={() => handleRangeClick(range.value)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
               dateRange === range.value
                 ? 'bg-green-600 text-white shadow-md'
                 : 'bg-white text-gray-700 border border-gray-200 hover:border-green-400'

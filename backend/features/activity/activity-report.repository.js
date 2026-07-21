@@ -193,6 +193,39 @@ export async function fetchNutritionCenters(centerIds) {
 }
 
 /**
+ * Keep only the latest log per member per calendar day (newest CreatedAt).
+ * Used for weight records where the most recent upload is the authoritative value.
+ */
+export function dedupeLatestLogPerMemberPerDay(records) {
+  if (!records || records.length === 0) return [];
+
+  // Sort descending so the latest timestamp comes first
+  const sorted = [...records].sort((a, b) =>
+    String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || ''))
+  );
+
+  const seen = new Set();
+  const deduped = [];
+
+  for (const record of sorted) {
+    const dateMatch = String(record.CreatedAt || '').match(/^(\d{4}-\d{2}-\d{2})/);
+    const date = dateMatch ? dateMatch[1] : 'unknown';
+    const userKey = String(record.UserID ?? record.UserId ?? '');
+    const key = `${userKey}-${date}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(record);
+    }
+  }
+
+  // Newest first for the report table
+  return deduped.sort((a, b) =>
+    String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || ''))
+  );
+}
+
+/**
  * Keep only the first log per member per calendar day (earliest CreatedAt).
  * Used by attendance report detail so repeated uploads on the same day show once.
  */
