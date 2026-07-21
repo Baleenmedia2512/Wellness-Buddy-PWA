@@ -9,9 +9,9 @@ export { config };
 
 function deriveTimestampFromAnalysisInput(input) {
   if (input.clientTimestamp) {
-    return parseClientTimestampToUtc(input.clientTimestamp).utcIso.substring(0, 19);
+    return parseClientTimestampToUtc(input.clientTimestamp).utcIso;
   }
-  return nowUtc().substring(0, 19);
+  return nowUtc();
 }
 
 export default async function handler(req, res) {

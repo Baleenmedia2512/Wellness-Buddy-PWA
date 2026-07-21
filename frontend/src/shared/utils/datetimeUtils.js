@@ -41,9 +41,11 @@ export function parseUtcTimestamp(value) {
 
   let normalized = value.trim().replace(' ', 'T');
   if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    normalized = `${normalized}T00:00:00Z`;
-  } else if (!normalized.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(normalized)) {
-    normalized = `${normalized}Z`;
+    // Calendar date-only → start of that day in IST (product timezone).
+    normalized = `${normalized}T00:00:00+05:30`;
+  } else if (!/[zZ]$/.test(normalized) && !/[+-]\d{2}:?\d{2}$/.test(normalized)) {
+    // Timezone-less API/DB values are IST wall-clock, not UTC.
+    normalized = `${normalized}+05:30`;
   }
 
   const parsed = new Date(normalized);

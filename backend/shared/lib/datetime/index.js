@@ -11,6 +11,7 @@ export {
   timestampToCalendarYmd,
   timeOfDayInTimezone,
   parseClientTimestampToUtc,
+  normalizeStoredTimestampToUtcIso,
 } from './datetime.js';
 
 export {
@@ -21,4 +22,10 @@ export {
   parseRelativeDateRangeYmd,
 } from './calendarDate.js';
 
-export { applyDayFilter, applyDateRangeFilter, applySinceDayStartFilter, applyBeforeDayFilter } from './applyDayFilter.js';
+export {
+  applyDayFilter,
+  applyDayFilterWidened,
+  applyDateRangeFilter,
+  applySinceDayStartFilter,
+  applyBeforeDayFilter,
+} from './applyDayFilter.js';

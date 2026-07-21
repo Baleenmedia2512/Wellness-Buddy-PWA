@@ -2,7 +2,12 @@
  * Weight feature — service layer.
  * All business logic lives here. No HTTP, no DB calls (only via repository).
  */
-import { nowUtc, timestampToCalendarYmd, parseClientTimestampToUtc } from '../../shared/lib/datetime/index.js';
+import {
+  nowUtc,
+  timestampToCalendarYmd,
+  parseClientTimestampToUtc,
+  normalizeStoredTimestampToUtcIso,
+} from '../../shared/lib/datetime/index.js';
 import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
@@ -42,15 +47,15 @@ function deriveCreatedAt(clientTimestamp) {
 }
 
 function formatRow(row) {
-  if (!(row.CreatedAt instanceof Date)) return row;
-  const d = row.CreatedAt;
-  const pad = (n) => String(n).padStart(2, '0');
-  return {
-    ...row,
-    CreatedAt:
-      d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' +
-      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()),
-  };
+  if (row?.CreatedAt == null) return row;
+  try {
+    return {
+      ...row,
+      CreatedAt: normalizeStoredTimestampToUtcIso(row.CreatedAt),
+    };
+  } catch {
+    return row;
+  }
 }
 
 function buildStats(rows) {

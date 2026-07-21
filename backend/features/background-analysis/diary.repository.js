@@ -13,11 +13,13 @@
  *   - captures_table                   (pending rows  — ImageType = 'pending', flag-gated;
  *                                       shown immediately after Phase-1 capture save)
  *
- * Each query is scoped to one user + one calendar day via `applyDayFilter()`.
+ * Each query is scoped to one user + one calendar day via
+ * `applyDayFilterWidened()` (±1 day), then the service post-filters to the
+ * owner calendar day after normalizing timezone-less CreatedAt as IST.
  */
 
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { applyDayFilter } from '../../shared/lib/datetime/applyDayFilter.js';
+import { applyDayFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../shared/lib/datetime/index.js';
 
 /**
@@ -42,7 +44,7 @@ export async function fetchFoodForDay(ownerUserId, date, timezoneIana = IANA_IST
     .eq('UserID', String(ownerUserId))
     .eq('IsDeleted', 0)
     .not('AnalysisData', 'is', null);
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -60,7 +62,7 @@ export async function fetchWeightForDay(ownerUserId, date, timezoneIana = IANA_I
     .select('ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt')
     .eq('UserId', String(ownerUserId))
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -80,7 +82,7 @@ export async function fetchEducationForDay(ownerUserId, date, timezoneIana = IAN
     .eq('UserId', String(ownerUserId))
     .or('IsDeleted.is.null,IsDeleted.eq.0')
     .not('"Topic"', 'ilike', 'Calories Burned:%');
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -99,7 +101,7 @@ export async function fetchWatchForDay(ownerUserId, date, timezoneIana = IANA_IS
     .eq('"UserId"', String(ownerUserId))
     .eq('"IsDeleted"', 0)
     .ilike('"Topic"', 'Calories Burned:%');
-  query = applyDayFilter(query, '"CreatedAt"', date, timezoneIana);
+  query = applyDayFilterWidened(query, '"CreatedAt"', date, timezoneIana);
   const { data, error } = await query.order('"CreatedAt"', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -119,7 +121,7 @@ export async function fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana
     .eq('"UserID"', String(ownerUserId))
     .eq('"IsDeleted"', 0)
     .eq('"ImageType"', 'unknown');
-  query = applyDayFilter(query, '"CreatedAt"', date, timezoneIana);
+  query = applyDayFilterWidened(query, '"CreatedAt"', date, timezoneIana);
   const { data, error } = await query.order('"CreatedAt"', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -139,7 +141,7 @@ export async function fetchPendingCapturesForDay(ownerUserId, date, timezoneIana
     .eq('"UserID"', String(ownerUserId))
     .eq('"IsDeleted"', 0)
     .eq('"ImageType"', 'pending');
-  query = applyDayFilter(query, '"CreatedAt"', date, timezoneIana);
+  query = applyDayFilterWidened(query, '"CreatedAt"', date, timezoneIana);
   const { data, error } = await query.order('"CreatedAt"', { ascending: false });
   if (error) throw error;
   return data || [];

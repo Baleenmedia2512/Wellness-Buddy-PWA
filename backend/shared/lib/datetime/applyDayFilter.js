@@ -1,7 +1,7 @@
 /**
  * Repository query helpers — scope Supabase/PostgREST queries to calendar days.
  */
-import { toUtcRange, toUtcRangeInclusive } from './datetime.js';
+import { shiftDateYmd, toUtcRange, toUtcRangeInclusive } from './datetime.js';
 
 /**
  * Apply an inclusive day filter on `column` using UTC bounds derived from
@@ -16,6 +16,25 @@ import { toUtcRange, toUtcRangeInclusive } from './datetime.js';
 export function applyDayFilter(query, column, dateYmd, timezoneIana) {
   const { startUtc, endUtc } = toUtcRange(dateYmd, timezoneIana);
   return query.gte(column, startUtc).lte(column, endUtc);
+}
+
+/**
+ * Widen a single-day filter by ±1 calendar day.
+ *
+ * Needed when DB timestamps are timezone-less IST wall-clocks: a PostgREST
+ * comparison against true UTC day bounds can miss or over-include rows.
+ * Callers must post-filter with `timestampToCalendarYmd` after normalizing.
+ *
+ * @param {object} query
+ * @param {string} column
+ * @param {string} dateYmd
+ * @param {string} timezoneIana
+ * @returns {object}
+ */
+export function applyDayFilterWidened(query, column, dateYmd, timezoneIana) {
+  const startDate = shiftDateYmd(dateYmd, -1, timezoneIana);
+  const endDate = shiftDateYmd(dateYmd, 1, timezoneIana);
+  return applyDateRangeFilter(query, column, startDate, endDate, timezoneIana);
 }
 
 /**

@@ -130,9 +130,23 @@ export function shiftDateYmd(dateYmd, days, timezoneIana) {
 }
 
 /**
- * Format a UTC timestamp for display in a target timezone.
+ * True when an ISO-like string already carries an explicit offset (`Z` or ±HH:mm).
  *
- * @param {string|Date} utcTimestamp - ISO UTC string or Date
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function hasExplicitUtcOffset(raw) {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(raw).trim());
+}
+
+/**
+ * Format a stored timestamp for display in a target timezone.
+ *
+ * Timezone-less strings are treated as wall-clock in `timezoneIana` (IST by
+ * default) — the product contract for Supabase `CreatedAt` values that were
+ * written without a `Z` suffix.
+ *
+ * @param {string|Date} utcTimestamp - ISO UTC string, naive business wall-clock, or Date
  * @param {string} [timezoneIana='Asia/Kolkata']
  * @param {string} [format='yyyy-MM-dd HH:mm:ss'] - Luxon format tokens
  * @returns {string}
@@ -144,10 +158,11 @@ export function formatUtcForDisplay(
 ) {
   assertIanaTimezone(timezoneIana);
 
-  const dt = DateTime.fromISO(
-    utcTimestamp instanceof Date ? utcTimestamp.toISOString() : utcTimestamp,
-    { zone: 'utc' },
-  ).setZone(timezoneIana);
+  const iso = utcTimestamp instanceof Date
+    ? utcTimestamp.toISOString()
+    : normalizeStoredTimestampToUtcIso(utcTimestamp, timezoneIana);
+
+  const dt = DateTime.fromISO(iso, { zone: 'utc' }).setZone(timezoneIana);
 
   if (!dt.isValid) {
     throw new RangeError(`Invalid UTC timestamp: ${String(utcTimestamp)}`);
@@ -194,18 +209,54 @@ export function timeOfDayInTimezone(utcTimestamp, timezoneIana = IANA_IST) {
 }
 
 /**
- * Parse a client-provided timestamp (offset-aware or UTC) for DB storage.
+ * Parse a client-provided timestamp for DB storage as UTC ISO (with `Z`).
+ *
+ * - Offset-aware / `Z` strings are honoured as absolute instants.
+ * - Timezone-less strings are interpreted as wall-clock in `timezoneIana`
+ *   (default Asia/Kolkata). Never treat naive strings as UTC — that caused
+ *   diary times to render +5:30 ahead of the user's clock.
  *
  * @param {string|Date} clientTimestamp
+ * @param {string} [timezoneIana=IANA_IST]
  * @returns {{ utcIso: string }}
  */
-export function parseClientTimestampToUtc(clientTimestamp) {
-  const raw = clientTimestamp instanceof Date
-    ? clientTimestamp.toISOString()
-    : String(clientTimestamp).trim().replace(' ', 'T');
-  const dt = DateTime.fromISO(raw, { setZone: true });
+export function parseClientTimestampToUtc(clientTimestamp, timezoneIana = IANA_IST) {
+  assertIanaTimezone(timezoneIana);
+
+  if (clientTimestamp instanceof Date) {
+    if (Number.isNaN(clientTimestamp.getTime())) {
+      throw new RangeError(`Invalid client timestamp: ${String(clientTimestamp)}`);
+    }
+    return { utcIso: clientTimestamp.toISOString() };
+  }
+
+  const raw = String(clientTimestamp).trim().replace(' ', 'T');
+  const dt = hasExplicitUtcOffset(raw)
+    ? DateTime.fromISO(raw, { setZone: true })
+    : DateTime.fromISO(raw, { zone: timezoneIana });
+
   if (!dt.isValid) {
     throw new RangeError(`Invalid client timestamp: ${String(clientTimestamp)}`);
   }
   return { utcIso: dt.toUTC().toISO() };
+}
+
+/**
+ * Normalize a DB-stored `CreatedAt` (often timezone-less) to UTC ISO with `Z`.
+ *
+ * @param {string|Date} value
+ * @param {string} [timezoneIana=IANA_IST]
+ * @returns {string}
+ */
+export function normalizeStoredTimestampToUtcIso(value, timezoneIana = IANA_IST) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new RangeError(`Invalid stored timestamp: ${String(value)}`);
+    }
+    return value.toISOString();
+  }
+  if (value == null || String(value).trim() === '') {
+    throw new RangeError('Invalid stored timestamp: empty');
+  }
+  return parseClientTimestampToUtc(String(value), timezoneIana).utcIso;
 }
