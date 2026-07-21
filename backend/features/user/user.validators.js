@@ -119,10 +119,14 @@ export function validateUserId(query) {
 }
 
 export function validateLookup(req) {
-  const raw = req.method === 'GET' ? req.query?.email : req.body?.email;
+  const isGet = req.method === 'GET';
+  const raw = isGet ? req.query?.email : req.body?.email;
   const email = normalizeEmail(raw);
   if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const timezoneRaw = isGet
+    ? (req.query?.timezoneIana ?? req.query?.timezone)
+    : (req.body?.timezoneIana ?? req.body?.timezone);
+  return { email, timezoneIana: timezoneRaw };
 }
 
 export function validateGoogleUser(body) {
@@ -131,7 +135,7 @@ export function validateGoogleUser(body) {
   if (!email || !displayName) {
     throw new ValidationError(400, 'Email and Display Name are required');
   }
-  return { email, displayName, photoURL: body?.photoURL || null };
+  return { email, displayName, photoURL: body?.photoURL || null, timezoneIana: body?.timezoneIana ?? body?.timezone ?? undefined };
 }
 
 export function validateSnooze(body) {

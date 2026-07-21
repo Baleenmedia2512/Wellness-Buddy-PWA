@@ -6,6 +6,7 @@
  */
 import * as repo from './user.repository.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { syncUserTimezoneIfChanged } from './timezone-sync.service.js';
 
 const existingUserResponse = (existing) => ({
   httpStatus: 200,
@@ -38,12 +39,13 @@ async function pickUniqueUsername({ displayName, email }) {
   return username;
 }
 
-export async function saveGoogleUser({ email, displayName, photoURL }) {
+export async function saveGoogleUser({ email, displayName, photoURL, timezoneIana }) {
   const existing = await repo.findByExactEmail(email, '"UserId", "UserName", "Email", "Status", "ProfileImage"');
   if (existing) {
     if (photoURL && !existing.ProfileImage) {
       try { await repo.updateUserByEmail(email, { ProfileImage: photoURL }); } catch { /* non-fatal */ }
     }
+    await syncUserTimezoneIfChanged(existing.UserId, timezoneIana);
     return existingUserResponse(existing);
   }
 
@@ -66,7 +68,10 @@ export async function saveGoogleUser({ email, displayName, photoURL }) {
   if (insertErr) {
     if (insertErr.code === '23505') {
       const recheck = await repo.findByExactEmail(email, '"UserId", "UserName", "Email", "Status"');
-      if (recheck) return existingUserResponse(recheck);
+      if (recheck) {
+        await syncUserTimezoneIfChanged(recheck.UserId, timezoneIana);
+        return existingUserResponse(recheck);
+      }
       return {
         httpStatus: 500,
         body: {
@@ -77,6 +82,11 @@ export async function saveGoogleUser({ email, displayName, photoURL }) {
       };
     }
     throw insertErr;
+  }
+
+  const created = await repo.findByExactEmail(email, '"UserId"');
+  if (created?.UserId) {
+    await syncUserTimezoneIfChanged(created.UserId, timezoneIana);
   }
 
   return {

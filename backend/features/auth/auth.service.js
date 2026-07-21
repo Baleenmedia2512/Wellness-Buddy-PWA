@@ -9,6 +9,7 @@ import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
 import { sendMdtSms } from './data/mdt-sms.client.js';
 
 import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
@@ -415,7 +416,11 @@ export async function verifyOtp(input) {
   const { recipient, otp, contactType, purpose } = input;
 
   if (DEMO_ACCOUNTS.includes(recipient)) {
-    return handleDemoVerify({ recipient, otp, purpose });
+    const result = await handleDemoVerify({ recipient, otp, purpose });
+    if (result.httpStatus === 200 && result.body?.user?.id) {
+      await syncUserTimezoneIfChanged(result.body.user.id, input.timezoneIana);
+    }
+    return result;
   }
 
   const otpData = await repo.fetchActiveOtp(recipient, contactType);
@@ -440,6 +445,8 @@ export async function verifyOtp(input) {
   await repo.markOtpVerified(otpData.ID);
 
   const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
+
+  await syncUserTimezoneIfChanged(user.id, input.timezoneIana);
 
   return {
     httpStatus: 200,
