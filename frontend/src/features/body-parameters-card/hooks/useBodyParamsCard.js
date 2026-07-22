@@ -38,6 +38,10 @@ function pickSavedField(apiVal, formVal) {
   return apiVal != null && apiVal !== '' ? apiVal : formVal;
 }
 
+function normalizeName(value) {
+  return String(value || '').toUpperCase();
+}
+
 const EMPTY_FORM = {
   name:         '',  phoneNumber:  '',
   age:          '',
@@ -59,7 +63,7 @@ const EMPTY_FORM = {
 function cardToFormState(card) {
   if (!card?.id) return EMPTY_FORM;
   return {
-    name:         card.name         ?? '',
+    name:         card.name ? normalizeName(card.name) : '',
     phoneNumber:  card.phoneNumber  ?? '',
     age:          card.age          != null ? String(card.age)         : '',
     gender:       card.gender        ?? '',
@@ -235,7 +239,8 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // ── Setters ───────────────────────────────────────────────────────────────
 
   const setField = useCallback((field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    const nextValue = field === 'name' ? normalizeName(value) : value;
+    setForm((prev) => ({ ...prev, [field]: nextValue }));
     if (field === 'weightKg' || field === 'fatPercent') {
       setBmrUserEdited(false);
     }
@@ -308,7 +313,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
           setForm((prev) => ({
             ...prev,
             phoneNumber: exactMatch.phoneNumber,
-            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: String(exactMatch.userName).trim() } : {}),
+            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: normalizeName(exactMatch.userName) } : {}),
             ...(exactMatch.heightCm != null ? { heightCm: String(exactMatch.heightCm) } : {}),
             ...(exactMatch.bmr != null ? { bmr: String(exactMatch.bmr) } : {}),
           }));
@@ -327,7 +332,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({
       ...prev,
       phoneNumber: member.phoneNumber,
-      ...(member.userName && String(member.userName).trim() ? { name: String(member.userName).trim() } : {}),
+      ...(member.userName && String(member.userName).trim() ? { name: normalizeName(member.userName) } : {}),
       ...(member.heightCm != null ? { heightCm: String(member.heightCm) } : {}),
       ...(member.bmr != null ? { bmr: String(member.bmr) } : {}),
     }));
