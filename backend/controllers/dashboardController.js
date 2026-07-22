@@ -1,4 +1,4 @@
-import { getDashboard } from "../services/DashboardService.js";
+import { getDashboard } from "../services/dashboardService.js";
 
 export async function getDashboardController(req, res) {
     try {
