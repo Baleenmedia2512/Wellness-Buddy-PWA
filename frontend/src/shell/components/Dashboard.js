@@ -293,10 +293,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   };
 
   const diaryUndoLabels = {
-    food: 'Food entry deleted',
-    weight: 'Weight entry deleted',
-    education: 'Education entry deleted',
-    watch: 'Smartwatch entry deleted',
+    food: 'Food entry removed',
+    weight: 'Weight entry removed',
+    education: 'Education entry removed',
+    watch: 'Smartwatch entry removed',
+    unknown: 'Capture removed',
   };
 
   const restoreDiaryEntry = async ({ kind, entryId, userId }) => {
@@ -717,6 +718,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
+                  pendingUndo={diaryUndo}
                   analyzingCaptureIds={analyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />

@@ -211,6 +211,8 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
  * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled (coach read-only view)
+ * @param {{ kind: string, entryId: string|number, message: string, expiresAt: number }|null} [props.pendingUndo]
+ *        active undo window — keeps empty feed visible while countdown runs
  * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
  *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
  *        Empty-state copy adapts accordingly.
@@ -231,6 +233,7 @@ export default function DiaryFeed({
   onEntryOpen,
   onEntryDelete,
   canDelete = true,
+  pendingUndo = null,
   filterKinds = null,
   showTimeline = false,
   analyzingCaptureIds = null,
@@ -386,7 +389,7 @@ export default function DiaryFeed({
     ? withOptimisticEntries.filter((e) => filterKinds.includes(e.kind))
     : withOptimisticEntries;
 
-  if (visibleEntries.length === 0) {
+  if (visibleEntries.length === 0 && !pendingUndo) {
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
   }
 
@@ -408,7 +411,8 @@ export default function DiaryFeed({
         {/* Read-only hint when a coach views a member diary */}
         {canDelete === false && (
           <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
-            Viewing a team member&apos;s diary — swipe to delete is only available on your own entries.
+            Viewing a team member&apos;s diary — swipe to delete only works on your own entries.
+            Use <strong>View mine</strong> above to switch back.
           </div>
         )}
 
@@ -420,18 +424,21 @@ export default function DiaryFeed({
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>
 
-        {/* Timeline entries */}
+        {/* Timeline entries (may be empty while undo countdown is active) */}
         <div className="pl-1">
           {visibleEntries.map((entry, idx) => (
             <TimelineEntryWrapper
               key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
               isLast={idx === visibleEntries.length - 1}
             >
-              {/* hideTime not set — time shown inside the tile */}
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
+
+        {visibleEntries.length === 0 && pendingUndo && (
+          <p className="text-sm text-gray-500 px-1 mt-1">No other entries for this day.</p>
+        )}
       </div>
     );
   }
