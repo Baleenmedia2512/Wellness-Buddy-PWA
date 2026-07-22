@@ -20,13 +20,11 @@ function resolveUserPhone(user) {
 }
 
 async function resolveDbUserId(user) {
+  const cached = Session.getDbUserId();
+  if (cached) return cached;
+
   const fromUser = user?.id || user?.UserId;
   if (fromUser) return fromUser;
-
-  const stored = Session.getOtpUser();
-  if (stored?.id || stored?.UserId) {
-    return stored.id || stored.UserId;
-  }
 
   if (user) {
     const lookedUp = await getUserId(user);
@@ -36,25 +34,18 @@ async function resolveDbUserId(user) {
   const storedRaw = Session.getOtpUserRaw();
   if (storedRaw) {
     try {
-      const parsed = JSON.parse(storedRaw);
-      if (parsed?.id || parsed?.UserId) {
-        return parsed.id || parsed.UserId;
+      const stored = JSON.parse(storedRaw);
+      if (stored?.id || stored?.UserId) {
+        return stored.id || stored.UserId;
       }
-      const lookedUp = await getUserId(parsed);
+      const lookedUp = await getUserId(stored);
       if (lookedUp) return lookedUp;
     } catch {
       /* ignore */
     }
   }
 
-  const cached = Session.getDbUserId();
-  if (cached && stored) {
-    const otpId = stored.id || stored.UserId;
-    if (otpId && String(cached) === String(otpId)) return cached;
-    return null;
-  }
-
-  return cached || null;
+  return null;
 }
 
 function mapCoachResponse(json) {

@@ -150,28 +150,6 @@ export function validateDeleteAccount(body) {
   return { email };
 }
 
-function parseUserId(raw) {
-  const uid = Number.parseInt(String(raw), 10);
-  if (!Number.isFinite(uid) || uid <= 0) {
-    throw new ValidationError(400, 'Missing or invalid field: userId');
-  }
-  return uid;
-}
-
-export function validateRequestEmailChange(body) {
-  if (!body) throw new ValidationError(400, 'Request body is missing');
-  const userId = parseUserId(body.userId);
-  const currentEmail = normalizeEmail(body.currentEmail ?? body.email);
-  const newEmail = normalizeEmail(body.newEmail);
-  if (!currentEmail) throw new ValidationError(400, 'Missing required field: currentEmail');
-  if (!newEmail) throw new ValidationError(400, 'Missing required field: newEmail');
-  return { userId, currentEmail, newEmail };
-}
-
-export function validateChangeEmail(body) {
-  return validateRequestEmailChange(body);
-}
-
 export function validateSkipSetup(body) {
   const { email, coachId, coachName } = body || {};
   if (!email) throw new ValidationError(400, 'Email is required');

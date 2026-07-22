@@ -33,15 +33,6 @@ export async function fetchActiveOtp(recipient, contactType) {
   return data && data.length > 0 ? data[0] : null;
 }
 
-export async function deactivateOtpById(id) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('otp_tokens_table')
-    .update({ IsActive: false })
-    .eq('"ID"', id);
-  if (error) throw error;
-}
-
 /**
  * Returns true if the given recipient has a verified OTP within the past
  * 15 minutes. Used by the delete-account endpoint to enforce that the OTP

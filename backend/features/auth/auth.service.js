@@ -12,23 +12,6 @@ import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-const MAX_OTP_VERIFY_ATTEMPTS = 5;
-const otpFailedAttempts = new Map();
-
-function otpAttemptKey(recipient, contactType) {
-  return `${contactType}:${recipient}`;
-}
-
-function clearFailedOtpAttempts(recipient, contactType) {
-  otpFailedAttempts.delete(otpAttemptKey(recipient, contactType));
-}
-
-function recordFailedOtpAttempt(recipient, contactType) {
-  const key = otpAttemptKey(recipient, contactType);
-  const count = (otpFailedAttempts.get(key) || 0) + 1;
-  otpFailedAttempts.set(key, count);
-  return count;
-}
 
 /** Returns names of missing SMTP env-vars, analogous to getMdtSmsConfigGaps(). */
 function getSmtpConfigGaps() {
@@ -148,7 +131,6 @@ async function createAndDeliverOtp({ recipient, contactType }) {
   });
 
   await repo.deactivateActiveOtps(recipient, contactType);
-  clearFailedOtpAttempts(recipient, contactType);
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await bcrypt.hash(otp, 10);
@@ -386,17 +368,9 @@ export async function sendOtp({ recipient, contactType }) {
 
 async function handleDemoVerify({ recipient, otp, purpose }) {
   const validDeleteOtp = purpose === 'delete' && otp === '654321';
-  const validEmailChangeOtp = purpose === 'email_change' && otp === '123456';
-  const validLoginOtp = purpose !== 'delete' && purpose !== 'email_change' && otp === '123456';
-  if (!validDeleteOtp && !validEmailChangeOtp && !validLoginOtp) {
+  const validLoginOtp = purpose !== 'delete' && otp === '123456';
+  if (!validDeleteOtp && !validLoginOtp) {
     return { httpStatus: 400, body: { success: false, message: 'Invalid OTP. Please try again.' } };
-  }
-
-  if (purpose === 'delete' || purpose === 'email_change') {
-    return {
-      httpStatus: 200,
-      body: { success: true, message: 'OTP verified successfully', verified: true },
-    };
   }
 
   const existing = await repo.findUserByEmailLite(recipient);
@@ -451,7 +425,7 @@ export async function verifyOtp(input) {
 
   const otpData = await repo.fetchActiveOtp(recipient, contactType);
   if (!otpData) {
-    return { httpStatus: 404, body: { success: false, message: 'No active OTP found. Please request a new one.' } };
+    return { httpStatus: 404, body: { success: false, message: 'No active OTP found' } };
   }
 
   // Compare current IST time with stored expiry time (both in IST)
@@ -460,44 +434,15 @@ export async function verifyOtp(input) {
   const currentIST = new Date(now.getTime() + istOffset);
   const expiresAt = new Date(otpData.ExpiresAt + 'Z');
   if (currentIST > expiresAt) {
-    await repo.deactivateOtpById(otpData.ID);
-    return { httpStatus: 400, body: { success: false, message: 'OTP expired. Please request a new one.' } };
+    return { httpStatus: 400, body: { success: false, message: 'OTP expired' } };
   }
 
   const valid = await bcrypt.compare(otp, otpData.OTPHash);
   if (!valid) {
-    const attempts = recordFailedOtpAttempt(recipient, contactType);
-    if (attempts >= MAX_OTP_VERIFY_ATTEMPTS) {
-      await repo.deactivateOtpById(otpData.ID);
-      clearFailedOtpAttempts(recipient, contactType);
-      return {
-        httpStatus: 429,
-        body: {
-          success: false,
-          message: 'Too many failed attempts. Please request a new OTP.',
-          maxAttemptsExceeded: true,
-        },
-      };
-    }
-    return {
-      httpStatus: 400,
-      body: {
-        success: false,
-        message: 'Invalid OTP. Please try again.',
-        attemptsLeft: MAX_OTP_VERIFY_ATTEMPTS - attempts,
-      },
-    };
+    return { httpStatus: 400, body: { success: false, message: 'Invalid OTP' } };
   }
 
   await repo.markOtpVerified(otpData.ID);
-  clearFailedOtpAttempts(recipient, contactType);
-
-  if (purpose === 'email_change' || purpose === 'delete') {
-    return {
-      httpStatus: 200,
-      body: { success: true, message: 'OTP verified successfully', verified: true },
-    };
-  }
 
   const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
 

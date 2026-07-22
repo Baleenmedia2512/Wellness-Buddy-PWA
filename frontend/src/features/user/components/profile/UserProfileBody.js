@@ -5,7 +5,7 @@ import UserProfileFields from './UserProfileFields';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 
-const UserProfileBody = ({ isLoading, form, email, emailEditable = true, latestWeight, error, successMessage }) => (
+const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successMessage }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
       <div className="flex items-center justify-center py-12">
@@ -15,7 +15,7 @@ const UserProfileBody = ({ isLoading, form, email, emailEditable = true, latestW
       <>
         <UserProfileFields
           email={email}
-          setEmail={emailEditable ? form.setEmail : undefined}
+          setEmail={form.setEmail}
           name={form.name} setName={form.setName}
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
