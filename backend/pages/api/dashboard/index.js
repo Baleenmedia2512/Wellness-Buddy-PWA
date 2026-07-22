@@ -1,4 +1,4 @@
-import { getDashboard } from "../../../services/DashboardService.js";
+import { getDashboard } from "../../../services/dashboardService.js";
 
 export default async function handler(req, res) {
     if (req.method !== "GET") {
