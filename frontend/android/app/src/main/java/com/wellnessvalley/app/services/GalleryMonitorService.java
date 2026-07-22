@@ -69,7 +69,7 @@ public class GalleryMonitorService extends Service {
     private com.google.android.gms.location.LocationCallback gpsLocationCallback;
 
     // Database API configuration
-    private static final String DEFAULT_API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
+    private static final String DEFAULT_API_BASE_URL = "https://wellness-valley.vercel.app";
 
     @Override
     public void onCreate() {

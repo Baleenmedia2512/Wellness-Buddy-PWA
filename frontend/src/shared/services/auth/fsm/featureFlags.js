@@ -48,17 +48,21 @@ function readHostname() {
  *   - hostname is localhost / 127.0.0.1 / *.local
  *   - hostname contains "staging", "preview", "dev", "test", "qa"
  *   - hostname is a Vercel preview URL (*.vercel.app that is NOT the
- *     production alias — we treat all *.vercel.app as non-prod unless
- *     REACT_APP_PRODUCTION_HOSTS lists it).
+ *     production alias — see BUILTIN_PRODUCTION_HOSTS + REACT_APP_PRODUCTION_HOSTS).
  *
  * Production hosts (explicit allowlist override):
- *   When REACT_APP_PRODUCTION_HOSTS is set (comma-separated), any matching
- *   hostname is treated as production regardless of the heuristics above.
+ *   BUILTIN_PRODUCTION_HOSTS and REACT_APP_PRODUCTION_HOSTS (comma-separated)
+ *   short-circuit all staging heuristics when hostname matches.
  */
+/** Capacitor Android/iOS WebView hostname — production, not staging preview. */
+const BUILTIN_PRODUCTION_HOSTS = ["wellness-valley.vercel.app"];
+
 export function isStagingEnvironment() {
   // Explicit production allowlist short-circuits everything.
-  const prodList = (process.env.REACT_APP_PRODUCTION_HOSTS || "")
-    .split(",")
+  const prodList = [
+    ...BUILTIN_PRODUCTION_HOSTS,
+    ...(process.env.REACT_APP_PRODUCTION_HOSTS || "").split(","),
+  ]
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   const host = readHostname();

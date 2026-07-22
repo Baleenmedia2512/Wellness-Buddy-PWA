@@ -112,6 +112,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
+                      android:host="wellness-valley.vercel.app"
+                      android:pathPrefix="/share/" />
+                <data android:scheme="https"
+                      android:host="wellness-valley.vercel.app"
+                      android:path="/share" />
+                <data android:scheme="https"
                       android:host="wellness-buddy-pwa-eta.vercel.app"
                       android:pathPrefix="/share/" />
                 <data android:scheme="https"
