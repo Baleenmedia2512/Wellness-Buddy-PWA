@@ -11,7 +11,7 @@ import * as captures from '../captures/captures.service.js';
 import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
-import { nowUtc, addUtcDays, parseClientTimestampToUtc } from '../../shared/lib/datetime/index.js';
+import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestampToUtcIso, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 
@@ -189,12 +189,27 @@ export async function save(input) {
     };
   }
 
-  let createdAtUtc;
+  let utcInstant;
   if (clientTimestamp) {
-    createdAtUtc = parseClientTimestampToUtc(clientTimestamp).utcIso;
-  } else {
-    createdAtUtc = currentTime;
+    utcInstant = parseClientTimestampToUtc(clientTimestamp).utcIso;
+  } else if (captureId) {
+    try {
+      const capture = await captures.findById(captureId);
+      if (capture?.CreatedAt) {
+        utcInstant = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      }
+    } catch (err) {
+      logger.warn('analysis.save: failed to resolve capture CreatedAt', {
+        captureId, userId: userId?.toString(), err: err?.message,
+      });
+    }
   }
+  if (!utcInstant) {
+    utcInstant = currentTime;
+  }
+
+  const createdAtLegacy = utcInstantToLegacyIstWallStorage(utcInstant, IANA_IST);
+  const updatedAtLegacy = utcInstantToLegacyIstWallStorage(currentTime, IANA_IST);
 
   const analysisPayload = {
     ImagePath: imagePath,
@@ -244,8 +259,8 @@ export async function save(input) {
           UserID: userId.toString(),
           CaptureID: captureId,
           ...analysisPayload,
-          CreatedAt: createdAtUtc,
-          UpdatedAt: currentTime,
+          CreatedAt: createdAtLegacy,
+          UpdatedAt: updatedAtLegacy,
           City: city || null,
           Village: village || null,
           CenterName: centerName || null,
@@ -259,8 +274,8 @@ export async function save(input) {
       data = await repo.insertAnalysis({
         UserID: userId.toString(),
         ...analysisPayload,
-        CreatedAt: createdAtUtc,
-        UpdatedAt: currentTime,
+        CreatedAt: createdAtLegacy,
+        UpdatedAt: updatedAtLegacy,
         City: city || null,
         Village: village || null,
         CenterName: centerName || null,

@@ -43,7 +43,7 @@ describe('toDiaryEntry food row displays preserved upload time', () => {
   it('uses food CreatedAt normalized for display (not Manual Log save time)', () => {
     const entry = toDiaryEntry('food', {
       ID: 1,
-      CreatedAt: '2026-07-22T00:41:29.000Z',
+      CreatedAt: '2026-07-22 06:11:29.000',
       AnalysisData: '{"foods":[]}',
       TotalCalories: 100,
       TotalProtein: 0,
@@ -62,5 +62,57 @@ describe('toDiaryEntry food row displays preserved upload time', () => {
       hour12: true,
     });
     assert.match(istTime, /6:11\s*AM/i);
+  });
+});
+
+describe('toDiaryEntry education matches unknown capture time', () => {
+  it('shows 7:45 AM IST when legacy row stores IST wall (not UTC digits)', () => {
+    const captureUtc = '2026-07-22T02:15:28.287Z';
+    const unknownEntry = toDiaryEntry('unknown', {
+      ID: 2362,
+      ImageType: 'unknown',
+      CreatedAt: captureUtc,
+      ImageBase64: null,
+      ImagePath: null,
+      PublicShareToken: 'tok',
+    }, { timezoneIana: IANA_IST });
+
+    const educationEntry = toDiaryEntry('education', {
+      Id: 1136,
+      CreatedAt: '2026-07-22 07:45:28.287',
+      Platform: 'zoom',
+      Topic: 'Session',
+      Confidence: 0.9,
+      ImageBase64: null,
+    }, { timezoneIana: IANA_IST });
+
+    assert.equal(unknownEntry.capturedAt, captureUtc);
+    assert.equal(educationEntry.capturedAt, captureUtc);
+  });
+
+  it('weight legacy IST wall storage matches capture timestamptz', () => {
+    const captureUtc = '2026-07-22T00:41:29.000Z';
+    const unknownEntry = toDiaryEntry('unknown', {
+      ID: 100,
+      ImageType: 'unknown',
+      CreatedAt: captureUtc,
+      ImageBase64: null,
+      ImagePath: null,
+      PublicShareToken: 'tok',
+    }, { timezoneIana: IANA_IST });
+
+    const weightEntry = toDiaryEntry('weight', {
+      ID: 3028,
+      CreatedAt: '2026-07-22 06:11:29.000',
+      Weight: 70,
+      Bmi: null,
+      BodyFat: null,
+      MuscleMass: null,
+      Bmr: null,
+      WeightImageBase64: null,
+    }, { timezoneIana: IANA_IST });
+
+    assert.equal(unknownEntry.capturedAt, captureUtc);
+    assert.equal(weightEntry.capturedAt, captureUtc);
   });
 });

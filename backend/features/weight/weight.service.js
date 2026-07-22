@@ -7,6 +7,8 @@ import {
   timestampToCalendarYmd,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
+  utcInstantToLegacyIstWallStorage,
+  IANA_IST,
 } from '../../shared/lib/datetime/index.js';
 import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
@@ -41,9 +43,11 @@ async function resolveEffectiveBodyFat(userId, bodyFatValue, entryId) {
   return repo.findLatestBodyFat(userId);
 }
 
-function deriveCreatedAt(clientTimestamp) {
-  if (!clientTimestamp) return nowUtc();
-  return parseClientTimestampToUtc(clientTimestamp).utcIso;
+function deriveCreatedAtForStorage(clientTimestamp) {
+  const utcIso = clientTimestamp
+    ? parseClientTimestampToUtc(clientTimestamp).utcIso
+    : nowUtc();
+  return utcInstantToLegacyIstWallStorage(utcIso, IANA_IST);
 }
 
 function formatRow(row) {
@@ -138,8 +142,8 @@ export async function saveWeight(input) {
     }
   }
 
-  const createdAtIST = deriveCreatedAt(effectiveClientTimestamp);
-  const currentTime = nowUtc();
+  const createdAtLegacy = deriveCreatedAtForStorage(effectiveClientTimestamp);
+  const updatedAtLegacy = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
 
   let data;
   let wasUpdated = false;
@@ -164,8 +168,8 @@ export async function saveWeight(input) {
       Bmr: bmrValue,
       WeightImageBase64: imageBase64ToSave,
       CaptureID: captureId || null,
-      CreatedAt: createdAtIST,
-      UpdatedAt: currentTime,
+      CreatedAt: createdAtLegacy,
+      UpdatedAt: updatedAtLegacy,
       City: city || null,
       Village: village || null,
       CenterName: centerName || null,

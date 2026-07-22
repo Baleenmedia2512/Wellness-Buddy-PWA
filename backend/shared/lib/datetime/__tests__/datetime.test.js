@@ -16,6 +16,7 @@ import {
   addUtcDays,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
+  utcInstantToLegacyIstWallStorage,
   timestampToCalendarYmd,
 } from '../index.js';
 import {
@@ -189,5 +190,17 @@ describe('timezone-less timestamps as IST (diary wall-clock)', () => {
       ['gte', 'CreatedAt', '2026-07-19T18:30:00.000Z'],
       ['lte', 'CreatedAt', '2026-07-22T18:29:59.999Z'],
     ]);
+  });
+
+  it('round-trips UTC instant through legacy IST wall storage', () => {
+    // 7:45 AM IST = 02:15:28 UTC — same instant as captures_table timestamptz
+    const utcIso = '2026-07-22T02:15:28.287Z';
+    const legacy = utcInstantToLegacyIstWallStorage(utcIso, IANA_IST);
+    assert.equal(legacy, '2026-07-22 07:45:28.287');
+    assert.equal(
+      normalizeStoredTimestampToUtcIso(legacy, IANA_IST),
+      utcIso,
+    );
+    assert.equal(formatUtcForDisplay(utcIso, IANA_IST, 'h:mm a'), '7:45 AM');
   });
 });

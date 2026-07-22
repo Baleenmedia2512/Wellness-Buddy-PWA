@@ -1,5 +1,9 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
+
+function legacyIstWallNow() {
+  return utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
@@ -65,7 +69,7 @@ export async function listAnalyses({ userId, limit, offset }) {
 
 export async function softDeleteAnalysis(id, userId) {
   const supabase = getSupabaseClient();
-  const currentTime = nowUtc();
+  const currentTime = legacyIstWallNow();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 1, UpdatedAt: currentTime })
@@ -90,7 +94,7 @@ export async function checkOwnership(id, userId) {
 
 export async function restoreAnalysis(id) {
   const supabase = getSupabaseClient();
-  const currentTime = nowUtc();
+  const currentTime = legacyIstWallNow();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
     .update({ IsDeleted: 0, UpdatedAt: currentTime })
@@ -155,7 +159,7 @@ const IMMUTABLE_TIMESTAMP_KEYS = new Set([
  */
 export async function updateWithAnalysisResult(id, userId, analysisFields) {
   const supabase = getSupabaseClient();
-  const currentTime = nowUtc();
+  const currentTime = legacyIstWallNow();
   const safeFields = Object.fromEntries(
     Object.entries(analysisFields).filter(([key]) => !IMMUTABLE_TIMESTAMP_KEYS.has(key)),
   );
