@@ -124,7 +124,21 @@ export async function saveWeight(input) {
     }
   }
 
-  const createdAtIST = deriveCreatedAt(clientTimestamp);
+  let effectiveClientTimestamp = clientTimestamp;
+  if (captureId && !entryId && !effectiveClientTimestamp) {
+    try {
+      const capture = await captures.findById(captureId);
+      if (capture?.CreatedAt) {
+        effectiveClientTimestamp = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      }
+    } catch (err) {
+      logger.warn('weight.saveWeight: failed to resolve capture CreatedAt', {
+        captureId, userId: String(userId), err: err?.message,
+      });
+    }
+  }
+
+  const createdAtIST = deriveCreatedAt(effectiveClientTimestamp);
   const currentTime = nowUtc();
 
   let data;

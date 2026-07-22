@@ -84,6 +84,12 @@ function buildNoonTimestamp(date) {
   return d.toISOString();
 }
 
+/** Prefer the original upload instant; fall back to diary-date noon only when missing. */
+function resolveManualLogTimestamp(originalCapturedAt, diaryDate) {
+  if (originalCapturedAt) return originalCapturedAt;
+  return buildNoonTimestamp(diaryDate);
+}
+
 export default function UnknownEntryFlow({
   open,
   captureId,
@@ -348,8 +354,7 @@ export default function UnknownEntryFlow({
         bmr,
         captureId,
         imageBase64ToSave: imageBase64,
-        // Anchor the record to the diary's selected date, not the current time.
-        clientTimestamp: buildNoonTimestamp(diaryDate),
+        clientTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       finish({ kind: 'weight', captureId });
     } catch {
@@ -370,7 +375,7 @@ export default function UnknownEntryFlow({
         topic,
         captureId,
         imageBase64,
-        imageTimestamp: buildNoonTimestamp(diaryDate),
+        imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       await retagCapture(captureKind);
       finish({ kind: 'education', captureId });

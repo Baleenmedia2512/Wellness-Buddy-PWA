@@ -71,11 +71,18 @@ export async function insertEntry(payload) {
   return data;
 }
 
+const IMMUTABLE_TIMESTAMP_FIELDS = new Set([
+  'CreatedAt', 'created_at', 'UpdatedAt', 'updated_at',
+]);
+
 export async function updateEntry(entryId, userId, updates) {
   const supabase = getSupabaseClient();
+  const safeUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([key]) => !IMMUTABLE_TIMESTAMP_FIELDS.has(key)),
+  );
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ ...updates, UpdatedAt: nowUtc() })
+    .update({ ...safeUpdates, UpdatedAt: nowUtc() })
     .eq('ID', entryId)
     .eq('UserId', parseInt(userId))
     .or('IsDeleted.is.null,IsDeleted.eq.0')
