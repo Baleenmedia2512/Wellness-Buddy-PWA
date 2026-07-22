@@ -210,6 +210,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
+ * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled (coach read-only view)
  * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
  *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
  *        Empty-state copy adapts accordingly.
@@ -229,6 +230,7 @@ export default function DiaryFeed({
   refreshKey: externalRefreshKey = 0,
   onEntryOpen,
   onEntryDelete,
+  canDelete = true,
   filterKinds = null,
   showTimeline = false,
   analyzingCaptureIds = null,
@@ -307,6 +309,7 @@ export default function DiaryFeed({
           entry={entry}
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
+          canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
           {...(entry.kind === 'unknown'
@@ -315,7 +318,7 @@ export default function DiaryFeed({
         />
       );
     },
-    [onEntryOpen, onEntryDelete, analyzingCaptureIds, pendingCaptureMeta, ownerTimezoneIana],
+    [onEntryOpen, onEntryDelete, canDelete, analyzingCaptureIds, pendingCaptureMeta, ownerTimezoneIana],
   );
 
   /** Build optimistic unknown rows for captures still being classified. */
@@ -399,6 +402,13 @@ export default function DiaryFeed({
           >
             <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
             Refreshing…
+          </div>
+        )}
+
+        {/* Read-only hint when a coach views a member diary */}
+        {canDelete === false && (
+          <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+            Viewing a team member&apos;s diary — swipe to delete is only available on your own entries.
           </div>
         )}
 
