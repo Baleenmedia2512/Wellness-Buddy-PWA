@@ -4,6 +4,11 @@
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
+import {
+  buildPhoneLookupVariants,
+  phonesMatch,
+  canonicalPhoneForStorage,
+} from '../auth/domain/phone-identity.rules.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 
@@ -59,6 +64,56 @@ export async function findByUsername(username) {
   if (error) throw error;
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
+
+/**
+ * Returns a team_table row whose email matches `email` and belongs to another user.
+ * @param {string} email normalized lowercase email
+ * @param {number|string|null} [excludeUserId]
+ */
+export async function findConflictingEmail(email, excludeUserId = null) {
+  const row = await findByEmail(email, '"UserId", "Email"');
+  if (!row) return null;
+  if (excludeUserId != null && Number(row.UserId) === Number(excludeUserId)) return null;
+  return row;
+}
+
+/**
+ * Returns a team_table row whose phone matches `phone` (all equivalent formats)
+ * and belongs to another user.
+ * @param {string} phone
+ * @param {number|string|null} [excludeUserId]
+ */
+export async function findConflictingPhone(phone, excludeUserId = null) {
+  const variants = buildPhoneLookupVariants(phone);
+  if (variants.length === 0) return null;
+
+  const supabase = getSupabaseClient();
+  const seen = new Set();
+
+  for (const variant of variants) {
+    const { data, error } = await supabase
+      .from(TEAM)
+      .select('"UserId", "PhoneNumber"')
+      .eq('PhoneNumber', variant)
+      .limit(5);
+    if (error) throw error;
+    if (!Array.isArray(data)) continue;
+
+    for (const row of data) {
+      const key = String(row.UserId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      if (excludeUserId != null && Number(row.UserId) === Number(excludeUserId)) continue;
+      if (phonesMatch(phone, row.PhoneNumber)) return row;
+    }
+  }
+
+  return null;
+}
+
+/** Canonical phone string for team_table persistence. */
+export { canonicalPhoneForStorage };
 
 export async function getProfile(email) {
   return findByEmail(

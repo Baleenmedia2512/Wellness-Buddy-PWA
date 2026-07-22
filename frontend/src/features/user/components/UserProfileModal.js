@@ -11,6 +11,12 @@ import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import FaceDetectionToast from './profile/FaceDetectionToast';
 import UserProfileFooter from './profile/UserProfileFooter';
+import EmailChangeModal from './EmailChangeModal';
+import { isGoogleUser } from '../../../shared/services/firebase';
+import {
+  isValidProfileEmail,
+  normalizeProfileEmail,
+} from '../services/emailChangeService';
 
 const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileUpdate }) => {
   const form = useProfileForm();
@@ -23,6 +29,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [showEmailChangeModal, setShowEmailChangeModal] = useState(false);
+  const [pendingNewEmail, setPendingNewEmail] = useState('');
+  const emailEditable = !isGoogleUser();
   const face = useFaceDetection();
   const handleSaveRef = useRef(null);
 
@@ -84,6 +93,13 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
         if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
       }
+      const currentEmail = normalizeProfileEmail(user.email);
+      const nextEmail = normalizeProfileEmail(form.email);
+      const emailChanged = emailEditable && nextEmail && nextEmail !== currentEmail;
+      if (emailChanged && !isValidProfileEmail(nextEmail)) {
+        setError('Please enter a valid email address.');
+        return;
+      }
       const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
       onProfileUpdate?.({
         name: form.name,
@@ -97,9 +113,13 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       await loadProfile();
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true); setProfileImage(null);
+      if (emailChanged) {
+        setPendingNewEmail(nextEmail);
+        setShowEmailChangeModal(true);
+      }
     } catch (e) { setError(e.message || 'Failed to save profile'); }
     finally { setIsSaving(false); }
-  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate, emailEditable]);
 
   handleSaveRef.current = handleSave;
 
@@ -131,10 +151,28 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => cropper.selectFile(e.target.files?.[0])} />
         <UserProfileBody isLoading={isLoading} form={form} email={form.email}
+          emailEditable={emailEditable}
           latestWeight={latestWeight} error={error} successMessage={successMessage} />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}
             onCancel={handleCancel} onSave={handleSave} />
+        )}
+        {emailEditable && user?.id && user?.email && (
+          <EmailChangeModal
+            isOpen={showEmailChangeModal}
+            onClose={() => {
+              setShowEmailChangeModal(false);
+              setPendingNewEmail('');
+              form.setEmail(user.email);
+            }}
+            userId={user.id}
+            currentEmail={user.email}
+            newEmail={pendingNewEmail}
+            onEmailUpdated={(updatedEmail) => {
+              form.setEmail(updatedEmail);
+              onProfileUpdate?.({ email: updatedEmail });
+            }}
+          />
         )}
       </div>
     </div>

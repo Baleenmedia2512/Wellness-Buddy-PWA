@@ -10,6 +10,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { resolveAuthenticatedUserId } from '../../../shared/services/syncSessionIdentity';
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
@@ -60,6 +61,11 @@ const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
+  const authenticatedUserId = resolveAuthenticatedUserId(user);
+  const activityUser = authenticatedUserId
+    ? { ...user, id: authenticatedUserId }
+    : user;
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
@@ -85,11 +91,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   useEffect(() => {
     let cancelled = false;
     const baseRole = mapRoleForApi(userRole);
-    if (baseRole !== 'member' || !user?.id) {
+    if (baseRole !== 'member' || !activityUser?.id) {
       setEffectiveRole(baseRole);
       return undefined;
     }
-    fetchHasTeamMembers(user.id)
+    fetchHasTeamMembers(activityUser.id)
       .then((hasTeam) => {
         if (!cancelled) setEffectiveRole(hasTeam ? 'coach' : 'member');
       })
@@ -97,7 +103,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         if (!cancelled) setEffectiveRole('member');
       });
     return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  }, [activityUser?.id, userRole]);
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -107,7 +113,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   };
 
   const fetchSummary = useCallback(async () => {
-    if (!user?.id || !apiBaseUrl) return;
+    if (!activityUser?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
@@ -115,7 +121,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
     try {
       const params = new URLSearchParams({
-        userId: String(user.id),
+        userId: String(activityUser.id),
         activityType: 'summary',
         dateRange,
         role: effectiveRole,
@@ -142,10 +148,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [activityUser?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchDetails = useCallback(async (activityType) => {
-    if (!user?.id || !apiBaseUrl || !activityType) return;
+    if (!activityUser?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
@@ -153,7 +159,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
     try {
       const params = new URLSearchParams({
-        userId: String(user.id),
+        userId: String(activityUser.id),
         activityType,
         dateRange,
         role: effectiveRole,
@@ -181,16 +187,16 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [activityUser?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchMemberSummary = useCallback(async () => {
-    if (!user?.id || !apiBaseUrl) return;
+    if (!activityUser?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setMemberSummaryLoading(true);
     try {
       const params = new URLSearchParams({
-        userId: String(user.id),
+        userId: String(activityUser.id),
         activityType: 'member-summary',
         dateRange,
         role: effectiveRole,
@@ -217,7 +223,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setMemberSummaryLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [activityUser?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchSummary();

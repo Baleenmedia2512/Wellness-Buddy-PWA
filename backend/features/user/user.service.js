@@ -6,6 +6,7 @@
  * unchanged. New code should import directly from the specific module.
  */
 export { getProfile, updateProfile, snoozeProfilePic, deleteAccount } from './profile.service.js';
+export { requestEmailChange, changeEmail } from './change-email.service.js';
 export { saveGoogleUser } from './google-auth.service.js';
 export { lookupUser } from './lookup.service.js';
 export { skipSetup } from './setup.service.js';

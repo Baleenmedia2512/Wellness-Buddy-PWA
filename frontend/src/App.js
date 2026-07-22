@@ -88,6 +88,11 @@ import {
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache } from "./shared/services/userIdentity";
+import {
+  persistOtpSessionUser,
+  hydrateOtpUserId,
+  resolveAuthenticatedUserId,
+} from "./shared/services/syncSessionIdentity";
 import { getVersionString } from "./config/version";
 import { getApiBaseUrl } from "./config/api.config";
 import {
@@ -272,12 +277,7 @@ function WellnessValleyApp() {
     if (!Session.isOtpVerified()) return null;
     const u = Session.getOtpUser();
     if (!u) return null;
-    // Attach cached DB userId so user.id is available from the first render.
-    if (!u.id) {
-      const dbId = Session.getDbUserId();
-      if (dbId) u.id = dbId;
-    }
-    return u;
+    return hydrateOtpUserId(u);
   });
   // ? iOS Sign-out gate: persisted in localStorage so it survives app restarts
   // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
@@ -942,7 +942,7 @@ function WellnessValleyApp() {
 
   // Keep userId ref in sync so mount-only resume listeners read live values.
   useEffect(() => {
-    _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
+    _userIdRef.current = resolveAuthenticatedUserId(user);
   }, [user]);
 
   // Email gate: fire for session-restored phone users who still have no email.
@@ -3112,17 +3112,16 @@ function WellnessValleyApp() {
     otpCacheRestoredRef.current = false; // run exactly once
     (async () => {
       try {
-        // Attach DB userId if not yet present
-        if (!user.id) {
-          const cachedId = Session.getDbUserId();
-          if (cachedId) {
-            user.id = cachedId;
-          } else {
-            const dbId = await getUserId(user);
-            if (dbId) {
-              user.id = dbId;
-              Session.setDbUserId(dbId);
-            }
+        const hydrated = hydrateOtpUserId(user);
+        if (hydrated.id && hydrated.id !== user.id) {
+          setUser(hydrated);
+        } else if (!user.id && hydrated.id) {
+          user.id = hydrated.id;
+        } else if (!user.id) {
+          const dbId = await getUserId(user);
+          if (dbId) {
+            persistOtpSessionUser({ ...user, id: dbId });
+            setUser((prev) => (prev ? { ...prev, id: dbId } : prev));
           }
         }
         // Status check ? shows inactive modal if account was deactivated.
@@ -6745,6 +6744,7 @@ function WellnessValleyApp() {
     if (otpUserRaw) {
       try {
         const parsedUser = JSON.parse(otpUserRaw);
+        persistOtpSessionUser(parsedUser);
 
         // DEBUG: Log the parsed user object to see what status value we're getting
         console.log("?? [handleOtpVerified] Parsed user object:", parsedUser);
@@ -7226,6 +7226,11 @@ function WellnessValleyApp() {
             userRole={userRole}
             onBack={() => navigateTo('home')}
             onSignOut={handleSignOut}
+            onEmailUpdated={(updatedEmail) => {
+              Session.setUserEmail(updatedEmail);
+              persistOtpSessionUser({ ...user, email: updatedEmail });
+              setUser((prev) => (prev ? { ...prev, email: updatedEmail } : prev));
+            }}
             onProfileUpdate={(profileData) => {
               const email = user?.email || Session.getUserEmail() || "";
               profileCompletedRef.current = false;

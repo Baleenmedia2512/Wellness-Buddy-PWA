@@ -16,6 +16,14 @@ import {
 } from '../../utils/tdeeCalculations.js';
 import * as repo from './user.repository.js';
 import {
+  assertPhoneAvailable,
+  isUniqueViolationError,
+  uniqueViolationResponse,
+} from './contact-uniqueness.service.js';
+import {
+  phonesMatch,
+} from '../auth/domain/phone-identity.rules.js';
+import {
   hasValidProfileName,
   isProfileComplete,
 } from './domain/profileCompleteness.js';
@@ -99,7 +107,13 @@ function buildProfileUpdate({
   if (timezoneIana !== undefined) updateData.timezone_iana = timezoneIana;
   if (phoneNumber != null && String(phoneNumber).trim() !== '') {
     const cleaned = String(phoneNumber).trim().replace(/[\s\-()]/g, '');
-    if (/^\+?[0-9]{10,15}$/.test(cleaned)) { updateData.PhoneNumber = cleaned; cleanedPhoneNumber = cleaned; }
+    if (/^\+?[0-9]{10,15}$/.test(cleaned)) {
+      const storedPhone = repo.canonicalPhoneForStorage(cleaned);
+      if (storedPhone) {
+        updateData.PhoneNumber = storedPhone;
+        cleanedPhoneNumber = storedPhone;
+      }
+    }
   }
   if (profileImage != null && profileImage.startsWith('data:image/')) {
     updateData.ProfileImage = profileImage;
@@ -109,7 +123,7 @@ function buildProfileUpdate({
 }
 
 function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId, timezoneIana }) {
-  if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
+  if (cleanedPhoneNumber && !phonesMatch(cleanedPhoneNumber, verifyRow.PhoneNumber)) {
     throw new Error('Phone number was not saved. Please try again.');
   }
   if (height != null) {
@@ -156,6 +170,13 @@ export async function updateProfile(input) {
 
   const { updateData, cleanedPhoneNumber } = buildProfileUpdate(input);
 
+  if (cleanedPhoneNumber) {
+    const phoneCheck = await assertPhoneAvailable(cleanedPhoneNumber, userId);
+    if (!phoneCheck.ok) {
+      return { httpStatus: phoneCheck.httpStatus, body: phoneCheck.body };
+    }
+  }
+
   let savedPhysicalActivityLevel = null;
   if (physicalActivityLevel != null && isValidPhysicalActivityLevel(physicalActivityLevel)) {
     savedPhysicalActivityLevel = physicalActivityLevel;
@@ -163,7 +184,12 @@ export async function updateProfile(input) {
 
   let savedCommunityId;
   if (Object.keys(updateData).length > 0) {
-    await repo.updateUserById(userId, updateData);
+    try {
+      await repo.updateUserById(userId, updateData);
+    } catch (err) {
+      if (isUniqueViolationError(err)) return uniqueViolationResponse(err);
+      throw err;
+    }
     logger.info('[profile/update] database update result', {
       userId,
       updatedFields: Object.keys(updateData),

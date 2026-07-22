@@ -21,7 +21,7 @@ import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "../../../shared/components/common/HierarchicalReportLayout";
 import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
-import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
+import { resolveAuthenticatedUserId } from "../../../shared/services/syncSessionIdentity";
 import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
 import { TeamMemberProfileModal } from "../../../shared/components/TeamMemberProfileModal";
 
@@ -450,6 +450,10 @@ function TimeReportDetails({ node, dateRange, filter }) {
 // ΓöÇΓöÇΓöÇ Main component ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
+  const authenticatedUserId = resolveAuthenticatedUserId(user);
+  const activityUser = authenticatedUserId
+    ? { ...user, id: authenticatedUserId }
+    : user;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -477,7 +481,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
   const fetchData = useCallback(
     async (isBackground = false) => {
-      if (!user?.id || !apiBaseUrl) return;
+      if (!activityUser?.id || !apiBaseUrl) return;
       if (dateRange === "custom" && (!customStartDate || !customEndDate)) return;
 
       if (isBackground) setRefreshing(true);
@@ -490,7 +494,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         // all downline member data is returned ΓÇö matching the behaviour of
         // DisciplineReport and AttendanceReport.
         const hierarchyRes = await teamHierarchyService
-          .getTeamHierarchy(user.id, false)
+          .getTeamHierarchy(activityUser.id, false)
           .catch(() => null);
 
         const hasTeamMembers =
@@ -502,7 +506,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             : mapRoleForApi(userRole);
 
         const params = new URLSearchParams({
-          userId: String(user.id),
+          userId: String(activityUser.id),
           role: effectiveRole,
           dateRange: mapUiRangeToApiRange(dateRange),
           userTimezoneOffset: String(timezoneOffset),
@@ -591,7 +595,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setHierarchyData(enrichNode(hierarchyRes.hierarchy));
         } else if (flat.length > 0) {
           // No hierarchy service ΓÇö build synthetic tree from flat list
-          const syn = buildHierarchyFromFlat(flat, scoreMap, user.id);
+          const syn = buildHierarchyFromFlat(flat, scoreMap, activityUser.id);
           if (syn) setHierarchyData(enrichNode(syn));
         }
       } catch (err) {
@@ -602,7 +606,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-    [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate, timezoneOffset],
+    [activityUser?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate, timezoneOffset],
   );
 
   useEffect(() => { fetchData(false); }, [fetchData]);
@@ -1095,7 +1099,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             renderStatus={renderStatus}
             renderStats={renderStats}
             renderExpandedDetails={renderExpandedDetails}
-            isCurrentUser={filteredHierarchy.userId === user?.id}
+            isCurrentUser={filteredHierarchy.userId === activityUser?.id}
             showTeamCount={true}
             showMemberList={false}
             getStatusStyle={getStatusStyle}

@@ -11,6 +11,7 @@ import {
 } from '../domain/contactIdentifier';
 import { debugLog } from '../../../shared/utils/logger.js';
 import storage from '../../../shared/lib/storage.js';
+import { persistOtpSessionUser } from '../../../shared/services/syncSessionIdentity.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
   // `email` keeps its name for backward-compat with existing tests/UI; it now
@@ -100,6 +101,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
       setSuccessMessage('OTP verified successfully!');
       const userDataWithNewFlag = { ...data.user, isNewUser: data.isNewUser === true };
       storage.set('otpUser', JSON.stringify(userDataWithNewFlag));
+      persistOtpSessionUser(userDataWithNewFlag);
       setTimeout(async () => {
         setSuccessMessage('');
         if (onOtpVerified) await onOtpVerified(data.isNewUser === true);

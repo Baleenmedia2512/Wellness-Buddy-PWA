@@ -29,7 +29,15 @@ import WeightModeSelector from './profile/WeightModeSelector';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import FaceDetectionToast from './profile/FaceDetectionToast';
 import DeleteAccountModal from './DeleteAccountModal';
+import EmailChangeModal from './EmailChangeModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { isGoogleUser } from '../../../shared/services/firebase';
+import * as Session from '../../../shared/services/sessionStorage';
+import { persistOtpSessionUser } from '../../../shared/services/syncSessionIdentity';
+import {
+  isValidProfileEmail,
+  normalizeProfileEmail,
+} from '../services/emailChangeService';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -37,7 +45,7 @@ const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase(
 
 const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Member' };
 
-const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
+const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate, onEmailUpdated }) => {
   const form = useProfileForm();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
@@ -49,6 +57,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [hasSaved, setHasSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEmailChangeModal, setShowEmailChangeModal] = useState(false);
+  const [pendingNewEmail, setPendingNewEmail] = useState('');
+  const emailEditable = !isGoogleUser();
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => localStorage.getItem('wv.autoCameraOnResume') !== 'false'
@@ -163,6 +174,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
         if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
       }
+
+      const currentEmail = normalizeProfileEmail(user.email);
+      const nextEmail = normalizeProfileEmail(form.email);
+      const emailChanged = emailEditable && nextEmail && nextEmail !== currentEmail;
+
+      if (emailChanged && !isValidProfileEmail(nextEmail)) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+
       const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
       onProfileUpdate?.({
         name: form.name,
@@ -177,12 +198,17 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setSuccessMessage(data.message || 'Profile saved successfully!');
       setHasSaved(true);
       setProfileImage(null);
+
+      if (emailChanged) {
+        setPendingNewEmail(nextEmail);
+        setShowEmailChangeModal(true);
+      }
     } catch (e) {
       setError(e.message || 'Failed to save profile');
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate, emailEditable]);
 
   handleSaveRef.current = handleSave;
 
@@ -205,7 +231,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
 
+  const handleEmailUpdated = useCallback((updatedEmail) => {
+    Session.setUserEmail(updatedEmail);
+    persistOtpSessionUser({ ...user, email: updatedEmail });
+    form.setEmail(updatedEmail);
+    setSuccessMessage('Email address updated successfully!');
+    onEmailUpdated?.(updatedEmail);
+  }, [form, onEmailUpdated, user]);
+
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
+  const authenticatedUserId = user?.id || user?.UserId;
   const displayName = form.name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'Member';
 
@@ -303,7 +338,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 )}
                 <UserProfileFields
                   email={form.email}
-                  setEmail={form.setEmail}
+                  setEmail={emailEditable ? form.setEmail : undefined}
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
@@ -445,6 +480,21 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           onSignOut();
         }}
       />
+
+      {emailEditable && authenticatedUserId && user?.email && (
+        <EmailChangeModal
+          isOpen={showEmailChangeModal}
+          onClose={() => {
+            setShowEmailChangeModal(false);
+            setPendingNewEmail('');
+            form.setEmail(user.email);
+          }}
+          userId={authenticatedUserId}
+          currentEmail={user.email}
+          newEmail={pendingNewEmail}
+          onEmailUpdated={handleEmailUpdated}
+        />
+      )}
     </div>
   );
 };
