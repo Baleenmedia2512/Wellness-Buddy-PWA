@@ -141,10 +141,12 @@ export function validateResolveUnknownShare(query) {
  *                        service so we don't duplicate the schema here.
  *   - imagePath        — optional. Falls back to the original capture's
  *                        ImagePath in the service if absent.
+ *   - originalCapturedAt — optional. UTC ISO from the diary row's capturedAt;
+ *                        used only when capture.CreatedAt cannot be read.
  */
 export function validateRetryPromotion(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const { captureId, viewerUserId, analysisResult, imagePath } = body;
+  const { captureId, viewerUserId, analysisResult, imagePath, originalCapturedAt } = body;
   if (!captureId) throw new ValidationError(400, 'captureId is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
   if (analysisResult == null) {
@@ -161,6 +163,10 @@ export function validateRetryPromotion(body) {
     viewerUserId: viewerUserId.toString(),
     analysisResult,
     imagePath: imagePath ? imagePath.toString() : null,
+    originalCapturedAt:
+      originalCapturedAt != null && originalCapturedAt !== ''
+        ? String(originalCapturedAt)
+        : null,
   };
 }
 

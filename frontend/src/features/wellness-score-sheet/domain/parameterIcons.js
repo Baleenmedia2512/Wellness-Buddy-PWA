@@ -88,18 +88,57 @@ export function getSectionIcon(sectionId) {
 }
 
 export const SCORING_MODE_LABELS = {
-  binary: 'On-time',
+  binary: 'Time-based',
   progress: 'Progress',
-  proportional: 'Target',
-  limit: 'Limit',
+  proportional: 'Target-based',
+  limit: 'Limit-based',
 };
 
 export const SCORING_MODE_HINTS = {
-  binary: 'Full points when done on time; late or missed = 0',
+  binary: 'Full points when logged within the time window; late or missed = 0',
   progress: 'Full points when weight moves toward your goal; no progress = 0',
   proportional: 'Points scale with progress toward target',
   limit: 'Points scale up to limit; exceeding limit = 0',
 };
+
+/** Maps wellness score parameter keys to activity_time_windows_table types. */
+export const PARAMETER_TIME_WINDOW_KEYS = {
+  weight_post: 'weight',
+  edu_post: 'education',
+  breakfast_post: 'breakfast',
+  lunch_post: 'lunch',
+  dinner_post: 'dinner',
+};
+
+/** @param {string} timeString - HH:MM or HH:MM:SS — e.g. "3:00 AM", "7:30 AM" */
+export function formatClockTime(timeString) {
+  if (!timeString) return null;
+  const time = String(timeString).slice(0, 5);
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours, 10);
+  const minute = parseInt(minutes, 10) || 0;
+  if (!Number.isFinite(hour)) return null;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${displayHour}:${String(minute).padStart(2, '0')} ${ampm}`;
+}
+
+function formatTimeWindowRange(window) {
+  if (!window?.start || !window?.end) return null;
+  const start = formatClockTime(window.start);
+  const end = formatClockTime(window.end);
+  if (!start || !end) return null;
+  return `between ${start} to ${end}`;
+}
+
+function getBinaryScoringHint(parameterKey, timeWindows) {
+  const windowKey = PARAMETER_TIME_WINDOW_KEYS[parameterKey];
+  const range = windowKey ? formatTimeWindowRange(timeWindows?.[windowKey]) : null;
+  if (range) {
+    return `Full points when logged ${range} to earn full points; late or missed = 0.`;
+  }
+  return SCORING_MODE_HINTS.binary;
+}
 
 const LIMIT_HINT_LOSS = 'Start from full point; exceeding limit = 0';
 const LIMIT_HINT_GAIN = SCORING_MODE_HINTS.limit;
@@ -111,10 +150,14 @@ const GI_HINT_GAIN = 'Full points when average GI ≤ 55; above limit = 0';
  * @param {string} scoringMode
  * @param {string} [parameterKey]
  * @param {string} [goalMode] - 'loss' | 'gain'
- * @param {{ adminView?: boolean }} [options]
+ * @param {{ adminView?: boolean, timeWindows?: Record<string, { start?: string, end?: string }> }} [options]
  */
-export function getScoringModeHint(scoringMode, parameterKey, goalMode, { adminView = false } = {}) {
+export function getScoringModeHint(scoringMode, parameterKey, goalMode, { adminView = false, timeWindows = null } = {}) {
   const isGain = String(goalMode || 'loss').toLowerCase() === 'gain';
+
+  if (scoringMode === 'binary') {
+    return getBinaryScoringHint(parameterKey, timeWindows);
+  }
 
   if (parameterKey === 'gi') {
     if (adminView) {

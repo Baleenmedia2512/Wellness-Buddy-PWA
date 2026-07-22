@@ -2,12 +2,14 @@
  * DiaryEntryUndoBanner.jsx — floating undo banner for diary timeline swipe-delete.
  *
  * Shown after a food / weight / education / watch row is swiped away in the
- * unified Diary timeline. Mirrors UnknownCaptureUndoBanner (10s countdown).
+ * unified Diary timeline. Mirrors UnknownCaptureUndoBanner ({UNDO_SECONDS}s countdown).
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import { RotateCcw, Trash2 } from 'lucide-react';
 
-export const DIARY_UNDO_SECONDS = 10;
+import { UNDO_SECONDS } from '../../features/nutrition/hooks/useNutritionUndo';
+
+export const DIARY_UNDO_SECONDS = UNDO_SECONDS;
 
 const DiaryEntryUndoBanner = ({
   entryKey,

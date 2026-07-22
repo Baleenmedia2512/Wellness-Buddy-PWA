@@ -278,6 +278,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       captureId,
       imageBase64:     p.imageBase64,
       diaryDate:       selectedDate,
+      originalCapturedAt: entry.capturedAt ?? null,
       initialAiResult: null,
       deleteOnly:      false,
     });
@@ -292,10 +293,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   };
 
   const diaryUndoLabels = {
-    food: 'Food entry deleted',
-    weight: 'Weight entry deleted',
-    education: 'Education entry deleted',
-    watch: 'Smartwatch entry deleted',
+    food: 'Food entry removed',
+    weight: 'Weight entry removed',
+    education: 'Education entry removed',
+    watch: 'Smartwatch entry removed',
+    unknown: 'Capture removed',
   };
 
   const restoreDiaryEntry = async ({ kind, entryId, userId }) => {
@@ -325,7 +327,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Swipe-to-delete for timeline rows including unknown ("Other") rows.
   const handleEntryDelete = async (entry) => {
-    if (!entry || !ownerId || !viewingSelf) return;
+    if (!entry || !ownerId) return;
+    if (!viewingSelf) {
+      reloadDiary();
+      return;
+    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -711,6 +717,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   date={selectedDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  canDelete={viewingSelf}
+                  pendingUndo={diaryUndo}
                   analyzingCaptureIds={analyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
@@ -824,6 +832,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  canDelete={viewingSelf}
                   analyzingCaptureIds={analyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
@@ -905,6 +914,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         imageBase64={unknownFlow.imageBase64}
         initialAiResult={unknownFlow.initialAiResult ?? null}
         diaryDate={unknownFlow.diaryDate ?? null}
+        originalCapturedAt={unknownFlow.originalCapturedAt ?? null}
         deleteOnly={unknownFlow.deleteOnly ?? false}
         canMutate={viewingSelf}
         userId={ownerId}

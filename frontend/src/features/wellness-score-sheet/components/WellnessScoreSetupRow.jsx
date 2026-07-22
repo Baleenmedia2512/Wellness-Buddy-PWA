@@ -8,11 +8,14 @@ import {
 /**
  * Admin config row — icon, toggle, scoring badge, max points.
  */
-export default function WellnessScoreSetupRow({ category, config, onChange }) {
+export default function WellnessScoreSetupRow({ category, config, onChange, timeWindows = null }) {
   const { enabled, maxPoints } = config;
   const Icon = getParameterIcon(category.key);
   const modeLabel = SCORING_MODE_LABELS[category.scoringMode] || category.scoringMode;
-  const hint = getScoringModeHint(category.scoringMode, category.key, null, { adminView: true });
+  const hint = getScoringModeHint(category.scoringMode, category.key, null, {
+    adminView: true,
+    timeWindows,
+  });
 
   const handleToggle = () => {
     onChange({ ...config, enabled: !enabled });

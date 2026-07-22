@@ -12,6 +12,8 @@ import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOr
 import {
   nowUtc,
   parseClientTimestampToUtc,
+  normalizeStoredTimestampToUtcIso,
+  utcInstantToLegacyIstWallStorage,
   timeOfDayInTimezone,
   timestampToCalendarYmd,
   IANA_IST,
@@ -31,17 +33,30 @@ export async function saveLog(input) {
   const timeWindows = await getTimeWindows();
   const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
 
-  let logTimestamp, logTimeOnly, deviceTime;
+  let utcInstant;
+  let deviceTime = null;
   if (imageTimestamp) {
-    const { utcIso } = parseClientTimestampToUtc(imageTimestamp);
-    logTimestamp = utcIso;
-    logTimeOnly = timeOfDayInTimezone(utcIso, IANA_IST);
+    utcInstant = parseClientTimestampToUtc(imageTimestamp).utcIso;
     deviceTime = String(imageTimestamp);
-  } else {
-    logTimestamp = nowUtc();
-    logTimeOnly = timeOfDayInTimezone(logTimestamp, IANA_IST);
-    deviceTime = null;
+  } else if (captureId) {
+    try {
+      const capture = await captures.findById(captureId);
+      if (capture?.CreatedAt) {
+        utcInstant = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      }
+    } catch (err) {
+      logger.warn('education.saveLog: failed to resolve capture CreatedAt', {
+        captureId, userId: userId.toString(), err: err.message,
+      });
+    }
   }
+  if (!utcInstant) {
+    utcInstant = nowUtc();
+  }
+
+  const logTimestamp = utcInstant;
+  const legacyCreatedAt = utcInstantToLegacyIstWallStorage(utcInstant, IANA_IST);
+  const logTimeOnly = timeOfDayInTimezone(utcInstant, IANA_IST);
   const isOnTime = logTimeOnly >= educationWindow.start && logTimeOnly <= educationWindow.end;
 
   const data = await repo.insertLog({
@@ -61,8 +76,8 @@ export async function saveLog(input) {
     Village: village || null,
     CaptureID: captureId || null,
     IsDeleted: false,
-    CreatedAt: logTimestamp,
-    UpdatedAt: logTimestamp,
+    CreatedAt: legacyCreatedAt,
+    UpdatedAt: legacyCreatedAt,
   });
 
   await repo.touchLastActive(userId);

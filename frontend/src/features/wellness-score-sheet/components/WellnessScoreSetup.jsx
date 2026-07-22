@@ -12,6 +12,7 @@ import {
   saveWellnessScoreAdminConfig,
 } from '../services/wellnessScore.api';
 import WellnessScoreSetupRow from './WellnessScoreSetupRow';
+import { useTimeWindows } from '../hooks/useTimeWindows';
 
 /**
  * Admin / developer Wellness Score Setup — enterprise layout.
@@ -22,6 +23,7 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState(null);
+  const timeWindows = useTimeWindows();
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +183,7 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack }) {
                           category={param}
                           config={cfg}
                           onChange={(next) => updateParam(param.key, next)}
+                          timeWindows={timeWindows}
                         />
                       );
                     })}

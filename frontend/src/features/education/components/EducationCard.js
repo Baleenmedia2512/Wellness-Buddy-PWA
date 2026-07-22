@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
 import {
-  formatUtcTime,
+  formatBusinessTime,
   formatUtcDate,
   isBusinessToday,
   isBusinessYesterday,
@@ -36,24 +36,23 @@ const getPlatformColor = (platform) => {
   return 'from-indigo-500 to-purple-600';
 };
 
-/**
- * Format date with day and time — UTC clock, business-day labels.
- */
+/** Format date with day and time in the business timezone. */
 const formatDate = (dateString) => {
   if (!dateString) return '';
 
   if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Today ${formatUtcTime(dateString)}`;
+    return `Today ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
   }
 
   if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Yesterday ${formatUtcTime(dateString)}`;
+    return `Yesterday ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
   }
 
   return formatUtcDate(dateString, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
 };
 

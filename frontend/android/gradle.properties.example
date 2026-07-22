@@ -2,5 +2,10 @@
 # Copy this file to gradle.properties and add your actual API key
 # DO NOT commit gradle.properties to Git!
 
+# Capacitor 8 / AGP 8.13 require JDK 21. Set your local JDK path, e.g. on macOS Homebrew:
+# org.gradle.java.home=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+# Or export JAVA_HOME before building:
+# export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+
 # Gemini API Key (required for build)
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
