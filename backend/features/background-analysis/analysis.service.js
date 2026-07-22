@@ -152,6 +152,7 @@ export async function save(input) {
   const {
     userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,
     captureId,
+    preserveOriginalTimestamp = false,
     city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
   } = input;
 
@@ -176,6 +177,17 @@ export async function save(input) {
   const analysisDataJson = typeof analysisResult === 'string'
     ? analysisResult : JSON.stringify(analysisResult);
   const currentTime = nowUtc();
+
+  if (preserveOriginalTimestamp && !clientTimestamp) {
+    return {
+      httpStatus: 422,
+      body: {
+        success: false,
+        message: 'Original capture timestamp is required — Manual Log must not change entry time.',
+        error: { code: 'MISSING_CAPTURE_TIMESTAMP' },
+      },
+    };
+  }
 
   let createdAtUtc;
   if (clientTimestamp) {
@@ -219,7 +231,11 @@ export async function save(input) {
       const existing = await repo.findFoodByCaptureId(captureId, userId.toString());
       if (existing) {
         logger.info('analysis.save: updating existing food row (idempotent retry)', {
-          captureId, userId: userId.toString(), existingId: existing.ID,
+          captureId,
+          userId: userId.toString(),
+          existingId: existing.ID,
+          preserveOriginalTimestamp,
+          // CreatedAt on the existing row is never modified — see updateWithAnalysisResult.
         });
         data = await repo.updateWithAnalysisResult(existing.ID, userId.toString(), analysisPayload);
       } else {

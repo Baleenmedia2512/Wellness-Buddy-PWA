@@ -278,6 +278,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       captureId,
       imageBase64:     p.imageBase64,
       diaryDate:       selectedDate,
+      originalCapturedAt: entry.capturedAt ?? null,
       initialAiResult: null,
       deleteOnly:      false,
     });
@@ -905,6 +906,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         imageBase64={unknownFlow.imageBase64}
         initialAiResult={unknownFlow.initialAiResult ?? null}
         diaryDate={unknownFlow.diaryDate ?? null}
+        originalCapturedAt={unknownFlow.originalCapturedAt ?? null}
         deleteOnly={unknownFlow.deleteOnly ?? false}
         canMutate={viewingSelf}
         userId={ownerId}

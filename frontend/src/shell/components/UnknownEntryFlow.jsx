@@ -109,6 +109,8 @@ export default function UnknownEntryFlow({
   initialAiResult = null,
   /** The diary date selected in Dashboard — saves are anchored to this day. */
   diaryDate = null,
+  /** Original upload instant from the diary row (entry.capturedAt). */
+  originalCapturedAt = null,
   /** When true: show only a delete button — no category picker, no retry.
    *  Used for out-of-scope captures where re-analysing won't help. */
   deleteOnly = false,
@@ -307,7 +309,12 @@ export default function UnknownEntryFlow({
   const handleFoodSave = async (manualData) => {
     try {
       const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
+      await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult,
+        originalCapturedAt,
+      });
       finish({ kind: 'food', captureId });
     } catch {
       setError("Couldn't save — please try again.");
@@ -319,7 +326,12 @@ export default function UnknownEntryFlow({
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
     try {
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult: aiFood.analysisResult });
+      await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult: aiFood.analysisResult,
+        originalCapturedAt,
+      });
       finish({ kind: 'food', captureId });
     } catch {
       setError("Couldn't save — please try again.");
