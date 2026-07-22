@@ -66,7 +66,8 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
           : (data.message || 'Failed to send OTP.'),
       );
       return false;
-    } catch {
+    } catch (err) {
+      console.warn('[OTP/SMS] sendOtp fetch failed', err);
       setErrorMessage('Failed to send OTP. Please try again.');
       return false;
     } finally {
