@@ -101,7 +101,7 @@ export const APP_VERSION = {
  * 📋 CHANGE LOG
  * 
  * Version 3.3.4 (Code 52) - 2026-07-22 [ANDROID + iOS RELEASE]
- *   🐛 Patch release — bug fixes and stability improvements
+ *   🐛 Patch release — bug fixes and stability improvements..
  *
  * Version 3.3.3 (Code 51) - 2026-07-15 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
