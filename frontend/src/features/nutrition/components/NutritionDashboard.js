@@ -170,6 +170,7 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     watchBurnedCalories,
+    nutritionRefreshKey,
   });
 
   // Latest body weight for personalised macro targets on the summary panel.
