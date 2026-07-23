@@ -13,6 +13,9 @@
 
 // ─── Configuration (no magic numbers in rule bodies) ───────────────────────
 
+/** Matches backend FLOAT_EPSILON_KG — used for display / reverse-progress direction. */
+export const WEIGHT_COMPARE_EPSILON_KG = 0.001;
+
 export const WEIGHT_INSIGHT_CONFIG = {
   weightTolerance: 0.2,
   maxReasons: 4,
@@ -118,6 +121,23 @@ export function determineWeightTrend(previousWeight, currentWeight, config = WEI
 
   return current > previous ? 'increase' : 'decrease';
 }
+
+/** Actual up/down for UI — uses tight epsilon aligned with backend reverse-progress check. */
+export function determineWeightDirection(previousWeight, currentWeight) {
+  const previous = safeNumber(previousWeight, null);
+  const current = safeNumber(currentWeight, null);
+
+  if (previous == null || current == null) return 'unknown';
+  const change = current - previous;
+  if (Math.abs(change) <= WEIGHT_COMPARE_EPSILON_KG) return 'stable';
+  return change > 0 ? 'up' : 'down';
+}
+
+const BACKEND_DIRECTION_TO_TREND = {
+  increased: 'increase',
+  decreased: 'decrease',
+  first: 'first',
+};
 
 /** Map deviation ratio → severity tier */
 export function severityFromDeviation(deviation, config = WEIGHT_INSIGHT_CONFIG) {
@@ -555,9 +575,12 @@ export function generateWeightInsights({
   nutrition = {},
   targets = {},
   config = WEIGHT_INSIGHT_CONFIG,
+  weightTrendOverride = null,
 }) {
   const normalizedGoal = normalizeGoal(goal);
-  const weightTrend = determineWeightTrend(previousWeight, currentWeight, config);
+  const weightTrend =
+    weightTrendOverride
+    ?? determineWeightTrend(previousWeight, currentWeight, config);
   const prev = previousWeight != null ? safeNumber(previousWeight) : null;
   const curr = currentWeight != null ? safeNumber(currentWeight) : null;
   const weightDifference =
@@ -603,11 +626,13 @@ export function generateWeightInsightsFromComparison(comparison, goalMode) {
   const weight = comparison.weight || {};
 
   const isFirst = weight.direction === 'first';
+  const weightTrendOverride = BACKEND_DIRECTION_TO_TREND[weight.direction] ?? null;
 
   return generateWeightInsights({
     goal: goalMode || 'maintain',
     previousWeight: isFirst ? null : weight.previous,
     currentWeight: weight.current,
+    weightTrendOverride,
     nutrition: {
       calories: yNutrition.calories,
       protein: yNutrition.protein,
