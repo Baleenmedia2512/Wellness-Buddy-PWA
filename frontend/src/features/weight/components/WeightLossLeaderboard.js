@@ -103,7 +103,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
     injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
-      if (!weightLoss || weightLoss <= 0) return; // only show if weight was actually lost
+      // Match API: loss-only and ≤ 3 kg for Today vs Yesterday strip
+      if (!weightLoss || weightLoss <= 0 || weightLoss > 3) return;
       setLeaderboardData((prev) => {
         // Remove any existing entry for this user, then add new one at top
         const filtered = prev.filter((u) => u.userId !== userId);

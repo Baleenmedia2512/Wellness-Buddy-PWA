@@ -31,6 +31,7 @@ import {
   generateContent,
   imageInlinePart,
   SchemaType,
+  MODEL_NAME,
   FALLBACK_MODEL_NAME,
 } from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';

@@ -4,11 +4,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  filterWatchCalorieRowsForDate,
   maxStepCaloriesFromRows,
   maxWatchCaloriesFromRows,
   parseWatchKcalFromTopic,
   resolveDailyExerciseCalories,
 } from '../domain/watch-calories.helpers.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
 describe('parseWatchKcalFromTopic', () => {
   it('parses standard topic', () => {
@@ -55,6 +57,18 @@ describe('resolveDailyExerciseCalories', () => {
     const stepRows = [{ Steps: 5000, CaloriesBurned: 200 }];
     const watchRows = [{ Topic: 'Calories Burned: 300 kcal' }];
     assert.equal(resolveDailyExerciseCalories(stepRows, watchRows), 500);
+  });
+});
+
+describe('filterWatchCalorieRowsForDate', () => {
+  it('keeps rows whose legacy wall-clock CreatedAt maps to target date', () => {
+    const rows = [
+      { Topic: 'Calories Burned: 200 kcal', CreatedAt: '2026-07-23 14:30:00.000' },
+      { Topic: 'Calories Burned: 100 kcal', CreatedAt: '2026-07-22 23:50:00.000' },
+    ];
+    const filtered = filterWatchCalorieRowsForDate(rows, '2026-07-23', IANA_IST);
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].Topic, 'Calories Burned: 200 kcal');
   });
 });
 
