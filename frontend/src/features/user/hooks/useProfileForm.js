@@ -15,6 +15,7 @@ export default function useProfileForm(initial = {}) {
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [email, setEmail] = useState(initial.email || '');
+  const [bodyMetrics, setBodyMetrics] = useState(null);
 
   const reload = (p) => {
     setName(p.name ?? '');
@@ -26,6 +27,7 @@ export default function useProfileForm(initial = {}) {
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
     setCommunityId(p.communityId ?? '');
     setEmail(p.email ?? '');
+    setBodyMetrics(p.bodyMetrics ?? null);
   };
 
   // Optionally re-prime when initial reference changes.
@@ -79,6 +81,7 @@ export default function useProfileForm(initial = {}) {
     weightGoalMode, setWeightGoalMode,
     communityId, setCommunityId,
     email, setEmail,
+    bodyMetrics,
     heightNum, heightValid, phoneValid, nameValid, dietValid,
     validate, payload, reload,
   };

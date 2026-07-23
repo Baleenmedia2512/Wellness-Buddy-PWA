@@ -266,7 +266,7 @@ export async function findLatestCardForProfileSync(userId) {
   if (!Number.isFinite(uid) || uid < 1) return null;
 
   const supabase = getSupabaseClient();
-  const cardSelect = 'id, name, height_cm, bmr, weight_kg, fat_percent, bmi, user_id';
+  const cardSelect = 'id, name, height_cm, bmr, weight_kg, fat_percent, bmi, user_id, age, gender, visceral_fat, body_age, chest_cm, waist_cm, hip_cm';
 
   const { data: linkedRows, error: linkedErr } = await supabase
     .from(TABLE)

@@ -23,6 +23,7 @@ import { fetchProfile, saveProfile } from '../services/profileService';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import CropOverlay from './shared/CropOverlay';
 import UserProfileFields from './profile/UserProfileFields';
+import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
@@ -82,6 +83,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         weightGoalMode: data?.weightGoalMode || 'loss',
         communityId: data?.communityId || '',
         email: data?.email || user?.email || '',
+        bodyMetrics: data?.bodyMetrics || null,
       };
 
       // ── Counselling → Profile pre-fill ──────────────────────────────────
@@ -312,6 +314,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId} setCommunityId={form.setCommunityId}
                 />
+                <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
                 <IdealWeightCards height={form.height} latestWeight={latestWeight} />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
                 <WeightModeSelector
