@@ -24,39 +24,47 @@ import { debugLog } from '../utils/logger.js';
 
 const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
-const REQUEST_TIMEOUT_MS = 60_000; // 60 s — parity with old imageTypeDetector
 
 // ── Retry budget — PHASE 1: fast unified call (type + macros) ─────────────────
 //
-// The frontend retries the POST /api/ai/orchestrate endpoint up to MAX_ATTEMPTS
-// times before giving up and returning imageType:'other' to the caller.
+// The frontend retries POST /api/ai/orchestrate up to MAX_ATTEMPTS times before
+// returning imageType:'other' to the caller.
 //
-// Attempt allocation:
-//   Attempt 1 → Gemini Flash  (fast, cheap)
-//   Attempt 2 → Gemini Flash  (retry after transient failure, 1.5 s back-off)
-//   Attempt 3 → Gemini Pro    (escalation for hard / ambiguous images, 3 s back-off)
+// Attempt allocation (Flash → Pro → Pro):
+//   Attempt 1 → Gemini Flash  (fast, cheap; backend: 1 try, 25 s hard cap)
+//   Attempt 2 → Gemini Pro    (escalation after Flash failure; 1.5 s back-off)
+//   Attempt 3 → Gemini Pro    (final Pro retry; 3 s back-off)
 //
-// Inside each attempt the backend also has its own per-call retry policy
-// (RetryPolicy.js): Flash ≤ 2 backend retries, Pro ≤ 3 backend retries.
+// Why Flash only on attempt 1:
+//   Flash previously had 2 silent backend retries (30 s each), meaning the
+//   frontend could wait 60 s per attempt before knowing Flash had failed.
+//   Now Flash gets one 25 s shot; Pro takes over from attempt 2 onward.
+//   Worst case: 25 s + 1.5 s + 25 s + 3 s + 25 s = ~80 s  (was ~185 s).
+//
+// Inside each attempt the backend has its own per-call retry policy
+// (RetryPolicy.js): Flash = 1 backend retry (AIGateway.js maxAttempts:1),
+// Pro = up to 3 backend retries (DEFAULT_MAX_ATTEMPTS).
 //
 // ── PHASE 2: background enrichment job (21 micronutrients) ───────────────────
 //
-// After a successful Phase 1, the backend enqueues an enrichment job
-// (JobQueue → JobWorker). That job has its own independent retry budget
-// (MAX_RETRIES in JobQueue.js). The frontend has no retry involvement in
-// Phase 2 — it just polls / receives a Realtime notification when done.
+// After a successful Phase 1 the backend enqueues an enrichment job
+// (JobQueue → JobWorker) with its own independent retry budget (MAX_RETRIES
+// in JobQueue.js). No frontend involvement in Phase 2.
 //
-/** Maximum Phase 1 frontend attempts (2× Flash + 1× Pro escalation). */
+/** Maximum Phase 1 frontend attempts. */
 const MAX_ATTEMPTS    = 3;
-/** Base back-off between Phase 1 retries (doubles per attempt: 1.5 s → 3 s). */
+/** Per-attempt frontend abort timeout. Flash: 1 try × 25 s; Pro: ≤3 tries × 30 s but we abort at 25 s. */
+const REQUEST_TIMEOUT_MS = 25_000;
+/** Base back-off between Phase 1 retries (ms). Doubles per attempt: 1.5 s → 3 s. */
 const RETRY_DELAY_MS  = 1_500;
 
 /**
  * Confidence threshold above which an AI "other" result is treated as
  * DEFINITIVE — no retry is worth attempting.
- * Below this threshold the AI is uncertain; escalating to Pro may classify it.
+ * Raised from 0.7 → 0.9: Pro often recovers what Flash gets wrong at 0.7–0.89,
+ * so only skip the escalation when Flash is very confident (≥ 90 %).
  */
-const OBVIOUSLY_OTHER_CONFIDENCE = 0.7;
+const OBVIOUSLY_OTHER_CONFIDENCE = 0.9;
 
 /**
  * Shape returned on any unrecoverable failure.
@@ -89,11 +97,15 @@ const FALLBACK = Object.freeze({
  */
 export async function analyzeImage(
   imageFile,
-  { captureId = null, userId = null, foodRowId = null } = {},
+  { captureId = null, userId = null, foodRowId = null, onAttempt = null } = {},
 ) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    // Attempt 3 escalates to Gemini Pro for better accuracy on hard images.
-    const usePro = attempt >= MAX_ATTEMPTS;
+    // Attempt 1 = Flash (fast, cheap). Attempts 2+ = Pro (better accuracy).
+    const usePro = attempt >= 2;
+
+    // Notify the caller before the request so the UI badge updates immediately.
+    onAttempt?.({ attempt, total: MAX_ATTEMPTS, usePro });
+
     const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro });
 
     // ── Valid classification — return immediately ──────────────────────────
@@ -119,10 +131,10 @@ export async function analyzeImage(
     }
 
     // ── Wait before next attempt ──────────────────────────────────────────
-    // Longer back-off for 503 (server overload) to avoid flooding Gemini.
-    const is503 = (result.details?.error ?? '').includes('503');
-    const delay = is503 ? 6_000 * attempt : RETRY_DELAY_MS * attempt;
-    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, usePro: attempt + 1 >= MAX_ATTEMPTS, captureId });
+    // Since attempt 2+ already switches to Pro (separate quota), no special
+    // 503 penalty is needed — the overloaded Flash quota won't affect Pro.
+    const delay = RETRY_DELAY_MS * attempt;
+    _trace('RETRY', { attempt, nextAttempt: attempt + 1, delayMs: delay, usePro: attempt + 1 >= 2, captureId });
     await new Promise((r) => setTimeout(r, delay));
   }
   /* unreachable — loop always returns before this */
