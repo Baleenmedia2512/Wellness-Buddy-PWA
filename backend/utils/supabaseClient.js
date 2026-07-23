@@ -14,9 +14,13 @@ let supabaseInstance = null;
 export function getSupabaseClient() {
   if (!supabaseInstance) {
     const url = process.env.SUPABASE_URL;
+    console.log("URL:", process.env.SUPABASE_URL);
+console.log("Service key exists:", !!process.env.SUPABASE_SERVICE_KEY);
+console.log("Anon key exists:", !!process.env.SUPABASE_ANON_KEY);
     const key =
       process.env.SUPABASE_SERVICE_KEY ||
       process.env.SUPABASE_ANON_KEY;
+      console.log("Key starts with:", key?.substring(0, 20));
 
     if (!url || !key) {
       throw new Error(

@@ -437,14 +437,14 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
         {/* ═══ PERSONAL STATS SECTION ═══ */}
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
+          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
           <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
+          <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
+          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           {card.phoneNumber ? (
             <InfoRow icon="📞" label="Phone" value={card.phoneNumber} />
           ) : null}
-          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
-          <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
           <InfoRow icon="🚻" label="Gender"   value={card.gender ? card.gender.charAt(0).toUpperCase() + card.gender.slice(1).toLowerCase() : '—'} />
-          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           {card.bmr != null && card.bmr !== '' && (
             <InfoRow icon="🔥" label="BMR" value={card.bmr + ' kcal'} />
           )}

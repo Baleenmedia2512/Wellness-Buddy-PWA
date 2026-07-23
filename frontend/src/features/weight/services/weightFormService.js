@@ -4,7 +4,7 @@
  */
 import {
   formatUtcDate,
-  formatUtcTime,
+  formatBusinessTime,
   isBusinessToday,
   isBusinessYesterday,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -51,16 +51,23 @@ export function validateEditWeight(value) {
 /** Compact "Today · 09:42" / "Yesterday · …" / "Mar 3 · …" label for the history card. */
 export function formatHistoryDate(dateString) {
   if (!dateString) return '';
-  const time = formatUtcTime(dateString, { hour: '2-digit', minute: '2-digit' });
+  const time = formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Today · ${time}`;
   if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Yesterday · ${time}`;
-  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric' })} · ${time}`;
+  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric', timeZone: DEFAULT_BUSINESS_TIMEZONE })} · ${time}`;
 }
 
 /** Long-form date for the detail modal header. */
 export function formatDetailDate(dateString) {
   return formatUtcDate(dateString, {
-    weekday: 'long', year: 'numeric', month: 'short', day: 'numeric',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
 }
 

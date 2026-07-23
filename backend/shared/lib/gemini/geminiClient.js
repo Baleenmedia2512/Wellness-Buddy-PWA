@@ -11,7 +11,7 @@
  * GoogleGenerativeAI instance.
  * ---------------------------------------------------------------------------
  */
-
+import AIClient from "ai-token-monitor-sdk";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 
@@ -116,6 +116,11 @@ function getGenAI() {
       throw err;
     }
     _genAI = new GoogleGenerativeAI(apiKey);
+    AIClient.initialize({
+      sdkKey: process.env.AI_MONITOR_SDK_KEY,
+      appName: "Wellness Buddy",
+      environment: process.env.NODE_ENV || "development",
+    });
     logger.info('geminiClient: GoogleGenerativeAI instance created');
   }
   return _genAI;
@@ -183,6 +188,66 @@ export function imageInlinePart(buffer, mimeType) {
       data: buffer.toString('base64'),
     },
   };
+}
+
+export async function generateContent(
+  configKey,
+  parts,
+  responseSchema = null,
+  modelOverride = null,
+  trace = null
+) {
+  const model = getModel(
+    configKey,
+    responseSchema,
+    modelOverride
+  );
+
+  const start = Date.now();
+
+  try {
+
+    const result = await model.generateContent(parts);
+
+    const latency = Date.now() - start;
+
+    await AIClient.chat({
+      provider: "Gemini",
+      model: modelOverride ?? MODEL_NAME,
+      usage: result.response.usageMetadata,
+      latency,
+      status: "SUCCESS",
+
+      // Optional: only useful if the SDK supports custom fields
+      traceId: trace?.traceId,
+    });
+
+    return result;
+
+  } catch (err) {
+
+    const latency = Date.now() - start;
+
+    try {
+
+      await AIClient.chat({
+        provider: "Gemini",
+        model: modelOverride ?? MODEL_NAME,
+        usage: {},
+        latency,
+        status: "FAILED",
+        errorMessage: err.message,
+
+        // Optional: only useful if the SDK supports custom fields
+        traceId: trace?.traceId,
+      });
+
+    } catch (sdkErr) {
+      logger.error("Telemetry Error", sdkErr);
+    }
+
+    throw err;
+  }
 }
 
 // Export SchemaType so callers don't need to re-import @google/generative-ai

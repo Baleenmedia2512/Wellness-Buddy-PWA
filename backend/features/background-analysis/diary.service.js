@@ -133,8 +133,31 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
 //   { httpStatus: 404, body: { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } } }
 //   { httpStatus: 409, body: { ok: false, error: { code: 'NOT_RETRYABLE', currentType } } }
 //   throws 401 / 403 (caught by runService) on permission denial.
+
+/**
+ * Resolve the original upload instant for a capture being promoted unknown→food.
+ * Prefers captures_table.CreatedAt (timestamptz); falls back to the diary
+ * entry's capturedAt when the client sends it (defence in depth).
+ *
+ * @param {string|Date|null|undefined} captureCreatedAt
+ * @param {string|null|undefined} fallbackOriginalCapturedAt
+ * @returns {string|null} UTC ISO string suitable for food_nutrition_data_table.CreatedAt
+ */
+export function resolvePromotionClientTimestamp(
+  captureCreatedAt,
+  fallbackOriginalCapturedAt = null,
+) {
+  const raw = captureCreatedAt ?? fallbackOriginalCapturedAt ?? null;
+  if (raw == null || String(raw).trim() === '') return null;
+  try {
+    return normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+  } catch {
+    return null;
+  }
+}
+
 export async function retryPromotionToFood(input) {
-  const { captureId, viewerUserId, analysisResult, imagePath } = input;
+  const { captureId, viewerUserId, analysisResult, imagePath, originalCapturedAt } = input;
 
   // 1. Load the capture. NO owner guard — the policy decides.
   const capture = await captures.findById(captureId);
@@ -197,11 +220,27 @@ export async function retryPromotionToFood(input) {
 
   // 5. Delegate to save() — owner's userId, not the viewer's.
   //
-  // Pass the capture's own CreatedAt as clientTimestamp so the food row is
-  // anchored to the capture's original IST calendar day. Without this, save()
-  // falls back to getISTTimestamp() (= NOW), which would place the promoted
-  // food row in today's diary instead of the historical date the user is
-  // viewing (the root cause of the historical-diary retry bug).
+  // Pass the capture's own CreatedAt as clientTimestamp so the food row keeps
+  // the original upload instant (e.g. 6:11 AM), not the Manual Log save time
+  // (e.g. 8:30 AM). save() with preserveOriginalTimestamp refuses to fall back
+  // to NOW() when the timestamp cannot be resolved.
+  const clientTimestamp = resolvePromotionClientTimestamp(
+    capture.CreatedAt,
+    originalCapturedAt,
+  );
+  if (!clientTimestamp) {
+    return {
+      httpStatus: 422,
+      body: {
+        ok: false,
+        error: {
+          code: 'MISSING_CAPTURE_TIMESTAMP',
+          message: 'Cannot promote capture: original upload timestamp is missing.',
+        },
+      },
+    };
+  }
+
   return save({
     userId: ownerUserId,
     imagePath: imagePath || capture.ImagePath || 'retry-promotion',
@@ -209,7 +248,8 @@ export async function retryPromotionToFood(input) {
     deviceInfo: 'Wellness Valley Diary Retry',
     ImageBase64: capture.ImageBase64 || null,
     captureId,
-    clientTimestamp: capture.CreatedAt || null,
+    clientTimestamp,
+    preserveOriginalTimestamp: true,
   });
 }
 

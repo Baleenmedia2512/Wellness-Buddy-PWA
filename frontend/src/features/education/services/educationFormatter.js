@@ -2,30 +2,47 @@
  * educationFormatter.js — pure helpers for the education slice.
  * No React, no fetch. Date/string formatting and small parsers only.
  */
-import { formatUtcDate, formatUtcTime, formatUtcDateTime } from '../../../shared/utils/datetimeUtils';
+import {
+  formatUtcDate,
+  formatBusinessTime,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
-/** Long-form date used in the detail modal ("May 13, 2026"). */
+/** Long-form date used in the detail modal ("May 13, 2026") in business TZ. */
 export function formatLogDate(dateString) {
   if (!dateString) return '';
   return formatUtcDate(dateString, {
-    month: 'long', day: 'numeric', year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
 }
 
-/** Short clock time used everywhere ("09:42 AM"). */
+/** Short clock time used everywhere ("09:42 AM") in business TZ. */
 export function formatLogTime(dateString) {
   if (!dateString) return '';
-  return formatUtcTime(dateString, { hour: '2-digit', minute: '2-digit' });
+  return formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-/** Full UTC timestamp for share/log card rows. */
+/** Full timestamp for share/log card rows in business TZ. */
 export function formatLoggedAtFull(loggedAt) {
   if (!loggedAt) return '';
-  return formatUtcDateTime(loggedAt, {
-    month: 'short', day: 'numeric', year: 'numeric',
-  }, {
-    hour: 'numeric', minute: '2-digit', hour12: true,
+  const dateStr = formatUtcDate(loggedAt, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
+  const timeStr = formatBusinessTime(loggedAt, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return timeStr ? `${dateStr} at ${timeStr}` : dateStr;
 }
 
 /** Normalises a raw image string (or `null`) into a usable `<img src>`. */

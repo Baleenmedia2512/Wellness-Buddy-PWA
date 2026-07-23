@@ -1,10 +1,11 @@
 {
   "name": "wellness-valley-pwa-backend",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "private": true,
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.90.1",
+    "ai-token-monitor-sdk": "^1.0.1",
     "bcryptjs": "^3.0.2",
     "formidable": "^3.5.4",
     "joi": "^18.2.1",

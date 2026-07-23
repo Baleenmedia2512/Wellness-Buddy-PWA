@@ -233,7 +233,7 @@ describe('progress parameters', () => {
   });
 
   it('physical activity — proportional burn', () => {
-    const r = calculatePhysicalActivity({ maxPoints: 100, exerciseCalories: 75, bmr: 1500 });
+    const r = calculatePhysicalActivity({ maxPoints: 100, exerciseCalories: 225, bmr: 1500 });
     assert.equal(r.earnedPoints, 50);
   });
 });

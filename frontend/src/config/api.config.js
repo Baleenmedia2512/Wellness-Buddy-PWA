@@ -4,9 +4,24 @@
  * Components/services must import getApiBaseUrl() from here.
  */
 
-const FALLBACK = 'http://localhost:3000';
+import { Capacitor } from '@capacitor/core';
+
+const WEB_DEV_FALLBACK = 'http://localhost:3000';
+/** Production backend — matches capacitor.config.js server.hostname */
+const NATIVE_PROD_FALLBACK = 'https://wellness-valley.vercel.app';
+
+function resolveFallback() {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      return NATIVE_PROD_FALLBACK;
+    }
+  } catch {
+    // Non-browser contexts (tests)
+  }
+  return WEB_DEV_FALLBACK;
+}
 
 export function getApiBaseUrl() {
-  const raw = process.env.REACT_APP_API_BASE_URL || FALLBACK;
+  const raw = process.env.REACT_APP_API_BASE_URL || resolveFallback();
   return raw.replace(/\/+$/, '');
 }

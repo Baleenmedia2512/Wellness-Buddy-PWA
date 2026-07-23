@@ -37,6 +37,7 @@ export default function WellnessScoreSheet({
   selectedDate,
   onSelectDate,
   isMultiDay = false,
+  timeWindows = null,
 }) {
   const dateStr = scoreData?.date || selectedDate || todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
   const parameters = scoreData?.parameters || [];
@@ -188,6 +189,7 @@ export default function WellnessScoreSheet({
                         key={param.key}
                         category={param}
                         goalMode={scoreData?.goalMode}
+                        timeWindows={timeWindows}
                       />
                     ))}
                   </div>

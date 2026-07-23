@@ -16,13 +16,13 @@ function progressTone(pct) {
 /**
  * Parameter row — icon, scoring rule caption, today's status, and points.
  */
-export default function ScoreCategoryRow({ category, compact = false, goalMode }) {
+export default function ScoreCategoryRow({ category, compact = false, goalMode, timeWindows = null }) {
   const meta = getParameterMeta(category.key);
   const Icon = getParameterIcon(category.key);
   const label = category.label || meta?.label || category.key;
   const scoringMode = category.scoringMode || meta?.scoringMode;
   const modeLabel = SCORING_MODE_LABELS[scoringMode] || scoringMode;
-  const modeHint = getScoringModeHint(scoringMode, category.key, goalMode);
+  const modeHint = getScoringModeHint(scoringMode, category.key, goalMode, { timeWindows });
   const maxPoints = category.maxPoints ?? 0;
   const earnedPoints = category.earnedPoints ?? 0;
   const progressPct = maxPoints > 0

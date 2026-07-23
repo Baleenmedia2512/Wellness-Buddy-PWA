@@ -377,6 +377,7 @@ function WellnessValleyApp() {
     open: false,
     captureId: null,
     imageBase64: null,
+    createdAt: null,
     canMutate: false,
     retrying: false,
     error: null,
@@ -1396,6 +1397,7 @@ function WellnessValleyApp() {
               open: true,
               captureId: share.captureId,
               imageBase64: share.imageBase64,
+              createdAt: share.createdAt ?? null,
               canMutate: !!share.canMutate,
               retrying: false,
               error: null,
@@ -3982,6 +3984,7 @@ function WellnessValleyApp() {
           captureId,
           viewerUserId: user.id,
           analysisResult,
+          originalCapturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4072,6 +4075,7 @@ function WellnessValleyApp() {
         captureId,
         viewerUserId: user.id,
         analysisResult,
+        originalCapturedAt: unknownShareView.createdAt ?? null,
       });
       setShareEditView({ open: false, captureId: null });
       setUnknownShareView((v) => ({ ...v, open: false }));

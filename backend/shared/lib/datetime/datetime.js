@@ -260,3 +260,26 @@ export function normalizeStoredTimestampToUtcIso(value, timezoneIana = IANA_IST)
   }
   return parseClientTimestampToUtc(String(value), timezoneIana).utcIso;
 }
+
+/**
+ * Persist a UTC instant in legacy tables whose `CreatedAt` columns are
+ * timezone-less and read back as IST wall clock via
+ * {@link normalizeStoredTimestampToUtcIso}.
+ *
+ * @param {string|Date} utcInstant - UTC ISO string or Date
+ * @param {string} [timezoneIana=IANA_IST]
+ * @returns {string} e.g. `2026-07-22 07:45:28.287`
+ */
+export function utcInstantToLegacyIstWallStorage(utcInstant, timezoneIana = IANA_IST) {
+  assertIanaTimezone(timezoneIana);
+
+  const iso = utcInstant instanceof Date
+    ? utcInstant.toISOString()
+    : String(utcInstant).trim();
+
+  const dt = DateTime.fromISO(iso, { zone: 'utc' }).setZone(timezoneIana);
+  if (!dt.isValid) {
+    throw new RangeError(`Invalid UTC timestamp: ${String(utcInstant)}`);
+  }
+  return dt.toFormat('yyyy-MM-dd HH:mm:ss.SSS');
+}
