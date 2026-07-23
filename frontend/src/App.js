@@ -117,6 +117,12 @@ import {
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
 import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
+import {
+  startUserLocationCache,
+  stopUserLocationCache,
+  refreshUserLocationCache,
+  getCachedLocationFields,
+} from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -2156,6 +2162,24 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Background location cache: keep latest GPS + club/city ready so photo
+  // capture never waits on a spinner for geolocation.
+  useEffect(() => {
+    if (!user || !permissionsReady || !isUserActive || !apiBaseUrl) {
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const uid = user?.id || (await getUserId(user).catch(() => null));
+      if (cancelled || !uid) return;
+      await startUserLocationCache({ apiBaseUrl, userId: uid });
+    })();
+    return () => {
+      cancelled = true;
+      stopUserLocationCache();
+    };
+  }, [user, permissionsReady, isUserActive, apiBaseUrl]);
+
   /**
    * Called when user taps "Allow Again" in PermissionDeniedModal.
    *
@@ -3162,6 +3186,7 @@ function WellnessValleyApp() {
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          refreshUserLocationCache();
           // Guard: skip while CompleteProfilePage is visible. Returning from
           // camera/gallery triggers this listener; re-running checkProfileCompletion
           // would set profileChecking=true, unmounting the form and discarding
@@ -5093,7 +5118,8 @@ function WellnessValleyApp() {
     setImageType(null);
     setSaveError(null);
     setDetectedFoodNames([]);
-    setLoadingState("uploading");
+    setLoading(false);
+    setLoadingState(null);
     lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
@@ -5107,37 +5133,6 @@ function WellnessValleyApp() {
     const perfStart = Date.now();
     debugLog("?? [PERF] ?? Image processing started");
     let capturePersisted = false;
-
-    // Start GPS + club resolution in parallel with FileReader/compression so
-    // location is ready for the first capture save (not only the later domain save).
-    const locationPromise = (async () => {
-      try {
-        const locUserId = user?.id || (await getUserId(user));
-        if (!locUserId) {
-          return {
-            attendanceType: 'remote',
-            permissionDenied: false,
-            locationStatus: 'failed',
-            locationErrorCode: 'NO_USER_ID',
-            locationErrorDetail: 'Cannot resolve location — userId missing at capture time',
-            locationLatencyMs: 0,
-            geocodeOk: false,
-          };
-        }
-        return await resolveLocationFields(apiBaseUrl, locUserId);
-      } catch (err) {
-        console.warn('[CAPTURE] early GPS failed:', err?.message);
-        return {
-          attendanceType: 'remote',
-          permissionDenied: false,
-          locationStatus: 'failed',
-          locationErrorCode: 'UNEXPECTED_ERROR',
-          locationErrorDetail: `Early GPS promise threw: ${err?.message || err}`,
-          locationLatencyMs: 0,
-          geocodeOk: false,
-        };
-      }
-    })();
 
     // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -5190,17 +5185,18 @@ function WellnessValleyApp() {
         return;
       }
 
-      // Set preview and uploading state while the capture row is persisted.
+      // Set preview immediately — GPS + capture POST run in the background UI
+      // without a "Saving..." spinner (photo-first, no wait affordance).
       setImagePreview(processedImage);
-      setLoading(true);
-      setLoadingState("uploading");
+      setLoading(false);
+      setLoadingState(null);
 
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
 
-      // Await capture-time location (started in parallel with compress).
-      const captureLocation = await locationPromise;
+      // Instant location from background cache — never wait on GPS at photo time.
+      const captureLocation = getCachedLocationFields();
       const {
         permissionDenied: captureGpsDenied,
         locationStatus,
@@ -5209,25 +5205,18 @@ function WellnessValleyApp() {
         locationLatencyMs,
         geocodeOk,
         gpsAccuracyM,
+        fromCache,
+        cacheAgeMs,
         ...captureLocationFields
       } = captureLocation || {
         attendanceType: 'remote',
         locationStatus: 'failed',
-        locationErrorCode: 'UNKNOWN',
-        locationErrorDetail: 'locationPromise returned empty',
+        locationErrorCode: 'NO_CACHED_LOCATION',
+        locationErrorDetail: 'No cached location available at capture time',
       };
       const hasCoords = !!(
         captureLocationFields.latitude && captureLocationFields.longitude
       );
-      if (captureGpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
-      }
       // Client console (device) — also sent to Vercel via POST /captures diagnostics.
       console.warn('[CAPTURE-LOCATION]', {
         status: locationStatus || (hasCoords ? 'success' : 'failed'),
@@ -5238,10 +5227,12 @@ function WellnessValleyApp() {
         hasCity: !!captureLocationFields.city,
         hasVillage: !!captureLocationFields.village,
         geocodeOk: !!geocodeOk,
-        latencyMs: locationLatencyMs ?? null,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+        latencyMs: locationLatencyMs ?? 0,
         gpsAccuracyM: gpsAccuracyM ?? null,
       });
-      _ctLog('loc', 'capture-time location resolved', {
+      _ctLog('loc', 'capture-time location from cache', {
         locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
         locationErrorCode: locationErrorCode || null,
         locationErrorDetail: locationErrorDetail || null,
@@ -5249,8 +5240,20 @@ function WellnessValleyApp() {
         hasCoords,
         hasCity: !!captureLocationFields.city,
         geocodeOk: !!geocodeOk,
-        locationLatencyMs: locationLatencyMs ?? null,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
       });
+      // Soft hint only when cache never got a fix (watcher still warming / denied).
+      // Do not block the photo save.
+      if (captureGpsDenied && !hasCoords) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
 
       // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
       const captureApiStart = Date.now();
@@ -5281,7 +5284,7 @@ function WellnessValleyApp() {
                 imageBase64: processedImage,
                 token: instantToken,
                 shareCode: instantShareCode,
-                // Capture-time location / club — stored on captures_table first save
+                // Capture-time location / club from background cache
                 latitude: captureLocationFields.latitude ?? null,
                 longitude: captureLocationFields.longitude ?? null,
                 city: captureLocationFields.city ?? null,
@@ -5289,11 +5292,10 @@ function WellnessValleyApp() {
                 attendanceType: captureLocationFields.attendanceType ?? null,
                 nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
                 centerName: captureLocationFields.centerName ?? null,
-                // Diagnostics only (logged on Vercel; not stored as PII coords)
                 locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
                 locationErrorCode: locationErrorCode || null,
                 locationErrorDetail: locationErrorDetail || null,
-                locationLatencyMs: locationLatencyMs ?? null,
+                locationLatencyMs: locationLatencyMs ?? 0,
                 geocodeOk: geocodeOk ?? null,
                 gpsAccuracyM: gpsAccuracyM ?? null,
               }),

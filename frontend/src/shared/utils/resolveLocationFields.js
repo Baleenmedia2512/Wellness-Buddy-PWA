@@ -5,22 +5,17 @@
  * feature that needs to attach location fields to a DB write (weight, food,
  * education).
  *
- * Returns a plain object — never throws. GPS failures fall back gracefully
- * to { attendanceType: 'remote' } so callers can always spread the result
- * into a save payload without branching.
+ * Prefers the background userLocationCache (instant). Falls back to a live
+ * GPS fix only when the cache has no coordinates.
  *
  * Diagnostic fields (strip before DB write):
  *   locationStatus, locationErrorCode, locationErrorDetail, locationLatencyMs,
- *   geocodeOk, permissionDenied, gpsAccuracyM
- *
- * NOTE: Strip diagnostics before spreading into a DB payload:
- *   const { permissionDenied, locationStatus, locationErrorCode,
- *           locationErrorDetail, locationLatencyMs, geocodeOk, gpsAccuracyM,
- *           ...payloadFields } = await resolveLocationFields(…);
+ *   geocodeOk, permissionDenied, gpsAccuracyM, fromCache, cacheAgeMs
  * ---------------------------------------------------------------------------
  */
 import { locationAttendanceService } from '../../features/nutrition-centers';
 import { fetchCityVillage } from '../lib/reverseGeocode';
+import { getCachedLocationFields } from '../services/userLocationCache';
 import { debugLog } from './logger';
 
 /** Fields that must never be spread into food/weight/education DB payloads. */
@@ -32,6 +27,8 @@ export const LOCATION_DIAGNOSTIC_KEYS = [
   'locationLatencyMs',
   'geocodeOk',
   'gpsAccuracyM',
+  'fromCache',
+  'cacheAgeMs',
 ];
 
 export function stripLocationDiagnostics(fields = {}) {
@@ -61,6 +58,7 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
       locationLatencyMs: latencyMs,
       geocodeOk: false,
       gpsAccuracyM: null,
+      fromCache: false,
       ...extra,
     };
   };
@@ -70,25 +68,31 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
       return fail('NO_USER_ID', 'Cannot resolve location — userId missing');
     }
 
+    // Instant path: background watcher already has a fix.
+    const cached = getCachedLocationFields();
+    if (cached.latitude != null && cached.longitude != null) {
+      debugLog('[resolveLocationFields] using cache', {
+        locationStatus: cached.locationStatus,
+        attendanceType: cached.attendanceType,
+        cacheAgeMs: cached.cacheAgeMs,
+        hasCity: !!cached.city,
+      });
+      return cached;
+    }
+
     let attendance = await locationAttendanceService.determineAttendance(
       apiBaseUrl,
       userId,
     );
-    debugLog('[resolveLocationFields] Attendance determined:', {
+    debugLog('[resolveLocationFields] live GPS attendance', {
       attendanceType: attendance.attendanceType,
       hasCoords: !!(attendance.latitude && attendance.longitude),
       locationError: attendance.locationError || null,
       nearbyCount: attendance.nearbyCenters?.length || 0,
     });
 
-    // When multiple clubs are nearby, auto-select the closest one.
     if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
       const closest = attendance.nearbyCenters[0];
-      debugLog(
-        '[resolveLocationFields] Multiple clubs — auto-selecting:',
-        closest.center.center_name,
-        `(${Math.round(closest.distance)}m)`,
-      );
       attendance = {
         ...attendance,
         nutritionCenterId: closest.center.id,
@@ -97,10 +101,8 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
       };
     }
 
-    const latencyMs = Date.now() - startedAt;
     const permissionDenied = attendance.locationError === 'PERMISSION_DENIED';
 
-    // No GPS fix — return remote attendance without attempting geocoding.
     if (!attendance.latitude || !attendance.longitude) {
       const code = attendance.locationError || 'LOCATION_UNAVAILABLE';
       const detail =
@@ -109,7 +111,6 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
       return fail(code, detail, { permissionDenied });
     }
 
-    // Reverse-geocode coordinates into city + village.
     const { city, village } = await fetchCityVillage(
       attendance.latitude,
       attendance.longitude,
@@ -125,7 +126,7 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
         ? 'GPS OK but Nominatim reverse-geocode returned no city/village'
         : null);
 
-    const result = {
+    return {
       latitude: attendance.latitude,
       longitude: attendance.longitude,
       attendanceType: attendance.attendanceType,
@@ -141,20 +142,8 @@ export async function resolveLocationFields(apiBaseUrl, userId) {
       geocodeOk,
       gpsAccuracyM:
         typeof attendance.accuracy === 'number' ? attendance.accuracy : null,
+      fromCache: false,
     };
-
-    debugLog('[resolveLocationFields] OK', {
-      locationStatus: result.locationStatus,
-      attendanceType: result.attendanceType,
-      hasCity: !!city,
-      hasVillage: !!village,
-      geocodeOk,
-      locationErrorCode,
-      locationLatencyMs: result.locationLatencyMs,
-      priorLatencyMs: latencyMs,
-    });
-
-    return result;
   } catch (err) {
     return fail(
       'UNEXPECTED_ERROR',
