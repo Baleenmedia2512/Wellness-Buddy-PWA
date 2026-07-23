@@ -564,7 +564,7 @@ function formatElapsed(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const swipeEnabled = canSwipeDelete && !isAnalyzing;
@@ -669,6 +669,11 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             <>
               <h4 className="font-semibold text-emerald-700 truncate">
                 Detecting entry…
+                {currentAttempt != null && totalAttempts != null && (
+                  <span className="ml-1.5 text-xs font-medium text-emerald-600/60">
+                    {currentAttempt}/{totalAttempts}
+                  </span>
+                )}
                 <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
                   {formatElapsed(elapsedSecs)}
                 </span>

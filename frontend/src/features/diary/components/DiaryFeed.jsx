@@ -306,6 +306,10 @@ export default function DiaryFeed({
             pendingCaptureMeta != null &&
             pendingCaptureMeta.has(captureIdStr))) &&
         !isAnalyzing;
+      // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
+      const analyzingMeta = isAnalyzing && captureIdStr !== ''
+        ? (pendingCaptureMeta?.get(captureIdStr) ?? null)
+        : null;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -316,7 +320,12 @@ export default function DiaryFeed({
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
           {...(entry.kind === 'unknown'
-            ? { isAnalyzing, isBackgroundPending }
+            ? {
+                isAnalyzing,
+                isBackgroundPending,
+                currentAttempt: analyzingMeta?.currentAttempt ?? null,
+                totalAttempts:  analyzingMeta?.totalAttempts  ?? null,
+              }
             : {})}
         />
       );
