@@ -800,8 +800,11 @@ async function callModel(
         label,
         service: circuitService,
 
-        // Primary model (Flash): cap at 2 attempts.
-        ...(modelOverride ? {} : { maxAttempts: 2 }),
+        // Primary model (Flash): 1 attempt only — frontend drives all retries.
+        // Previously 2 silently doubled wait time before the caller knew it
+        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
+        // orchestratorService.js usePro logic).
+        ...(modelOverride ? {} : { maxAttempts: 1 }),
       },
     ));
   } catch (err) {
