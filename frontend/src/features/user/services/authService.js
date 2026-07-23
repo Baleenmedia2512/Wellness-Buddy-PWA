@@ -4,10 +4,9 @@ import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 
-const API = getApiBaseUrl();
-
 const post = async (path, body) => {
-  const res = await fetch(`${API}${path}`, {
+  const apiBase = getApiBaseUrl();
+  const res = await fetch(`${apiBase}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -15,7 +14,7 @@ const post = async (path, body) => {
   const data = await res.json();
   const hasOtpField = Object.prototype.hasOwnProperty.call(data || {}, 'otp');
   const logPayload = {
-    apiBase: API,
+    apiBase,
     path,
     httpStatus: res.status,
     success: data?.success,
@@ -51,7 +50,7 @@ export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
 };
 
 export const deleteAccountRequest = async (email) => {
-  const res = await fetch(`${API}/api/user/account`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/user/account`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),

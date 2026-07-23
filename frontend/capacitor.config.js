@@ -29,9 +29,9 @@ const config = {
     androidScheme: 'https',
     hostname: 'wellness-valley.vercel.app',
     allowNavigation: [
+      'wellness-valley.vercel.app',
       'wellness-valley-pwa-backend-test.vercel.app',
       'wellness-buddy-pwa-backend-test.vercel.app',
-      'wellness-buddy-pwa-eta.vercel.app',
       '*.vercel.app',
       '*.googleapis.com',
       '*.firebase.com',

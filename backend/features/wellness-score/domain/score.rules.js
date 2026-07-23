@@ -596,7 +596,7 @@ export function calculatePhysicalActivity({ maxPoints, exerciseCalories, bmr }) 
       calculationReason: 'BMR unavailable',
     });
   }
-  const target = bmrVal * 0.1;
+  const target = bmrVal * 0.3;
   if (burned >= target) {
     return buildParameterScore({
       key: 'physical_activity',
@@ -616,7 +616,7 @@ export function calculatePhysicalActivity({ maxPoints, exerciseCalories, bmr }) 
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${Math.round(burned)} / ${Math.round(target)} kcal (10% BMR)`,
+    calculationReason: `${Math.round(burned)} / ${Math.round(target)} kcal (30% BMR)`,
   });
 }
 

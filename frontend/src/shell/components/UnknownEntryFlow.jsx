@@ -84,6 +84,12 @@ function buildNoonTimestamp(date) {
   return d.toISOString();
 }
 
+/** Prefer the original upload instant; fall back to diary-date noon only when missing. */
+function resolveManualLogTimestamp(originalCapturedAt, diaryDate) {
+  if (originalCapturedAt) return originalCapturedAt;
+  return buildNoonTimestamp(diaryDate);
+}
+
 export default function UnknownEntryFlow({
   open,
   captureId,
@@ -109,6 +115,8 @@ export default function UnknownEntryFlow({
   initialAiResult = null,
   /** The diary date selected in Dashboard — saves are anchored to this day. */
   diaryDate = null,
+  /** Original upload instant from the diary row (entry.capturedAt). */
+  originalCapturedAt = null,
   /** When true: show only a delete button — no category picker, no retry.
    *  Used for out-of-scope captures where re-analysing won't help. */
   deleteOnly = false,
@@ -307,7 +315,12 @@ export default function UnknownEntryFlow({
   const handleFoodSave = async (manualData) => {
     try {
       const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult });
+      await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult,
+        originalCapturedAt,
+      });
       finish({ kind: 'food', captureId });
     } catch {
       setError("Couldn't save — please try again.");
@@ -319,7 +332,12 @@ export default function UnknownEntryFlow({
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
     try {
-      await promoteUnknownToFood({ captureId, viewerUserId: userId, analysisResult: aiFood.analysisResult });
+      await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult: aiFood.analysisResult,
+        originalCapturedAt,
+      });
       finish({ kind: 'food', captureId });
     } catch {
       setError("Couldn't save — please try again.");
@@ -336,8 +354,7 @@ export default function UnknownEntryFlow({
         bmr,
         captureId,
         imageBase64ToSave: imageBase64,
-        // Anchor the record to the diary's selected date, not the current time.
-        clientTimestamp: buildNoonTimestamp(diaryDate),
+        clientTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       finish({ kind: 'weight', captureId });
     } catch {
@@ -358,7 +375,7 @@ export default function UnknownEntryFlow({
         topic,
         captureId,
         imageBase64,
-        imageTimestamp: buildNoonTimestamp(diaryDate),
+        imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       await retagCapture(captureKind);
       finish({ kind: 'education', captureId });

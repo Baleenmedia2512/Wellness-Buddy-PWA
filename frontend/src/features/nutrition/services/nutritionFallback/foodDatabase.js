@@ -38,6 +38,7 @@ export const INDIAN_FOOD_DATABASE = {
   'coffee':        { calories: 30,  protein: 1,  carbs: 5,  fat: 0.5,fiber: 0,   servingSize: 150, unit: 'ml', description: '1 cup coffee with milk and sugar' },
   'juice':         { calories: 120, protein: 1,  carbs: 28, fat: 0,  fiber: 0.5, servingSize: 250, unit: 'ml', description: '1 glass fruit juice' },
   // Zero-calorie items
+  'water bottle': { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 1000, unit: 'ml', description: '1 bottle water (1000 ml)' },
   'water':        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 250, unit: 'ml', description: '1 glass water' },
   'black tea':    { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 150, unit: 'ml', description: '1 cup black tea' },
   'black coffee': { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 150, unit: 'ml', description: '1 cup black coffee' },

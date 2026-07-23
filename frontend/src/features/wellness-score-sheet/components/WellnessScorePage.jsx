@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScoreHistory } from '../hooks/useWellnessScoreHistory';
+import { useTimeWindows } from '../hooks/useTimeWindows';
 import { dateFromPickerValue, resolveWellnessDateRange } from '../domain/dateRange';
 import WellnessScoreSheet from './WellnessScoreSheet';
 
@@ -9,6 +10,7 @@ import WellnessScoreSheet from './WellnessScoreSheet';
  */
 export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionRefreshKey = 0 }) {
   const today = useBusinessToday(user);
+  const timeWindows = useTimeWindows();
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
@@ -68,6 +70,7 @@ export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionR
       selectedDate={selectedDate}
       onSelectDate={setSelectedDate}
       isMultiDay={range.isMultiDay}
+      timeWindows={timeWindows}
     />
   );
 }

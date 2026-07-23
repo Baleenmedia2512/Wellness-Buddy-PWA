@@ -12,6 +12,7 @@ export {
   timeOfDayInTimezone,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
+  utcInstantToLegacyIstWallStorage,
 } from './datetime.js';
 
 export {

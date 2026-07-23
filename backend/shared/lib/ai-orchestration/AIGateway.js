@@ -201,6 +201,9 @@ const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
  * Fixed nutrition for the standard Wellness Valley prepared shake recipe.
  * Single source of truth — reused by prompts and deterministic backend overrides.
  */
+/** Standard USA water-bottle size (1 L). Used in prompts and post-processing overrides. */
+const WATER_BOTTLE_ML = 1000;
+
 const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
   name:      HERBALIFE_SHAKE_NAME,
   portion:   '1 serving',
@@ -415,6 +418,68 @@ function applyHerbalifeShakeOverrides(details) {
   return { ...details, foods, total: sumNutritionFields(foods) };
 }
 
+function isPlainWater(name) {
+  const n = normalizeFoodName(name);
+  return (
+    n === 'water'
+    || n === 'plain water'
+    || n === 'drinking water'
+    || n === 'bottled water'
+    || n === 'mineral water'
+  );
+}
+
+function isWaterBottlePortion(portion) {
+  return /\bbottles?\b/i.test(String(portion ?? ''));
+}
+
+function extractBottleQuantity(portion) {
+  const match = String(portion ?? '').match(/(\d+(?:\.\d+)?)\s*bottles?\b/i);
+  return match ? parseFloat(match[1]) : 1;
+}
+
+function formatWaterBottlePortion(quantity) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  if (quantity === 1) return `1 bottle (${WATER_BOTTLE_ML} ml)`;
+  const qtyLabel = Number.isInteger(quantity) ? quantity : quantity.toFixed(1);
+  return `${qtyLabel} bottles (${volumeMl} ml)`;
+}
+
+function buildWaterBottleFoodItem(existing = {}, quantity = 1) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  return {
+    ...existing,
+    name: 'Water',
+    portion: formatWaterBottlePortion(quantity),
+    weight_g: null,
+    volume_ml: volumeMl,
+    unit: 'ml',
+    isLiquid: true,
+  };
+}
+
+/**
+ * Normalize plain-water bottle servings to the standard 1 L (USA) size.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyWaterBottleOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let bottleFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPlainWater(food?.name) || !isWaterBottlePortion(food?.portion)) return food;
+    bottleFound = true;
+    return buildWaterBottleFoodItem(food, extractBottleQuantity(food.portion));
+  });
+
+  if (!bottleFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
 function formatHerbalifeShakeEnrichmentReference() {
   const micros = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
   return Object.entries(micros)
@@ -550,7 +615,8 @@ Snacks: Murukku (~30 g), Sundal (~100 g), Bonda (~60 g), Bajji (~50 g).
 
 Beverages (isLiquid: true): Filter Coffee with milk (~150 ml), Masala Chai with milk (~150 ml),
   Plain Tea with milk (~150 ml), Ginger Tea with milk (~150 ml), Buttermilk/Moru (~200 ml),
-  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml).
+  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml),
+  Plain Water (~250 ml glass), Water Bottle (~1000 ml / 1 L — USA standard, never 750 ml).
 
 Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~50 g),
   Halwa (~80 g), Laddu (~50 g).
@@ -583,6 +649,7 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
+- Water bottle: always 1000 ml (1 L) per full bottle; portion e.g. "1 bottle (1000 ml)".
 - Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
 - "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
 - If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
@@ -920,11 +987,7 @@ export async function analyzeUnified(
 
     if (normType === 'food') {
       details = applyHerbalifeShakeOverrides(details);
-
-      const foods = Array.isArray(details.foods)
-        ? details.foods
-        : [];
-
+      const foods = Array.isArray(details.foods) ? details.foods : [];
       if (details.total) {
         fastNutrition = extractFastNutrition(details.total, foods);
       } else if (

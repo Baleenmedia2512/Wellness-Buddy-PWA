@@ -5,7 +5,7 @@ import EditableFoodItem from '../EditableFoodItem';
 import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
-import { formatUtcTime } from '../../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
 
 const GIPill = ({ value }) => {
   if (value == null) return null;
@@ -56,9 +56,11 @@ const NutritionAnalysisPanel = ({
 
   if (!selectedMeal) return null;
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
-  const mealTime = formatUtcTime(selectedMeal.CreatedAt, {
-    hour: '2-digit', minute: '2-digit',
-  });
+  const mealTime = formatBusinessTime(
+    selectedMeal.CreatedAt,
+    resolveBusinessTimezone(user),
+    { hour: '2-digit', minute: '2-digit' },
+  );
   const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
   const protein = localNutrition.protein || foodData.nutrition.protein || selectedMeal.TotalProtein || 0;
   const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
