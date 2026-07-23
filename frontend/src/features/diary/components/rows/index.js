@@ -564,6 +564,22 @@ function formatElapsed(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * Format remaining seconds as a user-friendly countdown.
+ * >60 s → “~2m”  |  ≤60 s → “~45s”  |  0 → “…”
+ */
+function formatRemaining(secs) {
+  if (secs <= 0) return '…';
+  if (secs >= 60) return `~${Math.ceil(secs / 60)}m`;
+  return `~${secs}s`;
+}
+
+/**
+ * Total worst-case budget for all 3 Phase-1 attempts including back-off
+ * (3 × 40 s timeout + 1.5 s + 3 s back-off ≈ 125 s). Used for the countdown.
+ */
+const TOTAL_BUDGET_SECS = 125;
+
 export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
@@ -683,8 +699,8 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
                     {currentAttempt}/{totalAttempts}
                   </span>
                 )}
-                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
-                  {formatElapsed(elapsedSecs)}
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`~${Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs)} seconds remaining`}>
+                  {formatRemaining(Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs))}
                 </span>
               </h4>
               <p className="text-xs text-emerald-600/80">
@@ -700,8 +716,8 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
                     {currentAttempt}/{totalAttempts}
                   </span>
                 )}
-                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
-                  {formatElapsed(elapsedSecs)}
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`~${Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs)} seconds remaining`}>
+                  {formatRemaining(Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs))}
                 </span>
               </h4>
               <p className="text-xs text-emerald-600/80">
