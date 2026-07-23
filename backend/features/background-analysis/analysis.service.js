@@ -11,6 +11,10 @@ import * as captures from '../captures/captures.service.js';
 import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
+import {
+  mergeLocationWithCapture,
+  hasAnyLocationField,
+} from '../captures/domain/location.fields.js';
 import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestampToUtcIso, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
@@ -165,6 +169,50 @@ export async function save(input) {
     hasClientTimestamp: !!clientTimestamp,
   });
 
+  // Prefer request location; fill gaps from capture-time GPS/club fields.
+  let loc = {
+    city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
+  };
+  if (captureId) {
+    try {
+      const captureRow = await captures.findById(captureId);
+      loc = mergeLocationWithCapture(loc, captureRow);
+    } catch (err) {
+      logger.warn('analysis.save: failed to load capture location', {
+        captureId, userId: userId?.toString(), err: err?.message,
+      });
+    }
+  }
+  const {
+    city: locCity,
+    village: locVillage,
+    centerName: locCenterName,
+    nutritionCenterId: locNutritionCenterId,
+    attendanceType: locAttendanceType,
+    latitude: locLatitude,
+    longitude: locLongitude,
+  } = loc;
+
+  const hasSaveCoords = locLatitude != null && locLongitude != null;
+  if (!hasSaveCoords) {
+    logger.warn('analysis.save: food row will have NO coordinates', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      reason:
+        'Neither request body nor captures_table had lat/lng — check createPendingCapture location logs for this captureId',
+    });
+  } else {
+    logger.info('analysis.save: location attached to food row', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      hasClubId: locNutritionCenterId != null,
+    });
+  }
+
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
@@ -261,13 +309,13 @@ export async function save(input) {
           ...analysisPayload,
           CreatedAt: createdAtLegacy,
           UpdatedAt: updatedAtLegacy,
-          City: city || null,
-          Village: village || null,
-          CenterName: centerName || null,
-          NutritionCenterId: nutritionCenterId || null,
-          AttendanceType: attendanceType || null,
-          Latitude: latitude || null,
-          Longitude: longitude || null,
+          City: locCity || null,
+          Village: locVillage || null,
+          CenterName: locCenterName || null,
+          NutritionCenterId: locNutritionCenterId || null,
+          AttendanceType: locAttendanceType || null,
+          Latitude: locLatitude || null,
+          Longitude: locLongitude || null,
         });
       }
     } else {
@@ -276,13 +324,13 @@ export async function save(input) {
         ...analysisPayload,
         CreatedAt: createdAtLegacy,
         UpdatedAt: updatedAtLegacy,
-        City: city || null,
-        Village: village || null,
-        CenterName: centerName || null,
-        NutritionCenterId: nutritionCenterId || null,
-        AttendanceType: attendanceType || null,
-        Latitude: latitude || null,
-        Longitude: longitude || null,
+        City: locCity || null,
+        Village: locVillage || null,
+        CenterName: locCenterName || null,
+        NutritionCenterId: locNutritionCenterId || null,
+        AttendanceType: locAttendanceType || null,
+        Latitude: locLatitude || null,
+        Longitude: locLongitude || null,
       });
     }
   } catch (error) {
@@ -491,7 +539,25 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64, token: clientToken, shareCode: clientShareCode }) {
+export async function createPendingCapture({
+  userId,
+  imageBase64,
+  token: clientToken,
+  shareCode: clientShareCode,
+  latitude = null,
+  longitude = null,
+  city = null,
+  village = null,
+  attendanceType = null,
+  nutritionCenterId = null,
+  centerName = null,
+  locationStatus = null,
+  locationErrorCode = null,
+  locationErrorDetail = null,
+  locationLatencyMs = null,
+  geocodeOk = null,
+  gpsAccuracyM = null,
+}) {
   const token = clientToken || randomUUID();
   let shareCode = clientShareCode || generateShareCode();
   const shareExpiresAt = addUtcDays(nowUtc(), 30);
@@ -503,8 +569,57 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   // analysis.save, weight via weight.saveWeight, etc.) is responsible for
   // inserting its own row with CaptureID = id and promoting the capture via
   // captures.updateTypeById.
+  // Location/club fields are stored here at photo time so a later domain save
+  // can still get city/village/attendance even if GPS fails on the second pass.
+  const locationPayload = {
+    latitude,
+    longitude,
+    city,
+    village,
+    attendanceType,
+    nutritionCenterId,
+    centerName,
+  };
+  const shouldWriteLocation = hasAnyLocationField(locationPayload);
+  const hasCoords = latitude != null && longitude != null;
+  const resolvedStatus =
+    locationStatus ||
+    (hasCoords ? (geocodeOk === false ? 'partial' : 'success') : 'failed');
+
+  // Vercel-visible log — never include raw lat/lng (PII). Use this to diagnose
+  // why a capture has no location/club/city.
+  const locationLog = {
+    userId: userId?.toString(),
+    locationStatus: resolvedStatus,
+    locationErrorCode: locationErrorCode || (hasCoords ? null : 'MISSING_COORDS'),
+    locationErrorDetail:
+      locationErrorDetail ||
+      (hasCoords
+        ? null
+        : 'Client did not send latitude/longitude with capture create'),
+    locationLatencyMs,
+    gpsAccuracyM,
+    geocodeOk,
+    hasCoords,
+    hasCity: !!city,
+    hasVillage: !!village,
+    attendanceType: attendanceType || null,
+    hasClubId: nutritionCenterId != null,
+    hasCenterName: !!centerName,
+    willPersistLocationColumns: shouldWriteLocation,
+  };
+
+  if (resolvedStatus === 'failed' || !hasCoords) {
+    logger.warn('createPendingCapture: location NOT taken', locationLog);
+  } else if (resolvedStatus === 'partial') {
+    logger.warn('createPendingCapture: location partial (GPS OK, city/village missing)', locationLog);
+  } else {
+    logger.info('createPendingCapture: location captured', locationLog);
+  }
+
   const MAX_SHARE_CODE_ATTEMPTS = 6;
   let capture = null;
+  let locationWriteFailed = false;
   for (let attempt = 0; attempt < MAX_SHARE_CODE_ATTEMPTS; attempt += 1) {
     try {
       capture = await captures.recordPending({
@@ -516,14 +631,50 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
         imagePath: 'instant-share',
         deviceInfo: 'Wellness Valley Web App',
         processedBy: 'manual_app',
+        ...(shouldWriteLocation && !locationWriteFailed ? locationPayload : {}),
       });
       break;
     } catch (err) {
+      const msg = err?.message || '';
+      // Rollout safety: if location columns are not migrated yet, retry once
+      // without them so photo capture still succeeds.
+      if (
+        shouldWriteLocation &&
+        !locationWriteFailed &&
+        /Latitude|Longitude|City|Village|AttendanceType|NutritionCenterId|CenterName|column/i.test(msg)
+      ) {
+        locationWriteFailed = true;
+        logger.warn('createPendingCapture: location columns missing — retrying without location', {
+          userId: userId?.toString(),
+          err: msg,
+        });
+        attempt -= 1;
+        continue;
+      }
       if (!isDuplicateShareCodeError(err) || attempt === MAX_SHARE_CODE_ATTEMPTS - 1) {
         throw err;
       }
       shareCode = generateShareCode();
     }
+  }
+
+  if (locationWriteFailed) {
+    logger.warn('createPendingCapture: location columns not persisted (migration pending)', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      locationErrorCode,
+    });
+  } else if (shouldWriteLocation) {
+    logger.info('createPendingCapture: location fields written to captures_table', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      attendanceType: attendanceType || null,
+      hasCoords,
+      hasCity: !!city,
+      hasClubId: nutritionCenterId != null,
+    });
   }
 
   // The `id` returned here is the captures_table primary key. The FE round-

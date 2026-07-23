@@ -3,6 +3,7 @@
  * Handles GPS permissions and proximity detection for nutrition centers
  */
 
+import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 
@@ -35,8 +36,61 @@ class LocationAttendanceService {
   }
 
   /**
-   * Request GPS location permission and get current position
-   * @returns {Promise<{latitude: number, longitude: number} | null>}
+   * Browser Geolocation API fallback (Capacitor Geolocation is native-only;
+   * on web it throws code=UNIMPLEMENTED "Not implemented on web.").
+   */
+  getCurrentLocationViaBrowser(options) {
+    return new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve({
+          error: 'LOCATION_UNAVAILABLE',
+          errorDetail: 'Browser geolocation API not available in this environment',
+        });
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          debugLog('✅ GPS location obtained (browser):', {
+            accuracy: position.coords.accuracy,
+          });
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          });
+        },
+        (error) => {
+          const code = error?.code;
+          const message = error?.message || String(error);
+          let errorCode = 'LOCATION_UNAVAILABLE';
+          let errorDetail = message;
+
+          if (code === 1) {
+            errorCode = 'PERMISSION_DENIED';
+            errorDetail = `Browser permission denied (code=1): ${message}`;
+          } else if (code === 3) {
+            errorCode = 'GPS_TIMEOUT';
+            errorDetail = `Browser GPS timed out after ${options.timeout}ms (code=3): ${message}`;
+          } else if (code === 2) {
+            errorCode = 'POSITION_UNAVAILABLE';
+            errorDetail = `Browser position unavailable (code=2): ${message}`;
+          } else {
+            errorDetail = `Browser GPS error (code=${code ?? 'n/a'}): ${message}`;
+          }
+
+          console.warn('⚠️ GPS location error (browser):', { errorCode, errorDetail });
+          resolve({ error: errorCode, errorDetail });
+        },
+        options,
+      );
+    });
+  }
+
+  /**
+   * Request GPS location permission and get current position.
+   * Native → Capacitor Geolocation; Web → navigator.geolocation.
+   * @returns {Promise<{latitude?: number, longitude?: number, accuracy?: number, error?: string, errorDetail?: string}>}
    */
   async getCurrentLocation() {
     const options = {
@@ -45,21 +99,35 @@ class LocationAttendanceService {
       maximumAge: 0, // No caching
     };
 
+    const useBrowser =
+      !Capacitor.isNativePlatform() ||
+      Capacitor.getPlatform() === 'web';
+
+    if (useBrowser) {
+      debugLog('📍 GPS via browser geolocation (web platform)');
+      return this.getCurrentLocationViaBrowser(options);
+    }
+
     try {
       // Ensure permission is granted before requesting position (Capacitor native API).
       const perm = await Geolocation.checkPermissions();
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
         const requested = await Geolocation.requestPermissions();
         if (requested.location !== 'granted' && requested.coarseLocation !== 'granted') {
-          debugLog('⚠️ GPS permission denied by user');
-          return { error: 'PERMISSION_DENIED' };
+          debugLog('⚠️ GPS permission denied by user', {
+            before: perm,
+            after: requested,
+          });
+          return {
+            error: 'PERMISSION_DENIED',
+            errorDetail:
+              `Location permission not granted (location=${requested.location}, coarse=${requested.coarseLocation})`,
+          };
         }
       }
 
       const position = await Geolocation.getCurrentPosition(options);
-      debugLog('✅ GPS location obtained:', {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+      debugLog('✅ GPS location obtained (native):', {
         accuracy: position.coords.accuracy,
       });
       return {
@@ -68,14 +136,42 @@ class LocationAttendanceService {
         accuracy: position.coords.accuracy,
       };
     } catch (error) {
-      console.warn('⚠️ GPS location error:', error.message, error.code);
-      // Detect permission denied specifically
-      const isPermissionDenied = 
-        error.code === 1 || // GeolocationPositionError.PERMISSION_DENIED
-        error.message?.toLowerCase().includes('permission') ||
-        error.message?.toLowerCase().includes('denied');
-      console.warn('  Error type:', isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE');
-      return { error: isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE' };
+      const code = error?.code;
+      const message = error?.message || String(error);
+      const unimplemented =
+        code === 'UNIMPLEMENTED' ||
+        String(code).includes('UNIMPLEMENTED') ||
+        message.toLowerCase().includes('not implemented on web');
+
+      // Capacitor web stub — fall back to browser API.
+      if (unimplemented) {
+        debugLog('📍 Capacitor Geolocation UNIMPLEMENTED — falling back to browser');
+        return this.getCurrentLocationViaBrowser(options);
+      }
+
+      let errorCode = 'LOCATION_UNAVAILABLE';
+      let errorDetail = message;
+
+      // GeolocationPositionError: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+      if (
+        code === 1 ||
+        message.toLowerCase().includes('permission') ||
+        message.toLowerCase().includes('denied')
+      ) {
+        errorCode = 'PERMISSION_DENIED';
+        errorDetail = `Permission denied (code=${code ?? 'n/a'}): ${message}`;
+      } else if (code === 3 || message.toLowerCase().includes('timeout')) {
+        errorCode = 'GPS_TIMEOUT';
+        errorDetail = `GPS timed out after ${options.timeout}ms (code=${code ?? 'n/a'}): ${message}`;
+      } else if (code === 2) {
+        errorCode = 'POSITION_UNAVAILABLE';
+        errorDetail = `Position unavailable — GPS/network location off or weak signal (code=2): ${message}`;
+      } else {
+        errorDetail = `GPS error (code=${code ?? 'n/a'}): ${message}`;
+      }
+
+      console.warn('⚠️ GPS location error (native):', { errorCode, errorDetail });
+      return { error: errorCode, errorDetail };
     }
   }
 
@@ -155,57 +251,45 @@ class LocationAttendanceService {
   }
 
   /**
-   * Determine attendance type and nutrition center(s) based on GPS location
-   * @param {string} apiBaseUrl - API base URL
-   * @param {number} userId - User ID
-   * @returns {Promise<{attendanceType: string, latitude: number|null, longitude: number|null, nutritionCenterId: number|null, nearbyCenters: Array}>}
+   * Determine attendance from known coordinates (no GPS call).
+   * Used by the background location cache and by determineAttendance().
    */
-  async determineAttendance(apiBaseUrl, userId) {
-    // Capture GPS first so coords are preserved even if centers API fails later.
-    let location = null;
-    try {
-      location = await this.getCurrentLocation();
-    } catch (locErr) {
-      console.warn('⚠️ [attendance] GPS capture threw unexpectedly:', locErr.message);
-    }
-
-    // GPS denied or unavailable → remote, no coords
-    if (!location || location.error) {
+  async determineAttendanceFromCoords(apiBaseUrl, userId, { latitude, longitude, accuracy = null }) {
+    if (latitude == null || longitude == null) {
       return {
         attendanceType: 'remote',
         latitude: null,
         longitude: null,
         nutritionCenterId: null,
         nearbyCenters: [],
-        locationError: location?.error || 'UNKNOWN',
+        locationError: 'MISSING_COORDS',
+        locationErrorDetail: 'determineAttendanceFromCoords called without coordinates',
+        accuracy: null,
       };
     }
 
-    // GPS succeeded — coords are now safe regardless of what happens next.
     try {
-      // Fetch nutrition centers
       const centers = await this.fetchNutritionCenters(apiBaseUrl, userId);
       debugLog(`📍 [attendance] Fetched ${centers.length} nutrition centers for proximity check`);
 
       if (centers.length === 0) {
-        // No centers registered -> remote WITH GPS coords (coords always saved)
         debugLog('⚠️ [attendance] No nutrition centers found - marking as remote');
         return {
           attendanceType: 'remote',
-          latitude: location.latitude,
-          longitude: location.longitude,
+          latitude,
+          longitude,
           nutritionCenterId: null,
           nearbyCenters: [],
+          accuracy,
         };
       }
 
-      // Filter out centers with missing/invalid coordinates
-      const centersWithCoords = centers.filter(c => {
+      const centersWithCoords = centers.filter((c) => {
         const lat = parseFloat(c.latitude);
         const lon = parseFloat(c.longitude);
         const valid = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
         if (!valid) {
-          console.warn(`⚠️ [attendance] Center "${c.center_name}" (id:${c.id}) has invalid coordinates: lat=${c.latitude}, lon=${c.longitude}`);
+          console.warn(`⚠️ [attendance] Center "${c.center_name}" (id:${c.id}) has invalid coordinates`);
         }
         return valid;
       });
@@ -214,51 +298,84 @@ class LocationAttendanceService {
         debugLog('⚠️ [attendance] All centers have missing/invalid coordinates - marking as remote');
         return {
           attendanceType: 'remote',
-          latitude: location.latitude,
-          longitude: location.longitude,
+          latitude,
+          longitude,
           nutritionCenterId: null,
           nearbyCenters: [],
+          accuracy,
         };
       }
 
-      debugLog(`📍 [attendance] Checking proximity to ${centersWithCoords.length} centers with valid coordinates`);
-
-      // Check proximity to centers - get ALL nearby centers
-      const nearbyCenters = this.findNearbyCenters(
-        location.latitude,
-        location.longitude,
-        centersWithCoords
-      );
+      const nearbyCenters = this.findNearbyCenters(latitude, longitude, centersWithCoords);
 
       if (nearbyCenters.length > 0) {
         return {
           attendanceType: 'club',
-          latitude: location.latitude,
-          longitude: location.longitude,
+          latitude,
+          longitude,
           nutritionCenterId: nearbyCenters.length === 1 ? nearbyCenters[0].center.id : null,
-          nearbyCenters: nearbyCenters,
+          nearbyCenters,
           centerName: nearbyCenters.length === 1 ? nearbyCenters[0].center.center_name : null,
-        };
-      } else {
-        return {
-          attendanceType: 'remote',
-          latitude: location.latitude,
-          longitude: location.longitude,
-          nutritionCenterId: null,
-          nearbyCenters: [],
+          accuracy,
         };
       }
-    } catch (err) {
-      console.error('❌ Error determining attendance (centers/proximity stage):', err);
-      // GPS coords were already captured — save them as remote rather than losing them.
+
       return {
         attendanceType: 'remote',
-        latitude: location.latitude,
-        longitude: location.longitude,
+        latitude,
+        longitude,
         nutritionCenterId: null,
         nearbyCenters: [],
+        accuracy,
+      };
+    } catch (err) {
+      console.error('❌ Error determining attendance (centers/proximity stage):', err);
+      return {
+        attendanceType: 'remote',
+        latitude,
+        longitude,
+        nutritionCenterId: null,
+        nearbyCenters: [],
+        locationError: 'CENTERS_LOOKUP_FAILED',
+        locationErrorDetail: `GPS OK but nutrition-centers lookup failed: ${err?.message || err}`,
+        accuracy,
       };
     }
+  }
+
+  /**
+   * Determine attendance type and nutrition center(s) based on GPS location
+   * @param {string} apiBaseUrl - API base URL
+   * @param {number} userId - User ID
+   */
+  async determineAttendance(apiBaseUrl, userId) {
+    let location = null;
+    try {
+      location = await this.getCurrentLocation();
+    } catch (locErr) {
+      console.warn('⚠️ [attendance] GPS capture threw unexpectedly:', locErr.message);
+    }
+
+    if (!location || location.error) {
+      return {
+        attendanceType: 'remote',
+        latitude: null,
+        longitude: null,
+        nutritionCenterId: null,
+        nearbyCenters: [],
+        locationError: location?.error || 'UNKNOWN',
+        locationErrorDetail:
+          location?.errorDetail ||
+          'GPS returned no coordinates (unknown failure)',
+        accuracy: null,
+      };
+    }
+
+    return this.determineAttendanceFromCoords(apiBaseUrl, userId, {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy ?? null,
+    });
   }
 }
 

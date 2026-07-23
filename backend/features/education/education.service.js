@@ -7,6 +7,7 @@ import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 // logged and does NOT fail the user's education save.
 import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
+import { mergeLocationWithCapture } from '../captures/domain/location.fields.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import {
@@ -15,7 +16,6 @@ import {
   normalizeStoredTimestampToUtcIso,
   utcInstantToLegacyIstWallStorage,
   timeOfDayInTimezone,
-  timestampToCalendarYmd,
   IANA_IST,
 } from '../../shared/lib/datetime/index.js';
 
@@ -35,17 +35,19 @@ export async function saveLog(input) {
 
   let utcInstant;
   let deviceTime = null;
+  let captureRow = null;
   if (imageTimestamp) {
     utcInstant = parseClientTimestampToUtc(imageTimestamp).utcIso;
     deviceTime = String(imageTimestamp);
-  } else if (captureId) {
+  }
+  if (captureId) {
     try {
-      const capture = await captures.findById(captureId);
-      if (capture?.CreatedAt) {
-        utcInstant = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      captureRow = await captures.findById(captureId);
+      if (!utcInstant && captureRow?.CreatedAt) {
+        utcInstant = normalizeStoredTimestampToUtcIso(captureRow.CreatedAt);
       }
     } catch (err) {
-      logger.warn('education.saveLog: failed to resolve capture CreatedAt', {
+      logger.warn('education.saveLog: failed to resolve capture', {
         captureId, userId: userId.toString(), err: err.message,
       });
     }
@@ -53,6 +55,11 @@ export async function saveLog(input) {
   if (!utcInstant) {
     utcInstant = nowUtc();
   }
+
+  const loc = mergeLocationWithCapture(
+    { latitude, longitude, attendanceType, nutritionCenterId, centerName, city, village },
+    captureRow,
+  );
 
   const logTimestamp = utcInstant;
   const legacyCreatedAt = utcInstantToLegacyIstWallStorage(utcInstant, IANA_IST);
@@ -66,14 +73,14 @@ export async function saveLog(input) {
     Confidence: confidence || null,
     DeviceInfo: deviceInfo || null,
     ImageBase64: imageBase64ToSave,
-    latitude: latitude || null,
-    longitude: longitude || null,
-    attendance_type: attendanceType || null,
-    nutrition_center_id: nutritionCenterId || null,
+    latitude: loc.latitude || null,
+    longitude: loc.longitude || null,
+    attendance_type: loc.attendanceType || null,
+    nutrition_center_id: loc.nutritionCenterId || null,
     participant_count: participantCount || null,
-    center_name: centerName || null,
-    City: city || null,
-    Village: village || null,
+    center_name: loc.centerName || null,
+    City: loc.city || null,
+    Village: loc.village || null,
     CaptureID: captureId || null,
     IsDeleted: false,
     CreatedAt: legacyCreatedAt,
@@ -108,7 +115,7 @@ export async function saveLog(input) {
       success: true,
       message: 'Education log saved successfully',
       id: data?.Id || data?.id || data?.ID,
-      attendanceType,
+      attendanceType: loc.attendanceType,
       isOnTime,
       timeWindow: educationWindow,
       uploadTime: logTimeOnly,
