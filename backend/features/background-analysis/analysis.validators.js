@@ -74,6 +74,19 @@ export function validateCreateCapture(body) {
   // PATCH /captures after AI analysis determines the correct category.
   // Location/club fields are captured at photo time so later domain saves
   // can copy them even if a second GPS pass fails.
+  // locationStatus / locationError* are client diagnostics for Vercel logs only.
+  const locationStatus = optionalString(body.locationStatus);
+  const locationErrorCode = optionalString(body.locationErrorCode);
+  const locationErrorDetail = optionalString(body.locationErrorDetail);
+  const locationLatencyMs = optionalNumber(body.locationLatencyMs);
+  const gpsAccuracyM = optionalNumber(body.gpsAccuracyM);
+  let geocodeOk = null;
+  if (body.geocodeOk === true || body.geocodeOk === false) {
+    geocodeOk = body.geocodeOk;
+  } else if (body.geocodeOk === 'true' || body.geocodeOk === 'false') {
+    geocodeOk = body.geocodeOk === 'true';
+  }
+
   return {
     userId,
     imageBase64,
@@ -86,6 +99,12 @@ export function validateCreateCapture(body) {
     attendanceType,
     nutritionCenterId: optionalNumber(body.nutritionCenterId),
     centerName: optionalString(body.centerName),
+    locationStatus,
+    locationErrorCode,
+    locationErrorDetail,
+    locationLatencyMs,
+    geocodeOk,
+    gpsAccuracyM,
   };
 }
 

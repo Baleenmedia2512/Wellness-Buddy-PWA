@@ -116,7 +116,7 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
-import { resolveLocationFields } from "./shared/utils/resolveLocationFields";
+import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -4156,13 +4156,42 @@ function WellnessValleyApp() {
       const stashedLocation = captureIdForLoc
         ? captureLocationByIdRef.current.get(captureIdForLoc)
         : null;
-      let locationFields = stashedLocation ? { ...stashedLocation } : {};
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
       let gpsDenied = false;
       if (!locationFields.latitude || !locationFields.longitude) {
         const resolved = await resolveLocationFields(apiBaseUrl, userId);
-        const { permissionDenied, ...fields } = resolved;
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
         gpsDenied = !!permissionDenied;
-        locationFields = { ...locationFields, ...fields };
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
       }
       if (gpsDenied) {
         setAlertModal({
@@ -4496,16 +4525,48 @@ function WellnessValleyApp() {
       _ctLog(10, 'GPS started', {
         hasCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
-      let clubLocationFields = stashedLocation ? { ...stashedLocation } : {};
+      let clubLocationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
       let gpsDenied = false;
       if (!clubLocationFields.latitude || !clubLocationFields.longitude) {
         const resolved = await resolveLocationFields(apiBaseUrl, saveData.userId);
-        const { permissionDenied, ...fields } = resolved;
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
         gpsDenied = !!permissionDenied;
-        clubLocationFields = { ...clubLocationFields, ...fields };
+        clubLocationFields = {
+          ...clubLocationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
         if (captureIdForLoc) {
           captureLocationByIdRef.current.set(captureIdForLoc, { ...clubLocationFields });
         }
+      } else {
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: 'success',
+          errorCode: null,
+          errorDetail: null,
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+          hasCity: !!clubLocationFields.city,
+        });
       }
       _ctLog(11, 'GPS finished', {
         attendanceType: clubLocationFields.attendanceType,
@@ -5052,15 +5113,29 @@ function WellnessValleyApp() {
     const locationPromise = (async () => {
       try {
         const locUserId = user?.id || (await getUserId(user));
-        if (!locUserId) return { attendanceType: 'remote' };
-        const { permissionDenied, ...fields } = await resolveLocationFields(
-          apiBaseUrl,
-          locUserId,
-        );
-        return { ...fields, permissionDenied: !!permissionDenied };
+        if (!locUserId) {
+          return {
+            attendanceType: 'remote',
+            permissionDenied: false,
+            locationStatus: 'failed',
+            locationErrorCode: 'NO_USER_ID',
+            locationErrorDetail: 'Cannot resolve location — userId missing at capture time',
+            locationLatencyMs: 0,
+            geocodeOk: false,
+          };
+        }
+        return await resolveLocationFields(apiBaseUrl, locUserId);
       } catch (err) {
-        debugLog('[CAPTURE] early GPS failed:', err?.message);
-        return { attendanceType: 'remote', permissionDenied: false };
+        console.warn('[CAPTURE] early GPS failed:', err?.message);
+        return {
+          attendanceType: 'remote',
+          permissionDenied: false,
+          locationStatus: 'failed',
+          locationErrorCode: 'UNEXPECTED_ERROR',
+          locationErrorDetail: `Early GPS promise threw: ${err?.message || err}`,
+          locationLatencyMs: 0,
+          geocodeOk: false,
+        };
       }
     })();
 
@@ -5128,8 +5203,22 @@ function WellnessValleyApp() {
       const captureLocation = await locationPromise;
       const {
         permissionDenied: captureGpsDenied,
+        locationStatus,
+        locationErrorCode,
+        locationErrorDetail,
+        locationLatencyMs,
+        geocodeOk,
+        gpsAccuracyM,
         ...captureLocationFields
-      } = captureLocation || { attendanceType: 'remote' };
+      } = captureLocation || {
+        attendanceType: 'remote',
+        locationStatus: 'failed',
+        locationErrorCode: 'UNKNOWN',
+        locationErrorDetail: 'locationPromise returned empty',
+      };
+      const hasCoords = !!(
+        captureLocationFields.latitude && captureLocationFields.longitude
+      );
       if (captureGpsDenied) {
         setAlertModal({
           isOpen: true,
@@ -5139,10 +5228,28 @@ function WellnessValleyApp() {
           type: "warning",
         });
       }
-      _ctLog('loc', 'capture-time location resolved', {
+      // Client console (device) — also sent to Vercel via POST /captures diagnostics.
+      console.warn('[CAPTURE-LOCATION]', {
+        status: locationStatus || (hasCoords ? 'success' : 'failed'),
+        errorCode: locationErrorCode || null,
+        errorDetail: locationErrorDetail || null,
         attendanceType: captureLocationFields.attendanceType,
-        hasCoords: !!(captureLocationFields.latitude && captureLocationFields.longitude),
+        hasCoords,
         hasCity: !!captureLocationFields.city,
+        hasVillage: !!captureLocationFields.village,
+        geocodeOk: !!geocodeOk,
+        latencyMs: locationLatencyMs ?? null,
+        gpsAccuracyM: gpsAccuracyM ?? null,
+      });
+      _ctLog('loc', 'capture-time location resolved', {
+        locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+        locationErrorCode: locationErrorCode || null,
+        locationErrorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        geocodeOk: !!geocodeOk,
+        locationLatencyMs: locationLatencyMs ?? null,
       });
 
       // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
@@ -5182,6 +5289,13 @@ function WellnessValleyApp() {
                 attendanceType: captureLocationFields.attendanceType ?? null,
                 nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
                 centerName: captureLocationFields.centerName ?? null,
+                // Diagnostics only (logged on Vercel; not stored as PII coords)
+                locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+                locationErrorCode: locationErrorCode || null,
+                locationErrorDetail: locationErrorDetail || null,
+                locationLatencyMs: locationLatencyMs ?? null,
+                geocodeOk: geocodeOk ?? null,
+                gpsAccuracyM: gpsAccuracyM ?? null,
               }),
             },
           );
@@ -5206,7 +5320,7 @@ function WellnessValleyApp() {
           };
           captureLocationByIdRef.current.set(
             String(captureShare.id),
-            { ...captureLocationFields },
+            stripLocationDiagnostics(captureLocationFields),
           );
           debugLog(
             `?? [PERF] ? POST /captures: ${capDuration}ms (+${

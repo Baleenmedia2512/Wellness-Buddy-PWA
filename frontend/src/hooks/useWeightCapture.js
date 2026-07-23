@@ -5,7 +5,7 @@
  */
 import { useState, useRef, useCallback } from 'react';
 import { getUserId } from '../shared/services/userIdentity';
-import { resolveLocationFields } from '../shared/utils/resolveLocationFields';
+import { resolveLocationFields, stripLocationDiagnostics } from '../shared/utils/resolveLocationFields';
 import { duplicateDetectionService } from '../features/nutrition';
 import { debugLog } from '../shared/utils/logger';
 import { useWeightProgressCheck } from '../features/weight-progress-tips/hooks/useWeightProgressCheck';
@@ -159,13 +159,42 @@ export function useWeightCapture({
       const stashedLocation = captureIdForLoc && captureLocationByIdRef?.current
         ? captureLocationByIdRef.current.get(captureIdForLoc)
         : null;
-      let locationFields = stashedLocation ? { ...stashedLocation } : {};
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
       let gpsDenied = false;
       if (!locationFields.latitude || !locationFields.longitude) {
         const resolved = await resolveLocationFields(apiBaseUrl, userId);
-        const { permissionDenied, ...fields } = resolved;
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
         gpsDenied = !!permissionDenied;
-        locationFields = { ...locationFields, ...fields };
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[WEIGHT-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[WEIGHT-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
       }
       if (gpsDenied) {
         setAlertModal({

@@ -36,7 +36,7 @@ class LocationAttendanceService {
 
   /**
    * Request GPS location permission and get current position
-   * @returns {Promise<{latitude: number, longitude: number} | null>}
+   * @returns {Promise<{latitude?: number, longitude?: number, accuracy?: number, error?: string, errorDetail?: string}>}
    */
   async getCurrentLocation() {
     const options = {
@@ -51,15 +51,20 @@ class LocationAttendanceService {
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
         const requested = await Geolocation.requestPermissions();
         if (requested.location !== 'granted' && requested.coarseLocation !== 'granted') {
-          debugLog('⚠️ GPS permission denied by user');
-          return { error: 'PERMISSION_DENIED' };
+          debugLog('⚠️ GPS permission denied by user', {
+            before: perm,
+            after: requested,
+          });
+          return {
+            error: 'PERMISSION_DENIED',
+            errorDetail:
+              `Location permission not granted (location=${requested.location}, coarse=${requested.coarseLocation})`,
+          };
         }
       }
 
       const position = await Geolocation.getCurrentPosition(options);
       debugLog('✅ GPS location obtained:', {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
         accuracy: position.coords.accuracy,
       });
       return {
@@ -68,14 +73,31 @@ class LocationAttendanceService {
         accuracy: position.coords.accuracy,
       };
     } catch (error) {
-      console.warn('⚠️ GPS location error:', error.message, error.code);
-      // Detect permission denied specifically
-      const isPermissionDenied = 
-        error.code === 1 || // GeolocationPositionError.PERMISSION_DENIED
-        error.message?.toLowerCase().includes('permission') ||
-        error.message?.toLowerCase().includes('denied');
-      console.warn('  Error type:', isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE');
-      return { error: isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE' };
+      const code = error?.code;
+      const message = error?.message || String(error);
+      let errorCode = 'LOCATION_UNAVAILABLE';
+      let errorDetail = message;
+
+      // GeolocationPositionError: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+      if (
+        code === 1 ||
+        message.toLowerCase().includes('permission') ||
+        message.toLowerCase().includes('denied')
+      ) {
+        errorCode = 'PERMISSION_DENIED';
+        errorDetail = `Permission denied (code=${code ?? 'n/a'}): ${message}`;
+      } else if (code === 3 || message.toLowerCase().includes('timeout')) {
+        errorCode = 'GPS_TIMEOUT';
+        errorDetail = `GPS timed out after ${options.timeout}ms (code=${code ?? 'n/a'}): ${message}`;
+      } else if (code === 2) {
+        errorCode = 'POSITION_UNAVAILABLE';
+        errorDetail = `Position unavailable — GPS/network location off or weak signal (code=2): ${message}`;
+      } else {
+        errorDetail = `GPS error (code=${code ?? 'n/a'}): ${message}`;
+      }
+
+      console.warn('⚠️ GPS location error:', { errorCode, errorDetail });
+      return { error: errorCode, errorDetail };
     }
   }
 
@@ -178,6 +200,10 @@ class LocationAttendanceService {
         nutritionCenterId: null,
         nearbyCenters: [],
         locationError: location?.error || 'UNKNOWN',
+        locationErrorDetail:
+          location?.errorDetail ||
+          'GPS returned no coordinates (unknown failure)',
+        accuracy: null,
       };
     }
 
@@ -196,6 +222,7 @@ class LocationAttendanceService {
           longitude: location.longitude,
           nutritionCenterId: null,
           nearbyCenters: [],
+          accuracy: location.accuracy ?? null,
         };
       }
 
@@ -205,7 +232,7 @@ class LocationAttendanceService {
         const lon = parseFloat(c.longitude);
         const valid = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
         if (!valid) {
-          console.warn(`⚠️ [attendance] Center "${c.center_name}" (id:${c.id}) has invalid coordinates: lat=${c.latitude}, lon=${c.longitude}`);
+          console.warn(`⚠️ [attendance] Center "${c.center_name}" (id:${c.id}) has invalid coordinates`);
         }
         return valid;
       });
@@ -218,6 +245,7 @@ class LocationAttendanceService {
           longitude: location.longitude,
           nutritionCenterId: null,
           nearbyCenters: [],
+          accuracy: location.accuracy ?? null,
         };
       }
 
@@ -238,6 +266,7 @@ class LocationAttendanceService {
           nutritionCenterId: nearbyCenters.length === 1 ? nearbyCenters[0].center.id : null,
           nearbyCenters: nearbyCenters,
           centerName: nearbyCenters.length === 1 ? nearbyCenters[0].center.center_name : null,
+          accuracy: location.accuracy ?? null,
         };
       } else {
         return {
@@ -246,6 +275,7 @@ class LocationAttendanceService {
           longitude: location.longitude,
           nutritionCenterId: null,
           nearbyCenters: [],
+          accuracy: location.accuracy ?? null,
         };
       }
     } catch (err) {
@@ -257,6 +287,9 @@ class LocationAttendanceService {
         longitude: location.longitude,
         nutritionCenterId: null,
         nearbyCenters: [],
+        locationError: 'CENTERS_LOOKUP_FAILED',
+        locationErrorDetail: `GPS OK but nutrition-centers lookup failed: ${err?.message || err}`,
+        accuracy: location.accuracy ?? null,
       };
     }
   }

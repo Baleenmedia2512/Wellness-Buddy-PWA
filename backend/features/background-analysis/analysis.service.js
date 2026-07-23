@@ -193,6 +193,26 @@ export async function save(input) {
     longitude: locLongitude,
   } = loc;
 
+  const hasSaveCoords = locLatitude != null && locLongitude != null;
+  if (!hasSaveCoords) {
+    logger.warn('analysis.save: food row will have NO coordinates', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      reason:
+        'Neither request body nor captures_table had lat/lng — check createPendingCapture location logs for this captureId',
+    });
+  } else {
+    logger.info('analysis.save: location attached to food row', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      hasClubId: locNutritionCenterId != null,
+    });
+  }
+
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
@@ -531,6 +551,12 @@ export async function createPendingCapture({
   attendanceType = null,
   nutritionCenterId = null,
   centerName = null,
+  locationStatus = null,
+  locationErrorCode = null,
+  locationErrorDetail = null,
+  locationLatencyMs = null,
+  geocodeOk = null,
+  gpsAccuracyM = null,
 }) {
   const token = clientToken || randomUUID();
   let shareCode = clientShareCode || generateShareCode();
@@ -555,6 +581,41 @@ export async function createPendingCapture({
     centerName,
   };
   const shouldWriteLocation = hasAnyLocationField(locationPayload);
+  const hasCoords = latitude != null && longitude != null;
+  const resolvedStatus =
+    locationStatus ||
+    (hasCoords ? (geocodeOk === false ? 'partial' : 'success') : 'failed');
+
+  // Vercel-visible log — never include raw lat/lng (PII). Use this to diagnose
+  // why a capture has no location/club/city.
+  const locationLog = {
+    userId: userId?.toString(),
+    locationStatus: resolvedStatus,
+    locationErrorCode: locationErrorCode || (hasCoords ? null : 'MISSING_COORDS'),
+    locationErrorDetail:
+      locationErrorDetail ||
+      (hasCoords
+        ? null
+        : 'Client did not send latitude/longitude with capture create'),
+    locationLatencyMs,
+    gpsAccuracyM,
+    geocodeOk,
+    hasCoords,
+    hasCity: !!city,
+    hasVillage: !!village,
+    attendanceType: attendanceType || null,
+    hasClubId: nutritionCenterId != null,
+    hasCenterName: !!centerName,
+    willPersistLocationColumns: shouldWriteLocation,
+  };
+
+  if (resolvedStatus === 'failed' || !hasCoords) {
+    logger.warn('createPendingCapture: location NOT taken', locationLog);
+  } else if (resolvedStatus === 'partial') {
+    logger.warn('createPendingCapture: location partial (GPS OK, city/village missing)', locationLog);
+  } else {
+    logger.info('createPendingCapture: location captured', locationLog);
+  }
 
   const MAX_SHARE_CODE_ATTEMPTS = 6;
   let capture = null;
@@ -584,6 +645,7 @@ export async function createPendingCapture({
       ) {
         locationWriteFailed = true;
         logger.warn('createPendingCapture: location columns missing — retrying without location', {
+          userId: userId?.toString(),
           err: msg,
         });
         attempt -= 1;
@@ -594,6 +656,25 @@ export async function createPendingCapture({
       }
       shareCode = generateShareCode();
     }
+  }
+
+  if (locationWriteFailed) {
+    logger.warn('createPendingCapture: location columns not persisted (migration pending)', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      locationErrorCode,
+    });
+  } else if (shouldWriteLocation) {
+    logger.info('createPendingCapture: location fields written to captures_table', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      attendanceType: attendanceType || null,
+      hasCoords,
+      hasCity: !!city,
+      hasClubId: nutritionCenterId != null,
+    });
   }
 
   // The `id` returned here is the captures_table primary key. The FE round-
