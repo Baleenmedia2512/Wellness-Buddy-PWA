@@ -23,11 +23,13 @@ const config = {
     }
   },
   
-  // WebView may open backend / share URLs. Phone OTP SMS is sent server-side (MDT on
-  // Vercel) — set REACT_APP_API_BASE_URL in .env.production before `npm run build`.
+  // WebView origin MUST NOT equal the API host. If hostname is
+  // wellness-valley.vercel.app, Android intercepts same-origin /api/* calls and
+  // returns local index.html (text/html 200) → OTP "Unexpected server response".
+  // API calls use REACT_APP_API_BASE_URL → https://wellness-valley.vercel.app (cross-origin).
   server: {
     androidScheme: 'https',
-    hostname: 'wellness-valley.vercel.app',
+    hostname: 'app.wellnessvalley.app',
     allowNavigation: [
       'wellness-valley.vercel.app',
       'wellness-valley-pwa-backend-test.vercel.app',
