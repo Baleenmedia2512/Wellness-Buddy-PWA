@@ -5301,6 +5301,8 @@ function WellnessValleyApp() {
                 source: detectedType.details?.source || "Smartwatch",
                 captureId: watchCaptureId,
               });
+              const burned = detectedType.details?.caloriesBurned || 0;
+              if (burned > 0) setWatchBurnedCalories(burned);
             }
             updatePendingCaptureType(pendingSharePromise, "smartwatch");
             triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch" });
@@ -8022,6 +8024,7 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
               onOpenWellnessScore={() => navigateTo('wellness-score')}
               onOpenWellnessScoreSetup={
                 ['admin', 'developer'].includes(userRole)

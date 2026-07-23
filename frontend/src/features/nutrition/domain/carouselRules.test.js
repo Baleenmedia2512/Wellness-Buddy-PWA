@@ -77,10 +77,18 @@ describe('computeCaloriesCard — smartwatch burns but still over target', () =>
 
 // ─── Scenario 4: Exercise exceeds food (aggressive workout) ───────────────────
 describe('computeCaloriesCard — burned > consumed', () => {
-  test('1000 food, 1500 watch burned → net clamped to 0', () => {
+  test('1000 food, 1500 watch burned → remaining = goal − food + exercise', () => {
     const r = calc(1800, 1000, 1500);
-    expect(r.net).toBe(0);            // max(0, 1000-1500)
-    expect(r.remaining).toBe(1800);   // full target remaining
+    expect(r.net).toBe(-500);         // 1000 − 1500
+    expect(r.remaining).toBe(2300);   // 1800 − 1000 + 1500
+    expect(r.progressPercent).toBe(0); // no net food intake toward goal
+  });
+
+  test('0 food, 441 watch burned → remaining = goal + exercise (home carousel case)', () => {
+    const r = calc(1845, 0, 441);
+    expect(r.net).toBe(-441);
+    expect(r.remaining).toBe(2286);   // 1845 + 441
+    expect(r.exercise).toBe(441);
     expect(r.progressPercent).toBe(0);
   });
 });

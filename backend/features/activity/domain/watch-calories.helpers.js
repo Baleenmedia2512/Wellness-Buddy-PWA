@@ -5,6 +5,8 @@
  * kcal value (not sum, not latest). Lower uploads are ignored for totals.
  */
 
+import { timestampToCalendarYmd } from '../../../shared/lib/datetime/index.js';
+
 const KCAL_TOPIC_RE = /(\d+(?:\.\d+)?)\s*kcal/i;
 
 /**
@@ -29,6 +31,24 @@ export function maxWatchCaloriesFromRows(rows) {
     max = Math.max(max, parseWatchKcalFromTopic(row.Topic ?? row.topic));
   }
   return max;
+}
+
+/**
+ * Post-filter watch rows to a calendar day (legacy IST wall-clock CreatedAt).
+ *
+ * @param {Array<{ CreatedAt?: string|null }>|null|undefined} rows
+ * @param {string} targetDate YYYY-MM-DD
+ * @param {string} timezoneIana
+ * @returns {Array<{ CreatedAt?: string|null, Topic?: string|null }>}
+ */
+export function filterWatchCalorieRowsForDate(rows, targetDate, timezoneIana) {
+  return (rows || []).filter((row) => {
+    try {
+      return timestampToCalendarYmd(row.CreatedAt, timezoneIana) === targetDate;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
