@@ -53,8 +53,11 @@ const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
 //
 /** Maximum Phase 1 frontend attempts. */
 const MAX_ATTEMPTS    = 3;
-/** Per-attempt frontend abort timeout. Flash: 1 try × 25 s; Pro: ≤3 tries × 30 s but we abort at 25 s. */
-const REQUEST_TIMEOUT_MS = 25_000;
+/** Per-attempt frontend abort timeout.
+ * Must be less than the Vercel maxDuration (60 s) for orchestrate.js so the
+ * frontend always gets a clean AbortError rather than a Vercel 504. 40 s gives
+ * Gemini Pro (8–20 s typical) a comfortable margin while still failing fast. */
+const REQUEST_TIMEOUT_MS = 40_000;
 /** Base back-off between Phase 1 retries (ms). Doubles per attempt: 1.5 s → 3 s. */
 const RETRY_DELAY_MS  = 1_500;
 

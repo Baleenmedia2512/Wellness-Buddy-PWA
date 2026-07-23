@@ -307,7 +307,9 @@ export default function DiaryFeed({
             pendingCaptureMeta.has(captureIdStr))) &&
         !isAnalyzing;
       // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
-      const analyzingMeta = isAnalyzing && captureIdStr !== ''
+      // Look up for both isAnalyzing (user-initiated re-detect) and
+      // isBackgroundPending (camera capture flow) so both states show the badge.
+      const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
         ? (pendingCaptureMeta?.get(captureIdStr) ?? null)
         : null;
       return (
@@ -323,8 +325,8 @@ export default function DiaryFeed({
             ? {
                 isAnalyzing,
                 isBackgroundPending,
-                currentAttempt: analyzingMeta?.currentAttempt ?? null,
-                totalAttempts:  analyzingMeta?.totalAttempts  ?? null,
+                currentAttempt: captureMeta?.currentAttempt ?? null,
+                totalAttempts:  captureMeta?.totalAttempts  ?? null,
               }
             : {})}
         />
