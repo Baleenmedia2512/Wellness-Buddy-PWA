@@ -15,10 +15,14 @@ import * as activityReportRepo from '../../../features/activity/activity-report.
  *
  * Logic:
  * - Only includes active users (Status = 'Active')
- * - Only includes users with weight loss > 0 (reduced weight)
- * - Compares most recent weight entry from today vs yesterday
+ * - Only includes users with weight loss > 0 and ≤ 3.0 kg (today vs yesterday)
+ * - Losses above 3 kg are excluded (likely bad/OCR data) — this strip only
+ * - Gains are never shown on this strip
+ * - Compares most recent weight entry from today vs yesterday (IST)
  * - Returns: rank, profile (email for avatar), userName, coachName, weightLoss
  */
+const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
+
 export default async function handler(req, res) {
   // Set CORS headers for all requests
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -149,8 +153,8 @@ export default async function handler(req, res) {
         const yesterdayWeight = parseFloat(yesterdayRecord.Weight);
         const weightLoss = yesterdayWeight - todayWeight; // Positive = weight lost
 
-        // Only include users who have lost weight (weightLoss > 0)
-        if (weightLoss > 0) {
+        // Loss-only, and within the Today vs Yesterday plausibility cap (≤ 3 kg).
+        if (weightLoss > 0 && weightLoss <= MAX_TODAY_VS_YESTERDAY_LOSS_KG) {
           leaderboardData.push({
             userId: user.UserId,
             userName: user.UserName || "Unknown",
