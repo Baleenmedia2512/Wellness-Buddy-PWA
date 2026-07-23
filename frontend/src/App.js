@@ -5710,6 +5710,15 @@ function WellnessValleyApp() {
         triggerNutritionRefresh({ immediate: true, source: "capture-unknown" });
         if (bg) {
           clearCaptureAnalyzing(captureShare.id);
+          // Brief toast so the user knows why the photo landed in Diary as
+          // "Other" and what to do next — no modal, no blocking.
+          if (detectedType?.details?.defaulted === true) {
+            // All retries failed (timeout / API down)
+            showToast("⚠️ AI timed out — find it in Diary to retry");
+          } else if (detectedType?.type === "food") {
+            // Gemini recognised food but couldn't identify the items
+            showToast("🍽️ Food detected — tap in Diary to add details");
+          }
           return;
         }
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
@@ -6083,6 +6092,9 @@ function WellnessValleyApp() {
             updatePendingCaptureType(pendingSharePromise, "unknown");
             triggerNutritionRefresh({ immediate: true, source: "capture-food-failed" });
             clearCaptureAnalyzing(captureShare.id);
+            // Gemini recognised food (confidence ≥ 0.65) but couldn’t itemise
+            // it — tell the user so they know to tap and add manually.
+            showToast("🍽️ Food detected — tap in Diary to add details");
             return;
           }
           setFoodShareUrl(null);
