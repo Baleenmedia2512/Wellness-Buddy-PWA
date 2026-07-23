@@ -1,4 +1,5 @@
 import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
+import { methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import {
   validateCreateCapture,
   validateUpdateCapture,
@@ -11,46 +12,24 @@ import {
 export { config };
 
 export default async function handler(req, res) {
-  // CORS Headers
+  // Set CORS before OPTIONS early-return so preflight sees the full allow-list.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, PATCH, OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type, Authorization'
+    'Content-Type, Authorization, cache-control, pragma',
   );
-
-  // Handle Preflight Request
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
 
-  try {
-    switch (req.method) {
-      case 'POST': {
-        const data = validateCreateCapture(req.body);
-        const result = await createPendingCapture(data);
-        return res.status(200).json(result);
-      }
-
-      case 'PATCH': {
-        const data = validateUpdateCapture(req.body);
-        const result = await updateCaptureType(data);
-        return res.status(200).json(result);
-      }
-
-      default:
-        res.setHeader('Allow', ['POST', 'PATCH', 'OPTIONS']);
-        return res.status(405).json({
-          success: false,
-          message: `Method ${req.method} Not Allowed`,
-        });
-    }
-  } catch (error) {
-    console.error(error);
-
-    return res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal Server Error',
-    });
+  if (req.method === 'POST') {
+    return runService(res, () => createPendingCapture(validateCreateCapture(req.body)));
   }
+
+  if (req.method === 'PATCH') {
+    return runService(res, () => updateCaptureType(validateUpdateCapture(req.body)));
+  }
+
+  return methodNotAllowed(res);
 }
