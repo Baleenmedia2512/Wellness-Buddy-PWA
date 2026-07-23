@@ -59,13 +59,13 @@ const UserProfileBodyMetrics = ({ bodyMetrics }) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      {/* <div className="flex items-center gap-2">
         <Activity className="w-4 h-4 text-indigo-500" />
         <h3 className="text-sm font-semibold text-gray-800">Body Parameters</h3>
       </div>
       <p className="text-xs text-gray-500">
         Recorded by your coach. These values are read-only here.
-      </p>
+      </p> */}
 
       {hasAnyReference && (
         <div className="hidden sm:grid grid-cols-[1fr_88px] gap-2 px-0.5">
