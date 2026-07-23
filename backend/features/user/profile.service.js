@@ -22,6 +22,8 @@ import {
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
+import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -30,6 +32,9 @@ export async function getProfile({ email }) {
   if (!user) return notFound();
 
   const latestWeight = await repo.getLatestWeight(user.UserId);
+  const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(user.UserId);
+  const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
+  const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
   const height = user.Height ? parseFloat(user.Height) : null;
   const latestWeightKg = latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null;
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
@@ -76,6 +81,7 @@ export async function getProfile({ email }) {
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,
+        bodyMetrics,
       },
     },
   };

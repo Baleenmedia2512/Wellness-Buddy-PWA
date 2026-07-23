@@ -2,6 +2,7 @@
 import React from 'react';
 import { CheckCircle } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
+import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 
@@ -24,6 +25,7 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successM
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}
           communityId={form.communityId} setCommunityId={form.setCommunityId}
         />
+        <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
         <IdealWeightCards height={form.height} latestWeight={latestWeight} />
         <DietDropdown value={form.dietType} onChange={form.setDietType} />
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">{error}</div>}
