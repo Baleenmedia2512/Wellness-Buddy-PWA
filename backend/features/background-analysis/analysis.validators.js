@@ -39,6 +39,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
 const SHARE_IDENTIFIER_RE = new RegExp(`(?:${UUID_RE.source})|(?:${SHARE_CODE_RE.source})`, 'i');
 
+function optionalNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function optionalString(value) {
+  if (value === undefined || value === null) return null;
+  const s = String(value).trim();
+  return s.length > 0 ? s : null;
+}
+
 export function validateCreateCapture(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const { userId, imageBase64, token, shareCode } = body;
@@ -53,14 +65,27 @@ export function validateCreateCapture(body) {
   if (shareCode !== undefined && !SHARE_CODE_RE.test(String(shareCode))) {
     throw new ValidationError(400, 'shareCode must be 6-10 alphanumeric characters');
   }
+  const attendanceType = optionalString(body.attendanceType);
+  if (attendanceType && attendanceType !== 'club' && attendanceType !== 'remote') {
+    throw new ValidationError(400, "attendanceType must be 'club' or 'remote'");
+  }
   // imageType is intentionally NOT accepted here. All pending captures start
   // as ImageType='pending' (set in the repository). The type is resolved via
   // PATCH /captures after AI analysis determines the correct category.
+  // Location/club fields are captured at photo time so later domain saves
+  // can copy them even if a second GPS pass fails.
   return {
     userId,
     imageBase64,
     token: token || null,
     shareCode: shareCode ? String(shareCode) : null,
+    latitude: optionalNumber(body.latitude),
+    longitude: optionalNumber(body.longitude),
+    city: optionalString(body.city),
+    village: optionalString(body.village),
+    attendanceType,
+    nutritionCenterId: optionalNumber(body.nutritionCenterId),
+    centerName: optionalString(body.centerName),
   };
 }
 

@@ -433,6 +433,8 @@ function WellnessValleyApp() {
   // paint it to a JPEG before the user taps share (zero-latency tap-to-share).
   // foodShareImageDataUrlRef caches that pre-painted JPEG.
   const foodCaptureIdRef = useRef(null);
+  /** Capture-time location (GPS/club) keyed by capture id — survives later save races. */
+  const captureLocationByIdRef = useRef(new Map());
   const processedImageRef = useRef(null);
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
@@ -3626,7 +3628,7 @@ function WellnessValleyApp() {
     saveWeightEntry, performWeightSave, handleWeightEditSave, fetchLastWeight,
     clearWeightState,
   } = useWeightCapture({
-    user, apiBaseUrl, foodCaptureIdRef,
+    user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
     setAlertModal, setSaveLoading, setLoadingState,
     setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
   });
@@ -4147,9 +4149,21 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // Resolve GPS + nutrition-center attendance fields in a single call.
-      const { permissionDenied: gpsDenied, ...locationFields } =
-        await resolveLocationFields(apiBaseUrl, userId);
+      // Resolve GPS + nutrition-center attendance. Prefer capture-time stash when present.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
+      let locationFields = stashedLocation ? { ...stashedLocation } : {};
+      let gpsDenied = false;
+      if (!locationFields.latitude || !locationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, userId);
+        const { permissionDenied, ...fields } = resolved;
+        gpsDenied = !!permissionDenied;
+        locationFields = { ...locationFields, ...fields };
+      }
       if (gpsDenied) {
         setAlertModal({
           isOpen: true,
@@ -4469,19 +4483,36 @@ function WellnessValleyApp() {
         pendingShareRefCleared: pendingSharePromiseRef.current == null,
       });
 
-      // Capture GPS location for every food photo � not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
-      // Stage 10 — GPS started
+      // Prefer capture-time location (already on captures_table). Only re-resolve
+      // GPS when the first save had no coords — avoids missing club/city when the
+      // later domain save races or GPS fails the second time.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
       const _gpsStart = Date.now();
-      _ctLog(10, 'GPS started', {});
-      const { permissionDenied: gpsDenied, ...clubLocationFields } =
-        await resolveLocationFields(apiBaseUrl, saveData.userId);
+      _ctLog(10, 'GPS started', {
+        hasCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
+      });
+      let clubLocationFields = stashedLocation ? { ...stashedLocation } : {};
+      let gpsDenied = false;
+      if (!clubLocationFields.latitude || !clubLocationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, saveData.userId);
+        const { permissionDenied, ...fields } = resolved;
+        gpsDenied = !!permissionDenied;
+        clubLocationFields = { ...clubLocationFields, ...fields };
+        if (captureIdForLoc) {
+          captureLocationByIdRef.current.set(captureIdForLoc, { ...clubLocationFields });
+        }
+      }
       _ctLog(11, 'GPS finished', {
         attendanceType: clubLocationFields.attendanceType,
         hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
         gpsLatencyMs: Date.now() - _gpsStart,
         locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+        usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
       if (!silent && gpsDenied) {
         setAlertModal({
@@ -4501,6 +4532,9 @@ function WellnessValleyApp() {
         // so a retry cannot accidentally reuse the same row.
         captureId: foodCaptureIdRef.current || undefined,
       });
+      if (captureIdForLoc) {
+        captureLocationByIdRef.current.delete(captureIdForLoc);
+      }
       foodCaptureIdRef.current = null;
       debugLog("? [App] Save successful:", saveRes);
       debugLog(`?? [PERF] Database save: ${Date.now() - saveStart}ms`);
@@ -5013,6 +5047,23 @@ function WellnessValleyApp() {
     debugLog("?? [PERF] ?? Image processing started");
     let capturePersisted = false;
 
+    // Start GPS + club resolution in parallel with FileReader/compression so
+    // location is ready for the first capture save (not only the later domain save).
+    const locationPromise = (async () => {
+      try {
+        const locUserId = user?.id || (await getUserId(user));
+        if (!locUserId) return { attendanceType: 'remote' };
+        const { permissionDenied, ...fields } = await resolveLocationFields(
+          apiBaseUrl,
+          locUserId,
+        );
+        return { ...fields, permissionDenied: !!permissionDenied };
+      } catch (err) {
+        debugLog('[CAPTURE] early GPS failed:', err?.message);
+        return { attendanceType: 'remote', permissionDenied: false };
+      }
+    })();
+
     // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
       const readStart = Date.now();
@@ -5073,6 +5124,27 @@ function WellnessValleyApp() {
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
 
+      // Await capture-time location (started in parallel with compress).
+      const captureLocation = await locationPromise;
+      const {
+        permissionDenied: captureGpsDenied,
+        ...captureLocationFields
+      } = captureLocation || { attendanceType: 'remote' };
+      if (captureGpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
+      _ctLog('loc', 'capture-time location resolved', {
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords: !!(captureLocationFields.latitude && captureLocationFields.longitude),
+        hasCity: !!captureLocationFields.city,
+      });
+
       // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
       const captureApiStart = Date.now();
       debugLog(
@@ -5102,6 +5174,14 @@ function WellnessValleyApp() {
                 imageBase64: processedImage,
                 token: instantToken,
                 shareCode: instantShareCode,
+                // Capture-time location / club — stored on captures_table first save
+                latitude: captureLocationFields.latitude ?? null,
+                longitude: captureLocationFields.longitude ?? null,
+                city: captureLocationFields.city ?? null,
+                village: captureLocationFields.village ?? null,
+                attendanceType: captureLocationFields.attendanceType ?? null,
+                nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
+                centerName: captureLocationFields.centerName ?? null,
               }),
             },
           );
@@ -5124,6 +5204,10 @@ function WellnessValleyApp() {
               capData.data.shareCode || capData.data.token
             }`,
           };
+          captureLocationByIdRef.current.set(
+            String(captureShare.id),
+            { ...captureLocationFields },
+          );
           debugLog(
             `?? [PERF] ? POST /captures: ${capDuration}ms (+${
               Date.now() - perfStart
