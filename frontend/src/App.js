@@ -782,11 +782,13 @@ function WellnessValleyApp() {
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
         setShowTestimonials(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
         setShowDashboard(false);
@@ -1986,7 +1988,8 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowReports(false);
         setShowWellnessScoreSetup(false);
-      setShowWellnessScore(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
