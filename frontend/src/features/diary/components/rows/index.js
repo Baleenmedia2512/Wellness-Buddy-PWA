@@ -384,7 +384,6 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
           {!hideTime && (
             <p className="text-xs text-gray-500">
               {formatTime(entry.capturedAt, timezoneIana)}
-              {typeof p.bmi === 'number' ? ` · BMI ${p.bmi.toFixed(1)}` : ''}
             </p>
           )}
         </div>
