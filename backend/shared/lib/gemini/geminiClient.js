@@ -11,6 +11,8 @@
  * GoogleGenerativeAI instance.
  * ---------------------------------------------------------------------------
  */
+// MUST be first — SDK reads localStorage at import time (Node has none).
+import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor-sdk";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
@@ -116,11 +118,19 @@ function getGenAI() {
       throw err;
     }
     _genAI = new GoogleGenerativeAI(apiKey);
-    AIClient.initialize({
-      sdkKey: process.env.AI_MONITOR_SDK_KEY,
-      appName: "Wellness Buddy",
-      environment: process.env.NODE_ENV || "development",
-    });
+    try {
+      if (process.env.AI_MONITOR_SDK_KEY) {
+        AIClient.initialize({
+          sdkKey: process.env.AI_MONITOR_SDK_KEY,
+          appName: "Wellness Buddy",
+          environment: process.env.NODE_ENV || "development",
+        });
+      }
+    } catch (sdkInitErr) {
+      logger.warn('geminiClient: AI monitor SDK init skipped', {
+        message: sdkInitErr?.message,
+      });
+    }
     logger.info('geminiClient: GoogleGenerativeAI instance created');
   }
   return _genAI;
@@ -211,16 +221,22 @@ export async function generateContent(
 
     const latency = Date.now() - start;
 
-    await AIClient.chat({
-      provider: "Gemini",
-      model: modelOverride ?? MODEL_NAME,
-      usage: result.response.usageMetadata,
-      latency,
-      status: "SUCCESS",
+    try {
+      await AIClient.chat({
+        provider: "Gemini",
+        model: modelOverride ?? MODEL_NAME,
+        usage: result.response.usageMetadata,
+        latency,
+        status: "SUCCESS",
 
-      // Optional: only useful if the SDK supports custom fields
-      traceId: trace?.traceId,
-    });
+        // Optional: only useful if the SDK supports custom fields
+        traceId: trace?.traceId,
+      });
+    } catch (sdkErr) {
+      logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
+        message: sdkErr?.message,
+      });
+    }
 
     return result;
 

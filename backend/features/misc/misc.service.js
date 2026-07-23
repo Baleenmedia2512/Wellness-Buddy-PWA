@@ -1,14 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as repo from './misc.repository.js';
 import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
-import {
-  MODEL_NAME,
-  generateContent,
-} from '../../shared/lib/gemini/geminiClient.js';
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
@@ -69,6 +64,8 @@ export async function detectFace({ imageBase64 }) {
       /^data:image\/[a-zA-Z]+;base64,/,
       ""
     );
+
+    const { generateContent } = await import('../../shared/lib/gemini/geminiClient.js');
 
     const result = await generateContent(
       "classify",

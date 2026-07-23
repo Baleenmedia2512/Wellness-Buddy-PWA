@@ -7,7 +7,7 @@
 import { Capacitor } from '@capacitor/core';
 
 const WEB_DEV_FALLBACK = 'http://localhost:3000';
-/** Production backend — matches capacitor.config.js server.hostname */
+/** Production backend — must stay DIFFERENT from capacitor server.hostname */
 const NATIVE_PROD_FALLBACK = 'https://wellness-valley.vercel.app';
 
 function resolveFallback() {

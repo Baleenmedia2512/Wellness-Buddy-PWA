@@ -54,8 +54,11 @@ function readHostname() {
  *   BUILTIN_PRODUCTION_HOSTS and REACT_APP_PRODUCTION_HOSTS (comma-separated)
  *   short-circuit all staging heuristics when hostname matches.
  */
-/** Capacitor Android/iOS WebView hostname — production, not staging preview. */
-const BUILTIN_PRODUCTION_HOSTS = ["wellness-valley.vercel.app"];
+/** Capacitor / web production hostnames — not staging preview. */
+const BUILTIN_PRODUCTION_HOSTS = [
+  "app.wellnessvalley.app", // Capacitor server.hostname (native WebView)
+  "wellness-valley.vercel.app", // API / legacy WebView hostname
+];
 
 export function isStagingEnvironment() {
   // Explicit production allowlist short-circuits everything.
