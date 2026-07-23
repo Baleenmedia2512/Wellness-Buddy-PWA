@@ -5111,8 +5111,10 @@ function WellnessValleyApp() {
             err._retryable = retryable;
             throw err;
           }
-          const capData = await capRes.json();
-          const capDuration = Date.now() - captureApiStart;
+          // Accept flat { ok, data } or accidental nested { httpStatus, body }.
+        const capRaw = await capRes.json();
+          const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
+        const capDuration = Date.now() - captureApiStart;
           if (!capData.ok || !capData.data?.id) {
             throw new Error("Capture save returned no id");
           }
