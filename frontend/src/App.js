@@ -782,11 +782,13 @@ function WellnessValleyApp() {
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
         setShowTestimonials(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
         setShowDashboard(false);
@@ -1986,7 +1988,8 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowReports(false);
         setShowWellnessScoreSetup(false);
-      setShowWellnessScore(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -5082,53 +5085,78 @@ function WellnessValleyApp() {
       );
 
       let captureShare = null;
-      try {
-        const capUserId = user?.id || (await getUserId(user));
-        if (!capUserId) {
-          throw new Error("Unable to resolve user account");
-        }
-        const capRes = await fetch(
-          `${apiBaseUrl}/api/background-analysis/captures`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: capUserId,
-              imageBase64: processedImage,
-              token: instantToken,
-              shareCode: instantShareCode,
-            }),
-          },
-        );
-        if (!capRes.ok) {
-          throw new Error(`Capture save failed (${capRes.status})`);
-        }
-        const capData = await capRes.json();
+      // Retry Phase 1 up to 3 times on transient server / network errors.
+      // 4xx (auth, bad request) are not retried — they won't self-heal.
+      const CAPTURE_MAX_ATTEMPTS = 3;
+      let captureLastErr = null;
+      for (let capAttempt = 1; capAttempt <= CAPTURE_MAX_ATTEMPTS; capAttempt++) {
+        try {
+          const capUserId = user?.id || (await getUserId(user));
+          if (!capUserId) {
+            throw new Error("Unable to resolve user account");
+          }
+          const capRes = await fetch(
+            `${apiBaseUrl}/api/background-analysis/captures`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+              }),
+            },
+          );
+          if (!capRes.ok) {
+            const retryable = capRes.status >= 500;
+            const err = new Error(`Capture save failed (${capRes.status})`);
+            err._retryable = retryable;
+            throw err;
+          }
+          // Accept flat { ok, data } or accidental nested { httpStatus, body }.
+        const capRaw = await capRes.json();
+          const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
         const capDuration = Date.now() - captureApiStart;
-        if (!capData.ok || !capData.data?.id) {
-          throw new Error("Capture save returned no id");
+          if (!capData.ok || !capData.data?.id) {
+            throw new Error("Capture save returned no id");
+          }
+          captureShare = {
+            id: capData.data.id,
+            url: `${apiBaseUrl}/share/${
+              capData.data.shareCode || capData.data.token
+            }`,
+          };
+          debugLog(
+            `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+              Date.now() - perfStart
+            }ms from capture start) ? token ready (attempt ${capAttempt})`,
+          );
+          _ctLog(2, 'capture row created', {
+            captureRowId: captureShare.id,
+            shareCode: capData.data.shareCode || capData.data.token,
+            latencyMs: capDuration,
+            attempt: capAttempt,
+          });
+          captureLastErr = null;
+          break; // success
+        } catch (capErr) {
+          captureLastErr = capErr;
+          const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
+          debugLog(
+            `?? [PERF] ? POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
+              retryable ? ` — retrying in 1s` : ''
+            }`,
+          );
+          if (!retryable) break;
+          await new Promise((r) => setTimeout(r, 1_000 * capAttempt));
         }
-        captureShare = {
-          id: capData.data.id,
-          url: `${apiBaseUrl}/share/${
-            capData.data.shareCode || capData.data.token
-          }`,
-        };
-        debugLog(
-          `?? [PERF] ? POST /captures: ${capDuration}ms (+${
-            Date.now() - perfStart
-          }ms from capture start) ? token ready`,
-        );
-        _ctLog(2, 'capture row created', {
-          captureRowId: captureShare.id,
-          shareCode: capData.data.shareCode || capData.data.token,
-          latencyMs: capDuration,
-        });
-      } catch (capErr) {
+      }
+      if (!captureShare) {
         debugLog(
           `?? [PERF] ? POST /captures FAILED after ${
             Date.now() - captureApiStart
-          }ms: ${capErr?.message || capErr}`,
+          }ms: ${captureLastErr?.message || captureLastErr}`,
         );
         setAlertModal({
           isOpen: true,
@@ -5159,6 +5187,8 @@ function WellnessValleyApp() {
       markCaptureAnalyzing(captureShare.id, {
         imageBase64: processedImage,
         capturedAt: new Date().toISOString(),
+        currentAttempt: 1,  // Show "1/3" badge immediately; onAttempt callback keeps it in sync
+        totalAttempts: 3,   // Must match MAX_ATTEMPTS in orchestratorService.js
       });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
       setDashboardInitialDate(null);
