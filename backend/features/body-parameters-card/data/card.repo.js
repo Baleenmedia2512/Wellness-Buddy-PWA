@@ -311,6 +311,32 @@ export async function findLatestCardForProfileSync(userId) {
 }
 
 /**
+ * Latest body_parameters_cards row linked to a member (user_id match only).
+ * Read-only profile display — no orphan name matching or auto-link side effects.
+ *
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestLinkedBodyMetricsCard(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const cardSelect = 'id, user_id, age, gender, fat_percent, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select(cardSelect)
+    .eq('user_id', uid)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
+
+/**
  * Search team_table rows by phone number prefix, scoped to a specific coach. * Returns up to 10 matches ordered by UserId ascending.
  *
  * @param {{ prefix: string, coachId: number }} opts

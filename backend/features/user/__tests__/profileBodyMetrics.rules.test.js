@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasAnyProfileBodyMetric,
+  hasCoachRecordedBodyMetrics,
   isBodyMetricEmpty,
   mapCardToProfileBodyMetrics,
 } from '../domain/profileBodyMetrics.rules.js';
@@ -52,11 +53,11 @@ describe('profileBodyMetrics.rules', () => {
     });
   });
 
-  describe('hasAnyProfileBodyMetric', () => {
-    it('returns true when at least one field has a value', () => {
-      assert.equal(hasAnyProfileBodyMetric({ age: 30, gender: null }), true);
-      assert.equal(hasAnyProfileBodyMetric({ age: null, gender: null }), false);
-      assert.equal(hasAnyProfileBodyMetric(null), false);
+  describe('hasCoachRecordedBodyMetrics', () => {
+    it('returns true only when coach-entered fields exist', () => {
+      assert.equal(hasCoachRecordedBodyMetrics({ age: 30, bmi: 22 }), true);
+      assert.equal(hasCoachRecordedBodyMetrics({ bmi: 22, fatPercent: 18 }), false);
+      assert.equal(hasCoachRecordedBodyMetrics(null), false);
     });
   });
 });

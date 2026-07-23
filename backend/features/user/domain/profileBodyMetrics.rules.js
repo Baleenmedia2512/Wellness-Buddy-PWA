@@ -17,6 +17,17 @@ export const PROFILE_BODY_METRIC_KEYS = [
   'hipCm',
 ];
 
+/** Fields coaches enter on BPC — not inferred from profile/weight sync alone. */
+export const COACH_RECORDED_BODY_METRIC_KEYS = [
+  'age',
+  'gender',
+  'visceralFat',
+  'bodyAge',
+  'chestCm',
+  'waistCm',
+  'hipCm',
+];
+
 const CARD_COLUMN_BY_KEY = {
   age: 'age',
   gender: 'gender',
@@ -61,4 +72,16 @@ export function mapCardToProfileBodyMetrics(card) {
 export function hasAnyProfileBodyMetric(bodyMetrics) {
   if (!bodyMetrics) return false;
   return PROFILE_BODY_METRIC_KEYS.some((key) => !isBodyMetricEmpty(bodyMetrics[key]));
+}
+
+/**
+ * Profile should expose body parameters only when a coach-recorded BPC exists,
+ * not when only synced weight/BMI fields are present on a linked card.
+ *
+ * @param {object|null|undefined} bodyMetrics
+ * @returns {boolean}
+ */
+export function hasCoachRecordedBodyMetrics(bodyMetrics) {
+  if (!bodyMetrics) return false;
+  return COACH_RECORDED_BODY_METRIC_KEYS.some((key) => !isBodyMetricEmpty(bodyMetrics[key]));
 }
