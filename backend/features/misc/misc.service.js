@@ -5,7 +5,10 @@ import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
-import { MODEL_NAME } from '../../shared/lib/gemini/geminiClient.js';
+import {
+  MODEL_NAME,
+  generateContent,
+} from '../../shared/lib/gemini/geminiClient.js';
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
@@ -37,39 +40,90 @@ export async function fetchTimeWindows() {
 }
 
 // ─── detect-face ────────────────────────────────────────────────────────────
+// ─── detect-face ────────────────────────────────────────────────────────────
 export async function detectFace({ imageBase64 }) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error('❌ [detect-face] GEMINI_API_KEY not configured');
-    return { httpStatus: 500, body: { success: false, message: 'Face detection service not available' } };
+
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("❌ [detect-face] GEMINI_API_KEY not configured");
+
+    return {
+      httpStatus: 500,
+      body: {
+        success: false,
+        message: "Face detection service not available",
+      },
+    };
   }
 
   try {
-    const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z]+);base64,/);
-    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-    const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const mimeMatch = imageBase64.match(
+      /^data:(image\/[a-zA-Z]+);base64,/
+    );
 
-    const result = await model.generateContent([
-      { inlineData: { mimeType, data: base64Data } },
-      "Does this image contain a clear, visible human face? Answer with only 'yes' or 'no'.",
-    ]);
+    const mimeType = mimeMatch
+      ? mimeMatch[1]
+      : "image/jpeg";
 
-    const text = result.response.text().trim().toLowerCase();
-    const hasFace = text.startsWith('yes');
-    logger.debug(`✅ [detect-face] Detection result: ${hasFace ? 'face found' : 'no face'} (raw: "${text}")`);
-    return { httpStatus: 200, body: { success: true, hasFace } };
+    const base64Data = imageBase64.replace(
+      /^data:image\/[a-zA-Z]+;base64,/,
+      ""
+    );
+
+    const result = await generateContent(
+      "classify",
+      [
+        {
+          inlineData: {
+            mimeType,
+            data: base64Data,
+          },
+        },
+        "Does this image contain a clear, visible human face? Answer with only 'yes' or 'no'.",
+      ]
+    );
+
+    const text = result.response
+      .text()
+      .trim()
+      .toLowerCase();
+
+    const hasFace = text.startsWith("yes");
+
+    logger.debug(
+      `✅ [detect-face] Detection result: ${
+        hasFace ? "face found" : "no face"
+      } (raw: "${text}")`
+    );
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        hasFace,
+      },
+    };
+
   } catch (err) {
-    console.error('❌ [detect-face] Error calling Gemini:', err.message, err.status, err?.errorDetails);
+
+    console.error(
+      "❌ [detect-face] Error calling Gemini:",
+      err.message
+    );
+
     return {
       httpStatus: 500,
-      body: { success: false, message: err.message || 'Face detection failed. Please try again.' },
+      body: {
+        success: false,
+        message:
+          err.message ||
+          "Face detection failed. Please try again.",
+      },
     };
-  }
-}
 
+  }
+
+}
 // ─── club-attendance ────────────────────────────────────────────────────────
 export async function getClubAttendance({ userId, startDate, endDate }) {
   const timezoneIana = await getUserTimezoneIana(userId);
