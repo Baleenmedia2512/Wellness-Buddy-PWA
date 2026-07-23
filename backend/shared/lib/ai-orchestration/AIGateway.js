@@ -800,8 +800,16 @@ async function callModel(
         label,
         service: circuitService,
 
-        // Primary model (Flash): cap at 2 attempts.
-        ...(modelOverride ? {} : { maxAttempts: 2 }),
+        // Primary model (Flash): 1 attempt only — frontend drives all retries.
+        // Previously 2 silently doubled wait time before the caller knew it
+        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
+        // orchestratorService.js usePro logic).
+        //
+        // Fallback model (Pro): cap at 2 backend attempts.
+        // Each backend attempt has a 30 s hard timeout (DEFAULT_TIMEOUT_MS).
+        // 2 × 30 s = 60 s, which exactly fits the Vercel maxDuration for
+        // pages/api/ai/orchestrate.js. A third attempt would hit the 504.
+        ...(modelOverride ? { maxAttempts: 2 } : { maxAttempts: 1 }),
       },
     ));
   } catch (err) {

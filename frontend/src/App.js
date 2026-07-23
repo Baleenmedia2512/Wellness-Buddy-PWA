@@ -5208,6 +5208,13 @@ function WellnessValleyApp() {
           detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
             userId: resolvedUserIdForOrchestrate ?? null,
             captureId: String(captureShare.id),
+            // Update the diary row badge ("1/3", "2/3", "3/3") before each attempt.
+            onAttempt: ({ attempt, total }) => {
+              markCaptureAnalyzing(captureShare.id, {
+                currentAttempt: attempt,
+                totalAttempts: total,
+              });
+            },
           });
         } catch (orchErr) {
           console.error("[Background AI] orchestrate failed:", orchErr);

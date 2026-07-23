@@ -66,17 +66,21 @@ export function NutritionRefreshProvider({ children }) {
       if (prev.has(id)) return prev;
       return new Set([...prev, id]);
     });
-    if (meta && (meta.imageBase64 || meta.imagePath || meta.capturedAt)) {
-      setPendingCaptureMeta((prev) => {
-        const next = new Map(prev);
-        next.set(id, {
-          imageBase64: meta.imageBase64 ?? null,
-          imagePath: meta.imagePath ?? null,
-          capturedAt: meta.capturedAt ?? new Date().toISOString(),
-        });
-        return next;
+
+    // Always update pendingCaptureMeta (merge so image data is never wiped when
+    // only the attempt number changes on subsequent onAttempt callbacks).
+    setPendingCaptureMeta((prev) => {
+      const existing = prev.get(id) ?? {};
+      const next = new Map(prev);
+      next.set(id, {
+        imageBase64:    meta.imageBase64    ?? existing.imageBase64    ?? null,
+        imagePath:      meta.imagePath      ?? existing.imagePath      ?? null,
+        capturedAt:     meta.capturedAt     ?? existing.capturedAt     ?? new Date().toISOString(),
+        currentAttempt: meta.currentAttempt ?? existing.currentAttempt ?? null,
+        totalAttempts:  meta.totalAttempts  ?? existing.totalAttempts  ?? null,
       });
-    }
+      return next;
+    });
 
     // Safety net: auto-clear after ANALYZING_TIMEOUT_MS so diary rows never
     // show "AI is analysing…" for hours when a code path misses the manual clear.

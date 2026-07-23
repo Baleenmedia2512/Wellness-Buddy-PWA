@@ -563,28 +563,37 @@ function formatElapsed(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
+export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const swipeEnabled = canSwipeDelete && !isAnalyzing;
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
 
-  // Elapsed-time ticker — starts when isAnalyzing becomes true, resets when it clears.
+  // Elapsed-time ticker — active for both isAnalyzing and isBackgroundPending.
+  //   isAnalyzing      (user re-detect tap)   → starts from Date.now()
+  //   isBackgroundPending (camera capture flow) → starts from entry.capturedAt
+  //     so the timer reflects total analysis time, not just elapsed in this render.
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const startRef = useRef(null);
   useEffect(() => {
-    if (!isAnalyzing) {
+    const active = isAnalyzing || isBackgroundPending;
+    if (!active) {
       setElapsedSecs(0);
       startRef.current = null;
       return undefined;
     }
-    startRef.current = Date.now();
-    setElapsedSecs(0);
+    if (isBackgroundPending && !isAnalyzing && entry.capturedAt) {
+      const t = new Date(entry.capturedAt).getTime();
+      startRef.current = Number.isFinite(t) ? t : Date.now();
+    } else {
+      startRef.current = Date.now();
+    }
+    setElapsedSecs(Math.max(0, Math.floor((Date.now() - startRef.current) / 1_000)));
     const id = setInterval(() => {
-      setElapsedSecs(Math.floor((Date.now() - startRef.current) / 1_000));
+      setElapsedSecs(Math.max(0, Math.floor((Date.now() - startRef.current) / 1_000)));
     }, 1_000);
     return () => clearInterval(id);
-  }, [isAnalyzing]);
+  }, [isAnalyzing, isBackgroundPending, entry.capturedAt]);
 
   return (
     <div
@@ -668,6 +677,11 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             <>
               <h4 className="font-semibold text-emerald-700 truncate">
                 Detecting entry…
+                {currentAttempt != null && totalAttempts != null && (
+                  <span className="ml-1.5 text-xs font-medium text-emerald-600/60">
+                    {currentAttempt}/{totalAttempts}
+                  </span>
+                )}
                 <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
                   {formatElapsed(elapsedSecs)}
                 </span>
@@ -678,11 +692,19 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             </>
           ) : showBackgroundHint ? (
             <>
-              <h4 className="font-semibold text-emerald-700 truncate">Analyzing…</h4>
+              <h4 className="font-semibold text-emerald-700 truncate">
+                Analyzing…
+                {currentAttempt != null && totalAttempts != null && (
+                  <span className="ml-1.5 text-xs font-medium text-emerald-600/60">
+                    {currentAttempt}/{totalAttempts}
+                  </span>
+                )}
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`${elapsedSecs} seconds elapsed`}>
+                  {formatElapsed(elapsedSecs)}
+                </span>
+              </h4>
               <p className="text-xs text-emerald-600/80">
-                {hideTime
-                  ? 'Your photo is being analyzed'
-                  : `${formatTime(entry.capturedAt, timezoneIana)} · AI analysis in progress`}
+                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
               </p>
             </>
           ) : (
