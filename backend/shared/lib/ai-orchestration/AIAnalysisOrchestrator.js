@@ -159,37 +159,6 @@ export async function analyse(params) {
       trace,
       modelOverride: usePro ? FALLBACK_MODEL_NAME : null,
     });
-
-    await query(
-`
-UPDATE request_logs
-SET
-    model = ?,
-    input_tokens = ?,
-    output_tokens = ?,
-    api_total_tokens = ?,
-    billable_tokens = ?,
-    estimated_cost = ?,
-    latency_ms = ?,
-    status = 'SUCCESS'
-WHERE trace_id = ?
-`,
-[
-    fastResult.model,
-    fastResult.usage?.inputTokens ?? 0,
-    fastResult.usage?.outputTokens ?? 0,
-    fastResult.usage?.totalTokens ?? 0,
-    fastResult.usage?.totalTokens ?? 0,
-    calculateEstimatedCost(
-        fastResult.usage,
-        fastResult.model
-    ),
-    fastResult.latencyMs ?? 0,
-    trace.traceId,
-]);
-
-console.log("Updated request_logs for trace:", trace.traceId);
-
   } catch (err) {
     // Graceful degradation — never crash the capture flow
     logger.error('orchestrator: fast analysis failed, using fallback', {
@@ -222,39 +191,6 @@ console.log("Updated request_logs for trace:", trace.traceId);
     };
   }
 
-
-  try {
-    await dashboardAnalysisService.save({
-        captureId,
-        userId,
-
-        imageType: fastResult.imageType,
-        confidence: fastResult.confidence,
-
-        details: fastResult.details,
-
-        fastNutrition: fastResult.fastNutrition,
-
-        weightReading: fastResult.weightReading,
-
-        smartwatchData: fastResult.smartwatchData,
-
-        educationData: fastResult.educationData,
-
-        traceId: trace.traceId,
-    });
-
-    logger.info("Dashboard analysis saved", {
-        captureId,
-        userId,
-    });
-
-} catch (err) {
-    logger.error("Failed to save dashboard analysis", {
-        captureId,
-        error: err.message,
-    });
-}
 
   // ── Step 3: Enqueue enrichment job (food images only, non-blocking) ────────
   // NOTE: FAST_COMPLETE is NOT set here. It is set by confirmPersisted() after
