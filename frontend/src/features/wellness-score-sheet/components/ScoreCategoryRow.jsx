@@ -15,8 +15,15 @@ function progressTone(pct) {
 
 /**
  * Parameter row — icon, scoring rule caption, today's status, and points.
+ * Tap opens contribution sheet (same pattern as nutrition macros).
  */
-export default function ScoreCategoryRow({ category, compact = false, goalMode, timeWindows = null }) {
+export default function ScoreCategoryRow({
+  category,
+  compact = false,
+  goalMode,
+  timeWindows = null,
+  onOpenContribution,
+}) {
   const meta = getParameterMeta(category.key);
   const Icon = getParameterIcon(category.key);
   const label = category.label || meta?.label || category.key;
@@ -29,13 +36,28 @@ export default function ScoreCategoryRow({ category, compact = false, goalMode, 
     ? Math.min(100, Math.round((earnedPoints / maxPoints) * 100))
     : 0;
   const tone = progressTone(progressPct);
+  const clickable = typeof onOpenContribution === 'function';
+
+  const open = () => {
+    if (clickable) onOpenContribution(category);
+  };
 
   return (
     <article
       className={`rounded-xl border border-gray-200/90 bg-white shadow-sm overflow-hidden ${
         compact ? 'p-3' : 'p-3.5'
-      }`}
+      } ${clickable ? 'cursor-pointer active:scale-[0.99] transition-transform hover:border-emerald-200 hover:shadow-md' : ''}`}
       data-testid={`score-category-${category.key}`}
+      onClick={open}
+      onKeyDown={clickable ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      } : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={clickable ? `View ${label} contribution` : undefined}
     >
       <div className="flex items-start gap-3">
         <div
@@ -74,6 +96,9 @@ export default function ScoreCategoryRow({ category, compact = false, goalMode, 
                 {Math.round(earnedPoints)}
                 <span className="font-medium text-gray-400">/{maxPoints}</span>
               </p>
+              {clickable && (
+                <p className="mt-0.5 text-[10px] font-medium text-emerald-600">Details</p>
+              )}
             </div>
           </div>
 
