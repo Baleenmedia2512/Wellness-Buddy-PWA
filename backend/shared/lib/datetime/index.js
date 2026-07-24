@@ -9,6 +9,7 @@ export {
   formatUtcForDisplay,
   addUtcDays,
   timestampToCalendarYmd,
+  filterRowsByCalendarDay,
   timeOfDayInTimezone,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,

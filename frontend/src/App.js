@@ -116,7 +116,13 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
-import { resolveLocationFields } from "./shared/utils/resolveLocationFields";
+import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
+import {
+  startUserLocationCache,
+  stopUserLocationCache,
+  refreshUserLocationCache,
+  getCachedLocationFields,
+} from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -433,6 +439,8 @@ function WellnessValleyApp() {
   // paint it to a JPEG before the user taps share (zero-latency tap-to-share).
   // foodShareImageDataUrlRef caches that pre-painted JPEG.
   const foodCaptureIdRef = useRef(null);
+  /** Capture-time location (GPS/club) keyed by capture id — survives later save races. */
+  const captureLocationByIdRef = useRef(new Map());
   const processedImageRef = useRef(null);
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
@@ -782,11 +790,13 @@ function WellnessValleyApp() {
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
         setShowTestimonials(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
         setShowDashboard(false);
@@ -1986,7 +1996,8 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowReports(false);
         setShowWellnessScoreSetup(false);
-      setShowWellnessScore(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -2153,6 +2164,24 @@ function WellnessValleyApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Background location cache: keep latest GPS + club/city ready so photo
+  // capture never waits on a spinner for geolocation.
+  useEffect(() => {
+    if (!user || !permissionsReady || !isUserActive || !apiBaseUrl) {
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const uid = user?.id || (await getUserId(user).catch(() => null));
+      if (cancelled || !uid) return;
+      await startUserLocationCache({ apiBaseUrl, userId: uid });
+    })();
+    return () => {
+      cancelled = true;
+      stopUserLocationCache();
+    };
+  }, [user, permissionsReady, isUserActive, apiBaseUrl]);
 
   /**
    * Called when user taps "Allow Again" in PermissionDeniedModal.
@@ -3160,6 +3189,7 @@ function WellnessValleyApp() {
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          refreshUserLocationCache();
           // Guard: skip while CompleteProfilePage is visible. Returning from
           // camera/gallery triggers this listener; re-running checkProfileCompletion
           // would set profileChecking=true, unmounting the form and discarding
@@ -3626,7 +3656,7 @@ function WellnessValleyApp() {
     saveWeightEntry, performWeightSave, handleWeightEditSave, fetchLastWeight,
     clearWeightState,
   } = useWeightCapture({
-    user, apiBaseUrl, foodCaptureIdRef,
+    user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
     setAlertModal, setSaveLoading, setLoadingState,
     setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
   });
@@ -4147,9 +4177,50 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // Resolve GPS + nutrition-center attendance fields in a single call.
-      const { permissionDenied: gpsDenied, ...locationFields } =
-        await resolveLocationFields(apiBaseUrl, userId);
+      // Resolve GPS + nutrition-center attendance. Prefer capture-time stash when present.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!locationFields.latitude || !locationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
+      }
       if (gpsDenied) {
         setAlertModal({
           isOpen: true,
@@ -4469,19 +4540,68 @@ function WellnessValleyApp() {
         pendingShareRefCleared: pendingSharePromiseRef.current == null,
       });
 
-      // Capture GPS location for every food photo � not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
-      // Stage 10 — GPS started
+      // Prefer capture-time location (already on captures_table). Only re-resolve
+      // GPS when the first save had no coords — avoids missing club/city when the
+      // later domain save races or GPS fails the second time.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
       const _gpsStart = Date.now();
-      _ctLog(10, 'GPS started', {});
-      const { permissionDenied: gpsDenied, ...clubLocationFields } =
-        await resolveLocationFields(apiBaseUrl, saveData.userId);
+      _ctLog(10, 'GPS started', {
+        hasCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
+      });
+      let clubLocationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!clubLocationFields.latitude || !clubLocationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, saveData.userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        clubLocationFields = {
+          ...clubLocationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+        if (captureIdForLoc) {
+          captureLocationByIdRef.current.set(captureIdForLoc, { ...clubLocationFields });
+        }
+      } else {
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: 'success',
+          errorCode: null,
+          errorDetail: null,
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+          hasCity: !!clubLocationFields.city,
+        });
+      }
       _ctLog(11, 'GPS finished', {
         attendanceType: clubLocationFields.attendanceType,
         hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
         gpsLatencyMs: Date.now() - _gpsStart,
         locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+        usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
       if (!silent && gpsDenied) {
         setAlertModal({
@@ -4501,6 +4621,9 @@ function WellnessValleyApp() {
         // so a retry cannot accidentally reuse the same row.
         captureId: foodCaptureIdRef.current || undefined,
       });
+      if (captureIdForLoc) {
+        captureLocationByIdRef.current.delete(captureIdForLoc);
+      }
       foodCaptureIdRef.current = null;
       debugLog("? [App] Save successful:", saveRes);
       debugLog(`?? [PERF] Database save: ${Date.now() - saveStart}ms`);
@@ -4998,7 +5121,8 @@ function WellnessValleyApp() {
     setImageType(null);
     setSaveError(null);
     setDetectedFoodNames([]);
-    setLoadingState("uploading");
+    setLoading(false);
+    setLoadingState(null);
     lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
@@ -5064,14 +5188,75 @@ function WellnessValleyApp() {
         return;
       }
 
-      // Set preview and uploading state while the capture row is persisted.
+      // Set preview immediately — GPS + capture POST run in the background UI
+      // without a "Saving..." spinner (photo-first, no wait affordance).
       setImagePreview(processedImage);
-      setLoading(true);
-      setLoadingState("uploading");
+      setLoading(false);
+      setLoadingState(null);
 
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
+
+      // Instant location from background cache — never wait on GPS at photo time.
+      const captureLocation = getCachedLocationFields();
+      const {
+        permissionDenied: captureGpsDenied,
+        locationStatus,
+        locationErrorCode,
+        locationErrorDetail,
+        locationLatencyMs,
+        geocodeOk,
+        gpsAccuracyM,
+        fromCache,
+        cacheAgeMs,
+        ...captureLocationFields
+      } = captureLocation || {
+        attendanceType: 'remote',
+        locationStatus: 'failed',
+        locationErrorCode: 'NO_CACHED_LOCATION',
+        locationErrorDetail: 'No cached location available at capture time',
+      };
+      const hasCoords = !!(
+        captureLocationFields.latitude && captureLocationFields.longitude
+      );
+      // Client console (device) — also sent to Vercel via POST /captures diagnostics.
+      console.warn('[CAPTURE-LOCATION]', {
+        status: locationStatus || (hasCoords ? 'success' : 'failed'),
+        errorCode: locationErrorCode || null,
+        errorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        hasVillage: !!captureLocationFields.village,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+        latencyMs: locationLatencyMs ?? 0,
+        gpsAccuracyM: gpsAccuracyM ?? null,
+      });
+      _ctLog('loc', 'capture-time location from cache', {
+        locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+        locationErrorCode: locationErrorCode || null,
+        locationErrorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+      });
+      // Soft hint only when cache never got a fix (watcher still warming / denied).
+      // Do not block the photo save.
+      if (captureGpsDenied && !hasCoords) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
 
       // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
       const captureApiStart = Date.now();
@@ -5082,53 +5267,96 @@ function WellnessValleyApp() {
       );
 
       let captureShare = null;
-      try {
-        const capUserId = user?.id || (await getUserId(user));
-        if (!capUserId) {
-          throw new Error("Unable to resolve user account");
-        }
-        const capRes = await fetch(
-          `${apiBaseUrl}/api/background-analysis/captures`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: capUserId,
-              imageBase64: processedImage,
-              token: instantToken,
-              shareCode: instantShareCode,
-            }),
-          },
-        );
-        if (!capRes.ok) {
-          throw new Error(`Capture save failed (${capRes.status})`);
-        }
-        const capData = await capRes.json();
+      // Retry Phase 1 up to 3 times on transient server / network errors.
+      // 4xx (auth, bad request) are not retried — they won't self-heal.
+      const CAPTURE_MAX_ATTEMPTS = 3;
+      let captureLastErr = null;
+      for (let capAttempt = 1; capAttempt <= CAPTURE_MAX_ATTEMPTS; capAttempt++) {
+        try {
+          const capUserId = user?.id || (await getUserId(user));
+          if (!capUserId) {
+            throw new Error("Unable to resolve user account");
+          }
+          const capRes = await fetch(
+            `${apiBaseUrl}/api/background-analysis/captures`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+                // Capture-time location / club from background cache
+                latitude: captureLocationFields.latitude ?? null,
+                longitude: captureLocationFields.longitude ?? null,
+                city: captureLocationFields.city ?? null,
+                village: captureLocationFields.village ?? null,
+                attendanceType: captureLocationFields.attendanceType ?? null,
+                nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
+                centerName: captureLocationFields.centerName ?? null,
+                locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+                locationErrorCode: locationErrorCode || null,
+                locationErrorDetail: locationErrorDetail || null,
+                locationLatencyMs: locationLatencyMs ?? 0,
+                geocodeOk: geocodeOk ?? null,
+                gpsAccuracyM: gpsAccuracyM ?? null,
+              }),
+            },
+          );
+          if (!capRes.ok) {
+            const retryable = capRes.status >= 500;
+            const err = new Error(`Capture save failed (${capRes.status})`);
+            err._retryable = retryable;
+            throw err;
+          }
+          // Accept flat { ok, data } or accidental nested { httpStatus, body }.
+        const capRaw = await capRes.json();
+          const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
         const capDuration = Date.now() - captureApiStart;
-        if (!capData.ok || !capData.data?.id) {
-          throw new Error("Capture save returned no id");
+          if (!capData.ok || !capData.data?.id) {
+            throw new Error("Capture save returned no id");
+          }
+          captureShare = {
+            id: capData.data.id,
+            url: `${apiBaseUrl}/share/${
+              capData.data.shareCode || capData.data.token
+            }`,
+          };
+          captureLocationByIdRef.current.set(
+            String(captureShare.id),
+            stripLocationDiagnostics(captureLocationFields),
+          );
+          debugLog(
+            `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+              Date.now() - perfStart
+            }ms from capture start) ? token ready (attempt ${capAttempt})`,
+          );
+          _ctLog(2, 'capture row created', {
+            captureRowId: captureShare.id,
+            shareCode: capData.data.shareCode || capData.data.token,
+            latencyMs: capDuration,
+            attempt: capAttempt,
+          });
+          captureLastErr = null;
+          break; // success
+        } catch (capErr) {
+          captureLastErr = capErr;
+          const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
+          debugLog(
+            `?? [PERF] ? POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
+              retryable ? ` — retrying in 1s` : ''
+            }`,
+          );
+          if (!retryable) break;
+          await new Promise((r) => setTimeout(r, 1_000 * capAttempt));
         }
-        captureShare = {
-          id: capData.data.id,
-          url: `${apiBaseUrl}/share/${
-            capData.data.shareCode || capData.data.token
-          }`,
-        };
-        debugLog(
-          `?? [PERF] ? POST /captures: ${capDuration}ms (+${
-            Date.now() - perfStart
-          }ms from capture start) ? token ready`,
-        );
-        _ctLog(2, 'capture row created', {
-          captureRowId: captureShare.id,
-          shareCode: capData.data.shareCode || capData.data.token,
-          latencyMs: capDuration,
-        });
-      } catch (capErr) {
+      }
+      if (!captureShare) {
         debugLog(
           `?? [PERF] ? POST /captures FAILED after ${
             Date.now() - captureApiStart
-          }ms: ${capErr?.message || capErr}`,
+          }ms: ${captureLastErr?.message || captureLastErr}`,
         );
         setAlertModal({
           isOpen: true,
@@ -5159,6 +5387,8 @@ function WellnessValleyApp() {
       markCaptureAnalyzing(captureShare.id, {
         imageBase64: processedImage,
         capturedAt: new Date().toISOString(),
+        currentAttempt: 1,  // Show "1/3" badge immediately; onAttempt callback keeps it in sync
+        totalAttempts: 3,   // Must match MAX_ATTEMPTS in orchestratorService.js
       });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
       setDashboardInitialDate(null);
@@ -5208,6 +5438,13 @@ function WellnessValleyApp() {
           detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
             userId: resolvedUserIdForOrchestrate ?? null,
             captureId: String(captureShare.id),
+            // Update the diary row badge ("1/3", "2/3", "3/3") before each attempt.
+            onAttempt: ({ attempt, total }) => {
+              markCaptureAnalyzing(captureShare.id, {
+                currentAttempt: attempt,
+                totalAttempts: total,
+              });
+            },
           });
         } catch (orchErr) {
           console.error("[Background AI] orchestrate failed:", orchErr);
@@ -5301,6 +5538,8 @@ function WellnessValleyApp() {
                 source: detectedType.details?.source || "Smartwatch",
                 captureId: watchCaptureId,
               });
+              const burned = detectedType.details?.caloriesBurned || 0;
+              if (burned > 0) setWatchBurnedCalories(burned);
             }
             updatePendingCaptureType(pendingSharePromise, "smartwatch");
             triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch" });
@@ -5703,6 +5942,15 @@ function WellnessValleyApp() {
         triggerNutritionRefresh({ immediate: true, source: "capture-unknown" });
         if (bg) {
           clearCaptureAnalyzing(captureShare.id);
+          // Brief toast so the user knows why the photo landed in Diary as
+          // "Other" and what to do next — no modal, no blocking.
+          if (detectedType?.details?.defaulted === true) {
+            // All retries failed (timeout / API down)
+            showToast("⚠️ AI timed out — find it in Diary to retry");
+          } else if (detectedType?.type === "food") {
+            // Gemini recognised food but couldn't identify the items
+            showToast("🍽️ Food detected — tap in Diary to add details");
+          }
           return;
         }
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
@@ -6076,6 +6324,9 @@ function WellnessValleyApp() {
             updatePendingCaptureType(pendingSharePromise, "unknown");
             triggerNutritionRefresh({ immediate: true, source: "capture-food-failed" });
             clearCaptureAnalyzing(captureShare.id);
+            // Gemini recognised food (confidence ≥ 0.65) but couldn’t itemise
+            // it — tell the user so they know to tap and add manually.
+            showToast("🍽️ Food detected — tap in Diary to add details");
             return;
           }
           setFoodShareUrl(null);
@@ -7276,6 +7527,7 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
+              onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
               initialSelectedMember={dashboardInitialSelectedMember}
               initialDate={dashboardInitialDate}
               initialMealId={dashboardInitialMealId}
@@ -8022,6 +8274,7 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
               onOpenWellnessScore={() => navigateTo('wellness-score')}
               onOpenWellnessScoreSetup={
                 ['admin', 'developer'].includes(userRole)

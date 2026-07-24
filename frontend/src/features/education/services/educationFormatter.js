@@ -61,3 +61,26 @@ export function extractCaloriesValue(topic) {
   if (!isCaloriesBurnedTopic(topic)) return '';
   return topic.replace(/^calories burned:\s*/i, '');
 }
+
+/**
+ * Maps a diary timeline education or watch row to the log shape EducationCardModal expects.
+ * Used when paginated education logs have not loaded the row yet.
+ */
+export function educationLogFromDiaryRow(diaryEntry) {
+  const p = diaryEntry?.payload || {};
+  if (p.id == null || p.id === '') return null;
+
+  const kind = diaryEntry?.kind;
+  const topic = p.topic
+    || (kind === 'watch' && p.kcal != null ? `Calories Burned: ${p.kcal} kcal` : null)
+    || (kind === 'watch' ? 'Calories Burned: 0 kcal' : 'Education');
+
+  return {
+    Id: p.id,
+    Topic: topic,
+    Platform: p.platform || (kind === 'watch' ? 'Smartwatch' : 'Online Meeting'),
+    Confidence: p.confidence ?? null,
+    ImageBase64: p.imageBase64 ?? null,
+    CreatedAt: diaryEntry.capturedAt ?? null,
+  };
+}

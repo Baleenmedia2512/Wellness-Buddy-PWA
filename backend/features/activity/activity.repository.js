@@ -2,9 +2,11 @@ import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   applyDayFilter,
+  applyDayFilterWidened,
   applyDateRangeFilter,
 } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../shared/lib/datetime/index.js';
+import { filterWatchCalorieRowsForDate } from './domain/watch-calories.helpers.js';
 
 export async function fetchDailyRows(userId, startDate, endDate, activityType = null, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
@@ -61,13 +63,15 @@ export async function fetchWatchCalorieRows(userId, targetDate, timezoneIana = I
   let query = supabase
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
-    .eq('UserId', userId)
+    .eq('"UserId"', String(userId))
     .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .ilike('Topic', 'Calories Burned:%');
-  query = applyDayFilter(query, 'CreatedAt', targetDate, timezoneIana);
-  const { data, error } = await query.order('CreatedAt', { ascending: false });
+    .ilike('"Topic"', 'Calories Burned:%');
+  // Education watch logs store CreatedAt as legacy IST wall-clock (no zone).
+  // Mirror diary.repository fetchWatchForDay: widen SQL bounds, then post-filter.
+  query = applyDayFilterWidened(query, '"CreatedAt"', targetDate, timezoneIana);
+  const { data, error } = await query.order('"CreatedAt"', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return filterWatchCalorieRowsForDate(data, targetDate, timezoneIana);
 }
 
 export async function touchLastActive(userId) {

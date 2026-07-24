@@ -1,5 +1,35 @@
 apply plugin: 'com.android.application'
 
+/** Read REACT_APP_API_BASE_URL for native services (GalleryMonitorService). */
+def resolveReactAppApiBaseUrl() {
+    if (project.hasProperty('REACT_APP_API_BASE_URL')) {
+        return project.property('REACT_APP_API_BASE_URL').toString().trim()
+    }
+    def fromEnv = System.getenv('REACT_APP_API_BASE_URL')
+    if (fromEnv) {
+        return fromEnv.trim()
+    }
+    def envFiles = [file('../../.env.production'), file('../../.env')]
+    for (def envFile : envFiles) {
+        if (!envFile.exists()) continue
+        def found = null
+        envFile.eachLine { line ->
+            def trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith('#') || !trimmed.contains('=')) return
+            def idx = trimmed.indexOf('=')
+            def key = trimmed.substring(0, idx).trim()
+            if (key != 'REACT_APP_API_BASE_URL') return
+            def val = trimmed.substring(idx + 1).trim()
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                val = val.substring(1, val.length() - 1)
+            }
+            found = val
+        }
+        if (found) return found
+    }
+    return 'https://wellness-valley.vercel.app'
+}
+
 android {
     namespace "com.wellnessvalley.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -15,6 +45,18 @@ android {
         // Inject Gemini API key from environment variable or gradle.properties
         def geminiKey = project.hasProperty('GEMINI_API_KEY') ? GEMINI_API_KEY : System.getenv('GEMINI_API_KEY') ?: ""
         buildConfigField "String", "GEMINI_API_KEY", "\"${geminiKey}\""
+
+        // Same REACT_APP_API_BASE_URL as frontend (.env.production / npm run build)
+        def apiBaseUrl = resolveReactAppApiBaseUrl()
+        buildConfigField "String", "API_BASE_URL", "\"${apiBaseUrl}\""
+
+        def apiHost = 'wellness-valley.vercel.app'
+        try {
+            apiHost = new URL(apiBaseUrl).host
+        } catch (Exception ignored) {
+            logger.warn("Could not parse host from REACT_APP_API_BASE_URL=${apiBaseUrl}")
+        }
+        manifestPlaceholders = [apiHost: apiHost]
         
         // ✅ ANDROID PERFORMANCE: Enable multidex for better performance
         multiDexEnabled true
@@ -47,6 +89,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk {
+                debugSymbolLevel 'FULL'
+            }
         }
     }
     

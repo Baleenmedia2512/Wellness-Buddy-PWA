@@ -41,6 +41,7 @@ export function useHomeCarouselData({
   apiBaseUrl,
   resolveUserId,
   nutritionRefreshKey = 0,
+  watchBurnedCalories = 0,
   dateRange = 'today',
   customStartDate = null,
   customEndDate = null,
@@ -209,13 +210,26 @@ export function useHomeCarouselData({
     return "Today's track";
   }, [periodContext, dateRange]);
 
+  // Optimistic watch burn from a just-uploaded screenshot (before DB round-trip).
+  const burnedCalories = useMemo(() => {
+    if (!watchBurnedCalories || watchBurnedCalories <= 0) return nutrition.burnedCalories;
+    if (range.isMultiDay || range.endDate !== today) return nutrition.burnedCalories;
+    return Math.max(nutrition.burnedCalories, watchBurnedCalories);
+  }, [
+    nutrition.burnedCalories,
+    watchBurnedCalories,
+    range.endDate,
+    range.isMultiDay,
+    today,
+  ]);
+
   return {
     isMultiDay: periodContext.isMultiDay,
     rangeKey: range.isMultiDay ? `${range.startDate}_${range.endDate}` : range.endDate,
     selectedDate,
     analyses: nutrition.analyses,
     dailyStats: nutrition.dailyStats,
-    burnedCalories: nutrition.burnedCalories,
+    burnedCalories,
     wellnessScore,
     wellnessLoading: loading,
     nutritionLoading: loading,

@@ -6,12 +6,36 @@ import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 
 const post = async (path, body) => {
   const apiBase = getApiBaseUrl();
+  const payload = body && typeof body === 'object' ? body : {};
   const res = await fetch(`${apiBase}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
-  const data = await res.json();
+  const rawText = await res.text();
+  let data = {};
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    // Next.js body-parser failures often return plain "Invalid JSON" / HTML,
+    // which used to throw here and surface as a generic OTP failure.
+    const snippet = String(rawText || '').slice(0, 160);
+    // eslint-disable-next-line no-console -- intentional debug for SMS troubleshooting
+    console.warn('[OTP/SMS] non-JSON response', {
+      apiBase,
+      path,
+      httpStatus: res.status,
+      snippet,
+    });
+    return {
+      success: false,
+      message:
+        res.status === 400
+          ? 'Server rejected the request body (Invalid JSON). Redeploy backend or check API URL.'
+          : `Unexpected server response (${res.status}). Please try again.`,
+      _httpStatus: res.status,
+    };
+  }
   const hasOtpField = Object.prototype.hasOwnProperty.call(data || {}, 'otp');
   const logPayload = {
     apiBase,
@@ -25,7 +49,7 @@ const post = async (path, body) => {
     templateIdHint: data?.templateIdHint || '',
     apiKeyHint: data?.apiKeyHint || '',
     missingConfig: data?.missingConfig || [],
-    contactType: body?.contactType,
+    contactType: payload?.contactType,
   };
   debugLog('[OTP/SMS] send-otp response', logPayload);
   if (!data?.success || hasOtpField) {

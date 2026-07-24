@@ -49,6 +49,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           weightGoalMode: data.weightGoalMode || null,
           communityId: data.communityId || '',
           email: data.email || user?.email || '',
+          bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);

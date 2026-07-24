@@ -21,6 +21,7 @@ import * as userRepo from '../user/user.repository.js';
 // and does NOT fail the user's weight save.
 import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_WEIGHT } from '../captures/domain/image-types.js';
+import { mergeLocationWithCapture } from '../captures/domain/location.fields.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
@@ -129,18 +130,24 @@ export async function saveWeight(input) {
   }
 
   let effectiveClientTimestamp = clientTimestamp;
-  if (captureId && !entryId && !effectiveClientTimestamp) {
+  let captureRow = null;
+  if (captureId) {
     try {
-      const capture = await captures.findById(captureId);
-      if (capture?.CreatedAt) {
-        effectiveClientTimestamp = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      captureRow = await captures.findById(captureId);
+      if (!entryId && !effectiveClientTimestamp && captureRow?.CreatedAt) {
+        effectiveClientTimestamp = normalizeStoredTimestampToUtcIso(captureRow.CreatedAt);
       }
     } catch (err) {
-      logger.warn('weight.saveWeight: failed to resolve capture CreatedAt', {
+      logger.warn('weight.saveWeight: failed to resolve capture', {
         captureId, userId: String(userId), err: err?.message,
       });
     }
   }
+
+  const loc = mergeLocationWithCapture(
+    { city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude },
+    captureRow,
+  );
 
   const createdAtLegacy = deriveCreatedAtForStorage(effectiveClientTimestamp);
   const updatedAtLegacy = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
@@ -170,13 +177,13 @@ export async function saveWeight(input) {
       CaptureID: captureId || null,
       CreatedAt: createdAtLegacy,
       UpdatedAt: updatedAtLegacy,
-      City: city || null,
-      Village: village || null,
-      CenterName: centerName || null,
-      NutritionCenterId: nutritionCenterId || null,
-      AttendanceType: attendanceType || null,
-      Latitude: latitude || null,
-      Longitude: longitude || null,
+      City: loc.city || null,
+      Village: loc.village || null,
+      CenterName: loc.centerName || null,
+      NutritionCenterId: loc.nutritionCenterId || null,
+      AttendanceType: loc.attendanceType || null,
+      Latitude: loc.latitude || null,
+      Longitude: loc.longitude || null,
     });
   }
 

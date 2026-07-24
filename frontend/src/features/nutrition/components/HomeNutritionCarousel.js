@@ -48,6 +48,8 @@ export default function HomeNutritionCarousel({
 
   nutritionRefreshKey = 0,
 
+  watchBurnedCalories = 0,
+
   onOpenWellnessScore,
 
   onOpenWellnessScoreSetup,
@@ -81,8 +83,7 @@ export default function HomeNutritionCarousel({
     resolveUserId,
 
     nutritionRefreshKey,
-    // Skip refetch on Home remount unless a newer async activity log exists.
-    enableActivityLogGate: true,
+    watchBurnedCalories,
 
     dateRange,
 

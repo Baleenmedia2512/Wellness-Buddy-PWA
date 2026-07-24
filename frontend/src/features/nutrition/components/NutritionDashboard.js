@@ -34,6 +34,7 @@ import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshCon
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import ShakeCalculatorModal from './ShakeCalculatorModal';
+import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -170,6 +171,7 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     watchBurnedCalories,
+    nutritionRefreshKey,
   });
 
   // Latest body weight for personalised macro targets on the summary panel.
@@ -367,13 +369,41 @@ const NutritionDashboard = ({
     }
   }, [initialMealId, analyses, loading]);
 
+  const pendingOpenRef = useRef(null);
+
+  // Open once analyses load when the user tapped before fetch completed.
+  useEffect(() => {
+    const pendingId = pendingOpenRef.current;
+    if (!pendingId || loading) return;
+    const meal = (analyses || []).find((m) => m.ID && String(m.ID) === String(pendingId));
+    if (meal) {
+      pendingOpenRef.current = null;
+      setSelectedMeal(meal);
+    }
+  }, [loading, analyses]);
+
   // Imperative open handle for the timeline shell (ff.diary-timeline).
-  // Written on every render so the closure captures the current `analyses` list.
-  // Consumers call `openRef.current(mealId)` to open a meal by ID.
+  // Accepts a diary food entry (preferred) or legacy mealId string.
   if (openRef) {
-    openRef.current = (mealId) => {
-      const meal = analyses.find((m) => m.ID && String(m.ID) === String(mealId));
-      if (meal) setSelectedMeal(meal);
+    openRef.current = (entryOrId) => {
+      if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
+        const p = entryOrId.payload || {};
+        const found = (analyses || []).find((m) => m.ID && String(m.ID) === String(p.id));
+        const meal = found || mealFromDiaryRow(entryOrId);
+        if (meal) {
+          pendingOpenRef.current = null;
+          setSelectedMeal(meal);
+        }
+        return;
+      }
+      const mealId = entryOrId;
+      const meal = (analyses || []).find((m) => m.ID && String(m.ID) === String(mealId));
+      if (meal) {
+        pendingOpenRef.current = null;
+        setSelectedMeal(meal);
+      } else if (mealId != null && mealId !== '') {
+        pendingOpenRef.current = String(mealId);
+      }
     };
   }
 
