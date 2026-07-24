@@ -48,6 +48,23 @@ export const MODEL_CONFIGS = {
   },
 
   /**
+   * Profile face check — simple boolean JSON.
+   * thinkingBudget: 0 is safe here (unlike unified nutrition): a yes/no face
+   * question does not need model introspection, and leaving Flash's default
+   * thinking on with a tiny maxOutputTokens budget often truncates output.
+   */
+  faceDetect: {
+    temperature: 0,
+    topK: 1,
+    topP: 1.0,
+    maxOutputTokens: 128,
+    responseMimeType: 'application/json',
+    thinkingConfig: {
+      thinkingBudget: 0,
+    },
+  },
+
+  /**
    * Full nutrition analysis. Structured response schema is applied by the
    * caller (analyze-nutrition endpoint) since it requires SchemaType imports.
    * We keep token budget generous for large food plates.
@@ -151,7 +168,7 @@ function getGenAI() {
 /**
  * Return a cached Gemini model for the given configuration key.
  *
- * @param {'classify' | 'nutrition' | 'weight' | 'unified'} configKey
+ * @param {'classify' | 'faceDetect' | 'nutrition' | 'weight' | 'unified'} configKey
  * @param {object} [responseSchema]  Optional structured response schema (SDK SchemaType).
  * @param {string} [modelOverride]   Override the default model name (e.g. FALLBACK_MODEL_NAME).
  * @returns {import('@google/generative-ai').GenerativeModel}
