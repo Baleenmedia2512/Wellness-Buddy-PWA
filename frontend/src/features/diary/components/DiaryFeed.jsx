@@ -23,7 +23,7 @@
  * unchanged — the timeline is a presentation wrapper only.
  */
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
@@ -31,6 +31,9 @@ import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 import { getProfile } from '../../user/services/user.api';
+import { ANALYSIS_ATTEMPT_BUDGET_SECS } from '../../../shared/constants/captureAnalysis';
+import { updateCaptureTypeWithRetry } from '../../../shared/services/updateCaptureType';
+import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 const SKELETON_ROWS = 6;
 
@@ -308,6 +311,65 @@ export default function DiaryFeed({
     refreshKey: externalRefreshKey,
   });
 
+  const nutritionRefresh = useNutritionRefreshOptional();
+  const expiredCaptureRef = useRef(new Set());
+
+  // Promote in-flight or API-pending captures to unknown once the AI budget expires.
+  useEffect(() => {
+    const canMutate = ownerUserId
+      && viewerUserId
+      && String(ownerUserId) === String(viewerUserId);
+    if (!canMutate) return undefined;
+
+    const budgetMs = ANALYSIS_ATTEMPT_BUDGET_SECS * 1_000;
+    const now = Date.now();
+    const staleIds = [];
+
+    const consider = (captureId, capturedAtIso) => {
+      if (captureId == null || captureId === '' || !capturedAtIso) return;
+      const id = String(captureId);
+      if (expiredCaptureRef.current.has(id)) return;
+      const t = new Date(capturedAtIso).getTime();
+      if (!Number.isFinite(t) || now - t < budgetMs) return;
+      staleIds.push(id);
+    };
+
+    for (const entry of data?.entries ?? []) {
+      if (entry.kind !== 'unknown' || !entry.payload?.isPendingAnalysis) continue;
+      consider(entry.capture?.id ?? entry.payload?.id, entry.capturedAt);
+    }
+
+    pendingCaptureMeta?.forEach((meta, captureId) => {
+      consider(captureId, meta.capturedAt);
+    });
+
+    if (staleIds.length === 0) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      for (const id of staleIds) {
+        if (cancelled) return;
+        expiredCaptureRef.current.add(id);
+        nutritionRefresh?.clearCaptureAnalyzing?.(id);
+        const result = await updateCaptureTypeWithRetry({
+          captureId: id,
+          userId: viewerUserId,
+          imageType: 'unknown',
+        });
+        if (!cancelled && result.ok) refresh();
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [
+    data?.entries,
+    pendingCaptureMeta,
+    ownerUserId,
+    viewerUserId,
+    refresh,
+    nutritionRefresh,
+  ]);
+
   const ownerTimezoneIana = data?.ownerTimezoneIana
     || profileOwnerTimezone
     || fallbackTimezoneIana;
@@ -356,6 +418,7 @@ export default function DiaryFeed({
             ? {
                 isAnalyzing,
                 isBackgroundPending,
+                capturePhase: captureMeta?.phase ?? 'analyzing',
                 currentAttempt: captureMeta?.currentAttempt ?? null,
                 totalAttempts:  captureMeta?.totalAttempts  ?? null,
               }

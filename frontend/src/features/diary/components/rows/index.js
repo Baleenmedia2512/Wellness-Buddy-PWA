@@ -21,6 +21,7 @@ import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
 import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+import { ANALYSIS_ATTEMPT_BUDGET_SECS } from '../../../../shared/constants/captureAnalysis';
 
 /** Swipe-to-delete is owner-only; disabled when a coach views a member diary. */
 function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
@@ -574,31 +575,39 @@ function formatRemaining(secs) {
 }
 
 /**
- * Total worst-case budget for all 3 Phase-1 attempts including back-off
- * (3 × 40 s timeout + 1.5 s + 3 s back-off ≈ 125 s). Used for the countdown.
+ * Total worst-case budget for all 3 Phase-1 attempts including back-off.
+ * Used for the countdown and to auto-switch to Manual Log when exceeded.
  */
-const TOTAL_BUDGET_SECS = 125;
+const TOTAL_BUDGET_SECS = ANALYSIS_ATTEMPT_BUDGET_SECS;
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
+export function OtherRow({
+  entry,
+  onOpen,
+  onDelete,
+  canDelete = true,
+  isAnalyzing = false,
+  isBackgroundPending = false,
+  capturePhase = 'analyzing',
+  hideTime = false,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  currentAttempt = null,
+  totalAttempts = null,
+}) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
-  const swipeEnabled = canSwipeDelete && !isAnalyzing;
-  const showBackgroundHint = isBackgroundPending && !isAnalyzing;
+  const isSaving = capturePhase === 'saving';
+  const isInFlight = isAnalyzing || isBackgroundPending || isSaving;
 
-  // Elapsed-time ticker — active for both isAnalyzing and isBackgroundPending.
-  //   isAnalyzing      (user re-detect tap)   → starts from Date.now()
-  //   isBackgroundPending (camera capture flow) → starts from entry.capturedAt
-  //     so the timer reflects total analysis time, not just elapsed in this render.
+  // Elapsed-time ticker — active while AI or save is in flight.
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const startRef = useRef(null);
   useEffect(() => {
-    const active = isAnalyzing || isBackgroundPending;
-    if (!active) {
+    if (!isInFlight) {
       setElapsedSecs(0);
       startRef.current = null;
       return undefined;
     }
-    if (isBackgroundPending && !isAnalyzing && entry.capturedAt) {
+    if ((isBackgroundPending || isSaving) && !isAnalyzing && entry.capturedAt) {
       const t = new Date(entry.capturedAt).getTime();
       startRef.current = Number.isFinite(t) ? t : Date.now();
     } else {
@@ -609,7 +618,14 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
       setElapsedSecs(Math.max(0, Math.floor((Date.now() - startRef.current) / 1_000)));
     }, 1_000);
     return () => clearInterval(id);
-  }, [isAnalyzing, isBackgroundPending, entry.capturedAt]);
+  }, [isAnalyzing, isBackgroundPending, isSaving, isInFlight, entry.capturedAt]);
+
+  const isAnalysisExpired = isInFlight && elapsedSecs > TOTAL_BUDGET_SECS;
+  const showAnalyzing = isAnalyzing && !isAnalysisExpired;
+  const showBackgroundHint = isBackgroundPending && !isAnalyzing && !isSaving && !isAnalysisExpired;
+  const showSaving = isSaving && !isAnalysisExpired;
+  const showProcessingChrome = showAnalyzing || showBackgroundHint || showSaving;
+  const swipeEnabled = canSwipeDelete && !showAnalyzing;
 
   return (
     <div
@@ -638,35 +654,38 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
       <div
         ref={swipe.elRef}
         role="button"
-        tabIndex={isAnalyzing ? -1 : 0}
-        aria-disabled={isAnalyzing}
+        tabIndex={showAnalyzing ? -1 : 0}
+        aria-disabled={showAnalyzing}
         aria-label={
-          isAnalyzing
+          showAnalyzing
             ? 'AI is analysing this photo — please wait'
+            : showSaving
+            ? 'Saving your photo — please wait'
             : showBackgroundHint
             ? 'Photo uploaded — AI analysis in progress'
+            : isAnalysisExpired
+            ? 'Analysis timed out — tap to add manually'
             : swipeEnabled
             ? 'Unrecognised capture, tap to identify or swipe to delete'
             : 'Unrecognised capture, tap to identify'
         }
         data-testid="diary-row-unknown"
         onClick={() => {
-          if (isAnalyzing) return;
+          if (showAnalyzing) return;
           if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry);
         }}
         onKeyDown={(e) => {
-          if (isAnalyzing || swipe.leaving) return;
+          if (showAnalyzing || swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
         }}
         {...(swipeEnabled ? swipe.touchHandlers : {})}
         {...(swipeEnabled ? swipe.pointerHandlers : {})}
         className={[
           'relative z-10 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden transition-shadow',
-          isAnalyzing
-            ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
-            : showBackgroundHint
+          showProcessingChrome
             ? 'bg-emerald-50/80 border border-emerald-200 cursor-pointer hover:shadow-md'
             : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
+          showAnalyzing ? 'cursor-wait' : '',
         ].join(' ')}
         style={{
           transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
@@ -680,7 +699,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
         )}
 
         {/* AI analysis indeterminate progress bar across the card top */}
-        {(isAnalyzing || showBackgroundHint) && (
+        {showProcessingChrome && (
           <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl overflow-hidden bg-emerald-100" aria-hidden="true">
             <div className="h-full bg-emerald-500 w-2/5 animate-shimmer" />
           </div>
@@ -689,7 +708,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
 
         <div className="flex-1 min-w-0">
-          {isAnalyzing ? (
+          {showAnalyzing ? (
             <>
               <h4 className="font-semibold text-emerald-700 truncate">
                 Detecting entry…
@@ -704,6 +723,13 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
               </h4>
               <p className="text-xs text-emerald-600/80">
                 {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
+              </p>
+            </>
+          ) : showSaving ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">Saving…</h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime ? 'Saving your meal' : `${formatTime(entry.capturedAt, timezoneIana)} · Saving your meal`}
               </p>
             </>
           ) : showBackgroundHint ? (
@@ -725,24 +751,28 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             </>
           ) : (
             <>
-              <h4 className="font-semibold text-gray-900 truncate">Other</h4>
+              <h4 className="font-semibold text-gray-900 truncate">
+                {isAnalysisExpired ? 'Other' : 'Other'}
+              </h4>
               <p className="text-xs text-gray-500">
                 {hideTime
-                  ? "couldn't identify"
+                  ? (isAnalysisExpired ? 'tap to add manually' : "couldn't identify")
+                  : isAnalysisExpired
+                  ? `${formatTime(entry.capturedAt, timezoneIana)} · tap to add manually`
                   : `${formatTime(entry.capturedAt, timezoneIana)} · couldn't identify`}
               </p>
             </>
           )}
         </div>
 
-        {isAnalyzing ? (
+        {showAnalyzing || showBackgroundHint ? (
           <div
             className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
             aria-hidden="true"
           />
-        ) : showBackgroundHint ? (
+        ) : showSaving ? (
           <div
-            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            className="w-5 h-5 rounded-full border-2 border-emerald-400 border-t-emerald-600 animate-pulse shrink-0"
             aria-hidden="true"
           />
         ) : (
