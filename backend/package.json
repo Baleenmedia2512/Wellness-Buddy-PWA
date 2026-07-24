@@ -5,7 +5,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.90.1",
-    "ai-token-monitor": "^1.0.3",
+    "ai-token-monitor": "^1.0.4",
     "bcryptjs": "^3.0.2",
     "formidable": "^3.5.4",
     "joi": "^18.2.1",
