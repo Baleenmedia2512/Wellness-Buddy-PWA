@@ -5,14 +5,14 @@
  */
 import { useState, useRef, useCallback } from 'react';
 import { getUserId } from '../shared/services/userIdentity';
-import { resolveLocationFields } from '../shared/utils/resolveLocationFields';
+import { resolveLocationFields, stripLocationDiagnostics } from '../shared/utils/resolveLocationFields';
 import { duplicateDetectionService } from '../features/nutrition';
 import { debugLog } from '../shared/utils/logger';
 import { useWeightProgressCheck } from '../features/weight-progress-tips/hooks/useWeightProgressCheck';
 import { isSameBusinessDay, DEFAULT_BUSINESS_TIMEZONE } from '../shared/utils/datetimeUtils';
 
 export function useWeightCapture({
-  user, apiBaseUrl, foodCaptureIdRef,
+  user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
   setAlertModal, setSaveLoading, setLoadingState,
   setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
 }) {
@@ -153,8 +153,49 @@ export function useWeightCapture({
 
       console.log("?? [performWeightSave] Step 3: Capturing GPS location...");
 
-      const { permissionDenied: gpsDenied, ...locationFields } =
-        await resolveLocationFields(apiBaseUrl, userId);
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc && captureLocationByIdRef?.current
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!locationFields.latitude || !locationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[WEIGHT-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[WEIGHT-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
+      }
       if (gpsDenied) {
         setAlertModal({
           isOpen: true,
@@ -165,6 +206,9 @@ export function useWeightCapture({
         });
       }
       Object.assign(payload, locationFields);
+      if (captureIdForLoc && captureLocationByIdRef?.current) {
+        captureLocationByIdRef.current.delete(captureIdForLoc);
+      }
 
       console.log(
         "?? [performWeightSave] GPS location captured, payload ready",

@@ -42,6 +42,13 @@ export async function recordPending({
   imagePath = null,
   deviceInfo = null,
   processedBy = null,
+  latitude,
+  longitude,
+  city,
+  village,
+  attendanceType,
+  nutritionCenterId,
+  centerName,
 }) {
   if (!userId)            throw new Error('captures.recordPending: userId required');
   if (!publicShareToken)  throw new Error('captures.recordPending: publicShareToken required');
@@ -55,6 +62,13 @@ export async function recordPending({
     imagePath,
     deviceInfo,
     processedBy,
+    latitude,
+    longitude,
+    city,
+    village,
+    attendanceType,
+    nutritionCenterId,
+    centerName,
   });
   return { id: row.ID, publicShareToken: row.PublicShareToken, shareCode: row.ShareCode || null };
 }

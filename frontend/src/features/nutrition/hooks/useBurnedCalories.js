@@ -17,6 +17,7 @@ export function useBurnedCalories({
   apiBaseUrl,
   resolveUserId,
   watchBurnedCalories = 0,
+  nutritionRefreshKey = 0,
 }) {
   const [dbWatchBurned, setDbWatchBurned] = useState(0);
 
@@ -39,7 +40,7 @@ export function useBurnedCalories({
 
   useEffect(() => {
     if (user) refetch();
-  }, [user, selectedDate, refetch, watchBurnedCalories]);
+  }, [user, selectedDate, refetch, watchBurnedCalories, nutritionRefreshKey]);
 
   return { burnedCalories, watchBurned, stepsBurned };
 }

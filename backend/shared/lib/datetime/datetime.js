@@ -198,6 +198,30 @@ export function timestampToCalendarYmd(utcTimestamp, timezoneIana = IANA_IST) {
 }
 
 /**
+ * Keep rows whose timestamp column falls on `dateYmd` in `timezoneIana`.
+ * Pair with `applyDayFilterWidened` when CreatedAt is IST wall-clock without zone.
+ *
+ * @param {object[]} rows
+ * @param {string} dateYmd - `YYYY-MM-DD`
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [column='CreatedAt']
+ * @returns {object[]}
+ */
+export function filterRowsByCalendarDay(rows, dateYmd, timezoneIana = IANA_IST, column = 'CreatedAt') {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.filter((row) => {
+    const raw = row?.[column];
+    if (raw == null) return false;
+    try {
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, timezoneIana);
+      return timestampToCalendarYmd(utcIso, timezoneIana) === dateYmd;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Wall-clock HH:mm:ss for a stored UTC timestamp in a business timezone.
  *
  * @param {string|Date} utcTimestamp
