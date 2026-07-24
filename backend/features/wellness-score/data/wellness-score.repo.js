@@ -3,10 +3,10 @@ import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { filterEducationLogsOnly } from '../domain/education-log.helpers.js';
 import {
-  applyDayFilter,
+  applyDayFilterWidened,
   applyBeforeDayFilter,
 } from '../../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST } from '../../../shared/lib/datetime/index.js';
+import { IANA_IST, filterRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
 
 function parseUserId(userId) {
   const uid = Number.parseInt(String(userId), 10);
@@ -53,13 +53,14 @@ export async function getEducationLogsForDate(userId, date, timezoneIana = IANA_
     .select('"CreatedAt", "Topic", "Platform"')
     .eq('"UserId"', uid)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query;
   if (error) {
     logger.error('[wellness-score.repo] education logs failed', { userId: uid, date, err: error.message });
     return [];
   }
-  return filterEducationLogsOnly(data || []);
+  const dayRows = filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+  return filterEducationLogsOnly(dayRows);
 }
 
 export async function getWeightRecordsForDate(userId, date, timezoneIana = IANA_IST) {
@@ -71,13 +72,13 @@ export async function getWeightRecordsForDate(userId, date, timezoneIana = IANA_
     .select('Weight, CreatedAt')
     .eq('UserId', uid)
     .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false');
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query;
   if (error) {
     logger.error('[wellness-score.repo] weight records failed', { userId: uid, date, err: error.message });
     return [];
   }
-  return data || [];
+  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function getPreviousWeightBeforeDate(userId, date, timezoneIana = IANA_IST) {
