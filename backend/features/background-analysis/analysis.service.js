@@ -365,35 +365,38 @@ export async function save(input) {
     };
   }
 
-  // Promote the capture pending → food. Best-effort: the food row is
-  // already persisted, and the state machine is idempotent (re-classifying
-  // an already-food capture is a no-op). Only logged on failure so a
-  // captures-side transient does not fail the user save.
+  // Promote the capture pending → food. Retried on transient failure so the
+  // diary feed does not show both a food row and a stale pending card.
   if (captureId) {
-    try {
-      const promotionResult = await captures.updateTypeById({
-        captureId,
-        userId: userId.toString(),
-        toType: IMAGE_TYPE_FOOD,
-      });
-      if (promotionResult.changed) {
-        logger.info('analysis.save: capture promoted to food', {
-          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+    const PROMOTION_MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= PROMOTION_MAX_ATTEMPTS; attempt++) {
+      try {
+        const promotionResult = await captures.updateTypeById({
+          captureId,
+          userId: userId.toString(),
+          toType: IMAGE_TYPE_FOOD,
         });
-      } else {
-        // ALREADY_IN_TARGET_STATE is expected on retries; log at debug level.
-        logger.debug('analysis.save: capture promotion no-op', {
-          captureId, userId: userId.toString(), reason: promotionResult.reason,
+        if (promotionResult.changed) {
+          logger.info('analysis.save: capture promoted to food', {
+            captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+          });
+        } else {
+          logger.debug('analysis.save: capture promotion no-op', {
+            captureId, userId: userId.toString(), reason: promotionResult.reason,
+          });
+        }
+        break;
+      } catch (err) {
+        if (attempt < PROMOTION_MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+          continue;
+        }
+        logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
+          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+          err: err.message,
+          attempts: PROMOTION_MAX_ATTEMPTS,
         });
       }
-    } catch (err) {
-      // Consistency warning: food row saved but capture state NOT promoted.
-      // The diary feed filters on captures.ImageType='food', so this entry
-      // will be hidden until a subsequent retry promotes the capture.
-      logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
-        captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
-        err: err.message,
-      });
     }
 
     // Signal to the orchestrator that the food row is now persisted.

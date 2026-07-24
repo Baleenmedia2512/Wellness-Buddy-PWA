@@ -256,7 +256,7 @@ export async function generateContent(
     const latency = Date.now() - start;
 
     try {
-      await AIClient.chat({
+      await AIClient.sendTelemetry({
         provider: "Gemini",
         model: modelOverride ?? MODEL_NAME,
         usage: result.response.usageMetadata,
@@ -265,6 +265,7 @@ export async function generateContent(
 
         // Optional: only useful if the SDK supports custom fields
         traceId: trace?.traceId,
+        endUserId: trace?.userId,
       });
     } catch (sdkErr) {
       logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
@@ -280,7 +281,7 @@ export async function generateContent(
 
     try {
 
-      await AIClient.chat({
+      await AIClient.sendTelemetry({
         provider: "Gemini",
         model: modelOverride ?? MODEL_NAME,
         usage: {},
@@ -290,6 +291,7 @@ export async function generateContent(
 
         // Optional: only useful if the SDK supports custom fields
         traceId: trace?.traceId,
+        endUserId: trace?.userId,
       });
 
     } catch (sdkErr) {

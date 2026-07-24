@@ -4506,8 +4506,18 @@ function WellnessValleyApp() {
   };
 
   // Helper function to perform nutrition save
-  const performNutritionSave = async (saveData, { silent = false } = {}) => {
+  const performNutritionSave = async (
+    saveData,
+    {
+      silent = false,
+      captureId: boundCaptureId = null,
+      pendingSharePromise: boundPendingSharePromise = null,
+    } = {},
+  ) => {
     const saveStart = Date.now();
+    let resolvedCaptureId = boundCaptureId ?? foodCaptureIdRef.current;
+    const useGlobalCaptureRefs =
+      boundCaptureId == null && boundPendingSharePromise == null;
     try {
       debugLog("?? [App] Starting nutrition save:", {
         userId: saveData.userId,
@@ -4527,24 +4537,30 @@ function WellnessValleyApp() {
       // a fast Gemini response races ahead of a slow /captures network call
       // and captureId arrives as null ? the backend INSERTs a new row instead
       // of UPDATing the pre-created pending row ? two records in the DB.
-      if (pendingSharePromiseRef.current) {
-        const share = await pendingSharePromiseRef.current;
-        if (share && !foodCaptureIdRef.current) {
-          foodCaptureIdRef.current = share.id;
+      const pendingSharePromise =
+        boundPendingSharePromise ?? pendingSharePromiseRef.current;
+      if (pendingSharePromise) {
+        const share = await pendingSharePromise;
+        if (share && !resolvedCaptureId) {
+          resolvedCaptureId = share.id;
         }
-        pendingSharePromiseRef.current = null;
+        if (useGlobalCaptureRefs) {
+          pendingSharePromiseRef.current = null;
+        }
       }
       // Stage 9 � pendingSharePromise resolved (captureId now settled)
       _ctLog(9, 'pendingSharePromise settled', {
-        captureIdAfterSettle: foodCaptureIdRef.current ?? 'null',
-        pendingShareRefCleared: pendingSharePromiseRef.current == null,
+        captureIdAfterSettle: resolvedCaptureId ?? 'null',
+        pendingShareRefCleared: useGlobalCaptureRefs
+          ? pendingSharePromiseRef.current == null
+          : true,
       });
 
       // Prefer capture-time location (already on captures_table). Only re-resolve
       // GPS when the first save had no coords — avoids missing club/city when the
       // later domain save races or GPS fails the second time.
-      const captureIdForLoc = foodCaptureIdRef.current
-        ? String(foodCaptureIdRef.current)
+      const captureIdForLoc = resolvedCaptureId
+        ? String(resolvedCaptureId)
         : null;
       const stashedLocation = captureIdForLoc
         ? captureLocationByIdRef.current.get(captureIdForLoc)
@@ -4619,12 +4635,14 @@ function WellnessValleyApp() {
         // Pass captureId so the backend updates the pre-created pending row
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.
-        captureId: foodCaptureIdRef.current || undefined,
+        captureId: resolvedCaptureId || undefined,
       });
       if (captureIdForLoc) {
         captureLocationByIdRef.current.delete(captureIdForLoc);
       }
-      foodCaptureIdRef.current = null;
+      if (useGlobalCaptureRefs) {
+        foodCaptureIdRef.current = null;
+      }
       debugLog("? [App] Save successful:", saveRes);
       debugLog(`?? [PERF] Database save: ${Date.now() - saveStart}ms`);
 
@@ -4681,6 +4699,8 @@ function WellnessValleyApp() {
     processedImage: saveProcessedImage,
     analysisResult,
     exifTimestamp: saveExifTimestamp,
+    captureId: boundCaptureId = null,
+    pendingSharePromise: boundPendingSharePromise = null,
     silent = false,
   }) => {
     if (!silent) setLoadingState("saving");
@@ -4727,7 +4747,11 @@ function WellnessValleyApp() {
             "Duplicate check failed, proceeding with save:",
             duplicateError,
           );
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
@@ -4735,7 +4759,11 @@ function WellnessValleyApp() {
           console.warn(
             "Invalid duplicate check response, proceeding with save",
           );
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
@@ -4746,7 +4774,11 @@ function WellnessValleyApp() {
           setShowDuplicateModal(true);
           setSaveLoading(false);
         } else {
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
         }
       } catch (err) {
         console.error("? Save failed:", err?.message || err);
@@ -6364,6 +6396,8 @@ function WellnessValleyApp() {
           processedImage,
           analysisResult: result,
           exifTimestamp,
+          captureId: captureShare.id,
+          pendingSharePromise,
           silent: bg,
         });
         savePromiseRef.current = _saveP;
