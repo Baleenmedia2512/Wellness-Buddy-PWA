@@ -65,4 +65,22 @@ describe('dedupePendingDiaryEntries', () => {
     assert.ok(deduped.some((e) => e.capture?.id === 'cap-dish2'));
     assert.ok(!deduped.some((e) => e.capture?.id === 'cap-payasam' && e.payload?.isPendingAnalysis));
   });
+
+  it('collapses duplicate pending-analysis rows for the same capture ID', () => {
+    const pendingA = {
+      kind: 'unknown',
+      capturedAt: '2026-07-24T05:23:00.000Z',
+      capture: { id: 'cap-dosa', type: 'pending' },
+      payload: { id: 'cap-dosa', isPendingAnalysis: true },
+    };
+    const pendingB = {
+      kind: 'unknown',
+      capturedAt: '2026-07-24T05:23:00.000Z',
+      capture: { id: 'cap-dosa', type: 'pending' },
+      payload: { id: 'cap-dosa', isPendingAnalysis: true },
+    };
+
+    const deduped = dedupePendingDiaryEntries([pendingA, pendingB]);
+    assert.equal(deduped.length, 1);
+  });
 });

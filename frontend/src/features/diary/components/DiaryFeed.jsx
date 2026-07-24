@@ -34,28 +34,34 @@ import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
 
-/** Hide stale "Analyzing…" rows when a terminal entry already exists for the capture. */
+/** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
 function dedupePendingDiaryEntries(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return entries;
 
+  const entryCaptureId = (entry) => {
+    const id = entry.capture?.id ?? entry.payload?.id;
+    if (id == null || id === '') return '';
+    return String(id);
+  };
+  const isPendingAnalysisEntry = (entry) =>
+    entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+
   const resolvedCaptureIds = new Set();
   for (const entry of entries) {
-    const isPendingUnknown =
-      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
-    if (isPendingUnknown) continue;
-    const captureId = entry.capture?.id ?? entry.payload?.id;
-    if (captureId != null && captureId !== '') {
-      resolvedCaptureIds.add(String(captureId));
-    }
+    if (isPendingAnalysisEntry(entry)) continue;
+    const captureId = entryCaptureId(entry);
+    if (captureId !== '') resolvedCaptureIds.add(captureId);
   }
 
+  const seenPendingCaptureIds = new Set();
   return entries.filter((entry) => {
-    const isPendingUnknown =
-      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
-    if (!isPendingUnknown) return true;
-    const captureId = String(entry.capture?.id ?? entry.payload?.id ?? '');
+    if (!isPendingAnalysisEntry(entry)) return true;
+    const captureId = entryCaptureId(entry);
     if (captureId === '') return true;
-    return !resolvedCaptureIds.has(captureId);
+    if (resolvedCaptureIds.has(captureId)) return false;
+    if (seenPendingCaptureIds.has(captureId)) return false;
+    seenPendingCaptureIds.add(captureId);
+    return true;
   });
 }
 
@@ -367,20 +373,19 @@ export default function DiaryFeed({
       return dedupePendingDiaryEntries(base);
     }
 
-    const resolvedCaptureIds = new Set();
-    for (const entry of base) {
-      const isPendingUnknown =
-        entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
-      if (isPendingUnknown) continue;
-      const captureId = entry.capture?.id ?? entry.payload?.id;
-      if (captureId != null && captureId !== '') {
-        resolvedCaptureIds.add(String(captureId));
-      }
-    }
+    // Skip optimistic rows when the API feed already includes this capture
+    // (pending rows from /api/diary/list). Without this, each photo appears
+    // twice: once from pendingCaptureMeta and once from the API.
+    const existingCaptureIds = new Set(
+      base
+        .map((entry) => entry.capture?.id ?? entry.payload?.id)
+        .filter((id) => id != null && id !== '')
+        .map(String),
+    );
 
     const optimistic = [];
     pendingCaptureMeta.forEach((meta, captureId) => {
-      if (resolvedCaptureIds.has(captureId)) return;
+      if (existingCaptureIds.has(captureId)) return;
       optimistic.push({
         kind: 'unknown',
         capturedAt: meta.capturedAt || new Date().toISOString(),

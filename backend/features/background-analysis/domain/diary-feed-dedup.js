@@ -1,7 +1,18 @@
 /**
- * Pure diary feed deduplication — hides stale pending-analysis rows when a
- * terminal domain entry already exists for the same capture ID.
+ * Pure diary feed deduplication:
+ * 1. Hide stale pending-analysis rows when a terminal entry exists for the capture.
+ * 2. Collapse duplicate pending-analysis rows for the same capture ID.
  */
+
+function entryCaptureId(entry) {
+  const id = entry.capture?.id ?? entry.payload?.id;
+  if (id == null || String(id) === '') return '';
+  return String(id);
+}
+
+function isPendingAnalysisEntry(entry) {
+  return entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+}
 
 /**
  * @param {Array<{ kind: string, capture?: { id?: string|number|null }|null, payload?: { id?: string|number|null, isPendingAnalysis?: boolean } }>} entries
@@ -12,23 +23,20 @@ export function dedupePendingDiaryEntries(entries) {
 
   const resolvedCaptureIds = new Set();
   for (const entry of entries) {
-    const isPendingUnknown =
-      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
-    if (isPendingUnknown) continue;
-
-    const captureId = entry.capture?.id ?? entry.payload?.id;
-    if (captureId != null && String(captureId) !== '') {
-      resolvedCaptureIds.add(String(captureId));
-    }
+    if (isPendingAnalysisEntry(entry)) continue;
+    const captureId = entryCaptureId(entry);
+    if (captureId !== '') resolvedCaptureIds.add(captureId);
   }
 
+  const seenPendingCaptureIds = new Set();
   return entries.filter((entry) => {
-    const isPendingUnknown =
-      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
-    if (!isPendingUnknown) return true;
+    if (!isPendingAnalysisEntry(entry)) return true;
 
-    const captureId = String(entry.capture?.id ?? entry.payload?.id ?? '');
+    const captureId = entryCaptureId(entry);
     if (captureId === '') return true;
-    return !resolvedCaptureIds.has(captureId);
+    if (resolvedCaptureIds.has(captureId)) return false;
+    if (seenPendingCaptureIds.has(captureId)) return false;
+    seenPendingCaptureIds.add(captureId);
+    return true;
   });
 }
