@@ -249,17 +249,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // The core dispatch loop (handleEntryOpen) is NEVER modified for new kinds.
   //
   // KNOWN_KIND_HANDLERS maps entry.kind → synchronous open fn.
-  // Any kind NOT in this map and NOT 'unknown' is silently ignored (e.g. watch
-  // is informational only — kcal is already visible on the card).
+  // Each handler receives the full diary entry so hidden dashboards can
+  // open from the row payload when their own lists have not loaded yet.
   //
   // The 'unknown' path is handled separately because it requires an async
   // AI retry pipeline with its own resilience contract (see below).
 
   // Registry: add new diary kinds here — zero changes elsewhere.
   const KNOWN_KIND_HANDLERS = {
-    food:      (entry) => nutritionOpenRef.current?.(entry.payload?.id),
+    food:      (entry) => nutritionOpenRef.current?.(entry),
     weight:    (entry) => weightOpenRef.current?.(entry),
-    education: (entry) => educationOpenRef.current?.(entry.payload?.id),
+    education: (entry) => educationOpenRef.current?.(entry),
+    watch:     (entry) => educationOpenRef.current?.(entry),
   };
 
   // ── Resilient unknown-tap handler ─────────────────────────────────────────
@@ -290,7 +291,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     const knownHandler = KNOWN_KIND_HANDLERS[entry.kind];
     if (knownHandler) { knownHandler(entry); return; }
     if (entry.kind === 'unknown') { handleUnknownTap(entry); }
-    // All other kinds (e.g. watch) are intentionally no-ops.
   };
 
   const diaryUndoLabels = {
