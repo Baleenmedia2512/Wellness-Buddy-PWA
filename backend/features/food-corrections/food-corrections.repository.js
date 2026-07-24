@@ -2,10 +2,16 @@ import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   applyDayFilter,
+  applyDayFilterWidened,
   applyDateRangeFilter,
   applySinceDayStartFilter,
 } from '../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST, todayInTimezone, shiftDateYmd } from '../../shared/lib/datetime/index.js';
+import {
+  IANA_IST,
+  todayInTimezone,
+  shiftDateYmd,
+  filterRowsByCalendarDay,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── corrections table ──────────────────────────────────────────────────────
 export async function listUserCorrections(userId) {
@@ -131,10 +137,11 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
     // behind when the capture turned out to be weight/education/smartwatch).
     // Matches the same predicate already enforced by `listAnalyses`.
     .not('AnalysisData', 'is', null);
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  // Widen SQL bounds, then post-filter: CreatedAt is IST wall-clock without zone.
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function getStatsCounts(userId, timezoneIana = IANA_IST) {

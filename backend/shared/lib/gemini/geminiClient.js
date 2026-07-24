@@ -13,7 +13,7 @@
  */
 // MUST be first — SDK reads localStorage at import time (Node has none).
 import './serverLocalStoragePolyfill.js';
-import AIClient from "ai-token-monitor-sdk";
+import AIClient from "ai-token-monitor";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 
@@ -119,18 +119,30 @@ function getGenAI() {
     }
     _genAI = new GoogleGenerativeAI(apiKey);
     try {
-      if (process.env.AI_MONITOR_SDK_KEY) {
-        AIClient.initialize({
-          sdkKey: process.env.AI_MONITOR_SDK_KEY,
-          appName: "Wellness Buddy",
-          environment: process.env.NODE_ENV || "development",
-        });
-      }
-    } catch (sdkInitErr) {
-      logger.warn('geminiClient: AI monitor SDK init skipped', {
-        message: sdkInitErr?.message,
-      });
-    }
+  if (process.env.AI_MONITOR_SDK_KEY) {
+    AIClient.initialize({
+      baseURL:
+        process.env.AI_MONITOR_BASE_URL ||
+        "https://ai-token-monitor-backend.onrender.com/api",
+
+      sdkKey: process.env.AI_MONITOR_SDK_KEY,
+
+      token:
+        process.env.AI_MONITOR_TOKEN || "",
+
+      appName: "Wellness Buddy",
+
+      environment:
+        process.env.NODE_ENV || "development",
+    });
+
+    logger.info("AI Token Monitor SDK initialized");
+  }
+} catch (sdkInitErr) {
+  logger.warn("geminiClient: AI monitor SDK init skipped", {
+    message: sdkInitErr?.message,
+  });
+}
     logger.info('geminiClient: GoogleGenerativeAI instance created');
   }
   return _genAI;

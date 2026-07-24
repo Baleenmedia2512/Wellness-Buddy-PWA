@@ -11,8 +11,8 @@
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { applyDayFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST } from '../../../shared/lib/datetime/index.js';
+import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST, filterRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Returns the user's most-recent non-deleted weight row, or null.
@@ -52,7 +52,7 @@ export async function getFoodRowsForDate(userId, date, timezoneIana = IANA_IST) 
     .select('CreatedAt, AnalysisData')
     .eq('UserID', String(userId))
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  query = applyDayFilter(query, 'CreatedAt', date, timezoneIana);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query;
 
   if (error) {
@@ -63,7 +63,7 @@ export async function getFoodRowsForDate(userId, date, timezoneIana = IANA_IST) 
     });
     return [];
   }
-  return data || [];
+  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 

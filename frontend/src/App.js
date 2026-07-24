@@ -7527,6 +7527,7 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
+              onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
               initialSelectedMember={dashboardInitialSelectedMember}
               initialDate={dashboardInitialDate}
               initialMealId={dashboardInitialMealId}

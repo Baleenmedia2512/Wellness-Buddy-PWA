@@ -28,6 +28,7 @@ import {
   deleteEducationLog,
   undoEducationDelete,
 } from '../../features/education/services/educationDashboardService';
+import { isCaloriesBurnedTopic } from '../../features/education/services/educationFormatter';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -67,7 +68,7 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -248,17 +249,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // The core dispatch loop (handleEntryOpen) is NEVER modified for new kinds.
   //
   // KNOWN_KIND_HANDLERS maps entry.kind → synchronous open fn.
-  // Any kind NOT in this map and NOT 'unknown' is silently ignored (e.g. watch
-  // is informational only — kcal is already visible on the card).
+  // Each handler receives the full diary entry so hidden dashboards can
+  // open from the row payload when their own lists have not loaded yet.
   //
   // The 'unknown' path is handled separately because it requires an async
   // AI retry pipeline with its own resilience contract (see below).
 
   // Registry: add new diary kinds here — zero changes elsewhere.
   const KNOWN_KIND_HANDLERS = {
-    food:      (entry) => nutritionOpenRef.current?.(entry.payload?.id),
+    food:      (entry) => nutritionOpenRef.current?.(entry),
     weight:    (entry) => weightOpenRef.current?.(entry),
-    education: (entry) => educationOpenRef.current?.(entry.payload?.id),
+    education: (entry) => educationOpenRef.current?.(entry),
+    watch:     (entry) => educationOpenRef.current?.(entry),
   };
 
   // ── Resilient unknown-tap handler ─────────────────────────────────────────
@@ -289,7 +291,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     const knownHandler = KNOWN_KIND_HANDLERS[entry.kind];
     if (knownHandler) { knownHandler(entry); return; }
     if (entry.kind === 'unknown') { handleUnknownTap(entry); }
-    // All other kinds (e.g. watch) are intentionally no-ops.
   };
 
   const diaryUndoLabels = {
@@ -300,7 +301,21 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     unknown: 'Capture removed',
   };
 
-  const restoreDiaryEntry = async ({ kind, entryId, userId }) => {
+  const affectsExerciseCalories = (entry) => {
+    if (!entry) return false;
+    if (entry.kind === 'watch') return true;
+    if (entry.kind === 'education') {
+      return isCaloriesBurnedTopic(entry.payload?.topic);
+    }
+    return false;
+  };
+
+  const refreshExerciseCalories = (source) => {
+    onWatchBurnedCaloriesReset?.();
+    triggerNutritionRefresh({ immediate: true, source });
+  };
+
+  const restoreDiaryEntry = async ({ kind, entryId, userId, topic = null }) => {
     switch (kind) {
       case 'food':
         await undoMealDelete({ apiBaseUrl, id: entryId, userId });
@@ -318,6 +333,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'watch':
         await undoEducationDelete({ apiBaseUrl, userId, logId: entryId });
         setDiaryEducationRefreshKey((k) => k + 1);
+        if (affectsExerciseCalories({ kind, payload: { topic } })) {
+          refreshExerciseCalories('diary-undo-watch');
+        }
         break;
       default:
         return;
@@ -353,6 +371,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         case 'watch': {
           await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: entryId });
           setDiaryEducationRefreshKey((k) => k + 1);
+          if (affectsExerciseCalories(entry)) {
+            refreshExerciseCalories('diary-swipe-delete-watch');
+          }
           break;
         }
         case 'unknown': {
@@ -369,6 +390,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         kind: entry.kind,
         entryId,
         userId: ownerId,
+        topic: entry.payload?.topic ?? null,
         message: diaryUndoLabels[entry.kind] || 'Entry deleted',
         expiresAt: Date.now() + DIARY_UNDO_SECONDS * 1000,
       });

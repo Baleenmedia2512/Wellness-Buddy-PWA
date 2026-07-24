@@ -16,6 +16,7 @@ import {
   addUtcDays,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
+  filterRowsByCalendarDay,
   utcInstantToLegacyIstWallStorage,
   timestampToCalendarYmd,
 } from '../index.js';
@@ -202,5 +203,26 @@ describe('timezone-less timestamps as IST (diary wall-clock)', () => {
       utcIso,
     );
     assert.equal(formatUtcForDisplay(utcIso, IANA_IST, 'h:mm a'), '7:45 AM');
+  });
+});
+
+describe('filterRowsByCalendarDay', () => {
+  it('keeps only rows on the requested IST calendar day', () => {
+    const rows = [
+      { ID: 1, CreatedAt: '2026-07-23 19:56:19' },
+      { ID: 2, CreatedAt: '2026-07-24 08:15:00' },
+    ];
+    const jul23 = filterRowsByCalendarDay(rows, '2026-07-23', IANA_IST);
+    const jul24 = filterRowsByCalendarDay(rows, '2026-07-24', IANA_IST);
+    assert.deepEqual(jul23.map((r) => r.ID), [1]);
+    assert.deepEqual(jul24.map((r) => r.ID), [2]);
+  });
+
+  it('excludes yesterday evening IST food from today (wellness score leak)', () => {
+    const lambShank = { ID: 10562, CreatedAt: '2026-07-23 19:56:19', TotalProtein: '112' };
+    const today = filterRowsByCalendarDay([lambShank], '2026-07-24', IANA_IST);
+    assert.equal(today.length, 0);
+    const yesterday = filterRowsByCalendarDay([lambShank], '2026-07-23', IANA_IST);
+    assert.equal(yesterday.length, 1);
   });
 });
