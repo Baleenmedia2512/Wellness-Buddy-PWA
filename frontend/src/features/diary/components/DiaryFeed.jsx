@@ -30,6 +30,7 @@ import ROWS_BY_KIND, { OtherRow } from './rows';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
 import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
@@ -44,7 +45,9 @@ function dedupePendingDiaryEntries(entries) {
     return String(id);
   };
   const isPendingAnalysisEntry = (entry) =>
-    entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+    entry.kind === 'unknown'
+    && entry.payload?.isPendingAnalysis === true
+    && !isStalePendingAnalysis(entry.capturedAt);
 
   const resolvedCaptureIds = new Set();
   for (const entry of entries) {
@@ -312,6 +315,12 @@ export default function DiaryFeed({
     || profileOwnerTimezone
     || fallbackTimezoneIana;
 
+  /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
+  const scopedPendingCaptureMeta = useMemo(
+    () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
+    [pendingCaptureMeta, ownerUserId, viewerUserId],
+  );
+
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
@@ -332,16 +341,17 @@ export default function DiaryFeed({
         analyzingCaptureIds.has(captureIdStr);
       const isBackgroundPending =
         entry.kind === 'unknown' &&
+        !isStalePendingAnalysis(entry.capturedAt) &&
         (entry.payload?.isPendingAnalysis === true ||
           (captureIdStr !== '' &&
-            pendingCaptureMeta != null &&
-            pendingCaptureMeta.has(captureIdStr))) &&
+            scopedPendingCaptureMeta != null &&
+            scopedPendingCaptureMeta.has(captureIdStr))) &&
         !isAnalyzing;
       // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
       // Look up for both isAnalyzing (user-initiated re-detect) and
       // isBackgroundPending (camera capture flow) so both states show the badge.
       const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
-        ? (pendingCaptureMeta?.get(captureIdStr) ?? null)
+        ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
         : null;
       return (
         <Row
@@ -363,13 +373,13 @@ export default function DiaryFeed({
         />
       );
     },
-    [onEntryOpen, onEntryDelete, canDelete, analyzingCaptureIds, pendingCaptureMeta, ownerTimezoneIana],
+    [onEntryOpen, onEntryDelete, canDelete, analyzingCaptureIds, scopedPendingCaptureMeta, ownerTimezoneIana],
   );
 
   /** Build optimistic unknown rows for captures still being classified. */
   const withOptimisticEntries = useMemo(() => {
     const base = Array.isArray(data?.entries) ? data.entries : [];
-    if (!pendingCaptureMeta || pendingCaptureMeta.size === 0) {
+    if (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0) {
       return dedupePendingDiaryEntries(base);
     }
 
@@ -384,8 +394,9 @@ export default function DiaryFeed({
     );
 
     const optimistic = [];
-    pendingCaptureMeta.forEach((meta, captureId) => {
+    scopedPendingCaptureMeta.forEach((meta, captureId) => {
       if (existingCaptureIds.has(captureId)) return;
+      if (isStalePendingAnalysis(meta.capturedAt)) return;
       optimistic.push({
         kind: 'unknown',
         capturedAt: meta.capturedAt || new Date().toISOString(),
@@ -407,15 +418,15 @@ export default function DiaryFeed({
         (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
       ),
     );
-  }, [data?.entries, pendingCaptureMeta]);
+  }, [data?.entries, scopedPendingCaptureMeta]);
 
-  if (loading && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+  if (loading && !data && (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0)) {
     return <FeedSkeleton />;
   }
-  if (error && !data && (!pendingCaptureMeta || pendingCaptureMeta.size === 0)) {
+  if (error && !data && (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0)) {
     return <FeedError error={error} onRetry={refresh} />;
   }
-  if (!data && pendingCaptureMeta && pendingCaptureMeta.size > 0) {
+  if (!data && scopedPendingCaptureMeta && scopedPendingCaptureMeta.size > 0) {
     const optimisticOnly = withOptimisticEntries;
     const visibleOnly = Array.isArray(filterKinds)
       ? optimisticOnly.filter((e) => filterKinds.includes(e.kind))

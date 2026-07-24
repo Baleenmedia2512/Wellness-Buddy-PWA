@@ -22,21 +22,18 @@
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
 import { recordDashboardActivity } from '../services/homeDashboardActivity';
+import { STALE_PENDING_MS } from '../../features/diary/utils/stalePending';
 
 const NutritionRefreshContext = createContext(null);
 
 /**
  * Safety-net timeout for the "Analyzing…" diary row state.
  *
- * If clearCaptureAnalyzing() is never reached (unhandled error path, PWA kept
- * open all day without a refresh), this timeout auto-expires the entry so the
- * user never sees "AI is analysing your photo" indefinitely.
- *
- * 5 minutes is well beyond the longest realistic AI pipeline:
- *   Phase 1 fast call: up to 3 frontend attempts × ~30 s each  ≈  90 s max
- *   Phase 2 enrichment job: background worker, no UI dependency
+ * Matches the Phase-1 budget (3 attempts + 15 s grace). If
+ * clearCaptureAnalyzing() is never reached, this timeout auto-expires the
+ * entry so the user sees Manual Log instead of "Analyzing…" indefinitely.
  */
-const ANALYZING_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
+const ANALYZING_TIMEOUT_MS = STALE_PENDING_MS + 5_000;
 
 export function NutritionRefreshProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -73,6 +70,7 @@ export function NutritionRefreshProvider({ children }) {
       const existing = prev.get(id) ?? {};
       const next = new Map(prev);
       next.set(id, {
+        ownerUserId:    meta.ownerUserId    ?? existing.ownerUserId    ?? null,
         imageBase64:    meta.imageBase64    ?? existing.imageBase64    ?? null,
         imagePath:      meta.imagePath      ?? existing.imagePath      ?? null,
         capturedAt:     meta.capturedAt     ?? existing.capturedAt     ?? new Date().toISOString(),

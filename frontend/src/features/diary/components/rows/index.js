@@ -575,9 +575,9 @@ function formatRemaining(secs) {
 
 /**
  * Total worst-case budget for all 3 Phase-1 attempts including back-off
- * (3 × 40 s timeout + 1.5 s + 3 s back-off ≈ 125 s). Used for the countdown.
+ * (3 × 40 s timeout + 1.5 s + 3 s back-off) + 15 s Manual Log grace.
  */
-const TOTAL_BUDGET_SECS = 125;
+const TOTAL_BUDGET_SECS = 140;
 
 export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
