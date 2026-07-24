@@ -5,10 +5,24 @@
  * treated as abandoned (app killed mid-analysis, hung save, etc.) and should
  * be promoted to 'unknown' so the feed shows Manual Log instead of
  * "Analyzing…" indefinitely.
+ *
+ * Budget mirrors frontend Phase-1 orchestrator: 3 attempts + 15 s grace.
  */
 
-/** 15 minutes — well beyond the ~125 s frontend AI + save budget. */
-export const STALE_PENDING_MS = 15 * 60 * 1_000;
+/** Must stay aligned with orchestratorService.js MAX_ATTEMPTS */
+export const PHASE1_MAX_ATTEMPTS = 3;
+/** Must stay aligned with orchestratorService.js REQUEST_TIMEOUT_MS */
+export const PHASE1_REQUEST_TIMEOUT_MS = 40_000;
+/** Back-off between retries: 1.5 s + 3 s */
+export const PHASE1_RETRY_DELAYS_MS = 1_500 + 3_000;
+/** Grace after the last attempt before Manual Log */
+export const MANUAL_MODE_GRACE_MS = 15_000;
+
+/** 3 × 40 s + 4.5 s back-off + 15 s grace ≈ 139.5 s */
+export const STALE_PENDING_MS =
+  PHASE1_MAX_ATTEMPTS * PHASE1_REQUEST_TIMEOUT_MS
+  + PHASE1_RETRY_DELAYS_MS
+  + MANUAL_MODE_GRACE_MS;
 
 /**
  * @param {string|null|undefined} capturedAtIso  UTC ISO timestamp
