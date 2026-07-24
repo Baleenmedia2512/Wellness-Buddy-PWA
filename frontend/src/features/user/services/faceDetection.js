@@ -4,12 +4,24 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
 export const detectFace = async (base64String) => {
+  // Empty data URLs (e.g. zero-size canvas → "data:,") must not hit Gemini.
+  if (
+    !base64String ||
+    typeof base64String !== 'string' ||
+    base64String === 'data:,' ||
+    base64String.trim().length < 100
+  ) {
+    console.error('[faceDetection] rejected empty/invalid image payload');
+    return 'detection_error';
+  }
+
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/misc/detect-face`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageBase64: base64String }),
     });
+
     const result = await res.json();
     // Backend returns { success: true, hasFace: true|false }
     if (result?.success && typeof result?.hasFace === 'boolean') {

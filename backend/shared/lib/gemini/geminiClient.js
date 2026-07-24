@@ -204,9 +204,14 @@ export function clearModelCache() {
  * @returns {{ inlineData: { mimeType: string, data: string } }}
  */
 export function imageInlinePart(buffer, mimeType) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('imageInlinePart: image buffer is missing or empty');
+  }
   return {
     inlineData: {
       mimeType: mimeType || 'image/jpeg',
+      // Always encode from a real Buffer — String#toString('base64') is a no-op
+      // and would forward raw values like "data:," straight to Gemini.
       data: buffer.toString('base64'),
     },
   };

@@ -36,7 +36,7 @@ export async function fetchTimeWindows() {
 
 // ─── detect-face ────────────────────────────────────────────────────────────
 // ─── detect-face ────────────────────────────────────────────────────────────
-export async function detectFace({ imageBase64 }) {
+export async function detectFace({ mimeType, base64Data }) {
 
   if (!process.env.GEMINI_API_KEY) {
     console.error("❌ [detect-face] GEMINI_API_KEY not configured");
@@ -51,20 +51,6 @@ export async function detectFace({ imageBase64 }) {
   }
 
   try {
-
-    const mimeMatch = imageBase64.match(
-      /^data:(image\/[a-zA-Z]+);base64,/
-    );
-
-    const mimeType = mimeMatch
-      ? mimeMatch[1]
-      : "image/jpeg";
-
-    const base64Data = imageBase64.replace(
-      /^data:image\/[a-zA-Z]+;base64,/,
-      ""
-    );
-
     const { generateContent } = await import('../../shared/lib/gemini/geminiClient.js');
 
     const result = await generateContent(
@@ -72,7 +58,7 @@ export async function detectFace({ imageBase64 }) {
       [
         {
           inlineData: {
-            mimeType,
+            mimeType: mimeType || 'image/jpeg',
             data: base64Data,
           },
         },
