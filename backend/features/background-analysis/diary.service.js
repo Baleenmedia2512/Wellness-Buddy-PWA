@@ -42,7 +42,6 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
-import { isStalePendingCapture } from './domain/stale-pending-captures.js';
 import {
   IANA_IST,
   assertNotFutureDateYmd,
@@ -388,45 +387,6 @@ export async function listDiaryEntries(input) {
   }
   const results = await Promise.all(reads);
 
-  // 4b. Promote pending captures that exceeded the stale window → unknown.
-  // Best-effort: a failed promotion keeps the row pending for the next refresh.
-  const pendingResult = results.find((r) => r.kind === 'pending');
-  const expiredUnknownRows = [];
-  if (pendingResult?.rows?.length) {
-    const freshPending = [];
-    for (const row of pendingResult.rows) {
-      const capturedAtIso = normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
-      if (!isStalePendingCapture(capturedAtIso)) {
-        freshPending.push(row);
-        continue;
-      }
-      try {
-        const promotion = await captures.updateTypeById({
-          captureId: row.ID,
-          userId: ownerUserId,
-          toType: IMAGE_TYPE_UNKNOWN,
-        });
-        if (promotion.changed) {
-          logger.info('listDiaryEntries: expired stale pending capture → unknown', {
-            captureId: row.ID,
-            ownerUserId,
-          });
-          expiredUnknownRows.push(row);
-        } else {
-          freshPending.push(row);
-        }
-      } catch (err) {
-        logger.warn('listDiaryEntries: failed to expire stale pending capture', {
-          captureId: row.ID,
-          ownerUserId,
-          err: err.message,
-        });
-        freshPending.push(row);
-      }
-    }
-    pendingResult.rows = freshPending;
-  }
-
   // 5. Normalise + flatten. Per-kind projections are deliberately small
   // (the card UI does not need micronutrients or full image base64 in
   // the list; the detail modal still fetches via the established
@@ -443,9 +403,6 @@ export async function listDiaryEntries(input) {
         entries.push(toDiaryEntry(kind, row, { timezoneIana }));
       }
     }
-  }
-  for (const row of expiredUnknownRows) {
-    entries.push(toDiaryEntry('unknown', row, { timezoneIana }));
   }
 
   // Widen SQL day window can pull adjacent calendar days when CreatedAt is

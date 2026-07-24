@@ -5,7 +5,6 @@ import { transformToBackgroundServiceFormat } from './transformAnalysisFormat';
 import { resolveTeamUserId } from './userIdLookup';
 import { isDemoUser, saveDemoMeal } from './demoMealStore';
 import { debugLog } from '../../utils/logger.js';
-import { ANALYSIS_SAVE_TIMEOUT_MS } from '../../constants/captureAnalysis';
 
 const parseSaveResponse = async (res) => {
   const ct = res.headers.get('content-type');
@@ -70,7 +69,6 @@ export async function saveNutritionAnalysis({
         latitude: latitude || null,
         longitude: longitude || null,
       }),
-      signal: AbortSignal.timeout(ANALYSIS_SAVE_TIMEOUT_MS),
     });
 
     const data = await parseSaveResponse(res);

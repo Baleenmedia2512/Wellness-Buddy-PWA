@@ -22,7 +22,6 @@
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
 import { recordDashboardActivity } from '../services/homeDashboardActivity';
-import { ANALYSIS_ATTEMPT_BUDGET_SECS } from '../constants/captureAnalysis';
 
 const NutritionRefreshContext = createContext(null);
 
@@ -33,9 +32,11 @@ const NutritionRefreshContext = createContext(null);
  * open all day without a refresh), this timeout auto-expires the entry so the
  * user never sees "AI is analysing your photo" indefinitely.
  *
- * Uses the Phase-1 AI budget (~125 s) plus a small buffer for save.
+ * 5 minutes is well beyond the longest realistic AI pipeline:
+ *   Phase 1 fast call: up to 3 frontend attempts × ~30 s each  ≈  90 s max
+ *   Phase 2 enrichment job: background worker, no UI dependency
  */
-const ANALYZING_TIMEOUT_MS = (ANALYSIS_ATTEMPT_BUDGET_SECS + 30) * 1_000;
+const ANALYZING_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 export function NutritionRefreshProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -77,7 +78,6 @@ export function NutritionRefreshProvider({ children }) {
         capturedAt:     meta.capturedAt     ?? existing.capturedAt     ?? new Date().toISOString(),
         currentAttempt: meta.currentAttempt ?? existing.currentAttempt ?? null,
         totalAttempts:  meta.totalAttempts  ?? existing.totalAttempts  ?? null,
-        phase:          meta.phase          ?? existing.phase          ?? 'analyzing',
       });
       return next;
     });
@@ -101,19 +101,6 @@ export function NutritionRefreshProvider({ children }) {
     }, ANALYZING_TIMEOUT_MS);
 
     _analyzingTimers.current.set(id, timerId);
-  }, []);
-
-  /** Switch the diary row badge from "Analyzing…" to "Saving…" after AI completes. */
-  const markCaptureSaving = useCallback((captureId) => {
-    if (captureId == null || captureId === '') return;
-    const id = String(captureId);
-    setPendingCaptureMeta((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Map(prev);
-      const existing = next.get(id) ?? {};
-      next.set(id, { ...existing, phase: 'saving' });
-      return next;
-    });
   }, []);
 
   const clearCaptureAnalyzing = useCallback((captureId) => {
@@ -199,7 +186,6 @@ export function NutritionRefreshProvider({ children }) {
     analyzingCaptureIds,
     pendingCaptureMeta,
     markCaptureAnalyzing,
-    markCaptureSaving,
     clearCaptureAnalyzing,
   };
 

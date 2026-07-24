@@ -143,7 +143,6 @@ import UnknownCaptureUndoBanner, {
 } from "./shell/components/UnknownCaptureUndoBanner";
 import { tabForImageType } from "./shared/lib/tab-by-image-type";
 import { isLowConfidenceFood } from "./shared/lib/is-low-confidence-food";
-import { updatePendingCaptureTypeWithRetry } from "./shared/services/updateCaptureType";
 import { isFlagEnabled } from "./config/featureFlags";
 import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
@@ -480,7 +479,6 @@ function WellnessValleyApp() {
     refreshKey: nutritionRefreshKey,
     triggerRefresh: triggerNutritionRefresh,
     markCaptureAnalyzing,
-    markCaptureSaving,
     clearCaptureAnalyzing,
   } = useNutritionRefresh();
 
@@ -601,9 +599,22 @@ function WellnessValleyApp() {
   // share link continues to work and routes to the correct dashboard tab.
   // This replaces the previous soft-delete approach for non-food images.
   const updatePendingCaptureType = useCallback(
-    (sharePromise, imageType) =>
-      updatePendingCaptureTypeWithRetry(sharePromise, imageType, user?.id, apiBaseUrl),
-    [user?.id, apiBaseUrl],
+    (sharePromise, imageType) => {
+      sharePromise.then((share) => {
+        if (!share?.id || !user?.id) return;
+        fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: share.id, userId: user.id, imageType }),
+        }).catch((err) =>
+          debugLog(
+            `[Share] updateCaptureType(${imageType}) failed:`,
+            err?.message,
+          ),
+        );
+      });
+    },
+    [user, apiBaseUrl],
   );
 
   // Auto-open the native share sheet as soon as food is identified ? fires
@@ -4773,23 +4784,10 @@ function WellnessValleyApp() {
         console.error("? Save failed:", err?.message || err);
         if (!silent) setSaveError(getFriendlyErrorMessage(err));
         if (!silent) setSaveLoading(false);
-        if (silent && boundCaptureId) {
-          const failUserId = saveUser?.id;
-          if (failUserId) {
-            await updatePendingCaptureTypeWithRetry(
-              Promise.resolve({ id: boundCaptureId }),
-              "unknown",
-              failUserId,
-              apiBaseUrl,
-            );
-          }
-          clearCaptureAnalyzing(String(boundCaptureId));
-          showToast("⚠️ Save timed out — tap in Diary to add manually");
-        }
         // Trigger a refresh even on failure: a partial write (food row inserted
         // but capture promotion failed) leaves data in DB that the Dashboard
         // should discover. If nothing was written the fetch returns the same
-        // empty result — no harm done.
+        // empty result � no harm done.
         triggerNutritionRefresh({ immediate: true, source: "camera-save-error" });
       }
     })(); // void � caller captures the returned promise into savePromiseRef
@@ -6392,7 +6390,6 @@ function WellnessValleyApp() {
           hasProcessedImage: !!processedImage,
           silent: bg,
         });
-        markCaptureSaving(captureShare.id);
         const _saveP = scheduleNutritionSaveInBackground({
           user,
           file,
