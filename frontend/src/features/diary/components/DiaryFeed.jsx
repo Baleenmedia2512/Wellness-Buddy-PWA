@@ -34,6 +34,31 @@ import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
 
+/** Hide stale "Analyzing…" rows when a terminal entry already exists for the capture. */
+function dedupePendingDiaryEntries(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return entries;
+
+  const resolvedCaptureIds = new Set();
+  for (const entry of entries) {
+    const isPendingUnknown =
+      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+    if (isPendingUnknown) continue;
+    const captureId = entry.capture?.id ?? entry.payload?.id;
+    if (captureId != null && captureId !== '') {
+      resolvedCaptureIds.add(String(captureId));
+    }
+  }
+
+  return entries.filter((entry) => {
+    const isPendingUnknown =
+      entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+    if (!isPendingUnknown) return true;
+    const captureId = String(entry.capture?.id ?? entry.payload?.id ?? '');
+    if (captureId === '') return true;
+    return !resolvedCaptureIds.has(captureId);
+  });
+}
+
 function formatTimelineTime(iso, timezoneIana) {
   if (!iso) return '';
   return formatBusinessTime(iso, timezoneIana);
@@ -338,18 +363,24 @@ export default function DiaryFeed({
   /** Build optimistic unknown rows for captures still being classified. */
   const withOptimisticEntries = useMemo(() => {
     const base = Array.isArray(data?.entries) ? data.entries : [];
-    if (!pendingCaptureMeta || pendingCaptureMeta.size === 0) return base;
+    if (!pendingCaptureMeta || pendingCaptureMeta.size === 0) {
+      return dedupePendingDiaryEntries(base);
+    }
 
-    const existingIds = new Set(
-      base
-        .map((e) => e.capture?.id ?? e.payload?.id)
-        .filter((id) => id != null && id !== '')
-        .map(String),
-    );
+    const resolvedCaptureIds = new Set();
+    for (const entry of base) {
+      const isPendingUnknown =
+        entry.kind === 'unknown' && entry.payload?.isPendingAnalysis === true;
+      if (isPendingUnknown) continue;
+      const captureId = entry.capture?.id ?? entry.payload?.id;
+      if (captureId != null && captureId !== '') {
+        resolvedCaptureIds.add(String(captureId));
+      }
+    }
 
     const optimistic = [];
     pendingCaptureMeta.forEach((meta, captureId) => {
-      if (existingIds.has(captureId)) return;
+      if (resolvedCaptureIds.has(captureId)) return;
       optimistic.push({
         kind: 'unknown',
         capturedAt: meta.capturedAt || new Date().toISOString(),
@@ -363,9 +394,13 @@ export default function DiaryFeed({
       });
     });
 
-    if (optimistic.length === 0) return base;
-    return [...optimistic, ...base].sort(
-      (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+    if (optimistic.length === 0) {
+      return dedupePendingDiaryEntries(base);
+    }
+    return dedupePendingDiaryEntries(
+      [...optimistic, ...base].sort(
+        (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+      ),
     );
   }, [data?.entries, pendingCaptureMeta]);
 

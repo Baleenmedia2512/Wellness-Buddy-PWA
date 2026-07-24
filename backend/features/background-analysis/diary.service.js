@@ -41,12 +41,15 @@ import {
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 import {
   IANA_IST,
   assertNotFutureDateYmd,
   normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
 } from '../../shared/lib/datetime/index.js';
+
+export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
@@ -416,6 +419,8 @@ export async function listDiaryEntries(input) {
     new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
   );
 
+  const dedupedEntries = dedupePendingDiaryEntries(dayEntries);
+
   return {
     httpStatus: 200,
     body: {
@@ -426,7 +431,7 @@ export async function listDiaryEntries(input) {
         ownerTimezoneIana: timezoneIana,
         isSelf,
         includesUnknown,
-        entries: dayEntries,
+        entries: dedupedEntries,
       },
     },
   };
