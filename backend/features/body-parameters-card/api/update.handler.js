@@ -12,11 +12,10 @@ import {
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import logger from '../../../shared/lib/logger.js';
 
-function buildLinkPayload(payload, card) {
+function buildLinkPayload(payload) {
   return {
     phoneNumber: payload.phoneNumber,
     name:        payload.name,
-    coachId:     card.created_by,
     heightCm:    payload.heightCm,
     bmr:         payload.bmr,
     weightKg:    payload.weightKg,
@@ -32,7 +31,7 @@ export async function handleUpdateCard(body) {
   const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
-  const linkPayload = buildLinkPayload(payload, card);
+  const linkPayload = buildLinkPayload(payload);
 
   let syncResult = { synced: false, userId: card.user_id ?? null };
   try {

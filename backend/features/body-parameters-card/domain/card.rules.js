@@ -67,14 +67,16 @@ export function enrichPayloadWithCalculatedBmr(payload) {
 /**
  * Build team_table insert fields for a new lead captured via body-parameters card.
  * Phone canonicalization happens in the data layer before insert.
+ * CoachId is intentionally omitted — the member chooses their coach during
+ * Setup Wizard / OTP onboarding, not from the counsellor who recorded metrics.
  *
- * @param {{ name: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
+ * @param {{ name: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
  * @returns {object}
  */
-export function buildTeamMemberInsert({ name, coachId, heightCm = null, bmr = null, weightKg = null, fatPercent = null }) {
+export function buildTeamMemberInsert({ name, heightCm = null, bmr = null, weightKg = null, fatPercent = null }) {
   return {
     UserName: String(name).trim(),
-    CoachId: coachId ? parseInt(coachId) : null,
+    CoachId: null,
     Height: heightCm ?? null,
     Bmr: resolveCardBmr({ weightKg, fatPercent, manualBmr: bmr }),
   };

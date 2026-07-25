@@ -1,8 +1,21 @@
 /**
  * Time-window helpers for wellness score (aligned with discipline 59s end buffer).
+ *
+ * Meal / activity on-time checks NEVER parse HH:mm:ss from raw CreatedAt strings.
+ * Food timestamps go through {@link resolveFoodTimestamp}; other activities use
+ * normalizeStoredTimestampToUtcIso + timeOfDayInTimezone — both derive local
+ * time from the same interpreted UTC instant as calendar-day bucketing.
  */
+import {
+  IANA_IST,
+  normalizeStoredTimestampToUtcIso,
+  timeOfDayInTimezone,
+} from '../../../shared/lib/datetime/index.js';
+import { resolveFoodTimestamp } from '../../../shared/lib/datetime/foodTimestamp.js';
 
 export const WINDOW_BUFFER_SECONDS = 59;
+
+/** @typedef {'food'|'activity'} TimestampKind */
 
 export function addBufferToTime(timeStr) {
   if (!timeStr) return timeStr;
@@ -15,49 +28,92 @@ export function addBufferToTime(timeStr) {
 }
 
 /**
- * @param {string} createdAt IST timestamp
+ * Local HH:mm:ss for a stored CreatedAt in `timezoneIana`.
+ *
+ * @param {string|Date|null|undefined} createdAt
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {TimestampKind} [kind='activity']
+ * @returns {string|null}
+ */
+export function resolveCreatedAtTimeOfDay(
+  createdAt,
+  timezoneIana = IANA_IST,
+  kind = 'activity',
+) {
+  if (createdAt == null || createdAt === '') return null;
+  try {
+    if (kind === 'food') {
+      return resolveFoodTimestamp(createdAt, timezoneIana).timeOfDay;
+    }
+    const utcIso = normalizeStoredTimestampToUtcIso(createdAt, timezoneIana);
+    return timeOfDayInTimezone(utcIso, timezoneIana);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {string|Date|null|undefined} createdAt
  * @param {{ start: string, end: string }|null} window
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {TimestampKind} [kind='activity']
  * @returns {'ON_TIME'|'LATE'|'MISSED'}
  */
-export function resolveAttendanceStatus(createdAt, window) {
+export function resolveAttendanceStatus(
+  createdAt,
+  window,
+  timezoneIana = IANA_IST,
+  kind = 'activity',
+) {
   if (!createdAt) return 'MISSED';
   if (!window?.start || !window?.end) return 'ON_TIME';
-  const match = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-  if (!match) return 'MISSED';
-  const time = match[1];
+  const time = resolveCreatedAtTimeOfDay(createdAt, timezoneIana, kind);
+  if (!time) return 'MISSED';
   if (time >= window.start && time <= addBufferToTime(window.end)) return 'ON_TIME';
   return 'LATE';
 }
 
 /**
- * @param {string} createdAt
+ * @param {string|Date|null|undefined} createdAt
  * @param {{ start: string, end: string }|null} window
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {TimestampKind} [kind='activity']
  * @returns {'on-time'|'late'|'missed'}
  */
-export function resolveSlotStatus(createdAt, window) {
-  const s = resolveAttendanceStatus(createdAt, window);
+export function resolveSlotStatus(
+  createdAt,
+  window,
+  timezoneIana = IANA_IST,
+  kind = 'activity',
+) {
+  const s = resolveAttendanceStatus(createdAt, window, timezoneIana, kind);
   if (s === 'ON_TIME') return 'on-time';
   if (s === 'LATE') return 'late';
   return 'missed';
 }
 
-export function isOnTime(createdAt, window) {
-  return resolveAttendanceStatus(createdAt, window) === 'ON_TIME';
+export function isOnTime(createdAt, window, timezoneIana = IANA_IST, kind = 'activity') {
+  return resolveAttendanceStatus(createdAt, window, timezoneIana, kind) === 'ON_TIME';
 }
 
-export function isLate(createdAt, window) {
-  return resolveAttendanceStatus(createdAt, window) === 'LATE';
+export function isLate(createdAt, window, timezoneIana = IANA_IST, kind = 'activity') {
+  return resolveAttendanceStatus(createdAt, window, timezoneIana, kind) === 'LATE';
 }
 
 /**
- * Non-beverage food logs whose timestamp falls in a meal window (with end buffer).
+ * Non-beverage food logs whose canonical local time falls in a meal window.
+ *
+ * @param {object[]} foodRecords
+ * @param {{ start: string, end: string }|null} mealWindow
+ * @param {string} [timezoneIana=IANA_IST]
+ * @returns {object[]}
  */
-export function filterFoodByMealWindow(foodRecords, mealWindow) {
+export function filterFoodByMealWindow(foodRecords, mealWindow, timezoneIana = IANA_IST) {
   if (!mealWindow?.start || !mealWindow?.end) return [];
+  const endWithBuffer = addBufferToTime(mealWindow.end);
   return (foodRecords || []).filter((record) => {
-    const match = String(record.CreatedAt || '').match(/(\d{2}:\d{2}:\d{2})/);
-    if (!match) return false;
-    const time = match[1];
-    return time >= mealWindow.start && time <= addBufferToTime(mealWindow.end);
+    const time = resolveCreatedAtTimeOfDay(record.CreatedAt, timezoneIana, 'food');
+    if (!time) return false;
+    return time >= mealWindow.start && time <= endWithBuffer;
   });
 }
