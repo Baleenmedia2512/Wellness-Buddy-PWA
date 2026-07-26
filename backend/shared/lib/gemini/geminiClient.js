@@ -234,6 +234,7 @@ export async function generateContent(
     const latency = Date.now() - start;
 
     try {
+
       await AIClient.sendTelemetry({
         provider: "Gemini",
         model: modelOverride ?? MODEL_NAME,
@@ -241,14 +242,19 @@ export async function generateContent(
         latency,
         status: "SUCCESS",
 
-        // Optional: only useful if the SDK supports custom fields
+        // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
+        userEmail: trace?.email,
+        userName: trace?.name,
       });
+
     } catch (sdkErr) {
+
       logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
         message: sdkErr?.message,
       });
+
     }
 
     return result;
@@ -267,13 +273,17 @@ export async function generateContent(
         status: "FAILED",
         errorMessage: err.message,
 
-        // Optional: only useful if the SDK supports custom fields
+        // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
+        userEmail: trace?.email,
+        userName: trace?.name,
       });
 
     } catch (sdkErr) {
+
       logger.error("Telemetry Error", sdkErr);
+
     }
 
     throw err;
