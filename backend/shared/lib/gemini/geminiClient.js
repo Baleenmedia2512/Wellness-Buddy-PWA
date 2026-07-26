@@ -294,7 +294,6 @@ export async function generateContent(
         latency,
         status: "FAILED",
         errorMessage: err.message,
-
         // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
