@@ -67,17 +67,52 @@ export function enrichPayloadWithCalculatedBmr(payload) {
 /**
  * Build team_table insert fields for a new lead captured via body-parameters card.
  * Phone canonicalization happens in the data layer before insert.
+ * CoachId is intentionally omitted — the member chooses their coach during
+ * Setup Wizard / OTP onboarding, not from the counsellor who recorded metrics.
+ * Any accidental `coachId` / `createdBy` on the input is ignored.
  *
- * @param {{ name: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
+ * @param {{ name: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
  * @returns {object}
  */
-export function buildTeamMemberInsert({ name, coachId, heightCm = null, bmr = null, weightKg = null, fatPercent = null }) {
+export function buildTeamMemberInsert({ name, heightCm = null, bmr = null, weightKg = null, fatPercent = null }) {
   return {
     UserName: String(name).trim(),
-    CoachId: coachId ? parseInt(coachId) : null,
+    CoachId: null,
     Height: heightCm ?? null,
     Bmr: resolveCardBmr({ weightKg, fatPercent, manualBmr: bmr }),
   };
+}
+
+/**
+ * True when a BPC lead was wrongly given the counsellor as CoachId and has never
+ * chosen a coach via Setup Wizard OTP or skip-setup. Safe to clear CoachId so
+ * onboarding can ask the user.
+ *
+ * @param {{
+ *   currentCoachId?: number|string|null,
+ *   counsellorId?: number|string|null,
+ *   entryUser?: string|null,
+ *   setupSkipped?: boolean|null,
+ *   hasApprovedCoachSelection?: boolean,
+ * }} input
+ * @returns {boolean}
+ */
+export function shouldDetachCounsellorCoachAssignment({
+  currentCoachId = null,
+  counsellorId = null,
+  entryUser = null,
+  setupSkipped = null,
+  hasApprovedCoachSelection = false,
+} = {}) {
+  if (setupSkipped === true) return false;
+  if (hasApprovedCoachSelection) return false;
+  if (String(entryUser || '').trim() !== 'Body Parameters Card') return false;
+
+  const coachN = parseInt(currentCoachId, 10);
+  const counsellorN = parseInt(counsellorId, 10);
+  if (!Number.isFinite(coachN) || coachN < 1) return false;
+  if (!Number.isFinite(counsellorN) || counsellorN < 1) return false;
+  return coachN === counsellorN;
 }
 
 /**

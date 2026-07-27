@@ -159,6 +159,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     goalMode: resolvedGoalMode,
     exerciseCalories,
     bmr,
+    timezoneIana: tz,
   });
 
   const payload = buildScorePayload({ userId, date, goalMode: resolvedGoalMode, scores });

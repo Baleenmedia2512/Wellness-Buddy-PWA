@@ -12,7 +12,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST, filterRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
+import { IANA_IST, filterFoodRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Returns the user's most-recent non-deleted weight row, or null.
@@ -63,7 +63,7 @@ export async function getFoodRowsForDate(userId, date, timezoneIana = IANA_IST) 
     });
     return [];
   }
-  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 

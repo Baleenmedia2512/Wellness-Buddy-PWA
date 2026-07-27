@@ -1,4 +1,5 @@
 import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
 import { filterEducationLogsOnly } from './education-log.helpers.js';
 import { WELLNESS_PARAMETERS } from './parameter-registry.js';
@@ -43,6 +44,8 @@ export function calculateBinaryLogScore({
   records = [],
   window,
   activityLabel,
+  timezoneIana = IANA_IST,
+  timestampKind = 'activity',
 }) {
   if (!records.length) {
     return buildParameterScore({
@@ -55,7 +58,8 @@ export function calculateBinaryLogScore({
       calculationReason: 'Not completed',
     });
   }
-  const onTime = records.some((r) => isOnTime(r.CreatedAt, window));
+  const onTime = records.some((r) =>
+    isOnTime(r.CreatedAt, window, timezoneIana, timestampKind));
   if (onTime) {
     return buildParameterScore({
       key: activityLabel,
@@ -67,7 +71,8 @@ export function calculateBinaryLogScore({
       calculationReason: 'Done within allowed time',
     });
   }
-  const late = records.some((r) => isLate(r.CreatedAt, window));
+  const late = records.some((r) =>
+    isLate(r.CreatedAt, window, timezoneIana, timestampKind));
   return buildParameterScore({
     key: activityLabel,
     label: activityLabel,
@@ -280,23 +285,31 @@ export function calculateLimitNutrient({
 
 // ─── Logging parameters ──────────────────────────────────────────────────────
 
-export function calculateWeightPost({ maxPoints, weightRecords, window }) {
+export function calculateWeightPost({
+  maxPoints, weightRecords, window, timezoneIana = IANA_IST,
+}) {
   const base = calculateBinaryLogScore({
     maxPoints,
     records: weightRecords,
     window,
     activityLabel: 'Weight Post',
+    timezoneIana,
+    timestampKind: 'activity',
   });
   return { ...base, key: 'weight_post', label: 'Weight Post' };
 }
 
-export function calculateEducationPost({ maxPoints, educationLogs, window }) {
+export function calculateEducationPost({
+  maxPoints, educationLogs, window, timezoneIana = IANA_IST,
+}) {
   const logs = filterEducationLogsOnly(educationLogs);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: logs,
     window,
     activityLabel: 'Education Post',
+    timezoneIana,
+    timestampKind: 'activity',
   });
   return { ...base, key: 'edu_post', label: 'Education Post' };
 }
@@ -305,35 +318,47 @@ function solidFoodRecords(foodRecords) {
   return (foodRecords || []).filter((r) => !isExemptedBeverageOnly(r.AnalysisData));
 }
 
-export function calculateBreakfastPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateBreakfastPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Breakfast Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'breakfast_post', label: 'Breakfast Post' };
 }
 
-export function calculateLunchPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateLunchPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Lunch Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'lunch_post', label: 'Lunch Post' };
 }
 
-export function calculateDinnerPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateDinnerPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Dinner Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'dinner_post', label: 'Dinner Post' };
 }
@@ -706,15 +731,40 @@ export function aggregateDailyFoodStats(foodRecords = []) {
 
 const CALCULATOR_BY_KEY = {
   weight_post: (cfg, ctx) =>
-    calculateWeightPost({ maxPoints: cfg.maxPoints, weightRecords: ctx.weightRecords, window: ctx.timeWindows.weight }),
+    calculateWeightPost({
+      maxPoints: cfg.maxPoints,
+      weightRecords: ctx.weightRecords,
+      window: ctx.timeWindows.weight,
+      timezoneIana: ctx.timezoneIana,
+    }),
   edu_post: (cfg, ctx) =>
-    calculateEducationPost({ maxPoints: cfg.maxPoints, educationLogs: ctx.educationLogs, window: ctx.timeWindows.education }),
+    calculateEducationPost({
+      maxPoints: cfg.maxPoints,
+      educationLogs: ctx.educationLogs,
+      window: ctx.timeWindows.education,
+      timezoneIana: ctx.timezoneIana,
+    }),
   breakfast_post: (cfg, ctx) =>
-    calculateBreakfastPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.breakfast }),
+    calculateBreakfastPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.breakfast,
+      timezoneIana: ctx.timezoneIana,
+    }),
   lunch_post: (cfg, ctx) =>
-    calculateLunchPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.lunch }),
+    calculateLunchPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.lunch,
+      timezoneIana: ctx.timezoneIana,
+    }),
   dinner_post: (cfg, ctx) =>
-    calculateDinnerPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.dinner }),
+    calculateDinnerPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.dinner,
+      timezoneIana: ctx.timezoneIana,
+    }),
   water_qty: (cfg, ctx) =>
     calculateWater({ maxPoints: cfg.maxPoints, consumedMl: ctx.waterConsumedMl, requiredMl: ctx.waterRequiredMl }),
   calories: (cfg, ctx) =>
@@ -846,6 +896,7 @@ export function calculateWellnessScore({
   goalMode,
   exerciseCalories,
   bmr,
+  timezoneIana = IANA_IST,
 }) {
   const ctx = {
     educationLogs,
@@ -861,6 +912,7 @@ export function calculateWellnessScore({
     goalMode,
     exerciseCalories,
     bmr,
+    timezoneIana,
   };
 
   const parameters = [];
