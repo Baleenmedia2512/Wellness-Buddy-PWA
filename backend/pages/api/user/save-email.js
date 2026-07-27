@@ -3,6 +3,7 @@
  *
  * Saves contact email and display name for users who signed up via phone OTP.
  * Only writes Email if the current Email is null or empty.
+ * Rejects emails already registered to another user.
  * Updates UserName when the stored name is missing or auto-generated.
  *
  * Body: { userId: number, email: string, name: string }
@@ -13,6 +14,12 @@ import {
   hasValidProfileName,
   isPlaceholderUserName,
 } from '../../../features/user/domain/profileCompleteness.js';
+import {
+  canAssignEmailToUser,
+  EMAIL_TAKEN_MESSAGE,
+  normalizeEmailForStorage,
+} from '../../../features/user/domain/emailIdentity.rules.js';
+import * as userRepo from '../../../features/user/user.repository.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEAM = 'team_table';
@@ -35,7 +42,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: 'Please enter your full name.' });
   }
 
-  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanEmail = normalizeEmailForStorage(email);
   if (!hasValidProfileName(cleanName, { email: cleanEmail })) {
     return res.status(400).json({
       success: false,
@@ -59,10 +66,32 @@ export default async function handler(req, res) {
   }
 
   const updateData = {};
-  const existingEmail = row.Email?.trim() || '';
+  const existingEmail = normalizeEmailForStorage(row.Email);
   const effectiveEmail = existingEmail || cleanEmail;
 
   if (!existingEmail) {
+    let conflictingUserId = null;
+    try {
+      const conflict = await userRepo.findByEmailExcludingUserId(cleanEmail, uid, '"UserId"');
+      conflictingUserId = conflict?.UserId ?? null;
+    } catch {
+      return res.status(500).json({ success: false, message: 'Failed to verify email availability.' });
+    }
+
+    const gate = canAssignEmailToUser({
+      email: cleanEmail,
+      userId: uid,
+      existingEmailOnUser: existingEmail,
+      conflictingUserId,
+    });
+    if (!gate.ok) {
+      return res.status(409).json({
+        success: false,
+        message: gate.message,
+        error: { code: gate.code },
+      });
+    }
+
     updateData.Email = cleanEmail;
   }
 
@@ -82,6 +111,13 @@ export default async function handler(req, res) {
       .eq('UserId', uid);
 
     if (writeErr) {
+      if (writeErr.code === '23505') {
+        return res.status(409).json({
+          success: false,
+          message: EMAIL_TAKEN_MESSAGE,
+          error: { code: 'EMAIL_TAKEN' },
+        });
+      }
       return res.status(500).json({ success: false, message: 'Failed to save profile details.' });
     }
   }
