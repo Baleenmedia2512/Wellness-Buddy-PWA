@@ -101,6 +101,8 @@ export default async function handler(req, res) {
     // and wants Gemini Pro instead of Flash for better accuracy.
     const modelTier  = sanitiseString(fields.modelTier);
 
+    
+
     // Read image into buffer; keep base64 for enrichment job queue
     let imageBuffer, imageBase64;
     try {

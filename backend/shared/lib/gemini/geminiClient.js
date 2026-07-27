@@ -16,7 +16,45 @@ import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
+import { findByUserId } from '../../../features/user/user.repository.js';
 
+/** Short-lived cache so SUCCESS + FAILED telemetry in one request don't double-hit DB. */
+const _endUserCache = new Map();
+const END_USER_CACHE_TTL_MS = 60_000;
+
+/**
+ * Resolve end-user name/email for ai-token-monitor from trace.userId.
+ * Does not put PII on TraceContext or into orchestrator logs.
+ *
+ * @param {string|null|undefined} userId
+ * @returns {Promise<{ endUserName: string|null, endUserEmail: string|null }>}
+ */
+async function resolveEndUserForMonitor(userId) {
+  if (userId == null || userId === '') {
+    return { endUserName: null, endUserEmail: null };
+  }
+  const key = String(userId);
+  const cached = _endUserCache.get(key);
+  if (cached && Date.now() - cached.at < END_USER_CACHE_TTL_MS) {
+    return { endUserName: cached.endUserName, endUserEmail: cached.endUserEmail };
+  }
+
+  try {
+    const row = await findByUserId(key, '"UserId", "UserName", "Email"');
+    const resolved = {
+      endUserName: row?.UserName != null ? String(row.UserName) : null,
+      endUserEmail: row?.Email != null ? String(row.Email) : null,
+    };
+    _endUserCache.set(key, { ...resolved, at: Date.now() });
+    return resolved;
+  } catch (err) {
+    logger.warn('geminiClient: failed to resolve end-user for token monitor', {
+      userId: key,
+      message: err?.message,
+    });
+    return { endUserName: null, endUserEmail: null };
+  }
+}
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
@@ -248,6 +286,7 @@ export async function generateContent(
   );
 
   const start = Date.now();
+  const endUser = await resolveEndUserForMonitor(trace?.userId);
 
   try {
 
@@ -256,6 +295,7 @@ export async function generateContent(
     const latency = Date.now() - start;
 
     try {
+
       await AIClient.sendTelemetry({
         provider: "Gemini",
         model: modelOverride ?? MODEL_NAME,
@@ -263,14 +303,19 @@ export async function generateContent(
         latency,
         status: "SUCCESS",
 
-        // Optional: only useful if the SDK supports custom fields
+        // User Context — resolved from trace.userId at telemetry send time
         traceId: trace?.traceId,
-        endUserId: trace?.userId,
+        endUserId: trace?.userId ?? null,
+        endUserEmail: endUser.endUserEmail,
+        endUserName: endUser.endUserName,
       });
+
     } catch (sdkErr) {
+
       logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
         message: sdkErr?.message,
       });
+
     }
 
     return result;
@@ -288,14 +333,17 @@ export async function generateContent(
         latency,
         status: "FAILED",
         errorMessage: err.message,
-
-        // Optional: only useful if the SDK supports custom fields
+        // User Context — resolved from trace.userId at telemetry send time
         traceId: trace?.traceId,
-        endUserId: trace?.userId,
+        endUserId: trace?.userId ?? null,
+        endUserEmail: endUser.endUserEmail,
+        endUserName: endUser.endUserName,
       });
 
     } catch (sdkErr) {
+
       logger.error("Telemetry Error", sdkErr);
+
     }
 
     throw err;
