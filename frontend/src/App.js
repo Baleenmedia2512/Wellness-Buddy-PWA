@@ -5416,7 +5416,16 @@ function WellnessValleyApp() {
       setEducationResult(null);
       setWatchResult(null);
       setError(null);
+
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try {
+          resolvedUserIdForOrchestrate = await getUserId(user);
+        } catch (_) {}
+      }
+
       markCaptureAnalyzing(captureShare.id, {
+        ownerUserId: resolvedUserIdForOrchestrate ?? null,
         imageBase64: processedImage,
         capturedAt: new Date().toISOString(),
         currentAttempt: 1,  // Show "1/3" badge immediately; onAttempt callback keeps it in sync
@@ -5446,13 +5455,6 @@ function WellnessValleyApp() {
         /* use original file */
       }
 
-      let resolvedUserIdForOrchestrate = user?.id;
-      if (!resolvedUserIdForOrchestrate) {
-        try {
-          resolvedUserIdForOrchestrate = await getUserId(user);
-        } catch (_) {}
-      }
-
       const pendingSharePromise = Promise.resolve(captureShare);
       const bg = true; // background mode: never block home on AI; no result cards
 
@@ -5473,6 +5475,7 @@ function WellnessValleyApp() {
             // Update the diary row badge ("1/3", "2/3", "3/3") before each attempt.
             onAttempt: ({ attempt, total }) => {
               markCaptureAnalyzing(captureShare.id, {
+                ownerUserId: resolvedUserIdForOrchestrate ?? null,
                 currentAttempt: attempt,
                 totalAttempts: total,
               });
