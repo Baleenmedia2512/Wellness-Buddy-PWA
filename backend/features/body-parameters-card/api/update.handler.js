@@ -8,7 +8,7 @@ import {
   updateCard,
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
-  clearLegacyCounsellorCoachAssignment,
+  enforceBpcLeadNoCoachUntilOnboarding,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import logger from '../../../shared/lib/logger.js';
@@ -50,12 +50,13 @@ export async function handleUpdateCard(body) {
 
   if (card.user_id) {
     try {
-      await clearLegacyCounsellorCoachAssignment(card.user_id, card.created_by);
+      await enforceBpcLeadNoCoachUntilOnboarding(card.user_id);
     } catch (detachErr) {
-      logger.warn('[handleUpdateCard] legacy coach detach skipped', {
+      logger.error('[handleUpdateCard] BPC lead CoachId enforcement failed', {
         userId: card.user_id,
         message: detachErr?.message,
       });
+      throw detachErr;
     }
   }
 

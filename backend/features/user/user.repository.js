@@ -33,6 +33,36 @@ export async function findByExactEmail(email, columns) {
 }
 
 /**
+ * Find a team_table row with this email (case-insensitive), excluding one UserId.
+ * Used to enforce unique email before first-time assignment on phone-OTP users.
+ *
+ * @param {string} email
+ * @param {number} excludeUserId
+ * @param {string} [columns]
+ * @returns {Promise<object|null>}
+ */
+export async function findByEmailExcludingUserId(
+  email,
+  excludeUserId,
+  columns = '"UserId"',
+) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const uid = Number(excludeUserId);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select(columns)
+    .ilike('Email', normalized)
+    .neq('UserId', uid)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
  * @param {string|number} userId
  * @param {string} [columns]
  */
