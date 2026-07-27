@@ -124,7 +124,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setError('');
   }, [isOpen, existingCard]);
 
-  // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
+  // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
     if (coachUserId || !user?.email) return undefined;
 
