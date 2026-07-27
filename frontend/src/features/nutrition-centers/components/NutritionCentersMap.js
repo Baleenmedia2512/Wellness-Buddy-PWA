@@ -790,59 +790,52 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
                       </div>
                     </div>
 
-                    {/* Action pills — responsive grid: 2 cols (SE) → 4 cols (standard+) */}
+                    {/* Action pills — flex-wrap grid adapts to 2/3/4 buttons per row */}
                     <div
                       className="ios-action-grid px-3 xs:px-4 pb-4"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <TouchFeedbackButton
                         onClick={(e) => { e.stopPropagation(); openStreetView(center); }}
-                        className="compact-touch flex flex-col xs:flex-row items-center justify-center gap-1 px-2 xs:px-3 py-2 rounded-full border border-blue-300 bg-blue-50 active:bg-blue-100 transition-colors w-full"
+                        className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-blue-300 bg-blue-50 active:bg-blue-100 transition-colors w-full"
                         ariaLabel="Street View"
                       >
-                        <img src="/street-view-icon.png" alt="" className="h-4 w-4 xs:h-5 xs:w-5 object-contain flex-shrink-0" />
-                        <span className="text-[10px] xs:text-xs font-semibold text-blue-700 text-center leading-tight">Street View</span>
+                        <img src="/street-view-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                        <span className="text-[10px] sm:text-xs font-semibold text-blue-700 text-center leading-tight px-0.5">Street View</span>
                       </TouchFeedbackButton>
 
-                      {center.owner_phone ? (
+                      {center.owner_phone && (
                         <>
                           <a
                             href={`tel:${center.owner_phone}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="compact-touch flex flex-col xs:flex-row items-center justify-center gap-1 px-2 xs:px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors w-full"
+                            className="compact-touch flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors w-full"
                             aria-label="Call"
                           >
-                            <img src="/call-icon.png" alt="" className="h-4 w-4 xs:h-5 xs:w-5 object-contain flex-shrink-0" />
-                            <span className="text-[10px] xs:text-xs font-semibold text-green-700">Call</span>
+                            <img src="/call-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs font-semibold text-green-700 text-center leading-tight px-0.5">Call</span>
                           </a>
                           <TouchFeedbackButton
                             onClick={(e) => { e.stopPropagation(); openWhatsApp(center.owner_phone); }}
-                            className="compact-touch flex flex-col xs:flex-row items-center justify-center gap-1 px-2 xs:px-3 py-2 rounded-full border active:opacity-80 transition-colors w-full"
+                            className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border active:opacity-80 transition-colors w-full"
                             style={{ backgroundColor: '#e7faf0', borderColor: '#25D366' }}
                             ariaLabel="WhatsApp"
                           >
-                            <img src="/whatsapp-icon.png" alt="" className="h-4 w-4 xs:h-5 xs:w-5 object-contain flex-shrink-0" />
-                            <span className="text-[10px] xs:text-xs font-semibold text-center leading-tight" style={{ color: '#128C7E' }}>WhatsApp</span>
+                            <img src="/whatsapp-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs font-semibold text-center leading-tight px-0.5" style={{ color: '#128C7E' }}>WhatsApp</span>
                           </TouchFeedbackButton>
-                        </>
-                      ) : (
-                        <>
-                          <div aria-hidden="true" />
-                          <div aria-hidden="true" />
                         </>
                       )}
 
-                      {onEditCenter && currentUserId && center.owner_user_id === currentUserId ? (
+                      {onEditCenter && currentUserId && center.owner_user_id === currentUserId && (
                         <TouchFeedbackButton
                           onClick={(e) => { e.stopPropagation(); onEditCenter(center); }}
-                          className="compact-touch flex flex-col xs:flex-row items-center justify-center gap-1 px-2 xs:px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors w-full"
+                          className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors w-full"
                           ariaLabel="Edit centre"
                         >
-                          <Pencil className="h-3.5 w-3.5 xs:h-4 xs:w-4 text-orange-600 flex-shrink-0" />
-                          <span className="text-[10px] xs:text-xs font-semibold text-orange-700">Edit</span>
+                          <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-600 flex-shrink-0" />
+                          <span className="text-[10px] sm:text-xs font-semibold text-orange-700 text-center leading-tight px-0.5">Edit</span>
                         </TouchFeedbackButton>
-                      ) : (
-                        <div aria-hidden="true" />
                       )}
                     </div>
                   </div>
