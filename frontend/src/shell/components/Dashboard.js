@@ -8,7 +8,7 @@
 // (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
-import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
@@ -41,6 +41,23 @@ const EducationDashboard = lazy(() => import('../../features/education/component
 const DiaryFeed = lazy(() =>
   import('../../features/diary').then((m) => ({ default: m.DiaryFeed })),
 );
+
+/** Matches the inline calendar panel expand/collapse transition (duration-300). */
+const CALENDAR_EXPAND_MS = 320;
+
+/** Nearest scrollable ancestor (e.g. App.js `.ios-scroll-body` on Capacitor/Web). */
+function getScrollParent(el) {
+  if (!el) return null;
+  let parent = el.parentElement;
+  while (parent) {
+    const { overflowY } = window.getComputedStyle(parent);
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
 
 /** Noon on the diary day — keeps saves inside activity windows. */
 function buildNoonTimestamp(date) {
@@ -114,6 +131,19 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Calendar visibility and month navigation
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  // Timeline date can lag selectedDate briefly while scrolling back to the
+  // calendar after "Today" is tapped away from the top of the page.
+  const [diaryTimelineDate, setDiaryTimelineDate] = useState(() => {
+    if (initialDate) {
+      const d = new Date(initialDate);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
+  const stickyHeaderRef = useRef(null);
+  const calendarSectionRef = useRef(null);
+  const scrollEndTimerRef = useRef(null);
+  const scrollSessionRef = useRef(0);
 
   // Respond to deep-link prop changes while the component is already mounted.
   // The useState initializers above only run on first mount, so if a new
@@ -137,8 +167,83 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   useEffect(() => {
     if (!initialDate) return;
     const d = new Date(initialDate);
-    if (!Number.isNaN(d.getTime())) setSelectedDate(d);
+    if (!Number.isNaN(d.getTime())) {
+      setSelectedDate(d);
+      setDiaryTimelineDate(d);
+    }
   }, [initialDate]);
+
+  useEffect(() => () => {
+    if (scrollEndTimerRef.current) clearTimeout(scrollEndTimerRef.current);
+  }, []);
+
+  const applySelectedDate = useCallback((date) => {
+    setSelectedDate(date);
+    setDiaryTimelineDate(date);
+  }, []);
+
+  const isCalendarSectionVisible = useCallback(() => {
+    const calendarEl = calendarSectionRef.current;
+    if (!calendarEl) return true;
+    const headerBottom = stickyHeaderRef.current?.getBoundingClientRect().bottom ?? 0;
+    const calendarTop = calendarEl.getBoundingClientRect().top;
+    return calendarTop >= headerBottom - 4 && calendarTop < window.innerHeight;
+  }, []);
+
+  const handleDiaryDateButtonClick = useCallback(() => {
+    const calendarVisible = isCalendarSectionVisible();
+
+    setCalendarMonth(new Date(selectedDate));
+
+    if (calendarVisible) {
+      setShowCalendar((prev) => !prev);
+      return;
+    }
+
+    // Scrolled down — expand the calendar for the current selection and scroll it into view.
+    setShowCalendar(true);
+
+    const session = scrollSessionRef.current + 1;
+    scrollSessionRef.current = session;
+
+    const scrollToCalendar = () => {
+      const calendarEl = calendarSectionRef.current;
+      if (!calendarEl) return;
+
+      const margin = (stickyHeaderRef.current?.offsetHeight ?? 120) + 8;
+      calendarEl.style.scrollMarginTop = `${margin}px`;
+
+      let finished = false;
+      const scrollRoot = getScrollParent(calendarEl);
+      const scrollTarget = scrollRoot && scrollRoot !== document.documentElement
+        ? scrollRoot
+        : window;
+
+      const complete = () => {
+        if (finished || scrollSessionRef.current !== session) return;
+        finished = true;
+        scrollTarget.removeEventListener('scroll', onScroll);
+        if (scrollEndTimerRef.current) {
+          clearTimeout(scrollEndTimerRef.current);
+          scrollEndTimerRef.current = null;
+        }
+      };
+
+      const onScroll = () => {
+        if (scrollEndTimerRef.current) clearTimeout(scrollEndTimerRef.current);
+        scrollEndTimerRef.current = setTimeout(complete, 150);
+      };
+
+      scrollTarget.addEventListener('scroll', onScroll, { passive: true });
+      calendarEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollEndTimerRef.current = setTimeout(complete, 800);
+    };
+
+    const expandDelay = showCalendar ? 0 : CALENDAR_EXPAND_MS;
+    setTimeout(() => {
+      requestAnimationFrame(scrollToCalendar);
+    }, expandDelay);
+  }, [selectedDate, showCalendar, isCalendarSectionVisible]);
 
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
@@ -155,7 +260,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setActiveTab(tab);
     localStorage.setItem('dashboard_activeTab', tab);
     if (tab === 'screen') {
-      setSelectedDate(new Date());
+      applySelectedDate(new Date());
     }
   };
 
@@ -412,7 +517,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // open, restore the original diary date so the reload targets the correct
     // day instead of wherever selectedDate currently points.
     if (diaryDate && diaryDate.toDateString() !== selectedDate.toDateString()) {
-      setSelectedDate(diaryDate);
+      applySelectedDate(diaryDate);
     }
     reloadDiary();
     if (change.kind === 'food') {
@@ -434,7 +539,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       </div>
 
       {/* Header with tabs */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+      <div ref={stickyHeaderRef} className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
         {/* Team Member Search - Only visible for coaches */}
         <TeamMemberSearch
           user={user}
@@ -485,9 +590,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             </div>
 
             {/* Calendar button — for the steps/screen tabs (disabled) AND the
-                single-page Diary. In the Diary, this one shell-level "Today"
-                button opens the month-grid date picker and drives the day for
-                every stacked dashboard (Nutrition's own strip is suppressed). */}
+                single-page Diary. In the Diary, this shell-level date button
+                toggles the month grid for the currently selected day and scrolls
+                the calendar into view when the user is lower on the page. */}
             {(activeTab === 'screen') && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }} 
@@ -500,9 +605,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             {diaryEnabled && (
               <div className="flex items-center gap-1">
                 <TouchFeedbackButton
-                  onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }}
+                  onClick={handleDiaryDateButtonClick}
                   className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
-                  ariaLabel="Open date picker"
+                  ariaLabel="Toggle date picker"
                 >
                   <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
                   <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
@@ -535,7 +640,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       {/* Inline Calendar — month-grid date picker. Shown for the
           (disabled) steps/screen tabs AND the single-page Diary. */}
       {(activeTab === 'screen' || diaryEnabled) && (
-        <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
+        <div
+          ref={calendarSectionRef}
+          className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
         }`}>
         <div className={`max-w-md mx-auto p-0 md:p-4 transform transition-transform duration-300 ease-in-out ${
@@ -645,7 +752,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                       key={index}
                       onClick={() => {
                         if (!isDisabled) {
-                          setSelectedDate(day.date);
+                          applySelectedDate(day.date);
                           setShowCalendar(false);
                         }
                       }}
@@ -736,7 +843,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
                   timezoneSource={displayUser}
-                  date={selectedDate}
+                  date={diaryTimelineDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
@@ -767,7 +874,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideDateStrip
                   hideOverview
                   selectedDate={selectedDate}
-                  setSelectedDate={setSelectedDate}
+                  setSelectedDate={applySelectedDate}
                   bmrUpdateKey={bmrUpdateKey}
                   watchBurnedCalories={watchBurnedCalories}
                   initialMealId={initialMealId}
@@ -813,7 +920,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 hideDateStrip={true}
                 hideOverview={true}
                 selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
+                setSelectedDate={applySelectedDate}
                 bmrUpdateKey={bmrUpdateKey}
                 watchBurnedCalories={watchBurnedCalories}
                 initialMealId={initialMealId}
@@ -850,7 +957,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
                   timezoneSource={displayUser}
-                  date={selectedDate}
+                  date={diaryTimelineDate}
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
@@ -871,7 +978,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideHeader={true}
               hideOverview={true}
               selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
+              setSelectedDate={applySelectedDate}
               bmrUpdateKey={bmrUpdateKey}
               watchBurnedCalories={watchBurnedCalories}
               initialMealId={initialMealId}
@@ -910,7 +1017,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
               selectedDate={selectedDate}
-              setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
+              setSelectedDate={(d) => { applySelectedDate(d); setShowCalendar(false); }}
             />
           )}
           */}
