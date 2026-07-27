@@ -133,21 +133,31 @@ button, a, [role="button"] {
   min-height: auto !important;
 }
 
-/* Responsive action grid: 2 cols on narrow phones, 4 cols on wider iPhones */
+/* Responsive action pills — wrap to fit label text (Street View / WhatsApp) */
 .ios-action-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-@media (min-width: 375px) {
-  .ios-action-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 .ios-action-grid > * {
   min-width: 0;
+}
+
+.ios-action-grid > :not([aria-hidden="true"]) {
+  flex: 1 1 calc(50% - 0.25rem);
+}
+
+@media (min-width: 375px) {
+  .ios-action-grid > :not([aria-hidden="true"]) {
+    flex: 1 1 calc(33.333% - 0.34rem);
+  }
+}
+
+@media (min-width: 640px) {
+  .ios-action-grid > :not([aria-hidden="true"]) {
+    flex: 1 1 calc(25% - 0.38rem);
+  }
 }
 
 /* Program / list row: checkbox + icon + text — scales on all iPhone widths */
