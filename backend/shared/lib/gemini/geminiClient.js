@@ -267,8 +267,8 @@ export async function generateContent(
         // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
-        userEmail: trace?.email,
-        userName: trace?.name,
+        endUserEmail: trace?.email,
+        endUserName: trace?.name,
       });
 
     } catch (sdkErr) {
@@ -297,8 +297,8 @@ export async function generateContent(
         // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
-        userEmail: trace?.email,
-        userName: trace?.name,
+        endUserEmail: trace?.email,
+        endUserName: trace?.name,
       });
 
     } catch (sdkErr) {

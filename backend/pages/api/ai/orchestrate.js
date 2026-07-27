@@ -101,6 +101,8 @@ export default async function handler(req, res) {
     // and wants Gemini Pro instead of Flash for better accuracy.
     const modelTier  = sanitiseString(fields.modelTier);
 
+    
+
     // Read image into buffer; keep base64 for enrichment job queue
     let imageBuffer, imageBase64;
     try {
@@ -131,12 +133,14 @@ export default async function handler(req, res) {
     const mimeType = imageFile.mimetype ?? 'image/jpeg';
 
     logger.info('orchestrate: request received', {
-      captureId: captureId ?? null,
-      userId:    userId    ?? null,
-      foodRowId: foodRowId ?? null,
-      mimeType,
-      sizeBytes: imageBuffer.length,
-    });
+  captureId,
+  userId,
+  userEmail,
+  userName,
+  foodRowId,
+  mimeType,
+  sizeBytes: imageBuffer.length,
+});
 
     try {
       const result = await analyse({
@@ -144,6 +148,8 @@ export default async function handler(req, res) {
         mimeType,
         captureId,
         userId,
+        userEmail,
+        userName,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
