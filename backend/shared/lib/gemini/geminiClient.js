@@ -185,7 +185,7 @@ function getGenAI() {
       token:
         process.env.AI_MONITOR_TOKEN || "",
 
-      appName: "Wellness Buddy",
+      appName: "Wellness valley",
 
       environment:
         process.env.NODE_ENV || "development",
