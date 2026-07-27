@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
+import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -914,6 +915,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         startDate={activeDateStart}
         endDate={activeDateEnd}
         apiBaseUrl={apiBaseUrl}
+        timezoneIana={resolveDiaryTimezone(user)}
       />
     </div>
   );
