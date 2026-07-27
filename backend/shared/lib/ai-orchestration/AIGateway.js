@@ -958,7 +958,13 @@ export async function analyzeUnified(
   const stageStart = Date.now();
 
   try {
-    const { rawText, attempts, latencyMs,usage, model} = await callModel(
+    const {
+    rawText,
+    attempts,
+    latencyMs,
+    usage,
+    model,
+  } = await callModel(
       'unified',
       [imagePart, UNIFIED_PROMPT],
       UNIFIED_SCHEMA,
@@ -1023,16 +1029,22 @@ export async function analyzeUnified(
       });
     }
 
-    logger.info('AI Unified Analysis Completed', {
-      requestId: context?.requestId,
-      userId: context?.userId,
-      endpoint: context?.endpoint,
-      operation: context?.operation,
-      imageType: normType,
-      model: modelOverride ?? MODEL_NAME,
-      latencyMs,
-      attempts,
-    });
+    logger.info("AI Unified Analysis Completed", {
+  requestId: context?.requestId,
+  userId: context?.userId,
+  endpoint: context?.endpoint,
+  operation: context?.operation,
+  imageType: normType,
+
+  model,
+
+  inputTokens: usage?.inputTokens,
+  outputTokens: usage?.outputTokens,
+  totalTokens: usage?.totalTokens,
+
+  latencyMs,
+  attempts,
+});
 
     return {
       imageType: normType,
