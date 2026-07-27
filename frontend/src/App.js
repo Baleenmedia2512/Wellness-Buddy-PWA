@@ -64,7 +64,7 @@ import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
 import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
-import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -5007,6 +5007,8 @@ function WellnessValleyApp() {
               setSavedUserName(shareDisplayName);
             }
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            // Dismiss overlay before opening share sheet — not after user finishes sharing.
+            clearOverlayNow();
             const result = await shareViaCapacitorAPI(fileDataUrl, {
               title: shareDisplayName,
               text: shareText,
@@ -5023,12 +5025,13 @@ function WellnessValleyApp() {
               setSavedUserName(shareDisplayName);
             }
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             const ok = await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
             if (!ok) foodAutoSharedRef.current = false;
           }
         } catch (_) {
-          // Native share failed � fall back to text-only.
+          // Native share failed — fall back to text-only.
           try {
             const shareDisplayName = await ensureShareDisplayName(
               savedUserNameRef.current ?? savedUserName,
@@ -5036,6 +5039,7 @@ function WellnessValleyApp() {
               apiBaseUrl,
             );
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
           } catch (__) {
@@ -8101,16 +8105,15 @@ function WellnessValleyApp() {
                   flexShrink: 0,
                 }}
               >
-                {/* Spinning star icon */}
-                <span
+                <Sparkles
+                  size={20}
+                  color="#FFD700"
+                  aria-hidden="true"
                   style={{
-                    display: "inline-block",
-                    fontSize: 20,
+                    flexShrink: 0,
                     animation: "_wb_stars_spin 3s linear infinite",
                   }}
-                >
-                  ?
-                </span>
+                />
 
                 <span
                   style={{

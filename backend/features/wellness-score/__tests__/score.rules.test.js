@@ -15,6 +15,7 @@ import {
   calculateProtein,
   calculateSodium,
   calculateGi,
+  calculateVitaminE,
   calculateWeightImprovement,
   calculatePhysicalActivity,
   calculateWellnessScore,
@@ -147,6 +148,15 @@ describe('nutrition parameters', () => {
   it('protein — proportional below target', () => {
     const r = calculateProtein({ maxPoints: 100, consumed: 80, target: 100 });
     assert.equal(r.earnedPoints, 80);
+  });
+
+  it('vitamin E — rounds floating-point consumed values in status text', () => {
+    const r = calculateVitaminE({
+      maxPoints: 25,
+      consumed: 2.3200000000000003,
+      target: 15,
+    });
+    assert.equal(r.calculationReason, '2.3mg / 15mg');
   });
 
   it('carbohydrates — proportional below limit (gain mode)', () => {
