@@ -155,7 +155,7 @@ export async function syncCardToProfile(card) {
  * Link card to member (if needed) then sync card → team_table / weight records.
  *
  * @param {object} card - persisted card row
- * @param {object} linkPayload - phone/name/coachId/metrics for linking
+ * @param {object} linkPayload - phone/name/metrics for linking (CoachId is set at onboarding)
  * @returns {Promise<{ synced: boolean, userId: number|null, teamFields: string[], weightInserted: boolean }>}
  */
 export async function syncCardToProfileAfterSave(card, linkPayload = {}) {

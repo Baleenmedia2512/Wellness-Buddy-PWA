@@ -7,7 +7,7 @@ import {
   resolveRequestedDateYmd,
   assertNotFutureDateYmd,
   nowUtc,
-  timestampToCalendarYmd,
+  resolveFoodTimestamp,
 } from '../../shared/lib/datetime/index.js';
 
 // ─── list user corrections ──────────────────────────────────────────────────
@@ -320,7 +320,12 @@ export async function getStats({ userId, date, detailed }) {
 
   const dailyMap = {};
   counts.weeklyData.forEach((record) => {
-    const d = timestampToCalendarYmd(record.CreatedAt, timezoneIana);
+    let d;
+    try {
+      d = resolveFoodTimestamp(record.CreatedAt, timezoneIana).calendarYmd;
+    } catch {
+      return;
+    }
     if (!dailyMap[d]) dailyMap[d] = { date: d, calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
     dailyMap[d].calories += record.TotalCalories || 0;
     dailyMap[d].protein += record.TotalProtein || 0;

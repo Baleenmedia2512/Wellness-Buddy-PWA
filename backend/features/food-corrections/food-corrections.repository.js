@@ -10,7 +10,7 @@ import {
   IANA_IST,
   todayInTimezone,
   shiftDateYmd,
-  filterRowsByCalendarDay,
+  filterFoodRowsByCalendarDay,
 } from '../../shared/lib/datetime/index.js';
 
 // ─── corrections table ──────────────────────────────────────────────────────
@@ -137,11 +137,12 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
     // behind when the capture turned out to be weight/education/smartwatch).
     // Matches the same predicate already enforced by `listAnalyses`.
     .not('AnalysisData', 'is', null);
-  // Widen SQL bounds, then post-filter: CreatedAt is IST wall-clock without zone.
+  // Widen SQL bounds, then post-filter with canonical food CreatedAt interpretation
+  // (handles legacy IST wall + spurious driver Z/+00:00).
   query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
-  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function getStatsCounts(userId, timezoneIana = IANA_IST) {

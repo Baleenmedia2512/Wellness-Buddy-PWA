@@ -32,14 +32,14 @@ export async function handleCreateCard(body) {
 
   if (payload.phoneNumber) {
     logger.info('[body-params-card] 📞 Creating team_table member from phone', {
-      coachId: payload.createdBy,
+      createdBy: payload.createdBy,
       phoneNumber: payload.phoneNumber,
       name: payload.name
     });
+    // CoachId is not set here — member chooses coach during onboarding.
     const { userId: memberId, isNew } = await createTeamMemberFromPhone({
       name:        payload.name,
       phoneNumber: payload.phoneNumber,
-      coachId:     payload.createdBy,
       heightCm:    payload.heightCm,
       bmr:         payload.bmr,
       weightKg:    payload.weightKg,
@@ -97,7 +97,6 @@ export async function handleCreateCard(body) {
   const linkPayload = {
     phoneNumber: payload.phoneNumber,
     name:        payload.name,
-    coachId:     payload.createdBy,
     heightCm:    payload.heightCm,
     bmr:         payload.bmr,
     weightKg:    payload.weightKg,

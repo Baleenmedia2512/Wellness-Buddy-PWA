@@ -17,6 +17,12 @@ export {
 } from './datetime.js';
 
 export {
+  normalizeFoodCreatedAt,
+  resolveFoodTimestamp,
+  filterFoodRowsByCalendarDay,
+} from './foodTimestamp.js';
+
+export {
   DATE_YMD_RE,
   assertCalendarDateYmd,
   assertNotFutureDateYmd,
