@@ -41,12 +41,16 @@ import {
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
+import { resolvePendingCaptureDisplay } from './domain/stale-pending-captures.js';
 import {
   IANA_IST,
   assertNotFutureDateYmd,
   normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
 } from '../../shared/lib/datetime/index.js';
+
+export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
@@ -392,10 +396,33 @@ export async function listDiaryEntries(input) {
   for (const { kind, rows } of results) {
     for (const row of rows) {
       if (kind === 'pending') {
-        entries.push(toDiaryEntry('unknown', row, {
-          isPendingAnalysis: true,
-          timezoneIana,
-        }));
+        const capturedAt = normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
+        const { stale, isPendingAnalysis, displayImageType } = resolvePendingCaptureDisplay(
+          capturedAt,
+        );
+        if (stale && row.ID) {
+          try {
+            const result = await captures.updateTypeById({
+              captureId: row.ID,
+              userId: ownerUserId,
+              toType: IMAGE_TYPE_UNKNOWN,
+            });
+            if (result.changed) {
+              logger.info('listDiaryEntries: promoted stale pending capture to unknown', {
+                captureId: row.ID, ownerUserId,
+              });
+            }
+          } catch (err) {
+            logger.warn('listDiaryEntries: failed to promote stale pending capture', {
+              captureId: row.ID, ownerUserId, err: err.message,
+            });
+          }
+        }
+        entries.push(toDiaryEntry(
+          'unknown',
+          { ...row, ImageType: displayImageType },
+          { isPendingAnalysis, timezoneIana },
+        ));
       } else {
         entries.push(toDiaryEntry(kind, row, { timezoneIana }));
       }
@@ -416,6 +443,8 @@ export async function listDiaryEntries(input) {
     new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
   );
 
+  const dedupedEntries = dedupePendingDiaryEntries(dayEntries);
+
   return {
     httpStatus: 200,
     body: {
@@ -426,7 +455,7 @@ export async function listDiaryEntries(input) {
         ownerTimezoneIana: timezoneIana,
         isSelf,
         includesUnknown,
-        entries: dayEntries,
+        entries: dedupedEntries,
       },
     },
   };

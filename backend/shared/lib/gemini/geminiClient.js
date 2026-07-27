@@ -48,6 +48,23 @@ export const MODEL_CONFIGS = {
   },
 
   /**
+   * Profile face check — simple boolean JSON.
+   * thinkingBudget: 0 is safe here (unlike unified nutrition): a yes/no face
+   * question does not need model introspection, and leaving Flash's default
+   * thinking on with a tiny maxOutputTokens budget often truncates output.
+   */
+  faceDetect: {
+    temperature: 0,
+    topK: 1,
+    topP: 1.0,
+    maxOutputTokens: 128,
+    responseMimeType: 'application/json',
+    thinkingConfig: {
+      thinkingBudget: 0,
+    },
+  },
+
+  /**
    * Full nutrition analysis. Structured response schema is applied by the
    * caller (analyze-nutrition endpoint) since it requires SchemaType imports.
    * We keep token budget generous for large food plates.
@@ -151,7 +168,7 @@ function getGenAI() {
 /**
  * Return a cached Gemini model for the given configuration key.
  *
- * @param {'classify' | 'nutrition' | 'weight' | 'unified'} configKey
+ * @param {'classify' | 'faceDetect' | 'nutrition' | 'weight' | 'unified'} configKey
  * @param {object} [responseSchema]  Optional structured response schema (SDK SchemaType).
  * @param {string} [modelOverride]   Override the default model name (e.g. FALLBACK_MODEL_NAME).
  * @returns {import('@google/generative-ai').GenerativeModel}
@@ -204,9 +221,14 @@ export function clearModelCache() {
  * @returns {{ inlineData: { mimeType: string, data: string } }}
  */
 export function imageInlinePart(buffer, mimeType) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('imageInlinePart: image buffer is missing or empty');
+  }
   return {
     inlineData: {
       mimeType: mimeType || 'image/jpeg',
+      // Always encode from a real Buffer — String#toString('base64') is a no-op
+      // and would forward raw values like "data:," straight to Gemini.
       data: buffer.toString('base64'),
     },
   };
@@ -234,6 +256,7 @@ export async function generateContent(
     const latency = Date.now() - start;
 
     try {
+
       await AIClient.sendTelemetry({
         provider: "Gemini",
         model: modelOverride ?? MODEL_NAME,
@@ -241,14 +264,19 @@ export async function generateContent(
         latency,
         status: "SUCCESS",
 
-        // Optional: only useful if the SDK supports custom fields
+        // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
+        userEmail: trace?.email,
+        userName: trace?.name,
       });
+
     } catch (sdkErr) {
+
       logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
         message: sdkErr?.message,
       });
+
     }
 
     return result;
@@ -266,14 +294,17 @@ export async function generateContent(
         latency,
         status: "FAILED",
         errorMessage: err.message,
-
-        // Optional: only useful if the SDK supports custom fields
+        // User Context
         traceId: trace?.traceId,
         endUserId: trace?.userId,
+        userEmail: trace?.email,
+        userName: trace?.name,
       });
 
     } catch (sdkErr) {
+
       logger.error("Telemetry Error", sdkErr);
+
     }
 
     throw err;

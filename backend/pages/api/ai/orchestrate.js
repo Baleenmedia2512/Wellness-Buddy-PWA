@@ -114,6 +114,20 @@ export default async function handler(req, res) {
       });
     }
 
+    if (!imageBuffer || imageBuffer.length < 64) {
+      logger.warn('orchestrate: empty or tiny image rejected', {
+        sizeBytes: imageBuffer?.length ?? 0,
+        captureId: captureId ?? null,
+      });
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'EMPTY_IMAGE',
+          message: 'Uploaded image is empty or too small to analyse',
+        },
+      });
+    }
+
     const mimeType = imageFile.mimetype ?? 'image/jpeg';
 
     logger.info('orchestrate: request received', {

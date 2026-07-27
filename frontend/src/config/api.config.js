@@ -7,21 +7,27 @@
 import { Capacitor } from '@capacitor/core';
 
 const WEB_DEV_FALLBACK = 'http://localhost:3000';
-/** Production backend — must stay DIFFERENT from capacitor server.hostname */
-const NATIVE_PROD_FALLBACK = 'https://wellness-valley.vercel.app';
 
 function resolveFallback() {
   try {
     if (Capacitor.isNativePlatform()) {
-      return NATIVE_PROD_FALLBACK;
+      return process.env.REACT_APP_API_BASE_URL;
     }
   } catch {
     // Non-browser contexts (tests)
   }
+
   return WEB_DEV_FALLBACK;
 }
 
 export function getApiBaseUrl() {
   const raw = process.env.REACT_APP_API_BASE_URL || resolveFallback();
+
+  if (!raw) {
+    throw new Error(
+      'REACT_APP_API_BASE_URL is not configured. Please set it in your environment.'
+    );
+  }
+
   return raw.replace(/\/+$/, '');
 }

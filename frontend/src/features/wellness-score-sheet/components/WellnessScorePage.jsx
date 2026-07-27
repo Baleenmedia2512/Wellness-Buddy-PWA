@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
+import { getUserId } from '../../../shared/services/userIdentity';
 import { useWellnessScoreHistory } from '../hooks/useWellnessScoreHistory';
 import { useTimeWindows } from '../hooks/useTimeWindows';
 import { dateFromPickerValue, resolveWellnessDateRange } from '../domain/dateRange';
@@ -15,6 +16,28 @@ export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionR
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (user?.id) {
+        setResolvedUserId(user.id);
+        return;
+      }
+      if (!user) {
+        setResolvedUserId(null);
+        return;
+      }
+      try {
+        const id = await getUserId(user);
+        if (!cancelled) setResolvedUserId(id || null);
+      } catch {
+        if (!cancelled) setResolvedUserId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const range = useMemo(
     () => resolveWellnessDateRange({
@@ -71,6 +94,9 @@ export default function WellnessScorePage({ user, apiBaseUrl, onBack, nutritionR
       onSelectDate={setSelectedDate}
       isMultiDay={range.isMultiDay}
       timeWindows={timeWindows}
+      userId={resolvedUserId}
+      apiBaseUrl={apiBaseUrl}
+      nutritionRefreshKey={nutritionRefreshKey}
     />
   );
 }
