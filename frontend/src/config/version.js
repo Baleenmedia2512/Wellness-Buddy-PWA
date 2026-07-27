@@ -90,7 +90,7 @@ export const APP_VERSION = {
   // Build date
   BUILD_DATE: '2026-07-27',
   
-  // Platform release notes
+  // Platform release notes..
   PLATFORMS: {
     ANDROID: { versionCode: 54, versionName: '3.3.5' },
     IOS: { buildNumber: 54, versionName: '3.3.5' },
