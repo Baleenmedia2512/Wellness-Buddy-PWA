@@ -109,24 +109,20 @@ const FAST_FALLBACK = Object.freeze({
  * @returns {Promise<OrchestratorResult>}
  */
 export async function analyse(params) {
- const {
-  imageBuffer,
-  mimeType,
-  captureId = null,
-  userId = null,
-  userEmail = null,
-  userName = null,
-  imageBase64 = null,
-  foodRowId = null,
-  usePro = false,
-} = params;
+  const {
+    imageBuffer,
+    mimeType,
+    captureId    = null,
+    userId       = null,
+    imageBase64  = null,
+    foodRowId    = null,
+    // usePro: true forces Gemini Pro on this request (used by frontend
+    // attempt-3 escalation when Flash failed twice to classify the image).
+    usePro       = false,
+  } = params;
 
-  const trace = new TraceContext({
-  captureId,
-  userId,
-  userEmail: params.userEmail ?? null,
-  userName: params.userName ?? null,
-});
+  const trace = new TraceContext({ captureId, userId });
+
   // ── Step 1: Idempotency guard ──────────────────────────────────────────────
   if (captureId) {
     const check = idempotencyGuard.check(captureId);
@@ -394,11 +390,11 @@ export function getAnalysisStatus(captureId) {
  * @param {string} [opts.userId]
  * @returns {Promise<LegacyClassifyResult>}
  */
-export async function classifyAndAnalyse(imageBuffer, mimeType, { captureId = null, userId = null, userEmail, userName, } = {}) {
+export async function classifyAndAnalyse(imageBuffer, mimeType, { captureId = null, userId = null } = {}) {
   const pipelineStart = Date.now();
 
   try {
-    const result = await analyse({ imageBuffer, mimeType, captureId, userId,  userEmail, userName, });
+    const result = await analyse({ imageBuffer, mimeType, captureId, userId });
 
     // Map fast macros → legacy nutrition shape expected by analysis.service.js
     const legacyNutrition = result.fastNutrition

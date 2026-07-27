@@ -133,14 +133,12 @@ export default async function handler(req, res) {
     const mimeType = imageFile.mimetype ?? 'image/jpeg';
 
     logger.info('orchestrate: request received', {
-  captureId,
-  userId,
-  userEmail,
-  userName,
-  foodRowId,
-  mimeType,
-  sizeBytes: imageBuffer.length,
-});
+      captureId: captureId ?? null,
+      userId:    userId    ?? null,
+      foodRowId: foodRowId ?? null,
+      mimeType,
+      sizeBytes: imageBuffer.length,
+    });
 
     try {
       const result = await analyse({
@@ -148,8 +146,6 @@ export default async function handler(req, res) {
         mimeType,
         captureId,
         userId,
-        userEmail,
-        userName,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',

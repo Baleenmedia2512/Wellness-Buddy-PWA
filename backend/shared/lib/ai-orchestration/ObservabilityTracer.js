@@ -43,22 +43,11 @@ export class TraceContext {
    * @param {string} [opts.userId]     Caller user ID (will be stringified).
    * @param {string} [opts.traceId]    Override the auto-generated UUID (useful for replay).
    */
-  constructor({
-      captureId = null,
-      userId = null,
-      userEmail = null,
-      userName = null,
-      traceId = null,
-    } = {}) {
-      this.traceId = traceId ?? randomUUID();
-
-      this.captureId = captureId ? String(captureId) : null;
-      this.userId = userId ? String(userId) : null;
-
-      this.email = userEmail;
-      this.name = userName;
-
-      this.startTime = Date.now();
+  constructor({ captureId = null, userId = null, traceId = null } = {}) {
+    this.traceId      = traceId ?? randomUUID();
+    this.captureId    = captureId   ? String(captureId)   : null;
+    this.userId       = userId      ? String(userId)       : null;
+    this.startTime    = Date.now();
 
     /** @type {Array<{ name: string, latencyMs: number, success: boolean }>} */
     this._stages = [];
@@ -136,8 +125,6 @@ export class TraceContext {
       traceId:      this.traceId,
       captureId:    this.captureId,
       userId:       this.userId,
-      userEmail: this.email,
-      userName: this.name,
       success,
       imageType:    imageType    ?? null,
       errorCode:    errorCode    ?? null,
@@ -171,8 +158,6 @@ export class TraceContext {
       traceId:   this.traceId,
       captureId: this.captureId,
       userId:    this.userId,
-      userEmail: this.email,
-      userName: this.name,
       stage,
       errorCode: code    ?? null,
       message,
@@ -187,9 +172,6 @@ export class TraceContext {
       traceId:   this.traceId,
       captureId: this.captureId,
       userId:    this.userId,
-      email: this.email,
-      name: this.name,
-
     };
   }
 
