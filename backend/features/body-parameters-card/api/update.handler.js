@@ -8,18 +8,20 @@ import {
   updateCard,
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
+  clearLegacyCounsellorCoachAssignment,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import logger from '../../../shared/lib/logger.js';
 
-function buildLinkPayload(payload) {
+function buildLinkPayload(payload, card) {
   return {
-    phoneNumber: payload.phoneNumber,
-    name:        payload.name,
-    heightCm:    payload.heightCm,
-    bmr:         payload.bmr,
-    weightKg:    payload.weightKg,
-    fatPercent:  payload.fatPercent,
+    phoneNumber:  payload.phoneNumber,
+    name:         payload.name,
+    counsellorId: card?.created_by ?? null,
+    heightCm:     payload.heightCm,
+    bmr:          payload.bmr,
+    weightKg:     payload.weightKg,
+    fatPercent:   payload.fatPercent,
   };
 }
 
@@ -31,7 +33,7 @@ export async function handleUpdateCard(body) {
   const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
-  const linkPayload = buildLinkPayload(payload);
+  const linkPayload = buildLinkPayload(payload, card);
 
   let syncResult = { synced: false, userId: card.user_id ?? null };
   try {
@@ -44,6 +46,17 @@ export async function handleUpdateCard(body) {
       message: syncErr?.message,
     });
     throw syncErr;
+  }
+
+  if (card.user_id) {
+    try {
+      await clearLegacyCounsellorCoachAssignment(card.user_id, card.created_by);
+    } catch (detachErr) {
+      logger.warn('[handleUpdateCard] legacy coach detach skipped', {
+        userId: card.user_id,
+        message: detachErr?.message,
+      });
+    }
   }
 
   const previousCard = card.user_id

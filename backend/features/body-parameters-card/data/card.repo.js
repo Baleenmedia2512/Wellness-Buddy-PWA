@@ -5,10 +5,14 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
-import { buildTeamMemberInsert } from '../domain/card.rules.js';
+import {
+  buildTeamMemberInsert,
+  shouldDetachCounsellorCoachAssignment,
+} from '../domain/card.rules.js';
 import logger from '../../../shared/lib/logger.js';
 
 const TABLE = 'body_parameters_cards';
+const APPROVALS = 'approval_requests_table';
 
 /**
  * Insert a new body-parameters card.
@@ -120,23 +124,108 @@ export async function findTeamPhoneByUserId(userId) {
 }
 
 /**
+ * Whether this member has ever completed coach selection via OTP approval.
+ * @param {number} userId
+ * @returns {Promise<boolean>}
+ */
+async function hasApprovedCoachSelection(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return false;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(APPROVALS)
+    .select('"Id"')
+    .eq('"RequesterId"', uid)
+    .eq('"Status"', 'approved')
+    .limit(1);
+  if (error) {
+    logger.warn('[body-params-card] approved coach-selection lookup failed', {
+      userId: uid,
+      message: error.message,
+    });
+    return true; // fail closed — do not clear CoachId when unsure
+  }
+  return Boolean(data?.[0]?.Id);
+}
+
+/**
+ * Clear CoachId when a BPC lead was wrongly assigned the counsellor and never
+ * completed coach selection. No-op for legitimate coach relationships.
+ *
+ * @param {number|null|undefined} userId
+ * @param {number|null|undefined} counsellorId
+ * @returns {Promise<boolean>} true when CoachId was cleared
+ */
+export async function clearLegacyCounsellorCoachAssignment(userId, counsellorId) {
+  const uid = parseInt(userId, 10);
+  const cid = parseInt(counsellorId, 10);
+  if (!Number.isFinite(uid) || uid < 1 || !Number.isFinite(cid) || cid < 1) {
+    return false;
+  }
+
+  const supabase = getSupabaseClient();
+  const { data: member, error } = await supabase
+    .from('team_table')
+    .select('"UserId", "CoachId", "EntryUser", "SetupSkipped"')
+    .eq('UserId', uid)
+    .maybeSingle();
+  if (error) throw error;
+  if (!member) return false;
+
+  const approved = await hasApprovedCoachSelection(uid);
+  if (
+    !shouldDetachCounsellorCoachAssignment({
+      currentCoachId: member.CoachId,
+      counsellorId: cid,
+      entryUser: member.EntryUser,
+      setupSkipped: member.SetupSkipped,
+      hasApprovedCoachSelection: approved,
+    })
+  ) {
+    return false;
+  }
+
+  const { error: updateErr } = await supabase
+    .from('team_table')
+    .update({ CoachId: null })
+    .eq('UserId', uid);
+  if (updateErr) throw updateErr;
+
+  logger.info('[body-params-card] cleared legacy counsellor CoachId', {
+    userId: uid,
+    counsellorId: cid,
+  });
+  return true;
+}
+
+/**
  * Create a new team_table row from the phone entered on the body-params form.
  * Checks if phone exists first; if yes, UPDATES the member (name/height/BMR only).
  * If no, creates a new member with CoachId left null — coach is chosen at onboarding.
+ * Never assigns CoachId from the counsellor. May clear a legacy wrong assignment
+ * when counsellorId matches CoachId and the member never completed coach selection.
  *
- * @param {{ name: string, phoneNumber: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
+ * @param {{ name: string, phoneNumber: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
-export async function createTeamMemberFromPhone({ name, phoneNumber, heightCm, bmr, weightKg, fatPercent }) {
+export async function createTeamMemberFromPhone({
+  name,
+  phoneNumber,
+  counsellorId = null,
+  heightCm,
+  bmr,
+  weightKg,
+  fatPercent,
+}) {
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
   // STEP 1: Check if phone number already exists (search all variants)
-  let existingUserId = null;
+  let existingMember = null;
   for (const variant of buildPhoneLookupVariants(phoneNumber)) {
     const { data: existing, error: lookupErr } = await supabase
       .from('team_table')
-      .select('UserId')
+      .select('"UserId", "CoachId", "EntryUser", "SetupSkipped"')
       .eq('PhoneNumber', variant)
       .order('UserId', { ascending: true })
       .limit(1);
@@ -144,17 +233,35 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, heightCm, b
     if (lookupErr) throw lookupErr;
     
     if (existing?.[0]?.UserId) {
-      existingUserId = existing[0].UserId;
+      existingMember = existing[0];
       break; // Found existing member
     }
   }
 
-  // STEP 2: If phone exists, UPDATE existing member (never overwrite CoachId)
-  if (existingUserId) {
+  // STEP 2: If phone exists, UPDATE existing member (never assign coach from counsellor)
+  if (existingMember) {
+    const existingUserId = existingMember.UserId;
     const updatePatch = {};
     if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
     if (heightCm != null) updatePatch.Height = heightCm;
     if (bmr != null) updatePatch.Bmr = bmr;
+
+    const approved = await hasApprovedCoachSelection(existingUserId);
+    if (
+      shouldDetachCounsellorCoachAssignment({
+        currentCoachId: existingMember.CoachId,
+        counsellorId,
+        entryUser: existingMember.EntryUser,
+        setupSkipped: existingMember.SetupSkipped,
+        hasApprovedCoachSelection: approved,
+      })
+    ) {
+      updatePatch.CoachId = null;
+      logger.info('[body-params-card] clearing counsellor auto-assigned CoachId', {
+        userId: existingUserId,
+        counsellorId,
+      });
+    }
     
     if (Object.keys(updatePatch).length > 0) {
       const { error: updateErr } = await supabase
@@ -232,7 +339,7 @@ export async function linkCardToUser(cardId, userId) {
  * Required before Profile sync — body_parameters_cards.user_id is the join key.
  *
  * @param {object} card - persisted card row
- * @param {{ phoneNumber?: string|null, name?: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} linkPayload
+ * @param {{ phoneNumber?: string|null, name?: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} linkPayload
  * @returns {Promise<number|null>} linked UserId
  */
 export async function ensureCardLinkedToUser(card, linkPayload = {}) {
@@ -241,12 +348,13 @@ export async function ensureCardLinkedToUser(card, linkPayload = {}) {
   if (!phoneNumber || !card?.id) return null;
 
   const { userId } = await createTeamMemberFromPhone({
-    name:        linkPayload.name ?? card.name,
+    name:          linkPayload.name ?? card.name,
     phoneNumber,
-    heightCm:    linkPayload.heightCm ?? card.height_cm,
-    bmr:         linkPayload.bmr ?? card.bmr,
-    weightKg:    linkPayload.weightKg ?? card.weight_kg,
-    fatPercent:  linkPayload.fatPercent ?? card.fat_percent,
+    counsellorId:  linkPayload.counsellorId ?? card.created_by ?? null,
+    heightCm:      linkPayload.heightCm ?? card.height_cm,
+    bmr:           linkPayload.bmr ?? card.bmr,
+    weightKg:      linkPayload.weightKg ?? card.weight_kg,
+    fatPercent:    linkPayload.fatPercent ?? card.fat_percent,
   });
   await linkCardToUser(card.id, userId);
   logger.info('[body-params-card] linked card to team member', { cardId: card.id, userId });

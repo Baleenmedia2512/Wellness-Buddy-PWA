@@ -5,7 +5,16 @@
 import { validateCreateCard } from '../validation/card.schema.js';
 import { canCreateCard } from '../domain/permissions/card.policy.js';
 import { enrichPayloadWithCalculatedBmr } from '../domain/card.rules.js';
-import { insertCard, createTeamMemberFromPhone, findPreviousCardByUserId, findLatestCardByUserId, updateCard, findTeamPhoneByUserId, linkCardToUser } from '../data/card.repo.js';
+import {
+  insertCard,
+  createTeamMemberFromPhone,
+  findPreviousCardByUserId,
+  findLatestCardByUserId,
+  updateCard,
+  findTeamPhoneByUserId,
+  linkCardToUser,
+  clearLegacyCounsellorCoachAssignment,
+} from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
@@ -37,13 +46,15 @@ export async function handleCreateCard(body) {
       name: payload.name
     });
     // CoachId is not set here — member chooses coach during onboarding.
+    // counsellorId is only used to detach legacy wrong CoachId assignments.
     const { userId: memberId, isNew } = await createTeamMemberFromPhone({
-      name:        payload.name,
-      phoneNumber: payload.phoneNumber,
-      heightCm:    payload.heightCm,
-      bmr:         payload.bmr,
-      weightKg:    payload.weightKg,
-      fatPercent:  payload.fatPercent,
+      name:          payload.name,
+      phoneNumber:   payload.phoneNumber,
+      counsellorId:  payload.createdBy,
+      heightCm:      payload.heightCm,
+      bmr:           payload.bmr,
+      weightKg:      payload.weightKg,
+      fatPercent:    payload.fatPercent,
     });
     userId = memberId;
     logger.info('[body-params-card] ✅ Team member ready', { userId, isNew, type: typeof userId });
@@ -95,12 +106,13 @@ export async function handleCreateCard(body) {
   }
 
   const linkPayload = {
-    phoneNumber: payload.phoneNumber,
-    name:        payload.name,
-    heightCm:    payload.heightCm,
-    bmr:         payload.bmr,
-    weightKg:    payload.weightKg,
-    fatPercent:  payload.fatPercent,
+    phoneNumber:   payload.phoneNumber,
+    name:          payload.name,
+    counsellorId:  payload.createdBy,
+    heightCm:      payload.heightCm,
+    bmr:           payload.bmr,
+    weightKg:      payload.weightKg,
+    fatPercent:    payload.fatPercent,
   };
 
   let syncResult = { synced: false, userId: card.user_id ?? userId ?? null };
@@ -114,6 +126,18 @@ export async function handleCreateCard(body) {
       message: syncErr?.message,
     });
     throw syncErr;
+  }
+
+  const linkedUserId = card.user_id ?? userId ?? null;
+  if (linkedUserId) {
+    try {
+      await clearLegacyCounsellorCoachAssignment(linkedUserId, payload.createdBy);
+    } catch (detachErr) {
+      logger.warn('[handleCreateCard] legacy coach detach skipped', {
+        userId: linkedUserId,
+        message: detachErr?.message,
+      });
+    }
   }
 
   // Fetch the previous card for this user so the frontend can show the
