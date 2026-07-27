@@ -7,7 +7,7 @@ import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import {
   buildTeamMemberInsert,
-  shouldDetachCounsellorCoachAssignment,
+  shouldClearBpcLeadCoachId,
 } from '../domain/card.rules.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -143,25 +143,22 @@ async function hasApprovedCoachSelection(userId) {
       userId: uid,
       message: error.message,
     });
-    return true; // fail closed — do not clear CoachId when unsure
+    // Fail open for BPC cleanup — without OTP approval we must not keep CoachId.
+    return false;
   }
   return Boolean(data?.[0]?.Id);
 }
 
 /**
- * Clear CoachId when a BPC lead was wrongly assigned the counsellor and never
- * completed coach selection. No-op for legitimate coach relationships.
+ * Force CoachId = null on BPC leads that have not completed coach OTP onboarding.
+ * Handles legacy rows, stale API processes, and any DB-side default/trigger.
  *
  * @param {number|null|undefined} userId
- * @param {number|null|undefined} counsellorId
  * @returns {Promise<boolean>} true when CoachId was cleared
  */
-export async function clearLegacyCounsellorCoachAssignment(userId, counsellorId) {
+export async function enforceBpcLeadNoCoachUntilOnboarding(userId) {
   const uid = parseInt(userId, 10);
-  const cid = parseInt(counsellorId, 10);
-  if (!Number.isFinite(uid) || uid < 1 || !Number.isFinite(cid) || cid < 1) {
-    return false;
-  }
+  if (!Number.isFinite(uid) || uid < 1) return false;
 
   const supabase = getSupabaseClient();
   const { data: member, error } = await supabase
@@ -174,9 +171,8 @@ export async function clearLegacyCounsellorCoachAssignment(userId, counsellorId)
 
   const approved = await hasApprovedCoachSelection(uid);
   if (
-    !shouldDetachCounsellorCoachAssignment({
+    !shouldClearBpcLeadCoachId({
       currentCoachId: member.CoachId,
-      counsellorId: cid,
       entryUser: member.EntryUser,
       setupSkipped: member.SetupSkipped,
       hasApprovedCoachSelection: approved,
@@ -191,11 +187,16 @@ export async function clearLegacyCounsellorCoachAssignment(userId, counsellorId)
     .eq('UserId', uid);
   if (updateErr) throw updateErr;
 
-  logger.info('[body-params-card] cleared legacy counsellor CoachId', {
+  logger.info('[body-params-card] cleared stale BPC lead CoachId', {
     userId: uid,
-    counsellorId: cid,
+    previousCoachId: member.CoachId,
   });
   return true;
+}
+
+/** @deprecated Use enforceBpcLeadNoCoachUntilOnboarding */
+export async function clearLegacyCounsellorCoachAssignment(userId, _counsellorId) {
+  return enforceBpcLeadNoCoachUntilOnboarding(userId);
 }
 
 /**
@@ -248,18 +249,17 @@ export async function createTeamMemberFromPhone({
 
     const approved = await hasApprovedCoachSelection(existingUserId);
     if (
-      shouldDetachCounsellorCoachAssignment({
+      shouldClearBpcLeadCoachId({
         currentCoachId: existingMember.CoachId,
-        counsellorId,
         entryUser: existingMember.EntryUser,
         setupSkipped: existingMember.SetupSkipped,
         hasApprovedCoachSelection: approved,
       })
     ) {
       updatePatch.CoachId = null;
-      logger.info('[body-params-card] clearing counsellor auto-assigned CoachId', {
+      logger.info('[body-params-card] clearing stale BPC lead CoachId', {
         userId: existingUserId,
-        counsellorId,
+        previousCoachId: existingMember.CoachId,
       });
     }
     
@@ -308,6 +308,9 @@ export async function createTeamMemberFromPhone({
     .single();
 
   if (error) throw error;
+
+  // Belt-and-suspenders: old API builds / DB defaults may still set CoachId on insert.
+  await enforceBpcLeadNoCoachUntilOnboarding(data.UserId);
 
   logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
   return { userId: data.UserId, isNew: true };
