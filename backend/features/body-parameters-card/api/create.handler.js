@@ -151,6 +151,12 @@ export async function handleCreateCard(body) {
     ? await findTeamPhoneByUserId(card.user_id)
     : (payload.phoneNumber || null);
 
+  // Final pass — body_parameters_cards insert may fire a DB trigger that re-sets CoachId.
+  const finalUserId = card.user_id ?? userId ?? null;
+  if (finalUserId) {
+    await enforceBpcLeadNoCoachUntilOnboarding(finalUserId);
+  }
+
   return {
     httpStatus: existingCard ? 200 : 201,
     body: {

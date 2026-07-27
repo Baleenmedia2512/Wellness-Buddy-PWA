@@ -164,7 +164,7 @@ export async function enforceBpcLeadNoCoachUntilOnboarding(userId) {
   const { data: member, error } = await supabase
     .from('team_table')
     .select('"UserId", "CoachId", "EntryUser", "SetupSkipped"')
-    .eq('UserId', uid)
+    .eq('"UserId"', uid)
     .maybeSingle();
   if (error) throw error;
   if (!member) return false;
@@ -181,15 +181,26 @@ export async function enforceBpcLeadNoCoachUntilOnboarding(userId) {
     return false;
   }
 
-  const { error: updateErr } = await supabase
+  const previousCoachId = member.CoachId;
+  const { data: updated, error: updateErr } = await supabase
     .from('team_table')
     .update({ CoachId: null })
-    .eq('UserId', uid);
+    .eq('"UserId"', uid)
+    .select('"UserId", "CoachId", "EntryUser"')
+    .maybeSingle();
   if (updateErr) throw updateErr;
+  if (!updated) {
+    throw new Error(`[bpc] CoachId clear affected 0 rows for UserId ${uid}`);
+  }
+  if (updated.CoachId != null && updated.CoachId !== '') {
+    throw new Error(
+      `[bpc] CoachId still ${updated.CoachId} after clear for UserId ${uid} — check Supabase triggers on team_table / body_parameters_cards`,
+    );
+  }
 
   logger.info('[body-params-card] cleared stale BPC lead CoachId', {
     userId: uid,
-    previousCoachId: member.CoachId,
+    previousCoachId,
   });
   return true;
 }
