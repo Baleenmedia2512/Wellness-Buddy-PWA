@@ -37,6 +37,14 @@ function roundEarned(ratio, maxPoints) {
   return Math.min(maxPoints, Math.max(0, Math.round(ratio * maxPoints)));
 }
 
+/** Display-safe nutrient amounts — strips IEEE-754 noise (e.g. 2.3200000000000003 → 2.32). */
+function formatDisplayAmount(value, decimals = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (decimals <= 0) return String(Math.round(n));
+  return String(parseFloat(n.toFixed(decimals)));
+}
+
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
 export function calculateBinaryLogScore({
@@ -87,6 +95,8 @@ export function calculateBinaryLogScore({
 export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
   const consumed = Math.max(0, Number(consumedMl) || 0);
   const required = Math.max(0, Number(requiredMl) || 0);
+  const consumedLabel = formatDisplayAmount(consumed, 0);
+  const requiredLabel = formatDisplayAmount(required, 0);
   if (required <= 0) {
     return buildParameterScore({
       key: 'water_qty',
@@ -106,7 +116,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Target reached (${consumed} / ${required} ml)`,
+      calculationReason: `Target reached (${consumedLabel} / ${requiredLabel} ml)`,
     });
   }
   const earned = roundEarned(consumed / required, maxPoints);
@@ -117,7 +127,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${consumed} / ${required} ml`,
+    calculationReason: `${consumedLabel} / ${requiredLabel} ml`,
   });
 }
 
@@ -128,9 +138,12 @@ export function calculateTargetNutrient({
   consumed,
   target,
   unit = '',
+  decimals = 2,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const tgt = Number(target);
+  const actualLabel = formatDisplayAmount(actual, decimals);
+  const targetLabel = formatDisplayAmount(tgt, decimals);
   if (!Number.isFinite(tgt) || tgt <= 0) {
     return buildParameterScore({
       key,
@@ -150,7 +163,7 @@ export function calculateTargetNutrient({
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Target reached (${actual}${unit} / ${tgt}${unit})`,
+      calculationReason: `Target reached (${actualLabel}${unit} / ${targetLabel}${unit})`,
     });
   }
   const earned = roundEarned(actual / tgt, maxPoints);
@@ -161,7 +174,7 @@ export function calculateTargetNutrient({
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${actual}${unit} / ${tgt}${unit}`,
+    calculationReason: `${actualLabel}${unit} / ${targetLabel}${unit}`,
   });
 }
 
@@ -174,9 +187,12 @@ export function calculateLimitNutrient({
   unit = '',
   lowerIsBetter = false,
   goalMode,
+  decimals = 2,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const lim = Number(limit);
+  const actualLabel = formatDisplayAmount(actual, decimals);
+  const limitLabel = formatDisplayAmount(lim, decimals);
   if (!Number.isFinite(lim) || lim <= 0) {
     return buildParameterScore({
       key,
@@ -208,7 +224,7 @@ export function calculateLimitNutrient({
         scoringMode: 'limit',
         maxPoints,
         earnedPoints: 0,
-        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+        calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
       });
     }
     return buildParameterScore({
@@ -218,7 +234,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
+      calculationReason: `Within limit (${actualLabel}${unit} ≤ ${limitLabel}${unit})`,
     });
   }
 
@@ -232,7 +248,7 @@ export function calculateLimitNutrient({
         scoringMode: 'limit',
         maxPoints,
         earnedPoints: 0,
-        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+        calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
       });
     }
     return buildParameterScore({
@@ -243,8 +259,8 @@ export function calculateLimitNutrient({
       maxPoints,
       earnedPoints: maxPoints,
       calculationReason: actual <= 0
-        ? `Within limit (0${unit} ≤ ${lim}${unit})`
-        : `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
+        ? `Within limit (0${unit} ≤ ${limitLabel}${unit})`
+        : `Within limit (${actualLabel}${unit} ≤ ${limitLabel}${unit})`,
     });
   }
 
@@ -257,7 +273,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: 0,
-      calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+      calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
     });
   }
   if (actual <= 0) {
@@ -268,7 +284,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: 0,
-      calculationReason: `0${unit} / ${lim}${unit}`,
+      calculationReason: `0${unit} / ${limitLabel}${unit}`,
     });
   }
   const earned = roundEarned(actual / lim, maxPoints);
@@ -279,7 +295,7 @@ export function calculateLimitNutrient({
     scoringMode: 'limit',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${actual}${unit} / ${lim}${unit}`,
+    calculationReason: `${actualLabel}${unit} / ${limitLabel}${unit}`,
   });
 }
 
@@ -524,7 +540,15 @@ export function calculateVitaminD({ maxPoints, consumed, target }) {
   return calculateTargetNutrient({ key: 'vitamin_d', label: 'Vitamin D', maxPoints, consumed, target, unit: 'mcg' });
 }
 export function calculateVitaminE({ maxPoints, consumed, target }) {
-  return calculateTargetNutrient({ key: 'vitamin_e', label: 'Vitamin E', maxPoints, consumed, target, unit: 'mg' });
+  return calculateTargetNutrient({
+    key: 'vitamin_e',
+    label: 'Vitamin E',
+    maxPoints,
+    consumed,
+    target,
+    unit: 'mg',
+    decimals: 1,
+  });
 }
 export function calculateVitaminK({ maxPoints, consumed, target }) {
   return calculateTargetNutrient({ key: 'vitamin_k', label: 'Vitamin K', maxPoints, consumed, target, unit: 'mcg' });

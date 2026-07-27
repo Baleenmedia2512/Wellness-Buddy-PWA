@@ -84,22 +84,20 @@ export function buildTeamMemberInsert({ name, heightCm = null, bmr = null, weigh
 }
 
 /**
- * True when a BPC lead was wrongly given the counsellor as CoachId and has never
- * chosen a coach via Setup Wizard OTP or skip-setup. Safe to clear CoachId so
- * onboarding can ask the user.
+ * True when a BPC lead still has CoachId set but never completed coach OTP /
+ * skip-setup. Any CoachId on such a row is stale (legacy bug or DB default) —
+ * clear it so onboarding can assign the real coach after member OTP flow.
  *
  * @param {{
  *   currentCoachId?: number|string|null,
- *   counsellorId?: number|string|null,
  *   entryUser?: string|null,
  *   setupSkipped?: boolean|null,
  *   hasApprovedCoachSelection?: boolean,
  * }} input
  * @returns {boolean}
  */
-export function shouldDetachCounsellorCoachAssignment({
+export function shouldClearBpcLeadCoachId({
   currentCoachId = null,
-  counsellorId = null,
   entryUser = null,
   setupSkipped = null,
   hasApprovedCoachSelection = false,
@@ -109,8 +107,31 @@ export function shouldDetachCounsellorCoachAssignment({
   if (String(entryUser || '').trim() !== 'Body Parameters Card') return false;
 
   const coachN = parseInt(currentCoachId, 10);
+  return Number.isFinite(coachN) && coachN > 0;
+}
+
+/**
+ * @deprecated Prefer shouldClearBpcLeadCoachId — kept for callers that only
+ * detached when counsellorId matched CoachId.
+ */
+export function shouldDetachCounsellorCoachAssignment({
+  currentCoachId = null,
+  counsellorId = null,
+  entryUser = null,
+  setupSkipped = null,
+  hasApprovedCoachSelection = false,
+} = {}) {
+  if (!shouldClearBpcLeadCoachId({
+    currentCoachId,
+    entryUser,
+    setupSkipped,
+    hasApprovedCoachSelection,
+  })) {
+    return false;
+  }
+
+  const coachN = parseInt(currentCoachId, 10);
   const counsellorN = parseInt(counsellorId, 10);
-  if (!Number.isFinite(coachN) || coachN < 1) return false;
   if (!Number.isFinite(counsellorN) || counsellorN < 1) return false;
   return coachN === counsellorN;
 }
