@@ -47,6 +47,8 @@ import {
   IANA_IST,
   assertNotFutureDateYmd,
   normalizeStoredTimestampToUtcIso,
+  normalizeFoodCreatedAt,
+  resolveFoodTimestamp,
   timestampToCalendarYmd,
 } from '../../shared/lib/datetime/index.js';
 
@@ -92,10 +94,15 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Timezone-less CreatedAt is IST wall time; map to owner calendar day (not UTC).
-  const mealDate = row.CreatedAt
-    ? timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST), IANA_IST)
-    : null;
+  // Food CreatedAt — canonical helper (legacy IST wall + spurious driver Z).
+  let mealDate = null;
+  if (row.CreatedAt) {
+    try {
+      mealDate = resolveFoodTimestamp(row.CreatedAt, IANA_IST).calendarYmd;
+    } catch {
+      mealDate = null;
+    }
+  }
 
   return {
     httpStatus: 200,
@@ -475,7 +482,11 @@ export function toDiaryEntry(
   row,
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
-  const capturedAt = normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
+  // Food rows use the canonical food CreatedAt helper (legacy IST wall +
+  // spurious driver Z). Other kinds keep the generic stored-timestamp rules.
+  const capturedAt = kind === 'food'
+    ? normalizeFoodCreatedAt(row.CreatedAt, timezoneIana)
+    : normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
   switch (kind) {
     case 'food':
       return {

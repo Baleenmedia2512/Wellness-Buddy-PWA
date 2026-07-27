@@ -120,14 +120,14 @@ export async function findTeamPhoneByUserId(userId) {
 }
 
 /**
- * Create a new team_table row from the phone the coach entered.
- * Checks if phone exists first; if yes, UPDATES the member.
- * If no, creates a new member. This avoids duplicate key errors.
+ * Create a new team_table row from the phone entered on the body-params form.
+ * Checks if phone exists first; if yes, UPDATES the member (name/height/BMR only).
+ * If no, creates a new member with CoachId left null — coach is chosen at onboarding.
  *
- * @param {{ name: string, phoneNumber: string, coachId: number, heightCm?: number|null, bmr?: number|null }} input
+ * @param {{ name: string, phoneNumber: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
-export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, heightCm, bmr, weightKg, fatPercent }) {
+export async function createTeamMemberFromPhone({ name, phoneNumber, heightCm, bmr, weightKg, fatPercent }) {
   const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
@@ -149,7 +149,7 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
     }
   }
 
-  // STEP 2: If phone exists, UPDATE existing member
+  // STEP 2: If phone exists, UPDATE existing member (never overwrite CoachId)
   if (existingUserId) {
     const updatePatch = {};
     if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
@@ -175,8 +175,8 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
     return { userId: existingUserId, isNew: false };
   }
 
-  // STEP 3: Phone doesn't exist, CREATE new member
-  const memberFields = buildTeamMemberInsert({ name, coachId, heightCm, bmr, weightKg, fatPercent });
+  // STEP 3: Phone doesn't exist, CREATE new member (CoachId set later via onboarding)
+  const memberFields = buildTeamMemberInsert({ name, heightCm, bmr, weightKg, fatPercent });
   const now = nowUtc();
   const insertPayload = {
     EntryDateTime: now,
@@ -188,7 +188,7 @@ export async function createTeamMemberFromPhone({ name, phoneNumber, coachId, he
     Status: 'Active',
     CoachApproved: 0,
     PhoneNumber: storedPhone,
-    CoachId: memberFields.CoachId,
+    CoachId: null,
     Role: 'user',
     ...(memberFields.Height != null ? { Height: memberFields.Height } : {}),
     ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
@@ -232,7 +232,7 @@ export async function linkCardToUser(cardId, userId) {
  * Required before Profile sync — body_parameters_cards.user_id is the join key.
  *
  * @param {object} card - persisted card row
- * @param {{ phoneNumber?: string|null, name?: string, coachId?: number, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} linkPayload
+ * @param {{ phoneNumber?: string|null, name?: string, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} linkPayload
  * @returns {Promise<number|null>} linked UserId
  */
 export async function ensureCardLinkedToUser(card, linkPayload = {}) {
@@ -243,7 +243,6 @@ export async function ensureCardLinkedToUser(card, linkPayload = {}) {
   const { userId } = await createTeamMemberFromPhone({
     name:        linkPayload.name ?? card.name,
     phoneNumber,
-    coachId:     linkPayload.coachId ?? card.created_by,
     heightCm:    linkPayload.heightCm ?? card.height_cm,
     bmr:         linkPayload.bmr ?? card.bmr,
     weightKg:    linkPayload.weightKg ?? card.weight_kg,

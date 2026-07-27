@@ -20,7 +20,7 @@
 
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { applyDayFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST } from '../../shared/lib/datetime/index.js';
+import { IANA_IST, filterFoodRowsByCalendarDay } from '../../shared/lib/datetime/index.js';
 
 /**
  * Food rows for the day. Mirrors `food-corrections.repository.js ::
@@ -47,7 +47,7 @@ export async function fetchFoodForDay(ownerUserId, date, timezoneIana = IANA_IST
   query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 /**
