@@ -1,5 +1,6 @@
 import React from 'react';
 import { Loader2, X } from 'lucide-react';
+import { formatCalculationReason } from '../domain/formatCalculationReason';
 
 /**
  * Bottom sheet — same interaction pattern as nutrition FoodBreakdownModal.
@@ -77,7 +78,7 @@ export default function ParameterContributionModal({
             </div>
             {calculationReason && (
               <p className="mt-1 text-[11px] font-medium leading-snug text-gray-700">
-                {calculationReason}
+                {formatCalculationReason(calculationReason)}
               </p>
             )}
           </div>

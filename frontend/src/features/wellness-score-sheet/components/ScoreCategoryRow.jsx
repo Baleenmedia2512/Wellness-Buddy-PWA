@@ -5,6 +5,7 @@ import {
   getScoringModeHint,
   SCORING_MODE_LABELS,
 } from '../domain/parameterIcons';
+import { formatCalculationReason } from '../domain/formatCalculationReason';
 
 function progressTone(pct) {
   if (pct >= 100) return { bar: 'bg-emerald-500', text: 'text-emerald-700' };
@@ -87,7 +88,7 @@ export default function ScoreCategoryRow({
               )}
               {!compact && category.calculationReason && (
                 <p className="mt-1 text-[11px] font-medium leading-snug text-gray-700">
-                  Today: {category.calculationReason}
+                  Today: {formatCalculationReason(category.calculationReason)}
                 </p>
               )}
             </div>
