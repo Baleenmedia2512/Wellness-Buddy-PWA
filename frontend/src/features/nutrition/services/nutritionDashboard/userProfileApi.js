@@ -1,21 +1,39 @@
 /**
- * fetchUserLatestWeight — fetch latestWeight from the user profile endpoint.
- * Returns null if the profile call fails or weight is not set.
+ * fetchUserMacroProfile — fetch latestWeight + gender from the user profile endpoint.
+ * Gender comes from coach-recorded body metrics (body_parameters_cards) when present.
+ * Returns nulls when the profile call fails or fields are unset.
+ *
+ * @returns {Promise<{ latestWeight: number|null, gender: string|null }>}
  */
-export async function fetchUserLatestWeight({ apiBaseUrl, email }) {
-  if (!email) return null;
+export async function fetchUserMacroProfile({ apiBaseUrl, email }) {
+  if (!email) return { latestWeight: null, gender: null };
   try {
     const res = await fetch(
       `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
     );
-    if (!res.ok) return null;
+    if (!res.ok) return { latestWeight: null, gender: null };
     const data = await res.json();
-    if (data.success && data.data?.latestWeight) {
+    if (!data.success || !data.data) return { latestWeight: null, gender: null };
+
+    let latestWeight = null;
+    if (data.data.latestWeight) {
       const w = parseFloat(data.data.latestWeight);
-      return Number.isFinite(w) && w > 0 ? w : null;
+      latestWeight = Number.isFinite(w) && w > 0 ? w : null;
     }
-    return null;
+
+    const rawGender = data.data.bodyMetrics?.gender;
+    const gender = rawGender && String(rawGender).trim() ? String(rawGender).trim() : null;
+
+    return { latestWeight, gender };
   } catch {
-    return null;
+    return { latestWeight: null, gender: null };
   }
+}
+
+/**
+ * @deprecated Prefer fetchUserMacroProfile — kept for callers that only need weight.
+ */
+export async function fetchUserLatestWeight({ apiBaseUrl, email }) {
+  const { latestWeight } = await fetchUserMacroProfile({ apiBaseUrl, email });
+  return latestWeight;
 }

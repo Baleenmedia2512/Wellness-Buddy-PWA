@@ -23,6 +23,7 @@ import {
   getCoachPhone,
 } from '../data/weight-progress.repo.js';
 import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
+import { findLatestLinkedBodyMetricsCard } from '../../body-parameters-card/data/card.repo.js';
 import { todayInTimezone, shiftDateYmd } from '../../../shared/lib/datetime/index.js';
 import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 
@@ -100,7 +101,9 @@ export async function checkProgressHandler(query) {
   const waterTarget = calculateWaterTarget(currentWeightValue);
   const calorieTarget = computeCalorieTarget(tdee, goalMode);
   const displayCalorieTarget = computeDisplayCalorieTarget(tdee);
-  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue);
+  const bodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
+  const gender = bodyMetricsCard?.gender || null;
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue, gender);
   const proteinTargetForTips = computeProteinTarget(currentWeightValue);
   console.log('🎯 [Step 3] targets — calories:', displayCalorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
 

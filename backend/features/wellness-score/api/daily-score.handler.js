@@ -16,6 +16,7 @@ import {
 import { enumerateScoreDates } from '../domain/date-range.js';
 import * as repo from '../data/wellness-score.repo.js';
 import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
+import { findLatestLinkedBodyMetricsCard } from '../../body-parameters-card/data/card.repo.js';
 import {
   resolveRequestedDateYmd,
   assertNotFutureDateYmd,
@@ -87,7 +88,8 @@ async function persistDailyScore(userId, payload) {
  */
 export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
   const tz = timezoneIana || await getUserTimezoneIana(userId);
-  const [    configRow,
+  const [
+    configRow,
     userGoal,
     timeWindowsRaw,
     educationLogs,
@@ -98,6 +100,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     waterFoodRows,
     stepRows,
     watchRows,
+    bodyMetricsCard,
   ] = await Promise.all([
     repo.getLatestConfig(),
     getUserWeightGoal(userId),
@@ -109,7 +112,9 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     waterRepo.getLatestWeight(userId),
     waterRepo.getFoodRowsForDate(userId, date, tz),
     activityRepo.fetchDailyRows(userId, date, date, null, tz),
-    activityRepo.fetchWatchCalorieRows(userId, date, tz),  ]);
+    activityRepo.fetchWatchCalorieRows(userId, date, tz),
+    findLatestLinkedBodyMetricsCard(userId),
+  ]);
 
   const parameterConfig = normalizeParameterConfig(configRow?.parameters ?? DEFAULT_PARAMETER_CONFIG);
   const timeWindows = {
@@ -134,8 +139,9 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     physicalActivityLevel: userGoal?.PhysicalActivityLevel,
   }) || bmr;
   const weightKg = latestWeightKg;
+  const gender = bodyMetricsCard?.gender || null;
   const dailyStats = aggregateDailyFoodStats(foodRecords);
-  const nutritionTargets = computeNutritionTargets({ bmr: calorieTarget, weightKg });
+  const nutritionTargets = computeNutritionTargets({ bmr: calorieTarget, weightKg, gender });
   const exerciseCalories = resolveDailyExerciseCalories(stepRows, watchRows);
   const currentWeight = pickCurrentWeight(weightRecords, latestWeightRow);
   const previousWeight = previousWeightRow ? parseFloat(previousWeightRow.Weight) : null;
