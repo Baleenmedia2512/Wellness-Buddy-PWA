@@ -26,22 +26,34 @@ const EMPTY_EATING_HABITS = {
 
 const EMPTY_SLEEP = { quality: '', duration: '' };
 
-export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClose } = {}) {
+// A "lead" is a prospective member who does not yet have an app account.
+// Only name + phone are captured here — the counselling form's existing
+// sections (EatingHabits, HealthProblems, etc.) capture everything else.
+const EMPTY_LEAD = { name: '', phone: '' };
+
+export function useCounsellingForm({ user, selectedMember, isLead = false, onSaveSuccess, onClose } = {}) {
   const [selectedHealthProblems, setSelectedHealthProblems] = useState([]);
   const [eatingHabits, setEatingHabits] = useState(EMPTY_EATING_HABITS);
   const [sleepData, setSleepData] = useState(EMPTY_SLEEP);
   const [medicationDetails, setMedicationDetails] = useState('');
+  const [leadDetails, setLeadDetails] = useState(EMPTY_LEAD);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState('');
 
   const targetMember = selectedMember || user;
 
+  // isLeadMode: true when explicitly flagged (isLead=true) OR when no real
+  // userId exists on the target member — meaning this assessment is for a
+  // new prospective member who has no app account yet.
+  const isLeadMode = isLead || (!selectedMember && !user?.id) || (!!selectedMember && !selectedMember?.userId && !selectedMember?.id);
+
   const resetForm = useCallback(() => {
     setSelectedHealthProblems([]);
     setEatingHabits(EMPTY_EATING_HABITS);
     setSleepData(EMPTY_SLEEP);
     setMedicationDetails('');
+    setLeadDetails(EMPTY_LEAD);
     setSaveSuccess(false);
     setError('');
   }, []);
@@ -52,7 +64,11 @@ export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClos
     }
   }, [resetForm]);
 
-  const isValid = selectedHealthProblems.length > 0;
+  // For lead mode: require at least name + phone + one health problem.
+  // For normal mode: require at least one health problem (legacy behaviour).
+  const isValid = isLeadMode
+    ? selectedHealthProblems.length > 0 && leadDetails.name.trim() !== '' && leadDetails.phone.trim() !== ''
+    : selectedHealthProblems.length > 0;
   const canSubmit = isValid && !isSaving;
 
   const buildPayload = useCallback(
@@ -63,9 +79,13 @@ export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClos
       eatingHabits,
       sleepData,
       medicationDetails,
+      // lead fields — only name + phone for linking the lead later.
+      // Diet type, health issues, etc. come from the counselling sections.
+      leadName: isLeadMode ? leadDetails.name.trim() || null : null,
+      leadPhone: isLeadMode ? leadDetails.phone.trim() || null : null,
       submittedAt: new Date().toISOString(),
     }),
-    [targetMember, user, selectedHealthProblems, eatingHabits, sleepData, medicationDetails],
+    [targetMember, user, selectedHealthProblems, eatingHabits, sleepData, medicationDetails, isLeadMode, leadDetails],
   );
 
   const handleSubmit = useCallback(
@@ -107,6 +127,9 @@ export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClos
     eatingHabits, setEatingHabits,
     sleepData, setSleepData,
     medicationDetails, setMedicationDetails,
+    leadDetails, setLeadDetails,
+    // flags
+    isLeadMode,
     // status
     isSaving, saveSuccess, error,
     isValid, canSubmit,

@@ -1,187 +1,33 @@
-/**
- * ActivityReport.js — Main Activity Report Component
- * 
- * Displays date filter, activity badges, and detailed grids for each activity type.
- * This component replaces the old Education Report and consolidates all activity tracking.
- */
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, RefreshCw, Download, Search, ChevronDown, ChevronUp,
+  RefreshCw, Download, Search,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
-  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+
+function mapRoleForApi(userRole) {
+  const n = String(userRole || 'member').toLowerCase();
+  if (n === 'admin' || n === 'developer') return 'admin';
+  if (n === 'coach' || n === 'upline') return 'coach';
+  return 'member';
+}
 
 // Activity type metadata
 const ACTIVITY_TYPES = [
   { id: 'weight', label: 'Weight', icon: Scale, color: 'blue', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
-  { id: 'education', label: 'Education Attendance', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
+  { id: 'education', label: 'Education', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
   { id: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'orange', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700' },
   { id: 'lunch', label: 'Lunch', icon: Utensils, color: 'green', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
   { id: 'dinner', label: 'Dinner', icon: Moon, color: 'purple', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
   { id: 'water', label: 'Water', icon: Droplets, color: 'cyan', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700' },
-  { id: 'calories', label: 'Calories', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+  { id: 'calories', label: 'Exercise', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
 ];
-
-const DATE_RANGES = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'last7days', label: 'Last 7 Days' },
-  { value: 'last30days', label: 'Last 30 Days' },
-  { value: 'custom', label: 'Custom Range' },
-];
-
-// Date Picker Component
-const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectingStart, setSelectingStart] = useState(true);
-  const [tempStart, setTempStart] = useState(startDate);
-  const [tempEnd, setTempEnd] = useState(endDate);
-
-  const daysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const handleDateClick = (day) => {
-    const clickedDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (clickedDate > today) return;
-
-    if (selectingStart) {
-      setTempStart(clickedDate);
-      setTempEnd(null);
-      setSelectingStart(false);
-    } else {
-      if (clickedDate < tempStart) {
-        setTempEnd(tempStart);
-        setTempStart(clickedDate);
-      } else {
-        setTempEnd(clickedDate);
-      }
-      onSelect(clickedDate < tempStart ? clickedDate : tempStart, clickedDate < tempStart ? tempStart : clickedDate);
-    }
-  };
-
-  const isInRange = (day) => {
-    if (!tempStart || !tempEnd) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date >= tempStart && date <= tempEnd;
-  };
-
-  const isStartDate = (day) => {
-    if (!tempStart) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date.toDateString() === tempStart.toDateString();
-  };
-
-  const isEndDate = (day) => {
-    if (!tempEnd) return false;
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return date.toDateString() === tempEnd.toDateString();
-  };
-
-  const renderCalendar = () => {
-    const days = [];
-    const totalDays = daysInMonth(currentMonth);
-    const firstDay = getFirstDayOfMonth(currentMonth);
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10" />);
-    }
-
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-
-    for (let day = 1; day <= totalDays; day++) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-      const isFuture = date > today;
-      const inRange = isInRange(day);
-      const isStart = isStartDate(day);
-      const isEnd = isEndDate(day);
-
-      days.push(
-        <button
-          key={day}
-          onClick={() => !isFuture && handleDateClick(day)}
-          disabled={isFuture}
-          className={`h-10 flex items-center justify-center text-sm rounded-lg transition-colors ${
-            isFuture
-              ? 'text-gray-300 cursor-not-allowed'
-              : isStart || isEnd
-              ? 'bg-green-600 text-white font-bold'
-              : inRange
-              ? 'bg-green-100 text-green-800'
-              : 'hover:bg-gray-100'
-          }`}
-        >
-          {day}
-        </button>
-      );
-    }
-
-    return days;
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="bg-white rounded-xl shadow-lg p-4 border border-gray-200"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <h3 className="text-lg font-semibold">
-          {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        </h3>
-        <button
-          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-          <div key={day} className="h-8 flex items-center justify-center text-xs font-semibold text-gray-600">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
-
-      <div className="mt-4 flex justify-between items-center">
-        <p className="text-xs text-gray-600">
-          {selectingStart ? 'Select start date' : 'Select end date'}
-        </p>
-        <button
-          onClick={onClose}
-          className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
-        >
-          Done
-        </button>
-      </div>
-    </motion.div>
-  );
-};
 
 // Activity Badge Component
 const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
@@ -219,7 +65,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
@@ -234,6 +79,25 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [memberStats, setMemberStats] = useState(null);
   const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [effectiveRole, setEffectiveRole] = useState(() => mapRoleForApi(userRole));
+
+  // Treat users with downline members in team_table as coaches for attendance data.
+  useEffect(() => {
+    let cancelled = false;
+    const baseRole = mapRoleForApi(userRole);
+    if (baseRole !== 'member' || !user?.id) {
+      setEffectiveRole(baseRole);
+      return undefined;
+    }
+    fetchHasTeamMembers(user.id)
+      .then((hasTeam) => {
+        if (!cancelled) setEffectiveRole(hasTeam ? 'coach' : 'member');
+      })
+      .catch(() => {
+        if (!cancelled) setEffectiveRole('member');
+      });
+    return () => { cancelled = true; };
+  }, [user?.id, userRole]);
 
   const formatDateForApi = (date) => {
     const year = date.getFullYear();
@@ -244,6 +108,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
   const fetchSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
     setError('');
@@ -253,7 +118,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType: 'summary',
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -277,10 +142,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchDetails = useCallback(async (activityType) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
     setError('');
@@ -290,7 +156,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType,
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -315,10 +181,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   const fetchMemberSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setMemberSummaryLoading(true);
     try {
@@ -326,7 +193,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         userId: String(user.id),
         activityType: 'member-summary',
         dateRange,
-        role: userRole || 'member',
+        role: effectiveRole,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -346,20 +213,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
     } catch (err) {
-      // Non-critical: silently log; summary tiles remain visible
       console.warn('Member summary fetch failed:', err.message);
     } finally {
       setMemberSummaryLoading(false);
     }
-  }, [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchSummary();
     fetchMemberSummary();
-    // Also load detail records for the default pre-selected activity on mount.
-    // fetchDetails is the stable useCallback instance; selectedActivity is read
-    // via closure so it is NOT added as a dependency — we only want this to
-    // re-run when the API params change (i.e. when fetchDetails is recreated).
     if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
   }, [fetchSummary, fetchMemberSummary, fetchDetails]);
 
@@ -373,17 +235,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
-    if (range === 'custom') {
-      setShowDatePicker(true);
-    } else {
-      setShowDatePicker(false);
+    setError('');
+    if (range !== 'custom') {
+      if (!customStartDate || !customEndDate) {
+        /* presets fetch immediately */
+      }
+    } else if (!customStartDate || !customEndDate) {
+      setSummary(null);
     }
   };
 
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
-    setShowDatePicker(false);
     setDetailRecords([]);
     setMemberSummaries([]);
     setMemberStats(null);
@@ -460,48 +324,58 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
       const activityLabel = selectedActivityMeta?.label || 'Activity';
 
-      // Build CSV header based on activity type
-      let headers = ['Member Name', 'City', 'Village', 'Phone Number', 'Coach Name', 'Reg. Date', 'Reg. Time', 'Club Name'];
+      // 1. Base headers re-ordered to match your new UI table
+      let headers = [
+        'Member Name',
+        // Dynamic columns will go here (index 1)
+        'Club',
+        'Reg. Date',
+        'Reg. Time',
+        'Coach Name',
+        'Phone Number',
+        'City',
+        'Village'
+      ];
       
+      // 2. Insert dynamic headers (Education has NO extra columns)
       if (selectedActivity === 'weight') {
-        headers.push('Weight (kg)');
-      } else if (selectedActivity === 'education') {
-        headers.push('Attendance Type', 'Topic');
+        headers.splice(1, 0, 'Weight (kg)');
       } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        headers.push('Meal Type', 'Calories');
+        headers.splice(1, 0, 'Meal Type', 'Calories');
       } else if (selectedActivity === 'water') {
-        headers.push('Water (L)');
+        headers.splice(1, 0, 'Water (L)');
       } else if (selectedActivity === 'calories') {
-        headers.push('Steps', 'Calories Burned');
+        headers.splice(1, 0, 'Steps', 'Calories Burned');
       }
 
       const csvRows = [headers.join(',')];
 
       filteredRecords.forEach((record) => {
+        // Handle "Remote" logic for Club Name
+        const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
+
+        // 3. Base row data matching the new re-ordered headers
         const baseRow = [
           `"${record.memberName || 'N/A'}"`,
-          `"${record.city || 'N/A'}"`,
-          `"${record.village || 'N/A'}"`,
-          `"${record.phone || 'N/A'}"`,
-          `"${record.coachName || 'N/A'}"`,
+          // Dynamic data will go here (index 1)
+          `"${displayClub}"`,
           record.date || 'N/A',
           record.time || 'N/A',
-          `"${record.clubName || 'N/A'}"`,
+          `"${record.coachName || 'N/A'}"`,
+          `"${record.phone || 'N/A'}"`,
+          `"${record.city || 'N/A'}"`,
+          `"${record.village || 'N/A'}"`,
         ];
 
+        // 4. Insert dynamic data into the row
         if (selectedActivity === 'weight') {
-          baseRow.push(record.weight || 'N/A');
-        } else if (selectedActivity === 'education') {
-          const attendanceLabel = record.attendanceType && record.attendanceType !== 'N/A'
-            ? record.attendanceType.charAt(0).toUpperCase() + record.attendanceType.slice(1)
-            : 'N/A';
-          baseRow.push(`"${attendanceLabel}"`, `"${record.topic && record.topic !== 'N/A' ? record.topic : '—'}"`);
+          baseRow.splice(1, 0, record.weight || 'N/A');
         } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-          baseRow.push(`"${record.mealType || 'N/A'}"`, record.calories || 0);
+          baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
         } else if (selectedActivity === 'water') {
-          baseRow.push(record.waterLiters || 0);
+          baseRow.splice(1, 0, record.waterLiters || 0);
         } else if (selectedActivity === 'calories') {
-          baseRow.push(record.steps || 0, record.caloriesBurned || 0);
+          baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
         }
 
         csvRows.push(baseRow.join(','));
@@ -549,28 +423,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     }
   };
 
-  const getCustomRangeLabel = () => {
-    if (!customStartDate || !customEndDate) return 'Select Dates';
-    const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <TouchFeedbackButton onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-6 h-6" />
-              </TouchFeedbackButton>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Attendance Report</h1>
-              </div>
-            </div>
+          
+          <div className="flex items-center justify-end">
             <TouchFeedbackButton
-              onClick={() => { fetchSummary(); fetchMemberSummary(); }}
+              onClick={() => {
+                fetchSummary();
+                fetchMemberSummary();
+                if (selectedActivity) fetchDetails(selectedActivity);
+              }}
               className="p-2 hover:bg-gray-100 rounded-lg"
               disabled={loading || memberSummaryLoading}
             >
@@ -581,36 +446,16 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Date Range Filter — single horizontal scrollable row */}
+        {/* Date Range Filter */}
         <div className="mb-6">
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {DATE_RANGES.map((range) => (
-              <TouchFeedbackButton
-                key={range.value}
-                onClick={() => handleDateRangeChange(range.value)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                  dateRange === range.value
-                    ? 'bg-green-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:border-green-400'
-                }`}
-              >
-                {range.value === 'custom' ? getCustomRangeLabel() : range.label}
-              </TouchFeedbackButton>
-            ))}
-          </div>
-
-          <AnimatePresence>
-            {showDatePicker && (
-              <div className="mt-4">
-                <DateRangePicker
-                  startDate={customStartDate}
-                  endDate={customEndDate}
-                  onSelect={handleCustomDateSelect}
-                  onClose={() => setShowDatePicker(false)}
-                />
-              </div>
-            )}
-          </AnimatePresence>
+          <ReportDateRangeFilter
+            ranges={ACTIVITY_REPORT_DATE_RANGES}
+            dateRange={dateRange}
+            onDateRangeChange={handleDateRangeChange}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateSelect={handleCustomDateSelect}
+          />
         </div>
 
         {/* Error Display */}
@@ -620,33 +465,36 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           </div>
         )}
 
-        {/* Activity Type Tabs — always visible, highlights the active type */}
+        {/* Activity Type Tabs */}
         {summary && (
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-5">
-            {ACTIVITY_TYPES.map((activity) => {
-              const Icon = activity.icon;
-              const isActive = selectedActivity === activity.id;
-              return (
-                <TouchFeedbackButton
-                  key={activity.id}
-                  onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
-                    isActive
-                      ? `${activity.bgColor} ${activity.borderColor}`
-                      : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
-                    {summary[activity.id] || 0}
-                  </span>
-                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {activity.label}
-                  </span>
-                </TouchFeedbackButton>
-              );
-            })}
-          </div>
+          <>
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {ACTIVITY_TYPES.map((activity) => {
+                const Icon = activity.icon;
+                const isActive = selectedActivity === activity.id;
+                return (
+                  <TouchFeedbackButton
+                    key={activity.id}
+                    onClick={() => handleActivityClick(activity.id)}
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all whitespace-nowrap ${
+                      isActive
+                        ? `${activity.bgColor} ${activity.borderColor}`
+                        : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                    <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
+                      {summary[activity.id] || 0}
+                    </span>
+                    <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {activity.label}
+                    </span>
+                  </TouchFeedbackButton>
+                );
+              })}
+            </div>
+            <hr className="mb-5 border-0 border-t border-gray-200" aria-hidden="true" />
+          </>
         )}
 
         {/* Detail Grid */}
@@ -692,28 +540,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
-                    <th
-                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
-                      onClick={() => handleSort('date')}
-                    >
-                      Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
-                    
+
+                    {/* --- DYNAMIC ACTIVITY COLUMNS --- */}
                     {selectedActivity === 'weight' && (
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Weight (kg)</th>
                     )}
-                    {selectedActivity === 'education' && (
-                      <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
-                      </>
-                    )}
+                    {/* Education columns (Topic/Type) removed */}
                     {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                       <>
                         <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Meal</th>
@@ -729,40 +561,34 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                         <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                       </>
                     )}
+
+                    {/* --- COMMON COLUMNS REORDERED --- */}
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('date')}
+                    >
+                      Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Village</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {paginatedRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">{display(record.memberName)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.coachName)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {record.clubName && record.clubName !== 'N/A'
-                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
-                          : <span className="text-gray-400 italic">Remote</span>
-                        }
+                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
+                        {display(record.memberName)}
                       </td>
-                      
+
+                      {/* --- DYNAMIC ACTIVITY DATA --- */}
                       {selectedActivity === 'weight' && (
                         <td className="px-4 py-3 text-sm font-semibold text-blue-600">{record.weight}</td>
                       )}
-                      {selectedActivity === 'education' && (
-                        <>
-                          <td className="px-4 py-3 text-sm capitalize text-gray-600">
-                            {record.attendanceType && record.attendanceType !== 'N/A'
-                              ? record.attendanceType.charAt(0).toUpperCase() + record.attendanceType.slice(1)
-                              : 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {record.topic && record.topic !== 'N/A' ? record.topic : '—'}
-                          </td>
-                        </>
-                      )}
+                      {/* Education data (Topic/Type) removed */}
                       {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
                         <>
                           <td className="px-4 py-3 text-sm capitalize text-gray-600">{record.mealType}</td>
@@ -778,6 +604,20 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                           <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
                         </>
                       )}
+
+                      {/* --- COMMON DATA REORDERED --- */}
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {record.clubName && record.clubName !== 'N/A'
+                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
+                          : <span className="text-gray-400 italic">Remote</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -6,10 +6,13 @@
 import { useCallback, useState } from 'react';
 import { validateManualEntry } from '../services/weightFormService';
 
-export function useWeightForm({ onSave, onClose } = {}) {
-  const [showTypeSelect, setShowTypeSelect] = useState(true);
-  const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState('kg');
+export function useWeightForm({ onSave, onClose, initialWeightValue = null, initialWeightUnit = null } = {}) {
+  // When the caller supplies initial values (e.g. AI-detected weight from the
+  // pre-flight analysis), skip the type-select screen and seed the form fields.
+  const hasInitial = initialWeightValue != null;
+  const [showTypeSelect, setShowTypeSelect] = useState(!hasInitial);
+  const [weight, setWeight] = useState(hasInitial ? String(initialWeightValue) : '');
+  const [unit, setUnit] = useState(initialWeightUnit || 'kg');
   const [bmr, setBmr] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);

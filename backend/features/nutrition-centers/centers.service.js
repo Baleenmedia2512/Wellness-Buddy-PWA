@@ -1,6 +1,8 @@
 import * as repo from './centers.repository.js';
 import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import logger from '../../shared/lib/logger.js';
+import { todayInTimezone } from '../../shared/lib/datetime/index.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 
 // ─── check name ──────────────────────────────────────────────────────────────
 export async function checkName({ name }) {
@@ -162,17 +164,17 @@ export async function listCenters(input) {
   const ownerMap = {};
   owners.forEach((o) => { ownerMap[o.UserId] = o.UserName; });
 
+  const timezoneIana = await getUserTimezoneIana(userId);
+
   if (!startDate || !endDate) {
-    const today = new Date().toISOString().split('T')[0];
-    startDate = today;
-    endDate = today;
+    const today = todayInTimezone(timezoneIana);
+    startDate = startDate || today;
+    endDate = endDate || today;
   }
-  const rangeStart = `${startDate}T00:00:00`;
-  const rangeEnd = `${endDate}T23:59:59`;
 
   const centersWithMetrics = await Promise.all(
     centers.map(async (center) => {
-      const rangeLogs = await repo.attendanceForCenter(center.id, rangeStart, rangeEnd);
+      const rangeLogs = await repo.attendanceForCenter(center.id, startDate, endDate, timezoneIana);
       const todayAttendance = new Set(rangeLogs.map((log) => log.UserId)).size;
       return {
         ...center,
@@ -189,17 +191,19 @@ export async function listCenters(input) {
 
 // ─── get attendees for a centre ──────────────────────────────────────────────
 export async function getAttendees({ centerId, startDate, endDate }) {
-  const today = new Date().toISOString().split('T')[0];
-  const rangeStart = `${startDate || today}T00:00:00`;
-  const rangeEnd = `${endDate || today}T23:59:59`;
+  const timezoneIana = 'Asia/Kolkata';
+  const today = todayInTimezone(timezoneIana);
+  const startYmd = startDate || today;
+  const endYmd = endDate || today;
 
   try {
     const attendees = await repo.getAttendeeList(
       parseInt(centerId, 10),
-      rangeStart,
-      rangeEnd,
+      startYmd,
+      endYmd,
+      timezoneIana,
     );
-    logger.info({ centerId, rangeStart, rangeEnd, count: attendees.length }, 'getAttendees');
+    logger.info({ centerId, startDate: startYmd, endDate: endYmd, count: attendees.length }, 'getAttendees');
     return { httpStatus: 200, body: { success: true, data: attendees } };
   } catch (err) {
     logger.error({ err, centerId }, 'getAttendees failed');

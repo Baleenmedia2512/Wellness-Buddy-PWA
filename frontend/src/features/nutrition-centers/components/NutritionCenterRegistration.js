@@ -5,6 +5,7 @@ import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { loadGoogleMaps } from '../services/googleMapsLoader';
 
 const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
   const [centerName, setCenterName] = useState('');
@@ -87,25 +88,9 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
       return;
     }
 
-    if (!window.google || !window.google.maps) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        if (window.google && window.google.maps) {
-          setMapLoaded(true);
-        } else {
-          setError('Google Maps failed to initialize properly');
-        }
-      };
-      script.onerror = () => {
-        setError('Failed to load Google Maps. Please check your internet connection and API key.');
-      };
-      document.head.appendChild(script);
-    } else {
-      setMapLoaded(true);
-    }
+    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then(() => setMapLoaded(true))
+      .catch((err) => setError(err.message));
 
     return () => {
       if (markerRef.current && markerRef.current.setMap) {
@@ -857,7 +842,9 @@ const NutritionCenterRegistration = ({ user, onBack, initialCenter }) => {
                 {/* Phone Number Input */}
                 <div className="flex-1">
                   <input
-                    type="tel"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={ownerPhone}
                     onChange={(e) => handlePhoneInput(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"

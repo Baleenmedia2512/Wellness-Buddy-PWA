@@ -27,7 +27,13 @@
  */
 
 import logger from '../logger.js';
-import { getModel, imageInlinePart, SchemaType, FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
+import {
+  generateContent,
+  imageInlinePart,
+  SchemaType,
+  MODEL_NAME,
+  FALLBACK_MODEL_NAME,
+} from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
 import { withEnterpriseRetry } from './RetryPolicy.js';
 
@@ -187,9 +193,335 @@ const ENRICHMENT_SCHEMA = {
   required: ['enrichment', 'confidence'],
 };
 
-// ── Prompts (module-level constants) ──────────────────────────────────────────
+// ── Herbalife prepared shake (fixed business profile) ─────────────────────────
+
+/** Canonical name for a prepared Herbalife meal-replacement shake. */
+const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
+
+/**
+ * Fixed nutrition for the standard Wellness Valley prepared shake recipe.
+ * Single source of truth — reused by prompts and deterministic backend overrides.
+ */
+/** Standard USA water-bottle size (1 L). Used in prompts and post-processing overrides. */
+const WATER_BOTTLE_ML = 1000;
+
+const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
+  name:      HERBALIFE_SHAKE_NAME,
+  portion:   '1 serving',
+  weight_g:  58,
+  volume_ml: 300,
+  unit:      'ml',
+  isLiquid:  true,
+  nutrition: Object.freeze({
+    calories:       223,
+    protein:        24.73,
+    carbs:          24.24,
+    fat:            2.98,
+    fiber:          3.00,
+    sugar:          11.57,
+    sodium:         355,
+    cholesterol:    7,
+    glycemic_index: 20,
+    vitamin_a:      210,
+    vitamin_c:      15,
+    vitamin_d:      3.40,
+    vitamin_e:      5,
+    vitamin_k:      0,
+    vitamin_b1:     0.45,
+    vitamin_b2:     0.45,
+    vitamin_b3:     5,
+    vitamin_b6:     0.80,
+    vitamin_b9:     85,
+    vitamin_b12:    0.40,
+    calcium:        129,
+    iron:           3,
+    magnesium:      50,
+    potassium:      260,
+    zinc:           2.5,
+    phosphorus:     0,
+  }),
+});
+
+function cloneHerbalifeShakeNutrition() {
+  return { ...HERBALIFE_SHAKE_NUTRITION.nutrition };
+}
+
+function extractHerbalifeShakeFastNutrition() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(FAST_NUTRITION_KEYS.map((key) => [key, nutrition[key]]));
+}
+
+function extractHerbalifeShakeEnrichment() {
+  const nutrition = HERBALIFE_SHAKE_NUTRITION.nutrition;
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition[key] ?? 0]),
+  );
+}
+
+const FAST_NUTRITION_KEYS = Object.freeze([
+  'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium', 'cholesterol', 'glycemic_index',
+]);
+
+const ALL_NUTRITION_KEYS = Object.freeze(Object.keys(HERBALIFE_SHAKE_NUTRITION.nutrition));
+
+function normalizeFoodName(name) {
+  return String(name ?? '').trim().toLowerCase();
+}
+
+/** Formula 1 powder/container product — NOT a prepared drink; never apply shake override. */
+function isFormula1ProductContainer(name) {
+  const n = normalizeFoodName(name);
+  if (!n.includes('formula 1') && !n.includes('formula1')) return false;
+  return (
+    n.includes('nutritional shake mix')
+    || n.includes('shake mix')
+    || /\bpowder\b/.test(n)
+    || (n.includes('mix') && !n.includes('protein drink mix'))
+  );
+}
+
+/**
+ * True when AI labelled a prepared Herbalife meal-replacement shake (including legacy names).
+ * @param {string} name
+ */
+function isPreparedHerbalifeShakeName(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  if (isFormula1ProductContainer(n)) return false;
+  if (n === 'herbalife shake') return true;
+  if (n.includes('wellness valley shake')) return true;
+  if (n.includes('formula 1') && n.includes('shake')) return true;
+  if (n.includes('herbalife') && n.includes('shake')) return true;
+  return false;
+}
+
+function buildHerbalifeShakeFoodItem(existing = {}) {
+  const nutrition = cloneHerbalifeShakeNutrition();
+  const {
+    nutrition: _nutrition,
+    calories: _calories,
+    protein: _protein,
+    carbs: _carbs,
+    fat: _fat,
+    fiber: _fiber,
+    sugar: _sugar,
+    sodium: _sodium,
+    cholesterol: _cholesterol,
+    glycemic_index: _glycemicIndex,
+    vitamin_a: _vitaminA,
+    vitamin_c: _vitaminC,
+    vitamin_d: _vitaminD,
+    vitamin_e: _vitaminE,
+    vitamin_k: _vitaminK,
+    vitamin_b1: _vitaminB1,
+    vitamin_b2: _vitaminB2,
+    vitamin_b3: _vitaminB3,
+    vitamin_b6: _vitaminB6,
+    vitamin_b9: _vitaminB9,
+    vitamin_b12: _vitaminB12,
+    calcium: _calcium,
+    iron: _iron,
+    magnesium: _magnesium,
+    potassium: _potassium,
+    zinc: _zinc,
+    phosphorus: _phosphorus,
+    name: _name,
+    portion: _portion,
+    weight_g: _weightG,
+    volume_ml: _volumeMl,
+    unit: _unit,
+    isLiquid: _isLiquid,
+    ...rest
+  } = existing;
+
+  return {
+    ...rest,
+    name:      HERBALIFE_SHAKE_NUTRITION.name,
+    portion:   HERBALIFE_SHAKE_NUTRITION.portion,
+    weight_g:  HERBALIFE_SHAKE_NUTRITION.weight_g,
+    volume_ml: HERBALIFE_SHAKE_NUTRITION.volume_ml,
+    unit:      HERBALIFE_SHAKE_NUTRITION.unit,
+    isLiquid:  HERBALIFE_SHAKE_NUTRITION.isLiquid,
+    nutrition,
+  };
+}
+
+function sumNutritionFields(foods) {
+  const shakeFoods = foods.filter((food) => isPreparedHerbalifeShakeName(food?.name));
+  const otherFoods = foods.filter((food) => !isPreparedHerbalifeShakeName(food?.name));
+
+  if (shakeFoods.length > 0 && otherFoods.length === 0) {
+    return cloneHerbalifeShakeNutrition();
+  }
+
+  let total = shakeFoods.length > 0
+    ? cloneHerbalifeShakeNutrition()
+    : Object.fromEntries(ALL_NUTRITION_KEYS.map((key) => [key, 0]));
+
+  for (const food of otherFoods) {
+    const nutrition = food?.nutrition ?? {};
+    for (const key of ALL_NUTRITION_KEYS) {
+      const val = nutrition[key];
+      if (val != null && val !== '') total[key] += +val;
+    }
+  }
+
+  return total;
+}
+
+function extractFastNutrition(total, foods = []) {
+  if (Array.isArray(foods) && foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+    return extractHerbalifeShakeFastNutrition();
+  }
+
+  return Object.fromEntries(
+    FAST_NUTRITION_KEYS.map((key) => [key, total?.[key] ?? 0]),
+  );
+}
+
+function extractEnrichmentNutrition(nutrition) {
+  if (nutrition === HERBALIFE_SHAKE_NUTRITION.nutrition) {
+    return extractHerbalifeShakeEnrichment();
+  }
+
+  return Object.fromEntries(
+    Object.keys(ENRICHMENT_PROPS).map((key) => [key, nutrition?.[key] ?? 0]),
+  );
+}
+
+function sumEnrichmentFields(left, right) {
+  const result = {};
+  for (const key of Object.keys(ENRICHMENT_PROPS)) {
+    result[key] = (left?.[key] ?? 0) + (right?.[key] ?? 0);
+  }
+  return result;
+}
+
+/**
+ * Apply fixed Herbalife Shake nutrition to detected prepared shakes and recompute totals.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyHerbalifeShakeOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let shakeFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPreparedHerbalifeShakeName(food?.name)) return food;
+    shakeFound = true;
+    return buildHerbalifeShakeFoodItem(food);
+  });
+
+  if (!shakeFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
+function isPlainWater(name) {
+  const n = normalizeFoodName(name);
+  return (
+    n === 'water'
+    || n === 'plain water'
+    || n === 'drinking water'
+    || n === 'bottled water'
+    || n === 'mineral water'
+  );
+}
+
+function isWaterBottlePortion(portion) {
+  return /\bbottles?\b/i.test(String(portion ?? ''));
+}
+
+function extractBottleQuantity(portion) {
+  const match = String(portion ?? '').match(/(\d+(?:\.\d+)?)\s*bottles?\b/i);
+  return match ? parseFloat(match[1]) : 1;
+}
+
+function formatWaterBottlePortion(quantity) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  if (quantity === 1) return `1 bottle (${WATER_BOTTLE_ML} ml)`;
+  const qtyLabel = Number.isInteger(quantity) ? quantity : quantity.toFixed(1);
+  return `${qtyLabel} bottles (${volumeMl} ml)`;
+}
+
+function buildWaterBottleFoodItem(existing = {}, quantity = 1) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  return {
+    ...existing,
+    name: 'Water',
+    portion: formatWaterBottlePortion(quantity),
+    weight_g: null,
+    volume_ml: volumeMl,
+    unit: 'ml',
+    isLiquid: true,
+  };
+}
+
+/**
+ * Normalize plain-water bottle servings to the standard 1 L (USA) size.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyWaterBottleOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let bottleFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPlainWater(food?.name) || !isWaterBottlePortion(food?.portion)) return food;
+    bottleFound = true;
+    return buildWaterBottleFoodItem(food, extractBottleQuantity(food.portion));
+  });
+
+  if (!bottleFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
+function formatHerbalifeShakeEnrichmentReference() {
+  const micros = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
+  return Object.entries(micros)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ');
+}
+
+const HERBALIFE_SHAKE_DETECTION_PROMPT = `Herbalife Shake — STANDARD PREPARED MEAL-REPLACEMENT DRINK (detection only):
+
+Members prepare the same fixed recipe (58 g total powder + water → ~300 ml; water = 0 calories):
+  • Formula 1 Nutritional Shake Mix — 3 scoops — 25 g
+  • ShakeMate — 2 scoops — 27 g
+  • Protein Drink Mix (PDM) — 1 scoop — 6 g
+
+Classify as "${HERBALIFE_SHAKE_NAME}" when the drink is thick, creamy, opaque, smoothie or milkshake consistency,
+inside a shaker, glass, or cup and appears to be a Herbalife meal-replacement drink.
+
+NEVER name a prepared drink "Herbalife Formula 1 Shake" or "Herbalife Wellness Valley Shake".
+Use "Herbalife Formula 1" / "Herbalife Formula 1 Nutritional Shake Mix" ONLY for the powder product container itself.
+Transparent drinks remain "Herbalife Afresh Energy Drink".
+
+Do NOT estimate powder weight, scoop count, or shake nutrition — set all "${HERBALIFE_SHAKE_NAME}" nutrition fields to 0;
+the server applies the fixed profile after detection.
+
+Additional visible ingredients (banana, apple, milk, oats, berries, almonds, peanut butter, etc.):
+  list each as a SEPARATE food item with independently estimated nutrition.
+  Do NOT modify "${HERBALIFE_SHAKE_NAME}" nutrition — extras are summed into details.total only.`;
 
 const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON object matching the schema.
+
+=== PRIORITY CONTEXT ===
+This app serves a Tamil Nadu, India wellness community using Herbalife products.
+PRIORITY RECOGNITION ORDER (highest → lowest):
+  1. Herbalife product (shake, supplement, beverage packet)
+  2. Tamil Nadu / South Indian / Indian food
+  3. Other Asian food
+  4. Western / international food
+When the food is ambiguous or unclear, ALWAYS assume Tamil Nadu food before any Western food.
+If you see something that could be either dosa batter or pancake batter → call it dosa batter.
+If it could be rice or pasta → call it rice.
+Never default to a Western food name when an Indian equivalent is plausible.
 
 === imageType ===
 
@@ -213,42 +545,86 @@ const UNIFIED_PROMPT = `Analyze this image in one pass. Return exactly one JSON 
 Score 0.0–1.0. Reports certainty only — never changes imageType.
 A blurry food photo = "food" at 0.55, not "other".
 
-=== Herbalife products ===
-This app serves Herbalife Wellness community members. Recognize on sight:
+=== Herbalife products (HIGHEST PRIORITY — recognise on sight) ===
+These are the most common items in this app. When in doubt, check Herbalife first.
 
-Meal-replacement shakes (isLiquid: true, complete meal, ~250–300 ml):
-- "Herbalife Formula 1 Shake" — powder sachet or shaker bottle. ~200–260 kcal, 9 g protein, 36 g carbs, 1 g fat. Adjust if prepared with plant milk.
-- "Herbalife Protein Drink Mix (PDM)" — added to F1 shake.
-- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink.
+=== Herbalife Drink Recognition (Highest Priority) ===
 
-Hydration beverages (isLiquid: true, NOT a meal):
-- "Herbalife Afresh Energy Drink" — yellow/orange powder or prepared cup. ~10–20 kcal.
-- "Herbalife Herbal Tea Concentrate" — small sachet or bottle. ~5–10 kcal.
+Always classify Herbalife drinks using TEXTURE first, then transparency, then consistency, then colour.
+Texture has higher priority than colour.
 
-Supplements (isLiquid: false, near-zero calories):
-- "Herbalife Formula 2 Multivitamin" | "Herbalife Formula 3 Cell Activator"
-- "Herbalife NightWorks / Niteworks" | "Herbalife Xtra-Cal"
-- Any other labelled Herbalife supplement bottle or packet.
+Classification priority:
+1. Texture
+2. Transparency
+3. Consistency
+4. Colour
 
-=== Tamil Nadu foods ===
-Most users are from Tamil Nadu, India. Use these specific names:
+Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
+- Transparent or semi-transparent.
+- Thin, watery consistency like tea or coloured water.
+- Never creamy or thick.
+- Brown, amber, green or yellow colours are acceptable.
+- Examples: transparent brown drink → Herbalife Afresh Energy Drink; semi-transparent tea → Herbalife Afresh Energy Drink.
+- Always classify as "Herbalife Afresh Energy Drink".
+- Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
 
-Breakfast:  Idli, Dosa, Uthappam, Pongal (sweet/savoury), Appam, Puttu, Idiyappam
-Rice:       Curd Rice, Lemon Rice, Puliyodarai, Tomato Rice, Coconut Rice,
-            Sambar Rice, Rasam Rice, Chicken Biryani, Mutton Biryani, Seeraga Samba Biryani
-Breads:     Parotta, Kothu Parotta, Veechu Parotta, Chapati, Phulka, Roti
-Curries:    Sambar, Rasam, Poriyal, Kootu, Avial, Moru Kuzhambu, Vatha Kuzhambu,
-            Chicken Chettinad, Mutton Kuzhambu, Meen Kuzhambu, Egg Curry, Egg Bhurji,
-            Paneer Butter Masala, Dal Tadka
-Sides:      Coconut Chutney, Tomato Chutney, Onion Chutney
-Snacks:     Murukku, Seedai, Sundal, Bonda, Bajji, Mixture, Omapodi, Kara Sev
-Beverages:  Filter Coffee, Masala Chai, Ginger Tea, Buttermilk (Moru), Tender Coconut Water, Sugarcane Juice
-Sweets:     Sweet Pongal (Sakkarai Pongal), Payasam, Mysore Pak, Adhirasam, Laddu, Halwa, Jangiri, Badusha
+Herbalife Shake (standard meal-replacement — prepared drink in cup/glass/bottle/shaker):
+- Users upload photos of PREPARED shakes, not dry powder.
+- Thick, creamy, smooth, velvety; opaque; milkshake or smoothie consistency.
+- Chocolate, vanilla, coffee or strawberry colours are acceptable.
+- Examples: thick chocolate shake in shaker → Herbalife Shake; creamy vanilla drink in glass → Herbalife Shake.
+- Always name prepared thick shakes "${HERBALIFE_SHAKE_NAME}" — never "Herbalife Formula 1 Shake".
+- Do NOT estimate powder weight, scoop count, or shake nutrition (use 0; server applies fixed profile).
+
+${HERBALIFE_SHAKE_DETECTION_PROMPT}
+
+Other Herbalife products:
+- "Herbalife Formula 1 Nutritional Shake Mix" / "Herbalife Formula 1" — ONLY when the Formula 1 powder container is visible (not a prepared drink).
+- "Herbalife Protein Drink Mix (PDM)" — powder/scoop container only (identify only; do not estimate nutrition when shown separately).
+- "Herbalife High Protein Iced Coffee" — coffee-flavoured meal drink (identify only; do not estimate nutrition).
+- "Herbalife Herbal Tea Concentrate" — small sachet, dark concentrate bottle.
+    Per cup (~200 ml): 8 kcal, 0 g protein, 2 g carbs, 0 g fat. Antioxidant beverage.
+
+Supplements (isLiquid: false, near-zero calories — estimate 5–10 kcal per tablet/capsule):
+- "Herbalife Formula 2 Multivitamin" — oval bottle, yellow/white label.
+- "Herbalife Formula 3 Cell Activator" — oval bottle, orange label.
+- "Herbalife NightWorks / Niteworks" — heart-health supplement.
+- "Herbalife Xtra-Cal" — calcium supplement.
+- "Herbalife Prolessa Duo" — weight management.
+- Any labelled Herbalife supplement bottle/packet: name it exactly as printed.
+
+=== Tamil Nadu / South Indian foods (SECOND PRIORITY) ===
+Use these EXACT names. If unsure, pick the closest Tamil Nadu food — never default to a Western name.
+Estimate nutrition using USDA FoodData Central / IFCT (Indian Food Composition Tables) values.
+
+Breakfast (~portion): Idli (~45 g/piece), Dosa (~90 g), Masala Dosa (~180 g), Rava Dosa (~90 g),
+  Uthappam (~120 g), Pongal/Ven Pongal (~200 g/cup), Appam (~80 g), Puttu (~120 g),
+  Idiyappam (~100 g), Poha/Aval (~180 g/cup), Upma (~200 g/cup).
+
+Rice (~200 g/cup cooked): Plain White Rice, Curd Rice, Lemon Rice, Puliyodarai/Tamarind Rice,
+  Tomato Rice, Coconut Rice, Sambar Rice (sadam), Chicken Biryani (~350 g/plate),
+  Mutton Biryani (~350 g/plate), Seeraga Samba Biryani (~350 g/plate), Vegetable Biryani (~300 g/plate).
+
+Breads: Parotta (~90 g), Kothu Parotta (~250 g), Chapati/Roti (~40 g), Phulka (~30 g).
+
+Gravies (~200 ml/g cup): Sambar, Rasam, Kootu, Poriyal (~100 g), Avial (~150 g),
+  Moru Kuzhambu, Vatha Kuzhambu (~150 ml), Chicken Chettinad, Mutton Kuzhambu,
+  Meen Kuzhambu/Fish Curry, Egg Curry, Egg Bhurji, Paneer Butter Masala, Dal Tadka,
+  Coconut Chutney (~30 g), Tomato Chutney (~30 g).
+
+Snacks: Murukku (~30 g), Sundal (~100 g), Bonda (~60 g), Bajji (~50 g).
+
+Beverages (isLiquid: true): Filter Coffee with milk (~150 ml), Masala Chai with milk (~150 ml),
+  Plain Tea with milk (~150 ml), Ginger Tea with milk (~150 ml), Buttermilk/Moru (~200 ml),
+  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml),
+  Plain Water (~250 ml glass), Water Bottle (~1000 ml / 1 L — USA standard, never 750 ml).
+
+Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~50 g),
+  Halwa (~80 g), Laddu (~50 g).
 
 === isLiquid ===
-true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea)
-         and Herbalife meal-replacement shakes (also count as complete meals)
-false → all solid foods (rice, bread, curry, snacks, idli, etc.)
+true  → all beverages (water, tea, coffee, juices, buttermilk, coconut water, Afresh, Herbal Tea Concentrate, Herbalife Shake)
+false → solid foods and supplement tablets/capsules
 
 === FOOD output ===
 
@@ -257,8 +633,8 @@ fastNutrition — 9-field aggregate totals:
 
 details.foods — one object per visible edible item or beverage:
 {
-  name,       ← specific only: "Idli" / "Masala Chai" / "Plain Water" — never "Food"/"Drink"/"Meal"/"Snack"
-  portion,    ← realistic serving size string
+  name,       ← specific: "Idli" / "Herbalife Shake" / "Filter Coffee" — never generic "Food"/"Drink"/"Meal"
+  portion,    ← realistic serving size string  e.g. "2 pieces" / "1 cup (200 ml)"
   weight_g,   ← solids (g)
   volume_ml,  ← liquids (ml); provide both when estimable
   isLiquid,
@@ -274,7 +650,11 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
-- Estimate using USDA FoodData Central or equivalent.
+- Water bottle: always 1000 ml (1 L) per full bottle; portion e.g. "1 bottle (1000 ml)".
+- Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
+- "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
+- If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
+- For any other Indian food, estimate using USDA FoodData Central or equivalent.
 
 details.total — same 26 flat fields, sum of all foods:
 { calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, glycemic_index,
@@ -282,7 +662,7 @@ details.total — same 26 flat fields, sum of all foods:
   vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b6, vitamin_b9, vitamin_b12,
   calcium, iron, magnesium, potassium, zinc, phosphorus }
 
-Consistency:
+Consistency rules:
 - Detect EVERY visible edible item: main dish, sides, chutneys, sauces, condiments, beverages, water. Each = separate object in details.foods. Do NOT stop at the dominant dish.
 - fastNutrition MUST equal details.total for all 9 shared fields.
 - details.total MUST equal the sum of all details.foods items.
@@ -319,29 +699,62 @@ function buildEnrichmentPrompt(fastCtx, foodItems) {
 
 Provide ONLY the 21 micronutrient enrichment values — do NOT re-estimate macros.
 Return JSON matching the schema exactly (all enrichment fields required).
-Use USDA FoodData Central reference values. Only return 0 when a nutrient is genuinely absent (e.g. vitamin D in a plant food with no fortification).
+All values numeric; absent/unknown → 0, never null.
+Units: vitamin_a µg RAE | vitamin_d/k µg | all others mg.
 
-Reference values for common Tamil Nadu beverages when made with cow's milk:
-- Filter Coffee / Masala Chai / Tea with milk (per ~150–200 ml cup): calcium 100–150 mg, potassium 180–250 mg, phosphorus 90–120 mg, vitamin_b2 0.15–0.25 mg, vitamin_b12 0.4–0.6 µg, magnesium 12–20 mg, vitamin_a 40–60 µg, vitamin_b1 0.04–0.07 mg.
+Use the reference values below when the identified food matches. Interpolate for mixed dishes.
+
+=== Herbalife products ===
+${HERBALIFE_SHAKE_NAME} (1 serving — fixed; server-side profile):
+  ${formatHerbalifeShakeEnrichmentReference()}
+  When "${HERBALIFE_SHAKE_NAME}" is the only identified item, return these exact micronutrient values.
+
+Herbalife Afresh Energy Drink (1 cup):
+  vitamin_c: 15, potassium: 30. All others: 0.
+Herbalife Herbal Tea Concentrate (1 cup):
+  vitamin_c: 5. All others: 0.
+Herbalife Formula 2 Multivitamin (per daily dose):
+  vitamin_a: 700, vitamin_c: 80, vitamin_d: 10, vitamin_e: 12, vitamin_k: 60,
+  vitamin_b1: 1.1, vitamin_b2: 1.4, vitamin_b3: 16, vitamin_b6: 1.4, vitamin_b9: 200, vitamin_b12: 2.5,
+  calcium: 150, iron: 8, magnesium: 55, potassium: 80, zinc: 7, phosphorus: 100.
+
+For all Tamil Nadu foods use USDA / IFCT (Indian Food Composition Tables) values from your training data.
+For any other food, use USDA FoodData Central.
 
 JSON only. No markdown.`;
 }
 
 /**
  * Returns true when the primary model should be abandoned in favour of the
- * fallback model.  Two cases:
+ * fallback model.  Triggers on:
  *   1. Circuit breaker opened after N consecutive failures — the primary is
  *      saturated; bypass immediately without waiting for more retries.
  *   2. All retries exhausted with 503 / service-unavailable errors.
+ *   3. All retries exhausted with 429 / quota-exceeded / rate-limit errors.
+ *      Google's API returns 429 with "Resource has been exhausted" when the
+ *      per-model quota is hit; switching to the fallback model (a separate
+ *      quota bucket) is the correct recovery action.
  */
 function isPrimaryOverloadedError(err) {
   if (!err) return false;
   // Circuit opened for the primary → the primary service is considered down
   if (err.code === 'CIRCUIT_OPEN') return true;
   const status = Number(err.status);
-  if (status === 503) return true;
+  // 502 = bad gateway (upstream Gemini infrastructure failure)
+  // 503 = service unavailable (overloaded)
+  // 429 = quota exceeded / rate limited (separate quota on fallback model)
+  if (status === 502 || status === 503 || status === 429) return true;
   const msg = (err.message ?? '').toLowerCase();
-  return msg.includes('503') || msg.includes('service unavailable') || msg.includes('high demand');
+  return (
+    msg.includes('503')                       ||
+    msg.includes('service unavailable')       ||
+    msg.includes('high demand')               ||
+    msg.includes('429')                       ||
+    msg.includes('quota')                     ||
+    msg.includes('rate limit')                ||
+    msg.includes('resource has been exhausted') ||
+    msg.includes('too many requests')
+  );
 }
 
 // ── Internal call helper ──────────────────────────────────────────────────────
@@ -360,51 +773,143 @@ function isPrimaryOverloadedError(err) {
  * @param {string|null} [opts.modelOverride]  Internal: set by fallback path.
  * @returns {Promise<{ rawText: string, attempts: number, latencyMs: number }>}
  */
-async function callModel(configKey, parts, schema, { label, trace = null, modelOverride = null }) {
-  const model = getModel(configKey, schema, modelOverride);
-
+async function callModel(
+  configKey,
+  parts,
+  schema,
+  { label, trace = null, modelOverride = null },
+) {
   // The fallback model uses its own independent circuit breaker so an opened
   // primary breaker does not also block the fallback.
-  const circuitService = modelOverride ? `${SERVICE}-fallback` : SERVICE;
+  const circuitService = modelOverride
+    ? `${SERVICE}-fallback`
+    : SERVICE;
 
   let result, attempts, totalLatencyMs;
+
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-      () => model.generateContent(parts),
-      { label, service: circuitService },
+      () =>
+        generateContent(
+          configKey,
+          parts,
+          schema,
+          modelOverride,
+          trace
+        ),
+      {
+        label,
+        service: circuitService,
+
+        // Primary model (Flash): 1 attempt only — frontend drives all retries.
+        // Previously 2 silently doubled wait time before the caller knew it
+        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
+        // orchestratorService.js usePro logic).
+        //
+        // Fallback model (Pro): cap at 2 backend attempts.
+        // Each backend attempt has a 30 s hard timeout (DEFAULT_TIMEOUT_MS).
+        // 2 × 30 s = 60 s, which exactly fits the Vercel maxDuration for
+        // pages/api/ai/orchestrate.js. A third attempt would hit the 504.
+        ...(modelOverride ? { maxAttempts: 2 } : { maxAttempts: 1 }),
+      },
     ));
   } catch (err) {
-    // Primary model saturated or circuit open → try fallback model once
+    // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
-      logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
+      const status = Number(err.status);
+
+      const reason =
+        err.code === 'CIRCUIT_OPEN'
+          ? 'circuit_open'
+          : status === 502
+            ? '502_bad_gateway'
+            : (
+                status === 429 ||
+                (err.message ?? '').toLowerCase().includes('quota') ||
+                (err.message ?? '').toLowerCase().includes('rate limit') ||
+                (err.message ?? '').toLowerCase().includes('too many requests')
+              )
+              ? '429_quota_exceeded'
+              : '503_overload';
+
+      logger.warn(
+        'AIGateway.callModel: primary model unavailable, switching to fallback',
+        {
+          label,
+          fallbackModel: FALLBACK_MODEL_NAME,
+          reason,
+          primaryError: err.message,
+        },
+      );
+
+      return callModel(configKey, parts, schema, {
         label,
-        fallbackModel: FALLBACK_MODEL_NAME,
-        reason:        err.code === 'CIRCUIT_OPEN' ? 'circuit_open' : '503_overload',
-        primaryError:  err.message,
+        trace,
+        modelOverride: FALLBACK_MODEL_NAME,
       });
-      return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });
     }
+
     throw err;
   }
 
   // Propagate retries into trace
   if (trace && attempts > 1) {
-    for (let i = 1; i < attempts; i += 1) trace.addRetry();
+    for (let i = 1; i < attempts; i += 1) {
+      trace.addRetry();
+    }
   }
 
   const rawText = result.response.text();
 
-  // Accumulate token usage (available on supported model versions)
+  // Accumulate token usage
   const usage = result.response?.usageMetadata;
   if (trace && usage) {
     trace.addTokenUsage({
-      inputTokens:  usage.promptTokenCount     ?? 0,
+      inputTokens: usage.promptTokenCount ?? 0,
       outputTokens: usage.candidatesTokenCount ?? 0,
-      model:        configKey,
+      model: configKey,
     });
   }
 
-  return { rawText, attempts, latencyMs: totalLatencyMs };
+  const finishReason = result.response?.candidates?.[0]?.finishReason;
+
+  if (finishReason === 'MAX_TOKENS') {
+    const err = new Error(
+      `MAX_TOKENS: Gemini truncated response after ${
+        usage?.candidatesTokenCount ?? '?'
+      } output tokens (thinking=${
+        usage?.thoughtsTokenCount ?? '?'
+      }). Increase maxOutputTokens in MODEL_CONFIGS.${configKey}.`,
+    );
+
+    err.code = 'MAX_TOKENS';
+    err.status = 503;
+
+    logger.error('AIGateway.callModel: MAX_TOKENS truncation', {
+      label,
+      configKey,
+      candidatesTokenCount: usage?.candidatesTokenCount ?? null,
+      thoughtsTokenCount: usage?.thoughtsTokenCount ?? null,
+      promptTokenCount: usage?.promptTokenCount ?? null,
+    });
+
+    throw err;
+  }
+
+  return {
+  rawText,
+  attempts,
+  latencyMs: totalLatencyMs,
+  usage: {
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: usage?.candidatesTokenCount ?? 0,
+    totalTokens:
+      (usage?.promptTokenCount ?? 0) +
+      (usage?.candidatesTokenCount ?? 0),
+    thoughtsTokens: usage?.thoughtsTokenCount ?? 0,
+  },
+  model: modelOverride ?? MODEL_NAME,
+};
 }
 
 // ── Type normalisation ────────────────────────────────────────────────────────
@@ -439,54 +944,159 @@ function normaliseType(raw, confidence) {
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<object>}
  */
-export async function analyzeUnified(imageBuffer, mimeType, { trace = null } = {}) {
-  const label     = 'unified';
+export async function analyzeUnified(
+  imageBuffer,
+  mimeType,
+  {
+    trace = null,
+    context = null,
+    modelOverride = null,
+  } = {},
+) {
+  const label = 'unified';
   const imagePart = imageInlinePart(imageBuffer, mimeType);
   const stageStart = Date.now();
 
   try {
-    const { rawText, attempts, latencyMs } = await callModel(
-      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace },
+    const {
+    rawText,
+    attempts,
+    latencyMs,
+    usage,
+    model,
+  } = await callModel(
+      'unified',
+      [imagePart, UNIFIED_PROMPT],
+      UNIFIED_SCHEMA,
+      {
+        label,
+        trace,
+        context,
+        modelOverride,
+      },
     );
 
     const parsed = safeParseJson(rawText, { label });
+
     if (!parsed.ok) {
       throw new Error(`AIGateway.analyzeUnified: parse error — ${parsed.error}`);
     }
 
-    const shape = validateShape(parsed.data, ['imageType', 'confidence'], { label });
+    const shape = validateShape(
+      parsed.data,
+      ['imageType', 'confidence'],
+      { label },
+    );
+
     if (!shape.ok) {
-      throw new Error(`AIGateway.analyzeUnified: schema missing ${shape.missing}`);
+      throw new Error(
+        `AIGateway.analyzeUnified: schema missing ${shape.missing}`,
+      );
     }
 
-    const d        = parsed.data;
+    const d = parsed.data;
     const normType = normaliseType(d.imageType, d.confidence);
 
-    if (trace) {
-      trace.addStage({ name: label, latencyMs, success: true, extra: { attempts, imageType: normType } });
+    let details = d.details ?? {};
+    let fastNutrition = null;
+
+    if (normType === 'food') {
+      details = applyHerbalifeShakeOverrides(details);
+      const foods = Array.isArray(details.foods) ? details.foods : [];
+      if (details.total) {
+        fastNutrition = extractFastNutrition(details.total, foods);
+      } else if (
+        foods.length === 1 &&
+        isPreparedHerbalifeShakeName(foods[0]?.name)
+      ) {
+        details.total = cloneHerbalifeShakeNutrition();
+        fastNutrition = extractHerbalifeShakeFastNutrition();
+      } else {
+        fastNutrition = d.fastNutrition ?? null;
+      }
     }
 
+    if (trace) {
+      trace.addStage({
+        name: label,
+        latencyMs,
+        success: true,
+        extra: {
+          attempts,
+          imageType: normType,
+          requestId: context?.requestId,
+        },
+      });
+    }
+
+    logger.info("AI Unified Analysis Completed", {
+  requestId: context?.requestId,
+  userId: context?.userId,
+  endpoint: context?.endpoint,
+  operation: context?.operation,
+  imageType: normType,
+
+  model,
+
+  inputTokens: usage?.inputTokens,
+  outputTokens: usage?.outputTokens,
+  totalTokens: usage?.totalTokens,
+
+  latencyMs,
+  attempts,
+});
+
     return {
-      imageType:      normType,
-      confidence:     d.confidence,
-      details:        d.details         ?? {},
-      fastNutrition:  normType === 'food'       ? (d.fastNutrition  ?? null) : null,
-      weightReading:  normType === 'weight'     ? (d.weightReading  ?? null) : null,
-      smartwatchData: normType === 'smartwatch' ? (d.smartwatchData ?? null) : null,
-      educationData:  normType === 'education'  ? (d.educationData  ?? null) : null,
+      imageType: normType,
+      confidence: d.confidence,
+      details,
+      fastNutrition,
+      weightReading:
+        normType === 'weight'
+          ? (d.weightReading ?? null)
+          : null,
+      smartwatchData:
+        normType === 'smartwatch'
+          ? (d.smartwatchData ?? null)
+          : null,
+      educationData:
+        normType === 'education'
+          ? (d.educationData ?? null)
+          : null,
       latencyMs,
       attempts,
+      usage,
+      model,
     };
   } catch (err) {
     if (trace) {
       trace.addStage({
-        name:      label,
+        name: label,
         latencyMs: Date.now() - stageStart,
-        success:   false,
-        extra:     { error: err.message },
+        success: false,
+        extra: {
+          error: err.message,
+          requestId: context?.requestId,
+        },
       });
-      trace.error({ stage: label, message: err.message, code: err.code });
+
+      trace.error({
+        stage: label,
+        message: err.message,
+        code: err.code,
+      });
     }
+
+    logger.error('AI Unified Analysis Failed', {
+      requestId: context?.requestId,
+      userId: context?.userId,
+      endpoint: context?.endpoint,
+      operation: context?.operation,
+      model: modelOverride ?? MODEL_NAME,
+      error: err.message,
+      code: err.code,
+    });
+
     throw err;
   }
 }
@@ -534,10 +1144,29 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
 
   const label      = 'enrichment';
   const imagePart  = imageInlinePart(imageBuffer, mimeType);
-  const prompt     = buildEnrichmentPrompt(fastContext, resolvedFoodItems);
   const stageStart = Date.now();
 
   const { trace: resolvedTrace = null } = resolvedOpts;
+
+  const shakeItems = (resolvedFoodItems ?? []).filter(isPreparedHerbalifeShakeName);
+  const otherItems = (resolvedFoodItems ?? []).filter((name) => !isPreparedHerbalifeShakeName(name));
+  const fixedShakeEnrichment = extractHerbalifeShakeEnrichment();
+
+  // Prepared Herbalife Shake only — skip Gemini; return deterministic micronutrients.
+  if (shakeItems.length > 0 && otherItems.length === 0) {
+    const latencyMs = Date.now() - stageStart;
+    if (resolvedTrace) {
+      resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts: 0, herbalifeShakeFixed: true } });
+    }
+    return {
+      enrichment: fixedShakeEnrichment,
+      confidence: 'high',
+      latencyMs,
+      attempts: 0,
+    };
+  }
+
+  const prompt = buildEnrichmentPrompt(fastContext, otherItems.length > 0 ? otherItems : resolvedFoodItems);
 
   try {
     const { rawText, attempts, latencyMs } = await callModel(
@@ -550,12 +1179,19 @@ export async function enrichNutrition(imageBuffer, mimeType, fastContext, foodIt
       return { enrichment: {}, confidence: 'low', latencyMs, attempts };
     }
 
+    let enrichment = parsed.data.enrichment ?? {};
+
+    // Shake + extras: fixed shake micronutrients + Gemini estimate for additional items.
+    if (shakeItems.length > 0 && otherItems.length > 0) {
+      enrichment = sumEnrichmentFields(fixedShakeEnrichment, enrichment);
+    }
+
     if (resolvedTrace) {
       resolvedTrace.addStage({ name: label, latencyMs, success: true, extra: { attempts } });
     }
 
     return {
-      enrichment: parsed.data.enrichment ?? {},
+      enrichment,
       confidence: parsed.data.confidence ?? 'low',
       latencyMs,
       attempts,

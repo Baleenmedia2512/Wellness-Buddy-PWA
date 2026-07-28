@@ -94,9 +94,14 @@ export default async function handler(req, res) {
     }
 
     // Extract optional metadata fields
-    const captureId = sanitiseString(fields.captureId);
-    const userId    = sanitiseString(fields.userId);
-    const foodRowId = sanitiseInt(fields.foodRowId);
+    const captureId  = sanitiseString(fields.captureId);
+    const userId     = sanitiseString(fields.userId);
+    const foodRowId  = sanitiseInt(fields.foodRowId);
+    // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
+    // and wants Gemini Pro instead of Flash for better accuracy.
+    const modelTier  = sanitiseString(fields.modelTier);
+
+    
 
     // Read image into buffer; keep base64 for enrichment job queue
     let imageBuffer, imageBase64;
@@ -108,6 +113,20 @@ export default async function handler(req, res) {
       return res.status(500).json({
         ok: false,
         error: { code: 'IMAGE_READ_ERROR', message: 'Failed to read uploaded image' },
+      });
+    }
+
+    if (!imageBuffer || imageBuffer.length < 64) {
+      logger.warn('orchestrate: empty or tiny image rejected', {
+        sizeBytes: imageBuffer?.length ?? 0,
+        captureId: captureId ?? null,
+      });
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'EMPTY_IMAGE',
+          message: 'Uploaded image is empty or too small to analyse',
+        },
       });
     }
 
@@ -129,6 +148,7 @@ export default async function handler(req, res) {
         userId,
         imageBase64,
         foodRowId,
+        usePro: modelTier === 'pro',
       });
 
       return res.status(200).json({ ok: true, ...result });

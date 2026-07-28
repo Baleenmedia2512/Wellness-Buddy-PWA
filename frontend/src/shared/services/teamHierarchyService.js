@@ -39,15 +39,16 @@ export const teamHierarchyService = {
   },
 
   /**
-   * Get flat list of all team members under a coach
+   * Get flat list of all Active team members under a coach.
+   * Inactive users are excluded by the backend (includeInactive=false).
    * @param {number} coachId - ID of the coach
-   * @returns {Promise<Array>} - Flat array of team members
+   * @returns {Promise<Array>} - Flat array of active team members
    */
   async getFlatTeamList(coachId) {
     try {
-      const hierarchyData = await this.getTeamHierarchy(coachId);
+      const hierarchyData = await this.getTeamHierarchy(coachId, false);
 
-      // ✅ Use backend's pre-built flat array — already deduplicated and complete
+      // ✅ Use backend's pre-built flat array — already deduplicated, Active-only, and complete
       // Avoids members being dropped by broken nested tree walk
       if (hierarchyData.allMembers && hierarchyData.allMembers.length > 0) {
         return hierarchyData.allMembers.map((member) => ({
@@ -57,6 +58,7 @@ export const teamHierarchyService = {
           role: member.Role || "user",
           coachId: member.CoachId,
           coCoachId: member.CoCoachId,
+          status: member.Status || null,
           coachName: null,
           coCoachName: null,
           parentCoachId: null,
@@ -71,22 +73,28 @@ export const teamHierarchyService = {
       // Fallback: walk hierarchy tree if allMembers not available
       const flatList = [];
       const flatten = (node) => {
-        flatList.push({
-          userId: node.userId,
-          userName: node.userName,
-          email: node.email,
-          role: node.role,
-          coachId: node.coachId,
-          coCoachId: node.coCoachId,
-          coachName: node.coachName,
-          coCoachName: node.coCoachName,
-          parentCoachId: node.parentCoachId,
-          isCoachRelationship: node.isCoachRelationship,
-          level: 0,
-          phoneNumber: node.phoneNumber || null,
-          heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
-          bmr: node.bmr != null ? node.bmr : null,
-        });
+        const status = node.status || node.Status || null;
+        const isActive =
+          status == null || String(status).toLowerCase() === "active";
+        if (isActive) {
+          flatList.push({
+            userId: node.userId,
+            userName: node.userName,
+            email: node.email,
+            role: node.role,
+            coachId: node.coachId,
+            coCoachId: node.coCoachId,
+            status,
+            coachName: node.coachName,
+            coCoachName: node.coCoachName,
+            parentCoachId: node.parentCoachId,
+            isCoachRelationship: node.isCoachRelationship,
+            level: 0,
+            phoneNumber: node.phoneNumber || null,
+            heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
+            bmr: node.bmr != null ? node.bmr : null,
+          });
+        }
         if (node.teamMembers && node.teamMembers.length > 0) {
           node.teamMembers.forEach((member) => flatten(member));
         }

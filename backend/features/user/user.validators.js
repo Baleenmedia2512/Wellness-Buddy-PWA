@@ -2,10 +2,58 @@
  * User feature — input validators.
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
+import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
-export { VALID_GOAL_MODES };
+export const COMMUNITY_ID_MAX_LENGTH = 100;
+const COMMUNITY_ID_PATTERN = /^[a-zA-Z0-9]+$/;
+export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
+
+export function normalizeCommunityId(raw) {
+  if (raw === null || raw === undefined) return null;
+  const trimmed = String(raw).trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+export function validateCommunityId(raw) {
+  const normalized = normalizeCommunityId(raw);
+  if (normalized === null) return { valid: true, value: null };
+  if (normalized.length > COMMUNITY_ID_MAX_LENGTH) {
+    return {
+      valid: false,
+      message: `Community ID must be at most ${COMMUNITY_ID_MAX_LENGTH} characters.`,
+    };
+  }
+  if (!COMMUNITY_ID_PATTERN.test(normalized)) {
+    return { valid: false, message: 'Community ID may only contain letters and numbers.' };
+  }
+  return { valid: true, value: normalized };
+}
+
+/**
+ * Validate an IANA timezone for profile updates.
+ * Empty string clears to the default (Asia/Kolkata).
+ *
+ * @param {unknown} raw
+ * @returns {{ valid: true, value: string } | { valid: false, message: string }}
+ */
+export function validateTimezoneIana(raw) {
+  if (raw === null || raw === undefined) {
+    return { valid: true, value: undefined };
+  }
+  const trimmed = String(raw).trim();
+  if (trimmed === '') {
+    return { valid: true, value: IANA_IST };
+  }
+  try {
+    assertIanaTimezone(trimmed);
+    return { valid: true, value: trimmed };
+  } catch {
+    return { valid: false, message: 'Invalid timezone. Provide a valid IANA timezone (e.g. Asia/Kolkata).' };
+  }
+}
 
 export function normalizeEmail(raw) {
   return raw ? String(raw).toLowerCase().trim() : raw;
@@ -25,6 +73,30 @@ export function validateUpdateProfile(body) {
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
   }
+  const physicalActivityLevel = body.physicalActivityLevel;
+  if (physicalActivityLevel != null && physicalActivityLevel !== ''
+    && !isValidPhysicalActivityLevel(physicalActivityLevel)) {
+    throw new ValidationError(400, `Invalid physicalActivityLevel. Must be one of: ${VALID_PHYSICAL_ACTIVITY_LEVELS.join(', ')}`);
+  }
+
+  let communityId;
+  if ('communityId' in body || 'community_id' in body) {
+    const communityIdRaw = body.communityId !== undefined ? body.communityId : body.community_id;
+    const validation = validateCommunityId(communityIdRaw);
+    if (!validation.valid) throw new ValidationError(400, validation.message);
+    communityId = validation.value;
+  }
+
+  let timezoneIana;
+  if ('timezone' in body || 'timezoneIana' in body || 'timezone_iana' in body) {
+    const timezoneRaw = body.timezone !== undefined
+      ? body.timezone
+      : (body.timezoneIana !== undefined ? body.timezoneIana : body.timezone_iana);
+    const validation = validateTimezoneIana(timezoneRaw);
+    if (!validation.valid) throw new ValidationError(400, validation.message);
+    timezoneIana = validation.value;
+  }
+
   return {
     email,
     name: body.name,
@@ -34,6 +106,9 @@ export function validateUpdateProfile(body) {
     profileImage: body.profileImage,
     phoneNumber: body.phoneNumber,
     weightGoalMode: weightGoalMode || undefined,
+    physicalActivityLevel: physicalActivityLevel || undefined,
+    communityId,
+    timezoneIana,
   };
 }
 
@@ -44,10 +119,14 @@ export function validateUserId(query) {
 }
 
 export function validateLookup(req) {
-  const raw = req.method === 'GET' ? req.query?.email : req.body?.email;
+  const isGet = req.method === 'GET';
+  const raw = isGet ? req.query?.email : req.body?.email;
   const email = normalizeEmail(raw);
   if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const timezoneRaw = isGet
+    ? (req.query?.timezoneIana ?? req.query?.timezone)
+    : (req.body?.timezoneIana ?? req.body?.timezone);
+  return { email, timezoneIana: timezoneRaw };
 }
 
 export function validateGoogleUser(body) {
@@ -56,7 +135,7 @@ export function validateGoogleUser(body) {
   if (!email || !displayName) {
     throw new ValidationError(400, 'Email and Display Name are required');
   }
-  return { email, displayName, photoURL: body?.photoURL || null };
+  return { email, displayName, photoURL: body?.photoURL || null, timezoneIana: body?.timezoneIana ?? body?.timezone ?? undefined };
 }
 
 export function validateSnooze(body) {

@@ -1,41 +1,49 @@
-/**
+﻿/**
  * PermissionPrimerModal.jsx
  *
  * Shown ONCE on first native install, after the user authenticates.
- * Explains the three permissions Wellness Valley needs — and WHY —
- * before the OS system dialogs appear.
+ * Explains the permissions Wellness Valley needs — and WHY — before the
+ * sequential per-permission OS dialogs appear.
  *
  * Industry pattern: Instagram / Headspace / Duolingo "permission primer".
  * - Never show OS system dialogs without context.
  * - One screen, one CTA, no friction.
  *
+ * This component is ONLY used as the first-install intro screen. It is NOT
+ * shown on permission denial or revocation — those cases are handled by
+ * PermissionRequestDialog (canRequest: true) and PermissionSettingsGuide
+ * (canRequest: false / permanently denied).
+ *
  * Props:
- *   onContinue — async fn: runs requestAllPermissions() then resolves.
- *   onSkip     — fn: fail-open path (user declines). Permissions can be
- *                granted later from Settings.
+ *   onContinue  - async fn: starts the sequential per-permission flow.
  */
 import React, { useState } from 'react';
 import wellnessValleyIcon from '../../assets/wellness-valley-icon.png';
 
 const PERMISSIONS = [
   {
-    icon: '📸',
+    icon: 'CAMERA',
     title: 'Camera',
     description: 'Snap your meal and get instant AI nutrition analysis.',
+    required: true,
   },
   {
-    icon: '🔔',
-    title: 'Notifications',
-    description: "We'll remind you to log meals, water, and your daily weight.",
-  },
-  {
-    icon: '📍',
+    icon: 'PIN',
     title: 'Location',
     description: 'Auto-check in at your nearest wellness center.',
+    required: true,
+  },
+  {
+    icon: 'BELL',
+    title: 'Notifications',
+    description: "We'll remind you to log meals, water, and your daily weight.",
+    required: false,
   },
 ];
 
-export default function PermissionPrimerModal({ onContinue, onSkip }) {
+const ICON_MAP = { CAMERA: String.fromCodePoint(0x1F4F8), PIN: String.fromCodePoint(0x1F4CD), BELL: String.fromCodePoint(0x1F514) };
+
+export default function PermissionPrimerModal({ onContinue }) {
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
@@ -62,7 +70,6 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
         overflowY: 'auto',
       }}
     >
-      {/* ── Top gradient hero ── */}
       <div
         style={{
           background: 'linear-gradient(160deg, #16a34a 0%, #15803d 50%, #166534 100%)',
@@ -115,12 +122,11 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
               lineHeight: 1.4,
             }}
           >
-            Allow a few permissions so Wellness&nbsp;Valley works its best for you.
+            Allow permissions so Wellness Valley works its best. You will see OS prompts for Camera, Location, and Notifications.
           </p>
         </div>
       </div>
 
-      {/* ── Permission cards ── */}
       <div
         style={{
           flex: 1,
@@ -130,7 +136,7 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
           gap: 12,
         }}
       >
-        {PERMISSIONS.map(({ icon, title, description }) => (
+        {PERMISSIONS.map(({ icon, title, description, required }) => (
           <div
             key={title}
             style={{
@@ -156,20 +162,36 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
                 flexShrink: 0,
               }}
             >
-              {icon}
+              {ICON_MAP[icon]}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: '#111827',
-                  margin: 0,
-                  lineHeight: 1.3,
-                }}
-              >
-                {title}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <p
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: '#111827',
+                    margin: 0,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {title}
+                </p>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    background: required ? '#dcfce7' : '#f3f4f6',
+                    color: required ? '#15803d' : '#9ca3af',
+                    letterSpacing: '0.3px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {required ? 'Required' : 'Optional'}
+                </span>
+              </div>
               <p
                 style={{
                   fontSize: 13,
@@ -184,7 +206,6 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
           </div>
         ))}
 
-        {/* Fine-print */}
         <p
           style={{
             fontSize: 11.5,
@@ -195,11 +216,11 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
             padding: '0 8px',
           }}
         >
-          You can change these anytime in your device&nbsp;Settings.
+          Camera and Location are required.
+          Notifications are optional and can be changed in device Settings.
         </p>
       </div>
 
-      {/* ── CTAs ── */}
       <div
         style={{
           padding: '24px 20px 40px',
@@ -247,31 +268,11 @@ export default function PermissionPrimerModal({ onContinue, onSkip }) {
                   display: 'inline-block',
                 }}
               />
-              <span>Setting up…</span>
+              <span>Starting permission setup…</span>
             </>
           ) : (
-            'Allow Access & Continue'
+            'Allow Permissions - Continue'
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={onSkip}
-          disabled={loading}
-          style={{
-            width: '100%',
-            padding: '12px',
-            borderRadius: 12,
-            border: 'none',
-            background: 'transparent',
-            color: '#9ca3af',
-            fontSize: 14,
-            fontWeight: 500,
-            cursor: 'pointer',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          Skip for now
         </button>
       </div>
 

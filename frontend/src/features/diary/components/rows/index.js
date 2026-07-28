@@ -15,10 +15,42 @@
  *   - Each row is stateless; delete callbacks are passed from parent DiaryFeed
  */
 
-import React from 'react';
-import { Smartphone, GraduationCap, HelpCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
-import { parseAnalysisData } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { captureAndShare } from '../../../../shared/utils/shareUtils';
+import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
+
+/** Swipe-to-delete is owner-only; disabled when a coach views a member diary. */
+function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
+  const swipeEnabled = canDelete !== false;
+  const swipe = useSwipeToDelete({
+    onDelete: swipeEnabled ? () => onDelete?.(entry) : undefined,
+  });
+  return { swipe, swipeEnabled };
+}
+
+function resolveFoodShareTotals(payload, foodData) {
+  const t = payload?.totals || {};
+  const n = foodData?.nutrition || {};
+  const fromItems = foodData?.detailedItems?.length
+    ? recalculateTotals(foodData.detailedItems)
+    : null;
+
+  const pick = (key) => t[key] ?? n[key] ?? fromItems?.[key] ?? 0;
+
+  return {
+    calories: pick('calories'),
+    protein: pick('protein'),
+    carbs: pick('carbs'),
+    fat: pick('fat'),
+    fiber: pick('fiber'),
+    sugar: pick('sugar'),
+    sodium: pick('sodium'),
+    cholesterol: pick('cholesterol'),
+  };
+}
 
 const WeighingScaleIcon = ({ className }) => (
   <svg
@@ -38,27 +70,24 @@ const WeighingScaleIcon = ({ className }) => (
 
 // ─── shared chrome ──────────────────────────────────────────────────────────
 
-function formatTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+function formatTime(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
+  return formatBusinessTime(iso, timezoneIana);
 }
 
-/** Returns a meal-type badge descriptor based on the hour of capturedAt. */
-function getMealLabel(iso) {
+const MEAL_BADGE_BY_CATEGORY = {
+  breakfast: { label: 'Breakfast', cls: 'text-orange-600 bg-orange-50' },
+  'morning-snack': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+  lunch: { label: 'Lunch', cls: 'text-emerald-600 bg-emerald-50' },
+  'evening-snack': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+  dinner: { label: 'Dinner', cls: 'text-purple-600 bg-purple-50' },
+  'late-night': { label: 'Snack', cls: 'text-blue-600 bg-blue-50' },
+};
+
+/** Returns a meal-type badge based on capturedAt in the owner's business timezone. */
+function getMealLabel(iso, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const h = d.getHours();
-  if (h >= 5  && h < 11) return { label: 'Breakfast', cls: 'text-orange-600 bg-orange-50' };
-  if (h >= 11 && h < 16) return { label: 'Lunch',     cls: 'text-emerald-600 bg-emerald-50' };
-  if (h >= 16 && h < 21) return { label: 'Dinner',    cls: 'text-purple-600 bg-purple-50' };
-  return { label: 'Snack', cls: 'text-blue-600 bg-blue-50' };
+  const category = getMealCategory(iso, timezoneIana);
+  return MEAL_BADGE_BY_CATEGORY[category] || MEAL_BADGE_BY_CATEGORY['late-night'];
 }
 
 function Thumb({ imageBase64, imagePath, fallback }) {
@@ -88,38 +117,127 @@ function Thumb({ imageBase64, imagePath, fallback }) {
 
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
-export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
   const cal = p.totals?.calories ?? 0;
-  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const [isSharing, setIsSharing] = useState(false);
+  const shareCardRef = useRef(null);
 
   // Parse analysisData to extract meal name and item details
-  // This matches the display behavior of the original MealCard in NutritionDashboard
-  const foodData = parseAnalysisData(p.analysisData, 'text-gray-400');
-  const mealName = typeof foodData.name === 'string' ? foodData.name : 'Food';
-  const meal = getMealLabel(entry.capturedAt);
+  const foodData = parseAnalysisData(p.analysisData);
+  const mealName = foodData.name || 'Food';
+  const meal = getMealLabel(entry.capturedAt, timezoneIana);
+  // Individual food items for the share card
+  const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
+
+  // Resolve image src for share card
+  const imgSrc = p.imageBase64 && p.imageBase64.trim() !== ''
+    ? (p.imageBase64.startsWith('data:image') ? p.imageBase64 : `data:image/jpeg;base64,${p.imageBase64}`)
+    : (p.imagePath || null);
+
+  const t = resolveFoodShareTotals(p, foodData);
+  const macros = [
+    { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
+    { label: 'Protein',  value: Math.round(t.protein  ?? 0), unit: 'g',    color: '#3b82f6' },
+    { label: 'Carbs',    value: Math.round(t.carbs    ?? 0), unit: 'g',    color: '#eab308' },
+    { label: 'Fat',      value: Math.round(t.fat      ?? 0), unit: 'g',    color: '#ef4444' },
+    { label: 'Fiber',    value: Math.round(t.fiber    ?? 0), unit: 'g',    color: '#22c55e' },
+    { label: 'Sugar',    value: Math.round(t.sugar    ?? 0), unit: 'g',    color: '#a855f7' },
+  ];
+  const shareTime = entry.capturedAt
+    ? new Date(entry.capturedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    : '';
+
+  // Share taps the full off-screen nutrition card, not the compact row
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing) return;
+    const target = shareCardRef.current || swipe.elRef.current;
+    if (!target) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(target, {
+        title: mealName,
+        fileName: `wellness-food-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[FoodRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {/* Off-screen full nutrition share card — captured by html2canvas on share tap */}
+      <div
+        ref={shareCardRef}
+        aria-hidden="true"
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: 500, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+      >
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
+          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{mealName}</p>
+          {meal && <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>{meal.label}</span>}
+        </div>
+        {/* Food photo — full natural aspect ratio, no crop */}
+        {imgSrc && (
+          <img src={imgSrc} alt="" style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#f9fafb' }} />
+        )}
+        {/* Macro grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>
+          {macros.map((m) => (
+            <div key={m.label} style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 6px', textAlign: 'center', border: '1px solid #f3f4f6' }}>
+              <p style={{ fontSize: 17, fontWeight: 700, color: m.color, margin: 0, lineHeight: 1 }}>
+                {m.value}<span style={{ fontSize: 10, fontWeight: 500, color: '#9ca3af' }}> {m.unit}</span>
+              </p>
+              <p style={{ fontSize: 9, color: '#6b7280', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{m.label}</p>
+            </div>
+          ))}
+        </div>
+        {/* Food items */}
+        {foodItems.length > 0 && (
+          <div style={{ padding: '0 14px 14px' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Foods Detected</p>
+            {foodItems.slice(0, 8).map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <p style={{ fontSize: 12, color: '#374151', margin: 0, flex: 1 }}>{item.name || 'Item'}</p>
+                <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 500 }}>
+                  {Math.round(item.calories ?? item.nutrition?.calories ?? 0)} kcal
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Footer */}
+        <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
+          <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
         </div>
       </div>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
+        </div>
+      )}
 
       {/* Card */}
       <div
@@ -128,8 +246,8 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
         tabIndex={0}
         aria-label={`${mealName}, ${Math.round(cal)} kilocalories`}
         data-testid="diary-row-food"
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
         onKeyDown={(e) => {
           if (swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
@@ -137,14 +255,15 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: 'transform',
+          willChange: swipeEnabled ? 'transform' : undefined,
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
 
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback="🍽️" />
         <div className="flex-1 min-w-0">
@@ -157,7 +276,7 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
             )}
           </div>
           {!hideTime && (
-            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt, timezoneIana)}</p>
           )}
           {(p.totals?.protein > 0 || p.totals?.carbs > 0 || p.totals?.fat > 0) && (
             <p className="text-[10px] text-gray-400 mt-0.5">
@@ -169,6 +288,17 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
           <p className="font-bold text-base text-gray-900">{Math.round(cal)}</p>
           <p className="text-[11px] text-gray-500 -mt-0.5">kcal</p>
         </div>
+        {/* Share button — stopPropagation prevents opening the detail modal */}
+        <button
+          aria-label="Share this food entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
       </div>
     </div>
   );
@@ -176,31 +306,51 @@ export function FoodRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: weight ───────────────────────────────────────────────────────────
 
-export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
-  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const [isSharing, setIsSharing] = useState(false);
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (swipe.dragging || swipe.leaving || isSharing || !swipe.elRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(swipe.elRef.current, {
+        title: `Weight ${p.weight} kg`,
+        fileName: `wellness-weight-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[WeightRow] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div
@@ -209,8 +359,8 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
         tabIndex={0}
         aria-label={`Weight, ${p.weight} kilograms`}
         data-testid="diary-row-weight"
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
         onKeyDown={(e) => {
           if (swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
@@ -218,22 +368,22 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: 'transform',
+          willChange: swipeEnabled ? 'transform' : undefined,
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
 
         <Thumb imageBase64={p.imageBase64} fallback={<WeighingScaleIcon className="w-6 h-6 text-emerald-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Weight</h4>
           {!hideTime && (
             <p className="text-xs text-gray-500">
-              {formatTime(entry.capturedAt)}
-              {typeof p.bmi === 'number' ? ` · BMI ${p.bmi.toFixed(1)}` : ''}
+              {formatTime(entry.capturedAt, timezoneIana)}
             </p>
           )}
         </div>
@@ -241,6 +391,17 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
           <p className="font-bold text-base text-gray-900">{p.weight}</p>
           <p className="text-[11px] text-gray-500 -mt-0.5">kg</p>
         </div>
+        {/* Share button — stopPropagation prevents opening the detail modal */}
+        <button
+          aria-label="Share this weight entry"
+          onClick={handleShare}
+          disabled={isSharing}
+          className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+        >
+          {isSharing
+            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            : <Share2 className="w-4 h-4" aria-hidden="true" />}
+        </button>
       </div>
     </div>
   );
@@ -248,31 +409,32 @@ export function WeightRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: education ────────────────────────────────────────────────────────
 
-export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
-  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
 
   return (
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div
@@ -281,8 +443,8 @@ export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
         tabIndex={0}
         aria-label={`Education, ${p.topic || 'session'}`}
         data-testid="diary-row-education"
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
         onKeyDown={(e) => {
           if (swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
@@ -290,21 +452,22 @@ export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: 'transform',
+          willChange: swipeEnabled ? 'transform' : undefined,
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
 
         <Thumb imageBase64={p.imageBase64} fallback={<GraduationCap className="w-6 h-6 text-indigo-600" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">{p.topic || 'Education'}</h4>
           {!hideTime && (
             <p className="text-xs text-gray-500">
-              {formatTime(entry.capturedAt)}
+              {formatTime(entry.capturedAt, timezoneIana)}
               {p.platform ? ` · ${p.platform}` : ''}
             </p>
           )}
@@ -316,31 +479,32 @@ export function EducationRow({ entry, onOpen, onDelete, hideTime = false }) {
 
 // ─── kind: watch ────────────────────────────────────────────────────────────
 
-export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
+export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
   const p = entry.payload || {};
-  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
 
   return (
     <div
       className="relative w-full"
       style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div
@@ -349,8 +513,8 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
         tabIndex={0}
         aria-label={`Smartwatch activity, ${p.kcal} kilocalories burned`}
         data-testid="diary-row-watch"
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
         onKeyDown={(e) => {
           if (swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
@@ -358,20 +522,21 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: 'transform',
+          willChange: swipeEnabled ? 'transform' : undefined,
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
 
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<Smartphone className="w-6 h-6 text-amber-600" aria-hidden="true" />} />
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-gray-900 truncate">Smartwatch</h4>
           {!hideTime && (
-            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt)}</p>
+            <p className="text-xs text-gray-500">{formatTime(entry.capturedAt, timezoneIana)}</p>
           )}
         </div>
         <div className="text-right">
@@ -384,68 +549,205 @@ export function WatchRow({ entry, onOpen, onDelete, hideTime = false }) {
 }
 
 // ─── kind: unknown (the "Other" card) ───────────────────────────────────────
-// Supports both swipe-to-delete (quick removal) and tap-to-open
-// (UnknownEntryFlow for Retry / Edit).
+// Supports both swipe-to-delete (quick removal) and tap-to-open.
+//
+// When `isAnalyzing` is true (Dashboard is running AI before opening the
+// modal) the card displays an inline loading state, disables tap, and
+// prevents duplicate AI requests. Swipe-to-delete is also disabled during
+// analysis to avoid race conditions with the pending AI request.
 
-export function OtherRow({ entry, onOpen, onDelete, hideTime = false }) {
+/** Format elapsed seconds as M:SS (e.g. 0:05, 1:23). */
+function formatElapsed(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Format remaining seconds as a user-friendly countdown.
+ * >60 s → “~2m”  |  ≤60 s → “~45s”  |  0 → “…”
+ */
+function formatRemaining(secs) {
+  if (secs <= 0) return '…';
+  if (secs >= 60) return `~${Math.ceil(secs / 60)}m`;
+  return `~${secs}s`;
+}
+
+/**
+ * Total worst-case budget for all 3 Phase-1 attempts including back-off
+ * (3 × 40 s timeout + 1.5 s + 3 s back-off) + 15 s Manual Log grace.
+ */
+const TOTAL_BUDGET_SECS = 140;
+
+export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
-  const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(entry) });
+  const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
+  const swipeEnabled = canSwipeDelete && !isAnalyzing;
+  const showBackgroundHint = isBackgroundPending && !isAnalyzing;
+
+  // Elapsed-time ticker — active for both isAnalyzing and isBackgroundPending.
+  //   isAnalyzing      (user re-detect tap)   → starts from Date.now()
+  //   isBackgroundPending (camera capture flow) → starts from entry.capturedAt
+  //     so the timer reflects total analysis time, not just elapsed in this render.
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const startRef = useRef(null);
+  useEffect(() => {
+    const active = isAnalyzing || isBackgroundPending;
+    if (!active) {
+      setElapsedSecs(0);
+      startRef.current = null;
+      return undefined;
+    }
+    if (isBackgroundPending && !isAnalyzing && entry.capturedAt) {
+      const t = new Date(entry.capturedAt).getTime();
+      startRef.current = Number.isFinite(t) ? t : Date.now();
+    } else {
+      startRef.current = Date.now();
+    }
+    setElapsedSecs(Math.max(0, Math.floor((Date.now() - startRef.current) / 1_000)));
+    const id = setInterval(() => {
+      setElapsedSecs(Math.max(0, Math.floor((Date.now() - startRef.current) / 1_000)));
+    }, 1_000);
+    return () => clearInterval(id);
+  }, [isAnalyzing, isBackgroundPending, entry.capturedAt]);
 
   return (
     <div
       className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
+      style={{ touchAction: (swipe.dragging && swipeEnabled) ? 'none' : 'pan-y', minHeight: 84 }}
     >
-      {/* Swipe-delete background */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
-        <div
-          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
-          style={{
-            opacity: swipe.progress,
-            transform: `scale(${0.6 + swipe.progress * 0.4})`,
-            transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
-          }}
-        >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-          </svg>
+      {swipeEnabled && (
+        <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+          <div
+            className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+            style={{
+              opacity: swipe.progress,
+              transform: `scale(${0.6 + swipe.progress * 0.4})`,
+              transition: swipe.dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+            }}
+          >
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              style={{ transform: `rotate(${swipe.armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: swipe.armed ? 2.2 : 2 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div
         ref={swipe.elRef}
         role="button"
-        tabIndex={0}
-        onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
+        tabIndex={isAnalyzing ? -1 : 0}
+        aria-disabled={isAnalyzing}
+        aria-label={
+          isAnalyzing
+            ? 'AI is analysing this photo — please wait'
+            : showBackgroundHint
+            ? 'Photo uploaded — AI analysis in progress'
+            : swipeEnabled
+            ? 'Unrecognised capture, tap to identify or swipe to delete'
+            : 'Unrecognised capture, tap to identify'
+        }
+        data-testid="diary-row-unknown"
+        onClick={() => {
+          if (isAnalyzing) return;
+          if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry);
+        }}
         onKeyDown={(e) => {
-          if (swipe.leaving) return;
+          if (isAnalyzing || swipe.leaving) return;
           if (e.key === 'Enter' && !swipe.dragging) onOpen?.(entry);
         }}
-        {...swipe.touchHandlers}
-        {...swipe.pointerHandlers}
-        aria-label="Unrecognised capture, tap to identify or swipe to delete"
-        data-testid="diary-row-unknown"
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
+        {...(swipeEnabled ? swipe.touchHandlers : {})}
+        {...(swipeEnabled ? swipe.pointerHandlers : {})}
+        className={[
+          'relative z-10 rounded-xl shadow-sm p-3 flex items-center gap-3 select-none overflow-hidden transition-shadow',
+          isAnalyzing
+            ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
+            : showBackgroundHint
+            ? 'bg-emerald-50/80 border border-emerald-200 cursor-pointer hover:shadow-md'
+            : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
+        ].join(' ')}
         style={{
-          transform: `translateX(${swipe.dx}px) scale(${swipe.scale})`,
+          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
           transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: 'transform',
+          willChange: swipeEnabled ? 'transform' : undefined,
         }}
       >
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        {swipeEnabled && (
+          <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+            style={{ width: `${swipe.progress * 100}%`, transition: swipe.dragging ? 'none' : 'width 180ms ease', opacity: swipe.progress > 0 ? 1 : 0 }} />
+        )}
+
+        {/* AI analysis indeterminate progress bar across the card top */}
+        {(isAnalyzing || showBackgroundHint) && (
+          <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl overflow-hidden bg-emerald-100" aria-hidden="true">
+            <div className="h-full bg-emerald-500 w-2/5 animate-shimmer" />
+          </div>
+        )}
 
         <Thumb imageBase64={p.imageBase64} imagePath={p.imagePath} fallback={<HelpCircle className="w-6 h-6 text-gray-500" />} />
+
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-gray-900 truncate">Other</h4>
-          <p className="text-xs text-gray-500">
-            {hideTime ? "couldn't identify" : `${formatTime(entry.capturedAt)} · couldn't identify`}
-          </p>
+          {isAnalyzing ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">
+                Detecting entry…
+                {currentAttempt != null && totalAttempts != null && (
+                  <span className="ml-1.5 text-xs font-medium text-emerald-600/60">
+                    {currentAttempt}/{totalAttempts}
+                  </span>
+                )}
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`~${Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs)} seconds remaining`}>
+                  {formatRemaining(Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs))}
+                </span>
+              </h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
+              </p>
+            </>
+          ) : showBackgroundHint ? (
+            <>
+              <h4 className="font-semibold text-emerald-700 truncate">
+                Analyzing…
+                {currentAttempt != null && totalAttempts != null && (
+                  <span className="ml-1.5 text-xs font-medium text-emerald-600/60">
+                    {currentAttempt}/{totalAttempts}
+                  </span>
+                )}
+                <span className="ml-1.5 font-mono font-normal text-emerald-600/70" aria-live="polite" aria-label={`~${Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs)} seconds remaining`}>
+                  {formatRemaining(Math.max(0, TOTAL_BUDGET_SECS - elapsedSecs))}
+                </span>
+              </h4>
+              <p className="text-xs text-emerald-600/80">
+                {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
+              </p>
+            </>
+          ) : (
+            <>
+              <h4 className="font-semibold text-gray-900 truncate">Other</h4>
+              <p className="text-xs text-gray-500">
+                {hideTime
+                  ? "couldn't identify"
+                  : `${formatTime(entry.capturedAt, timezoneIana)} · couldn't identify`}
+              </p>
+            </>
+          )}
         </div>
-        <span className="text-xs text-gray-400 italic" aria-hidden="true">tap to fix</span>
+
+        {isAnalyzing ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            aria-hidden="true"
+          />
+        ) : showBackgroundHint ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="text-xs text-amber-600 font-medium" aria-hidden="true">Manual Log</span>
+        )}
       </div>
     </div>
   );

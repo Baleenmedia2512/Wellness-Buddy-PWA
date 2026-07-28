@@ -47,6 +47,33 @@ function buildPendingRequest(request, hasTeamId) {
   });
 }
 
+function buildInactiveReactivationPending(user, request, hasTeamId) {
+  return ok({
+    setupComplete: false,
+    hasTeamId,
+    hasUpline: !!user.CoachId,
+    pendingRequest: {
+      id: request.Id,
+      coachId: request.UplineCoachId,
+      status: request.Status,
+      expiresAt: request.OtpExpiresAt,
+      requestedAt: request.RequestedAt,
+    },
+    redirectTo: '/setup/validate-otp',
+    message: 'Waiting for coach OTP to reactivate account',
+  });
+}
+
+async function resolvePendingApproval(userId) {
+  const request = await repo.getPendingApproval(userId);
+  if (!request) return null;
+  if (new Date() > new Date(request.OtpExpiresAt)) {
+    await repo.deleteApproval(request.Id);
+    return null;
+  }
+  return request;
+}
+
 export async function getStatus({ email }) {
   const user = await repo.getStatusFields(email);
   if (!user) return { httpStatus: 404, body: { success: false, error: 'User not found' } };
@@ -56,16 +83,18 @@ export async function getStatus({ email }) {
 
   if (user.SetupSkipped === true) return buildSetupSkipped(user, hasTeamId, hasUpline);
   if (user.Role === 'admin' || user.Role === 'developer') return buildAdminBypass(user, hasTeamId, hasUpline);
+
+  // Inactive users already have a CoachId — still need pendingRequest visible
+  // so the reactivation ValidateOTP screen stays open after coach OTP is sent.
+  if (user.Status === 'Inactive') {
+    const pending = await resolvePendingApproval(user.UserId);
+    if (pending) return buildInactiveReactivationPending(user, pending, hasTeamId);
+  }
+
   if (hasUpline) return buildUplineComplete(user, hasTeamId);
 
-  const request = await repo.getPendingApproval(user.UserId);
-  if (request) {
-    if (new Date() > new Date(request.OtpExpiresAt)) {
-      await repo.deleteApproval(request.Id);
-    } else {
-      return buildPendingRequest(request, hasTeamId);
-    }
-  }
+  const request = await resolvePendingApproval(user.UserId);
+  if (request) return buildPendingRequest(request, hasTeamId);
 
   if (!hasTeamId) {
     return ok({

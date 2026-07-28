@@ -2,28 +2,47 @@
  * educationFormatter.js — pure helpers for the education slice.
  * No React, no fetch. Date/string formatting and small parsers only.
  */
-import { formatISTToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
+import {
+  formatUtcDate,
+  formatBusinessTime,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
-/** Long-form date used in the detail modal ("May 13, 2026"). */
+/** Long-form date used in the detail modal ("May 13, 2026") in business TZ. */
 export function formatLogDate(dateString) {
   if (!dateString) return '';
-  return formatISTToLocalDate(dateString, {
-    month: 'long', day: 'numeric', year: 'numeric',
+  return formatUtcDate(dateString, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
 }
 
-/** Short clock time used everywhere ("09:42 AM"). */
+/** Short clock time used everywhere ("09:42 AM") in business TZ. */
 export function formatLogTime(dateString) {
   if (!dateString) return '';
-  return formatISTToLocalTime(dateString, { hour: '2-digit', minute: '2-digit' });
+  return formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-/** Long locale string used in the share/log card timestamp row. */
+/** Full timestamp for share/log card rows in business TZ. */
 export function formatLoggedAtFull(loggedAt) {
-  return new Date(loggedAt || Date.now()).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
+  if (!loggedAt) return '';
+  const dateStr = formatUtcDate(loggedAt, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
+  const timeStr = formatBusinessTime(loggedAt, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return timeStr ? `${dateStr} at ${timeStr}` : dateStr;
 }
 
 /** Normalises a raw image string (or `null`) into a usable `<img src>`. */
@@ -41,4 +60,27 @@ export function isCaloriesBurnedTopic(topic) {
 export function extractCaloriesValue(topic) {
   if (!isCaloriesBurnedTopic(topic)) return '';
   return topic.replace(/^calories burned:\s*/i, '');
+}
+
+/**
+ * Maps a diary timeline education or watch row to the log shape EducationCardModal expects.
+ * Used when paginated education logs have not loaded the row yet.
+ */
+export function educationLogFromDiaryRow(diaryEntry) {
+  const p = diaryEntry?.payload || {};
+  if (p.id == null || p.id === '') return null;
+
+  const kind = diaryEntry?.kind;
+  const topic = p.topic
+    || (kind === 'watch' && p.kcal != null ? `Calories Burned: ${p.kcal} kcal` : null)
+    || (kind === 'watch' ? 'Calories Burned: 0 kcal' : 'Education');
+
+  return {
+    Id: p.id,
+    Topic: topic,
+    Platform: p.platform || (kind === 'watch' ? 'Smartwatch' : 'Online Meeting'),
+    Confidence: p.confidence ?? null,
+    ImageBase64: p.imageBase64 ?? null,
+    CreatedAt: diaryEntry.capturedAt ?? null,
+  };
 }

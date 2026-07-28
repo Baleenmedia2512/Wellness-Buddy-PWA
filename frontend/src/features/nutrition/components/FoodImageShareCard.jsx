@@ -15,7 +15,7 @@ import React, { forwardRef } from "react";
 import { getVersionString } from "../../../config/version";
 
 const FoodImageShareCard = forwardRef(function FoodImageShareCard(
-  { user, savedUserName, savedProfileImage, sharePhotoBase64, imageSrc },
+  { user, savedUserName, savedProfileImage, sharePhotoBase64, imageSrc, foodNames = [] },
   ref,
 ) {
   if (!imageSrc) return null;
@@ -151,8 +151,7 @@ const FoodImageShareCard = forwardRef(function FoodImageShareCard(
           />
         </div>
 
-        {/* Footer ribbon — keeps brand identity consistent across both
-            (pre-analysis) and (post-analysis) share images. */}
+        {/* Footer ribbon — food name label */}
         <div
           style={{
             background:
@@ -164,7 +163,9 @@ const FoodImageShareCard = forwardRef(function FoodImageShareCard(
             fontWeight: 600,
           }}
         >
-          Tap the link to see the full nutrition breakdown
+          {foodNames && foodNames.length > 0
+            ? foodNames.slice(0, 3).join(" • ")
+            : "Food Log"}
         </div>
       </div>
     </div>

@@ -13,11 +13,12 @@ import EducationLogList from './EducationLogList';
 import EducationCameraPanel, { EducationEmptyState } from './EducationCameraPanel';
 import EducationDashboardSkeleton from './EducationDashboardSkeleton';
 import { useEducationDashboard } from '../hooks/useEducationDashboard';
+import { educationLogFromDiaryRow } from '../services/educationFormatter';
 
 const EducationDashboard = ({
   user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null, hideOverview = false,
   // Imperative handle: parent passes a React ref; we write `openRef.current =
-  // (entryId) => ...` each render so the timeline shell can open a log entry.
+  // (entry) => ...` each render so the timeline shell can open a log entry.
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
@@ -25,14 +26,49 @@ const EducationDashboard = ({
   const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const pendingOpenRef = useRef(null);
+
+  const openLog = (log) => {
+    if (log) {
+      pendingOpenRef.current = null;
+      setSelectedLog(log);
+    }
+  };
+
+  const resolveLogFromDiaryEntry = (entry) => {
+    const p = entry?.payload || {};
+    const found = (vm.educationLogs || []).find((e) => String(e.Id) === String(p.id));
+    return found || educationLogFromDiaryRow(entry);
+  };
 
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
-    openRef.current = (entryId) => {
+    openRef.current = (entryOrId) => {
+      if (
+        entryOrId
+        && typeof entryOrId === 'object'
+        && (entryOrId.kind === 'education' || entryOrId.kind === 'watch')
+      ) {
+        openLog(resolveLogFromDiaryEntry(entryOrId));
+        return;
+      }
+      const entryId = entryOrId;
       const log = (vm.educationLogs || []).find((e) => String(e.Id) === String(entryId));
-      if (log) setSelectedLog(log);
+      if (log) {
+        openLog(log);
+      } else if (entryId != null && entryId !== '') {
+        pendingOpenRef.current = String(entryId);
+      }
     };
   }
+
+  // Open once paginated logs load when the user tapped before fetch completed.
+  useEffect(() => {
+    const pendingId = pendingOpenRef.current;
+    if (!pendingId || vm.loading) return;
+    const log = (vm.educationLogs || []).find((e) => String(e.Id) === String(pendingId));
+    if (log) openLog(log);
+  }, [vm.loading, vm.educationLogs]);
 
   // Auto-open the entry whose Id matches the deep-link mealId once logs load.
   const autoOpenEducDoneRef = useRef(false);
@@ -48,8 +84,39 @@ const EducationDashboard = ({
     }
   }, [initialEntryId, vm.loading, vm.educationLogs]);
 
-  if (vm.loading) return <EducationDashboardSkeleton />;
-  if (!vm.educationLogs || vm.educationLogs.length === 0) return <EducationEmptyState />;
+  const detailModal = selectedLog ? (
+    <EducationCardModal
+      log={selectedLog}
+      onClose={() => { setSelectedLog(null); onAfterModalClose?.(); }}
+      onDelete={async (log) => {
+        setDeletingId(log.Id);
+        setSelectedLog(null);
+        onAfterModalClose?.();
+        await vm.handleDeleteEducationLog(log);
+        setDeletingId(null);
+      }}
+      isDeleting={deletingId === selectedLog?.Id}
+      apiBaseUrl={vm.apiBaseUrl}
+      userId={vm.userIdRef.current}
+    />
+  ) : null;
+
+  if (vm.loading) {
+    return (
+      <>
+        <EducationDashboardSkeleton />
+        {detailModal}
+      </>
+    );
+  }
+  if (!vm.educationLogs || vm.educationLogs.length === 0) {
+    return (
+      <>
+        <EducationEmptyState />
+        {detailModal}
+      </>
+    );
+  }
 
   return (
     <>
@@ -81,22 +148,7 @@ const EducationDashboard = ({
         </div>
       </div>
 
-      {selectedLog && (
-        <EducationCardModal
-          log={selectedLog}
-          onClose={() => { setSelectedLog(null); onAfterModalClose?.(); }}
-          onDelete={async (log) => {
-            setDeletingId(log.Id);
-            setSelectedLog(null);
-            onAfterModalClose?.();
-            await vm.handleDeleteEducationLog(log);
-            setDeletingId(null);
-          }}
-          isDeleting={deletingId === selectedLog?.Id}
-          apiBaseUrl={vm.apiBaseUrl}
-          userId={vm.userIdRef.current}
-        />
-      )}
+      {detailModal}
     </>
   );
 };

@@ -1,6 +1,19 @@
 # Gradle Properties Example
-# Copy this file to gradle.properties and add your actual API key
-# DO NOT commit gradle.properties to Git!
+# Copy this file to gradle.properties and fill in local secrets.
+# DO NOT commit gradle.properties to Git! (see android/.gitignore)
 
-# Gemini API Key (required for build)
+# Capacitor 8 / AGP 8.13 require JDK 21 (not JDK 17).
+# Point at Android Studio's JBR or a standalone JDK 21 install:
+# org.gradle.java.home=C:\\Program Files\\Android\\Android Studio\\jbr
+# org.gradle.java.home=C:\\Program Files\\Java\\jdk-21
+# Or: $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+
+# Required — Capacitor and Play libraries are AndroidX-only
+android.useAndroidX=true
+android.enableJetifier=true
+
+# Gemini API Key (optional for build; used by GalleryMonitorService)
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE

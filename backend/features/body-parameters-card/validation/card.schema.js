@@ -19,7 +19,7 @@ export function validateCreateCard(body) {
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber } = body;
+          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   const createdByN = parseInt(createdBy, 10);
@@ -74,6 +74,7 @@ export function validateCreateCard(body) {
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
+    bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
   };
 }
 
@@ -90,7 +91,7 @@ export function validateUpdateCard(body) {
 
   const { id, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber } = body;
+          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -142,6 +143,7 @@ export function validateUpdateCard(body) {
     recordedDate: recordedDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
+    bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
   };
 }
 

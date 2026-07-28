@@ -19,7 +19,6 @@ class CacheManager {
     // Default TTLs for different data types (in milliseconds)
     this.ttls = {
       userContext: 5 * 60 * 1000,        // 5 minutes
-      disciplineReport: 2 * 60 * 1000,   // 2 minutes (cached for fast re-open)
       teamHierarchy: 3 * 60 * 1000,      // 3 minutes
       foodCorrections: 5 * 60 * 1000,    // 5 minutes
       reverseLookup: 10 * 60 * 1000,     // 10 minutes

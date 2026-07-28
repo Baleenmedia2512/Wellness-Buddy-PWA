@@ -3,6 +3,7 @@
  * Sole place that knows the URL paths for the user-feature endpoints.
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 
 const base = () => getApiBaseUrl();
 
@@ -27,12 +28,17 @@ export async function getContext(userId) {
 }
 
 export async function lookup(email, { method = 'POST' } = {}) {
+  const timezoneIana = getDeviceTimezoneIana() ?? '';
   const url = method === 'GET'
-    ? `${base()}/api/user/lookup?email=${encodeURIComponent(email)}`
+    ? `${base()}/api/user/lookup?email=${encodeURIComponent(email)}&timezoneIana=${encodeURIComponent(timezoneIana)}`
     : `${base()}/api/user/lookup`;
   const init = method === 'GET'
     ? {}
-    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) };
+    : {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, timezoneIana }),
+    };
   const res = await fetch(url, init);
   return res.json();
 }
@@ -41,7 +47,10 @@ export async function saveGoogleUser(payload) {
   const res = await fetch(`${base()}/api/user/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      timezoneIana: getDeviceTimezoneIana() ?? '',
+    }),
   });
   return res.json();
 }

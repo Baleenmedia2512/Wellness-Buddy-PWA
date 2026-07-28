@@ -1,10 +1,14 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
+import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 
 /**
  * API: Get Hierarchical Team Structure
  * Returns nested team hierarchy for the All Teams view
  * Supports multi-level Coach → Co-Coach → Members structure
+ *
+ * By default, allMembers (used by Diary / team search) contains Active users only.
+ * Pass includeInactive=true to include Inactive users in the flat list.
  */
 export default async function handler(req, res) {
   // Prevent caching
@@ -32,7 +36,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { coachId, email, includeInactive } = req.query;
+    const { coachId, email, includeInactive: includeInactiveRaw } = req.query;
+    const includeInactive =
+      String(includeInactiveRaw || '').toLowerCase() === 'true';
 
     logger.debug("📊 [team-hierarchy] Request:", {
       coachId,
@@ -212,7 +218,7 @@ export default async function handler(req, res) {
       });
 
       directReports.forEach((report) => {
-        if (report.Status !== 'Active') {
+        if (!isActiveTeamStatus(report.Status)) {
           // Inactive chain: keep promoting deeper
           const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
           result.push(...deeper);
@@ -282,7 +288,7 @@ export default async function handler(req, res) {
         if (report.UserId === userId) return;
 
         // If this direct report is Inactive: hide it, promote its active descendants up
-        if (report.Status !== 'Active') {
+        if (!isActiveTeamStatus(report.Status)) {
           const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
           promoted.forEach((child) => userNode.teamMembers.push(child));
           return;
@@ -473,8 +479,19 @@ export default async function handler(req, res) {
           }))
         );
 
-        // Build hierarchy for each partner member and add to root
+        // Build hierarchy for each partner member and add to root.
+        // Inactive members are hidden; their active descendants are promoted.
         partnerMembers.forEach(member => {
+          if (!isActiveTeamStatus(member.Status)) {
+            const promoted = collectPromotedChildren(
+              member.UserId,
+              coachIdInt,
+              new Set([coachIdInt, partnerId]),
+              coachPartnerIds,
+            );
+            promoted.forEach((child) => hierarchy.teamMembers.push(child));
+            return;
+          }
           const memberNode = buildHierarchy(
             member.UserId,
             coachIdInt,
@@ -497,14 +514,19 @@ export default async function handler(req, res) {
       logger.debug(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
     }
 
-    // Flatten hierarchy to get all members (for enrollment reports)
-    // Use Set to avoid duplicates from dual reporting relationships
+    // Flatten hierarchy to get all members (for Diary / team search).
+    // Active-only by default — matches teamHierarchyBuilder + includeInactive flag.
+    // Use Map to avoid duplicates from dual reporting relationships.
     const flattenHierarchy = (node, result = new Map()) => {
       if (!node) return result;
 
+      const includeNode = includeInactive || isActiveTeamStatus(node.status);
       // Add current node (excluding the root coach for allMembers)
-      // Use Map to ensure unique users by UserId
-      if (node.userId !== coachIdInt && !result.has(node.userId)) {
+      if (
+        includeNode &&
+        node.userId !== coachIdInt &&
+        !result.has(node.userId)
+      ) {
         const entry = {
           UserId: node.userId,
           UserName: node.userName,
@@ -533,7 +555,12 @@ export default async function handler(req, res) {
     
     // Add co-coach to allMembers for search functionality
     // Even though they're excluded from the nested tree view, they should be searchable
-    if (hierarchy.coCoachInfo && !memberMap.has(hierarchy.coCoachInfo.userId)) {
+    // when Active (or when includeInactive is requested).
+    if (
+      hierarchy.coCoachInfo &&
+      !memberMap.has(hierarchy.coCoachInfo.userId) &&
+      (includeInactive || isActiveTeamStatus(hierarchy.coCoachInfo.status))
+    ) {
       memberMap.set(hierarchy.coCoachInfo.userId, {
         UserId: hierarchy.coCoachInfo.userId,
         UserName: hierarchy.coCoachInfo.userName,

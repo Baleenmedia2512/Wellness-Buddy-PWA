@@ -98,8 +98,9 @@ const ManualWatchEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
               Calories Burned (kcal) <span className="text-red-500">*</span>
             </label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
+              pattern="[0-9]*"
               value={caloriesBurned}
               onChange={(e) => setCaloriesBurned(e.target.value)}
               placeholder="e.g., 350"

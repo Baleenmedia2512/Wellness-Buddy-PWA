@@ -2,8 +2,10 @@ import React from 'react';
 import { Beef, Wheat, Droplet, Leaf } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import EditableFoodItem from '../EditableFoodItem';
+import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
-import { parseAnalysisData, istToLocalDate } from '../../services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
+import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
 
 const GIPill = ({ value }) => {
   if (value == null) return null;
@@ -43,20 +45,40 @@ const NutritionAnalysisPanel = ({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  persistMealItems,
+  setLocalDetailedItems,
+  setLocalNutrition,
 }) => {
+  const editingIndex = (() => {
+    const activeKey = Object.keys(editingStates || {}).find((key) => editingStates[key]);
+    return activeKey != null ? parseInt(activeKey, 10) : null;
+  })();
+
   if (!selectedMeal) return null;
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
-  const mealTime = istToLocalDate(selectedMeal.CreatedAt).toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit',
-  });
+  const mealTime = formatBusinessTime(
+    selectedMeal.CreatedAt,
+    resolveBusinessTimezone(user),
+    { hour: '2-digit', minute: '2-digit' },
+  );
   const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
   const protein = localNutrition.protein || foodData.nutrition.protein || selectedMeal.TotalProtein || 0;
   const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
   const fat = localNutrition.fat || foodData.nutrition.fat || selectedMeal.TotalFat || 0;
   const fiber = localNutrition.fiber || foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
-  const glycemicIndex = localNutrition.glycemicIndex != null
-    ? localNutrition.glycemicIndex
-    : (selectedMeal.GlycemicIndex ?? null);
+  const glycemicIndex = localNutrition.glycemic_index != null
+    ? localNutrition.glycemic_index
+    : (localNutrition.glycemicIndex != null
+      ? localNutrition.glycemicIndex
+      : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null));
+
+  const handleAddItem = async (newItem) => {
+    const newItems = [...(localDetailedItems || []), newItem];
+    const newTotals = recalculateTotals(newItems);
+    setLocalDetailedItems(newItems);
+    setLocalNutrition(newTotals);
+    await persistMealItems(newItems, newTotals);
+  };
   const imgSrc = selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== ''
     ? (selectedMeal.ImageBase64.startsWith('data:image') ? selectedMeal.ImageBase64 : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`)
     : selectedMeal.ImagePath;
@@ -72,7 +94,7 @@ const NutritionAnalysisPanel = ({
       >
         {saveStatus && <StatusOverlay status={saveStatus} onRetry={() => setSaveStatus(null)} />}
 
-        <div className="relative flex flex-col" style={{ maxHeight: isEditing ? '90vh' : '80vh' }}>
+        <div className="relative flex flex-col min-h-0" style={{ maxHeight: isEditing ? '90vh' : '80vh' }}>
           <div className="relative">
             {imgSrc ? (
               <img src={imgSrc} alt="Meal"
@@ -110,8 +132,8 @@ const NutritionAnalysisPanel = ({
             </button>
           </div>
 
-          <div className="p-4 overflow-y-auto" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
-            {localDetailedItems?.length > 0 && (
+          <div className="p-4 overflow-y-auto flex-1 min-h-0" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
+            {localDetailedItems?.length > 0 ? (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-900 text-sm">Food Items</h3>
                 <div className="space-y-2">
@@ -130,19 +152,28 @@ const NutritionAnalysisPanel = ({
                     ))}
                 </div>
               </div>
+            ) : (
+              <p className="text-sm text-gray-500">No items yet. Tap Add Item below.</p>
             )}
           </div>
 
           {!isEditing && (
-            <div className="p-4 pt-0">
-              <TouchFeedbackButton
-                disabled={deletingId === selectedMeal?.ID}
-                className={`w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm ${deletingId === selectedMeal?.ID ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
-                onClick={() => handleDeleteMeal(selectedMeal)}
-              >
-                {deletingId === selectedMeal?.ID ? 'Deleting…' : 'Delete'}
-              </TouchFeedbackButton>
-            </div>
+            <MealAddItemForm
+              layout="footer"
+              user={user}
+              disabled={isSaving || editingIndex !== null}
+              isSaving={isSaving}
+              onAdd={handleAddItem}
+              footerExtra={
+                <TouchFeedbackButton
+                  disabled={deletingId === selectedMeal?.ID}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-xl text-white text-sm font-semibold px-4 py-3 shadow-sm ${deletingId === selectedMeal?.ID ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                  onClick={() => handleDeleteMeal(selectedMeal)}
+                >
+                  {deletingId === selectedMeal?.ID ? 'Deleting…' : 'Delete'}
+                </TouchFeedbackButton>
+              }
+            />
           )}
         </div>
       </div>

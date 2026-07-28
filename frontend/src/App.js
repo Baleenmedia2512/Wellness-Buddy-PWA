@@ -1,6 +1,6 @@
-﻿// src/App.js
+// src/App.js
 // ============================================================================
-// WellnessValleyApp � App.js architecture policy (post-hygiene-phase, May 2026)
+// WellnessValleyApp ? App.js architecture policy (post-hygiene-phase, May 2026)
 // ----------------------------------------------------------------------------
 // App.js is INTENTIONALLY the orchestrator. It is NOT being shrunk to a thin
 // shell. The following responsibilities live here on purpose and should NOT
@@ -9,7 +9,7 @@
 //   1. Identity & session ownership
 //      - The single `user` / `isUserActive` / `userContext` source of truth.
 //      - Sign-in / sign-out flows (Firebase + OTP).
-//      - The iOS Keychain re-auth gate (`forceLoggedOut`) � MUST stay read
+//      - The iOS Keychain re-auth gate (`forceLoggedOut`) ? MUST stay read
 //        synchronously at component init, before Firebase fires.
 //
 //   2. Native lifecycle ownership
@@ -19,7 +19,7 @@
 //        WHEN to fire permissions, WHEN to hide splash); the service owns the
 //        plugin plumbing.
 //      - Multiple `appStateChange` listeners coexist (gallery effect +
-//        foreground profile-check effect) � each consumer receives its own
+//        foreground profile-check effect) ? each consumer receives its own
 //        PluginListenerHandle and removes only its own handle on cleanup.
 //        Nothing in this codebase calls `App.removeAllListeners()`.
 //      - SplashScreen dismissal timing (500 ms after first React render).
@@ -29,13 +29,13 @@
 //   3. Routing orchestration
 //      - The 24 `show*` view-flag booleans + their localStorage mirroring
 //        (`currentPage`). This is a deliberate homemade router. It can be
-//        replaced by a real router LATER as a single focused effort �
+//        replaced by a real router LATER as a single focused effort ?
 //        do not collapse it into a reducer in the meantime (modal-over-route
 //        invariants would break).
 //
 //   4. Cross-feature glue that legitimately spans VSA boundaries
 //      - The image-capture pipeline (it dispatches to nutrition / weight /
-//        education / activity � no single feature owns it).
+//        education / activity ? no single feature owns it).
 //      - Watch-burned-calories ? Nutrition write (cross-feature by design).
 //
 // State-machine candidates (deferred to later phases):
@@ -58,12 +58,13 @@ import React, {
   lazy,
   Suspense,
   startTransition,
-  useDeferredValue,
 } from "react";
-import ReactDOM from "react-dom";
-import { useIonRouter } from "@ionic/react";
+import ReactDOM, { flushSync } from "react-dom";
+import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
+import { WeightShareCard } from "./shell/components/WeightShareCard";
+import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
-import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -72,11 +73,11 @@ import {
 } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
-import { TestImageGuide } from "./features/admin";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login } from "./features/user";
 import { InactiveUserModal } from "./features/user";
 import { UserNotFoundModal } from "./features/user";
+import { fetchInactiveCoachInfo } from "./features/user/services/inactiveCoachService";
 import Header from "./shared/components/Header";
 import {
   getUserContext,
@@ -94,6 +95,9 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
+import * as captureQueue from './shared/services/captureQueue';
+import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
+import { useWeightCapture } from './hooks/useWeightCapture';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
@@ -107,16 +111,18 @@ import {
   shareViaCapacitorAPI,
   shareTextViaWhatsApp,
   resolveShareDisplayName,
+  ensureShareDisplayName,
+  buildQuickShareText,
+  cacheProfileUserName,
+  getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
+import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
 import {
-  locationAttendanceService,
-  getClubLocationIfNearby,
-} from "./features/nutrition-centers";
-import {
-  checkExactAlarmPermission,
-  openExactAlarmSettings,
-  initReminders,
-} from "./shared/services/reminderService";
+  startUserLocationCache,
+  stopUserLocationCache,
+  refreshUserLocationCache,
+  getCachedLocationFields,
+} from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -142,20 +148,15 @@ import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
+import { UserProfilePage } from "./features/user";
 import { CompleteProfilePage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
-import {
-  fetchPublicCard,
-  savePendingCard,
-  consumePendingCard,
-} from "./features/body-parameters-card";
 import { ClubSelectionModal } from "./features/nutrition-centers";
-import { TaskNotificationPanel } from "./features/tasks";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
-import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
-import { CoachScoreSummary } from "./features/leaderboard";
+import EmailGateModal from "./features/user/components/EmailGateModal";
+import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
+import { fetchProfile } from "./features/user/services/profileService";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -165,7 +166,11 @@ import GalleryMonitor from "./shared/services/galleryMonitor";
 import KeepAwakePlugin from "./shared/plugins/keepAwakePlugin";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
-import PermissionPrimerModal from "./shared/components/PermissionPrimerModal";
+import * as PermissionManager from "./shared/services/permissionManager";
+import { clearHomeDashboardSnapshot } from "./shared/services/homeDashboardActivity";
+import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
+import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
+import GpsRequiredModal from "./shared/components/GpsRequiredModal";
 import * as authFsm from "./shared/services/auth/fsm";
 import {
   fetchProfileCompletion,
@@ -180,6 +185,8 @@ import {
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
+import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
+import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
 import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
   signInWithGoogle,
@@ -193,38 +200,16 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
-import { initializeFCM, resetFCM } from './shared/services/fcmRegistrationService';
-// ? PERFORMANCE: Lazy-load leaderboards � they fire API calls on mount and are below the fold
+
+// ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
 );
-const DisciplineLeaderboard = lazy(() =>
-  import("./features/leaderboard/components/DisciplineLeaderboard"),
+const WellnessScoreLeaderboard = lazy(() =>
+  import("./features/leaderboard/components/WellnessScoreLeaderboard"),
 );
-const PersonalDisciplineScore = lazy(() =>
-  import("./shared/components/PersonalDisciplineScore.js"),
-);
-
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
-const WellnessReportsPage = lazy(() =>
-  import("./shell/components/WellnessReportsPage"),
-);
-const AdminDashboard = lazy(() =>
-  import("./features/admin/components/AdminDashboard"),
-);
-const DisciplineReport = lazy(() =>
-  import("./features/leaderboard/components/DisciplineReport"),
-);
-const ActivityTimeReport = lazy(() =>
-  import("./features/activity/components/ActivityTimeReport"),
-);
-const ActivityReport = lazy(() =>
-  import("./features/activity/components/ActivityReport"),
-);
-const AttendanceReport = lazy(() =>
-  import("./features/team/components/AttendanceReport"),
-);
 const NutritionCentersMap = lazy(() =>
   import("./features/nutrition-centers/components/NutritionCentersMap"),
 );
@@ -234,23 +219,33 @@ const NutritionCenterRegistration = lazy(() =>
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
-const WellnessUniversityReport = lazy(() =>
-  import("./pages/WellnessUniversityReport"),
-);
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounsellingCards"),
 );
-const MarathonDashboard = lazy(() =>
-  import("./features/marathon/components/MarathonDashboard"),
+const WellnessUniversityEnrollment = lazy(() =>
+  import("./pages/WellnessUniversityEnrollment"),
 );
-const MarathonRecognitionSplash = lazy(() =>
-  import("./features/marathon/components/MarathonRecognitionSplash"),
+// ?? PERFORMANCE: Lazy-load Activity Report pages � coach/admin analytics views
+const ActivityReport = lazy(() =>
+  import("./features/activity/components/ActivityReport"),
 );
-import { useMarathon } from "./features/marathon";
-// const StepCounter = lazy(() => import("./shared/components/StepCounter")); // FEATURE DISABLED
-// const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
-const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
-
+const ActivityTimeReport = lazy(() =>
+  import("./features/activity/components/ActivityTimeReport"),
+);
+// Testimonials � before/after transformation results with coach OTP verification
+const TestimonialsPage = lazy(() =>
+  import("./features/testimonials").then((m) => ({ default: m.TestimonialsPage })),
+);
+// Reports � coach-only analytics (e.g. downline weight status)
+const DownlineWeightReport = lazy(() =>
+  import("./features/reports").then((m) => ({ default: m.DownlineWeightReport })),
+);
+const WellnessScoreSetup = lazy(() =>
+  import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScoreSetup })),
+);
+const WellnessScorePage = lazy(() =>
+  import("./features/wellness-score-sheet").then((m) => ({ default: m.WellnessScorePage })),
+);
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -261,10 +256,9 @@ function WellnessValleyApp() {
   const [loadingState, setLoadingState] = useState("analyzing"); // 'analyzing' | 'saving'
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
-  const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
-  // Deep-link (App Link) seed values for Dashboard � set when the app is
+  // Deep-link (App Link) seed values for Dashboard ? set when the app is
   // opened via /share/<token> and the resolve API confirms permission.
   // Cleared in showMainPage so a normal Dashboard open won't reuse them.
   const [dashboardInitialSelectedMember, setDashboardInitialSelectedMember] =
@@ -272,12 +266,12 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
-  // const [showStepCounter, setShowStepCounter] = useState(false); // moved below � FEATURE DISABLED
+  const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
   // For returning OTP users, pre-load the cached user synchronously so that
   // NEITHER the authLoading spinner NOR the isOtpVerified gate fires on
-  // cold start. The home screen (and camera) open immediately � same pattern
+  // cold start. The home screen (and camera) open immediately ? same pattern
   // as WhatsApp / Snapchat. Background validation runs via a separate effect.
   const [user, setUser] = useState(() => {
     if (Session.isUserSignedOut()) return null;
@@ -303,7 +297,7 @@ function WellnessValleyApp() {
     return true;
   });
   const [isOtpVerified, setIsOtpVerified] = useState(Session.isOtpVerified());
-  // true when the user object was pre-loaded from localStorage � triggers the
+  // true when the user object was pre-loaded from localStorage ? triggers the
   // background validation effect (checkUserStatus + checkProfileCompletion).
   const otpCacheRestoredRef = useRef(
     !Session.isUserSignedOut() &&
@@ -316,38 +310,53 @@ function WellnessValleyApp() {
     useState(false); // true while inactive user is going through coach-OTP reactivation
   const [isWaitingForCoachOTP, setIsWaitingForCoachOTP] = useState(false); // true during 5-second wait after contacting coach
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  const [inactiveCoachName, setInactiveCoachName] = useState(null);
+  const inactiveCoachIdRef = useRef(null);
+  const isInactiveReactivationFlowRef = useRef(false);
 
-  // Debug logging for waiting state
   useEffect(() => {
-    console.log(
-      "🟣 [isWaitingForCoachOTP state changed]:",
-      isWaitingForCoachOTP,
-    );
-    if (isWaitingForCoachOTP) {
-      console.log("🟣 [WAITING MODAL SHOULD RENDER NOW]");
-      // Force a check after a brief delay
-      setTimeout(() => {
-        const modal = document.querySelector('[data-waiting-modal="true"]');
-        if (modal) {
-          console.log("✅ [WAITING MODAL FOUND IN DOM]", modal);
-        } else {
-          console.error("❌ [WAITING MODAL NOT FOUND IN DOM - NOT RENDERING!]");
-        }
-      }, 100);
+    isInactiveReactivationFlowRef.current = isInactiveReactivationFlow;
+  }, [isInactiveReactivationFlow]);
+
+  useEffect(() => {
+    if (!showInactiveModal) {
+      setInactiveCoachName(null);
+      inactiveCoachIdRef.current = null;
+      return undefined;
     }
-  }, [isWaitingForCoachOTP]);
+
+    let cancelled = false;
+    (async () => {
+      const info = await fetchInactiveCoachInfo({ apiBaseUrl, user });
+      if (cancelled) return;
+      setInactiveCoachName(info.coachName);
+      inactiveCoachIdRef.current = info.coachId;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showInactiveModal, user, apiBaseUrl]);
 
   // For returning users who already granted permissions, start as true so the
-  // camera opens immediately (Snapchat-like). Fresh installs start as false
-  // and wait for the permission dialogs to complete before opening camera.
-  const [permissionsReady, setPermissionsReady] = useState(() => {
-    if (!Capacitor.isNativePlatform()) return true;
-    return localStorage.getItem("wv.permissionsGranted") === "1";
-  });
-  // Permission primer: shown once on first native install after authentication.
-  // Blocks the OS system dialogs until the user has read WHY they are needed.
-  const [showPermissionPrimer, setShowPermissionPrimer] = useState(false);
-  // Full-screen branded overlay that bridges the native splash → camera gap.
+  // camera opens immediately (Snapchat-like). ALWAYS false on native so the
+  // camera-open effect cannot race ahead of the permission flow. Set to true
+  // only by advancePermissionFlow after every required permission is confirmed.
+  // On web there are no native permissions � start true immediately.
+  const [permissionsReady, setPermissionsReady] = useState(
+    () => !Capacitor.isNativePlatform(),
+  );
+  // GPS required modal: shown when location permission is granted but GPS/Location
+  // Services are disabled on the device. Blocks home access until GPS is on.
+  const [showGpsRequired, setShowGpsRequired] = useState(false);
+  // Active per-permission gate. null = no gate active.
+  // { type: 'camera'|'location'|'notifications', canRequest: boolean }
+  // canRequest: true  ? OS can re-prompt � show [Allow Again] [Exit App]
+  // canRequest: false ? permanently denied � show [Exit App] only
+  const [activePermission, setActivePermission] = useState(null);
+  // True while a native OS permission dialog is pending ("Allow Again" spinner).
+  const [permissionDialogLoading, setPermissionDialogLoading] = useState(false);
+  // Full-screen branded overlay that bridges the native splash ? camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
   // Dismissed right before openCamera() is called, or by safety effects below.
@@ -362,118 +371,45 @@ function WellnessValleyApp() {
     useState(false);
   const [showManualWatchModal, setShowManualWatchModal] = useState(false);
 
-  // -- Task Notification Panel (June 2026) -----------------------------------
-  const [showTaskPanel, setShowTaskPanel] = useState(false);
-  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
-  // PR 3 — disambiguation modal for low-confidence / unknown captures.
+  // PR 3 n++ disambiguation modal for low-confidence / unknown captures.
   // pendingSharePromise is retained so the user's pick re-tags the capture row.
   const [unknownCaptureModal, setUnknownCaptureModal] = useState({
     open: false,
     pendingSharePromise: null,
   });
-  // PR-E / ADR-0003 — share-link viewer for `unknown` captures. Opened by the
+  // PR-E / ADR-0003 n++ share-link viewer for `unknown` captures. Opened by the
   // deep-link handler when a resolved share has ImageType 'unknown'.
   const [unknownShareView, setUnknownShareView] = useState({
     open: false,
     captureId: null,
     imageBase64: null,
+    createdAt: null,
     canMutate: false,
     retrying: false,
     error: null,
   });
-  // 2026-06-09 — undo state for unknown capture deletion (share-link viewer)
+  // 2026-06-09 n++ undo state for unknown capture deletion (share-link viewer)
   const [unknownShareUndo, setUnknownShareUndo] = useState(null);
   // { captureId, userId, imageBase64, expiresAt }
-  // PR-E — when the share viewer's "Edit" is tapped, this drives a dedicated
-  // SmartFoodSearchModal whose save promotes the capture unknown → food.
+  // PR-E n++ when the share viewer's "Edit" is tapped, this drives a dedicated
+  // SmartFoodSearchModal whose save promotes the capture unknown ? food.
   const [shareEditView, setShareEditView] = useState({
     open: false,
     captureId: null,
   });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
-  const manualMealTypeRef = useRef("");
-  const activeTaskTypeRef = useRef("");
-  useEffect(() => {
-    manualMealTypeRef.current = manualMealType;
-  }, [manualMealType]);
-
-  const FOOD_TASK_HINTS = new Set(["breakfast", "lunch", "dinner", "water"]);
-  const getFoodTaskTypeHint = () => {
-    const fromTask = activeTaskTypeRef.current;
-    if (FOOD_TASK_HINTS.has(fromTask)) return fromTask;
-    const fromMeal = manualMealTypeRef.current;
-    return FOOD_TASK_HINTS.has(fromMeal) ? fromMeal : undefined;
-  };
-  const clearActiveTaskContext = () => {
-    activeTaskTypeRef.current = "";
-    setManualMealType("");
-  };
-  const notifyTasksChanged = () => {
-    window.dispatchEvent(new CustomEvent("wellness:tasks-changed"));
-  };
-  const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
-  // Education time window fetched from DB (e.g. 07:15 - 08:45) � no hardcoding
+  // Education time window fetched from DB (e.g. 07:15 - 08:45) ? no hardcoding
   const [educationWindow, setEducationWindow] = useState(null);
-  const [weightResult, setWeightResult] = useState(null); // Store weight detection results
-  const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
-  // --- savedWeightIdRef ----------------------------------------------------
-  // INTENTIONAL ref-mirror of `savedWeightId` state.
-  //
-  // Why both exist:
-  //   - `savedWeightId` (state) drives JSX (e.g. enabling the inline-edit
-  //     pencil button, conditional render of the edit overlay).
-  //   - `savedWeightIdRef` (ref) is read inside async handlers that are
-  //     created/closed-over BEFORE the state setter resolves � specifically:
-  //       � performWeightSave    ? writes the new id (line ~1884)
-  //       � handleWeightEditSave ? reads the current id mid-flight (line ~1947)
-  //                                so a user editing immediately after save
-  //                                hits the right entryId without waiting
-  //                                for React to re-render the handler.
-  //       � saveWeightEntry      ? updates id after a manual save (line ~1973)
-  //   - Cleared together with state in showMainPage / showDashboardPage /
-  //     handleSignOut so they cannot diverge across navigation.
-  //
-  // Stale-closure risk (documented, NOT fixed in hygiene phase):
-  //   - The inline edit handler captures `weightResult` and `user` by closure
-  //     but reads `savedWeightIdRef.current` directly. If a second weight
-  //     save lands between two clicks of the edit button, the edit can race
-  //     onto the *new* entry id while the user thinks they are editing the
-  //     prior result. This is currently masked by the UI clearing the result
-  //     card on save, so practically unreachable. To eliminate fully, a
-  //     state-machine extraction of weight-save (later phase) should pair
-  //     `entryId` with the result object instead of using a sibling ref.
-  const savedWeightIdRef = useRef(null);
-  const [isEditingWeight, setIsEditingWeight] = useState(false); // Inline edit mode
-  const [editWeightValue, setEditWeightValue] = useState(""); // Value being edited
-  const [isSavingWeightEdit, setIsSavingWeightEdit] = useState(false); // Loading for edit save
-  const [weightEditError, setWeightEditError] = useState(""); // Edit validation error
-  const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
-  const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
-  const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
-  const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
-  const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(""); // Celebration message
-
-  // Weight Progress Tips feature (reverse progress detection)
-  const weightProgressCheck = useWeightProgressCheck();
-  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
 
   // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
-  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
-  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
-  // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
-  // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
-  const getISTDateStr = (ts) => {
-    if (!ts) return null;
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return String(ts).substring(0, 10);
-    const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-    return istTime.toISOString().substring(0, 10);
-  };
+  // Email gate � forced for phone-OTP users who have no email in their profile
+  const [showEmailGate, setShowEmailGate] = useState(false);
+  const [showPhysicalActivitySetup, setShowPhysicalActivitySetup] = useState(false);
 
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
@@ -484,8 +420,8 @@ function WellnessValleyApp() {
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here
   const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
+  const savedUserNameRef = useRef(null);
   const fileInputRef = useRef(null);
-  const taskCameraInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
   const cachedWeightShareDataUrlRef = useRef(null);
 
@@ -503,6 +439,8 @@ function WellnessValleyApp() {
   // paint it to a JPEG before the user taps share (zero-latency tap-to-share).
   // foodShareImageDataUrlRef caches that pre-painted JPEG.
   const foodCaptureIdRef = useRef(null);
+  /** Capture-time location (GPS/club) keyed by capture id — survives later save races. */
+  const captureLocationByIdRef = useRef(new Map());
   const processedImageRef = useRef(null);
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
@@ -527,16 +465,21 @@ function WellnessValleyApp() {
   const foodShareImageReadyAtRef = useRef(0);
 
   // Refs for analysis results - used by resume listener to check if results are visible
-  // without closure staleness issues (the effect is mount-only with [] deps)
+  // without closure staleness issues (the effect is mount-only with [] deps).
+  // imageTypeRef is also used by showDashboardPage (stable useCallback) so it
+  // can read the current imageType without capturing it as a dep.
   const nutritionDataRef = useRef(null);
   const weightResultRef = useRef(null);
   const educationResultRef = useRef(null);
   const watchResultRef = useRef(null);
+  const imageTypeRef = useRef(null);
 
   // Hook into global nutrition refresh context (replaces old nutritionRefreshKey state)
   const {
     refreshKey: nutritionRefreshKey,
     triggerRefresh: triggerNutritionRefresh,
+    markCaptureAnalyzing,
+    clearCaptureAnalyzing,
   } = useNutritionRefresh();
 
   // Keep refs in sync with state for resume listener (avoids stale closures)
@@ -544,14 +487,14 @@ function WellnessValleyApp() {
     nutritionDataRef.current = nutritionData;
   }, [nutritionData]);
   useEffect(() => {
-    weightResultRef.current = weightResult;
-  }, [weightResult]);
-  useEffect(() => {
     educationResultRef.current = educationResult;
   }, [educationResult]);
   useEffect(() => {
     watchResultRef.current = watchResult;
   }, [watchResult]);
+  useEffect(() => {
+    imageTypeRef.current = imageType;
+  }, [imageType]);
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -611,7 +554,7 @@ function WellnessValleyApp() {
 
   // Reset the home/capture surface back to its initial state. Called after the
   // share sheet completes so the user lands back on Home, ready for the next
-  // capture. Does NOT cancel the in-flight Gemini analysis � that continues
+  // capture. Does NOT cancel the in-flight Gemini analysis ? that continues
   // and writes to the same public share URL the user already sent.
   const resetCaptureToHome = useCallback(() => {
     setImagePreview(null);
@@ -674,7 +617,7 @@ function WellnessValleyApp() {
     [user, apiBaseUrl],
   );
 
-  // Auto-open the native share sheet as soon as food is identified � fires
+  // Auto-open the native share sheet as soon as food is identified ? fires
   // the moment foodShareUrl is set (at fast-classify time), BEFORE the full
   // nutrition analysis finishes. The raw food photo is used directly so
   // there is zero html2canvas wait: the user can share the link+image to
@@ -696,13 +639,21 @@ function WellnessValleyApp() {
 
       const shareStart = Date.now();
       debugLog(
-        `?? [PERF] ?? Auto-share triggered � sending WhatsApp link-preview card (+${
+        `?? [PERF] ?? Auto-share triggered ? sending WhatsApp link-preview card (+${
           shareStart - (captureFlowStartRef.current || shareStart)
         }ms from capture start)`,
       );
 
-      const shareDisplayName = resolveShareDisplayName(savedUserName, user);
-      const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${foodShareUrl}`;
+      const shareDisplayName = await ensureShareDisplayName(
+        savedUserNameRef.current ?? savedUserName,
+        user,
+        apiBaseUrl,
+      );
+      if (shareDisplayName && user?.email) {
+        cacheProfileUserName(user.email, shareDisplayName);
+        setSavedUserName(shareDisplayName);
+      }
+      const shareText = buildQuickShareText(shareDisplayName, getVersionString());
       const ok = await shareTextViaWhatsApp(shareText);
       if (cancelled) return;
 
@@ -714,11 +665,11 @@ function WellnessValleyApp() {
 
       _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera after first share
       if (!ok) {
-        // Hard failure – reset the guard so a manual retry is possible.
+        // Hard failure n++ reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
       }
-      // Keep analysis on screen – user returns from WhatsApp and sees the
-      // AI results (loading → complete). Camera WILL auto-reopen on next
+      // Keep analysis on screen n++ user returns from WhatsApp and sees the
+      // AI results (loading ? complete). Camera WILL auto-reopen on next
       // app resume once _hasCompletedFirstShareRef is true and the user's
       // Auto Camera preference (wv.autoCameraOnResume) is enabled.
     })();
@@ -729,10 +680,6 @@ function WellnessValleyApp() {
   }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
-  const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
-    useState(false);
-  const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
-  const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // Club selection state
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
@@ -754,6 +701,8 @@ function WellnessValleyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+  const [showProfilePage, setShowProfilePage] = useState(false);
+  const [headerProfileKey, setHeaderProfileKey] = useState(0); // incremented after profile save to refresh header avatar
 
   // Mandatory profile picture modal state - show when user has no valid profile picture
   const [
@@ -772,9 +721,9 @@ function WellnessValleyApp() {
 
   // Profile update trigger - increment this to force Dashboard to refetch BMR
   const [profileUpdateTrigger, setProfileUpdateTrigger] = useState(0);
-  // True while checkProfileCompletion() is in flight � gate must not render during this window.
+  // True while checkProfileCompletion() is in flight ? gate must not render during this window.
   const [profileChecking, setProfileChecking] = useState(false);
-  // Start hidden � only checkProfileCompletion() (called after setup is confirmed complete)
+  // Start hidden ? only checkProfileCompletion() (called after setup is confirmed complete)
   // will turn this on, preventing the gate from flashing for new users going through SetupWizard.
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
 
@@ -784,37 +733,6 @@ function WellnessValleyApp() {
 
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
-
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-
-  // Discipline report state (for coaches) - with localStorage persistence
-  const [showDisciplineReport, setShowDisciplineReport] = useState(false);
-  const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
-  const [showActivityReport, setShowActivityReport] = useState(false);
-
-  // Step Counter state � FEATURE DISABLED
-  // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
-  const [showStepCounter, setShowStepCounter] = useState(false);
-
-  // Screen Time state � FEATURE DISABLED
-  const [showScreenTime, setShowScreenTime] = useState(false);
-  // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
-
-  // Reminders state
-  const [showReminders, setShowReminders] = useState(false);
-  const showRemindersPage = useCallback(() => {
-    setShowReminders(true);
-  }, []);
-
-  // Attendance report state (for coaches)
-  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
-
-  // Marathon dashboard state (for coaches)
-  const [showMarathon, setShowMarathon] = useState(false);
-
-  // ── Marathon Recognition splash (member-facing, runs globally) ────────────
-  const { pendingRecognition, fetchPendingRecognition, dismissRecognition } =
-    useMarathon({ userId: user?.id });
 
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
@@ -827,33 +745,93 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
-  // Debug logging for ValidateOTP modal state
-  useEffect(() => {
-    console.log("🟢 [showValidateOTP state changed]:", showValidateOTP);
-    if (showValidateOTP) {
-      console.log("✅ ValidateOTP modal OPENED");
-    } else {
-      console.log("❌ ValidateOTP modal CLOSED");
-    }
-  }, [showValidateOTP]);
-
   // Demo account: silent coach-OTP setup is provided by
   // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
   // silentlyCompleteDemoSetup function are imported at the top of this file.
   // -------------------------------------------------------------------------
 
-  // Wellness University state
-  const [showWellnessReport, setShowWellnessReport] = useState(false);
-
-  // Summary + trend reports (separate from Diary log UI)
-  const [showWellnessReports, setShowWellnessReports] = useState(false);
-  const wellnessReportsReturnToRef = useRef("main");
-  const [reportsInitialMember, setReportsInitialMember] = useState(null);
-
   // Wellness Counselling state
   const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
+  // Wellness University Enrollment state
+  const [showUniversityEnrollment, setShowUniversityEnrollment] = useState(false);
+  // Synchronous ref that tracks whether we have pushed an 'enrollment' history
+  // entry. Updated synchronously (before startTransition commits) so the guard
+  // in onShowWellnessEnrollment is accurate even when rapid taps arrive before
+  // the React state update has been committed.
+  const enrollmentHistoryPushedRef = useRef(false);
 
-  // 🐛 Food Correction Debug Logs State
+  // Activity Report (Attendance Report) � all roles; Education Attendance selected by default.
+  // Activity Time Report � separate hierarchical heatmap view (coach/admin tools).
+  const [showActivityReport, setShowActivityReport] = useState(false);
+  const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
+  // Testimonials page � member upload + coach verification
+  const [showTestimonials, setShowTestimonials] = useState(false);
+  // Reports page � coach/upline analytics (downline weight status, etc.)
+  const [showReports, setShowReports] = useState(false);
+  const [showWellnessScore, setShowWellnessScore] = useState(false);
+  const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
+
+  // Navigation lock ref: prevents concurrent showDashboardPage() calls from
+  // duplicate rapid taps while the async checkUserStatus is in-flight.
+  const navLockRef = useRef(false);
+
+  // -- Browser history management ----------------------------------------------
+  // Push a new history entry when navigating to a top-level "page". This
+  // keeps the browser Back button in sync with the homemade router state.
+  // popstate re-calls the relevant show* setters so history.go(-1) works.
+  useEffect(() => {
+    const handlePopState = (event) => {
+      const page = event.state?.wvPage ?? 'main';
+      if (page === 'main') {
+        // Returning to home from any full-screen route:
+        enrollmentHistoryPushedRef.current = false;
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowTestimonials(false);
+        setShowProfilePage(false);
+        Session.setCurrentPage('main');
+      } else if (page === 'dashboard') {
+        startTransition(() => setShowDashboard(true));
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowProfilePage(false);
+        Session.setCurrentPage('dashboard');
+      } else if (page === 'counselling') {
+        setShowDashboard(false);
+        startTransition(() => setShowWellnessCounselling(true));
+        setShowUniversityEnrollment(false);
+        Session.setCurrentPage('main');
+      } else if (page === 'enrollment') {
+        enrollmentHistoryPushedRef.current = true;
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        startTransition(() => setShowUniversityEnrollment(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'physical-club') {
+        startTransition(() => setShowNutritionCentersMap(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'testimonials') {
+        startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'profile') {
+        setShowProfilePage(true);
+        Session.setCurrentPage('main');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    // Always seed the current history entry to 'main' on mount.
+    // React state always initialises from scratch; if the browser preserved a
+    // stale wvPage (e.g. 'enrollment') from a previous session or a page
+    // reload, we must override it so that history.back() from enrollment
+    // always lands on a 'main' entry, never on a ghost enrollment entry.
+    window.history.replaceState({ wvPage: 'main' }, '');
+    return () => window.removeEventListener('popstate', handlePopState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; setters are stable
+  }, []);
+
+  // ?? Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
 
@@ -868,13 +846,13 @@ function WellnessValleyApp() {
   // only the most-recent save clears the ref.
   const savePromiseRef = useRef(null);
 
-  // ── FORENSIC INSTRUMENTATION ─────────────────────────────────────────────
+  // -- FORENSIC INSTRUMENTATION ---------------------------------------------
   // captureTraceRef: holds { id, t0, traceId } for the active capture so that
   // every async stage can emit a correlated [CAPTURE-TRACE-<id>] log line.
   // window.__captureTrace is also written for cross-file visibility.
   const captureTraceRef = useRef(null);
 
-  /** Emit one correlated trace log line. Pure debug — no side effects. */
+  /** Emit one correlated trace log line. Pure debug n++ no side effects. */
   const _ctLog = (stage, label, extra = {}) => {
     const tr = captureTraceRef.current;
     if (!tr) return;
@@ -900,211 +878,124 @@ function WellnessValleyApp() {
       savePromiseRef: savePromiseRef.current != null,
     };
   };
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
-  const disciplineLeaderboardRef = useRef(null);
-  const personalDisciplineRef = useRef(null);
+  const wellnessLeaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // NATIVE CAMERA LAUNCH FLOW (event-driven, no time-based guards)
   //
   // Lifecycle this code orchestrates:
-  //   splash → launch overlay → camera UI → photo → share → home
+  //   splash ? launch overlay ? camera UI ? photo ? share ? home
   //
   // Three discrete events drive every state transition:
-  //   1. CAMERA_CONDITIONS_MET — user, permissionsReady, isUserActive, and
+  //   1. CAMERA_CONDITIONS_MET n++ user, permissionsReady, isUserActive, and
   //      ImageUpload mounted (fileInputRef.current.openCamera defined).
-  //   2. CAMERA_OPENED — ImageUpload fires onCameraStateChange('opened') the
-  //      instant Camera.getPhoto is invoked → native camera UI takes the
+  //   2. CAMERA_OPENED n++ ImageUpload fires onCameraStateChange('opened') the
+  //      instant Camera.getPhoto is invoked ? native camera UI takes the
   //      screen. THIS is when we dismiss the launch overlay (zero flash).
-  //   3. CAMERA_CLOSED — onCameraStateChange('closed', {hadResult}) fires
+  //   3. CAMERA_CLOSED n++ onCameraStateChange('closed', {hadResult}) fires
   //      when the user takes a photo OR cancels. We use this to suppress the
   //      false-positive appStateChange that always follows.
   //
   // Cancel-loop fix: when the camera is on screen the OS sends
-  // appStateChange({isActive:false}) → user cancels → appStateChange({isActive:true}).
+  // appStateChange({isActive:false}) ? user cancels ? appStateChange({isActive:true}).
   // The resume listener used to interpret that "isActive:true" as a fresh
   // wake-up and re-open the camera. Now the resume listener checks
   // fileInputRef.current?.isCameraActive() AND a one-shot
   // _justClosedCameraRef flag set in onCameraStateChange('closed'), so it
   // correctly ignores its own camera-driven state transitions.
-  // ─────────────────────────────────────────────────────────────────────────
-useEffect(() => {
-  if (!user?.id) return;
-  if (!Capacitor.isNativePlatform()) return;
-
-  initializeFCM(async (token) => {
-    debugLog('🔥 FCM token received, persisting to backend', { userId: user.id });
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/user/push-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, pushToken: token }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        debugLog('❌ Failed to persist FCM token', { status: res.status, message: body?.message });
-      } else {
-        debugLog('✅ FCM token persisted', { userId: user.id });
-      }
-    } catch (err) {
-      // Non-critical: token will be retried next time PushNotifications.register() fires
-      debugLog('❌ FCM token persistence error (non-critical)', { error: err?.message });
-    }
-  });
-}, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- apiBaseUrl is build-time constant
-  // ── Marathon Recognition: fetch on startup when user is ready ─────────────
-  useEffect(() => {
-    if (!user?.id) return;
-    fetchPendingRecognition();
-  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- userId dep is stable
-
-  // ── Marathon Recognition: 5-minute polling — native (start/stop with AppState) ─
-  useEffect(() => {
-    if (!user?.id || !Capacitor.isNativePlatform()) return;
-    let handle = null;
-    let cancelled = false;
-    let pollTimer = null;
-
-    const startPoll = () => {
-      if (!pollTimer)
-        pollTimer = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
-    };
-    const stopPoll = () => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-    };
-
-    startPoll();
-
-    nativeLifecycle
-      .addAppStateListener(({ isActive }) => {
-        if (cancelled) return;
-        if (isActive) {
-          fetchPendingRecognition(); // immediate fetch on resume
-          startPoll();
-        } else {
-          stopPoll();
-        }
-      })
-      .then((h) => {
-        if (cancelled) {
-          h?.remove?.();
-          stopPoll();
-        } else handle = h;
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-      stopPoll();
-      try {
-        handle?.remove?.();
-      } catch {
-        /* ignore */
-      }
-    };
-  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
-
-  // ── Marathon Recognition: 5-minute polling — web ─────────────────────────
-  useEffect(() => {
-    if (!user?.id || Capacitor.isNativePlatform()) return;
-    const id = setInterval(fetchPendingRecognition, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [user?.id, fetchPendingRecognition]); // eslint-disable-line react-hooks/exhaustive-deps -- stable deps
-
+  // -------------------------------------------------------------------------
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
-  // NOTE: excludes showCompleteProfile — the profile gate overlays the home
+  // NOTE: excludes showCompleteProfile n++ the profile gate overlays the home
   // screen, so auto-camera-open must not fire while it is visible.
   // Updated: removed imagePreview/selectedImage checks to allow camera open
   // even when returning to app during/after analysis (user expectation).
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
+    const onboardingActive =
+      showSetupWizard ||
+      showValidateOTP ||
+      showEmailGate ||
+      showPhysicalActivitySetup ||
+      showCompleteProfile ||
+      profileChecking;
+
     _homeScreenActiveRef.current =
       !!user &&
       !authLoading &&
+      !onboardingActive &&
       !showDashboard &&
-      !showCompleteProfile &&
-      !showActivityTimeReport &&
-      !showDisciplineReport &&
-      !showMarathon &&
-      !showScreenTime;
+      !showActivityReport &&
+      !showActivityTimeReport;
   }, [
     user,
     authLoading,
-    showDashboard,
+    showSetupWizard,
+    showValidateOTP,
+    showEmailGate,
+    showPhysicalActivitySetup,
     showCompleteProfile,
+    profileChecking,
+    showDashboard,
+    showActivityReport,
     showActivityTimeReport,
-    showDisciplineReport,
-    showMarathon,
-    showScreenTime,
   ]);
 
-  const _userIdRef         = useRef(null);  // mirrors user?.id
-  const _showTaskPanelRef  = useRef(false); // mirrors showTaskPanel
+  const _userIdRef = useRef(null);  // mirrors user?.id
 
-  // localStorage key: stores the IST date on which the user last manually
-  // closed the panel. The auto-open gate respects this for the rest of that
-  // calendar day, resetting at IST midnight. FCM taps and bell-icon clicks
-  // always open the panel regardless of this key.
-  const PANEL_CLOSED_DATE_KEY = 'wv.taskPanel.closedDate';
-
-  /** Return today's IST date string 'YYYY-MM-DD'. */
-  const istToday = () =>
-    new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().substring(0, 10);
-
-  /** True when the user already closed the panel today (IST). */
-  const wasTaskPanelClosedToday = () =>
-    localStorage.getItem(PANEL_CLOSED_DATE_KEY) === istToday();
-
-  /** Pending tasks that still deserve auto-open (not "don't remind again today"). */
-  const pendingTasksNeedingPanel = (tasks) =>
-    (tasks || []).filter(
-      (t) =>
-        String(t.status).toLowerCase() === 'pending' &&
-        !t.reminder_dismissed_today,
-    );
-
-  const openTaskPanelFromUserOrReminder = useCallback((taskId = null) => {
-    startTransition(() => {
-      if (taskId) setHighlightedTaskId(String(taskId));
-      setShowTaskPanel(true);
-    });
-  }, []);
-
-  const closeTaskPanelByUser = useCallback(() => {
-    // Record the IST date so the panel won't auto-open again today.
-    // Camera open/close cycles (background → foreground) do NOT reset this
-    // gate, eliminating the repeated-interruption loop users experienced.
-    localStorage.setItem(PANEL_CLOSED_DATE_KEY, istToday());
-    startTransition(() => {
-      setShowTaskPanel(false);
-      setHighlightedTaskId(null);
-    });
-  }, []);
-
-  // Keep task-panel refs in sync so mount-only resume listeners read live values.
+  // Keep userId ref in sync so mount-only resume listeners read live values.
   useEffect(() => {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
+  // Email gate: fire for session-restored phone users who still have no email.
   useEffect(() => {
-    _showTaskPanelRef.current = showTaskPanel;
-  }, [showTaskPanel]);
+    if (!user) return;
+    if (!isOtpVerified) return;
+    if (user.email && user.email.trim()) return;   // has email � no gate needed
+    if (!user.id && !user.UserId) return;           // no userId � can't save
+    setShowEmailGate(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth change
+  }, [user?.id, user?.email, isOtpVerified]);
+
+  // Physical activity gate: after email is set, require activity level once.
+  useEffect(() => {
+    if (!user) return;
+    if (!isOtpVerified) return;
+    if (showEmailGate) return;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    if (!email) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await fetchProfile(email);
+        if (!cancelled && data && !data.physicalActivityLevel) {
+          setShowPhysicalActivitySetup(true);
+        } else if (!cancelled) {
+          setShowPhysicalActivitySetup(false);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth/email-gate change
+  }, [user?.id, user?.email, isOtpVerified, showEmailGate]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
   // the user is actively filling out the form. Without this guard, returning
-  // from camera/gallery fires checkProfileCompletion → profileChecking=true
-  // → LoadingSpinner replaces the page → form unmounts → all input is lost.
+  // from camera/gallery fires checkProfileCompletion ? profileChecking=true
+  // ? LoadingSpinner replaces the page ? form unmounts ? all input is lost.
   const _profileGateActiveRef = useRef(false);
   useEffect(() => {
     _profileGateActiveRef.current = showCompleteProfile;
@@ -1153,16 +1044,16 @@ useEffect(() => {
       // to display the native camera dialog. Calling setShowLaunchOverlay(false)
       // here causes a React re-render that briefly shows the home screen in the
       // gap between the overlay disappearing and the native camera appearing
-      // → visible as a 1-3 frame "home screen flash" on every cold start.
+      // ? visible as a 1-3 frame "home screen flash" on every cold start.
       //
       // The native camera dialog is rendered above the WebView layer anyway,
-      // so the overlay is invisible while the camera is open — keeping it
+      // so the overlay is invisible while the camera is open n++ keeping it
       // mounted costs nothing. It is dismissed on 'closed' (below) so the
       // home screen only ever appears AFTER the camera has already gone.
     } else if (state === "closed") {
       _cameraInFlightRef.current = false;
       _justClosedCameraRef.current = true;
-      // Camera is gone — now it is safe to reveal the home screen.
+      // Camera is gone n++ now it is safe to reveal the home screen.
       setShowLaunchOverlay(false);
     }
   }, []);
@@ -1174,10 +1065,10 @@ useEffect(() => {
   //  - _launchUrlCheckedRef: skip if share-link check still pending
   //  - _homeScreenActiveRef: skip if not on home screen
   //  - _hasCompletedFirstShareRef: skip until user completes their first share
-  //     (Snapchat rule: camera opens once on launch; close without sharing → stay on feed)
+  //     (Snapchat rule: camera opens once on launch; close without sharing ? stay on feed)
   //  - _suppressAutoCameraOnDeepLinkRef: skip when app launched via /share deep link
   //  - wv.autoCameraOnResume: user-controlled localStorage preference
-  //     (Header menu → Auto Camera toggle; default ON)
+  //     (Header menu ? Auto Camera toggle; default ON)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -1190,7 +1081,7 @@ useEffect(() => {
 
         // Guard 1: skip if native camera is already open
         if (_cameraInFlightRef.current) return;
-        // Guard 2: skip if camera just closed (prevents cancel → resume → re-open loop)
+        // Guard 2: skip if camera just closed (prevents cancel ? resume ? re-open loop)
         if (_justClosedCameraRef.current) {
           _justClosedCameraRef.current = false;
           return;
@@ -1207,7 +1098,7 @@ useEffect(() => {
         //   Matches Snapchat behaviour: camera opens once on launch; if closed
         //   without sharing, the user stays on the feed until they actively share.
         if (!_hasCompletedFirstShareRef.current) return;
-        // Guard 8: respect user preference (Header → Auto Camera toggle)
+        // Guard 8: respect user preference (Header ? Auto Camera toggle)
         if (localStorage.getItem('wv.autoCameraOnResume') === 'false') return;
         // Guard 9: skip if analysis results are currently visible
         if (
@@ -1217,13 +1108,13 @@ useEffect(() => {
           watchResultRef.current
         ) {
           debugLog(
-            "🚫 [Resume] Skipping camera auto-open: analysis results visible",
+            "?? [Resume] Skipping camera auto-open: analysis results visible",
           );
           return;
         }
 
-        // All guards passed — open camera
-        debugLog("📸 [Resume] Opening camera after app resume");
+        // All guards passed n++ open camera
+        debugLog("?? [Resume] Opening camera after app resume");
         fileInputRef.current.openCamera();
       })
       .then((h) => {
@@ -1245,77 +1136,17 @@ useEffect(() => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
-  // ─── AUTO-OPEN TASK PANEL — ONCE PER IST DAY ────────────────────────────
-  // The panel opens automatically at most once per IST calendar day (on the
-  // first app open after IST midnight that has pending tasks).
-  //
-  // Rules:
-  //  - Cold-start: open once today if pending tasks exist AND user hasn't
-  //    manually closed the panel yet today (IST date gate).
-  //  - App resume / camera transitions: do NOT auto-open. Removing this
-  //    eliminates the loop: Panel → X → camera → photo → Panel → X → …
-  //  - Bell icon / FCM tap / native alarm tap: always open (no gate).
-  //  - User closes with X: gate stays set until IST midnight.
-  const _taskPanelLaunchDoneRef = useRef(false);
-  useEffect(() => {
-    if (_taskPanelLaunchDoneRef.current) return;
-    if (!user || authLoading) return;
-
-    const isHome =
-      !showDashboard &&
-      !showCompleteProfile &&
-      !showActivityTimeReport &&
-      !showDisciplineReport &&
-      !showMarathon &&
-      !showScreenTime;
-
-    if (!isHome || showTaskPanel) return;
-
-    // Respect the user's explicit daily close (persists through camera / background).
-    if (wasTaskPanelClosedToday()) return;
-
-    _taskPanelLaunchDoneRef.current = true;
-
-    const userId = user?.id || user?.UserId || Session.getDbUserId();
-    if (!userId) return;
-
-    const apiBase = getApiBaseUrl();
-    (async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/tasks/list?userId=${userId}&status=pending`);
-        const json = await res.json();
-        const needsPanel = pendingTasksNeedingPanel(json?.data?.tasks);
-        if (needsPanel.length > 0) {
-          debugLog(`[TaskPanel] ${needsPanel.length} pending task(s) — daily auto-open`);
-          startTransition(() => setShowTaskPanel(true));
-        }
-      } catch (err) {
-        debugLog('[TaskPanel] Daily open check failed:', err.message);
-      }
-    })();
-  }, [
-    user,
-    authLoading,
-    showDashboard,
-    showCompleteProfile,
-    showActivityTimeReport,
-    showDisciplineReport,
-    showMarathon,
-    showScreenTime,
-    showTaskPanel,
-  ]);
-
-  // ─── SHARE-LINK COLD-START GUARD ────────────────────────────────────────
+  // --- SHARE-LINK COLD-START GUARD ----------------------------------------
   // Root cause: `permissionsReady` and `isUserActive` start as `true` for
   // returning users (from localStorage). As soon as Firebase restores `user`
-  // from cache the camera effect fires its RAF — well before our previous
+  // from cache the camera effect fires its RAF n++ well before our previous
   // async `getLaunchUrl().then(...)` could set the flag.
   //
   // Fix: two-part guarantee:
-  //  A. `_launchUrlCheckedRef` — the camera RAF will NOT fire openCamera until
+  //  A. `_launchUrlCheckedRef` n++ the camera RAF will NOT fire openCamera until
   //     this is `true`. It is set true as soon as getLaunchUrl() resolves OR
   //     after 150ms (timeout fallback so a hung bridge never blocks forever).
-  //  B. An early `appUrlOpen` listener — belt-and-suspenders for devices where
+  //  B. An early `appUrlOpen` listener n++ belt-and-suspenders for devices where
   //     getLaunchUrl() returns null even on a share-link cold start (known
   //     Capacitor/Android App Links issue on some OEM ROMs).
   const _launchUrlCheckedRef = useRef(!Capacitor.isNativePlatform()); // web = already done
@@ -1327,7 +1158,7 @@ useEffect(() => {
       return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
     };
 
-    // Part B — early appUrlOpen listener. Fires on cold starts where the OS
+    // Part B n++ early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle
@@ -1344,7 +1175,7 @@ useEffect(() => {
       })
       .catch(() => {});
 
-    // Part A — timeout ensures the camera is never blocked forever.
+    // Part A n++ timeout ensures the camera is never blocked forever.
     const fallbackTimer = setTimeout(() => {
       _launchUrlCheckedRef.current = true;
     }, 150);
@@ -1385,14 +1216,22 @@ useEffect(() => {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
-    if (showCompleteProfile) return; // wait until profile gate clears
+    // Wait until new-user onboarding is complete: email → coach setup → profile → activity level
+    const onboardingActive =
+      showSetupWizard ||
+      showValidateOTP ||
+      showEmailGate ||
+      showPhysicalActivitySetup ||
+      showCompleteProfile ||
+      profileChecking;
+    if (onboardingActive) return;
 
     let cancelled = false;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
       // Wait until the launch-URL check has completed (prevents opening the
       // camera on share-link cold starts where getLaunchUrl() or appUrlOpen
-      // hasn't resolved yet). Re-queues the RAF — adds at most ~16ms per
+      // hasn't resolved yet). Re-queues the RAF n++ adds at most ~16ms per
       // frame and resolves within 150ms worst case.
       if (!_launchUrlCheckedRef.current) {
         requestAnimationFrame(tryOpen);
@@ -1404,7 +1243,7 @@ useEffect(() => {
         api.openCamera(); // handleCameraStateChange('opened') will dismiss the overlay
         return;
       }
-      // ImageUpload not yet mounted — try again next animation frame.
+      // ImageUpload not yet mounted n++ try again next animation frame.
       // No upper bound: this effect's deps will re-run when conditions change.
       requestAnimationFrame(tryOpen);
     };
@@ -1416,7 +1255,12 @@ useEffect(() => {
     user,
     permissionsReady,
     isUserActive,
+    showSetupWizard,
+    showValidateOTP,
+    showEmailGate,
+    showPhysicalActivitySetup,
     showCompleteProfile,
+    profileChecking,
     _launchUrlCheckedRef,
   ]);
 
@@ -1429,7 +1273,7 @@ useEffect(() => {
       setShowLaunchOverlay(false);
       return;
     }
-    if (authLoading) return; // still settling — wait
+    if (authLoading) return; // still settling n++ wait
     if (!user) {
       setShowLaunchOverlay(false);
       return;
@@ -1449,52 +1293,9 @@ useEffect(() => {
     } // setup wizard
   }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
 
-  // On Android, request exact alarm permission once per login session.
-  // Deferred until AFTER permissionsReady AND the camera/analysis flow has had
-  // time to settle. Guards:
-  //   - 12 s delay  →  never fires over an open camera or first food analysis
-  //   - session flag →  skipped entirely if the PermissionPrimerModal ran this
-  //                     session (user just granted 3 permissions; a 4th dialog
-  //                     would kill the experience)
-  const _hasFiredAlarmPermCheckRef = useRef(false);
-  useEffect(() => {
-    if (
-      !user ||
-      !Capacitor.isNativePlatform() ||
-      _hasFiredAlarmPermCheckRef.current
-    )
-      return;
-    if (!permissionsReady) return;
-    // Skip if primer ran this session — user has already been through setup.
-    if (sessionStorage.getItem("wv.primerDoneThisSession") === "1") return;
-    _hasFiredAlarmPermCheckRef.current = true;
-    const t = setTimeout(async () => {
-      try {
-        const { canScheduleExact } = await checkExactAlarmPermission();
-        if (!canScheduleExact) {
-          setAlertModal({
-            isOpen: true,
-            title: "⏰ Allow Exact Reminders",
-            message:
-              "To receive reminders exactly on time, tap 'Open Settings', find Wellness Valley under Alarms & Reminders, and turn it on.",
-            type: "warning",
-            confirmText: "Open Settings",
-            cancelText: "Later",
-            onConfirm: async () => {
-              try {
-                await openExactAlarmSettings();
-              } catch (_) {}
-            },
-          });
-        }
-      } catch (_) {}
-    }, 12000); // wait for camera / first analysis to fully settle
-    return () => clearTimeout(t);
-  }, [user, permissionsReady]);
-
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
-  // (wellnessvalley://share/<id>) → resolve the share identifier against the
+  // (wellnessvalley://share/<id>) ? resolve the share identifier against the
   // backend, then jump straight to Dashboard ? Nutrition for that owner /
   // date. Permission errors and missing/expired shares surface as toasts.
   useEffect(() => {
@@ -1507,8 +1308,6 @@ useEffect(() => {
     const SHARE_ID_RE =
       "([A-Za-z0-9]{6,10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
     const SHARE_PATH_RE = new RegExp(`/share/${SHARE_ID_RE}(?:[/?#]|$)`, "i");
-    const BPC_PATH_RE =
-      /\/share\/bpc\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
     const extractToken = (rawUrl) => {
       if (!rawUrl || typeof rawUrl !== "string") return null;
@@ -1522,37 +1321,7 @@ useEffect(() => {
       return httpsMatch ? httpsMatch[1] : null;
     };
 
-    const extractBpcToken = (rawUrl) => {
-      if (!rawUrl || typeof rawUrl !== "string") return null;
-      const m = rawUrl.match(BPC_PATH_RE);
-      return m ? m[1] : null;
-    };
-
     const handleUrl = async (rawUrl) => {
-      // ── Body Parameters Card deep link ───────────────────────────────────
-      const bpcToken = extractBpcToken(rawUrl);
-      if (bpcToken && !seenTokens.has(`bpc:${bpcToken}`)) {
-        _suppressAutoCameraOnDeepLinkRef.current = true;
-        seenTokens.add(`bpc:${bpcToken}`);
-        try {
-          const card = await fetchPublicCard(bpcToken);
-          if (cancelled) return;
-          if (user?.id) {
-            // Already logged in: save to profile inline, no pending storage needed.
-            const { saveCardToProfile } = await import(
-              "./features/body-parameters-card"
-            );
-            await saveCardToProfile(bpcToken, user.id).catch(() => {});
-          } else {
-            // Not logged in: persist so the post-login auth handler can save it.
-            savePendingCard({ ...card, _token: bpcToken });
-          }
-        } catch {
-          // Expired / not-found: show nothing, fall through.
-        }
-        return;
-      }
-
       const token = extractToken(rawUrl);
       if (!token || seenTokens.has(token)) return;
       _suppressAutoCameraOnDeepLinkRef.current = true;
@@ -1583,14 +1352,14 @@ useEffect(() => {
         const data = body.data || {};
 
         // Open the Dashboard (Diary) and seed the owner / date / tab context.
-        // Used for EVERY resolved capture — food, weight, education,
-        // smartwatch, unknown, and pending — so a deep link ALWAYS lands on
+        // Used for EVERY resolved capture n++ food, weight, education,
+        // smartwatch, unknown, and pending n++ so a deep link ALWAYS lands on
         // the diary with the relevant card instead of the home screen.
         const applyDashboardContext = (d, { seedMealId = true } = {}) => {
           if (d.isSelf) {
             setDashboardInitialSelectedMember(null);
           } else {
-            // Shape MUST match team/services/teamSearchService.toSelectedUser —
+            // Shape MUST match team/services/teamSearchService.toSelectedUser n++
             // hooks like resolveDashboardUserId read `id` (not `userId`).
             const memberName = d.ownerUserName || "Member";
             setDashboardInitialSelectedMember({
@@ -1604,7 +1373,7 @@ useEffect(() => {
             });
           }
           setDashboardInitialDate(d.mealDate || null);
-          // While `pending`, no domain row exists yet — resolve returns the
+          // While `pending`, no domain row exists yet n++ resolve returns the
           // captureId as a placeholder that no feed can match. Seed null so the
           // per-feed deep-link opener doesn't latch onto a bogus id; the real
           // id is seeded once the capture is classified (see pollPending).
@@ -1638,6 +1407,7 @@ useEffect(() => {
               open: true,
               captureId: share.captureId,
               imageBase64: share.imageBase64,
+              createdAt: share.createdAt ?? null,
               canMutate: !!share.canMutate,
               retrying: false,
               error: null,
@@ -1679,7 +1449,7 @@ useEffect(() => {
                 pd.imageType &&
                 pd.imageType !== "pending"
               ) {
-                // Classified — route to the real card and refresh the feeds.
+                // Classified n++ route to the real card and refresh the feeds.
                 applyDashboardContext(pd);
                 triggerNutritionRefresh({
                   immediate: true,
@@ -1688,7 +1458,7 @@ useEffect(() => {
                 return;
               }
             } catch {
-              // Transient network error — keep polling until the cap is hit.
+              // Transient network error n++ keep polling until the cap is hit.
             }
             if (!cancelled && attempts < MAX_ATTEMPTS) {
               setTimeout(pollPending, INTERVAL_MS);
@@ -1734,43 +1504,6 @@ useEffect(() => {
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
-
-  // Pre-capture the weight share image in the background as soon as the result
-  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
-  // IMPORTANT: idealWeight and weightDiff are in the dep array so the cache is
-  // invalidated and re-captured after the async profile / history API calls
-  // resolve. Without them the timer fires before those values arrive, producing
-  // a cached image that silently omits the ideal-weight strip and the
-  // vs-previous row.
-  //
-  // The 900 ms timeout acts as a debounce: weightResult, weightDiff, and
-  // idealWeight all arrive at different times (~0 ms, ~500 ms, ~800 ms after
-  // the save). Each new arrival cancels the previous timer via the cleanup
-  // function, so exactly ONE html2canvas render fires � 900 ms after the last
-  // dependency settles � with all three values present in the DOM.
-  useEffect(() => {
-    cachedWeightShareDataUrlRef.current = null;
-    if (imageType !== "weight" || !weightResult || !imagePreview) return;
-    let cancelled = false;
-    const t = setTimeout(() => {
-      if (!weightAnalysisShareRef.current) return;
-      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
-        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
-      });
-    }, 900);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [
-    imageType,
-    weightResult,
-    imagePreview,
-    savedProfileImage,
-    sharePhotoBase64,
-    idealWeight,
-    weightDiff,
-  ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1828,14 +1561,11 @@ useEffect(() => {
   //     if (analysisId != null) {
   //       localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(analysisId));
   //     }
-  // clearBgCache(); // ensure it won�t repaint on refresh
+  // clearBgCache(); // ensure it won?t repaint on refresh
   // } catch {}
   // };
 
   // --------------------------------------------------------------------
-
-  // Navigation hook for back button handling
-  const ionRouter = useIonRouter();
 
   // Toast state for back button exit message
   const [toast, setToast] = useState({ message: "", visible: false });
@@ -1846,7 +1576,7 @@ useEffect(() => {
     setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
 
-  // 🐛 Keyboard shortcut for closing correction modal (ESC key on web)
+  // ?? Keyboard shortcut for closing correction modal (ESC key on web)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && showCorrectionModal) {
@@ -1868,7 +1598,7 @@ useEffect(() => {
 
   // ? CRITICAL FIX: Force splash screen dismissal on app load
 
-  // ? Auth loading timeout � force dismiss loading screen after 5 seconds
+  // ? Auth loading timeout ? force dismiss loading screen after 5 seconds
   useEffect(() => {
     const authTimeout = setTimeout(() => {
       setAuthLoading(false);
@@ -1881,7 +1611,10 @@ useEffect(() => {
   // native-only gating are preserved exactly inside the service.
   useEffect(() => nativeLifecycle.scheduleSplashHide(500), []);
 
-  // Restore showDashboard from localStorage using startTransition � avoids suspending lazy <Dashboard> on mount
+  // Restore showDashboard from localStorage using startTransition � avoids suspending lazy <Dashboard> on mount.
+  // Also push a history entry so the browser back button can return to Home
+  // from a cold-start-restored Dashboard (without this the forward button is
+  // immediately disabled and no popstate fires on the first back press).
   useEffect(() => {
     const page = Session.getCurrentPage();
     if (
@@ -1891,60 +1624,104 @@ useEffect(() => {
       page === "weight-insights"
     ) {
       startTransition(() => setShowDashboard(true));
+      // The popstate effect's replaceState('main') runs first (declared earlier),
+      // so history is [main] at this point. Push 'dashboard' on top so the
+      // browser back button pops to 'main' and fires the popstate handler.
+      window.history.pushState({ wvPage: 'dashboard' }, '');
     }
   }, []);
 
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showActivityTimeReport) {
-        showMainPage();
-        return true;
-      }
-      if (showDisciplineReport) {
-        showMainPage();
-        return true;
-      }
-      if (showMarathon) {
-        showMainPage();
-        return true;
-      }
       if (showDashboard) {
+        // showMainPage is now a stable useCallback([]) reference, so this
+        // closure always calls the current version without stale captures.
         showMainPage();
         return true;
       }
-      if (showStepCounter) {
-        // setShowStepCounter(false); // feature disabled
-        Session.setCurrentPage("main");
+      if (showWellnessCounselling) {
+        setShowWellnessCounselling(false);
+        // Pop the history entry pushed when counselling was opened instead
+        // of pushing a new 'main' entry (which would bloat history).
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
-      if (showScreenTime) {
-        setShowScreenTime(false);
-        Session.setCurrentPage("main");
+      if (showUniversityEnrollment) {
+        enrollmentHistoryPushedRef.current = false;
+        setShowUniversityEnrollment(false);
+        // Use replaceState instead of history.back() so no popstate fires.
+        // history.back() would trigger the handlePopState 'enrollment' branch
+        // which calls startTransition(setShowUniversityEnrollment(true)) and
+        // fights the urgent false update, leaving enrollment re-opened.
+        window.history.replaceState({ wvPage: 'main' }, '');
         return true;
       }
-      return ionRouter.canGoBack() && ionRouter.goBack();
+      if (showNutritionCentersMap) {
+        setShowNutritionCentersMap(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showActivityReport) {
+        setShowActivityReport(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showActivityTimeReport) {
+        setShowActivityTimeReport(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showReports) {
+        setShowReports(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showWellnessScoreSetup) {
+        setShowWellnessScoreSetup(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showWellnessScore) {
+        setShowWellnessScore(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showProfilePage) {
+        setShowProfilePage(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard &&
-        !showActivityTimeReport &&
-        !showDisciplineReport &&
-        !showMarathon &&
-        !showStepCounter &&
-        !showScreenTime,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showReports && !showWellnessScoreSetup && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
-    ionRouter,
     showDashboard,
+    showWellnessCounselling,
+    showUniversityEnrollment,
+    showNutritionCentersMap,
+    showActivityReport,
     showActivityTimeReport,
-    showDisciplineReport,
-    showMarathon,
-    showStepCounter,
-    showScreenTime,
+    showTestimonials,
+    showReports,
+    showWellnessScoreSetup,
+    showWellnessScore,
+    showProfilePage,
   ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -1961,7 +1738,7 @@ useEffect(() => {
 
   // Phase 3d-a: Auth FSM shadow-mode observation refs.
   // The FSM never mutates React state. It only logs transitions and drift.
-  // Disabled by default � enable via `localStorage.setItem('authFsm.shadow', 'true')`
+  // Disabled by default ? enable via `localStorage.setItem('authFsm.shadow', 'true')`
   // or REACT_APP_AUTH_FSM_SHADOW=true. Kill switch overrides everything.
   const authFsmLegacyRef = useRef({});
   const authFsmStartedRef = useRef(false);
@@ -2008,7 +1785,7 @@ useEffect(() => {
         }
 
         if (result === "newUser") {
-          // ? New user � SetupWizard will handle profile collection, no popup needed
+          // ? New user ? SetupWizard will handle profile collection, no popup needed
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
           if (role) setUserRole(role);
@@ -2043,143 +1820,111 @@ useEffect(() => {
     if (leaderboardRef.current) {
       leaderboardRef.current.refresh();
     }
-    if (disciplineLeaderboardRef.current) {
-      disciplineLeaderboardRef.current.refresh();
-    }
-    if (personalDisciplineRef.current) {
-      personalDisciplineRef.current.refresh();
+    if (wellnessLeaderboardRef.current) {
+      wellnessLeaderboardRef.current.refresh();
     }
   }, []);
 
   const showDashboardPage = useCallback(
-    async (preferredTab = null) => {
-      // Re-check user status in real-time before opening dashboard
+    (preferredTab = null) => {
+      // Guard: prevent duplicate concurrent navigation calls.
+      if (navLockRef.current) return;
+      navLockRef.current = true;
+      try {
+      // Fire status check in the background � do NOT await it.
+      // Awaiting blocked the Diary nav for ~200-500 ms on every tap, and
+      // held navLockRef=true during that window so rapid taps were silently
+      // dropped. If the account has become inactive the periodic 60-second
+      // check (or the auth-state-change IIFE) will surface the modal shortly;
+      // we don't need to gate navigation on it here.
       if (user) {
-        const isActive = await checkUserStatus(user);
-        if (!isActive) {
-          setError(
-            "Your account is inactive. Please contact support to reactivate.",
-          );
-          return;
-        }
+        checkUserStatus(user).then((isActive) => {
+          if (!isActive) {
+            // Account became inactive while dashboard was opening � close it.
+            setShowDashboard(false);
+          }
+        }).catch(() => {/* fail-open */});
       }
 
-      // Clear nutrition data and image preview when switching to dashboard
-      if (nutritionData) setNutritionData(null);
-      if (imagePreview) setImagePreview(null);
-      if (watchResult) setWatchResult(null);
-      if (educationResult) setEducationResult(null);
-      if (weightResult) {
-        setWeightResult(null);
-        setPendingWeightImage(null);
-        setWeightEntrySaved(false);
-        setSavedWeightId(null);
-        savedWeightIdRef.current = null;
-      }
-      if (selectedImage) setSelectedImage(null);
-      if (imageType) setImageType(null);
+      // Clear transient capture/analysis state when switching to dashboard.
+      // All setters are unconditional � setState(null) when already null is
+      // a no-op in React (Object.is bail-out), so no extra render fires.
+      // This also removes nutritionData/imagePreview/etc. from the dep array
+      // below, preventing showDashboardPage from being recreated (and the
+      // gallery-monitoring effect from re-initialising) on every AI result.
+      setNutritionData(null);
+      setImagePreview(null);
+      setWatchResult(null);
+      setEducationResult(null);
+      clearWeightState();
+      setSelectedImage(null);
+      setImageType(null);
 
-      // savePromiseRef guard: if a food save is in-flight, wait for it to
-      // settle before opening the Dashboard so the initial fetch finds
-      // committed data. Resolves immediately when no save is pending.
-      // The Promise always resolves (never rejects) — errors are caught and
-      // handled inside scheduleNutritionSaveInBackground.
-      const pendingSave = savePromiseRef.current;
-      if (pendingSave) {
-        debugLog("⏳ [Dashboard] Awaiting active food save...");
-        _ctLog(16, 'showDashboardPage — awaiting pending save BEFORE opening', { hadPendingSave: true });
-        await pendingSave;
-        debugLog("✅ [Dashboard] Save settled — opening Dashboard");
-      }
-      // Stage 16 (final) — Dashboard about to open
-      _ctLog(16, 'showDashboardPage — setShowDashboard(true) about to fire', {
-        hadPendingSave: !!pendingSave,
-        imageTypeInClosure: imageType,
+      // Stage 16 (final) � Dashboard about to open.
+      // Any in-flight food save (savePromiseRef) continues in the background;
+      // performNutritionSave calls triggerNutritionRefresh after the DB write
+      // so the Dashboard refreshes automatically once the data is committed.
+      // Awaiting here caused the Diary nav to appear frozen for up to ~10 s
+      // (GPS timeout 5 s + DB write) when the user tapped Diary right after
+      // taking a photo.
+      _ctLog(16, 'showDashboardPage � setShowDashboard(true) about to fire', {
+        hadPendingSave: !!savePromiseRef.current,
         preferredTab,
       });
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
+      // Never infer from imageTypeRef: after food/weight/education analysis the
+      // imageType ref still holds the last classification, which would force the
+      // Nutrition/Weight/Education tab even when the user explicitly taps Diary.
+      // Always defer to null so the Dashboard restores the last-used tab from
+      // localStorage � that is the correct behaviour for an explicit navigation.
       if (
         preferredTab === "weight" ||
         preferredTab === "nutrition" ||
-        preferredTab === "education"
+        preferredTab === "education" ||
+        preferredTab === "diary"
       ) {
         setDashboardInitialTab(preferredTab);
-      } else if (imageType === "weight") {
-        // Set the initial tab based on the last analyzed image type
-        setDashboardInitialTab("weight");
-      } else if (imageType === "food") {
-        setDashboardInitialTab("nutrition");
-      } else if (imageType === "education") {
-        setDashboardInitialTab("education");
       } else {
-        setDashboardInitialTab(null); // Use default/last used tab
+        setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
-      startTransition(() => {
-        setShowDashboard(true);
-      });
+      // Urgent update � navigation flags are now used directly (no useDeferredValue),\n      // so this is an immediate render with no deferral possible.
+      setShowDashboard(true);
       Session.setCurrentPage("dashboard");
+      // Push a browser history entry so the native back button can return to home.
+      window.history.pushState({ wvPage: 'dashboard' }, '');
+      } finally {
+        navLockRef.current = false;
+      }
     },
-    [
-      user,
-      checkUserStatus,
-      nutritionData,
-      imagePreview,
-      imageType,
-      watchResult,
-      educationResult,
-      weightResult,
-      selectedImage,
-    ],
+    // Only stable values in deps: user identity and its status checker.
+    // Transient capture state (nutritionData, imagePreview, weightResult, etc.)
+    // is now cleared unconditionally and read via refs, so it is NOT a dep.
+    // This keeps showDashboardPage stable across AI analysis cycles and
+    // prevents the gallery-monitoring effect from re-initialising on every result.
+    [user, checkUserStatus],
   );
 
-  const openWellnessReportsPage = useCallback(
-    (returnTo = "main", member = null) => {
-      wellnessReportsReturnToRef.current = returnTo;
-      setReportsInitialMember(member);
-      startTransition(() => {
-        if (returnTo === "dashboard") setShowDashboard(false);
-        setShowWellnessReports(true);
-      });
-    },
-    [],
-  );
-
-  const closeWellnessReportsPage = useCallback(() => {
-    const returnTo = wellnessReportsReturnToRef.current;
-    setShowWellnessReports(false);
-    if (returnTo === "dashboard") {
-      startTransition(() => setShowDashboard(true));
-    }
-  }, []);
-
-  const showMainPage = () => {
+  // showMainPage is stable across renders (useCallback with no deps) because
+  // all state reads inside it use the functional-updater or ref form, and
+  // all state setters are stable references from useState/useRef. Wrapping
+  // in useCallback prevents Dashboard from receiving a new onBack prop on
+  // every render and avoids stale-closure in the Android back-button effect.
+  const showMainPage = useCallback(() => {
     setShowDashboard(false);
-    setShowWellnessReports(false);
-    setShowActivityTimeReport(false);
-    setShowDisciplineReport(false);
-    setShowMarathon(false);
-    // setShowStepCounter(false); // feature disabled
-    setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
     setDashboardInitialDate(null); // Clear deep-link date context
     setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
-    if (weightResult) {
-      setWeightResult(null);
-      setPendingWeightImage(null);
-      setWeightEntrySaved(false);
-      setSavedWeightId(null);
-      savedWeightIdRef.current = null;
-    }
-    if (educationResult) setEducationResult(null);
-    if (watchResult) setWatchResult(null);
-    if (nutritionData) setNutritionData(null);
-    if (imagePreview) setImagePreview(null);
-    if (selectedImage) setSelectedImage(null);
-    if (imageType) setImageType(null);
+    clearWeightState();
+    setEducationResult(null);
+    setWatchResult(null);
+    setNutritionData(null);
+    setImagePreview(null);
+    setSelectedImage(null);
+    setImageType(null);
     // Clear instant-share state so stale URLs don't carry over to the next capture.
     foodCaptureIdRef.current = null;
     processedImageRef.current = null;
@@ -2192,17 +1937,299 @@ useEffect(() => {
     }
 
     Session.setCurrentPage("main");
-  };
+    // Pop the history entry that was pushed when the user navigated TO this
+    // page. Using history.back() instead of pushState({wvPage:'main'}) is
+    // critical: pushState would ADD a new 'main' entry on every back
+    // navigation, causing the browser back button to drill through N
+    // previously-visited pages instead of leaving the app.
+    // Guard: only pop if the current entry is a tracked page (not already
+    // at 'main' or an unknown external entry).
+    const currentWvPage = window.history.state?.wvPage;
+    if (currentWvPage && currentWvPage !== 'main') {
+      window.history.back();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- all setters are stable; refs are not reactive
+  }, []);
 
-  // ? NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
-  // App.js retains the call site (in the user-authenticated effect below) so
-  // orchestration ownership stays here; only the plugin plumbing moved out.
-  // Behavior, order (camera/photos ? push ? geolocation), and logging preserved
-  // exactly inside the service.
-  const requestAllPermissions = nativeLifecycle.requestAllPermissions;
+  // -- Cross-tab navigation helper -------------------------------------------
+  // Used by the persistent 5-tab nav bar rendered on every full-page view
+  // (Diary, Counselling, Enrollment, Physical Club). Handles:
+  //   � first open from Home  ? pushState (adds an entry)
+  //   � tab switch from another sub-page ? replaceState (keeps back ? Home clean)
+  //   � go Home from sub-page ? history.back() (pops the sub-page entry)
+  const navigateTo = useCallback((targetPage) => {
+    const currentWvPage = window.history.state?.wvPage;
+    const isOnSubPage = currentWvPage && currentWvPage !== 'main';
+
+    if (targetPage === 'home') {
+      // Close every sub-page and pop the current history entry.
+      setShowDashboard(false);
+      setShowWellnessCounselling(false);
+      setShowUniversityEnrollment(false);
+      setShowNutritionCentersMap(false);
+      setShowActivityReport(false);
+      setShowActivityTimeReport(false);
+      setShowTestimonials(false);
+      setShowReports(false);
+      setShowWellnessScoreSetup(false);
+      setShowWellnessScore(false);
+      setShowProfilePage(false);
+      enrollmentHistoryPushedRef.current = false;
+      Session.setCurrentPage('main');
+      if (isOnSubPage) window.history.back();
+      return;
+    }
+
+    if (targetPage === 'dashboard') {
+      // Clear any pending AI error / photo preview so they don't linger
+      // when the user switches to the Diary tab, causing layout glitches.
+      setError(null);
+      setImagePreview(null);
+      lastImageFileRef.current = null;
+      if (isOnSubPage) {
+        // Close current sub-page; replace history so back still ? Home.
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowReports(false);
+        setShowWellnessScoreSetup(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        enrollmentHistoryPushedRef.current = false;
+        window.history.replaceState({ wvPage: 'dashboard' }, '');
+        Session.setCurrentPage('dashboard');
+        setShowDashboard(true); // urgent � same reason as showDashboardPage
+      } else {
+        showDashboardPage();
+      }
+      return;
+    }
+
+    // For counselling / enrollment / physical-club / activity-report:
+    // � Clear ALL current sub-pages.
+    // � Replace history when switching tabs; push when opening from Home.
+    setShowDashboard(false);
+    setShowWellnessCounselling(false);
+    setShowUniversityEnrollment(false);
+    setShowNutritionCentersMap(false);
+    setShowActivityReport(false);
+    setShowActivityTimeReport(false);
+    setShowTestimonials(false);
+    setShowReports(false);
+    setShowWellnessScoreSetup(false);
+    setShowWellnessScore(false);
+    setShowProfilePage(false);
+    enrollmentHistoryPushedRef.current = false;
+
+    if (isOnSubPage) {
+      window.history.replaceState({ wvPage: targetPage }, '');
+    } else {
+      window.history.pushState({ wvPage: targetPage }, '');
+    }
+
+    switch (targetPage) {
+      case 'counselling':
+        setShowWellnessCounselling(true);
+        break;
+      case 'enrollment':
+        enrollmentHistoryPushedRef.current = true;
+        setShowUniversityEnrollment(true);
+        break;
+      case 'physical-club':
+        setShowNutritionCentersMap(true);
+        break;
+      case 'activity-report':
+        // Merged Attendance Report (ActivityReport): education attendance default tab.
+        setShowActivityReport(true);
+        break;
+      case 'activity-time-report':
+        setShowActivityTimeReport(true);
+        break;
+      case 'testimonials':
+        setShowTestimonials(true);
+        break;
+      case 'reports':
+        setShowReports(true);
+        break;
+      case 'profile':
+        setShowProfilePage(true);
+        break;
+      case 'wellness-score':
+        setShowWellnessScore(true);
+        break;
+      case 'wellness-score-setup':
+        if (['admin', 'developer'].includes(userRole)) {
+          setShowWellnessScoreSetup(true);
+        }
+        break;
+      default:
+        break;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
+  }, [showDashboardPage, userRole]);
+  // -- Permission flow ------------------------------------------------------
+  //
+  // Design: zero custom screens before OS dialogs. Permissions are requested
+  // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
+  // prompt has been denied, as a last-resort block. Required permissions
+  // (camera, location) block the app entirely; optional ones (notifications)
+  // are silently skipped on denial.
+  //
+  // States
+  //   activePermission = null          ? no gate, home accessible
+  //   activePermission.canRequest=true ? [Allow Again] [Exit App]
+  //   activePermission.canRequest=false? [Exit App] only (permanent)
+
+  // Guard: prevents advancePermissionFlow from running concurrently.
+  // Without this, the appStateChange listener could kick off a second run
+  // while a native OS permission dialog is still open in the first run,
+  // causing duplicate requests and unpredictable state.
+  const _permissionFlowRunningRef = useRef(false);
+
+  /**
+   * Walk [camera ? location ? notifications] in order.
+   *
+   * For every non-granted permission, requestPermission() is called
+   * IMMEDIATELY � no pre-dialog, no canRequest gate on the first check.
+   *
+   * Why skip the initial canRequest check?
+   * Capacitor's checkPermissions() maps Android permission state via
+   * shouldShowRequestPermissionRationale(). On a fresh install that method
+   * returns false (never-asked), which Capacitor maps to 'denied', making
+   * canRequest === false. Gating requestPermission on that value would show
+   * the blocking dialog before the OS prompt ever fired.
+   *
+   * The OS itself is the arbiter:
+   *   � First-time / 'prompt' ? OS shows the system dialog.
+   *   � Permanent denial    ? OS silently returns 'denied'; no dialog shown.
+   *
+   * After requestPermission returns we re-check canRequest to decide whether
+   * to offer "Allow Again" (still requestable) or just "Exit App" (permanent).
+   */
+  const advancePermissionFlow = useCallback(async () => {
+    // Prevent concurrent runs (e.g. setup effect + appStateChange firing together).
+    if (_permissionFlowRunningRef.current) return;
+    _permissionFlowRunningRef.current = true;
+
+    try {
+      const PERMISSIONS = ['camera', 'location', 'notifications'];
+
+      for (const type of PERMISSIONS) {
+        const config = PermissionManager.PERMISSION_CONFIG[type];
+
+        // Fast path: already granted � skip without touching the OS.
+        const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
+        if (alreadyGranted) continue;
+
+        if (type === 'location') {
+          const gpsOn = await nativeLifecycle.checkGpsEnabled();
+          if (!gpsOn) {
+            setShowGpsRequired(true);
+            return;
+          }
+        }
+
+        // Not granted � request directly. The OS either shows a dialog
+        // (first-time or 'prompt') or silently returns denied (permanent).
+        // We never show a custom screen before this call.
+        const { granted: nowGranted } = await PermissionManager.requestPermission(type);
+        if (nowGranted) continue;
+
+        // Request returned denied.
+        if (!config.required) continue; // Notifications is optional � skip.
+
+        // Required permission denied. Re-check canRequest NOW � this
+        // post-request value is accurate: Capacitor correctly maps 'prompt'
+        // (Android first-denial, can ask again) vs 'denied' (permanent).
+        const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
+        setActivePermission({ type, canRequest: canRequestNow });
+        return; // Hold here; user action (Allow Again / Exit) resumes flow.
+      }
+
+      // All permissions satisfied � verify GPS is enabled.
+      const gpsOn = await nativeLifecycle.checkGpsEnabled();
+      if (!gpsOn) {
+        setShowGpsRequired(true);
+        return;
+      }
+
+      setActivePermission(null);
+      localStorage.setItem('wv.permissionsGranted', '1');
+      setPermissionsReady(true);
+    } finally {
+      _permissionFlowRunningRef.current = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Background location cache: keep latest GPS + club/city ready so photo
+  // capture never waits on a spinner for geolocation.
+  useEffect(() => {
+    if (!user || !permissionsReady || !isUserActive || !apiBaseUrl) {
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const uid = user?.id || (await getUserId(user).catch(() => null));
+      if (cancelled || !uid) return;
+      await startUserLocationCache({ apiBaseUrl, userId: uid });
+    })();
+    return () => {
+      cancelled = true;
+      stopUserLocationCache();
+    };
+  }, [user, permissionsReady, isUserActive, apiBaseUrl]);
+
+  /**
+   * Called when user taps "Allow Again" in PermissionDeniedModal.
+   *
+   * Invokes the native OS permission dialog directly (canRequest is true at
+   * this point � the modal is only shown while the OS can still prompt).
+   *   � Granted          ? reset flow lock, continue with remaining permissions.
+   *   � Denied, can ask  ? keep PermissionDeniedModal visible (stay requestable).
+   *   � Denied, permanent ? canRequest flips to false ? React automatically
+   *                         switches from PermissionDeniedModal to
+   *                         PermissionBlockedPage (no explicit navigation needed).
+   */
+  const handlePermissionAllow = useCallback(async (type) => {
+    setPermissionDialogLoading(true);
+    try {
+      if (type === 'location') {
+        const gpsOn = await nativeLifecycle.checkGpsEnabled();
+        if (!gpsOn) {
+          setActivePermission(null);
+          setShowGpsRequired(true);
+          return;
+        }
+      }
+
+      const { granted } = await PermissionManager.requestPermission(type);
+      if (granted) {
+        setActivePermission(null);
+        // Reset the concurrent-run guard before resuming the flow so
+        // advancePermissionFlow can proceed to check the remaining permissions.
+        _permissionFlowRunningRef.current = false;
+        await advancePermissionFlow();
+      } else {
+        // Re-check canRequest after denial. If it flipped to false (permanent)
+        // React will switch the rendered component to PermissionBlockedPage.
+        const { canRequest } = await PermissionManager.checkPermission(type);
+        setActivePermission({ type, canRequest });
+      }
+    } catch {
+      const { canRequest } = await PermissionManager.checkPermission(type).catch(() => ({ canRequest: false }));
+      setActivePermission({ type, canRequest });
+    } finally {
+      setPermissionDialogLoading(false);
+    }
+  }, [advancePermissionFlow]);
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
+    isInactiveReactivationFlowRef.current = false;
     setIsInactiveReactivationFlow(false);
 
     // Add small delay to ensure modal is visible before sign out
@@ -2212,82 +2239,142 @@ useEffect(() => {
   };
 
   // Called when user clicks "Contact Your Coach" inside the inactive modal.
-  // Closes the modal, sends the coach OTP, waits 5 seconds, then shows the ValidateOTP screen.
-  const handleContactCoach = async () => {
-    console.log("🔵 [handleContactCoach] Starting...");
+  // Sends coach OTP then opens ValidateOTP immediately (no artificial delay).
+  const handleInactiveReactivationSuccess = useCallback(async () => {
+    isInactiveReactivationFlowRef.current = false;
+    setShowValidateOTP(false);
+    setIsInactiveReactivationFlow(false);
     setShowInactiveModal(false);
-    setIsWaitingForCoachOTP(true); // Show waiting message
-    console.log("🔵 [handleContactCoach] Modal closed, waiting message shown");
+    setIsUserActive(true);
+    setIsOtpVerified(true);
+    Session.markOtpVerified();
+    Session.clearUserSignedOut();
+    setForceLoggedOut(false);
+
+    const storedUserRaw = Session.getOtpUserRaw();
+    if (storedUserRaw) {
+      try {
+        const parsedUser = JSON.parse(storedUserRaw);
+        const reactivated = {
+          ...parsedUser,
+          status: "Active",
+          Status: "Active",
+        };
+        Session.setOtpUser(reactivated);
+        if (!reactivated.id && !reactivated.UserId) {
+          const dbUserId = await getUserId(reactivated);
+          if (dbUserId) {
+            reactivated.id = dbUserId;
+            Session.setDbUserId(dbUserId);
+          }
+        }
+        clearUserIdCache();
+        setUser(reactivated);
+        setAuthLoading(false);
+        // Re-check status in background after DB commit — do not block entry.
+        checkUserStatus(reactivated, true).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    } else if (user) {
+      setUser({ ...user, status: "Active", Status: "Active" });
+    }
+  }, [checkUserStatus, user]);
+
+  const handleContactCoach = async () => {
+    // Lock reactivation flow first so background setup/status effects cannot
+    // open a non-reactivation ValidateOTP that auto-closes on fetchRequestInfo.
+    isInactiveReactivationFlowRef.current = true;
+    setIsInactiveReactivationFlow(true);
+    setShowInactiveModal(false);
+    setIsWaitingForCoachOTP(true);
 
     try {
       const storedUserRaw = Session.getOtpUserRaw();
       const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : user;
-      const userId =
-        storedUser?.id || storedUser?.UserId || user?.id || user?.UserId;
       const userEmail =
         storedUser?.email ||
         storedUser?.Email ||
         user?.email ||
         user?.Email ||
         Session.getUserEmail();
+      const userPhone =
+        storedUser?.phone ||
+        storedUser?.PhoneNumber ||
+        user?.phone ||
+        user?.PhoneNumber;
+      const userId =
+        storedUser?.id ||
+        storedUser?.UserId ||
+        user?.id ||
+        user?.UserId ||
+        Session.getDbUserId();
 
-      console.log("🔵 [handleContactCoach] Fetching coach for userId:", userId);
-      const coachRes = await fetch(
-        `${apiBaseUrl}/api/user/get-active-coach?userId=${userId}`,
-      );
-      const coachJson = await coachRes.json();
-      console.log("🔵 [handleContactCoach] Coach response:", coachJson);
-      // API returns { ok: true, data: { coachId, ... } }
-      const coachId = coachJson?.data?.coachId || coachJson?.coachId;
+      let coachId = inactiveCoachIdRef.current;
+      let coachName = inactiveCoachName;
 
-      if (coachId) {
-        console.log(
-          "🔵 [handleContactCoach] Sending OTP request to coach:",
-          coachId,
-        );
+      if (!coachId) {
+        const info = await fetchInactiveCoachInfo({
+          apiBaseUrl,
+          user: storedUser || user,
+        });
+        coachId = info.coachId;
+        coachName = info.coachName;
+        inactiveCoachIdRef.current = coachId;
+        if (coachName) setInactiveCoachName(coachName);
+      }
+
+      if (userEmail || userPhone || userId) {
         const otpRes = await fetch(`${apiBaseUrl}/api/upline/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, coachId }),
+          body: JSON.stringify({
+            email: userEmail || undefined,
+            phone: userPhone || undefined,
+            userId: userId || undefined,
+            coachId: coachId || undefined,
+          }),
         });
         const otpJson = await otpRes.json();
-        console.log("🔵 [handleContactCoach] OTP response:", otpJson);
 
         if (otpRes.ok && otpJson.success !== false) {
-          // OTP emailed to coach — wait 5 seconds before showing ValidateOTP
-          // Do NOT change isOtpVerified here — that triggers background effects which
-          // call checkUserStatus again, see "Inactive", and re-show the modal.
-          setIsInactiveReactivationFlow(true);
-          console.log("🔵 [handleContactCoach] Waiting 5 seconds...");
-
-          // Wait 5 seconds before showing the ValidateOTP screen
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-
-          console.log(
-            "🔵 [handleContactCoach] 5 seconds elapsed, hiding waiting modal",
-          );
-          setIsWaitingForCoachOTP(false); // Hide waiting message
-
-          // Small delay to ensure waiting modal unmounts before ValidateOTP renders
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
-          console.log("🔵 [handleContactCoach] Now showing ValidateOTP");
-          setShowValidateOTP(true);
+          if (userEmail) Session.setUserEmail(userEmail);
+          if (otpJson.coachName) setInactiveCoachName(otpJson.coachName);
+          flushSync(() => {
+            setIsWaitingForCoachOTP(false);
+            setShowValidateOTP(true);
+          });
           return;
-        } else {
-          console.log(
-            "🔴 [handleContactCoach] OTP request failed or success=false",
-          );
         }
+
+        const errMsg =
+          otpJson.message ||
+          otpJson.error ||
+          "Could not reach your coach. Please try again.";
+        setAlertModal({
+          isOpen: true,
+          title: "Unable to contact coach",
+          message:
+            otpJson.error === "NO_COACH_ASSIGNED"
+              ? "No coach is assigned to your account. Please ask your wellness center to link you to a coach first."
+              : errMsg,
+          type: "warning",
+        });
       } else {
-        console.log("🔴 [handleContactCoach] No coachId found");
+        setAlertModal({
+          isOpen: true,
+          title: "Unable to contact coach",
+          message:
+            "Your account is missing contact details. Please sign in again or contact support.",
+          type: "warning",
+        });
       }
     } catch (_err) {
-      console.error("🔴 [handleContactCoach] Error:", _err);
-      // swallow network/parse errors — fall through to fallback
+      console.error("[handleContactCoach] Error:", _err);
     }
-    // Fallback: re-show modal if OTP could not be sent
-    console.log("🔴 [handleContactCoach] Fallback - re-showing inactive modal");
+
+    setIsInactiveReactivationFlow(false);
+    isInactiveReactivationFlowRef.current = false;
     setIsWaitingForCoachOTP(false);
     setShowInactiveModal(true);
   };
@@ -2350,39 +2437,23 @@ useEffect(() => {
             if (isActive) {
               // Activate screen keep-awake when app comes to foreground
               KeepAwakePlugin.activate().catch((err) => {
-                console.warn("⚠️ Failed to activate keep-awake:", err);
+                console.warn("?? Failed to activate keep-awake:", err);
               });
 
               GalleryMonitor.checkGallery();
-              // Re-start step tracking in case Android killed the service while in background
-              import("./shared/plugins/stepCounterPlugin")
-                .then(({ StepCounterPlugin }) => {
-                  StepCounterPlugin.isAvailable()
-                    .then((av) => {
-                      if (av?.available) {
-                        StepCounterPlugin.getPermissionStatus()
-                          .then((perm) => {
-                            if (perm?.granted)
-                              StepCounterPlugin.startTracking().catch(() => {});
-                          })
-                          .catch(() => {});
-                      }
-                    })
-                    .catch(() => {});
-                })
-                .catch(() => {});
             } else {
               // Deactivate screen keep-awake when app goes to background
               KeepAwakePlugin.deactivate().catch((err) => {
-                console.warn("⚠️ Failed to deactivate keep-awake:", err);
+                console.warn("?? Failed to deactivate keep-awake:", err);
               });
 
-              // Background ? reset transient sub-pages so reopening shows dashboard
+              // Background n++ reset transient sub-pages so reopening shows dashboard
               const page = Session.getCurrentPage();
-              if (page === "step-counter" || page === "screen-time") {
+              if (page === "screen-time") {
                 Session.setCurrentPage("main");
                 setShowScreenTime(false);
               }
+
             }
           },
         );
@@ -2419,7 +2490,7 @@ useEffect(() => {
 
     return () => {
       cancelled = true;
-      // Only remove the listeners we registered � do NOT call
+      // Only remove the listeners we registered ? do NOT call
       // App.removeAllListeners(), which would also kill the foreground
       // profile-check listener registered in the effect below.
       try {
@@ -2434,66 +2505,6 @@ useEffect(() => {
       }
     };
   }, [showDashboardPage]);
-
-  // -- Silent step tracking start � FEATURE DISABLED ------------------------
-  // useEffect(() => {
-  //   if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
-  //   const startStepTrackingIfPermitted = async () => {
-  //     try {
-  //       const { StepCounterPlugin } = await import('./shared/plugins/stepCounterPlugin');
-  //       const availability = await StepCounterPlugin.isAvailable();
-  //       if (!availability?.available) return;
-  //       const permission = await StepCounterPlugin.getPermissionStatus();
-  //       if (!permission?.granted) return;
-  //       await StepCounterPlugin.startTracking();
-  //     } catch (err) {
-  //       console.warn('[App] Silent step tracking start failed:', err?.message || err);
-  //     }
-  //   };
-  //   startStepTrackingIfPermitted();
-  // }, [user, isUserActive]);
-
-  // -- FCM notification tap → open TaskNotificationPanel ------------------
-  // Fires when user taps a push notification while app is in foreground,
-  // background, or cold-start. Reads data.action to decide what to open.
-  // Only registered on native (Capacitor) — no-op on web.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
-
-    let handle = null;
-    let cancelled = false;
-
-    const register = async () => {
-      try {
-        const { PushNotifications } = await import('@capacitor/push-notifications');
-        handle = await PushNotifications.addListener(
-          'pushNotificationActionPerformed',
-          (event) => {
-            const data = event?.notification?.data || {};
-            debugLog('[App] FCM notification tapped', { action: data.action, taskType: data.taskType });
-
-            if (data.action === 'openTaskPanel') {
-              openTaskPanelFromUserOrReminder(data.taskId);
-            }
-          },
-        );
-        if (cancelled) {
-          handle?.remove?.();
-          handle = null;
-        }
-      } catch (err) {
-        debugLog('[App] FCM tap listener registration failed', { err: err?.message });
-      }
-    };
-
-    register();
-
-    return () => {
-      cancelled = true;
-      try { handle?.remove?.(); } catch { /* ignore */ }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable setters, intentionally empty
-  }, []);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -2515,7 +2526,7 @@ useEffect(() => {
           setAuthLoading(false);
         }
       } catch (error) {
-        console.error("❌ Redirect result error:", error);
+        console.error("? Redirect result error:", error);
         setError("Authentication failed. Please try again.");
         setAuthLoading(false);
       }
@@ -2552,22 +2563,14 @@ useEffect(() => {
         profileCompletedRef.current = true;
         if (!silent) setProfileChecking(false);
         setShowCompleteProfile(false);
-        // Profile fields complete — check picture gate separately
+        // Profile fields complete � check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-        // Force goal mode setup if user has never set it
-        if (
-          result.data?.weightGoalMode === null ||
-          result.data?.weightGoalMode === undefined
-        ) {
-          setGoalModePromptEmail(userEmail);
-          setShowGoalModePrompt(true);
-        }
         return;
       }
 
       if (result.status === "incomplete") {
         debugLog(
-          "?? [Profile] Mandatory fields missing � showing CompleteProfilePage",
+          "?? [Profile] Mandatory fields missing ? showing CompleteProfilePage",
           result.missingFields,
         );
         setProfilePicSnoozeData(result.snooze || null);
@@ -2576,7 +2579,7 @@ useEffect(() => {
         return;
       }
 
-      // result.status === 'error' � fail-soft, no gate flash
+      // result.status === 'error' ? fail-soft, no gate flash
       if (!silent) setProfileChecking(false);
       console.warn(
         "?? [Profile] Failed to check profile completion:",
@@ -2644,7 +2647,7 @@ useEffect(() => {
         return;
       }
 
-      // result.status === "error" � don't block the user
+      // result.status === "error" ? don't block the user
       if (result.error) {
         console.error("? [Profile Picture] Check failed:", result.error);
       } else {
@@ -2657,7 +2660,7 @@ useEffect(() => {
 
   // Phase 3d-a: Keep the legacy snapshot ref fresh so the FSM shadow bridge
   // can compare against current React state on every event. This effect runs
-  // on every render � intentional. The body is a single ref assignment, so
+  // on every render ? intentional. The body is a single ref assignment, so
   // the cost is negligible. The FSM consumes this via `getLegacySnapshot`.
   useEffect(() => {
     authFsmLegacyRef.current = {
@@ -2708,7 +2711,7 @@ useEffect(() => {
       // eslint-disable-next-line no-console -- FSM/lifecycle code must reach crash reporters before logger is ready
       console.warn("[AuthFSM] startShadow threw (ignored):", err);
     }
-    // Intentionally empty deps � this must run exactly once on mount.
+    // Intentionally empty deps ? this must run exactly once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: adding this dep causes an infinite re-render loop
   }, []);
 
@@ -2726,27 +2729,27 @@ useEffect(() => {
       // ? Also ignore if userEmail was cleared (sign-out completed)
       const storedEmail = Session.getUserEmail();
       if (!user && !storedEmail) {
-        // Normal sign-out state � do nothing, UI already reset
+        // Normal sign-out state ? do nothing, UI already reset
         return;
       }
       // ? Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
       if (user && Session.isUserSignedOut()) {
         console.warn(
-          "?? [Auth State] Blocked silent re-auth � user signed out",
+          "?? [Auth State] Blocked silent re-auth ? user signed out",
         );
         signOutUser().catch(() => {});
         return;
       }
       // ? Block re-auth if account was permanently deleted
       if (user && Session.isAccountDeleted()) {
-        console.warn("?? [Auth State] Blocked re-auth � account was deleted");
+        console.warn("?? [Auth State] Blocked re-auth ? account was deleted");
         signOutUser().catch(() => {});
         return;
       }
       // ? Hard gate: if forceLoggedOut is true, never re-login from Firebase
       if (forceLoggedOut) {
         console.warn(
-          "?? [Auth State] Blocked re-auth � forceLoggedOut is true",
+          "?? [Auth State] Blocked re-auth ? forceLoggedOut is true",
         );
         signOutUser().catch(() => {});
         return;
@@ -2816,7 +2819,7 @@ useEffect(() => {
 
         if (!isFreshSignIn) {
           // Fast path for returning users: surface home screen (and camera)
-          // immediately — identical to the OTP synchronous cache restore.
+          // immediately � identical to the OTP synchronous cache restore.
           // Status/setup/profile checks run in the background; modals
           // (inactive, setup wizard, profile gate) appear when needed but
           // never block the initial paint or the camera auto-open.
@@ -2825,42 +2828,12 @@ useEffect(() => {
           setUser(user);
           setAuthLoading(false);
 
-          // Initialise personalised native reminders with the user's learned
-          // average times. Fire-and-forget — never blocks the login flow.
-          if (user.id && Capacitor.isNativePlatform()) {
-            initReminders(user.id).catch((err) => {
-              debugLog(
-                "[App] initReminders failed (non-critical):",
-                err?.message,
-              );
-            });
-          }
-
-          // Background validation — fire and forget. All inner awaits only
-          // mutate React state (setShow*, setIsUserActive, etc.) — safe to
+          // Background validation � fire and forget. All inner awaits only
+          // mutate React state (setShow*, setIsUserActive, etc.) � safe to
           // call from an async IIFE after the render is already committed.
           (async () => {
             const isActive = await checkUserStatus(user);
             if (!isActive) return; // inactive/not-found modal already triggered
-
-            // ── Consume any BPC card stored pre-login (deep link before sign-in) ──
-            // Happens when: user tapped WhatsApp link → app not logged in → savePendingCard()
-            // was called → user now logged in → save height+BMR to their profile silently.
-            const bpcPending = consumePendingCard();
-            if (bpcPending?._token && user?.id) {
-              const { saveCardToProfile } = await import(
-                "./features/body-parameters-card"
-              );
-              saveCardToProfile(bpcPending._token, user.id).catch((err) => {
-                debugLog(
-                  "[BPC] post-login pending card save failed:",
-                  err?.message,
-                );
-              });
-              debugLog(
-                "✅ [BPC] Consumed pending card after login, height+BMR saved to profile",
-              );
-            }
 
             if (!userEmail) return;
             debugLog("?? [Auth State] Checking setup wizard status...");
@@ -2868,9 +2841,9 @@ useEffect(() => {
             // Check if user manually skipped setup (localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
               debugLog(
-                "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
+                "?? [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // silent:true — Gate 3 (profileChecking spinner) must not fire
+              // silent:true � Gate 3 (profileChecking spinner) must not fire
               // when running from a background context after home screen is shown.
               await checkProfileCompletion(userEmail, user, { silent: true });
               return;
@@ -2915,13 +2888,13 @@ useEffect(() => {
                   (userEmail || "").toLowerCase().trim() === DEMO_EMAIL
                 ) {
                   debugLog(
-                    "?? [Auth State] Demo account pending OTP — completing silently",
+                    "?? [Auth State] Demo account pending OTP � completing silently",
                   );
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user, {
                     silent: true,
                   });
-                } else {
+                } else if (!isInactiveReactivationFlowRef.current) {
                   debugLog(
                     "?? [Auth State] Pending OTP detected, showing OTP modal",
                   );
@@ -2930,7 +2903,7 @@ useEffect(() => {
               } else if (status.result === "incomplete") {
                 if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
                   debugLog(
-                    "?? [Auth State] Demo account setup incomplete — completing silently",
+                    "?? [Auth State] Demo account setup incomplete � completing silently",
                   );
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user, {
@@ -2952,14 +2925,14 @@ useEffect(() => {
                 "?? [Auth State] Failed to check setup status:",
                 setupError,
               );
-              // Continue without blocking — setup check is not critical
+              // Continue without blocking � setup check is not critical
             }
           })();
-          return; // Skip fall-through setUser/setAuthLoading — already called above
+          return; // Skip fall-through setUser/setAuthLoading � already called above
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
           debugLog(
-            "🔐 [Auth State] Fresh sign-in detected, skipping status check",
+            "?? [Auth State] Fresh sign-in detected, skipping status check",
           );
         }
       }
@@ -2974,7 +2947,7 @@ useEffect(() => {
         handleSaveUserCache(user);
       } else if (isFreshSignIn) {
         debugLog(
-          "🔐 [Auth State] Skipping handleSaveUserCache for fresh sign-in",
+          "?? [Auth State] Skipping handleSaveUserCache for fresh sign-in",
         );
       }
     });
@@ -3005,53 +2978,27 @@ useEffect(() => {
     return unsubscribe;
   }, [user?.id, forceLoggedOut]);
 
-  // Called when the user taps "Allow Access & Continue" OR "Skip" in the
-  // PermissionPrimerModal. Runs the actual OS permission dialogs, marks the
-  // session so the exact-alarm check is deferred, then sets permissionsReady.
-  const handlePermissionsGranted = useCallback(async () => {
-    setShowPermissionPrimer(false);
-    // Mark that the primer ran this session — exact-alarm check must not
-    // interrupt the very next screen (first camera / food analysis).
-    sessionStorage.setItem("wv.primerDoneThisSession", "1");
-    try {
-      await requestAllPermissions();
-    } catch (_) {
-      // fail-open — camera still opens
-    }
-    localStorage.setItem("wv.permissionsGranted", "1");
-    setPermissionsReady(true);
-  }, [requestAllPermissions]);
-
   // Setup for authenticated users.
-  // First-install path: show PermissionPrimerModal so the user understands
-  // WHY each permission is needed BEFORE the OS dialogs appear.
-  // Returning-user path: silently re-check / re-register push token.
+  // First-install AND returning-user path: run advancePermissionFlow immediately.
+  // No intro/primer screens � permissions are requested natively on the spot.
+  // For returning users, permissionsReady starts true (fast launch); if any
+  // permission was revoked, advancePermissionFlow sets activePermission which
+  // blocks interaction via PermissionBlockedDialog (zIndex 99999).
   useEffect(() => {
     if (!user) return;
     let mounted = true;
     handleSaveUserCache(user);
 
-    const isFirstInstall =
-      Capacitor.isNativePlatform() &&
-      localStorage.getItem("wv.permissionsGranted") !== "1";
-
-    if (isFirstInstall) {
-      // Show primer — handlePermissionsGranted fires when user taps Allow/Skip
-      setShowPermissionPrimer(true);
-      return () => { mounted = false; };
-    }
-
-    // Returning user — request silently (dialogs are no-ops when already granted)
-    requestAllPermissions()
-      .then(() => {
-        localStorage.setItem("wv.permissionsGranted", "1");
-        if (mounted) setPermissionsReady(true);
-      })
-      .catch(() => {
+    if (Capacitor.isNativePlatform()) {
+      advancePermissionFlow().catch(() => {
+        // Fail-open for unexpected plugin errors only.
         if (mounted) setPermissionsReady(true);
       });
+    }
+
     return () => { mounted = false; };
-  }, [user, requestAllPermissions, handleSaveUserCache, handlePermissionsGranted]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, advancePermissionFlow, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
   useEffect(() => {
@@ -3068,14 +3015,14 @@ useEffect(() => {
           debugLog("? Education window fetched from DB:", eduWindow);
           setEducationWindow(eduWindow);
         } else {
-          console.warn("⚠️ Education window not found in response:", data);
+          console.warn("?? Education window not found in response:", data);
         }
         if (data.success && data.windows?.weight) {
           setWeightWindow(data.windows.weight);
         }
       } catch (err) {
         console.warn(
-          "⚠️ Failed to fetch education window from DB:",
+          "?? Failed to fetch education window from DB:",
           err.message,
         );
       }
@@ -3132,7 +3079,7 @@ useEffect(() => {
                 debugLog("? [OTP Restore] User context stored in state");
               } catch (error) {
                 console.error(
-                  "❌ [OTP Restore] Failed to load context:",
+                  "? [OTP Restore] Failed to load context:",
                   error,
                 );
               } finally {
@@ -3164,6 +3111,14 @@ useEffect(() => {
             Session.clearOtpUser();
             setIsOtpVerified(false);
           }
+        } else {
+          // isOtpVerified=true but no user data in localStorage � stale flag
+          // from a previous session (e.g. data was cleared while the flag
+          // remained). Clear it so the render shows Login instead of a blank page.
+          Session.clearOtpVerified();
+          Session.clearOtpUser();
+          setIsOtpVerified(false);
+          setAuthLoading(false);
         }
       }
     };
@@ -3199,9 +3154,9 @@ useEffect(() => {
             }
           }
         }
-        // Status check � shows inactive modal if account was deactivated.
+        // Status check ? shows inactive modal if account was deactivated.
         await checkUserStatus(user, isInactiveReactivationFlow);
-        // Profile completion � silent:true so Gate 3 (profileChecking spinner)
+        // Profile completion ? silent:true so Gate 3 (profileChecking spinner)
         // never fires on app open. CompleteProfilePage still shows if needed.
         const email = user.email || user.Email;
         if (email) await checkProfileCompletion(email, user, { silent: true });
@@ -3213,12 +3168,12 @@ useEffect(() => {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally empty � run once on mount only
+  }, []); // intentionally empty ? run once on mount only
 
   // ? Immediate profile check when app comes back to foreground.
   // NOTE: this is a SEPARATE appStateChange listener from the gallery
   // monitoring effect above. Capacitor allows multiple listeners on the
-  // same event � the gallery effect now removes only its own handle
+  // same event ? the gallery effect now removes only its own handle
   // (not removeAllListeners), so this one survives gallery effect re-runs.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -3234,6 +3189,7 @@ useEffect(() => {
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          refreshUserLocationCache();
           // Guard: skip while CompleteProfilePage is visible. Returning from
           // camera/gallery triggers this listener; re-running checkProfileCompletion
           // would set profileChecking=true, unmounting the form and discarding
@@ -3242,7 +3198,7 @@ useEffect(() => {
           const userEmail = user.email || user.Email;
           if (userEmail) {
             debugLog(
-              "?? [Foreground] App resumed � running immediate profile check",
+              "?? [Foreground] App resumed ? running immediate profile check",
             );
             checkProfileCompletion(userEmail, user, { silent: true });
           }
@@ -3280,6 +3236,73 @@ useEffect(() => {
     return () => clearInterval(statusCheckInterval);
   }, [user, checkUserStatus, isInactiveReactivationFlow]);
 
+  // Permission resume listener � fires whenever the app returns from background.
+  //
+  //   Case A: showGpsRequired � re-check GPS; dismiss when enabled.
+  //
+  //   Case B: a PermissionBlockedDialog is visible (activePermission != null).
+  //           The user may have gone to device Settings and granted the permission.
+  //           Re-check the specific permission only; clear the dialog if now granted.
+  //           Do NOT call requestPermission() here � that would show the OS dialog
+  //           unexpectedly on every resume while the custom dialog is visible.
+  //
+  //   Case C: no dialog, permissions already verified (permissionsReady) �
+  //           a permission may have been revoked from Settings mid-session.
+  //           Re-run advancePermissionFlow to detect and handle it.
+  //
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+    if (!user) return undefined;
+
+    let handle = null;
+    let cancelled = false;
+
+    Promise.resolve(
+      nativeLifecycle.addAppStateListener(async ({ isActive }) => {
+        if (!isActive || cancelled) return;
+
+        // Case A.
+        if (showGpsRequired) {
+          const gpsOn = await nativeLifecycle.checkGpsEnabled();
+          if (!cancelled && gpsOn) {
+            setShowGpsRequired(false);
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
+          }
+          return;
+        }
+
+        // Case B: dialog is visible � check if user granted from Settings.
+        if (activePermission !== null) {
+          const { granted } = await PermissionManager.checkPermission(activePermission.type);
+          if (!cancelled && granted) {
+            setActivePermission(null);
+            // Reset lock so advancePermissionFlow can continue with remaining perms.
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
+          }
+          return;
+        }
+
+        // Case C: no dialog � full re-validation in case a permission was revoked.
+        if (!cancelled) {
+          await advancePermissionFlow();
+        }
+      }),
+    )
+      .then((h) => {
+        if (cancelled) h?.remove?.();
+        else handle = h;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  // Re-register when any of these change so the handler has fresh closure values.
+  }, [user, showGpsRequired, activePermission, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Check setup wizard status whenever user is set/updated
   useEffect(() => {
     const checkSetupStatus = async () => {
@@ -3298,7 +3321,7 @@ useEffect(() => {
       // Check if user manually skipped setup (check localStorage first for quick bypass)
       if (Session.isSetupSkipped()) {
         debugLog(
-          "⏭️ [Setup Check] User skipped setup (localStorage), bypassing wizard",
+          "?? [Setup Check] User skipped setup (localStorage), bypassing wizard",
         );
         return;
       }
@@ -3326,6 +3349,10 @@ useEffect(() => {
             "?? [Setup Check] User skipped setup (database), bypassing wizard",
           );
           Session.markSetupSkipped();
+          // Profile completion must still run even when setup is skipped, so that
+          // a user who dismissed the wizard but has missing profile fields sees the gate.
+          await checkProfileCompletion(userEmail, null, { silent: true });
+          setTimeout(() => checkProfilePicture(user), 800);
           return;
         } else if (status.result === "pendingOtp") {
           if (Session.isCoachOtpVerified()) {
@@ -3336,12 +3363,12 @@ useEffect(() => {
             setTimeout(() => checkProfilePicture(user), 800);
           } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
             debugLog(
-              "?? [Setup Check] Demo account pending OTP � completing silently",
+              "?? [Setup Check] Demo account pending OTP ? completing silently",
             );
             await silentlyCompleteDemoSetup(userEmail);
             await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
-          } else {
+          } else if (!isInactiveReactivationFlowRef.current) {
             debugLog(
               "?? [Setup Check] Pending OTP detected, showing OTP modal",
             );
@@ -3350,7 +3377,7 @@ useEffect(() => {
         } else if (status.result === "incomplete") {
           if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
             debugLog(
-              "?? [Setup Check] Demo account setup incomplete � completing silently",
+              "?? [Setup Check] Demo account setup incomplete ? completing silently",
             );
             await silentlyCompleteDemoSetup(userEmail);
             await checkProfileCompletion(userEmail, null, { silent: true });
@@ -3403,7 +3430,7 @@ useEffect(() => {
           );
         }
       } catch (error) {
-        console.warn("⚠️ [PRELOAD] Failed to preload context:", error);
+        console.warn("?? [PRELOAD] Failed to preload context:", error);
       }
     };
 
@@ -3446,15 +3473,34 @@ useEffect(() => {
 
   // Fetch saved custom profile image for share card
   useEffect(() => {
-    if (!user?.email || !apiBaseUrl) {
+    savedUserNameRef.current = savedUserName;
+  }, [savedUserName]);
+
+  useEffect(() => {
+    const email = user?.email || user?.Email;
+    if (!email) return;
+    const cached = getCachedProfileUserName(email);
+    if (cached) {
+      setSavedUserName((prev) => (prev?.trim() ? prev : cached));
+      return;
+    }
+    const authName = (user?.username || user?.userName || '').trim();
+    if (authName) {
+      setSavedUserName((prev) => (prev?.trim() ? prev : authName));
+    }
+  }, [user?.email, user?.Email, user?.username, user?.userName]);
+
+  useEffect(() => {
+    const email = user?.email || user?.Email;
+    if (!email || !apiBaseUrl) {
       setSavedProfileImage(null);
       return undefined;
     }
     const { signal, cancel } = createAbortGroup();
-    // Use standard caching � no need to bust cache on every render
+    // Use standard caching ? no need to bust cache on every render
     fetch(
-      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`,
-      { signal },
+      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+      { signal, cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
     )
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -3462,17 +3508,22 @@ useEffect(() => {
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
-        if (data?.success && data?.data?.userName)
+        if (data?.success && data?.data?.userName) {
           setSavedUserName(data.data.userName);
-        else setSavedUserName(null);
+          cacheProfileUserName(email, data.data.userName);
+        } else {
+          const cached = getCachedProfileUserName(email);
+          setSavedUserName(cached);
+        }
       })
       .catch((err) => {
         if (isAbortError(err)) return;
         setSavedProfileImage(null);
-        setSavedUserName(null);
+        const cached = getCachedProfileUserName(email);
+        setSavedUserName(cached);
       });
     return cancel;
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, user?.Email, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -3546,8 +3597,8 @@ useEffect(() => {
 
   /**
    * Fetch the user's height (from profile) and compute their ideal weight range
-   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5�24.9).
-   * Formula: idealWeight (kg) = BMI � (heightInMeters)�
+   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5?24.9).
+   * Formula: idealWeight (kg) = BMI ? (heightInMeters)?
    * Updates `idealWeight` state so the share card / visible card can show it.
    */
   const refreshIdealWeight = async () => {
@@ -3576,7 +3627,7 @@ useEffect(() => {
         heightCm: Math.round(heightCm),
       });
     } catch (_) {
-      /* non-critical � share card just won't show ideal weight */
+      /* non-critical ? share card just won't show ideal weight */
     }
   };
 
@@ -3585,603 +3636,62 @@ useEffect(() => {
    * Checks if user's weight moved in wrong direction (reverse progress)
    * and shows personalized tips if needed
    */
-  const triggerReverseProgressModal = async (userId, weightId) => {
-    if (!userId || !weightId) return;
-    try {
-      console.log(
-        "🔍 [triggerReverseProgressModal] Checking progress for userId:",
-        userId,
-        "weightId:",
-        weightId,
-      );
-      const result = await weightProgressCheck.checkProgress(userId, weightId);
-      console.log("📋 [triggerReverseProgressModal] Result:", result);
-      if (result?.shouldShow) {
-        console.log("✅ [triggerReverseProgressModal] Showing modal");
-        setShowWeightProgressModal(true);
-      }
-    } catch (err) {
-      console.error("❌ Error checking weight progress:", err);
-    }
-  };
+  // Weight capture state + save pipeline (hooks/useWeightCapture.js)
+  const {
+    weightResult, setWeightResult,
+    savedWeightId, setSavedWeightId, savedWeightIdRef,
+    weightDiff, setWeightDiff,
+    showWeightCelebration, setShowWeightCelebration, weightCelebrationMessage,
+    weightEntrySaved, setWeightEntrySaved,
+    pendingWeightImage, setPendingWeightImage,
+    showWeightProgressModal, setShowWeightProgressModal,
+    weightProgressCheck,
+    lastWeight,
+    isEditingWeight, setIsEditingWeight,
+    editWeightValue, setEditWeightValue,
+    isSavingWeightEdit, weightEditError,
+    showDuplicateWeightModal, setShowDuplicateWeightModal,
+    duplicateWeightInfo, setDuplicateWeightInfo,
+    pendingWeightSaveData, setPendingWeightSaveData,
+    saveWeightEntry, performWeightSave, handleWeightEditSave, fetchLastWeight,
+    clearWeightState,
+  } = useWeightCapture({
+    user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
+    setAlertModal, setSaveLoading, setLoadingState,
+    setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+  });
 
-  /**
-   * Perform actual weight save to database (called after duplicate check)
-   */
-  const performWeightSave = async (
-    weightData,
-    imageBase64,
-    cachedUserId = null,
-    captureTimestamp = null,
-  ) => {
-    console.log("🚀 [performWeightSave] FUNCTION CALLED with:", {
-      weightValue: weightData.weightValue,
-      unit: weightData.unit,
-      hasCachedUserId: !!cachedUserId,
-      hasCaptureTimestamp: !!captureTimestamp,
-    });
+  // Ref-sync: keep weightResultRef current so mount-only resume listener can
+  // read the latest value without stale closure.
+  useEffect(() => {
+    weightResultRef.current = weightResult;
+  }, [weightResult]);
 
-    try {
-      // Use cached userId if provided, otherwise get it
-      let userId = cachedUserId || user?.id;
-      console.log("🔍 [performWeightSave] Step 1: Getting userId...", {
-        cachedUserId,
-        hasUser: !!user,
+  // Pre-capture the weight share image in the background as soon as the result
+  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
+  useEffect(() => {
+    cachedWeightShareDataUrlRef.current = null;
+    if (imageType !== "weight" || !weightResult || !imagePreview) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!weightAnalysisShareRef.current) return;
+      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
+        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
       });
-
-      if (!userId) {
-        userId = await getUserId(user);
-        console.log("🔍 [performWeightSave] userId fetched:", userId);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      console.log("🔍 [performWeightSave] Step 2: Building payload...");
-
-      const payload = {
-        userId,
-        weightValue: weightData.weightValue,
-        unit: weightData.unit,
-        bmi: weightData.bmi,
-        bodyFat: weightData.bodyFat,
-        muscleMass: weightData.muscleMass,
-        bmr: weightData.bmr,
-        imageBase64ToSave: imageBase64,
-        // Use EXIF capture timestamp if available � otherwise fall back to upload time
-        clientTimestamp: captureTimestamp || new Date().toISOString(),
-        clientTimezoneOffset: new Date().getTimezoneOffset(),
-        // PR 6 — link the weight record to its captures_table row so the backend
-        // can promote the capture pending → weight in the same request.
-        // `share.id` now semantically IS the CaptureID (the speculative food-row
-        // pre-insert was removed). Undefined when no share was created (e.g. the
-        // background-analysis worker bypassed share creation).
-        // TODO(share-viewer-polling): follow-up PR — in-app/web share viewer must
-        // poll the share endpoint until AnalysisData lands OR ImageType flips off
-        // 'pending', because we no longer pre-create the food row.
-        captureId: foodCaptureIdRef.current || undefined,
-      };
-
-      console.log("🔍 [performWeightSave] Step 3: Capturing GPS location...");
-
-      // Capture GPS location for every weight photo — not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Fails gracefully — weight save is never blocked by a GPS timeout.
-      let attendance;
-      try {
-        // Add timeout longer than the GPS getCurrentPosition timeout (10s) so
-        // the GPS call always has a chance to resolve before the race cuts it off.
-        const gpsPromise = locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("GPS timeout after 15s")), 15000),
-        );
-
-        attendance = await Promise.race([gpsPromise, timeoutPromise]);
-        console.log(
-          "📍 [performWeightSave] GPS location captured successfully",
-        );
-        debugLog("📍 [weight] Attendance determined:", attendance);
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "🏢 [weight] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "✅ [weight] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
-        }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          payload.latitude = attendance.latitude;
-          payload.longitude = attendance.longitude;
-          payload.attendanceType = attendance.attendanceType;
-          payload.nutritionCenterId = attendance.nutritionCenterId || null;
-          payload.centerName = attendance.centerName || null;
-          debugLog(
-            "📍 [weight] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          payload.city = city;
-          payload.village = village;
-        }
-      } catch (gpsErr) {
-        console.log(
-          "⚠️ [performWeightSave] GPS failed, proceeding without location:",
-          gpsErr.message,
-        );
-        debugLog(
-          "⚠️ [weight] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        // Fallback to remote attendance
-        payload.attendanceType = "remote";
-      }
-
-      console.log(
-        "🔍 [performWeightSave] GPS location captured, payload ready",
-      );
-
-      // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
-      // This allows multiple weight entries per day with different timestamps
-      // if (savedWeightIdRef.current) {
-      //   payload.entryId = savedWeightIdRef.current;
-      //   debugLog("?? Reusing existing weight entry ID:", savedWeightIdRef.current);
-      // }
-
-      // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
-
-      console.log(
-        "🔍 [performWeightSave] Step 4: Calling API /api/weight/save...",
-      );
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      console.log("📡 [performWeightSave] API response received:", {
-        ok: response.ok,
-        status: response.status,
-        success: data.success,
-        hasData: !!data.data,
-        hasCorrection: !!data.correction,
-      });
-
-      if (!response.ok || !data.success) {
-        debugLog("❌ Weight save failed:", {
-          status: response.status,
-          validation: data.validation,
-          message: data.message,
-        });
-
-        // Even though weight was rejected, BMR may have been saved by the backend.
-        // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
-        if (data.bmrSaved && weightData.bmr) {
-          debugLog(
-            "🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:",
-            weightData.bmr,
-          );
-          setBmrUpdateKey((prev) => prev + 1);
-        }
-
-        // Distinguish a server/infrastructure failure (5xx) from a business validation
-        // failure (400/422). Showing "Unrealistic Weight Change" for a DB outage is
-        // misleading and confusing for the user.
-        if (response.status >= 500) {
-          setAlertModal({
-            isOpen: true,
-            title: "⚠️ Couldn't Save Your Weight",
-            message:
-              "We couldn't save your weight entry right now. Please try again in a moment.",
-            type: "error",
-          });
-        } else {
-          // Validation failure — build a friendly, supportive message
-          let alertMessage = `We noticed a significant change from your last weigh-in.`;
-          if (data.validation && data.message) {
-            const detail =
-              data.message.charAt(0).toUpperCase() + data.message.slice(1);
-            alertMessage = detail;
-          }
-          setAlertModal({
-            isOpen: true,
-            title: "⚖️ Unrealistic Weight Change",
-            message: alertMessage,
-            type: "warning",
-          });
-        }
-
-        // Clear loading states
-        setSaveLoading(false);
-        setLoadingState("idle");
-
-        // Throw so the caller knows the save failed
-        throw new Error(data.message || "Weight save failed");
-      }
-
-      debugLog("✅ Weight entry saved successfully");
-
-      // ? Update weight result with final saved weight (may be corrected by backend)
-      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
-      const finalSavedWeight =
-        data.data?.weightValue ||
-        data.correction?.correctedWeight ||
-        weightData.weightValue;
-      const corrInfo = data.correction || null;
-      console.log("🔍 [DEBUG] Updating weightResult with final saved weight:", {
-        finalSavedWeight,
-        wasCorrected: !!corrInfo?.wasCorrected,
-        corrInfo,
-      });
-
-      // Update weightResult with final backend value (overwrites the pre-save value set earlier)
-      setWeightResult((prev) => ({
-        ...prev,
-        weightValue: finalSavedWeight,
-        originalWeight: corrInfo?.originalWeight || weightData.weightValue,
-        loggedAt: captureTimestamp || new Date().toISOString(),
-      }));
-
-      // Fetch previous weight to show "vs Previous entry" diff immediately
-      try {
-        const histRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const histData = await histRes.json();
-        console.log("🔍 [celebration] Weight history data:", {
-          success: histData.success,
-          hasPrevious: !!histData.stats?.previousWeight,
-          previousWeight: histData.stats?.previousWeight?.value,
-          latestWeight: histData.stats?.latestWeight?.value,
-          finalSavedWeight,
-        });
-
-        if (histData.success && histData.stats?.previousWeight) {
-          const prevWeight = parseFloat(histData.stats.previousWeight.value);
-          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          const latestDate = histData.stats.latestWeight?.date;
-          const prevDate = histData.stats.previousWeight.date;
-          const isDifferentDay =
-            latestDate &&
-            prevDate &&
-            getISTDateStr(latestDate) !== getISTDateStr(prevDate);
-
-          console.log("🔍 [celebration] Weight comparison:", {
-            prevWeight,
-            finalSavedWeight,
-            weightChange,
-            isDifferentDay,
-            latestDate,
-            prevDate,
-          });
-
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (isDifferentDay) {
-            setWeightDiff({
-              previous: Math.round(prevWeight * 100) / 100,
-              previousDate: prevDate,
-              change: Math.round(weightChange * 100) / 100,
-            });
-          } else {
-            setWeightDiff(null);
-          }
-
-          // 🎉 Trigger celebration if weight loss detected (at least 0.1 kg)
-          // CELEBRATION TRIGGERS REGARDLESS OF DATE - we celebrate ANY progress!
-          if (weightChange < -0.1) {
-            const lossAmount = Math.abs(weightChange).toFixed(1);
-            setWeightCelebrationMessage(
-              `You lost ${lossAmount} kg! Keep it up! 💪`,
-            );
-            setShowWeightCelebration(true);
-            console.log(
-              "🎉 [celebration] TRIGGERING celebration! Weight loss:",
-              lossAmount,
-              "kg",
-            );
-            debugLog(
-              "🎉 [celebration] Weight loss detected, triggering celebration:",
-              lossAmount,
-            );
-          } else {
-            console.log(
-              "🔍 [celebration] No celebration - weight change:",
-              weightChange,
-              "kg (need < -0.1)",
-            );
-          }
-        } else {
-          console.log(
-            "🔍 [celebration] No celebration - no previous weight found",
-          );
-          setWeightDiff(null);
-        }
-      } catch (histErr) {
-        console.error(
-          "❌ [celebration] Failed to fetch weight history:",
-          histErr,
-        );
-        /* non-critical */
-      }
-
-      // Fetch user height → compute ideal weight for the share card
-      refreshIdealWeight();
-
-      // Check if weight was auto-corrected
-      if (corrInfo && corrInfo.wasCorrected) {
-        // Show custom alert modal about auto-correction with user-friendly message
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "✅ Weight Adjusted",
-            message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
-            type: "info",
-          });
-        }, 500);
-
-        debugLog("🔧 Weight auto-corrected:", corrInfo);
-      } else if (corrInfo && corrInfo.message) {
-        // Weight changed significantly but within limits — only surface if notable
-        const change = Math.abs(corrInfo.difference || 0);
-        if (change > 1.5) {
-          setTimeout(() => {
-            setAlertModal({
-              isOpen: true,
-              title: "📊 Weight Updated",
-              message: `Your weight changed by ${change.toFixed(
-                1,
-              )} kg. Keep up the great work!`,
-              type: "info",
-            });
-          }, 500);
-        }
-      }
-
-      // Store the saved entry ID for potential editing
-      if (data?.id) {
-        setSavedWeightId(data.id);
-        savedWeightIdRef.current = data.id;
-      }
-
-      // ?? If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
-      // BMR is synced to team_table by the backend � increment the key so it re-reads it
-      if (weightData.bmr) {
-        setBmrUpdateKey((prev) => prev + 1);
-        debugLog(
-          "?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:",
-          weightData.bmr,
-        );
-      }
-
-      // Hide saving overlay
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Show success popup (similar to nutrition save)
-      setError(null);
-
-      // Background refresh to pick up other users' data from server
-      setTimeout(() => {
-        handleLeaderboardRefresh();
-      }, 3000);
-
-      notifyTasksChanged();
-      clearActiveTaskContext();
-
-      // ✅ Check for reverse weight progress and show tips modal
-      const savedId = savedWeightIdRef.current || data?.id || null;
-      await triggerReverseProgressModal(userId, savedId);
-
-      // Keep imagePreview and selectedImage visible (like food images)
-      // Don't reset them here
-    } catch (err) {
-      console.error("❌ Save weight error:", err);
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Weight validation errors are already shown via alertModal � don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        setError(err.message || "Failed to save weight entry");
-      }
-      throw err;
-    }
-  };
-
-  /**
-   * Save weight entry to database with duplicate check
-   */
-  /**
-   * UPDATE the already-saved weight entry with the edited value.
-   * Only called after the initial auto-save has completed (savedWeightId is set).
-   */
-  const handleWeightEditSave = async () => {
-    const val = parseFloat(editWeightValue);
-    if (isNaN(val) || val < 20 || val > 300) {
-      setWeightEditError("Weight must be between 20 and 300 kg");
-      return;
-    }
-    setIsSavingWeightEdit(true);
-    setWeightEditError("");
-    try {
-      let userId = user?.id;
-      if (!userId) userId = await getUserId(user);
-
-      // Build payload � include entryId to update the specific weight entry.
-      // If no entryId, backend will create a new entry instead of updating.
-      const payload = {
-        userId,
-        weightValue: val,
-        unit: weightResult?.unit || "kg",
-      };
-      const currentEntryId = savedWeightIdRef.current;
-      if (currentEntryId) payload.entryId = currentEntryId;
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        // Show the same friendly alert modal as photo upload validation
-        if (result.validation) {
-          setIsEditingWeight(false);
-          setAlertModal({
-            isOpen: true,
-            title: "⚖️ Unrealistic Weight Change",
-            message: result.message
-              ? result.message.charAt(0).toUpperCase() + result.message.slice(1)
-              : `We noticed a significant change from your last weigh-in.`,
-            type: "warning",
-          });
-        }
-        throw new Error(result.message || "Failed to update");
-      }
-
-      // Keep the ref in sync with whichever row was actually updated
-      if (result?.id) {
-        setSavedWeightId(result.id);
-        savedWeightIdRef.current = result.id;
-      }
-
-      setWeightResult((prev) => ({ ...prev, weightValue: val }));
-      setIsEditingWeight(false);
-      // Refresh diff after manual edit
-      try {
-        let diffUserId = user?.id || (await getUserId(user));
-        const diffRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const diffData = await diffRes.json();
-        if (diffData.success && diffData.stats?.previousWeight) {
-          const prevWeight = parseFloat(diffData.stats.previousWeight.value);
-          const weightChange = val - prevWeight;
-          // Always compare against the immediately previous entry — same day is fine
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
-        }
-      } catch (_) {
-        /* non-critical */
-      }
-      // Refresh ideal weight in case the user updated their height in profile
-      refreshIdealWeight();
-
-      // ✅ Check for reverse weight progress after an edit-save too
-      const editWeightId = savedWeightIdRef.current || result?.id || null;
-      await triggerReverseProgressModal(userId, editWeightId);
-    } catch (err) {
-      setWeightEditError(err.message || "Failed to save");
-    } finally {
-      setIsSavingWeightEdit(false);
-    }
-  };
-
-  const saveWeightEntry = async (
-    weightData,
-    imageBase64,
-    captureTimestamp = null,
-  ) => {
-    try {
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      // Check for duplicate weight before saving (fail-safe: proceed if check fails)
-      try {
-        const duplicateCheck =
-          await duplicateDetectionService.checkForDuplicateWeight({
-            userId: userId,
-            weightValue: weightData.weightValue,
-            unit: weightData.unit || "kg",
-          });
-
-        if (false && duplicateCheck.isDuplicate) {
-          // Found duplicate - hide saving overlay and show confirmation modal
-          // debugLog('⚠️ Duplicate weight detected:', duplicateCheck);
-          setSaveLoading(false); // Hide saving overlay while showing duplicate modal
-          setLoadingState("idle");
-          setDuplicateWeightInfo(duplicateCheck);
-          setPendingWeightSaveData({
-            weightData: weightData,
-            imageBase64: imageBase64,
-            userId: userId, // Cache userId for later use
-            captureTimestamp: captureTimestamp, // Preserve EXIF timestamp through duplicate flow
-          });
-          setShowDuplicateWeightModal(true);
-          return; // Stop here to wait for user confirmation
-        }
-      } catch (duplicateCheckErr) {
-        // If duplicate check fails, log it but continue with save (fail-open)
-        console.warn(
-          "⚠️ Duplicate check failed, proceeding with save:",
-          duplicateCheckErr,
-        );
-      }
-
-      // No duplicate or duplicate check failed - proceed with save (pass cached userId)
-      await performWeightSave(
-        weightData,
-        imageBase64,
-        userId,
-        captureTimestamp,
-      );
-    } catch (err) {
-      console.error("❌ Save weight error:", err);
-      // Weight validation errors are already shown via alertModal – don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        const rawMsg = err.message || "";
-        const isNetworkErr =
-          rawMsg.toLowerCase().includes("load failed") ||
-          rawMsg.includes("Failed to fetch") ||
-          rawMsg.includes("network") ||
-          rawMsg.includes("connection");
-        setError(
-          isNetworkErr
-            ? "📶 Please check your internet connection (WiFi or mobile data) and try again."
-            : rawMsg || "Failed to save weight entry",
-        );
-      }
-      throw err;
-    }
-  };
+    }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    imageType,
+    weightResult,
+    imagePreview,
+    savedProfileImage,
+    sharePhotoBase64,
+    idealWeight,
+    weightDiff,
+  ]);
 
   /**
    * Handle manual weight entry from modal
@@ -4208,7 +3718,7 @@ useEffect(() => {
       setCurrentWeightImage(null);
       setLoading(false);
     } catch (err) {
-      console.error("❌ Manual weight save error:", err);
+      console.error("? Manual weight save error:", err);
       throw err; // Re-throw to show error in modal
     }
   };
@@ -4231,7 +3741,7 @@ useEffect(() => {
     return [
       currentType !== "food" && {
         label: "Food",
-        icon: "🍽",
+        icon: "??",
         sub: `It's ${getMealTypeFromTime(now).toLowerCase()} time`,
         onClick: () => {
           setShowManualWeightModal(false);
@@ -4242,9 +3752,9 @@ useEffect(() => {
       },
       currentType !== "weight" && {
         label: "Weight",
-        icon: "⚖️",
+        icon: "??",
         sub: weightWindow
-          ? `${weightWindow.start?.slice(0, 5)}�${weightWindow.end?.slice(
+          ? `${weightWindow.start?.slice(0, 5)}?${weightWindow.end?.slice(
               0,
               5,
             )}`
@@ -4261,7 +3771,7 @@ useEffect(() => {
         label: "Education",
         icon: "??",
         sub: educationWindow
-          ? `${educationWindow.start?.slice(0, 5)}�${educationWindow.end?.slice(
+          ? `${educationWindow.start?.slice(0, 5)}?${educationWindow.end?.slice(
               0,
               5,
             )}`
@@ -4277,7 +3787,7 @@ useEffect(() => {
 
   /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
   const openBestManualModal = () => {
-    setError(null); // clear AI Unavailable card � modal handles the UI
+    setError(null); // clear AI Unavailable card ? modal handles the UI
     const now = imageTimestamp ? new Date(imageTimestamp) : new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
 
@@ -4302,144 +3812,6 @@ useEffect(() => {
   };
 
   /** Fetch the user's most recent weight entry for the hint card */
-  const fetchLastWeight = async () => {
-    try {
-      let uid = user?.id;
-      if (!uid) uid = await getUserId(user);
-      if (!uid) return;
-      const res = await fetch(
-        `${apiBaseUrl}/api/weight/history?userId=${uid}&includeImage=false&_t=${Date.now()}`,
-      );
-      const data = await res.json();
-      if (data.success && data.stats?.latestWeight) {
-        setLastWeight({
-          value: data.stats.latestWeight.value,
-          unit: "kg",
-          date: data.stats.latestWeight.date,
-        });
-      }
-    } catch {
-      /* non-critical */
-    }
-  };
-
-  /**
-   * Open the native camera / file picker for a task card "Take Photo" tap.
-   * Weight manual modal is disabled — camera is the primary entry path.
-   */
-  const openCameraForTask = (task) => {
-    const taskType = task?.task_type;
-    debugLog('[App] openCameraForTask', { taskId: task?.task_id, taskType });
-
-    setShowManualWeightModal(false);
-    setShowManualFoodModal(false);
-    setShowManualEducationModal(false);
-
-    if (taskType === 'water') {
-      activeTaskTypeRef.current = 'water';
-      Session.setCurrentPage('dashboard');
-      startTransition(() => {
-        setDashboardInitialTab('water');
-        setShowDashboard(true);
-        setShowTaskPanel(false);
-      });
-      return;
-    }
-
-    activeTaskTypeRef.current = taskType || '';
-
-    if (taskType === 'weight') {
-      setImageType('weight');
-      setCurrentWeightImage(null);
-    } else if (['breakfast', 'lunch', 'dinner'].includes(taskType)) {
-      setImageType('food');
-      setManualMealType(taskType);
-    } else if (taskType === 'education') {
-      setImageType('education');
-    } else {
-      setImageType('food');
-    }
-
-    // Open camera synchronously inside the user-gesture stack.
-    let opened = false;
-    if (Capacitor.isNativePlatform()) {
-      const api = fileInputRef.current;
-      if (api?.openCamera) {
-        api.openCamera();
-        opened = true;
-      }
-    } else {
-      const taskInput = taskCameraInputRef.current;
-      if (taskInput) {
-        taskInput.click();
-        opened = true;
-      } else {
-        const api = fileInputRef.current;
-        if (api?.openCamera) {
-          api.openCamera();
-          opened = true;
-        }
-      }
-    }
-    if (!opened) {
-      debugLog('[App] Could not open camera for task — no input ref ready');
-    }
-
-    startTransition(() => setShowTaskPanel(false));
-  };
-
-  const openCameraForTaskRef = useRef(openCameraForTask);
-  useEffect(() => {
-    openCameraForTaskRef.current = openCameraForTask;
-  }, [openCameraForTask]);
-
-  /** Native local-notification / alarm → Task Notification Panel deep link */
-  const handleNativeTaskReminderAction = useCallback((data) => {
-    if (!data || data.action !== 'openTaskPanel') return;
-    debugLog('[App] Native task reminder action', data);
-
-    startTransition(() => {
-      if (data.taskId) setHighlightedTaskId(String(data.taskId));
-      setShowTaskPanel(true);
-    });
-
-    if (data.uploadNow && data.taskType) {
-      setTimeout(() => {
-        openCameraForTaskRef.current?.({
-          task_type: data.taskType,
-          task_id: data.taskId,
-        });
-      }, 400);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
-
-    let handle = null;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { registerTaskReminderActionListener, consumePendingTaskNotification } =
-          await import('./shared/services/reminderService');
-
-        handle = await registerTaskReminderActionListener((data) => {
-          if (!cancelled) handleNativeTaskReminderAction(data);
-        });
-
-        const pending = await consumePendingTaskNotification();
-        if (!cancelled && pending) handleNativeTaskReminderAction(pending);
-      } catch (err) {
-        debugLog('[App] Native task reminder bridge failed', err?.message);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      try { handle?.remove?.(); } catch { /* ignore */ }
-    };
-  }, [handleNativeTaskReminderAction]);
 
   /**
    * Handle manual food entry from modal (used when AI is unavailable)
@@ -4452,7 +3824,7 @@ useEffect(() => {
       setLoadingState("saving");
       setSaveLoading(true);
 
-      // Build detailedItems � either a full plate (multiple) or a single food
+      // Build detailedItems ? either a full plate (multiple) or a single food
       let detailedItems;
       let totalNutrition;
       let categoryName;
@@ -4547,14 +3919,14 @@ useEffect(() => {
         captureTimestamp: null,
       });
     } catch (err) {
-      console.error("❌ Manual food save error:", err);
+      console.error("? Manual food save error:", err);
       throw err;
     } finally {
       setSaveLoading(false);
     }
   };
 
-  // ── PR-E / ADR-0003 — Unknown share viewer Retry / Edit actions ───────────
+  // -- PR-E / ADR-0003 � Unknown share viewer Retry / Edit actions -----------
 
   // Convert a stored base64 image back into a File for Gemini re-analysis.
   const base64ToImageFile = (b64, filename = "capture.jpg") => {
@@ -4610,7 +3982,7 @@ useEffect(() => {
   };
 
   // Retry: re-run Gemini on the stored image and, if confident, promote the
-  // capture unknown → food. Still-low-confidence keeps the row as unknown.
+  // capture unknown ? food. Still-low-confidence keeps the row as unknown.
   const handleUnknownShareRetry = async () => {
     const { captureId, imageBase64 } = unknownShareView;
     if (!captureId || !imageBase64 || !user?.id) return;
@@ -4618,8 +3990,8 @@ useEffect(() => {
     try {
       const file = base64ToImageFile(imageBase64);
 
-      // Use the single orchestrate call — same single-Gemini-call path as
-      // handleImageSelect — so weight, education, and smartwatch captures are
+      // Use the single orchestrate call � same single-Gemini-call path as
+      // handleImageSelect � so weight, education, and smartwatch captures are
       // correctly re-classified on retry with idempotency via captureId.
       const detectedType = await orchestrateAnalyzeImage(file, {
         captureId: String(captureId),
@@ -4633,7 +4005,7 @@ useEffect(() => {
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
-            error: "Still couldn't recognise it — try Edit instead.",
+            error: "Still couldn't recognise it � try Edit instead.",
           }));
           return;
         }
@@ -4642,6 +4014,7 @@ useEffect(() => {
           captureId,
           viewerUserId: user.id,
           analysisResult,
+          originalCapturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4680,14 +4053,14 @@ useEffect(() => {
         setUnknownShareView((v) => ({
           ...v,
           retrying: false,
-          error: "Still couldn't recognise it — try Edit instead.",
+          error: "Still couldn't recognise it � try Edit instead.",
         }));
       }
     } catch (e) {
       setUnknownShareView((v) => ({
         ...v,
         retrying: false,
-        error: "Couldn't analyse the photo — try Edit instead.",
+        error: "Couldn't analyse the photo � try Edit instead.",
       }));
     }
   };
@@ -4718,7 +4091,7 @@ useEffect(() => {
       setUnknownShareView((v) => ({
         ...v,
         retrying: false,
-        error: "Couldn't delete — please try again.",
+        error: "Couldn't delete � please try again.",
       }));
     }
   };
@@ -4732,6 +4105,7 @@ useEffect(() => {
         captureId,
         viewerUserId: user.id,
         analysisResult,
+        originalCapturedAt: unknownShareView.createdAt ?? null,
       });
       setShareEditView({ open: false, captureId: null });
       setUnknownShareView((v) => ({ ...v, open: false }));
@@ -4739,8 +4113,40 @@ useEffect(() => {
       // Trigger global nutrition refresh after editing unknown capture
       triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
     } catch (e) {
-      showToast("Couldn't save — please try again");
+      showToast("Couldn't save � please try again");
     }
+  };
+
+  /**
+   * Persist smartwatch / fitness-app screenshot activity without mounting UI.
+   */
+  const saveWatchActivityLog = async ({
+    userId,
+    imageBase64,
+    caloriesBurned,
+    source,
+    captureId,
+  }) => {
+    const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        imageBase64,
+        platform: source || "Smartwatch",
+        topic: `Calories Burned: ${caloriesBurned || 0} kcal`,
+        confidence: 0.9,
+        deviceInfo: window.navigator.userAgent,
+        clientTimestamp: new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset(),
+        captureId: captureId || undefined,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Failed to save activity log");
+    }
+    return data;
   };
 
   /**
@@ -4756,6 +4162,7 @@ useEffect(() => {
     selectedClub = null,
     captureTimestamp = null,
     captureId = null,
+    { silent = false } = {},
   ) => {
     try {
       debugLog("?? Auto-saving education log:", educationData);
@@ -4770,77 +4177,66 @@ useEffect(() => {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
-      // If within 100m of club ? club attendance
-      // If not near club ? remote attendance
-      debugLog("📍 Checking GPS for nearby clubs...");
-
-      let attendance;
-      try {
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId,
-        );
-        debugLog("? Attendance determined:", attendance);
-
-        // Check if location permission was denied
-        if (attendance.locationError === "PERMISSION_DENIED") {
-          setAlertModal({
-            isOpen: true,
-            title: "Location Permission Required",
-            message:
-              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-            type: "warning",
-          });
-        }
-      } catch (gpsError) {
-        console.warn(
-          "⚠️ GPS check failed, defaulting to remote attendance:",
-          gpsError,
-        );
-        // Fallback to remote attendance if GPS fails
-        attendance = {
-          attendanceType: "remote",
-          nutritionCenterId: null,
-          centerName: null,
-          nearbyCenters: [],
-          locationError: "UNKNOWN",
+      // Resolve GPS + nutrition-center attendance. Prefer capture-time stash when present.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!locationFields.latitude || !locationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
         };
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
+      }
+      if (gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
       }
 
-      // If multiple clubs detected, auto-select the closest one (first in array)
-      if (
-        attendance.nearbyCenters &&
-        attendance.nearbyCenters.length > 1 &&
-        !selectedClub
-      ) {
-        debugLog("🏢 Multiple clubs detected, auto-selecting closest club");
-        const closestClub = attendance.nearbyCenters[0];
-        debugLog(
-          "✅ Auto-selected closest club:",
-          closestClub.center.center_name,
-          `(${Math.round(closestClub.distance)}m)`,
-        );
-
-        // Update attendance to use the closest club
-        attendance.nutritionCenterId = closestClub.center.id;
-        attendance.centerName = closestClub.center.center_name;
-        attendance.attendanceType = "club";
-      }
-
-      // Reverse-geocode GPS coordinates into city + village via shared helper.
-      // fetchCityVillage never throws — returns null fields on failure.
-      const { city: userCity, village: userVillage } = await fetchCityVillage(
-        attendance.latitude,
-        attendance.longitude,
-      );
-
-      // Determine final values
-      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      // selectedClub (from club-selection modal) overrides the auto-detected club.
+      const finalCenterId = selectedClub?.id || locationFields.nutritionCenterId;
       const finalCenterName =
-        selectedClub?.center_name || attendance.centerName;
+        selectedClub?.center_name || locationFields.centerName;
       const finalPlatform =
-        attendance.attendanceType === "club" ? "Club" : educationData.platform;
+        locationFields.attendanceType === "club" ? "Club" : educationData.platform;
 
       // Use captureTimestamp (passed directly) ? imageTimestamp state ? current time
       // Using the direct parameter avoids reading stale React state
@@ -4869,15 +4265,15 @@ useEffect(() => {
           deviceInfo: window.navigator.userAgent,
           clientTimestamp: new Date().toISOString(),
           clientTimezoneOffset: new Date().getTimezoneOffset(),
-          latitude: attendance.latitude,
-          longitude: attendance.longitude,
-          attendanceType: attendance.attendanceType,
+          latitude: locationFields.latitude,
+          longitude: locationFields.longitude,
+          attendanceType: locationFields.attendanceType,
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
-          city: userCity,
-          village: userVillage,
-          // PR 6 — captureId is passed explicitly as a param so it is always
+          city: locationFields.city,
+          village: locationFields.village,
+          // PR 6 � captureId is passed explicitly as a param so it is always
           // the value resolved BEFORE the GPS / geocoding awaits, not the
           // potentially-stale ref value read after several async hops.
           captureId: captureId || foodCaptureIdRef.current || undefined,
@@ -4895,12 +4291,9 @@ useEffect(() => {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
-      notifyTasksChanged();
-      clearActiveTaskContext();
-
-      debugLog(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      debugLog(`   ?? Attendance: ${locationFields.attendanceType.toUpperCase()}`);
       if (finalCenterName) {
-        debugLog(`   🏢 Club: ${finalCenterName}`);
+        debugLog(`   ?? Club: ${finalCenterName}`);
       }
       if (educationData.participantCount) {
         debugLog(`   ?? Participants: ${educationData.participantCount}`);
@@ -4908,19 +4301,21 @@ useEffect(() => {
       if (data.isOnTime !== undefined) {
         const status = data.isOnTime
           ? "? ON-TIME (Present)"
-          : "⚠️ LATE (Absent)";
-        debugLog(`   ⏰ Timing: ${status}`);
+          : "?? LATE (Absent)";
+        debugLog(`   ? Timing: ${status}`);
         debugLog(
-          `   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
+          `   ?? Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
         );
       }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
-      console.error("❌ Failed to auto-save education log:", error);
-      setError(
-        error.message || "Failed to save education log. Please try again.",
-      );
+      console.error("? Failed to auto-save education log:", error);
+      if (!silent) {
+        setError(
+          error.message || "Failed to save education log. Please try again.",
+        );
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     }
@@ -4928,7 +4323,7 @@ useEffect(() => {
 
   // Handle club selection from modal
   const handleClubSelection = async (selectedCenter) => {
-    debugLog("🏢 Club selected:", selectedCenter);
+    debugLog("?? Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
 
     // Handle education attendance
@@ -4999,7 +4394,7 @@ useEffect(() => {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-          debugLog("❌ Weight validation failed:", data.validation);
+          debugLog("? Weight validation failed:", data.validation);
           setAlertModal({
             isOpen: true,
             title: data.validation?.title || "Weight Entry Issue",
@@ -5015,7 +4410,7 @@ useEffect(() => {
           return;
         }
 
-        debugLog("✅ Weight entry saved successfully:", data.id);
+        debugLog("? Weight entry saved successfully:", data.id);
 
         if (data?.id) {
           setSavedWeightId(data.id);
@@ -5029,7 +4424,7 @@ useEffect(() => {
         handleLeaderboardRefresh();
         await triggerReverseProgressModal(userId, data?.id || null);
       } catch (error) {
-        console.error("❌ Error saving weight:", error);
+        console.error("? Error saving weight:", error);
         setAlertModal({
           isOpen: true,
           title: "Save Failed",
@@ -5068,17 +4463,15 @@ useEffect(() => {
 
       // Continue with food save
       try {
-        const mealHint = getFoodTaskTypeHint();
         const saveRes = await saveNutritionAnalysis({
           ...saveData,
           ...clubLocationFields,
           captureId: captureId || undefined,
-          ...(mealHint ? { taskTypeHint: mealHint } : {}),
         });
 
         // saveNutritionAnalysis returns data directly, not { ok, data }
         // Success is indicated by not throwing an error
-        debugLog("✅ Nutrition analysis saved successfully:", saveRes);
+        debugLog("? Nutrition analysis saved successfully:", saveRes);
 
         // Store meal ID for auto-save updates
         setSavedNutritionMealId(saveRes.id || saveRes.insertId);
@@ -5093,10 +4486,8 @@ useEffect(() => {
 
         // Trigger nutrition refresh for home screen cards
         triggerNutritionRefresh({ immediate: true, source: "club-modal-save" });
-        notifyTasksChanged();
-        if (mealHint) clearActiveTaskContext();
       } catch (error) {
-        console.error("❌ Error saving nutrition:", error);
+        console.error("? Error saving nutrition:", error);
         setAlertModal({
           isOpen: true,
           title: "Save Failed",
@@ -5115,16 +4506,26 @@ useEffect(() => {
   };
 
   // Helper function to perform nutrition save
-  const performNutritionSave = async (saveData) => {
+  const performNutritionSave = async (
+    saveData,
+    {
+      silent = false,
+      captureId: boundCaptureId = null,
+      pendingSharePromise: boundPendingSharePromise = null,
+    } = {},
+  ) => {
     const saveStart = Date.now();
+    let resolvedCaptureId = boundCaptureId ?? foodCaptureIdRef.current;
+    const useGlobalCaptureRefs =
+      boundCaptureId == null && boundPendingSharePromise == null;
     try {
       debugLog("?? [App] Starting nutrition save:", {
         userId: saveData.userId,
         imagePath: saveData.imagePath,
         hasImageBase64: !!saveData.imageBase64,
       });
-      setSaveLoading(true);
-      // Stage 8 — performNutritionSave entered
+      if (!silent) setSaveLoading(true);
+      // Stage 8 � performNutritionSave entered
       _ctLog(8, 'performNutritionSave entered', {
         userId: saveData.userId,
         hasImageBase64: !!saveData.imageBase64,
@@ -5136,107 +4537,97 @@ useEffect(() => {
       // a fast Gemini response races ahead of a slow /captures network call
       // and captureId arrives as null ? the backend INSERTs a new row instead
       // of UPDATing the pre-created pending row ? two records in the DB.
-      if (pendingSharePromiseRef.current) {
-        const share = await pendingSharePromiseRef.current;
-        if (share && !foodCaptureIdRef.current) {
-          foodCaptureIdRef.current = share.id;
+      const pendingSharePromise =
+        boundPendingSharePromise ?? pendingSharePromiseRef.current;
+      if (pendingSharePromise) {
+        const share = await pendingSharePromise;
+        if (share && !resolvedCaptureId) {
+          resolvedCaptureId = share.id;
         }
-        pendingSharePromiseRef.current = null;
+        if (useGlobalCaptureRefs) {
+          pendingSharePromiseRef.current = null;
+        }
       }
-      // Stage 9 — pendingSharePromise resolved (captureId now settled)
+      // Stage 9 � pendingSharePromise resolved (captureId now settled)
       _ctLog(9, 'pendingSharePromise settled', {
-        captureIdAfterSettle: foodCaptureIdRef.current ?? 'null',
-        pendingShareRefCleared: pendingSharePromiseRef.current == null,
+        captureIdAfterSettle: resolvedCaptureId ?? 'null',
+        pendingShareRefCleared: useGlobalCaptureRefs
+          ? pendingSharePromiseRef.current == null
+          : true,
       });
 
-      // Capture GPS location for every food photo — not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Hard-capped at GPS_TIMEOUT_MS so the DB write is never blocked longer than
-      // that. The internal Geolocation timeout is 15 s which is too long — a cold GPS
-      // lock can delay triggerNutritionRefresh by 15 s and leave the Dashboard empty.
-      const GPS_TIMEOUT_MS = 5_000; // 5 s max wait; fall back to remote on timeout
-      let clubLocationFields = {};
-      let attendance;
-      // Stage 10 — GPS started
+      // Prefer capture-time location (already on captures_table). Only re-resolve
+      // GPS when the first save had no coords — avoids missing club/city when the
+      // later domain save races or GPS fails the second time.
+      const captureIdForLoc = resolvedCaptureId
+        ? String(resolvedCaptureId)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
       const _gpsStart = Date.now();
-      _ctLog(10, 'GPS started', { GPS_TIMEOUT_MS });
-      try {
-        attendance = await Promise.race([
-          locationAttendanceService.determineAttendance(
-            apiBaseUrl,
-            saveData.userId,
-          ),
-          new Promise((resolve) =>
-            setTimeout(
-              () =>
-                resolve({
-                  attendanceType: "remote",
-                  latitude: null,
-                  longitude: null,
-                  nutritionCenterId: null,
-                  nearbyCenters: [],
-                }),
-              GPS_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-        // Stage 11 — GPS finished
-        _ctLog(11, 'GPS finished', {
-          attendanceType: attendance?.attendanceType,
-          hasCoords: !!(attendance?.latitude && attendance?.longitude),
-          gpsLatencyMs: Date.now() - _gpsStart,
-          timedOut: (Date.now() - _gpsStart) >= GPS_TIMEOUT_MS,
+      _ctLog(10, 'GPS started', {
+        hasCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
+      });
+      let clubLocationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!clubLocationFields.latitude || !clubLocationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, saveData.userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        clubLocationFields = {
+          ...clubLocationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
         });
-        debugLog("📍 [nutrition] Attendance determined:", attendance);
-
-        // If multiple clubs detected, auto-select the closest one (first in array)
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1) {
-          debugLog(
-            "🏢 [nutrition] Multiple clubs detected, auto-selecting closest club",
-          );
-          const closestClub = attendance.nearbyCenters[0];
-          debugLog(
-            "✅ [nutrition] Auto-selected closest club:",
-            closestClub.center.center_name,
-            `(${Math.round(closestClub.distance)}m)`,
-          );
-
-          // Update attendance to use the closest club
-          attendance.nutritionCenterId = closestClub.center.id;
-          attendance.centerName = closestClub.center.center_name;
-          attendance.attendanceType = "club";
+        if (captureIdForLoc) {
+          captureLocationByIdRef.current.set(captureIdForLoc, { ...clubLocationFields });
         }
-
-        // Single club or remote
-        if (attendance.latitude && attendance.longitude) {
-          clubLocationFields.latitude = attendance.latitude;
-          clubLocationFields.longitude = attendance.longitude;
-          clubLocationFields.attendanceType = attendance.attendanceType;
-          clubLocationFields.nutritionCenterId =
-            attendance.nutritionCenterId || null;
-          clubLocationFields.centerName = attendance.centerName || null;
-          debugLog(
-            "📍 [nutrition] Location attached to save payload:",
-            attendance,
-          );
-
-          // Reverse-geocode to city + village
-          const { city, village } = await fetchCityVillage(
-            attendance.latitude,
-            attendance.longitude,
-          );
-          clubLocationFields.city = city;
-          clubLocationFields.village = village;
-        }
-      } catch (gpsErr) {
-        debugLog(
-          "⚠️ [nutrition] GPS check failed, saving without location:",
-          gpsErr.message,
-        );
-        clubLocationFields.attendanceType = "remote";
+      } else {
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: 'success',
+          errorCode: null,
+          errorDetail: null,
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+          hasCity: !!clubLocationFields.city,
+        });
       }
-
-      const mealHint = getFoodTaskTypeHint();
+      _ctLog(11, 'GPS finished', {
+        attendanceType: clubLocationFields.attendanceType,
+        hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
+        gpsLatencyMs: Date.now() - _gpsStart,
+        locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+        usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
+      });
+      if (!silent && gpsDenied) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
 
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
@@ -5244,14 +4635,18 @@ useEffect(() => {
         // Pass captureId so the backend updates the pre-created pending row
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.
-        captureId: foodCaptureIdRef.current || undefined,
-        ...(mealHint ? { taskTypeHint: mealHint } : {}),
+        captureId: resolvedCaptureId || undefined,
       });
-      foodCaptureIdRef.current = null;
+      if (captureIdForLoc) {
+        captureLocationByIdRef.current.delete(captureIdForLoc);
+      }
+      if (useGlobalCaptureRefs) {
+        foodCaptureIdRef.current = null;
+      }
       debugLog("? [App] Save successful:", saveRes);
-      debugLog(`⏱️ [PERF] Database save: ${Date.now() - saveStart}ms`);
+      debugLog(`?? [PERF] Database save: ${Date.now() - saveStart}ms`);
 
-      // Stage 13 — backend response received (DB write committed)
+      // Stage 13 � backend response received (DB write committed)
       _ctLog(13, 'backend response received (DB committed)', {
         foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
         success: saveRes?.success ?? true,
@@ -5266,44 +4661,37 @@ useEffect(() => {
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
       debugLog("? [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
-      if (mealHint) {
-        clearActiveTaskContext();
-      }
-
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
 
-      // triggerNutritionRefresh fires ONLY after DB commit — this is the
+      // triggerNutritionRefresh fires ONLY after DB commit � this is the
       // single safe point. savePromiseRef will resolve after this function
       // returns, so Dashboard navigation that awaited it sees committed data.
 
       // Signal HomeNutritionCarousel to re-fetch today's stats live.
-      // Stage 14 — triggerNutritionRefresh about to be called
+      // Stage 14 � triggerNutritionRefresh about to be called
       _ctLog(14, 'triggerNutritionRefresh called', {
         source: 'camera-save',
         foodRowId: saveRes?.id ?? saveRes?.insertId ?? null,
       });
       triggerNutritionRefresh({ immediate: true, source: "camera-save" });
 
-      // Refresh task panel — food save should move task to Completed.
-      notifyTasksChanged();
-
       // ? ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
-      console.error("❌ [App] Save failed:", err);
-      console.error("❌ [App] Error message:", err.message);
-      console.error("❌ [App] Error stack:", err.stack);
+      console.error("? [App] Save failed:", err);
+      console.error("? [App] Error message:", err.message);
+      console.error("? [App] Error stack:", err.stack);
       const friendlySaveError = getFriendlyErrorMessage(err);
-      setSaveError(friendlySaveError);
+      if (!silent) setSaveError(friendlySaveError);
       throw err;
     } finally {
-      setSaveLoading(false);
+      if (!silent) setSaveLoading(false);
       debugLog("? [App] Save loading finished");
     }
   };
 
-  // Club/GPS lookup + DB persist after food analysis — runs in the background
+  // Club/GPS lookup + DB persist after food analysis � runs in the background
   // so the Share button is available as soon as nutritionData is set.
   const scheduleNutritionSaveInBackground = ({
     user: saveUser,
@@ -5311,8 +4699,11 @@ useEffect(() => {
     processedImage: saveProcessedImage,
     analysisResult,
     exifTimestamp: saveExifTimestamp,
+    captureId: boundCaptureId = null,
+    pendingSharePromise: boundPendingSharePromise = null,
+    silent = false,
   }) => {
-    setLoadingState("saving");
+    if (!silent) setLoadingState("saving");
 
     // Return the Promise so callers can store it in savePromiseRef and await
     // it before opening the Dashboard. The IIFE catches all errors internally,
@@ -5356,7 +4747,11 @@ useEffect(() => {
             "Duplicate check failed, proceeding with save:",
             duplicateError,
           );
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
@@ -5364,30 +4759,38 @@ useEffect(() => {
           console.warn(
             "Invalid duplicate check response, proceeding with save",
           );
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
         if (false && duplicateCheck.isDuplicate) {
-          debugLog("⚠️ Duplicate food detected:", duplicateCheck);
+          debugLog("?? Duplicate food detected:", duplicateCheck);
           setDuplicateInfo(duplicateCheck);
           setPendingSaveData(savePayload);
           setShowDuplicateModal(true);
           setSaveLoading(false);
         } else {
-          await performNutritionSave(savePayload);
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
         }
       } catch (err) {
-        console.error("❌ Save failed:", err?.message || err);
-        setSaveError(getFriendlyErrorMessage(err));
-        setSaveLoading(false);
+        console.error("? Save failed:", err?.message || err);
+        if (!silent) setSaveError(getFriendlyErrorMessage(err));
+        if (!silent) setSaveLoading(false);
         // Trigger a refresh even on failure: a partial write (food row inserted
         // but capture promotion failed) leaves data in DB that the Dashboard
         // should discover. If nothing was written the fetch returns the same
-        // empty result — no harm done.
+        // empty result � no harm done.
         triggerNutritionRefresh({ immediate: true, source: "camera-save-error" });
       }
-    })(); // void — caller captures the returned promise into savePromiseRef
+    })(); // void � caller captures the returned promise into savePromiseRef
   };
 
   // Handle duplicate modal confirmation
@@ -5469,7 +4872,7 @@ useEffect(() => {
         );
       } catch (err) {
         console.error(
-          "❌ Weight save error after duplicate confirmation:",
+          "? Weight save error after duplicate confirmation:",
           err,
         );
       } finally {
@@ -5512,15 +4915,15 @@ useEffect(() => {
 
     // ?? [BUG 1 FIX] Snapchat-style overlay must mount BEFORE any setState
     // below, otherwise React commits a home-screen render during the
-    // FileReader await (~100–300ms flash). URL.createObjectURL is fully
-    // synchronous → the overlay paints on the SAME frame this function is
+    // FileReader await (~100�300ms flash). URL.createObjectURL is fully
+    // synchronous ? the overlay paints on the SAME frame this function is
     // called, so the home screen is never visible. The object URL is
     // revoked when the overlay is cleared (in the share .then / safety
     // timeout below) to avoid the memory leak.
-    // ⚡ INSTANT SHARE — generate token synchronously so the share sheet
+    // ? INSTANT SHARE � generate token synchronously so the share sheet
     // fires on the exact same tick the overlay paints. All async operations
     // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
-    // that used to add 2–4 s of delay now run AFTER the share is already open.
+    // that used to add 2�4 s of delay now run AFTER the share is already open.
     const instantToken = crypto.randomUUID();
     const generateInstantShareCode = (length = 8) => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -5531,13 +4934,11 @@ useEffect(() => {
       return out;
     };
     const instantShareCode = generateInstantShareCode();
-    const shareDisplayName = resolveShareDisplayName(savedUserName, user);
     const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
-    const shareText = `${shareDisplayName} · Wellness Valley ${getVersionString()}\n👆 Tap to view →\n${instantShareUrl}`;
 
-    // ⚡ Kick off FileReader NOW — before overlay paints — so it runs during
+    // ? Kick off FileReader NOW � before overlay paints � so it runs during
     // the React commit phase (~16ms). By the time the share IIFE awaits it,
-    // the read is typically already done: net delay ≈ 0ms on the share sheet.
+    // the read is typically already done: net delay � 0ms on the share sheet.
     const fileDataUrlPromise =
       Capacitor.isNativePlatform() && file
         ? new Promise((resolve, reject) => {
@@ -5563,12 +4964,12 @@ useEffect(() => {
           setSharingPendingImage(objectUrl);
         }
       } catch (_) {
-        /* non-fatal — overlay is a UX nicety */
+        /* non-fatal � overlay is a UX nicety */
       }
     }
 
-    // Fire share sheet — overlay is now painted (if auto-share enabled) (if auto-share enabled).
-    // On native: await the pre-started FileReader (≈ 0ms extra wait) then
+    // Fire share sheet � overlay is now painted (if auto-share enabled) (if auto-share enabled).
+    // On native: await the pre-started FileReader (� 0ms extra wait) then
     // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
     // WhatsApp, not just an OG preview card.
     // On web: fall back to text+URL share.
@@ -5590,9 +4991,24 @@ useEffect(() => {
       };
       (async () => {
         try {
+          const shareNamePromise = ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
           if (fileDataUrlPromise) {
-            // FileReader started before overlay — usually already resolved.
-            const fileDataUrl = await fileDataUrlPromise;
+            // FileReader started before overlay � usually already resolved.
+            const [fileDataUrl, shareDisplayName] = await Promise.all([
+              fileDataUrlPromise,
+              shareNamePromise,
+            ]);
+            if (shareDisplayName && user?.email) {
+              cacheProfileUserName(user.email, shareDisplayName);
+              setSavedUserName(shareDisplayName);
+            }
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            // Dismiss overlay before opening share sheet — not after user finishes sharing.
+            clearOverlayNow();
             const result = await shareViaCapacitorAPI(fileDataUrl, {
               title: shareDisplayName,
               text: shareText,
@@ -5603,6 +5019,13 @@ useEffect(() => {
               foodAutoSharedRef.current = false;
           } else {
             // Web fallback: text + URL only.
+            const shareDisplayName = await shareNamePromise;
+            if (shareDisplayName && user?.email) {
+              cacheProfileUserName(user.email, shareDisplayName);
+              setSavedUserName(shareDisplayName);
+            }
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             const ok = await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
             if (!ok) foodAutoSharedRef.current = false;
@@ -5610,6 +5033,13 @@ useEffect(() => {
         } catch (_) {
           // Native share failed — fall back to text-only.
           try {
+            const shareDisplayName = await ensureShareDisplayName(
+              savedUserNameRef.current ?? savedUserName,
+              user,
+              apiBaseUrl,
+            );
+            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
           } catch (__) {
@@ -5623,7 +5053,7 @@ useEffect(() => {
 
     // Safety timer: last-resort fallback if the share IIFE somehow never
     // reaches its `finally` block (e.g. the JS bridge hangs indefinitely).
-    // 120 s is intentionally long — clearOverlayNow() in the `finally` block
+    // 120 s is intentionally long � clearOverlayNow() in the `finally` block
     // always cancels this before it fires under normal operation.
     if (sharingPendingTimerRef.current)
       clearTimeout(sharingPendingTimerRef.current);
@@ -5647,26 +5077,39 @@ useEffect(() => {
     }
 
     if (!user) {
-      setError("Please sign in to analyze food images");
+      setAlertModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Please sign in to save photos.",
+        type: "warning",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
 
-    // Re-check user status in real-time before analysis
+    // Re-check user status in real-time before upload
     const isActive = await checkUserStatus(user);
     if (!isActive) {
-      setError(
-        "Your account is inactive. Please contact support to reactivate.",
-      );
+      setAlertModal({
+        isOpen: true,
+        title: "Account inactive",
+        message:
+          "Your account is inactive. Please contact your coach to reactivate.",
+        type: "warning",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
-      setError(
-        "📸 Image file is too large. Please choose a smaller image (max 10MB).",
-      );
+      setAlertModal({
+        isOpen: true,
+        title: "File too large",
+        message:
+          "Image file is too large. Please choose a smaller image (max 10MB).",
+        type: "error",
+      });
       imageProcessingInProgress.current = false;
       return;
     }
@@ -5678,13 +5121,17 @@ useEffect(() => {
       return;
     }
 
-    // ?? FRAUD PREVENTION: On web only � native handles this per-source in ImageUpload
+    // TODO: Re-enable gallery date restrictions before production release.
+    // TEMPORARILY DISABLED: web image freshness validation is commented out to allow users
+    // to select images from WhatsApp, older gallery photos, and any available folder.
+    /* GALLERY_DATE_RESTRICTION_ENABLED � begin disabled block
+    // ?? FRAUD PREVENTION: On web only ? native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
-      debugLog("🔍 Validating image freshness (web)...");
+      debugLog("?? Validating image freshness (web)...");
       const validation = await validateImageFreshness(file, 0);
       if (!validation.isValid) {
-        console.error("❌ Image validation failed:", validation);
+        console.error("? Image validation failed:", validation);
         setAlertModal({
           isOpen: true,
           title: validation.message || "Photo Not From Today",
@@ -5697,6 +5144,7 @@ useEffect(() => {
       }
       debugLog("? Image validated:", validation.message);
     }
+    GALLERY_DATE_RESTRICTION_ENABLED � end disabled block */
 
     setSelectedImage(file);
     setError(null);
@@ -5708,12 +5156,13 @@ useEffect(() => {
     savedWeightIdRef.current = null;
     setImageType(null);
     setSaveError(null);
-    setDetectedFoodNames([]); // Clear previous detection
-    setLoadingState("analyzing"); // Reset to analyzing state
-    lastImageFileRef.current = file; // Store for retry
+    setDetectedFoodNames([]);
+    setLoading(false);
+    setLoadingState(null);
+    lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
-    // Stage 1 — handleImageSelect entered
+    // Stage 1 � handleImageSelect entered
     const _ct1Id = Math.random().toString(36).slice(2, 8).toUpperCase();
     captureTraceRef.current = { id: _ct1Id, t0: Date.now(), traceId: null };
     window.__captureTrace = { id: _ct1Id, t0: Date.now() };
@@ -5721,7 +5170,8 @@ useEffect(() => {
 
     // ? PERFORMANCE TRACKING
     const perfStart = Date.now();
-    debugLog("⏱️ [PERF] ?? Image processing started");
+    debugLog("?? [PERF] ?? Image processing started");
+    let capturePersisted = false;
 
     // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -5732,74 +5182,137 @@ useEffect(() => {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      debugLog(`⏱️ [PERF] File reading: ${Date.now() - readStart}ms`);
+      debugLog(`?? [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ? OPTIMIZED: Aggressive compression for faster uploads & API calls
+      // Always compress to ≤800px / quality 0.7 before sending to Gemini.
+      // Gemini tiles images at 768px — sending larger images creates multiple
+      // tiles (4× tokens for a 1280px image vs 1× for 800px), slowing inference
+      // and increasing 503 risk under load.  800px is sufficient for accurate
+      // food / weight / education recognition.
       const compressStart = Date.now();
-      const isAndroid = Capacitor.isNativePlatform();
-      const imageSizeMB = imageBase64.length / (1024 * 1024);
 
       let processedImage = imageBase64;
       let compressionApplied = false;
 
-      // More aggressive compression for speed (AI doesn't need high-res images)
-      if (isAndroid) {
-        // Android: Always compress aggressively for speed
-        if (imageSizeMB > 0.3) {
-          // > 300KB
-          const maxWidth = 800; // Smaller = faster upload & API processing
-          const quality = imageSizeMB > 2 ? 0.6 : 0.7; // Higher compression
-          processedImage = await compressImage(imageBase64, quality, maxWidth);
-          compressionApplied = true;
-        }
-      } else {
-        // Web: Also compress aggressively
-        if (imageSizeMB > 0.5) {
-          // > 500KB
-          processedImage = await compressImage(imageBase64, 0.7, 800);
-          compressionApplied = true;
-        }
+      try {
+        processedImage = await compressImage(imageBase64, 0.7, 800);
+        compressionApplied = true;
+      } catch (_) {
+        // Compression failed — proceed with original image
       }
 
       if (compressionApplied) {
-        const newSizeMB = processedImage.length / (1024 * 1024);
+        const origMB = imageBase64.length / (1024 * 1024);
+        const newMB  = processedImage.length / (1024 * 1024);
         debugLog(
-          `⏱️ [PERF] Compression: ${
-            Date.now() - compressStart
-          }ms (${imageSizeMB.toFixed(2)}MB ? ${newSizeMB.toFixed(2)}MB)`,
+          `?? [PERF] Compression: ${Date.now() - compressStart}ms (${origMB.toFixed(2)}MB → ${newMB.toFixed(2)}MB)`,
         );
       } else {
-        debugLog(`⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
+        debugLog(`?? [PERF] Compression skipped (fallback to original)`);
       }
 
-      // Set preview and loading together to ensure overlay shows
-      setImagePreview(processedImage);
-      setLoading(true); // Ensure loading is true when preview shows
+      // Offline: queue the image locally and exit.
+      // The online listener below will automatically resubmit when connected.
+      // Supports continuous shooting — multiple photos can be queued in a row.
+      if (!navigator.onLine) {
+        const n = captureQueue.enqueue({
+          imageBase64:   processedImage,
+          userId:        user?.id ?? null,
+          exifTimestamp: exifTimestamp ?? null,
+        });
+        showToast(`No internet — photo queued${n > 0 ? ` (${n} waiting)` : ''}, will analyse when online`);
+        return;
+      }
 
-      // ?? [Share] Pre-create the public-share row IN PARALLEL with Gemini
-      // detection. By the time we know the image is food, the share token is
-      // typically already returned, so the share button appears the same
-      // instant NutritionCard renders � not several hundred ms later.
-      // If the image turns out to be weight/education/smartwatch, the row is
-      // simply left as a pending capture (auto-expires in 30 days) � we never
-      // surface its URL to the user.
+      // Set preview immediately — GPS + capture POST run in the background UI
+      // without a "Saving..." spinner (photo-first, no wait affordance).
+      setImagePreview(processedImage);
+      setLoading(false);
+      setLoadingState(null);
+
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
-      // Note: foodAutoSharedRef.current is already true (set above when share
-      // fired instantly after overlay). Do not reset it here — that would allow
-      // the classification-gated share below to double-fire.
 
+      // Instant location from background cache — never wait on GPS at photo time.
+      const captureLocation = getCachedLocationFields();
+      const {
+        permissionDenied: captureGpsDenied,
+        locationStatus,
+        locationErrorCode,
+        locationErrorDetail,
+        locationLatencyMs,
+        geocodeOk,
+        gpsAccuracyM,
+        fromCache,
+        cacheAgeMs,
+        ...captureLocationFields
+      } = captureLocation || {
+        attendanceType: 'remote',
+        locationStatus: 'failed',
+        locationErrorCode: 'NO_CACHED_LOCATION',
+        locationErrorDetail: 'No cached location available at capture time',
+      };
+      const hasCoords = !!(
+        captureLocationFields.latitude && captureLocationFields.longitude
+      );
+      // Client console (device) — also sent to Vercel via POST /captures diagnostics.
+      console.warn('[CAPTURE-LOCATION]', {
+        status: locationStatus || (hasCoords ? 'success' : 'failed'),
+        errorCode: locationErrorCode || null,
+        errorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        hasVillage: !!captureLocationFields.village,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+        latencyMs: locationLatencyMs ?? 0,
+        gpsAccuracyM: gpsAccuracyM ?? null,
+      });
+      _ctLog('loc', 'capture-time location from cache', {
+        locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+        locationErrorCode: locationErrorCode || null,
+        locationErrorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+      });
+      // Soft hint only when cache never got a fix (watcher still warming / denied).
+      // Do not block the photo save.
+      if (captureGpsDenied && !hasCoords) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
+
+      // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
       const captureApiStart = Date.now();
       debugLog(
-        `⏱️ [PERF] ➜ POST /captures started (+${
+        `?? [PERF] ? POST /captures started (+${
           captureApiStart - perfStart
         }ms from capture start)`,
       );
-      const pendingSharePromise = (async () => {
+
+      let captureShare = null;
+      // Retry Phase 1 up to 3 times on transient server / network errors.
+      // 4xx (auth, bad request) are not retried — they won't self-heal.
+      const CAPTURE_MAX_ATTEMPTS = 3;
+      let captureLastErr = null;
+      for (let capAttempt = 1; capAttempt <= CAPTURE_MAX_ATTEMPTS; capAttempt++) {
         try {
           const capUserId = user?.id || (await getUserId(user));
-          if (!capUserId) return null;
+          if (!capUserId) {
+            throw new Error("Unable to resolve user account");
+          }
           const capRes = await fetch(
             `${apiBaseUrl}/api/background-analysis/captures`,
             {
@@ -5810,105 +5323,182 @@ useEffect(() => {
                 imageBase64: processedImage,
                 token: instantToken,
                 shareCode: instantShareCode,
+                // Capture-time location / club from background cache
+                latitude: captureLocationFields.latitude ?? null,
+                longitude: captureLocationFields.longitude ?? null,
+                city: captureLocationFields.city ?? null,
+                village: captureLocationFields.village ?? null,
+                attendanceType: captureLocationFields.attendanceType ?? null,
+                nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
+                centerName: captureLocationFields.centerName ?? null,
+                locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+                locationErrorCode: locationErrorCode || null,
+                locationErrorDetail: locationErrorDetail || null,
+                locationLatencyMs: locationLatencyMs ?? 0,
+                geocodeOk: geocodeOk ?? null,
+                gpsAccuracyM: gpsAccuracyM ?? null,
               }),
             },
           );
           if (!capRes.ok) {
-            debugLog(
-              `⏱️ [PERF] ➜ POST /captures FAILED in ${
-                Date.now() - captureApiStart
-              }ms (status ${capRes.status})`,
-            );
-            return null;
+            const retryable = capRes.status >= 500;
+            const err = new Error(`Capture save failed (${capRes.status})`);
+            err._retryable = retryable;
+            throw err;
           }
-          const capData = await capRes.json();
-          const capDuration = Date.now() - captureApiStart;
-          if (capData.ok && capData.data?.id) {
-            debugLog(
-              `⏱️ [PERF] ➜ POST /captures: ${capDuration}ms (+${
-                Date.now() - perfStart
-              }ms from capture start) → token ready`,
-            );
-            // Stage 2 — capture row created
-            _ctLog(2, 'capture row created', { captureRowId: capData.data.id, shareCode: capData.data.shareCode || capData.data.token, latencyMs: capDuration });
-            return {
-              id: capData.data.id,
-              url: `${apiBaseUrl}/share/${
-                capData.data.shareCode || capData.data.token
-              }`,
-            };
+          // Accept flat { ok, data } or accidental nested { httpStatus, body }.
+        const capRaw = await capRes.json();
+          const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
+        const capDuration = Date.now() - captureApiStart;
+          if (!capData.ok || !capData.data?.id) {
+            throw new Error("Capture save returned no id");
           }
-          debugLog(
-            `⏱️ [PERF] ➜ POST /captures responded ok=false in ${capDuration}ms`,
+          captureShare = {
+            id: capData.data.id,
+            url: `${apiBaseUrl}/share/${
+              capData.data.shareCode || capData.data.token
+            }`,
+          };
+          captureLocationByIdRef.current.set(
+            String(captureShare.id),
+            stripLocationDiagnostics(captureLocationFields),
           );
-          return null;
-        } catch (err) {
           debugLog(
-            `⏱️ [PERF] ➜ POST /captures THREW after ${
-              Date.now() - captureApiStart
-            }ms: ${err?.message || err}`,
+            `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+              Date.now() - perfStart
+            }ms from capture start) ? token ready (attempt ${capAttempt})`,
           );
-          console.warn("[Share] pre-capture failed:", err);
-          return null;
+          _ctLog(2, 'capture row created', {
+            captureRowId: captureShare.id,
+            shareCode: capData.data.shareCode || capData.data.token,
+            latencyMs: capDuration,
+            attempt: capAttempt,
+          });
+          captureLastErr = null;
+          break; // success
+        } catch (capErr) {
+          captureLastErr = capErr;
+          const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
+          debugLog(
+            `?? [PERF] ? POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
+              retryable ? ` — retrying in 1s` : ''
+            }`,
+          );
+          if (!retryable) break;
+          await new Promise((r) => setTimeout(r, 1_000 * capAttempt));
         }
-      })();
-      // Store a reference so performNutritionSave can await this promise
-      // and guarantee captureId is set before the save request goes out.
-      pendingSharePromiseRef.current = pendingSharePromise;
-
-      // ── PHASE 3 MIGRATION: single orchestrator call replaces the old
-      // classifyImageTypeFast() + detectImageType() two-step chain.
-      // Both calls ran 2–3 Gemini requests; orchestrate runs exactly 1.
-      // The captures POST runs in parallel (pendingSharePromise above), so
-      // captureId is available from foodCaptureIdRef.current by the time
-      // orchestrate returns (~2 s AI latency >> ~0.3 s captures latency).
-
-      const apiStart = Date.now();
-      debugLog(
-        `⏱️ [PERF] → Orchestrate started (+${apiStart - perfStart}ms from capture start)`,
-      );
-
-      // Resolve user ID once for the orchestrate request.
-      let resolvedUserIdForOrchestrate = user?.id;
-      if (!resolvedUserIdForOrchestrate) {
-        try { resolvedUserIdForOrchestrate = await getUserId(user); } catch (_) {}
+      }
+      if (!captureShare) {
+        debugLog(
+          `?? [PERF] ? POST /captures FAILED after ${
+            Date.now() - captureApiStart
+          }ms: ${captureLastErr?.message || captureLastErr}`,
+        );
+        setAlertModal({
+          isOpen: true,
+          title: "Photo not saved",
+          message:
+            "Could not save your photo. Please check your connection and try again.",
+          type: "error",
+        });
+        setLoading(false);
+        setImagePreview(null);
+        imageProcessingInProgress.current = false;
+        return;
       }
 
-      // Stage 3 — orchestrate request started
-      _ctLog(3, 'orchestrate request started', { apiStart, userId: resolvedUserIdForOrchestrate ?? null });
+      foodCaptureIdRef.current = captureShare.id;
+      pendingSharePromiseRef.current = Promise.resolve(captureShare);
 
-      // ⚡ PERFORMANCE: send the already-compressed image to the orchestrator
-      // instead of the original camera file. On Android the original image
-      // can be 4–8 MB; the compressed version is 150–300 KB — a 10–20×
-      // reduction in upload size → the single biggest latency win available.
+      // Phase 1 complete � image is safe; user can leave immediately.
+      capturePersisted = true;
+      setLoadingState("saved");
+      setLoading(false);
+      setImageType(null);
+      setNutritionData(null);
+      setWeightResult(null);
+      setEducationResult(null);
+      setWatchResult(null);
+      setError(null);
+
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try {
+          resolvedUserIdForOrchestrate = await getUserId(user);
+        } catch (_) {}
+      }
+
+      markCaptureAnalyzing(captureShare.id, {
+        ownerUserId: resolvedUserIdForOrchestrate ?? null,
+        imageBase64: processedImage,
+        capturedAt: new Date().toISOString(),
+        currentAttempt: 1,  // Show "1/3" badge immediately; onAttempt callback keeps it in sync
+        totalAttempts: 3,   // Must match MAX_ATTEMPTS in orchestratorService.js
+      });
+      triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
+      setDashboardInitialDate(null);
+      // Stay on home — ImageUpload shows the saved photo + diary-update message.
+      imageProcessingInProgress.current = false;
+
+      debugLog(
+        `?? [PERF] ? Phase 1 complete (+${
+          Date.now() - perfStart
+        }ms) � starting background AI`,
+      );
+
+      // Build compressed file for orchestrator (same as before).
       let fileForOrchestrate = file;
       try {
         const compressedBlob = await fetch(processedImage).then((r) => r.blob());
         fileForOrchestrate = new File(
           [compressedBlob],
-          file.name || 'capture.jpg',
-          { type: 'image/jpeg' },
-        );
-        debugLog(
-          `⏱️ [PERF] → Using compressed file for orchestrate: ${(fileForOrchestrate.size / 1024).toFixed(0)} KB` +
-          ` (original: ${(file.size / 1024).toFixed(0)} KB)`,
+          file.name || "capture.jpg",
+          { type: "image/jpeg" },
         );
       } catch (_) {
-        // Fallback to original file if blob conversion fails.
+        /* use original file */
       }
 
-      // Start orchestrate in parallel with the already-running captures POST.
-      // captureId will be read from foodCaptureIdRef.current after both settle.
-      const detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
-        userId: resolvedUserIdForOrchestrate ?? null,
-        // captureId intentionally omitted here — pendingSharePromise resolves
-        // concurrently; idempotency is enforced at the save layer instead.
-      });
+      const pendingSharePromise = Promise.resolve(captureShare);
+      const bg = true; // background mode: never block home on AI; no result cards
 
-      debugLog(
-        `⏱️ [PERF] → Orchestrate: ${Date.now() - apiStart}ms (+${
+      // -- Phase 2: AI analysis runs asynchronously after persistence --
+      void (async () => {
+        const apiStart = Date.now();
+        _ctLog(3, "orchestrate request started (background)", {
+          apiStart,
+          userId: resolvedUserIdForOrchestrate ?? null,
+          captureId: captureShare.id,
+        });
+
+        let detectedType;
+        try {
+          detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
+            userId: resolvedUserIdForOrchestrate ?? null,
+            captureId: String(captureShare.id),
+            // Update the diary row badge ("1/3", "2/3", "3/3") before each attempt.
+            onAttempt: ({ attempt, total }) => {
+              markCaptureAnalyzing(captureShare.id, {
+                ownerUserId: resolvedUserIdForOrchestrate ?? null,
+                currentAttempt: attempt,
+                totalAttempts: total,
+              });
+            },
+          });
+        } catch (orchErr) {
+          console.error("[Background AI] orchestrate failed:", orchErr);
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({
+            immediate: true,
+            source: "capture-analysis-failed",
+          });
+          clearCaptureAnalyzing(captureShare.id);
+          return;
+        }
+        debugLog(
+        `?? [PERF] ? Orchestrate: ${Date.now() - apiStart}ms (+${
           Date.now() - perfStart
-        }ms from capture start) → type=${detectedType?.type}` +
+        }ms from capture start) ? type=${detectedType?.type}` +
         (detectedType?.traceId ? ` traceId=${detectedType.traceId}` : ''),
       );
       debugLog("[TRACE] orchestrate | stage=COMPLETE" +
@@ -5919,7 +5509,7 @@ useEffect(() => {
         (detectedType?.enrichmentJobId ? ` | enrichmentJobId=${detectedType.enrichmentJobId}` : ''),
       );
 
-      // Stage 4 — orchestrate response received
+      // Stage 4 � orchestrate response received
       if (captureTraceRef.current) captureTraceRef.current.traceId = detectedType?.traceId ?? null;
       _ctLog(4, 'orchestrate response received', {
         latencyMs: Date.now() - apiStart,
@@ -5931,13 +5521,13 @@ useEffect(() => {
         foodCount: detectedType?.details?.foods?.length ?? 0,
         defaulted: detectedType?.details?.defaulted ?? false,
       });
-      // Stage 5 — detectedType result (type routing decision)
+      // Stage 5 � detectedType result (type routing decision)
       _ctLog(5, 'detectedType routing', {
         routedTo: detectedType?.type === 'food' ? 'FOOD' : detectedType?.type === 'weight' ? 'WEIGHT' : detectedType?.type === 'education' ? 'EDUCATION' : detectedType?.type === 'smartwatch' ? 'SMARTWATCH' : 'OTHER',
         willEnterFoodBranch: detectedType?.type === 'food' && !( detectedType?.type === 'other' || (detectedType?.confidence < 0.6) ),
         hasFastNutrition: !!detectedType?.fastNutrition,
       });
-      debugLog("🔍 [DEBUG] Image Type Detection Result:", {
+      debugLog("?? [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
         hasDetails: !!detectedType.details,
@@ -5945,40 +5535,27 @@ useEffect(() => {
         fullResponse: detectedType,
       });
 
-      // Surface the share URL now that we know the image type.
-      // pendingSharePromise has almost certainly resolved by now (captures POST
-      // is ~200-500 ms, orchestrate is ~2 s), so this .then() fires synchronously.
-      if (detectedType.type === "food") {
+      if (!bg && detectedType.type === "food") {
         pendingSharePromise.then((share) => {
           if (share) {
             foodCaptureIdRef.current = share.id;
             setFoodShareUrl(share.url);
-            debugLog(
-              `⏱️ [PERF] → Share URL surfaced to UI (+${
-                Date.now() - perfStart
-              }ms from capture start)`,
-            );
           }
         });
       }
 
-      // 🍽️ Early detection: If food items detected, show them immediately
       if (
+        !bg &&
         detectedType.details?.foods &&
         detectedType.details.foods.length > 0
       ) {
         const foodNames = detectedType.details.foods.map((f) => f.name);
-        debugLog(
-          "🍽️ [AI-DETECTED] Food items identified:",
-          foodNames.join(", "),
-        );
-        setDetectedFoodNames(foodNames); // Show detected names in UI immediately
+        setDetectedFoodNames(foodNames);
       }
 
-      // ? PRIORITY 0: Smartwatch / fitness app screenshot � show activity card
+      // ? PRIORITY 0: Smartwatch / fitness app screenshot
       if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
-        debugLog("? Smartwatch image detected � showing watch activity card.");
-        // Resolve the real DB userId now (same pattern used everywhere in App.js)
+        debugLog("? Smartwatch image detected.");
         let resolvedUserId = user?.id;
         if (!resolvedUserId) {
           try {
@@ -5989,9 +5566,32 @@ useEffect(() => {
             });
           }
         }
+        let watchCaptureId = captureShare.id;
+        if (bg) {
+          try {
+            if (resolvedUserId) {
+              await saveWatchActivityLog({
+                userId: resolvedUserId,
+                imageBase64: processedImage,
+                caloriesBurned: detectedType.details?.caloriesBurned || 0,
+                source: detectedType.details?.source || "Smartwatch",
+                captureId: watchCaptureId,
+              });
+              const burned = detectedType.details?.caloriesBurned || 0;
+              if (burned > 0) setWatchBurnedCalories(burned);
+            }
+            updatePendingCaptureType(pendingSharePromise, "smartwatch");
+            triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch" });
+          } catch (watchErr) {
+            console.error("[Background AI] smartwatch save failed:", watchErr);
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch-failed" });
+          }
+          clearCaptureAnalyzing(captureShare.id);
+          return;
+        }
         // Resolve captureId before mounting WatchActivityCard so the education
         // log row links back to the captures row (same pattern as education branch).
-        let watchCaptureId = null;
         try {
           const capShare = await pendingSharePromise;
           if (capShare?.id) {
@@ -5999,16 +5599,13 @@ useEffect(() => {
             if (!foodCaptureIdRef.current)
               foodCaptureIdRef.current = capShare.id;
           }
-          // Auto-share to WhatsApp once the share URL is resolved.
           const autoShareEnabled =
             localStorage.getItem("autoShareOnCapture") !== "false";
           if (autoShareEnabled && capShare?.url && !foodAutoSharedRef.current) {
             foodAutoSharedRef.current = true;
             shareTextViaWhatsApp(capShare.url).then((ok) => {
-              _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
-              if (!ok) {
-                foodAutoSharedRef.current = false;
-              }
+              _hasCompletedFirstShareRef.current = true;
+              if (!ok) foodAutoSharedRef.current = false;
             });
           }
         } catch (_) {}
@@ -6017,7 +5614,7 @@ useEffect(() => {
           caloriesBurned: detectedType.details?.caloriesBurned || 0,
           source: detectedType.details?.source || "Smartwatch",
           loggedAt: new Date().toISOString(),
-          userId: resolvedUserId, // ← real DB id, not Firebase uid
+          userId: resolvedUserId,
           captureId: watchCaptureId || undefined,
         });
         // Tag the pending capture as 'smartwatch' so it is excluded from the
@@ -6031,10 +5628,9 @@ useEffect(() => {
       // ? PRIORITY 1: Check for education meeting (AUTO-SAVE)
       if (detectedType.type === "education" && detectedType.confidence > 0.7) {
         debugLog("?? Education meeting detected, analyzing...");
-        setImageType("education");
+        if (!bg) setImageType("education");
 
         try {
-          // Use data from unified detection (no second API call needed)
           const educationData = {
             success: true,
             platform: detectedType.details.platform || "Online Meeting",
@@ -6044,54 +5640,50 @@ useEffect(() => {
           };
 
           if (educationData && educationData.success) {
-            debugLog("? Education data extracted:", educationData);
-
-            setEducationResult({
-              platform: educationData.platform,
-              topic: educationData.topic,
-              confidence: educationData.confidence,
-              participantCount: educationData.participantCount,
-              loggedAt: exifTimestamp || new Date().toISOString(),
-            });
-
-            // AUTO-SAVE to database immediately
-            setLoadingState("saving");
-            setSaveLoading(true);
-            // Resolve the captures row BEFORE saving so captureId is ready.
-            // We pass it as an explicit parameter instead of relying on
-            // foodCaptureIdRef.current, which can be overwritten by other
-            // async paths (GPS check, geocoding) between here and the fetch.
-            let educationCaptureId = null;
-            try {
-              const capShare = await pendingSharePromise;
-              if (capShare?.id) {
-                educationCaptureId = capShare.id;
-                // Also keep the ref in sync for other consumers.
-                if (!foodCaptureIdRef.current)
-                  foodCaptureIdRef.current = capShare.id;
-              }
-            } catch (_) {}
-            // Pass exifTimestamp directly as captureTimestamp to avoid stale state read
+            if (!bg) {
+              setEducationResult({
+                platform: educationData.platform,
+                topic: educationData.topic,
+                confidence: educationData.confidence,
+                participantCount: educationData.participantCount,
+                loggedAt: exifTimestamp || new Date().toISOString(),
+              });
+              setLoadingState("saving");
+              setSaveLoading(true);
+            }
+            const educationCaptureId = captureShare.id;
+            if (!foodCaptureIdRef.current)
+              foodCaptureIdRef.current = educationCaptureId;
             await saveEducationLog(
               educationData,
               processedImage,
               null,
               exifTimestamp,
               educationCaptureId,
+              { silent: true },
             );
-          } else {
+            if (bg) {
+              updatePendingCaptureType(pendingSharePromise, "education");
+              triggerNutritionRefresh({ immediate: true, source: "capture-education" });
+              clearCaptureAnalyzing(captureShare.id);
+              return;
+            }
+          } else if (!bg) {
             setError("Unable to analyze meeting screenshot. Please try again.");
           }
         } catch (err) {
-          console.error("❌ Education analysis failed:", err);
+          console.error("? Education analysis failed:", err);
+          if (bg) {
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-education-failed" });
+            clearCaptureAnalyzing(captureShare.id);
+            return;
+          }
           setError("Failed to analyze meeting screenshot: " + err.message);
         }
 
-        // Tag the pending capture as 'education' so it is excluded from the
-        // nutrition dashboard (ImageType='food' filter) but the share link
-        // still resolves and routes to the education dashboard tab.
         updatePendingCaptureType(pendingSharePromise, "education");
-        // Auto-share to WhatsApp immediately � same as food flow.
+        // Auto-share to WhatsApp immediately ? same as food flow.
         const autoShareEnabled1 =
           localStorage.getItem("autoShareOnCapture") !== "false";
         if (autoShareEnabled1) {
@@ -6103,7 +5695,7 @@ useEffect(() => {
               if (!ok) {
                 foodAutoSharedRef.current = false;
               }
-              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+              // Keep analysis on screen ? do NOT resetCaptureUiOnly.
             });
           });
         }
@@ -6113,17 +5705,13 @@ useEffect(() => {
 
       // ? PRIORITY 2: Check for weight scale
       if (detectedType.type === "weight" && detectedType.confidence > 0.6) {
-        // It's a weight scale - try to extract weight
-        debugLog("🔍 Weight scale detected, extracting metrics...");
-        setImageType("weight");
+        debugLog("?? Weight scale detected, extracting metrics...");
+        if (!bg) setImageType("weight");
 
-        // Use weight data from unified detection (no second API call needed)
         let detectedWeight;
 
         if (detectedType.details?.weightValue) {
-          // Weight was already extracted in the unified detection call
           debugLog("? Using weight data from unified detection");
-          // Normalize BMR - AI may return different casing or include units
           const rawBmr =
             detectedType.details?.bmr ??
             detectedType.details?.Bmr ??
@@ -6131,7 +5719,6 @@ useEffect(() => {
             null;
           let normalizedBmr = null;
           if (rawBmr !== undefined && rawBmr !== null) {
-            // Strip non-digits and parse integer (e.g., "1500 kcal" -> 1500)
             const digits = String(rawBmr).replace(/[^0-9]/g, "");
             const parsed = digits ? parseInt(digits, 10) : NaN;
             normalizedBmr = !isNaN(parsed) && parsed > 0 ? parsed : null;
@@ -6147,14 +5734,18 @@ useEffect(() => {
             muscleMass: detectedType.details.muscleMass,
             bmr: normalizedBmr,
           };
+        } else if (bg) {
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({ immediate: true, source: "capture-weight-unclear" });
+          clearCaptureAnalyzing(captureShare.id);
+          return;
         } else {
-          // Fallback: Weight value not extracted � prompt user to retake
           debugLog(
-            "⚠️ Weight value not detected in unified call, prompting retake",
+            "?? Weight value not detected in unified call, prompting retake",
           );
           setAlertModal({
             isOpen: true,
-            title: "📸 Image Not Clear Enough",
+            title: "?? Image Not Clear Enough",
             message:
               "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
             type: "error",
@@ -6166,41 +5757,47 @@ useEffect(() => {
         }
 
         if (detectedWeight.success && detectedWeight.weightValue) {
-          // Successfully detected weight - save to database AND show result
-          // debugLog('? Weight detected:', detectedWeight);
-
-          // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
           if (detectedWeight.unit === "lbs") {
-            debugLog(
-              `?? Converting ${detectedWeight.weightValue} lbs to kg...`,
-            );
             weightToSave.weightValue = weightDetectionService.convertWeight(
               detectedWeight.weightValue,
               "lbs",
               "kg",
             );
             weightToSave.unit = "kg";
-            debugLog(`? Converted to ${weightToSave.weightValue} kg`);
           }
 
-          // Don't display weight result yet - wait for successful save
+          if (bg) {
+            try {
+              if (!foodCaptureIdRef.current)
+                foodCaptureIdRef.current = captureShare.id;
+              await saveWeightEntry(
+                weightToSave,
+                processedImage,
+                exifTimestamp || null,
+              );
+              updatePendingCaptureType(pendingSharePromise, "weight");
+              triggerNutritionRefresh({ immediate: true, source: "capture-weight" });
+            } catch (weightSaveErr) {
+              console.error("[Background AI] weight save failed:", weightSaveErr);
+              updatePendingCaptureType(pendingSharePromise, "unknown");
+              triggerNutritionRefresh({ immediate: true, source: "capture-weight-failed" });
+            }
+            clearCaptureAnalyzing(captureShare.id);
+            return;
+          }
+
           setWeightEntrySaved(false);
           setWeightDiff(null);
           setLoadingState("saving");
-          setSaveLoading(true); // Show saving overlay
+          setSaveLoading(true);
 
-          // � FIX: Set weightResult BEFORE save so card appears even if save fails
-          console.log(
-            "🔍 [DEBUG] Setting weightResult before save:",
-            weightToSave,
-          );
           setWeightResult({
             ...weightToSave,
             loggedAt: exifTimestamp || new Date().toISOString(),
           });
 
-          // �🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          // ??? FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
           try {
             const tempUserId = user?.id || (await getUserId(user));
             const prevWeightRes = await fetch(
@@ -6224,7 +5821,7 @@ useEffect(() => {
                 previousDate,
               );
 
-              debugLog("🔍 Frontend weight validation:", validation);
+              debugLog("?? Frontend weight validation:", validation);
 
               // If validation fails or shows major warning, don't save (backend will also validate)
               if (!validation.valid) {
@@ -6233,7 +5830,7 @@ useEffect(() => {
 
                 // Just log and continue - backend will handle validation and show CustomAlertModal
                 debugLog(
-                  "⚠️ Frontend detected unrealistic weight change, backend will validate",
+                  "?? Frontend detected unrealistic weight change, backend will validate",
                 );
               } else if (
                 validation.warning &&
@@ -6241,13 +5838,13 @@ useEffect(() => {
                 Math.abs(validation.difference) > 1.5
               ) {
                 // Show info message for moderate changes
-                debugLog(`ℹ️ ${validation.message}`);
+                debugLog(`?? ${validation.message}`);
               }
             }
           } catch (validationError) {
             // Non-critical - continue with save even if validation fails
             console.warn(
-              "⚠️ Frontend validation check failed, proceeding with save:",
+              "?? Frontend validation check failed, proceeding with save:",
               validationError,
             );
           }
@@ -6269,12 +5866,12 @@ useEffect(() => {
               exifTimestamp || null,
             );
 
-            // ✅ Weight result already set before save, updated after if backend corrects it
+            // ? Weight result already set before save, updated after if backend corrects it
             setWeightEntrySaved(true);
 
-            // Fetch history ONLY for leaderboard inject — weightDiff is already set
+            // Fetch history ONLY for leaderboard inject � weightDiff is already set
             // correctly inside performWeightSave using data.previousWeightValue.
-            // Do NOT call setWeightDiff here — EXIF timestamps cause wrong ordering.
+            // Do NOT call setWeightDiff here � EXIF timestamps cause wrong ordering.
             try {
               const diffUserId = user?.id || (await getUserId(user));
               const diffRes = await fetch(
@@ -6285,7 +5882,7 @@ useEffect(() => {
                 const weightChange = parseFloat(diffData.stats.weightChange);
                 // Compute ideal weight for the share card
                 refreshIdealWeight();
-                // ✅ Immediately inject into leaderboard strip — no API wait needed
+                // ? Immediately inject into leaderboard strip � no API wait needed
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                   leaderboardRef.current.injectEntry({
                     userId: diffUserId,
@@ -6302,12 +5899,12 @@ useEffect(() => {
                 }
               }
             } catch (_) {
-              /* non-critical — share card just won't show diff */
+              /* non-critical � share card just won't show diff */
             }
           } catch (saveError) {
             // Validation failed or other save error - don't show weight result
             debugLog(
-              "❌ Weight save failed, weight not displayed:",
+              "? Weight save failed, weight not displayed:",
               saveError.message,
             );
             // Modal is already shown by performWeightSave, just stop here
@@ -6316,7 +5913,7 @@ useEffect(() => {
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed � prompt user to retake a clearer photo
+          // Weight detection failed ? prompt user to retake a clearer photo
           if (detectedWeight.lowConfidence) {
             debugLog(
               `?? Low confidence detection (${(
@@ -6324,13 +5921,13 @@ useEffect(() => {
               ).toFixed(0)}%), prompting retake`,
             );
           } else {
-            debugLog("⚠️ Weight detection failed, prompting retake");
+            debugLog("?? Weight detection failed, prompting retake");
           }
           setAlertModal({
             isOpen: true,
-            title: "📸 Please Take a Clearer Photo",
+            title: "?? Please Take a Clearer Photo",
             message:
-              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
+              "We couldn't read the weight from your image. Please ensure:\n� The scale display is fully visible\n� Good lighting (avoid shadows or glare)\n� Hold the camera steady directly above the scale",
             type: "error",
           });
           setCurrentWeightImage(null);
@@ -6343,7 +5940,7 @@ useEffect(() => {
         // nutrition dashboard (ImageType='food' filter) but the share link
         // still resolves and routes to the weight dashboard tab.
         updatePendingCaptureType(pendingSharePromise, "weight");
-        // Auto-share to WhatsApp immediately � same as food flow.
+        // Auto-share to WhatsApp immediately ? same as food flow.
         const autoShareEnabled2 =
           localStorage.getItem("autoShareOnCapture") !== "false";
         if (autoShareEnabled2) {
@@ -6355,7 +5952,7 @@ useEffect(() => {
               if (!ok) {
                 foodAutoSharedRef.current = false;
               }
-              // Keep analysis on screen � do NOT resetCaptureUiOnly.
+              // Keep analysis on screen ? do NOT resetCaptureUiOnly.
             });
           });
         }
@@ -6363,16 +5960,16 @@ useEffect(() => {
         return;
       }
 
-      // PR 3 — Before defaulting to food, check whether the detector is
+      // PR 3 � Before defaulting to food, check whether the detector is
       // actually confident. `imageTypeDetector.detectImageType()` falls back
       // to `{ type: 'food' }` for unrecognised photos (phone, cat, blank
       // wall) and on Gemini errors (details.defaulted === true). Treating
       // those as food pollutes the nutrition feed with 0-kcal rows and
-      // generates broken share links — the root bug PR 3 fixes.
+      // generates broken share links � the root bug PR 3 fixes.
       // Also handle explicit 'other' type returned when AI fails entirely.
       if (detectedType.type === "other" || isLowConfidenceFood(detectedType)) {
         debugLog(
-          "❓ [Image Detection] Low-confidence food — opening unknown picker",
+          "? [Image Detection] Low-confidence � tagging as unknown",
           {
             confidence: detectedType?.confidence,
             defaulted: detectedType?.details?.defaulted,
@@ -6380,25 +5977,30 @@ useEffect(() => {
             totalCalories: detectedType?.details?.total?.calories || 0,
           },
         );
-        // Tag the pending capture as 'unknown' so backend listAnalyses / nutrition
-        // queries skip it. The user's pick will re-tag it via the modal handler.
         updatePendingCaptureType(pendingSharePromise, "unknown");
+        triggerNutritionRefresh({ immediate: true, source: "capture-unknown" });
+        if (bg) {
+          clearCaptureAnalyzing(captureShare.id);
+          // Brief toast so the user knows why the photo landed in Diary as
+          // "Other" and what to do next — no modal, no blocking.
+          if (detectedType?.details?.defaulted === true) {
+            // All retries failed (timeout / API down)
+            showToast("⚠️ AI timed out — find it in Diary to retry");
+          } else if (detectedType?.type === "food") {
+            // Gemini recognised food but couldn't identify the items
+            showToast("🍽️ Food detected — tap in Diary to add details");
+          }
+          return;
+        }
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
         if (aiFailedEntirely) {
-          // Complete AI failure (network/API key/timeout) — show error.
           setError(
-            "⚠️ AI analysis could not run. Please check your internet connection and try again.",
+            "AI couldn't analyse your photo right now. Please retry � if it keeps failing, try a clearer, well-lit photo.",
           );
         } else if (!isFlagEnabled("ff.diary-feed")) {
-          // Legacy path (diary-feed OFF): disambiguation modal.
           setUnknownCaptureModal({ open: true, pendingSharePromise });
         } else {
-          // Diary-feed ON: capture is already tagged 'unknown' above.
-          // It surfaces in the diary as an "Other" row where the user can
-          // Retry (re-run AI), Edit (manual entry), or Delete.
-          // Reset to camera so the user can take the next photo immediately;
-          // they find the unidentified entry in the diary.
-          showToast("📷 Couldn't identify — find it in Diary → tap to fix");
+          showToast("?? Couldn't identify � find it in Diary ? tap to fix");
           resetCaptureUiOnly();
         }
         setLoading(false);
@@ -6406,16 +6008,12 @@ useEffect(() => {
       }
 
       // It's a food image - use nutrition data from unified detection
-      console.log("🍽️ [Food Detection] Setting imageType to food");
-      setImageType("food");
-      // Phase 3: share URL already surfaced by the .then() registered at the
-      // detectedType.type === "food" guard above (line ~5447). A second
-      // .then() here is redundant — pendingSharePromise has already resolved,
-      // so both callbacks fire synchronously on the microtask queue, writing
-      // foodCaptureIdRef.current twice and racing with performNutritionSave's
-      // null-reset. Removed to eliminate the double-write race.
-      debugLog("🍽️ [DEBUG] Processing as FOOD image");
-      debugLog("🍽️ [DEBUG] Food details check:", {
+      if (!bg) {
+        console.log("??? [Food Detection] Setting imageType to food");
+        setImageType("food");
+      }
+      debugLog("??? [DEBUG] Processing as FOOD image");
+      debugLog("??? [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
         hasFoodsArray: !!detectedType.details?.foods,
         foodsLength: detectedType.details?.foods?.length || 0,
@@ -6434,10 +6032,12 @@ useEffect(() => {
 
           let foods = detectedType.details.foods;
 
-          // ?? Update detected food names for display
-          const foodNames = foods.map((f) => f.name);
-          setDetectedFoodNames(foodNames);
-          debugLog("🍽️ [AI-DETECTED] Food names:", foodNames.join(", "));
+          // ?? Update detected food names for display (home UI only � not in async capture flow)
+          if (!bg) {
+            const foodNames = foods.map((f) => f.name);
+            setDetectedFoodNames(foodNames);
+          }
+          debugLog("??? [AI-DETECTED] Food names:", foods.map((f) => f.name).join(", "));
 
           // ?? CRITICAL: Preserve original AI-detected names BEFORE any corrections
           // This ensures we always know what the AI originally detected, even after auto-corrections
@@ -6460,11 +6060,11 @@ useEffect(() => {
             const userId = user?.id || (await getUserId(user));
             // debugLog("?? [CORRECTION] User ID for corrections:", userId);
             if (userId) {
-              // 🚫 AUTO-CORRECTION DISABLED (product decision 2026-05-29)
+              // ?? AUTO-CORRECTION DISABLED (product decision 2026-05-29)
               // const correctedFoods = await applyUserCorrections(foods, userId);
               // foods = correctedFoods;
 
-              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
+              // ?? Capture ALL food detections for debug modal (corrections + no corrections)
               const newLogs = foods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
@@ -6480,23 +6080,23 @@ useEffect(() => {
               if (newLogs.length > 0) {
                 setCorrectionLogs((prev) => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
                 debugLog(
-                  "🐛 [DEBUG-LOGS] Captured",
+                  "?? [DEBUG-LOGS] Captured",
                   newLogs.length,
                   "food detection(s)",
                 );
               }
             } else {
               console.warn(
-                "⚠️ [CORRECTION] No userId available, skipping corrections",
+                "?? [CORRECTION] No userId available, skipping corrections",
               );
             }
           } catch (error) {
             console.error(
-              "❌ [CORRECTION] Failed to apply corrections:",
+              "? [CORRECTION] Failed to apply corrections:",
               error,
             );
             console.warn(
-              "⚠️ Failed to apply corrections, using original AI detection:",
+              "?? Failed to apply corrections, using original AI detection:",
               error,
             );
           }
@@ -6508,7 +6108,7 @@ useEffect(() => {
           // ?? ALWAYS recalculate totals from corrected foods (don't use original AI total)
           // Original code used: detectedType.details.total || foods.reduce(...)
           // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
-          // NOTE: sugar/sodium/cholesterol MUST be summed here as well — see
+          // NOTE: sugar/sodium/cholesterol MUST be summed here as well � see
           // aggregateFoodTotals + transformAnalysisFormat regression tests.
           const total = aggregateFoodTotals(foods);
 
@@ -6590,20 +6190,25 @@ useEffect(() => {
             return o;
           };
 
+          const preserveMacro = (v) =>
+            typeof v === "number" && Number.isFinite(v) ? v : 0;
+          const roundMacroInt = (v) =>
+            typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0;
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
-              calories: Math.round(total.calories || 0),
-              protein: Math.round(total.protein || 0),
-              carbs: Math.round(total.carbs || 0),
-              fat: Math.round(total.fat || 0),
-              fiber: Math.round(total.fiber || 0),
+              calories: roundMacroInt(total.calories),
+              protein: preserveMacro(total.protein),
+              carbs: preserveMacro(total.carbs),
+              fat: preserveMacro(total.fat),
+              fiber: preserveMacro(total.fiber),
               // Persist the AI's invisible micronutrients so the backend
               // saves TotalSugar / TotalSodium / TotalCholesterol instead
               // of NULL. See aggregateFoodTotals + bug report.
-              sugar: Math.round(total.sugar || 0),
-              sodium: Math.round(total.sodium || 0),
-              cholesterol: Math.round(total.cholesterol || 0),
+              sugar: preserveMacro(total.sugar),
+              sodium: roundMacroInt(total.sodium),
+              cholesterol: roundMacroInt(total.cholesterol),
               // Carb-weighted Glycemic Index (intrinsic, never summed).
               glycemic_index: computedTotalGI,
               // 17 vitamins/minerals (from enrichMicronutrients + Gemini).
@@ -6622,24 +6227,19 @@ useEffect(() => {
                 ? "medium"
                 : "low",
             detailedItems: foods.map((food) => {
+              const n = food.nutrition || food;
               // ?? Extract nutrition values from the corrected food object
               const nutritionValues = {
-                calories: Math.round(
-                  food.nutrition?.calories || food.calories || 0,
-                ),
-                protein: Math.round(
-                  food.nutrition?.protein || food.protein || 0,
-                ),
-                carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
-                fat: Math.round(food.nutrition?.fat || food.fat || 0),
-                fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+                calories: roundMacroInt(n.calories),
+                protein: preserveMacro(n.protein),
+                carbs: preserveMacro(n.carbs),
+                fat: preserveMacro(n.fat),
+                fiber: preserveMacro(n.fiber),
                 // Carry sugar/sodium/cholesterol through to the save payload
                 // so they reach food_nutrition_data_table instead of NULL.
-                sugar: Math.round(food.nutrition?.sugar || food.sugar || 0),
-                sodium: Math.round(food.nutrition?.sodium || food.sodium || 0),
-                cholesterol: Math.round(
-                  food.nutrition?.cholesterol || food.cholesterol || 0,
-                ),
+                sugar: preserveMacro(n.sugar),
+                sodium: roundMacroInt(n.sodium),
+                cholesterol: roundMacroInt(n.cholesterol),
                 // GI is intrinsic to the food (not summed); preserve as-is.
                 glycemic_index:
                   (food.nutrition?.glycemic_index ?? food.glycemic_index) !=
@@ -6672,6 +6272,10 @@ useEffect(() => {
                 correctionSource: food.correctionSource, // ?? Track correction source
                 correctionMetadata: food.correctionMetadata, // ?? Full correction metadata
                 portionDescription: food.portion || "Unknown portion",
+                weight_g:
+                  typeof food.weight_g === "number" ? food.weight_g : null,
+                volume_ml:
+                  typeof food.volume_ml === "number" ? food.volume_ml : null,
                 estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
                 unit: food.unit || (food.volume_ml ? "ml" : "g"),
                 isLiquid: food.isLiquid || false,
@@ -6684,10 +6288,10 @@ useEffect(() => {
           };
         } else {
           // Fallback: No food data extracted, show specific actionable error
-          console.error("❌ [DEBUG] No food data extracted from image");
-          console.error("❌ [DEBUG] Detection details:", detectedType.details);
+          console.error("? [DEBUG] No food data extracted from image");
+          console.error("? [DEBUG] Detection details:", detectedType.details);
           console.error(
-            "❌ [DEBUG] Full detectedType object:",
+            "? [DEBUG] Full detectedType object:",
             JSON.stringify(detectedType, null, 2),
           );
 
@@ -6739,54 +6343,59 @@ useEffect(() => {
           // Set appropriate error message
           if (isApiError) {
             errorMessage =
-              "🤖 The AI model is temporarily unavailable. Please try again later.";
+              "?? The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {
             errorMessage =
-              "📶 Please check your internet connection (WiFi or mobile data) and try again.";
+              "?? Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isQualityIssue) {
             errorMessage =
-              "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
+              "?? Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
-              "📷 Please take a photo of food, weight scale, or educational content.";
+              "?? Please take a photo of food, weight scale, or educational content.";
           } else {
             errorMessage =
-              "❌ Could not detect the image. Please take a clear photo and try again.";
+              "? Could not detect the image. Please take a clear photo and try again.";
           }
 
-          setError(errorMessage);
-          // Clear share state � the Share button must not linger when AI
-          // yields no food data (e.g. Gemini quota exhausted for the day).
+          if (!bg) setError(errorMessage);
+          if (bg) {
+            updatePendingCaptureType(pendingSharePromise, "unknown");
+            triggerNutritionRefresh({ immediate: true, source: "capture-food-failed" });
+            clearCaptureAnalyzing(captureShare.id);
+            // Gemini recognised food (confidence ≥ 0.65) but couldn’t itemise
+            // it — tell the user so they know to tap and add manually.
+            showToast("🍽️ Food detected — tap in Diary to add details");
+            return;
+          }
           setFoodShareUrl(null);
           setImageType(null);
           foodCaptureIdRef.current = null;
           pendingSharePromiseRef.current = null;
-          // ? "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
         }
 
-        setNutritionData({
-          ...result,
-          loggedAt: exifTimestamp || new Date().toISOString(),
-        });
-        // Stage 6 — setNutritionData called (UI card about to render)
-        _ctLog(6, 'setNutritionData called', {
-          calories: result?.nutrition?.calories ?? null,
-          itemCount: result?.itemCount ?? null,
-          confidence: result?.confidence ?? null,
-          source: result?.source ?? null,
-        });
+        if (!bg) {
+          setNutritionData({
+            ...result,
+            loggedAt: exifTimestamp || new Date().toISOString(),
+          });
+          _ctLog(6, 'setNutritionData called', {
+            calories: result?.nutrition?.calories ?? null,
+            itemCount: result?.itemCount ?? null,
+            confidence: result?.confidence ?? null,
+            source: result?.source ?? null,
+          });
+          setLoading(false);
+        }
 
-        // Analysis done — unlock Share immediately; club/GPS + DB save in bg.
-        // Capture the returned Promise so showDashboardPage can await it.
-        setLoading(false);
-        // Stage 7 — scheduleNutritionSaveInBackground about to start
         _ctLog(7, 'scheduleNutritionSaveInBackground starting', {
           hasUser: !!user,
           userId: user?.id ?? null,
           hasFile: !!file,
           hasProcessedImage: !!processedImage,
+          silent: bg,
         });
         const _saveP = scheduleNutritionSaveInBackground({
           user,
@@ -6794,22 +6403,37 @@ useEffect(() => {
           processedImage,
           analysisResult: result,
           exifTimestamp,
+          captureId: captureShare.id,
+          pendingSharePromise,
+          silent: bg,
         });
         savePromiseRef.current = _saveP;
-        // Clear the ref when this specific save settles (handles rapid captures).
         _saveP.finally(() => {
-          // Stage 15 — savePromise resolved (IIFE settled)
-          _ctLog(15, '_saveP.finally — savePromise settled', {
+          _ctLog(15, '_saveP.finally � savePromise settled', {
             isCurrentSave: savePromiseRef.current === _saveP,
             clearingRef: savePromiseRef.current === _saveP,
           });
           if (savePromiseRef.current === _saveP) savePromiseRef.current = null;
+          if (bg) {
+            clearCaptureAnalyzing(captureShare.id);
+            triggerNutritionRefresh({ immediate: true, source: "capture-food-saved" });
+          }
         });
       } catch (err) {
-        const friendlyMessage = getFriendlyErrorMessage(err);
-        setError(friendlyMessage);
-        console.error("❌ Gemini analysis error:", err);
+        if (!bg) {
+          const friendlyMessage = getFriendlyErrorMessage(err);
+          setError(friendlyMessage);
+          console.error("? Gemini analysis error:", err);
+        } else {
+          console.error("[Background AI] food processing failed:", err);
+          updatePendingCaptureType(pendingSharePromise, "unknown");
+          triggerNutritionRefresh({ immediate: true, source: "capture-food-error" });
+          clearCaptureAnalyzing(captureShare.id);
+        }
       }
+      })();
+
+      return;
     } catch (err) {
       // Better error handling for undefined or missing error messages
       let errorMessage = "Unknown error occurred";
@@ -6832,45 +6456,41 @@ useEffect(() => {
           "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
 
-      // Handle iOS "Load failed" network error
+      // Handle iOS "Load failed" network error � use alert modal, not home error banner
       if (
         errorMessage.toLowerCase() === "load failed" ||
         errorMessage.includes("Failed to fetch")
       ) {
-        setError(
-          "📶 Please check your internet connection (WiFi or mobile data) and try again.",
-        );
+        setAlertModal({
+          isOpen: true,
+          title: "Connection problem",
+          message:
+            "Please check your internet connection (WiFi or mobile data) and try again.",
+          type: "error",
+        });
       } else {
-        // Don't show error box for weight validation failures (already showing custom modal)
-        setError("Failed to process image: " + errorMessage);
+        setAlertModal({
+          isOpen: true,
+          title: "Could not process photo",
+          message: errorMessage,
+          type: "error",
+        });
       }
       console.error("? Image processing error:", err);
     } finally {
-      setLoading(false);
-      imageProcessingInProgress.current = false;
+      if (!capturePersisted) {
+        setLoading(false);
+        imageProcessingInProgress.current = false;
+      }
       debugLog(
-        `⏱️ [PERF] ? TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
+        `?? [PERF] ? TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
       );
-      debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      debugLog("????????????????????????????????????????????");
     }
   };
 
-  /** File input dedicated to task-panel "Take Photo" on web (body-level, always mounted). */
-  const handleTaskCameraFileChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const timestamp = new Date(file.lastModified).toISOString();
-    handleImageSelect(file, timestamp);
-    event.target.value = '';
-  };
-
-  // ?? Retry food analysis with the last image
-  const handleRetryAnalysis = () => {
-    if (lastImageFileRef.current) {
-      setError(null);
-      handleImageSelect(lastImageFileRef.current);
-    }
-  };
+  // Offline capture queue: drain queued photos on network reconnection.
+  useOfflineCaptureQueue(handleImageSelect, showToast);
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";
@@ -6905,11 +6525,11 @@ useEffect(() => {
       rawMessage.includes("timeout") ||
       rawMessage.includes("connection")
     ) {
-      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+      return "?? Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("timeout")) {
-      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+      return "?? Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("connection")) {
-      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+      return "?? Please check your internet connection (WiFi or mobile data) and try again.";
     }
 
     // Server errors
@@ -6921,24 +6541,24 @@ useEffect(() => {
     } else if (
       rawMessage.includes("Server returned an unexpected response format")
     ) {
-      return "⚠️ Unable to save your analysis right now. Your food data is still displayed above.";
+      return "?? Unable to save your analysis right now. Your food data is still displayed above.";
     }
 
     // Image and analysis errors
     else if (rawMessage.includes("Image file is too large")) {
-      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
+      return "?? Image file is too large. Please use a smaller photo (max 10MB).";
     } else if (rawMessage.includes("No food items detected")) {
-      return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
+      return "??? Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "🤖 The AI model is temporarily unavailable. Please try again later.";
+      return "?? The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "⚠️ Unable to save your analysis. The nutrition data is still shown above.";
+      return "?? Unable to save your analysis. The nutrition data is still shown above.";
     }
 
-    return "❌ Something went wrong. Please try again.";
+    return "? Something went wrong. Please try again.";
   };
 
   const resetApp = () => {
@@ -6985,7 +6605,7 @@ useEffect(() => {
       setLoading(true);
       setError(null);
 
-      // ? User is intentionally signing in � clear the sign-out block flags
+      // ? User is intentionally signing in ? clear the sign-out block flags
       Session.clearUserSignedOut();
       Session.clearAccountDeleted();
       setForceLoggedOut(false);
@@ -7023,7 +6643,7 @@ useEffect(() => {
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
 
-          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
+          // ?? CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
             sessionStorage.removeItem("freshGoogleSignIn");
             return;
@@ -7054,20 +6674,6 @@ useEffect(() => {
 
           if (isActive) {
             setUser(user);
-            // ── Consume any BPC card stored pre-login (new user from deep link) ──
-            const bpcPendingSignIn = consumePendingCard();
-            if (bpcPendingSignIn?._token && user?.id) {
-              import("./features/body-parameters-card").then(
-                ({ saveCardToProfile }) => {
-                  saveCardToProfile(bpcPendingSignIn._token, user.id).catch(
-                    () => {},
-                  );
-                },
-              );
-              debugLog(
-                "✅ [BPC] Consumed pending card on first sign-in, height+BMR saved",
-              );
-            }
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
@@ -7087,7 +6693,7 @@ useEffect(() => {
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
           console.error(
-            "⚠️ Backend save/check failed, allowing user access:",
+            "?? Backend save/check failed, allowing user access:",
             saveError,
           );
           setError(
@@ -7104,7 +6710,7 @@ useEffect(() => {
         // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
-      console.error("❌ Sign in error:", error);
+      console.error("? Sign in error:", error);
       sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
 
       if (error.code === "auth/popup-blocked") {
@@ -7139,7 +6745,7 @@ useEffect(() => {
       setLoading(true);
       setError(null);
 
-      // ? User is intentionally signing in � clear the sign-out block flags
+      // ? User is intentionally signing in ? clear the sign-out block flags
       Session.clearUserSignedOut();
       Session.clearAccountDeleted();
       setForceLoggedOut(false);
@@ -7173,7 +6779,7 @@ useEffect(() => {
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
 
-          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
+          // ?? CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
             sessionStorage.removeItem("freshGoogleSignIn");
             return;
@@ -7223,7 +6829,7 @@ useEffect(() => {
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
           console.error(
-            "⚠️ Backend save/check failed, allowing user access:",
+            "?? Backend save/check failed, allowing user access:",
             saveError,
           );
           setError(
@@ -7237,7 +6843,7 @@ useEffect(() => {
         // Flag is already cleared above - no need to clear again
       }
     } catch (error) {
-      console.error("❌ Popup sign-in error:", error);
+      console.error("? Popup sign-in error:", error);
       sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
       setError(getAuthErrorMessage(error));
     } finally {
@@ -7278,6 +6884,7 @@ useEffect(() => {
           displayName: user.displayName || user.email.split("@")[0],
           photoURL: user.photoURL || null,
           uid: user.uid,
+          timezoneIana: getDeviceTimezoneIana() ?? "",
         }),
       });
 
@@ -7301,7 +6908,7 @@ useEffect(() => {
         }
       } else {
         console.warn(
-          "⚠️ [saveUserToBackend] Save completed with warning:",
+          "?? [saveUserToBackend] Save completed with warning:",
           data,
         );
       }
@@ -7309,7 +6916,7 @@ useEffect(() => {
       return data;
     } catch (error) {
       console.error(
-        "❌ [saveUserToBackend] Failed to save user to backend:",
+        "? [saveUserToBackend] Failed to save user to backend:",
         error,
       );
       throw error; // Re-throw so caller can handle
@@ -7321,7 +6928,7 @@ useEffect(() => {
       // Phase 3d-a: Observe in shadow FSM (no behaviour change).
       authFsm.send({ type: authFsm.E.SIGN_OUT_REQUESTED, reason: "user" });
 
-      // Do NOT set loading=true here � it would pass loading=true to Login
+      // Do NOT set loading=true here ? it would pass loading=true to Login
       // which immediately shows "Signing in..." on the Google button after sign-out.
 
       // Set sign-out in progress flag to prevent concurrent sign-in
@@ -7330,7 +6937,7 @@ useEffect(() => {
       // ? Ensure loading is false BEFORE showing Login screen
       setLoading(false);
 
-      // ? Set React gate FIRST � this immediately shows Login screen
+      // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
 
@@ -7339,13 +6946,10 @@ useEffect(() => {
 
       // Clear user context cache
       clearContextCache();
+      clearHomeDashboardSnapshot();
       setUserContext(null);
       setUserContextLoading(false);
-      debugLog("🗑️ [Sign Out] User context cache and state cleared");
-
-      // Clear FCM callback so stale token saves cannot target this user's
-      // account if a registration event fires before the next login.
-      resetFCM();
+      debugLog("??? [Sign Out] User context cache and state cleared");
 
       // Clear userId session cache
       clearUserIdCache();
@@ -7356,14 +6960,14 @@ useEffect(() => {
       const emailKey = Session.getUserEmail() || "";
       Session.clearProfileComplete(emailKey);
       profileCompletedRef.current = false;
-      debugLog("🗑️ [Sign Out] UserId cache cleared");
+      debugLog("??? [Sign Out] UserId cache cleared");
 
       if (Capacitor.isNativePlatform()) {
         try {
           await GalleryMonitor.clearCurrentUser();
         } catch (clearError) {
           console.error(
-            "⚠️ Failed to clear GalleryMonitor user (method may not exist):",
+            "?? Failed to clear GalleryMonitor user (method may not exist):",
             clearError,
           );
           // Continue with sign out even if this fails
@@ -7383,11 +6987,11 @@ useEffect(() => {
       localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
       localStorage.removeItem("dashboard_activeTab");
       GalleryMonitor.clearLocalBackgroundAnalyses();
-      // Keep "userSignedOut" flag � set by signOutUser() to block iOS silent re-auth
+      // Keep "userSignedOut" flag ? set by signOutUser() to block iOS silent re-auth
       sessionStorage.clear();
       resetApp();
     } catch (error) {
-      console.error("❌ Sign out error:", error);
+      console.error("? Sign out error:", error);
       // ? Even if signOut throws, force clear the UI so user isn't stuck
       Session.clearUserEmail();
       Session.clearOtpVerified();
@@ -7418,7 +7022,7 @@ useEffect(() => {
   };
 
   const handleOtpVerified = async (isNewUser = false) => {
-    debugLog("🔐 [handleOtpVerified] Called with isNewUser:", isNewUser);
+    debugLog("?? [handleOtpVerified] Called with isNewUser:", isNewUser);
 
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
@@ -7435,16 +7039,16 @@ useEffect(() => {
         const parsedUser = JSON.parse(otpUserRaw);
 
         // DEBUG: Log the parsed user object to see what status value we're getting
-        console.log("🔍 [handleOtpVerified] Parsed user object:", parsedUser);
-        console.log("🔍 [handleOtpVerified] Status field:", parsedUser?.status);
+        console.log("?? [handleOtpVerified] Parsed user object:", parsedUser);
+        console.log("?? [handleOtpVerified] Status field:", parsedUser?.status);
         console.log(
-          "🔍 [handleOtpVerified] Status (capital):",
+          "?? [handleOtpVerified] Status (capital):",
           parsedUser?.Status,
         );
 
         // Fast-path inactive check: the verify-otp API already returns the
         // user's current Status in the stored object. If it's already
-        // 'Inactive', show the Account Restricted modal immediately — do NOT
+        // 'Inactive', show the Account Restricted modal immediately � do NOT
         // rely on a separate network call that can time out or fail-open.
         // Check both lowercase 'status' and capital 'Status' for compatibility
         const userStatus = (
@@ -7452,14 +7056,14 @@ useEffect(() => {
           parsedUser?.Status ||
           ""
         ).toLowerCase();
-        console.log("🔍 [handleOtpVerified] Normalized status:", userStatus);
+        console.log("?? [handleOtpVerified] Normalized status:", userStatus);
 
         if (userStatus === "inactive") {
           console.log(
-            "🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
+            "?? [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
           );
           debugLog(
-            "🔐 [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
+            "?? [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
           );
           authFsm.send({
             type: authFsm.E.USER_STATUS_RESOLVED,
@@ -7473,7 +7077,7 @@ useEffect(() => {
           setShowInactiveModal(true);
 
           console.log(
-            "🔍 [handleOtpVerified] State set - user:",
+            "?? [handleOtpVerified] State set - user:",
             parsedUser.email,
             "showInactiveModal: true",
           );
@@ -7490,14 +7094,14 @@ useEffect(() => {
           isActive = await Promise.race([statusPromise, timeoutPromise]);
         } catch (statusError) {
           console.warn(
-            "⚠️ [handleOtpVerified] Status check failed, proceeding:",
+            "?? [handleOtpVerified] Status check failed, proceeding:",
             statusError,
           );
           isActive = true; // Default to active on error
         }
 
         if (!isActive) {
-          // User is inactive — set user + mark OTP verified so the app renders
+          // User is inactive � set user + mark OTP verified so the app renders
           // past the login gate and shows the InactiveUserModal (which fires in
           // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
           // the modal never renders and the user is stuck on the OTP screen.
@@ -7514,7 +7118,7 @@ useEffect(() => {
         setIsOtpVerified(true);
         Session.markOtpVerified();
 
-        // ? User is logging in via OTP � clear the sign-out gate
+        // ? User is logging in via OTP ? clear the sign-out gate
         Session.clearUserSignedOut();
         setForceLoggedOut(false);
 
@@ -7530,12 +7134,16 @@ useEffect(() => {
 
         setUser(parsedUser);
 
-        // Check profile completion for all users � new users will always have missing
-        // fields and the CompleteProfilePage gate will show. The SetupWizard handles
-        // coach/team linking (a separate flow), not personal detail collection.
-        if (userEmail) {
-          await checkProfileCompletion(userEmail, parsedUser);
+        if (!userEmail) {
+          // Phone-OTP user with no email � show the email gate before anything else.
+          // After the user provides an email, the setup check useEffect re-runs and
+          // handles setup wizard ? coach OTP ? profile completion in the correct order.
+          setShowEmailGate(true);
         }
+        // For email users: profile completion and setup wizard are handled by the
+        // setup check useEffect (fires ~1 s after user state is set). This prevents
+        // the race where CompleteProfilePage and SetupWizard both rendered within
+        // 1 s of OTP verification � SetupWizard must come before CompleteProfilePage.
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
@@ -7554,131 +7162,102 @@ useEffect(() => {
     }
   };
 
-  // useDeferredValue for lazy pages � must be declared BEFORE any early returns (Rules of Hooks)
-  const deferredShowDashboard = useDeferredValue(showDashboard);
-  const deferredShowWellnessReports = useDeferredValue(showWellnessReports);
-  const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
-  const deferredShowActivityReport = useDeferredValue(showActivityReport);
-  const deferredShowActivityTimeReport = useDeferredValue(
-    showActivityTimeReport,
-  );
-  const deferredShowMarathon = useDeferredValue(showMarathon);
-  const deferredShowWellnessCounselling = useDeferredValue(
-    showWellnessCounselling,
-  );
+  // Navigation flags are used directly (no useDeferredValue) so that tapping
+  // any tab opens the page immediately even when image analysis is in-flight.
+  // useDeferredValue was the root cause of the "navigation blocked" bug:
+  // it always returns the stale false value first and only commits the new
+  // true value in a background render, which gets interrupted by ongoing
+  // urgent updates (setLoading, setImagePreview, setNutritionData�) and
+  // never completes while analysis runs.
 
   // [BUG 3 FIX] No full-screen loading spinners anywhere. New installs and
   // returning users alike fall straight through to Login / Home. The native
   // Capacitor splash already covers app cold-start; once React mounts we go
   // directly to the correct route. Background auth/profile checks continue
-  // silently — they just don't show a UI spinner.
+  // silently � they just don't show a UI spinner.
 
-  // DEBUG: Log render state at the very top
-  console.log("🔍 [RENDER START]", {
-    authLoading,
-    profileChecking,
-    user: !!user,
-    isOtpVerified,
-    showInactiveModal,
-    forceLoggedOut,
-  });
+  // silently they just don't show a UI spinner.
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HIGHEST PRIORITY: Show waiting modal if contacting coach
-  // This MUST be before ALL other render branches so nothing can block it
-  // ─────────────────────────────────────────────────────────────────────────
-  if (isWaitingForCoachOTP) {
-    console.log("⚪ [RENDER] Showing waiting modal (highest priority)");
-    return (
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 999999,
-          background: "rgba(0,0,0,0.75)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "16px",
-        }}
-        ref={(el) => {
-          if (el)
-            console.log("⚪⚪⚪ [Waiting Modal] RENDERED AS TOP-LEVEL ⚪⚪⚪");
-        }}
-      >
-        <div
-          style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "40px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 25px 50px rgba(0,0,0,0.4)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "28px",
-            }}
-          >
-            <div
-              style={{
-                width: "72px",
-                height: "72px",
-                border: "5px solid #22c55e",
-                borderTopColor: "transparent",
-                borderRadius: "50%",
-                animation: "wv-spin 1s linear infinite",
-              }}
-            ></div>
-          </div>
-          <h2
-            style={{
-              fontSize: "26px",
-              fontWeight: "bold",
-              color: "#111827",
-              marginBottom: "14px",
-            }}
-          >
-            Contacting Your Coach...
-          </h2>
-          <p
-            style={{
-              color: "#6b7280",
-              fontSize: "16px",
-              lineHeight: "1.7",
-              margin: 0,
-            }}
-          >
-            We've sent a request to your coach. Please wait while we prepare the
-            verification screen.
-          </p>
-        </div>
-        <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // CRITICAL: Render Inactive User Modal at the TOP, before any early returns
-  // This ensures it shows even if we're stuck in a loading state
   const inactiveModalPortal = showInactiveModal ? (
     <InactiveUserModal
       userEmail={
         user?.email || user?.Email || Session.getUserEmail() || "your account"
       }
+      coachName={inactiveCoachName}
       onClose={handleInactiveModalClose}
       onContactCoach={handleContactCoach}
     />
   ) : null;
 
+  const alertModalPortal = (
+    <CustomAlertModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal((prev) => ({ ...prev, isOpen: false }))}
+      title={alertModal.title}
+      message={alertModal.message}
+      type={alertModal.type}
+      confirmText={alertModal.confirmText}
+      cancelText={alertModal.cancelText}
+      onConfirm={alertModal.onConfirm}
+    />
+  );
+
+  // -------------------------------------------------------------------------
+  // HIGHEST PRIORITY: Show waiting modal if contacting coach
+  // This MUST be before ALL other render branches so nothing can block it
+  // -------------------------------------------------------------------------
+  if (isWaitingForCoachOTP) {
+    return (
+      <>
+        {alertModalPortal}
+        <WaitingForCoachModal />
+      </>
+    );
+  }
+  // -------------------------------------------------------------------------
+
+  // HIGHEST PRIORITY: Inactive reactivation — full-screen coach OTP entry.
+  // Must replace Login entirely; overlay-on-Login was hidden behind lazy Suspense.
+  if (showValidateOTP && isInactiveReactivationFlow) {
+    return (
+      <>
+        {alertModalPortal}
+        <Suspense
+        fallback={
+          <div
+            className="fixed inset-0 z-[999999] flex items-center justify-center bg-white"
+            aria-busy="true"
+            aria-label="Loading verification screen"
+          >
+            <LoadingSpinner />
+          </div>
+        }
+      >
+        <ValidateOTP
+          key="reactivation"
+          isReactivationFlow
+          userEmail={
+            user?.email || user?.Email || Session.getUserEmail() || ""
+          }
+          coachName={inactiveCoachName || undefined}
+          onClose={() => {
+            isInactiveReactivationFlowRef.current = false;
+            setShowValidateOTP(false);
+            setIsInactiveReactivationFlow(false);
+            handleSignOut();
+          }}
+          onSuccess={handleInactiveReactivationSuccess}
+          onLogout={handleSignOut}
+        />
+      </Suspense>
+      </>
+    );
+  }
+  // -------------------------------------------------------------------------
+
   if (authLoading) {
-    // On native, show the logo overlay instead of a blank screen — the native
+    // On native, show the logo overlay instead of a blank screen � the native
     // splash may have already faded, so returning null would show white.
-    console.log("🔍 [RENDER] Blocked by authLoading");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7704,12 +7283,26 @@ useEffect(() => {
         </>
       );
     }
-    return inactiveModalPortal;
+    // On web, show the Login page while Firebase resolves. Previously this
+    // returned `inactiveModalPortal` (null for new/signed-out users), giving
+    // a blank white screen for up to 5 seconds until the auth timeout fired.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
-  // ? OTP user restore in progress — stay invisible until restored.
+  // OTP user restore in progress � stay invisible on native, show Login on web.
+  // On web, returning null causes a white screen if the OTP state is stale
+  // (isOtpVerified=true in localStorage but no valid otpUser data to restore).
   if (isOtpVerified && !user) {
-    console.log("🔍 [RENDER] Blocked by OTP restore (isOtpVerified && !user)");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7735,12 +7328,23 @@ useEffect(() => {
         </>
       );
     }
-    return inactiveModalPortal;
+    // Web: show Login so the user is never stuck on a blank page.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
-  // ? Profile check in progress — stay invisible until check is done.
+  // Profile check in progress � stay invisible on native, show Login on web
+  // as a safety net so non-native users never see a blank page.
   if (profileChecking) {
-    console.log("🔍 [RENDER] Blocked by profileChecking");
     if (Capacitor.isNativePlatform()) {
       return (
         <>
@@ -7766,10 +7370,21 @@ useEffect(() => {
         </>
       );
     }
-    return inactiveModalPortal;
+    // Web: show Login so the user is never stuck on a blank page.
+    return (
+      <>
+        {inactiveModalPortal}
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+      </>
+    );
   }
 
-  // ? iOS Sign-out gate: user explicitly signed out � always show Login
+  // ? iOS Sign-out gate: user explicitly signed out ? always show Login
   // This prevents Firebase silent re-auth from bypassing the logout
   if (forceLoggedOut) {
     return (
@@ -7787,7 +7402,7 @@ useEffect(() => {
 
   // Authentication flow
   if (!user && !isOtpVerified) {
-    console.log("🔍 [Render] Condition 1: !user && !isOtpVerified", {
+    console.log("?? [Render] Condition 1: !user && !isOtpVerified", {
       user,
       isOtpVerified,
       showInactiveModal,
@@ -7808,6 +7423,7 @@ useEffect(() => {
               Session.getUserEmail() ||
               "your account"
             }
+            coachName={inactiveCoachName}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -7819,82 +7435,12 @@ useEffect(() => {
           />
         )}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "⚪⚪⚪ [Waiting Modal] DOM RENDERED (branch1) ⚪⚪⚪",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
   const isGoogleUserCheck = user && isGoogleUser(user);
-  console.log("🔍 [Render] Checking Google user", {
+  console.log("?? [Render] Checking Google user", {
     user: !!user,
     isOtpVerified,
     isGoogleUserCheck,
@@ -7903,10 +7449,11 @@ useEffect(() => {
 
   if (!isOtpVerified && !isGoogleUserCheck) {
     console.log(
-      "🔍 [Render] Condition 2: !isOtpVerified && !isGoogleUserCheck",
+      "?? [Render] Condition 2: !isOtpVerified && !isGoogleUserCheck",
     );
     return (
       <>
+        {alertModalPortal}
         <Login
           onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
           loading={loading}
@@ -7921,6 +7468,7 @@ useEffect(() => {
               Session.getUserEmail() ||
               "your account"
             }
+            coachName={inactiveCoachName}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -7931,306 +7479,451 @@ useEffect(() => {
             onClose={handleUserNotFoundModalClose}
           />
         )}
-        {/* Inactive-reactivation coach OTP screen — rendered here so isOtpVerified
-            stays false and no background checkUserStatus effects re-trigger */}
-        {showValidateOTP && isInactiveReactivationFlow && (
-          <Suspense fallback={null}>
-            <ValidateOTP
-              key="reactivation"
-              isReactivationFlow={true}
-              onClose={() => {
-                setShowValidateOTP(false);
-                setIsInactiveReactivationFlow(false);
-                handleSignOut();
-              }}
-              onSuccess={() => {
-                setShowValidateOTP(false);
-                setIsInactiveReactivationFlow(false);
-                // Coach approved → DB now has Status='Active' (validate-otp sets it)
-                // Now it's safe to mark OTP verified and enter the app
-                setIsOtpVerified(true);
-                Session.markOtpVerified();
-              }}
-              onLogout={handleSignOut}
-            />
-          </Suspense>
-        )}
-
         {/* Waiting for Coach OTP - Portal renders to document.body */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
 
-  // Summary + trend reports (nutrition / weight / education)
-  if (deferredShowWellnessReports) {
-    return (
-      <Suspense fallback={null}>
-        <WellnessReportsPage
+  const adminLikeRole = ['admin', 'developer'].includes(userRole);
+
+  // Home keep-alive: sub-pages overlay Home instead of early-return
+  // unmounting it. Returning to Home preserves scroll/state and avoids
+  // dashboard API reloads unless a newer async activity log exists
+  // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
+  let homeOverlay = null;
+
+  // Inline Profile Page — full-screen, below nav bar (no modal overlay)
+  if (showProfilePage) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
           user={user}
           userRole={userRole}
-          onBack={closeWellnessReportsPage}
-          apiBaseUrl={apiBaseUrl}
-          bmrUpdateKey={bmrUpdateKey}
-          educationRefreshKey={educationRefreshKey}
-          watchBurnedCalories={watchBurnedCalories}
-          initialSelectedMember={reportsInitialMember}
+          activePage={null}
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
         />
-      </Suspense>
-    );
-  }
-
-  // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (deferredShowDashboard) {
-    return (
-      <Suspense fallback={null}>
-        <Dashboard
-          user={user}
-          onBack={showMainPage}
-          apiBaseUrl={apiBaseUrl}
-          initialTab={dashboardInitialTab}
-          userRole={userRole}
-          bmrUpdateKey={bmrUpdateKey}
-          educationRefreshKey={educationRefreshKey}
-          watchBurnedCalories={watchBurnedCalories}
-          initialSelectedMember={dashboardInitialSelectedMember}
-          initialDate={dashboardInitialDate}
-          initialMealId={dashboardInitialMealId}
-          onOpenReports={(member) =>
-            openWellnessReportsPage("dashboard", member)
-          }
-        />
-      </Suspense>
-    );
-  }
-
-  // Step Counter page � FEATURE DISABLED
-  // if (showStepCounter) {
-  //   return (
-  //     <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
-  //       <StepCounter user={user} userId={user?.id} userRole={userRole} onBack={() => setShowStepCounter(false)} />
-  //     </Suspense>
-  //   );
-  // }
-
-  // Screen Time page � FEATURE DISABLED
-  // if (showScreenTime) {
-  //   return (
-  //     <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
-  //       <ScreenTimePage user={user} userRole={userRole} userId={user?.id} onBack={() => setShowScreenTime(false)} />
-  //     </Suspense>
-  //   );
-  // }
-
-  // Reminders page
-  if (showReminders) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <ReminderSettingsPage
-          onBack={() => setShowReminders(false)}
-          lastWeight={lastWeight}
-        />
-      </Suspense>
-    );
-  }
-
-  // Discipline Report for all users
-  if (deferredShowDisciplineReport) {
-    return (
-      <Suspense fallback={null}>
-        <DisciplineReport
-          user={user}
-          onBack={() => {
-            setShowDisciplineReport(false);
-            Session.setCurrentPage("main");
-          }}
-          apiBaseUrl={apiBaseUrl}
-          userRole={userRole}
-        />
-      </Suspense>
-    );
-  }
-
-  // Activity Report (Education Attendance) — full-page module
-  if (deferredShowActivityReport) {
-    return (
-      <Suspense fallback={null}>
-        <ActivityReport
-          user={user}
-          userRole={userRole}
-          apiBaseUrl={apiBaseUrl}
-          onBack={() => {
-            setShowActivityReport(false);
-            Session.setCurrentPage("main");
-          }}
-        />
-      </Suspense>
-    );
-  }
-
-  // Activity Time Report
-  if (deferredShowActivityTimeReport) {
-    return (
-      <Suspense fallback={null}>
-        <ActivityTimeReport
-          user={user}
-          onBack={() => {
-            setShowActivityTimeReport(false);
-            Session.setCurrentPage("main");
-          }}
-          apiBaseUrl={apiBaseUrl}
-          userRole={userRole}
-        />
-      </Suspense>
-    );
-  }
-
-  // Wellness Counselling - Full page view
-  if (deferredShowWellnessCounselling) {
-    return (
-      <Suspense fallback={null}>
-        <WellnessCounselling
-          user={user}
-          onBack={() => setShowWellnessCounselling(false)}
-        />
-      </Suspense>
-    );
-  }
-
-  // Marathon Dashboard - Coach-facing marathon recognition engine
-  if (deferredShowMarathon) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading Marathon..." />}>
-        <div className="h-screen w-screen bg-white flex flex-col overflow-auto">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-10">
-            <button
-              onClick={() => {
-                setShowMarathon(false);
-                Session.setCurrentPage("main");
-              }}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-green-50 text-green-700 hover:bg-green-100 transition-colors font-bold text-base"
-              aria-label="Back"
-            >
-              ←
-            </button>
-            <span className="font-bold text-gray-800 text-base">Marathon</span>
-          </div>
-          <MarathonDashboard coachId={user?.id} />
-        </div>
-      </Suspense>
-    );
-  }
-
-  // Main app interface
-  return (
-    <LocationGuard>
-      <div
-        className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden"
-        style={{
-          paddingLeft: "env(safe-area-inset-left)",
-          paddingRight: "env(safe-area-inset-right)",
-        }}
-      >
-        {/* ── Marathon Recognition Splash — full-screen overlay, position:fixed, zIndex:9999 ── */}
-        {pendingRecognition.length > 0 && (
-          <Suspense fallback={null}>
-            <MarathonRecognitionSplash
-              recognitions={pendingRecognition}
-              onComplete={dismissRecognition}
-              onDismiss={() =>
-                dismissRecognition(
-                  pendingRecognition.map((r) => ({
-                    marathonId: r.marathonId,
-                    resultDate: r.resultDate,
-                  })),
-                )
+        <div className="ios-scroll-body">
+          <UserProfilePage
+            user={user}
+            userRole={userRole}
+            onBack={() => navigateTo('home')}
+            onSignOut={handleSignOut}
+            onProfileUpdate={(profileData) => {
+              const email = user?.email || Session.getUserEmail() || "";
+              profileCompletedRef.current = false;
+              checkProfileCompletion(email, null, { afterSave: true });
+              if (profileData?.name?.trim()) {
+                setSavedUserName(profileData.name.trim());
+                cacheProfileUserName(email, profileData.name);
               }
+              if (profileData?.bmr || profileData?.physicalActivityLevel) {
+                setBmrUpdateKey((prev) => prev + 1);
+              }
+              // Increment profileKey so Header re-fetches avatar/name
+              setHeaderProfileKey((k) => k + 1);
+              // Activity log: Home should refresh cards when returning from profile edits
+              triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
+              setBodyParamsRefreshKey((k) => k + 1);
+            }}
+          />
+        </div>
+      </div>
+    );
+  } else if (showDashboard) {
+    homeOverlay = (
+      <div className="ios-full-page bg-[#e8f5e9]">
+        {/* 5-tab nav bar � always visible on every sub-page */}
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="dashboard"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={null}>
+            <Dashboard
+              user={user}
+              onBack={showMainPage}
+              apiBaseUrl={apiBaseUrl}
+              initialTab={dashboardInitialTab}
+              userRole={userRole}
+              bmrUpdateKey={bmrUpdateKey}
+              educationRefreshKey={educationRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
+              onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
+              initialSelectedMember={dashboardInitialSelectedMember}
+              initialDate={dashboardInitialDate}
+              initialMealId={dashboardInitialMealId}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showWellnessCounselling) {
+    homeOverlay = (
+      <div className="ios-full-page">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="counselling"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={null}>
+            <WellnessCounselling
+              user={user}
+              refreshKey={bodyParamsRefreshKey}
+              onCardSaved={() => {
+                setHeaderProfileKey((k) => k + 1);
+                setBmrUpdateKey((k) => k + 1);
+              }}
+              onBack={() => {
+                setShowWellnessCounselling(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showUniversityEnrollment) {
+    homeOverlay = (
+      <div className="ios-full-page">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="enrollment"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={null}>
+            <WellnessUniversityEnrollment
+              embedded
+              user={user}
+              userRole={userRole}
+              onBack={() => {
+                enrollmentHistoryPushedRef.current = false;
+                setShowUniversityEnrollment(false);
+                window.history.replaceState({ wvPage: 'main' }, '');
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showActivityReport) {
+    homeOverlay = (
+      <div className="ios-full-page">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="activity-report"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={null}>
+            <ActivityReport
+              user={user}
+              userRole={userRole}
+              apiBaseUrl={apiBaseUrl}
+              onBack={() => {
+                setShowActivityReport(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showActivityTimeReport) {
+    homeOverlay = (
+      <div className="ios-full-page">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="activity-report"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={null}>
+            <ActivityTimeReport
+              user={user}
+              userRole={userRole}
+              apiBaseUrl={apiBaseUrl}
+              onBack={() => {
+                setShowActivityTimeReport(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showNutritionCentersMap) {
+    homeOverlay = (
+      <>
+        <div className="ios-full-page bg-[#e8f5e9]">
+          <Header
+            navOnly
+            user={user}
+            userRole={userRole}
+            activePage="physical-club"
+            onShowHome={() => navigateTo('home')}
+            onShowBackgroundHistory={() => navigateTo('dashboard')}
+            onShowWellnessEnrollment={() => navigateTo('enrollment')}
+            onShowWellnessCounselling={() => navigateTo('counselling')}
+            onShowNutritionCentersMap={() => navigateTo('physical-club')}
+            onShowActivityReport={() => navigateTo('activity-report')}
+            onShowTestimonials={() => navigateTo('testimonials')}
+            onShowReports={() => navigateTo('reports')}
+          />
+          <div className="ios-scroll-body">
+            <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
+              <NutritionCentersMap
+                embedded
+                user={user}
+                onBack={() => {
+                  setShowNutritionCentersMap(false);
+                  const currentWvPage = window.history.state?.wvPage;
+                  if (currentWvPage && currentWvPage !== 'main') window.history.back();
+                }}
+                onEditCenter={(center) => {
+                  setEditCenterData(center);
+                  setShowRegisterCenter(true);
+                }}
+                onRegisterCenter={() => {
+                  setEditCenterData(null);
+                  setShowRegisterCenter(true);
+                }}
+              />
+            </Suspense>
+          </div>
+        </div>
+        {showRegisterCenter && (
+          <Suspense fallback={null}>
+            <NutritionCenterRegistration
+              user={user}
+              initialCenter={editCenterData}
+              onBack={() => {
+                setShowRegisterCenter(false);
+                setEditCenterData(null);
+              }}
             />
           </Suspense>
         )}
-        {/* Permission primer — shown once on first install after auth.
-          Appears on top of the launch overlay so the transition is seamless:
-          white launch overlay → primer → OS dialogs → camera.
-          After the user taps Allow (or Skip), handlePermissionsGranted fires
-          permissionsReady → camera auto-opens → launch overlay closes. */}
-        {showPermissionPrimer && (
-          <PermissionPrimerModal
-            onContinue={handlePermissionsGranted}
-            onSkip={handlePermissionsGranted}
+      </>
+    );
+  } else if (showTestimonials) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="testimonials"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
+            <TestimonialsPage
+              user={{ userId: user?.id ?? userContext?.userId ?? null }}
+              userRole={userRole}
+              onBack={() => {
+                setShowTestimonials(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showWellnessScoreSetup && isFlagEnabled('ff.wellness-score-sheet') && adminLikeRole) {
+    homeOverlay = (
+      <Suspense fallback={<LoadingSpinner message="Loading Wellness Score Setup..." />}>
+        <WellnessScoreSetup
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          onBack={() => {
+            setShowWellnessScoreSetup(false);
+            const currentWvPage = window.history.state?.wvPage;
+            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+          }}
+        />
+      </Suspense>
+    );
+  } else if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
+    homeOverlay = (
+      <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
+        <WellnessScorePage
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          nutritionRefreshKey={nutritionRefreshKey}
+          onBack={() => {
+            setShowWellnessScore(false);
+            const currentWvPage = window.history.state?.wvPage;
+            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+          }}
+        />
+      </Suspense>
+    );
+  } else if (showReports && isFlagEnabled('ff.reports-module')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          navOnly
+          user={user}
+          userRole={userRole}
+          activePage="reports"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading reports�" />}>
+            <DownlineWeightReport
+              user={user}
+              onBack={() => {
+                setShowReports(false);
+                const currentWvPage = window.history.state?.wvPage;
+                if (currentWvPage && currentWvPage !== 'main') window.history.back();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
+  // Main app interface — Home stays mounted under overlays (display:none)
+  return (
+    <>
+      <div
+        style={{ display: homeOverlay ? 'none' : undefined }}
+        aria-hidden={Boolean(homeOverlay)}
+      >
+    <LocationGuard>
+      <div
+        className="ios-full-page"
+        style={{
+          background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)',
+        }}
+      >
+        {/* -- Permission denied modal (canRequest: true) ---------------------
+          Shown after a first denial when the OS can still present a dialog.
+          Small overlay card: "<Perm> permission is required to continue."
+          [ Allow Again ] immediately re-invokes the native OS dialog.
+          [ Exit ] closes the app.
+          When the user denies a second time (Android "Don't ask again") the
+          state flips to canRequest: false and React automatically unmounts
+          this modal and mounts PermissionBlockedPage instead. */}
+        {activePermission?.canRequest === true && (
+          <PermissionDeniedModal
+            type={activePermission.type}
+            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+            onAllow={() => handlePermissionAllow(activePermission.type)}
+            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+            loading={permissionDialogLoading}
           />
         )}
-        {/* Launch overlay — covers the home screen from app start until the
+
+        {/* -- Permission blocked page (canRequest: false) ----------------------
+          Full-screen page for permanently denied permissions.
+          Shown when Android reports "Don't ask again" or iOS denies (permanent).
+          Provides per-permission title + description + "Open App Settings".
+          The resume listener (above) auto-dismisses this page when the user
+          grants the permission from device Settings and returns to the app. */}
+        {activePermission?.canRequest === false && (
+          <PermissionBlockedPage
+            type={activePermission.type}
+            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+            onOpenSettings={() => {
+              if (activePermission.type === 'location') {
+                nativeLifecycle.openLocationPermissionSettings();
+              } else {
+                PermissionManager.openAppSettings();
+              }
+            }}
+            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+          />
+        )}
+
+        {/* GPS required � shown when location permission is granted but Location
+          Services (GPS) are off. Blocks all app usage until GPS is enabled.
+          App.js permission resume listener re-checks GPS on every app-foreground
+          event and auto-dismisses this modal when GPS is confirmed on. */}
+        {showGpsRequired && (
+          <GpsRequiredModal
+            platform={Capacitor.getPlatform()}
+            onOpenSettings={() => nativeLifecycle.openLocationSettings()}
+          />
+        )}
+        {/* Launch overlay � covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
           (white + centred logo) so the transition is seamless: native splash
           fades, our overlay is already there, then camera opens on top.
@@ -8256,7 +7949,7 @@ useEffect(() => {
           </div>
         )}
 
-        {/* ✨ Share-pending overlay — covers the home screen during the brief
+        {/* ? Share-pending overlay � covers the home screen during the brief
           window between native-camera close and WhatsApp share-sheet open.
           Glitter animations keep the user engaged so they don't navigate away. */}
         {sharingPendingImage && (
@@ -8305,7 +7998,7 @@ useEffect(() => {
                 gap: 0,
               }}
             >
-              {/* ── Photo with shimmer + glow ring ── */}
+              {/* -- Photo with shimmer + glow ring -- */}
               <div
                 style={{
                   position: "relative",
@@ -8358,7 +8051,7 @@ useEffect(() => {
                   />
                 </div>
 
-                {/* Sparkle particles — distributed across image width */}
+                {/* Sparkle particles � distributed across image width */}
                 {[
                   { color: "#FFD700", left: "8%", delay: 0 },
                   { color: "#FF69B4", left: "20%", delay: 0.25 },
@@ -8392,7 +8085,7 @@ useEffect(() => {
                 ))}
               </div>
 
-              {/* ── Bottom status pill ── */}
+              {/* -- Bottom status pill -- */}
               <div
                 style={{
                   marginTop: 24,
@@ -8412,16 +8105,15 @@ useEffect(() => {
                   flexShrink: 0,
                 }}
               >
-                {/* Spinning star icon */}
-                <span
+                <Sparkles
+                  size={20}
+                  color="#FFD700"
+                  aria-hidden="true"
                   style={{
-                    display: "inline-block",
-                    fontSize: 20,
+                    flexShrink: 0,
                     animation: "_wb_stars_spin 3s linear infinite",
                   }}
-                >
-                  ✨
-                </span>
+                />
 
                 <span
                   style={{
@@ -8460,86 +8152,63 @@ useEffect(() => {
           user={user}
           userRole={userRole}
           onShowBackgroundHistory={showDashboardPage}
-          onShowWellnessReports={() => openWellnessReportsPage("main")}
-          // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
-          // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
-          onShowReminders={showRemindersPage}
-          onShowAdminDashboard={
-            userRole === "admin" || userRole === "developer"
-              ? () => startTransition(() => setShowAdminDashboard(true))
-              : null
-          }
-          onShowDisciplineReport={() => {
-            startTransition(() => setShowDisciplineReport(true));
-            Session.setCurrentPage("discipline-report");
+          onShowHome={showMainPage}
+          onShowWellnessEnrollment={() => {
+            if (enrollmentHistoryPushedRef.current || showUniversityEnrollment) return;
+            enrollmentHistoryPushedRef.current = true;
+            setShowUniversityEnrollment(true);
+            window.history.pushState({ wvPage: 'enrollment' }, '');
           }}
-          onShowActivityTimeReport={() => {
-            startTransition(() => setShowActivityTimeReport(true));
-            Session.setCurrentPage("activity-time-report");
+          onShowWellnessCounselling={() => {
+            if (showWellnessCounselling) return;
+            setShowWellnessCounselling(true);
+            window.history.pushState({ wvPage: 'counselling' }, '');
           }}
-          onShowActivityReport={
-            userRole === "admin" ||
-            userRole === "coach" ||
-            userRole === "developer"
-              ? () => {
-                  startTransition(() => setShowActivityReport(true));
-                  Session.setCurrentPage("activity-report");
-                }
-              : null
-          }
-          onShowWellnessEnrollment={() =>
-            startTransition(() => setShowWellnessReport(true))
-          }
-          onShowWellnessReport={
-            userRole === "admin" ||
-            userRole === "coach" ||
-            userRole === "developer"
-              ? () => startTransition(() => setShowWellnessReport(true))
-              : null
-          }
-          onShowWellnessCounselling={() =>
-            startTransition(() => setShowWellnessCounselling(true))
-          }
-          onShowAttendanceReport={() =>
-            startTransition(() => setShowAttendanceReport(true))
-          }
-          onShowMarathon={
-            userRole === "coach" ||
-            userRole === "admin" ||
-            userRole === "developer"
-              ? () => {
-                  startTransition(() => setShowMarathon(true));
-                  Session.setCurrentPage("marathon");
-                }
-              : null
-          }
-          onShowNutritionCentersMap={() =>
-            startTransition(() => setShowNutritionCentersMap(true))
+          onShowNutritionCentersMap={() => {
+            if (!showNutritionCentersMap) {
+              window.history.pushState({ wvPage: 'physical-club' }, '');
+            }
+            setShowNutritionCentersMap(true);
+          }}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowReports={() => navigateTo('reports')}
+          onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
+          wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
+          activePage={
+            showDashboard ? 'dashboard' :
+            showUniversityEnrollment ? 'enrollment' :
+            showWellnessCounselling ? 'counselling' :
+            showNutritionCentersMap ? 'physical-club' :
+            showActivityReport || showActivityTimeReport ? 'activity-report' :
+            showTestimonials ? 'testimonials' :
+            showReports ? 'reports' :
+            showWellnessScoreSetup ? 'wellness-score-setup' :
+            'home'
           }
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
           // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
           // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
           onProfileSaved={(profileData) => {
             const email = user?.email || Session.getUserEmail() || "";
             profileCompletedRef.current = false;
             checkProfileCompletion(email, null, { afterSave: true });
+            if (profileData?.name?.trim()) {
+              setSavedUserName(profileData.name.trim());
+              cacheProfileUserName(email, profileData.name);
+            }
             // If a new BMR was saved, force NutritionDashboard to re-fetch it
-            if (profileData?.bmr) {
+            if (profileData?.bmr || profileData?.physicalActivityLevel) {
               setBmrUpdateKey((prev) => prev + 1);
             }
+            triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
+            setBodyParamsRefreshKey((k) => k + 1);
           }}
         />
-
-        {/* Personal Discipline Score - Shows individual category breakdown (WEI, EDU, BRE, LUN, DIN) */}
-        {user && (
-          <PersonalDisciplineScore
-            ref={personalDisciplineRef}
-            apiBaseUrl={apiBaseUrl}
-            userId={user.id}
-          />
-        )}
 
         {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
         <WeightLossLeaderboard
@@ -8548,12 +8217,14 @@ useEffect(() => {
           topN={LEADERBOARD_CONFIG.TOP_N}
         />
 
-        {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
-        <DisciplineLeaderboard
-          ref={disciplineLeaderboardRef}
-          apiBaseUrl={apiBaseUrl}
-          topN={10}
-        />
+        {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
+        {isFlagEnabled('ff.wellness-score-sheet') && (
+          <WellnessScoreLeaderboard
+            ref={wellnessLeaderboardRef}
+            apiBaseUrl={apiBaseUrl}
+            topN={10}
+          />
+        )}
 
         <div
           className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
@@ -8569,12 +8240,87 @@ useEffect(() => {
               </div>
             )}
 
-            {/* Today's Nutrition Carousel — Calories · Macros · Heart Healthy · Low Carb */}
+            {/* -- Hero banner: greeting + Camera / Gallery CTAs (always visible) -- */}
+            <div className="mx-1 mt-1 rounded-2xl overflow-hidden shadow-lg"
+                style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
+                <div className="px-2 py-3">
+                  {/* Date pill */}
+                  <div className="flex items-center justify-between">
+                    {/* Date */}
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
+                      {new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+
+                    {/* Greeting */}
+                   <h2 className="text-xs font-bold text-white text-right">
+  {(() => {
+    const h = new Date().getHours();
+    const firstName = (savedUserName || user?.displayName || '').split(' ')[0];
+
+    const name = firstName
+      ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+      : '';
+
+    const greeting =
+      h < 12
+        ? 'Good Morning'
+        : h < 17
+        ? 'Good Afternoon'
+        : 'Good Evening';
+
+    return name
+      ? `${greeting}, ${name}! 👋`
+      : `${greeting}! 👋`;
+  })()}
+</h2>
+                  </div>
+
+                  {/* Camera � primary CTA opens camera directly; gallery icon for choosing existing photo */}
+                  <div className="mt-5 flex gap-3">
+                    <button
+                      onClick={() => fileInputRef.current?.openCamera?.()}
+                      disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                      aria-label="Open camera"
+                    >
+                      <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm font-bold text-emerald-700">Take Photo</span>
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.openGallery?.()}
+                      disabled={loading}
+                      className="flex items-center justify-center gap-1.5 bg-white rounded-xl px-4 py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                      aria-label="Choose from gallery"
+                    >
+                      <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm font-bold text-emerald-700">Gallery</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel
               user={user}
               apiBaseUrl={apiBaseUrl}
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
+              onOpenWellnessScore={() => navigateTo('wellness-score')}
+              onOpenWellnessScoreSetup={
+                ['admin', 'developer'].includes(userRole)
+                  ? () => navigateTo('wellness-score-setup')
+                  : undefined
+              }
             />
 
             <ImageUpload
@@ -8589,95 +8335,6 @@ useEffect(() => {
               educationWindow={educationWindow}
               onCameraStateChange={handleCameraStateChange}
             />
-
-            {/* No inline buttons here anymore - moved to sticky footer at bottom */}
-
-            {/* Task Notification FAB (Floating Action Button) - COMMENTED OUT
-          {user && user.id && (
-            <button
-              onClick={() => setShowTaskPanel(true)}
-              className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold w-14 h-14 rounded-full shadow-2xl transform transition-all duration-200 hover:scale-110 flex items-center justify-center"
-              aria-label="Show My Tasks"
-            >
-              <svg 
-                className="w-6 h-6" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
-                />
-              </svg>
-            </button>
-          )}
-          */}
-
-            {error &&
-              (() => {
-                const isAiUnavailable = error.includes(
-                  "AI model is temporarily unavailable",
-                );
-
-                if (isAiUnavailable) {
-                  // Silently clear the error � no modal shown
-                  setTimeout(() => {
-                    setError(null);
-                    setImagePreview(null);
-                    lastImageFileRef.current = null;
-                  }, 0);
-                  return null;
-                }
-
-                return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl shadow-sm overflow-hidden">
-                    <div className="flex items-start gap-2 px-4 pt-3 pb-2">
-                      <span className="text-lg leading-none flex-shrink-0 mt-0.5">
-                        ??
-                      </span>
-                      <p className="text-sm text-amber-800 leading-relaxed break-words flex-1">
-                        {error.replace(/^[?????????????]\s*/, "")}
-                      </p>
-                      <button
-                        onClick={() => {
-                          setError(null);
-                          setImagePreview(null);
-                          lastImageFileRef.current = null;
-                        }}
-                        className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600 mt-0.5"
-                        aria-label="Dismiss"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2.5}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                    {lastImageFileRef.current && (
-                      <div className="px-4 pb-3">
-                        <TouchFeedbackButton
-                          onClick={handleRetryAnalysis}
-                          className="w-full bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors text-center"
-                        >
-                          Retry
-                        </TouchFeedbackButton>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
 
             {/* Share Image + Link button removed: auto-share fires directly
               to WhatsApp as soon as food is identified (see auto-share
@@ -8696,6 +8353,7 @@ useEffect(() => {
                   savedProfileImage={savedProfileImage}
                   sharePhotoBase64={sharePhotoBase64}
                   imageSrc={imagePreview || processedImageRef.current}
+                  foodNames={detectedFoodNames}
                 />
               )}
 
@@ -8764,631 +8422,49 @@ useEffect(() => {
             )}
 
             {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
-            {console.log("🔍 [celebration] Render check:", {
-              showWeightCelebration,
-              weightCelebrationMessage,
-            })}
             <CelebrationConfetti
               show={showWeightCelebration}
               message={weightCelebrationMessage}
               onComplete={() => {
-                console.log("🎉 [celebration] User dismissed celebration");
                 setShowWeightCelebration(false);
               }}
             />
 
             {imageType === "weight" && weightResult && (
               <>
-                {/* Hidden container for sharing - includes image + card */}
-                <div
+                {/* Off-screen weight share card \xe2\x80\x94 captured by precaptureShareImage for instant share */}
+                <WeightShareCard
                   ref={weightAnalysisShareRef}
-                  className="fixed -left-[9999px] top-0"
-                  style={{ position: "fixed", left: "-9999px", width: 460 }}
-                >
-                  <div
-                    style={{
-                      background: "white",
-                      borderRadius: 20,
-                      boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
-                      border: "2px solid #2dd4bf",
-                    }}
-                  >
-                    {/* User header strip */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 16,
-                        padding: "32px 28px",
-                        background:
-                          "linear-gradient(135deg, #0d9488 0%, #059669 100%)",
-                        borderRadius: "18px 18px 0 0",
-                        minHeight: 110,
-                      }}
-                    >
-                      {/* Profile photo � div+backgroundImage for reliable html2canvas rendering */}
-                      {savedProfileImage ||
-                      sharePhotoBase64 ||
-                      user?.photoURL ? (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.95)",
-                            backgroundImage: `url(${
-                              savedProfileImage ||
-                              sharePhotoBase64 ||
-                              user.photoURL
-                            })`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                            flexShrink: 0,
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.9)",
-                            background: "rgba(255,255,255,0.25)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              color: "white",
-                              fontWeight: 800,
-                              fontSize: 26,
-                              lineHeight: 1,
-                            }}
-                          >
-                            {(user?.displayName || user?.email || "U")
-                              .charAt(0)
-                              .toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            color: "white",
-                            fontWeight: 800,
-                            fontSize: 19,
-                            lineHeight: 1.2,
-                            margin: "0 0 6px 0",
-                          }}
-                        >
-                          {savedUserName ||
-                            user?.displayName ||
-                            user?.name ||
-                            "Wellness User"}
-                        </p>
-                        <p
-                          style={{
-                            color: "rgba(187,247,236,0.95)",
-                            fontSize: 13,
-                            margin: 0,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {new Date().toLocaleDateString(undefined, {
-                            dateStyle: "medium",
-                          })}{" "}
-                          {new Date().toLocaleTimeString(undefined, {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <p
-                        style={{
-                          color: "rgba(187,247,236,0.85)",
-                          fontSize: 16,
-                          margin: 0,
-                          lineHeight: 1,
-                          alignSelf: "flex-end",
-                          flexShrink: 0,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {getVersionString()}
-                      </p>
-                    </div>
+                  user={user}
+                  savedUserName={savedUserName}
+                  savedProfileImage={savedProfileImage}
+                  sharePhotoBase64={sharePhotoBase64}
+                  imagePreview={imagePreview}
+                  weightResult={weightResult}
+                  weightDiff={weightDiff}
+                  idealWeight={idealWeight}
+                />
 
-                    {/* Weight Image for sharing */}
-                    {imagePreview && (
-                      <div style={{ background: "black", overflow: "hidden" }}>
-                        <img
-                          src={imagePreview}
-                          alt="Weight Scale"
-                          style={{
-                            width: "100%",
-                            height: 256,
-                            objectFit: "contain",
-                            display: "block",
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Card content for sharing - Simple and Clean */}
-                    <div
-                      style={{
-                        background: "white",
-                        padding: 32,
-                        borderRadius: "0 0 18px 18px",
-                      }}
-                    >
-                      <h2
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 700,
-                          color: "#059669",
-                          textAlign: "center",
-                          margin: "0 0 24px 0",
-                        }}
-                      >
-                        Weight Analysis
-                      </h2>
-
-                      <div
-                        style={{
-                          background: "#f5f3ff",
-                          borderRadius: 16,
-                          padding: 24,
-                          textAlign: "center",
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "#7c3aed",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                            margin: "0 0 8px 0",
-                          }}
-                        >
-                          Weight
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 48,
-                            fontWeight: 700,
-                            color: "#6d28d9",
-                            margin: 0,
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {weightResult.weightValue}
-                          <span
-                            style={{
-                              fontSize: 22,
-                              fontWeight: 400,
-                              marginLeft: 8,
-                            }}
-                          >
-                            {weightResult.unit}
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Ideal Weight Strip (share card) */}
-                      {idealWeight && (
-                        <div
-                          style={{
-                            marginTop: 16,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background: "#eff6ff",
-                            border: "1px solid #bfdbfe",
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#2563eb",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              Ideal Weight
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#6b7280",
-                                margin: 0,
-                              }}
-                            >
-                              Based on height {idealWeight.heightCm} cm
-                            </p>
-                          </div>
-                          <div style={{ textAlign: "right", color: "#1d4ed8" }}>
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: 0,
-                              }}
-                            >
-                              {(() => {
-                                const current = weightResult?.weightValue;
-                                const isLoss =
-                                  current && current > idealWeight.value + 0.5;
-                                const isGain =
-                                  current && current < idealWeight.min - 0.5;
-                                if (isLoss)
-                                  return `${idealWeight.value} ${idealWeight.unit}`;
-                                if (isGain)
-                                  return `${idealWeight.min} ${idealWeight.unit}`;
-                                return `${idealWeight.value} ${idealWeight.unit}`;
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Weight Diff Strip */}
-                      {weightDiff && (
-                        <div
-                          style={{
-                            marginTop: 20,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background:
-                              weightDiff.change < 0
-                                ? "#f0fdf4"
-                                : weightDiff.change > 0
-                                ? "#fff1f2"
-                                : "#f9fafb",
-                            border: `1px solid ${
-                              weightDiff.change < 0
-                                ? "#bbf7d0"
-                                : weightDiff.change > 0
-                                ? "#fecdd3"
-                                : "#e5e7eb"
-                            }`,
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#6b7280",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              vs Previous
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 16,
-                                fontWeight: 700,
-                                color: "#374151",
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.previous} {weightResult.unit}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#9ca3af",
-                                margin: 0,
-                              }}
-                            >
-                              {new Date(
-                                weightDiff.previousDate,
-                              ).toLocaleDateString(undefined, {
-                                dateStyle: "medium",
-                              })}
-                            </p>
-                          </div>
-                          <div
-                            style={{
-                              textAlign: "right",
-                              color:
-                                weightDiff.change < 0
-                                  ? "#16a34a"
-                                  : weightDiff.change > 0
-                                  ? "#ef4444"
-                                  : "#6b7280",
-                            }}
-                          >
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.change > 0
-                                ? "▲"
-                                : weightDiff.change < 0
-                                ? "▼"
-                                : "—"}{" "}
-                              {weightDiff.change === 0
-                                ? "No change"
-                                : Math.abs(weightDiff.change) < 1
-                                ? `${Math.round(
-                                    Math.abs(weightDiff.change) * 1000,
-                                  )} g`
-                                : `${Math.abs(weightDiff.change).toFixed(2)} ${
-                                    weightResult.unit
-                                  }`}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 600,
-                                margin: 0,
-                              }}
-                            >
-                              {weightDiff.change < 0
-                                ? "Lost"
-                                : weightDiff.change > 0
-                                ? "Gained"
-                                : ""}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Visible card */}
-                <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-                  <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
-                    Weight Analysis
-                  </h2>
-
-                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <p className="text-sm text-purple-600 font-medium">
-                        Weight
-                      </p>
-                      {!isEditingWeight && (
-                        <button
-                          onClick={() => {
-                            setEditWeightValue(
-                              String(weightResult.weightValue),
-                            );
-                            setWeightEditError("");
-                            setIsEditingWeight(true);
-                          }}
-                          className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-700 transition-colors"
-                          title="Edit weight"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit
-                        </button>
-                      )}
-                    </div>
-
-                    {isEditingWeight ? (
-                      <div className="w-full mt-1">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={editWeightValue}
-                            onChange={(e) => setEditWeightValue(e.target.value)}
-                            className="flex-1 border border-purple-300 rounded-lg px-3 py-2 text-xl font-bold text-purple-700 text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            inputMode="decimal"
-                            step="0.1"
-                            min="20"
-                            max="300"
-                            autoFocus
-                          />
-                          <span className="text-sm text-purple-600">
-                            {weightResult.unit}
-                          </span>
-                        </div>
-                        {weightEditError && (
-                          <p className="text-xs text-red-500 mt-1 text-center">
-                            {weightEditError}
-                          </p>
-                        )}
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={handleWeightEditSave}
-                            disabled={isSavingWeightEdit}
-                            className="flex-1 flex items-center justify-center gap-1 py-2 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-                          >
-                            {isSavingWeightEdit ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Check className="w-4 h-4" />
-                            )}
-                            {isSavingWeightEdit ? "Saving�" : "Save"}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setIsEditingWeight(false);
-                              setWeightEditError("");
-                            }}
-                            disabled={isSavingWeightEdit}
-                            className="flex-1 flex items-center justify-center gap-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-                          >
-                            <XIcon className="w-4 h-4" />
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-3xl font-bold text-purple-700">
-                        {weightResult.weightValue}
-                        <span className="text-lg font-normal ml-1">
-                          {weightResult.unit}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-3 text-center text-xs text-gray-500">
-                    Logged at{" "}
-                    {new Date(
-                      weightResult.loggedAt || Date.now(),
-                    ).toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </div>
-
-                  {/* Ideal weight (visible card) */}
-                  {idealWeight && (
-                    <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
-                      <div>
-                        <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">
-                          Ideal Weight
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Based on height {idealWeight.heightCm} cm
-                        </p>
-                      </div>
-                      <div className="text-blue-700 font-bold text-lg">
-                        {idealWeight.value} {idealWeight.unit}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Weight diff vs previous entry */}
-                  {weightDiff && (
-                    <div
-                      className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
-                        weightDiff.change < 0
-                          ? "bg-green-50 border border-green-100"
-                          : weightDiff.change > 0
-                          ? "bg-red-50 border border-red-100"
-                          : "bg-gray-50 border border-gray-100"
-                      }`}
-                    >
-                      <div>
-                        <p className="text-xs text-gray-500">
-                          vs Previous entry
-                        </p>
-                        <p className="text-sm font-semibold text-gray-700">
-                          {weightDiff.previous} {weightResult.unit}
-                        </p>
-                      </div>
-                      <div
-                        className={`font-bold text-lg ${
-                          weightDiff.change < 0
-                            ? "text-green-600"
-                            : weightDiff.change > 0
-                            ? "text-red-500"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        {weightDiff.change > 0
-                          ? "▲"
-                          : weightDiff.change < 0
-                          ? "▼"
-                          : "—"}{" "}
-                        {weightDiff.change === 0
-                          ? "No change"
-                          : `${Math.abs(weightDiff.change)} ${
-                              weightResult.unit
-                            }`}
-                        {weightDiff.change < 0 && (
-                          <span className="text-sm ml-1">🎉</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Share Button at Bottom - Only show if there's an image */}
-                  {imagePreview && (
-                    <button
-                      onClick={async (e) => {
-                        // Prevent event bubbling to avoid triggering parent click handlers
-                        if (e) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }
-
-                        if (isWeightSharing) return;
-                        setIsWeightSharing(true);
-                        // Yield so React paints the spinner before any heavy work.
-                        await new Promise((r) => setTimeout(r, 0));
-                        try {
-                          const shareOpts = {
-                            title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
-                            text: "",
-                            fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
-                          };
-
-                          // Fast path: pre-captured image (skips html2canvas).
-                          const cached = cachedWeightShareDataUrlRef.current;
-                          if (cached) {
-                            const ok = await shareCachedDataUrl(
-                              cached,
-                              shareOpts,
-                            );
-                            if (ok) return;
-                          }
-
-                          // Fallback: capture live (slower).
-                          await new Promise((resolve) =>
-                            setTimeout(resolve, 100),
-                          );
-                          await captureAndShare(
-                            weightAnalysisShareRef.current,
-                            shareOpts,
-                          );
-                        } catch (error) {
-                          console.error("Failed to share:", error);
-                        } finally {
-                          setIsWeightSharing(false);
-                        }
-                      }}
-                      disabled={isWeightSharing}
-                      className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
-                        isWeightSharing
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:shadow-lg active:scale-[0.98]"
-                      }`}
-                      style={{ touchAction: "manipulation" }}
-                    >
-                      {isWeightSharing ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>Sharing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Share2 className="w-5 h-5" />
-                          <span>Share Weight</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
+                {/* Visible weight result card */}
+                <WeightResultCard
+                  weightResult={weightResult}
+                  weightDiff={weightDiff}
+                  idealWeight={idealWeight}
+                  isEditingWeight={isEditingWeight}
+                  editWeightValue={editWeightValue}
+                  isSavingWeightEdit={isSavingWeightEdit}
+                  weightEditError={weightEditError}
+                  setEditWeightValue={setEditWeightValue}
+                  setIsEditingWeight={setIsEditingWeight}
+                  setWeightEditError={setWeightEditError}
+                  handleWeightEditSave={handleWeightEditSave}
+                />
               </>
             )}
 
-            {/* Saving Toast */}
-            {saveLoading && (
+
+            {/* Saving Toast � hidden during async capture (photo already saved) */}
+            {saveLoading && loadingState !== "saved" && (
               <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
                 <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
                   {imageType === "weight"
@@ -9400,8 +8476,8 @@ useEffect(() => {
               </div>
             )}
 
-            {/* Error Toast */}
-            {saveError && (
+            {/* Error Toast � hidden during async capture; analysis errors live in Diary only */}
+            {saveError && loadingState !== "saved" && (
               <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
                 <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
                   {saveError}
@@ -9418,7 +8494,7 @@ useEffect(() => {
                   aria-label="Close"
                 >
                   {" "}
-                  �{" "}
+                  ?{" "}
                 </button>{" "}
                 <h3 className="font-semibold text-green-700 mb-2">
                   ?? How to use:
@@ -9448,87 +8524,28 @@ useEffect(() => {
                     ?? Tips for better results:
                   </h4>
                   <ul className="text-xs text-gray-600 space-y-1">
-                    <li>� Take photos in good lighting conditions </li>
-                    <li>� Ensure food items or weights are clearly visible</li>
-                    <li>� Avoid cluttered backgrounds </li>
+                    <li>? Take photos in good lighting conditions </li>
+                    <li>? Ensure food items or weights are clearly visible</li>
+                    <li>? Avoid cluttered backgrounds </li>
                     <li>
-                      � For text queries, be specific about preparation methods{" "}
+                      ? For text queries, be specific about preparation methods{" "}
                     </li>
                   </ul>
                 </div>
               </div>
             )}
 
-            <TestImageGuide
-              isVisible={showTestGuide}
-              onClose={() => setShowTestGuide(false)}
-            />
+            {/* Safe-area bottom padding */}
+            <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
 
-            {/* Spacer so page content isn't hidden behind the floating buttons */}
-            <div className="min-h-[88px]" />
-
-            {/* 📸 Floating Camera & Gallery FABs — fixed so always visible */}
-            {user &&
-              !authLoading &&
-              isOtpVerified &&
-              !profileChecking &&
-              !showSetupWizard &&
-              !showDashboard &&
-              !showAdminDashboard &&
-              !showRegisterCenter &&
-              !showWellnessCounselling &&
-              !showValidateOTP &&
-              !showCompleteProfile && (
-                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex gap-5 items-end pointer-events-none">
-                  {/* Gallery Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.openGallery?.()}
-                    disabled={loading}
-                    className="w-14 h-14 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-                    title="Choose from Gallery"
-                    aria-label="Gallery access"
-                    style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.3))" }}
-                  >
-                    <img
-                      src="/gallery.png"
-                      alt="Gallery"
-                      className="w-full h-full object-cover rounded-full pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </button>
-
-                  {/* Camera Button — primary, slightly larger */}
-                  <button
-                    onClick={() => fileInputRef.current?.openCamera?.()}
-                    disabled={loading}
-                    className="w-16 h-16 p-0 rounded-full shadow-2xl transition-all duration-200 active:scale-90 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto"
-                    title="Take Photo"
-                    aria-label="Camera access"
-                    style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.35))" }}
-                  >
-                    <img
-                      src="/app.png"
-                      alt="Camera"
-                      className="w-full h-full object-cover rounded-full scale-110 pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </button>
-                </div>
-              )}
-          </div>
-        </div>
-
-        {/* Version badge - positioned in header area like web view */}
-        {/* <div className="fixed top-12 right-4 z-10">
-        <p className="text-[9px] sm:text-[10px] font-light tracking-wide opacity-50" style={{ color: '#888888' }}>
-          {getVersionString()}
-        </p>
-      </div> */}
+          </div>{/* end max-w-lg inner */}
+        </div>{/* end flex-1 scroll area */}
 
         {/* Inactive User Modal */}
         {showInactiveModal && (
           <InactiveUserModal
             userEmail={user?.email || user?.Email || "your account"}
+            coachName={inactiveCoachName}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -9562,7 +8579,7 @@ useEffect(() => {
           />
         )}
 
-        {/* PR 3 — Unknown / low-confidence capture disambiguation modal */}
+        {/* PR 3 � Unknown / low-confidence capture disambiguation modal */}
         <UnknownCaptureModal
           isOpen={unknownCaptureModal.open}
           onClose={() =>
@@ -9594,7 +8611,7 @@ useEffect(() => {
           }}
         />
 
-        {/* PR-E — Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
+        {/* PR-E � Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
         <UnknownShareViewer
           isOpen={unknownShareView.open}
           imageBase64={unknownShareView.imageBase64}
@@ -9616,7 +8633,7 @@ useEffect(() => {
           }
         />
 
-        {/* 2026-06-09 — undo banner for unknown capture deletion (share-link viewer) */}
+        {/* 2026-06-09 � undo banner for unknown capture deletion (share-link viewer) */}
         {unknownShareUndo && (
           <UnknownCaptureUndoBanner
             captureId={unknownShareUndo.captureId}
@@ -9634,7 +8651,7 @@ useEffect(() => {
           />
         )}
 
-        {/* PR-E — dedicated food search modal whose save promotes unknown → food */}
+        {/* PR-E � dedicated food search modal whose save promotes unknown ? food */}
         <SmartFoodSearchModal
           isOpen={shareEditView.open}
           onClose={() => setShareEditView({ open: false, captureId: null })}
@@ -9645,7 +8662,7 @@ useEffect(() => {
           timeLabel="What was in this photo?"
         />
 
-        {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}
+        {/* Smart Food Search Modal (replaces ManualFoodEntryModal � shows history + global search) */}
         <SmartFoodSearchModal
           isOpen={showManualFoodModal}
           onClose={() => {
@@ -9672,7 +8689,7 @@ useEffect(() => {
           onSave={async (data) => {
             setShowManualEducationModal(false);
             setError(null);
-            // Clear uploaded image � it's unrelated to this education log
+            // Clear uploaded image ? it's unrelated to this education log
             setImagePreview(null);
             setSelectedImage(null);
             setImageType("education");
@@ -9724,26 +8741,6 @@ useEffect(() => {
           }}
         />
 
-        {/* Manual Weight Entry Modal � disabled */}
-        {false && (
-          <ManualWeightEntryModal
-            isOpen={showManualWeightModal}
-            onClose={() => {
-              setShowManualWeightModal(false);
-              setCurrentWeightImage(null);
-              setLoading(false);
-            }}
-            onBack={() => {
-              setShowManualWeightModal(false);
-              setCurrentWeightImage(null);
-              if (manualModeActive) openBestManualModal();
-            }}
-            onSave={handleManualWeightSave}
-            imagePreview={currentWeightImage}
-            lastWeight={lastWeight}
-            altSwitchButtons={getAltSwitchButtons("weight")}
-          />
-        )}
 
         {/* Duplicate Food Modal */}
         {showDuplicateModal && duplicateInfo && (
@@ -9806,6 +8803,54 @@ useEffect(() => {
           onConfirm={alertModal.onConfirm}
         />
 
+        {/* Email Gate � forced for phone-OTP users with no email */}
+        {showEmailGate && user && (
+          <EmailGateModal
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            onComplete={({ email: savedEmail, userName: savedName }) => {
+              setShowEmailGate(false);
+              // Persist email to localStorage so SetupWizard, ValidateOTP, and
+              // all downstream session reads get a non-null value. Also patch the
+              // cached otpUser entry so a cold-restart doesn't re-trigger the gate.
+              Session.setUserEmail(savedEmail);
+              const cachedRaw = Session.getOtpUserRaw();
+              if (cachedRaw) {
+                try {
+                  const cached = JSON.parse(cachedRaw);
+                  Session.setOtpUser({
+                    ...cached,
+                    email: savedEmail,
+                    ...(savedName ? { username: savedName, userName: savedName } : {}),
+                  });
+                } catch { /* non-fatal */ }
+              }
+              // Patch the in-memory user so the rest of the app sees the email + name
+              setUser((prev) => prev ? {
+                ...prev,
+                email: savedEmail,
+                username: savedName || prev.username,
+                userName: savedName || prev.userName,
+              } : prev);
+              if (savedName) {
+                cacheProfileUserName(savedEmail, savedName);
+                setSavedUserName(savedName);
+              }
+            }}
+          />
+        )}
+
+        {showPhysicalActivitySetup && user && !showEmailGate && (
+          <PhysicalActivitySetup
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            onComplete={() => {
+              setShowPhysicalActivitySetup(false);
+              setBmrUpdateKey((prev) => prev + 1);
+            }}
+          />
+        )}
+
         {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
         <WeightProgressTipsModal
           isOpen={showWeightProgressModal}
@@ -9821,30 +8866,14 @@ useEffect(() => {
           userName={savedUserName}
         />
 
-        {/* Weight Goal Mode Setup Prompt — forced for users who never set their goal */}
-        <WeightGoalSetupPrompt
-          isOpen={showGoalModePrompt}
-          onSave={async (selectedMode) => {
-            const email = goalModePromptEmail || user?.email;
-            if (!email) return;
-            const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, weightGoalMode: selectedMode }),
-            });
-            if (!res.ok) throw new Error("Failed to save goal mode");
-            setShowGoalModePrompt(false);
-            setGoalModePromptEmail(null);
-          }}
-        />
-
-        {/* New User Profile Modal - shown for first-time users to complete their profile */}
         <UserProfileModal
           isOpen={showNewUserProfileModal}
           onClose={() => setShowNewUserProfileModal(false)}
           user={user}
           onProfileUpdate={() => {
             debugLog("? [NewUserProfile] Profile updated successfully");
+            setBodyParamsRefreshKey((k) => k + 1);
+            triggerNutritionRefresh({ immediate: true, source: 'new-user-profile' });
           }}
         />
 
@@ -9877,14 +8906,14 @@ useEffect(() => {
                   photoURL: savedData.profileImage,
                 }));
               } else {
-                // Picture was snoozed � snooze data already saved to DB by handleRemindLater
+                // Picture was snoozed ? snooze data already saved to DB by handleRemindLater
                 setProfilePicSnoozeData(null);
               }
             }}
           />
         )}
 
-        {/* -- Mandatory Profile Picture Upload Gate � DISABLED -------------
+        {/* -- Mandatory Profile Picture Upload Gate ? DISABLED -------------
       {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
@@ -9902,10 +8931,10 @@ useEffect(() => {
                 const data = await res.json();
                 if (data.success) {
                   setProfilePicSnoozeData(data.snooze);
-                  debugLog("⏰ [Profile Picture] Snooze saved to DB:", data.snooze);
+                  debugLog("? [Profile Picture] Snooze saved to DB:", data.snooze);
                 }
               } catch (err) {
-                console.error("❌ [Profile Picture] Failed to save snooze to DB:", err);
+                console.error("? [Profile Picture] Failed to save snooze to DB:", err);
               }
             }
             setShowMandatoryProfilePictureModal(false);
@@ -9950,7 +8979,7 @@ useEffect(() => {
                 }
               }
             } catch (err) {
-              console.error("❌ [Profile Picture] Failed to refresh user profile:", err);
+              console.error("? [Profile Picture] Failed to refresh user profile:", err);
               // Don't block user - they already have the image from immediate update
             }
             
@@ -9960,52 +8989,7 @@ useEffect(() => {
       )}
       ------------------------------------------------------------------- */}
 
-        {/* Admin Dashboard */}
-        {showAdminDashboard && (
-          <Suspense fallback={null}>
-            <AdminDashboard
-              onClose={() => setShowAdminDashboard(false)}
-              user={user}
-            />
-          </Suspense>
-        )}
-
-        {/* Attendance Report */}
-        {showAttendanceReport && (
-          <Suspense fallback={null}>
-            <AttendanceReport
-              user={user}
-              onBack={() => setShowAttendanceReport(false)}
-            />
-          </Suspense>
-        )}
-
-        {/* Nutrition Centers Map */}
-        {showNutritionCentersMap && (
-          <Suspense
-            fallback={
-              <LoadingSpinner message="Loading nutrition centers map..." />
-            }
-          >
-            <NutritionCentersMap
-              user={user}
-              onBack={() => setShowNutritionCentersMap(false)}
-              onEditCenter={(center) => {
-                setEditCenterData(center);
-                // Keep map mounted in background - don't unmount
-                // setShowNutritionCentersMap(false);
-                setShowRegisterCenter(true);
-              }}
-              onRegisterCenter={() => {
-                setEditCenterData(null);
-                setShowNutritionCentersMap(false);
-                setShowRegisterCenter(true);
-              }}
-            />
-          </Suspense>
-        )}
-
-        {/* Register Nutrition Center */}
+        {/* Register Nutrition Center (main app � when not on Physical Club full page) */}
         {showRegisterCenter && (
           <Suspense fallback={null}>
             <NutritionCenterRegistration
@@ -10014,7 +8998,7 @@ useEffect(() => {
               onBack={() => {
                 setShowRegisterCenter(false);
                 if (editCenterData) {
-                  // came from Physical Club Report via Edit — map already visible, just close form
+                  // came from Physical Club Report via Edit � map already visible, just close form
                   // No need to re-open map: setShowNutritionCentersMap(true);
                 }
                 setEditCenterData(null);
@@ -10044,13 +9028,15 @@ useEffect(() => {
             <ValidateOTP
               key={isInactiveReactivationFlow ? "reactivation" : "setup"}
               isReactivationFlow={isInactiveReactivationFlow}
+              userEmail={user?.email || user?.Email || Session.getUserEmail()}
+              coachName={isInactiveReactivationFlow ? inactiveCoachName || undefined : undefined}
               onClose={() => {
-                console.log("🔴 [ValidateOTP onClose] User closed modal", {
+                console.log("?? [ValidateOTP onClose] User closed modal", {
                   isInactiveReactivationFlow,
                 });
                 setShowValidateOTP(false);
                 if (isInactiveReactivationFlow) {
-                  // User cancelled reactivation — sign them out cleanly
+                  isInactiveReactivationFlowRef.current = false;
                   setIsInactiveReactivationFlow(false);
                   handleSignOut();
                 } else {
@@ -10059,54 +9045,30 @@ useEffect(() => {
                     setShowSetupWizard(true);
                   } else {
                     console.log(
-                      "🔴 [ValidateOTP onClose] User is inactive, not showing setup wizard",
+                      "?? [ValidateOTP onClose] User is inactive, not showing setup wizard",
                     );
                   }
                 }
               }}
               onSuccess={() => {
-                console.log(
-                  "🟢 [ValidateOTP onSuccess] OTP verified, closing modal",
-                  { isInactiveReactivationFlow, isUserActive },
-                );
-                setShowValidateOTP(false);
                 if (isInactiveReactivationFlow) {
-                  // Reactivation complete — re-run status check to enter app
-                  setIsInactiveReactivationFlow(false);
-                  const storedUser = Session.getOtpUser();
-                  if (storedUser) {
-                    try {
-                      checkUserStatus(JSON.parse(storedUser));
-                    } catch (_e) {
-                      /* ignore */
-                    }
-                  }
-                } else {
-                  // Regular login flow - only show setup wizard if user is active
-                  // If inactive, the checkUserStatus will show the inactive modal
-                  console.log(
-                    "🟢 [ValidateOTP onSuccess] Regular login flow, checking user status before showing setup wizard",
-                  );
+                  handleInactiveReactivationSuccess();
+                  return;
                 }
-                // Setup complete, user can now access dashboard
+                setShowValidateOTP(false);
+                // Regular login flow — coach OTP verified, setup is now complete.
+                const emailAfterOtp =
+                  user?.email || user?.Email || Session.getUserEmail();
+                if (emailAfterOtp) {
+                  checkProfileCompletion(emailAfterOtp, user);
+                }
               }}
               onLogout={handleSignOut}
             />
           </Suspense>
         )}
 
-        {/* Wellness University Report */}
-        {showWellnessReport && (
-          <Suspense fallback={<LoadingSpinner message="Loading report..." />}>
-            <WellnessUniversityReport
-              onClose={() => setShowWellnessReport(false)}
-              user={user}
-              userRole={userRole}
-            />
-          </Suspense>
-        )}
-
-        {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
+        {/* ?? Floating Bug Button - Show Correction Logs (Web & Android) */}
         {/* {user && (
         <button
           onClick={() => setShowCorrectionModal(true)}
@@ -10130,7 +9092,7 @@ useEffect(() => {
 
         {/* Fixed buttons removed - now using sticky footer layout inside scrollable content */}
 
-        {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
+        {/* ?? Correction Logs Modal (Web & Android Optimized) */}
         {showCorrectionModal && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
@@ -10207,17 +9169,17 @@ useEffect(() => {
                       {/* Main Correction Flow Box */}
                       <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
                         <div className="text-blue-400 font-bold mb-2">
-                          ╔════════════════════════════════════════════════════════════════
+                          +----------------------------------------------------------------
                         </div>
                         <div className="text-blue-400 font-bold mb-1">
-                          � ?? FOOD CORRECTION FLOW
+                          ? ?? FOOD CORRECTION FLOW
                         </div>
                         <div className="text-blue-400 font-bold mb-2">
-                          ╠════════════════════════════════════════════════════════════════
+                          �----------------------------------------------------------------
                         </div>
 
                         <div className="text-white mb-1">
-                          <span className="text-gray-400">�</span> ??{" "}
+                          <span className="text-gray-400">?</span> ??{" "}
                           <span className="text-cyan-400">
                             AI Detected Name:
                           </span>
@@ -10229,7 +9191,7 @@ useEffect(() => {
                         {log.aiDetected.trim().toLowerCase() ===
                         log.userCorrected.trim().toLowerCase() ? (
                           <div className="text-white mb-2">
-                            <span className="text-gray-400">�</span> ?{" "}
+                            <span className="text-gray-400">?</span> ?{" "}
                             <span className="text-cyan-400">Status:</span>
                             <span className="ml-2 text-green-300">
                               No Correction - User accepted AI suggestion
@@ -10237,7 +9199,7 @@ useEffect(() => {
                           </div>
                         ) : (
                           <div className="text-white mb-2">
-                            <span className="text-gray-400">�</span> ??{" "}
+                            <span className="text-gray-400">?</span> ??{" "}
                             <span className="text-cyan-400">
                               User Corrected To:
                             </span>
@@ -10248,7 +9210,7 @@ useEffect(() => {
                         )}
 
                         <div className="text-white mb-2">
-                          <span className="text-gray-400">�</span> ??{" "}
+                          <span className="text-gray-400">?</span> ??{" "}
                           <span className="text-cyan-400">
                             Final Display Name:
                           </span>
@@ -10258,7 +9220,7 @@ useEffect(() => {
                         </div>
 
                         <div className="text-blue-400 font-bold">
-                          ╚════════════════════════════════════════════════════════════════
+                          +----------------------------------------------------------------
                         </div>
                       </div>
 
@@ -10381,76 +9343,14 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Bell icon — bottom-right corner, opens Task Notification Panel */}
-        {user && !showTaskPanel && (
-          <button
-            onClick={() => openTaskPanelFromUserOrReminder()}
-            style={{
-              position: 'fixed',
-              bottom: 24,
-              right: 20,
-              zIndex: 9990,
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              background: '#10b981',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,.3)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-            aria-label="Open task notifications"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </button>
-        )}
-
-        {/* Task Notification Panel — opens from bell, FCM tap, or home-screen resume */}
-        {showTaskPanel && user && (
-          <TaskNotificationPanel
-            userId={user.id || user.UserId || Session.getDbUserId()}
-            onClose={closeTaskPanelByUser}
-            highlightedTaskId={highlightedTaskId}
-            onTaskComplete={openCameraForTask}
-          />
-        )}
-
-        {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
+        {/* Waiting for coach OTP — portal so it renders above all other layers */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-              style={{ zIndex: 999999 }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "⚪⚪⚪ [Waiting Modal] DOM RENDERED AND VISIBLE ⚪⚪⚪",
-                  );
-              }}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-fadeIn">
-                <div className="flex justify-center mb-6">
-                  <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-green-500"></div>
-                </div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Contacting Your Coach...
-                </h2>
-                <p className="text-gray-600 text-lg leading-relaxed">
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </div>
     </LocationGuard>
+      </div>
+      {homeOverlay}
+    </>
   );
 }
 
@@ -10462,3 +9362,9 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
+
+
+
+
+
+

@@ -55,10 +55,18 @@ export async function fetchUnknownShare({ token, viewerUserId, signal } = {}) {
  * @param {string} params.captureId       captures_table.ID to promote.
  * @param {string} params.viewerUserId    Authenticated session user.
  * @param {Object|string} params.analysisResult  Gemini analysis JSON / object.
+ * @param {string} [params.originalCapturedAt]   Diary entry capturedAt (UTC ISO).
+ *                                             Fallback when server cannot read capture.CreatedAt.
  * @param {AbortSignal} [params.signal]   Optional cancellation signal.
  * @returns {Promise<Object>} the promotion result envelope `data`.
  */
-export async function promoteUnknownToFood({ captureId, viewerUserId, analysisResult, signal } = {}) {
+export async function promoteUnknownToFood({
+  captureId,
+  viewerUserId,
+  analysisResult,
+  originalCapturedAt,
+  signal,
+} = {}) {
   if (!captureId) throw new Error('promoteUnknownToFood: captureId required');
   if (!viewerUserId) throw new Error('promoteUnknownToFood: viewerUserId required');
   if (analysisResult == null) throw new Error('promoteUnknownToFood: analysisResult required');
@@ -71,6 +79,7 @@ export async function promoteUnknownToFood({ captureId, viewerUserId, analysisRe
       captureId: String(captureId),
       viewerUserId: String(viewerUserId),
       analysisResult,
+      ...(originalCapturedAt ? { originalCapturedAt: String(originalCapturedAt) } : {}),
     },
     { signal },
   );

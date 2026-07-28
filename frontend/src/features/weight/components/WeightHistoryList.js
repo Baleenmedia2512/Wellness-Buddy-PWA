@@ -10,7 +10,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
-import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import { compareUtcTimestampsDesc } from '../../../shared/utils/datetimeUtils';
 import { UNDO_SECONDS } from '../services/weightDashboardFormatter';
 import WeightUndoRow from './WeightUndoRow';
 
@@ -93,7 +93,7 @@ const WeightHistoryList = ({
             <div className="space-y-3">
               {monthGroup.entries
                 .filter((e) => e && e.ID && e.CreatedAt && e.Weight)
-                .sort((a, b) => istToLocalDate(b.CreatedAt) - istToLocalDate(a.CreatedAt))
+                .sort((a, b) => compareUtcTimestampsDesc(a.CreatedAt, b.CreatedAt))
                 .map((entry, index) => {
                   if (entry.isUndoPlaceholder) {
                     const u = undoState[entry.ID];

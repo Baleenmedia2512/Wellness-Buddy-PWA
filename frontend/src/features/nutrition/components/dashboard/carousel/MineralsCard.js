@@ -1,15 +1,17 @@
 import React from 'react';
 import { Gem } from 'lucide-react';
 import MicroNutrientTile from './MicroNutrientTile';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * MineralsCard — Card 8 of the Nutrition Carousel.
  * Calcium, Iron, Magnesium, Potassium, Zinc, Phosphorus. 3-col × 2-row grid.
  */
-const MineralsCard = ({ tiles, onOpenModal }) => {
+const MineralsCard = ({ tiles, periodContext, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -37,7 +39,9 @@ const MineralsCard = ({ tiles, onOpenModal }) => {
         </div>
 
         <p className="text-[10px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
-          Essential minerals (adult RDA)
+          {periodContext?.isMultiDay
+            ? 'Total minerals vs period RDA'
+            : 'Essential minerals (adult RDA)'}
         </p>
       </div>
     </div>

@@ -17,11 +17,6 @@ import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
 import com.wellnessvalley.app.plugins.KeepAwakePlugin;
-import com.wellnessvalley.app.plugins.ReminderPlugin;
-import com.wellnessvalley.app.plugins.ReminderPlugin;
-import com.wellnessvalley.app.plugins.ScreenTimePlugin;
-import com.wellnessvalley.app.plugins.ReminderPlugin;
-import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
@@ -45,17 +40,8 @@ public class MainActivity extends BridgeActivity {
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
 
-        // ✅ Register StepCounterPlugin for in-app step tracking
-        registerPlugin(StepCounterPlugin.class);
-        
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
-        
-        // ✅ Register ScreenTimePlugin for device screen time tracking
-        registerPlugin(ScreenTimePlugin.class);
-
-        // ✅ Register ReminderPlugin for daily activity reminders (AlarmManager)
-        registerPlugin(ReminderPlugin.class);
         
         // ✅ Register KeepAwakePlugin to prevent screen sleep while app is active
         registerPlugin(KeepAwakePlugin.class);
@@ -243,15 +229,6 @@ public class MainActivity extends BridgeActivity {
             return;
         }
 
-        if (intent.getBooleanExtra(ReminderPlugin.EXTRA_OPEN_TASK_PANEL, false)) {
-            final String taskType  = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_TYPE);
-            final String taskId    = intent.getStringExtra(ReminderPlugin.EXTRA_TASK_ID);
-            final boolean uploadNow = intent.getBooleanExtra(ReminderPlugin.EXTRA_UPLOAD_NOW, false);
-
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                ReminderPlugin.deliverTaskReminderAction(this, taskType, taskId, uploadNow);
-            }, 800);
-        }
     }
     
     private void requestBatteryOptimizationExemption() {
@@ -320,9 +297,19 @@ public class MainActivity extends BridgeActivity {
                 settings.setLoadsImagesAutomatically(true);
                 
                 // Optimize for mobile
-                settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+                // ✅ FONT SCALE FIX: Use NORMAL layout algorithm — TEXT_AUTOSIZING
+                // compounds the OS font-scale problem by additionally resizing text.
+                settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
                 settings.setUseWideViewPort(true);
                 settings.setLoadWithOverviewMode(true);
+
+                // ✅ FONT SCALE FIX: Lock WebView text zoom to 100% so system
+                // Accessibility → Font Size changes do not scale the app's UI.
+                // Android WebView defaults textZoom to the OS font scale (e.g. 130
+                // for "Large"). Pinning it to 100 makes the app the sole authority
+                // over its own font sizes, matching iOS WKWebView behaviour and the
+                // CSS text-size-adjust:100% rule already set on <html>.
+                settings.setTextZoom(100);
                 
                 // Enable zoom for image viewing
                 settings.setSupportZoom(false);
@@ -418,14 +405,12 @@ public class MainActivity extends BridgeActivity {
                 permissions = new String[] {
                     android.Manifest.permission.READ_MEDIA_IMAGES,
                     android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
-                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                    android.Manifest.permission.POST_NOTIFICATIONS
                 };
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 permissions = new String[] {
                     android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                    android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                    android.Manifest.permission.CAMERA
                 };
             } else {
                 permissions = new String[] {

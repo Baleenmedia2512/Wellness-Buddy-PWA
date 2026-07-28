@@ -1,0 +1,345 @@
+﻿/**
+ * PermissionPrimerModal.jsx
+ *
+ * Shown ONCE on first native install, after the user authenticates.
+ * Explains the permissions Wellness Valley needs â€” and WHY â€”
+ * before the OS system dialogs appear.
+ *
+ * Industry pattern: Instagram / Headspace / Duolingo "permission primer".
+ * - Never show OS system dialogs without context.
+ * - One screen, one CTA, no friction.
+ *
+ * Location and Camera are MANDATORY. The "Not Now" skip path has been removed
+ * because the application cannot function without these permissions.
+ *
+ * Props:
+ *   onContinue    â€” async fn: runs requestAllPermissions() then resolves.
+ *   error         â€” optional string: shown when a mandatory permission was
+ *                   denied, explaining what went wrong.
+ *   onOpenSettings â€” optional fn: when provided, the CTA changes to
+ *                   "Open App Settings" so permanently-denied users can
+ *                   fix the permission in the OS settings screen.
+ */
+import React, { useState } from 'react';
+import wellnessValleyIcon from '../../assets/wellness-valley-icon.png';
+
+const PERMISSIONS = [
+  {
+    icon: 'ðŸ“¸',
+    title: 'Camera',
+    description: 'Snap your meal and get instant AI nutrition analysis.',
+    required: true,
+  },
+  {
+    icon: 'ðŸ“',
+    title: 'Location',
+    description: 'Auto-check in at your nearest wellness center.',
+    required: true,
+  },
+  {
+    icon: 'ðŸ””',
+    title: 'Notifications',
+    description: "We'll remind you to log meals, water, and your daily weight.",
+    required: false,
+  },
+];
+
+export default function PermissionPrimerModal({ onContinue, error, onOpenSettings }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      await onContinue();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="App permissions setup"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+      }}
+    >
+      {/* â”€â”€ Top gradient hero â”€â”€ */}
+      <div
+        style={{
+          background: 'linear-gradient(160deg, #16a34a 0%, #15803d 50%, #166534 100%)',
+          padding: '52px 24px 40px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: 22,
+            background: 'rgba(255,255,255,0.15)',
+            border: '1.5px solid rgba(255,255,255,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <img
+            src={wellnessValleyIcon}
+            alt="Wellness Valley"
+            style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 12 }}
+          />
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <h1
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: '#ffffff',
+              margin: 0,
+              lineHeight: 1.25,
+              letterSpacing: '-0.3px',
+            }}
+          >
+            Quick setup
+          </h1>
+          <p
+            style={{
+              fontSize: 15,
+              color: 'rgba(255,255,255,0.82)',
+              margin: '6px 0 0',
+              lineHeight: 1.4,
+            }}
+          >
+            {error
+              ? 'Some required permissions are missing. Camera and Location are mandatory to use Wellness Valley.'
+              : <>
+                  Allow permissions so WellnessÂ Valley works its best.
+                  Youâ€™ll see <strong style={{ color: '#fff' }}>OS prompts</strong>
+                  {' â€” '} Camera, Location, and Notifications.
+                </>
+            }
+          </p>
+        </div>
+      </div>
+
+      {/* â”€â”€ Error banner (shown after permission denial) â”€â”€ */}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            margin: '16px 20px 0',
+            padding: '14px 16px',
+            borderRadius: 14,
+            background: '#fef2f2',
+            border: '1.5px solid #fca5a5',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 18, flexShrink: 0 }}>âš ï¸</span>
+          <p style={{ margin: 0, fontSize: 13.5, color: '#b91c1c', lineHeight: 1.45 }}>
+            {error}
+          </p>
+        </div>
+      )}
+
+      {/* â”€â”€ Permission cards â”€â”€ */
+      <div
+        style={{
+          flex: 1,
+          padding: '28px 20px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+      >
+        {PERMISSIONS.map(({ icon, title, description, required }) => (
+          <div
+            key={title}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              background: '#f9fafb',
+              border: '1.5px solid #e5e7eb',
+              borderRadius: 16,
+              padding: '16px 18px',
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: '#dcfce7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 24,
+                flexShrink: 0,
+              }}
+            >
+              {icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <p
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: '#111827',
+                    margin: 0,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {title}
+                </p>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    background: required ? '#dcfce7' : '#f3f4f6',
+                    color: required ? '#15803d' : '#9ca3af',
+                    letterSpacing: '0.3px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {required ? 'Required' : 'Optional'}
+                </span>
+              </div>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: '#6b7280',
+                  margin: '3px 0 0',
+                  lineHeight: 1.45,
+                }}
+              >
+                {description}
+              </p>
+            </div>
+          </div>
+        ))}
+
+        {/* Fine-print */}
+        <p
+          style={{
+            fontSize: 11.5,
+            color: '#9ca3af',
+            textAlign: 'center',
+            lineHeight: 1.5,
+            marginTop: 4,
+            padding: '0 8px',
+          }}
+        >
+          You can change these anytime in your device&nbsp;Settings.
+        </p>
+      </div>
+
+      {/* â”€â”€ CTAs â”€â”€ */}
+      <div
+        style={{
+          padding: '24px 20px 40px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleContinue}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: 16,
+            border: 'none',
+            background: loading
+              ? '#86efac'
+              : 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+            color: '#ffffff',
+            fontSize: 16,
+            fontWeight: 700,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            boxShadow: loading ? 'none' : '0 4px 14px rgba(22,163,74,0.35)',
+            transition: 'all 0.15s ease',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          {loading ? (
+            <>
+              <span
+                style={{
+                  width: 18,
+                  height: 18,
+                  border: '2.5px solid rgba(255,255,255,0.4)',
+                  borderTopColor: '#ffffff',
+                  borderRadius: '50%',
+                  animation: '_primer_spin 0.7s linear infinite',
+                  display: 'inline-block',
+                }}
+              />
+              <span>Tap â€œAllowâ€ on each of the 3 promptsâ€¦</span>
+            </>
+          ) : (
+            'Allow All 3 Permissions â†’ Continue'
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onSkip}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            borderRadius: 12,
+            border: '1.5px solid #e5e7eb',
+            background: '#f9fafb',
+            color: '#6b7280',
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            WebkitTapHighlightColor: 'transparent',
+            lineHeight: 1.4,
+          }}
+        >
+          Not Now&nbsp;&nbsp;Â·&nbsp;&nbsp;
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+            Some features may not work without permissions
+          </span>
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes _primer_spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+

@@ -11,7 +11,11 @@ export default function useProfileForm(initial = {}) {
   const [phone, setPhone] = useState(initial.phone || '');
   const [dietType, setDietType] = useState(initial.dietType || '');
   const [bmr, setBmr] = useState(initial.bmr || '');
+  const [physicalActivityLevel, setPhysicalActivityLevel] = useState(initial.physicalActivityLevel || '');
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
+  const [communityId, setCommunityId] = useState(initial.communityId || '');
+  const [email, setEmail] = useState(initial.email || '');
+  const [bodyMetrics, setBodyMetrics] = useState(null);
 
   const reload = (p) => {
     setName(p.name ?? '');
@@ -19,7 +23,11 @@ export default function useProfileForm(initial = {}) {
     setPhone(p.phone ?? '');
     setDietType(p.dietType ?? '');
     setBmr(p.bmr ?? '');
+    setPhysicalActivityLevel(p.physicalActivityLevel ?? '');
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
+    setCommunityId(p.communityId ?? '');
+    setEmail(p.email ?? '');
+    setBodyMetrics(p.bodyMetrics ?? null);
   };
 
   // Optionally re-prime when initial reference changes.
@@ -43,6 +51,13 @@ export default function useProfileForm(initial = {}) {
     }
     if (!phoneValid) return 'Please enter a valid phone number (10-15 digits).';
     if (requireDiet && !dietValid) return 'Please select a diet preference.';
+    const trimmedCommunityId = communityId.trim();
+    if (trimmedCommunityId) {
+      if (trimmedCommunityId.length > 100) return 'Community ID must be at most 100 characters.';
+      if (!/^[a-zA-Z0-9]+$/.test(trimmedCommunityId)) {
+        return 'Community ID may only contain letters and numbers.';
+      }
+    }
     return '';
   };
 
@@ -51,16 +66,22 @@ export default function useProfileForm(initial = {}) {
     name: name || undefined,
     height: height ? parseFloat(height) : undefined,
     bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
+    physicalActivityLevel: physicalActivityLevel || undefined,
     dietType: dietType || undefined,
     phoneNumber: phone.trim() || undefined,
     weightGoalMode: weightGoalMode || 'loss',
+    communityId: communityId.trim() === '' ? null : communityId.trim(),
     ...extras,
   });
 
   return {
     name, setName, height, setHeight, phone, setPhone,
     dietType, setDietType, bmr, setBmr,
+    physicalActivityLevel, setPhysicalActivityLevel,
     weightGoalMode, setWeightGoalMode,
+    communityId, setCommunityId,
+    email, setEmail,
+    bodyMetrics,
     heightNum, heightValid, phoneValid, nameValid, dietValid,
     validate, payload, reload,
   };

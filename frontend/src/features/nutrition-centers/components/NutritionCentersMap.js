@@ -5,7 +5,9 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
+import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -72,7 +74,7 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
-const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) => {
+const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -108,28 +110,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
       return;
     }
 
-    if (!window.google || !window.google.maps) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        // Double-check that google.maps is available
-        if (window.google && window.google.maps) {
-          setMapLoaded(true);
-        } else {
-          setError('Google Maps failed to initialize properly');
-          setLoading(false);
-        }
-      };
-      script.onerror = () => {
-        setError('Failed to load Google Maps. Please check your internet connection and API key.');
+    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then(() => setMapLoaded(true))
+      .catch((err) => {
+        setError(err.message);
         setLoading(false);
-      };
-      document.head.appendChild(script);
-    } else {
-      setMapLoaded(true);
-    }
+      });
 
     return () => {
       // Cleanup markers safely
@@ -535,23 +521,28 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
   const activeDateEnd = activeDateStart;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
+    <div
+      className={embedded ? 'min-h-full pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]' : 'fixed inset-0 z-50 overflow-auto pb-20'}
+      style={{ backgroundColor: '#e8f5e9' }}
+    >
       {/* Header */}
-      <div className="sticky top-0 z-40 shadow-md" style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}>
-
+      <div
+        className="sticky top-0 z-40 shadow-md safe-top"
+        style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}
+      >
         {/* Row 1: Back + Title + Refresh */}
-        <div className="max-w-4xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-4xl mx-auto px-3 xs:px-4 pt-2 xs:pt-3 pb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 xs:gap-3 min-w-0 flex-1">
             <TouchFeedbackButton
               onClick={onBack}
-              className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              className="p-2 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
               ariaLabel="Go back"
             >
               <ArrowLeft className="h-5 w-5 text-green-900" />
             </TouchFeedbackButton>
-            <div>
-              <h1 className="text-base font-bold text-gray-900">Physical Club Report</h1>
-              <p className="text-xs text-green-900/70">View club locations & attendance</p>
+            <div className="min-w-0">
+              <h1 className="text-sm xs:text-base font-bold text-gray-900 truncate">Physical Club Report</h1>
+              <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p>
             </div>
           </div>
           <TouchFeedbackButton
@@ -618,26 +609,32 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
         </div>
 
         {/* Row 3: Team tabs — white pill segment */}
-        <div className="max-w-4xl mx-auto px-4 pb-2">
-          <div className="bg-white rounded-xl px-2 py-1.5 flex gap-1">
-            {[['self','My Club'],['direct','Direct Team'],['full','Full Team'],['all','All']].map(([val, label]) => (
+        <div className="max-w-4xl mx-auto px-3 xs:px-4 pb-2">
+          <div className="bg-white rounded-xl px-1 xs:px-2 py-1.5 flex gap-0.5 xs:gap-1">
+            {[
+              ['self', 'My Club', 'Mine'],
+              ['direct', 'Direct Team', 'Direct'],
+              ['full', 'Full Team', 'Full'],
+              ['all', 'All', 'All'],
+            ].map(([val, label, short]) => (
               <TouchFeedbackButton
                 key={val}
                 onClick={() => setTeamFilter(val)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex-1 py-1.5 rounded-lg text-[10px] xs:text-xs font-semibold transition-all min-w-0 px-0.5 xs:px-1 ${
                   teamFilter === val
                     ? 'bg-green-600 text-white shadow-sm'
                     : 'text-green-800 hover:bg-green-50'
                 }`}
               >
-                {label}
+                <span className="hidden xs:inline">{label}</span>
+                <span className="xs:hidden">{short}</span>
               </TouchFeedbackButton>
             ))}
           </div>
         </div>
 
         {/* Row 4: Search bar */}
-        <div className="max-w-4xl mx-auto px-4 pb-3">
+        <div className="max-w-4xl mx-auto px-3 xs:px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -793,19 +790,18 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
                       </div>
                     </div>
 
-                    {/* Action pills — wrapping row */}
+                    {/* Action pills — flex-wrap grid adapts to 2/3/4 buttons per row */}
                     <div
-                      className="flex flex-wrap gap-2 px-4 pb-4"
+                      className="ios-action-grid px-3 xs:px-4 pb-4"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Street View */}
                       <TouchFeedbackButton
                         onClick={(e) => { e.stopPropagation(); openStreetView(center); }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-blue-300 bg-blue-50 active:bg-blue-100 transition-colors"
+                        className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-blue-300 bg-blue-50 active:bg-blue-100 transition-colors w-full"
                         ariaLabel="Street View"
                       >
-                        <img src="/street-view-icon.png" alt="Street View" className="h-5 w-5 object-contain" />
-                        <span className="text-xs font-semibold text-blue-700">Street View</span>
+                        <img src="/street-view-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                        <span className="text-[10px] sm:text-xs font-semibold text-blue-700 text-center leading-tight px-0.5">Street View</span>
                       </TouchFeedbackButton>
 
                       {center.owner_phone && (
@@ -813,33 +809,32 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
                           <a
                             href={`tel:${center.owner_phone}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors"
+                            className="compact-touch flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors w-full"
                             aria-label="Call"
                           >
-                            <img src="/call-icon.png" alt="Call" className="h-5 w-5 object-contain" />
-                            <span className="text-xs font-semibold text-green-700">Call</span>
+                            <img src="/call-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs font-semibold text-green-700 text-center leading-tight px-0.5">Call</span>
                           </a>
                           <TouchFeedbackButton
                             onClick={(e) => { e.stopPropagation(); openWhatsApp(center.owner_phone); }}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-full border active:opacity-80 transition-colors"
+                            className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border active:opacity-80 transition-colors w-full"
                             style={{ backgroundColor: '#e7faf0', borderColor: '#25D366' }}
                             ariaLabel="WhatsApp"
                           >
-                            <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5 object-contain" />
-                            <span className="text-xs font-semibold" style={{ color: '#128C7E' }}>WhatsApp</span>
+                            <img src="/whatsapp-icon.png" alt="" className="h-4 w-4 sm:h-5 sm:w-5 object-contain flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs font-semibold text-center leading-tight px-0.5" style={{ color: '#128C7E' }}>WhatsApp</span>
                           </TouchFeedbackButton>
                         </>
                       )}
 
-                      {/* Edit — only visible to the centre owner */}
                       {onEditCenter && currentUserId && center.owner_user_id === currentUserId && (
                         <TouchFeedbackButton
                           onClick={(e) => { e.stopPropagation(); onEditCenter(center); }}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors"
+                          className="compact-touch !overflow-visible flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 rounded-full border border-orange-300 bg-orange-50 active:bg-orange-100 transition-colors w-full"
                           ariaLabel="Edit centre"
                         >
-                          <Pencil className="h-4 w-4 text-orange-600" />
-                          <span className="text-xs font-semibold text-orange-700">Edit</span>
+                          <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-600 flex-shrink-0" />
+                          <span className="text-[10px] sm:text-xs font-semibold text-orange-700 text-center leading-tight px-0.5">Edit</span>
                         </TouchFeedbackButton>
                       )}
                     </div>
@@ -913,6 +908,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter }) =
         startDate={activeDateStart}
         endDate={activeDateEnd}
         apiBaseUrl={apiBaseUrl}
+        timezoneIana={resolveDiaryTimezone(user)}
       />
     </div>
   );

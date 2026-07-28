@@ -48,9 +48,14 @@ export function isLowConfidenceFood(detectorResult) {
     : 0;
   if (confidence < MIN_FOOD_CONFIDENCE) return true;
 
-  // Empty food list -> nothing to save.
+  // Empty food list — only treat as low-confidence when confidence is also low.
+  // A high-confidence detection (≥ 0.65) with no itemised foods means Gemini
+  // recognised the image as food but couldn't enumerate the items (e.g. a
+  // mixed snack platter). Route it to the food flow so the user can add details
+  // manually rather than showing "couldn't identify" — that's the communication
+  // gap. Low-confidence (< 0.65) with no items is genuinely uncertain.
   const foods = Array.isArray(details.foods) ? details.foods : [];
-  if (foods.length === 0) return true;
+  if (foods.length === 0) return confidence < 0.65;
 
   // Foods listed but zero calories across the board -> Gemini hallucinated
   // names without nutrition. Treat as uncertain.

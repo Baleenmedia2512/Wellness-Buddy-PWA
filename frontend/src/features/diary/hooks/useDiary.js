@@ -13,12 +13,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchDiary } from '../api/diaryClient';
 import { isAbortError } from '../../../shared/utils/fetchWithAbort';
 import { debugLog } from '../../../shared/utils/logger';
+import {
+  dateToBusinessYmd,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
+import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 
 /**
  * @param {Object} params
  * @param {string|null} params.ownerUserId
  * @param {string|null} params.viewerUserId
  * @param {Date|string|null} params.date  Date instance or YYYY-MM-DD string
+ * @param {string|object|null} [params.timezoneSource] Owner user or IANA timezone for calendar dates
  * @param {number} [params.refreshKey]  bump to trigger a background re-fetch without unmounting
  * @returns {{
  *   loading: boolean,
@@ -27,7 +33,16 @@ import { debugLog } from '../../../shared/utils/logger';
  *   refresh: () => void,
  * }}
  */
-export function useDiary({ ownerUserId, viewerUserId, date, refreshKey: externalRefreshKey = 0 }) {
+export function useDiary({
+  ownerUserId,
+  viewerUserId,
+  date,
+  timezoneSource = null,
+  refreshKey: externalRefreshKey = 0,
+}) {
+  const timezoneIana = typeof timezoneSource === 'string'
+    ? timezoneSource
+    : resolveDiaryTimezone(timezoneSource);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -48,7 +63,7 @@ export function useDiary({ ownerUserId, viewerUserId, date, refreshKey: external
       return undefined;
     }
 
-    const ymd = toYmd(date);
+    const ymd = toYmd(date, timezoneIana);
     if (!ymd) {
       setError({ status: null, message: 'Invalid date' });
       setLoading(false);
@@ -84,32 +99,18 @@ export function useDiary({ ownerUserId, viewerUserId, date, refreshKey: external
       });
 
     return () => controller.abort();
-  }, [ownerUserId, viewerUserId, date, refreshKey]);
+  }, [ownerUserId, viewerUserId, date, timezoneIana, refreshKey]);
 
   return { loading, error, data, refresh };
 }
 
 /**
- * Normalise a Date | YYYY-MM-DD string to a YYYY-MM-DD string in IST.
- * Returns null when the input cannot be coerced.
- *
- * NOTE: this uses IST (+05:30) explicitly because the backend's
- * `validateDiaryList` and per-vertical queries are IST-windowed. Using
- * `toISOString().slice(0,10)` (UTC) would shift late-evening IST
- * timestamps to the next day.
- *
+ * Normalise a Date | YYYY-MM-DD string to business-calendar YYYY-MM-DD.
  * @internal — exported for tests only.
  */
-export function toYmd(date) {
+export function toYmd(date, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (typeof date === 'string') {
     return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   }
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  // Convert to IST by shifting +5h30m.
-  const istMs = date.getTime() + (5 * 60 + 30) * 60 * 1000;
-  const ist = new Date(istMs);
-  const y = ist.getUTCFullYear();
-  const m = String(ist.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(ist.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return dateToBusinessYmd(date, timezoneIana);
 }

@@ -11,5 +11,5 @@ export { default as BodyParamsShareSheet } from './components/BodyParamsShareShe
 export { fetchPublicCard, listBodyParamsCards } from './services/bodyParamsCardApi';
 
 // Domain logic
-export { savePendingCard, consumePendingCard } from './domain/pendingBodyParamsCard';
+export { buildOnboardingShareUrl } from './domain/platform-store.rules';
 export { preloadBodyParamsShareAssets } from './domain/preload-share-assets';

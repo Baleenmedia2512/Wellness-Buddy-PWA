@@ -17,28 +17,62 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId } = req.query;
+    const { userId: userIdQuery, email: emailQuery, phone: phoneQuery } = req.query;
 
-    if (!userId) {
+    if (!userIdQuery && !emailQuery && !phoneQuery) {
       return res.status(400).json({
         ok: false,
         error: {
-          code: 'MISSING_USER_ID',
-          message: 'userId is required',
+          code: 'MISSING_IDENTIFIER',
+          message: 'userId, email, or phone is required',
         },
       });
     }
 
     const supabase = getSupabaseClient();
 
-    // Get user's basic info
-    const { data: user, error: userError } = await supabase
-      .from('team_table')
-      .select('UserId, UserName, CoachId, Status')
-      .eq('UserId', userId)
-      .single();
+    let user = null;
 
-    if (userError || !user) {
+    if (userIdQuery) {
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('UserId', userIdQuery)
+        .single();
+      if (!userError && data) user = data;
+    }
+
+    if (!user && emailQuery) {
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .ilike('Email', String(emailQuery).trim())
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+    }
+
+    if (!user && phoneQuery) {
+      const normalized = String(phoneQuery).trim();
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('PhoneNumber', normalized)
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+      if (!user) {
+        const digits = normalized.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          const { data: bySuffix, error: suffixErr } = await supabase
+            .from('team_table')
+            .select('UserId, UserName, CoachId, Status')
+            .ilike('PhoneNumber', `%${digits.slice(-10)}`)
+            .limit(1);
+          if (!suffixErr && bySuffix?.[0]) user = bySuffix[0];
+        }
+      }
+    }
+
+    if (!user) {
       return res.status(404).json({
         ok: false,
         error: {
@@ -57,6 +91,8 @@ export default async function handler(req, res) {
           userName: user.UserName,
           coachId: null,
           coachName: null,
+          originalCoachId: null,
+          originalCoachName: null,
           coachStatus: null,
           isOriginalCoach: true,
           message: 'User has no coach (top-level)',
@@ -64,12 +100,20 @@ export default async function handler(req, res) {
       });
     }
 
+    const { data: originalCoachRow } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, Status')
+      .eq('UserId', user.CoachId)
+      .single();
+
+    const originalCoachName = originalCoachRow?.UserName || null;
+
     // Resolve the active coach
     const {
       coachId,
       coachName,
       isOriginalCoach,
-    } = await resolveActiveCoach(userId, supabase);
+    } = await resolveActiveCoach(user.UserId, supabase);
 
     // Get coach status for additional info
     let coachStatus = 'Active';
@@ -89,9 +133,10 @@ export default async function handler(req, res) {
         userName: user.UserName,
         coachId,
         coachName,
+        originalCoachId: user.CoachId,
+        originalCoachName,
         coachStatus,
         isOriginalCoach,
-        originalCoachId: user.CoachId,
         message: !isOriginalCoach
           ? `Your original coach is inactive. You are now managed by ${coachName}.`
           : null,

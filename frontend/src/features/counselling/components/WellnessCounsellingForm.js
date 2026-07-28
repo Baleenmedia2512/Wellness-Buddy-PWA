@@ -12,13 +12,14 @@ import {
   EatingHabitsSection,
   SleepQualitySection,
   MedicationSection,
+  LeadDetailsSection,
 } from '../sections';
 import { useCounsellingForm } from '../hooks/useCounsellingForm';
 import AssessmentTargetCard from './AssessmentTargetCard';
 import CounsellingFormActions from './CounsellingFormActions';
 
-const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }) => {
-  const vm = useCounsellingForm({ user, selectedMember, onSaveSuccess, onClose });
+const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, isLead = false, onSaveSuccess }) => {
+  const vm = useCounsellingForm({ user, selectedMember, isLead, onSaveSuccess, onClose });
 
   if (!isOpen) return null;
 
@@ -60,6 +61,16 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSave
               counsellor={user}
               todayLabel={vm.todayLabel}
             />
+
+            {/* Lead Details — only shown when assessing a prospective member (no existing account) */}
+            {vm.isLeadMode && (
+              <div className="border-t pt-4 sm:pt-6">
+                <LeadDetailsSection
+                  leadDetails={vm.leadDetails}
+                  onChange={vm.setLeadDetails}
+                />
+              </div>
+            )}
 
             <div className="border-t pt-4 sm:pt-6">
               <HealthProblemSection

@@ -13,12 +13,12 @@ import { getApiBaseUrl } from '../../../config/api.config';
 import { debugLog } from '../../../shared/utils/logger';
 
 /**
- * Fetch the diary feed for one owner + one IST day.
+ * Fetch the diary feed for one owner + one business calendar day.
  *
  * @param {Object} params
  * @param {string} params.ownerUserId   the diary subject (owner)
  * @param {string} params.viewerUserId  the authenticated session user
- * @param {string} params.date          YYYY-MM-DD in IST
+ * @param {string} params.date          YYYY-MM-DD business calendar date
  * @param {AbortSignal} [params.signal] optional cancellation signal
  * @returns {Promise<{
  *   date: string,

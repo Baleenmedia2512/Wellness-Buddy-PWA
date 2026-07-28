@@ -1,15 +1,17 @@
 import React from 'react';
 import { Sun } from 'lucide-react';
 import MicroNutrientTile from './MicroNutrientTile';
+import CarouselPeriodHeader from './CarouselPeriodHeader';
 
 /**
  * VitaminsFatSolubleCard — Card 6 of the Nutrition Carousel.
  * Vitamins A, C, D, E, K. Five tiles in a 3-col grid (last cell blank).
  */
-const VitaminsFatSolubleCard = ({ tiles, onOpenModal }) => {
+const VitaminsFatSolubleCard = ({ tiles, periodContext, onOpenModal }) => {
   return (
     <div className="h-full flex items-center justify-center py-2">
       <div className="bg-white rounded-xl shadow-lg p-2.5 w-full">
+        <CarouselPeriodHeader periodContext={periodContext} />
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -38,7 +40,9 @@ const VitaminsFatSolubleCard = ({ tiles, onOpenModal }) => {
         </div>
 
         <p className="text-[10px] text-gray-400 text-center mt-1.5 pt-1.5 border-t border-gray-100">
-          Daily recommended intake (adult)
+          {periodContext?.isMultiDay
+            ? 'Total vitamins vs period RDA (daily RDA × days)'
+            : 'Daily recommended intake (adult)'}
         </p>
       </div>
     </div>

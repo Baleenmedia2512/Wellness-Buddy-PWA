@@ -1,18 +1,20 @@
 /**
  * useBodyParamsCard.js
  * Owns state + validation + submit lifecycle for the body-parameters card form.
- * Includes three auto-calculations:
+ * Includes auto-calculations:
  *   1. Height → ideal weight  (BMI 23 × heightM²)
  *   2. Height + Weight → BMI  (weight ÷ heightM²)
- *   3. Gender → fat% hint label
+ *   3. Weight + Fat% → BMR   (Katch-McArdle)
+ *   4. Gender → fat% hint label
  * Also owns phone-prefix autocomplete state + member pre-fill logic.
  * Components only render — no fetch logic here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CapacitorHttp } from '@capacitor/core';
+import { computeKatchMcArdleBmr } from '../../../shared/utils/bmrCalculations.js';
 import { createBodyParamsCard, updateBodyParamsCard } from '../services/bodyParamsCardApi.js';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { buildOnboardingShareUrl } from '../domain/platform-store.rules.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
@@ -36,6 +38,10 @@ function pickSavedField(apiVal, formVal) {
   return apiVal != null && apiVal !== '' ? apiVal : formVal;
 }
 
+function normalizeName(value) {
+  return String(value || '').toUpperCase();
+}
+
 const EMPTY_FORM = {
   name:         '',  phoneNumber:  '',
   age:          '',
@@ -54,35 +60,35 @@ const EMPTY_FORM = {
   locationName: '',
 };
 
+function cardToFormState(card) {
+  if (!card?.id) return EMPTY_FORM;
+  return {
+    name:         card.name ? normalizeName(card.name) : '',
+    phoneNumber:  card.phoneNumber  ?? '',
+    age:          card.age          != null ? String(card.age)         : '',
+    gender:       card.gender        ?? '',
+    heightCm:     card.heightCm     != null ? String(card.heightCm)    : '',
+    weightKg:     card.weightKg     != null ? String(card.weightKg)    : '',
+    bmi:          card.bmi          != null ? String(card.bmi)         : '',
+    fatPercent:   card.fatPercent   != null ? String(card.fatPercent)  : '',
+    bmr:          card.bmr          != null ? String(card.bmr)         : '',
+    visceralFat:  card.visceralFat  != null ? String(card.visceralFat) : '',
+    bodyAge:      card.bodyAge      != null ? String(card.bodyAge)     : '',
+    chestCm:      card.chestCm      != null ? String(card.chestCm)     : '',
+    waistCm:      card.waistCm      != null ? String(card.waistCm)     : '',
+    hipCm:        card.hipCm        != null ? String(card.hipCm)       : '',
+    recordedDate: card.recordedDate ?? new Date().toISOString().substring(0, 10),
+    locationName: card.locationName ?? '',
+  };
+}
+
 /**
- * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null }} opts
+ * @param {{ user: object, selectedMember: object|null, onSaveSuccess: function, existingCard: object|null, onSaveStart: function|null, isOpen: boolean }} opts
  */
-export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null } = {}) {
+export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null, isOpen = false } = {}) {
   const isEditMode = Boolean(existingCard?.id);
 
-  const [form, setForm] = useState(() => {
-    if (existingCard) {
-      return {
-        name:         existingCard.name         ?? '',
-        phoneNumber:  existingCard.phoneNumber  ?? '',
-        age:          existingCard.age          != null ? String(existingCard.age)         : '',
-        gender:       existingCard.gender        ?? '',
-        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
-        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
-        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
-        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
-        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
-        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
-        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
-        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
-        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
-        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
-        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
-        locationName: existingCard.locationName ?? '',
-      };
-    }
-    return EMPTY_FORM;
-  });
+  const [form, setForm] = useState(() => cardToFormState(existingCard));
   const [isSaving, setIsSaving]           = useState(false);
   const [error, setError]                 = useState('');
   const [savedCard, setSavedCard]         = useState(null);
@@ -91,6 +97,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
   // Track whether the user manually typed in the BMI field.
   // When true, BMI auto-fill is disabled.
   const [bmiUserEdited, setBmiUserEdited] = useState(false);
+  const [bmrUserEdited, setBmrUserEdited] = useState(false);
   const [coachUserId, setCoachUserId] = useState(() => user?.id || null);
 
   // ── Phone autocomplete state ──────────────────────────────────────────────
@@ -108,32 +115,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   const targetUserId = selectedMember?.userId || selectedMember?.id || null;
 
-  // Update form when existingCard changes (for edit mode)
+  // Reload form every time the modal opens (fixes phone/fields missing after save+reopen).
   useEffect(() => {
-    if (existingCard) {
-      setForm({
-        name:         existingCard.name         ?? '',
-        phoneNumber:  existingCard.phoneNumber  ?? '',
-        age:          existingCard.age          != null ? String(existingCard.age)         : '',
-        gender:       existingCard.gender        ?? '',
-        heightCm:     existingCard.heightCm     != null ? String(existingCard.heightCm)    : '',
-        weightKg:     existingCard.weightKg     != null ? String(existingCard.weightKg)    : '',
-        bmi:          existingCard.bmi          != null ? String(existingCard.bmi)         : '',
-        fatPercent:   existingCard.fatPercent   != null ? String(existingCard.fatPercent)  : '',
-        bmr:          existingCard.bmr          != null ? String(existingCard.bmr)         : '',
-        visceralFat:  existingCard.visceralFat  != null ? String(existingCard.visceralFat) : '',
-        bodyAge:      existingCard.bodyAge      != null ? String(existingCard.bodyAge)     : '',
-        chestCm:      existingCard.chestCm      != null ? String(existingCard.chestCm)     : '',
-        waistCm:      existingCard.waistCm      != null ? String(existingCard.waistCm)     : '',
-        hipCm:        existingCard.hipCm        != null ? String(existingCard.hipCm)       : '',
-        recordedDate: existingCard.recordedDate ?? new Date().toISOString().substring(0, 10),
-        locationName: existingCard.locationName ?? '',
-      });
-      setBmiUserEdited(false); // Reset BMI edit flag for new card
-    }
-  }, [existingCard?.id]); // Only update when card ID changes
+    if (!isOpen) return;
+    setForm(cardToFormState(existingCard));
+    setBmiUserEdited(false);
+    setBmrUserEdited(false);
+    setError('');
+  }, [isOpen, existingCard]);
 
-  // Resolve coach database UserId (team_table.UserId) — required for createdBy + CoachId.
+  // Resolve counsellor database UserId (team_table.UserId) — required for card createdBy only.
   useEffect(() => {
     if (coachUserId || !user?.email) return undefined;
 
@@ -209,6 +200,11 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     return Math.round((w / (m * m)) * 10) / 10;
   }, [form.heightCm, form.weightKg]);
 
+  /** BMR from Katch-McArdle when weight + fat% are valid. */
+  const derivedBmr = useMemo(() => {
+    return computeKatchMcArdleBmr(form.weightKg, form.fatPercent);
+  }, [form.weightKg, form.fatPercent]);
+
   /** Fat% healthy-range hint based on selected gender. */
   const fatHint = useMemo(() => {
     if (form.gender === 'Male')   return '10–20%';
@@ -234,10 +230,20 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, bmi: String(derivedBmi) }));
   }, [derivedBmi, bmiUserEdited]);
 
+  // Auto-fill BMR whenever weight or body fat % changes (Katch-McArdle).
+  useEffect(() => {
+    if (bmrUserEdited || derivedBmr === null) return;
+    setForm((prev) => ({ ...prev, bmr: String(derivedBmr) }));
+  }, [derivedBmr, bmrUserEdited]);
+
   // ── Setters ───────────────────────────────────────────────────────────────
 
   const setField = useCallback((field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    const nextValue = field === 'name' ? normalizeName(value) : value;
+    setForm((prev) => ({ ...prev, [field]: nextValue }));
+    if (field === 'weightKg' || field === 'fatPercent') {
+      setBmrUserEdited(false);
+    }
   }, []);
 
   /**
@@ -307,7 +313,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
           setForm((prev) => ({
             ...prev,
             phoneNumber: exactMatch.phoneNumber,
-            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: String(exactMatch.userName).trim() } : {}),
+            ...(exactMatch.userName && String(exactMatch.userName).trim() ? { name: normalizeName(exactMatch.userName) } : {}),
             ...(exactMatch.heightCm != null ? { heightCm: String(exactMatch.heightCm) } : {}),
             ...(exactMatch.bmr != null ? { bmr: String(exactMatch.bmr) } : {}),
           }));
@@ -326,7 +332,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({
       ...prev,
       phoneNumber: member.phoneNumber,
-      ...(member.userName && String(member.userName).trim() ? { name: String(member.userName).trim() } : {}),
+      ...(member.userName && String(member.userName).trim() ? { name: normalizeName(member.userName) } : {}),
       ...(member.heightCm != null ? { heightCm: String(member.heightCm) } : {}),
       ...(member.bmr != null ? { bmr: String(member.bmr) } : {}),
     }));
@@ -336,6 +342,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
 
   /** Called when user manually types in the Weight field. */
   const setWeightManually = useCallback((value) => {
+    setBmrUserEdited(false);
     setForm((prev) => ({ ...prev, weightKg: value }));
   }, []);
 
@@ -345,12 +352,19 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     setForm((prev) => ({ ...prev, bmi: value }));
   }, []);
 
+  /** Called when user manually types in the BMR field. Disables auto-fill for BMR. */
+  const setBmrManually = useCallback((value) => {
+    setBmrUserEdited(true);
+    setForm((prev) => ({ ...prev, bmr: value }));
+  }, []);
+
   const resetForm = useCallback(() => {
     setForm(EMPTY_FORM);
     setError('');
     setSavedCard(null);
     setShareUrl('');
     setBmiUserEdited(false);
+    setBmrUserEdited(false);
   }, []);
 
   const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
@@ -426,6 +440,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
         bmi:         form.bmi          || undefined,
         fatPercent:  form.fatPercent   || undefined,
         bmr:         form.bmr          || undefined,
+        bmrManualOverride: bmrUserEdited,
         visceralFat: form.visceralFat  || undefined,
         bodyAge:     form.bodyAge      || undefined,
         chestCm:     toOptionalNum(form.chestCm),
@@ -442,7 +457,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       // Extract previousCard from API response (null for fresh users).
       const { previousCard: prevCard = null, ...cardCore } = card;
 
-      const url = `${getApiBaseUrl()}/share/bpc/${cardCore.publicShareToken}`;
+      const url = buildOnboardingShareUrl(getApiBaseUrl());
 
       // Merge API response with form fallbacks so the share card always has
       // the saved measurements (API is source of truth after persist).
@@ -474,16 +489,16 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
     } finally {
       setIsSaving(false);
     }
-  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user]);
+  }, [isValid, form, coachUserId, targetUserId, onSaveSuccess, onSaveStart, isEditMode, existingCard, user, bmrUserEdited]);
 
   return {
     form, setField,
     setPhoneField, fillFromMember,
     phoneSuggestions, phoneSearchLoading,
-    setWeightManually, setBmiManually,
+    setWeightManually, setBmiManually, setBmrManually,
     fatHint, fatPlaceholder,
-    derivedIdealWeight, derivedBmi,
-    bmiUserEdited,
+    derivedIdealWeight, derivedBmi, derivedBmr,
+    bmiUserEdited, bmrUserEdited,
     isSaving, error,
     isValid,
     isEditMode,

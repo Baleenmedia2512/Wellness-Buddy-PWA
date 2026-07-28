@@ -5,6 +5,8 @@
  * value is fetched from the DB; if the parent just uploaded a watch screenshot
  * (passed via watchBurnedCalories prop), we use the higher of the two values
  * so the UI reflects the upload before the DB round-trip completes.
+ * Multiple watch uploads per day are aggregated server-side as the **highest**
+ * kcal (not sum).
  */
 import { useState, useEffect, useCallback } from 'react';
 import { fetchWatchBurnedCalories } from '../services/nutritionDashboard';
@@ -15,6 +17,7 @@ export function useBurnedCalories({
   apiBaseUrl,
   resolveUserId,
   watchBurnedCalories = 0,
+  nutritionRefreshKey = 0,
 }) {
   const [dbWatchBurned, setDbWatchBurned] = useState(0);
 
@@ -37,7 +40,7 @@ export function useBurnedCalories({
 
   useEffect(() => {
     if (user) refetch();
-  }, [user, selectedDate, refetch, watchBurnedCalories]);
+  }, [user, selectedDate, refetch, watchBurnedCalories, nutritionRefreshKey]);
 
   return { burnedCalories, watchBurned, stepsBurned };
 }

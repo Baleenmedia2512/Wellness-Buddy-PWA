@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
 
 const base = () => getApiBaseUrl();
 
@@ -15,7 +16,13 @@ export async function verifyOtp({ recipient, otp, contactType, purpose }) {
   const res = await fetch(`${base()}/api/auth/verify-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ recipient, otp, contactType, purpose }),
+    body: JSON.stringify({
+      recipient,
+      otp,
+      contactType,
+      purpose,
+      timezoneIana: getDeviceTimezoneIana() ?? '',
+    }),
   });
   return res.json();
 }

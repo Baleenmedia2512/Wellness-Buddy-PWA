@@ -7,10 +7,17 @@ import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 // logged and does NOT fail the user's education save.
 import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
+import { mergeLocationWithCapture } from '../captures/domain/location.fields.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
-
-const { getISTTimestamp, convertToIST } = repo;
+import {
+  nowUtc,
+  parseClientTimestampToUtc,
+  normalizeStoredTimestampToUtcIso,
+  utcInstantToLegacyIstWallStorage,
+  timeOfDayInTimezone,
+  IANA_IST,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── save log ────────────────────────────────────────────────────────────────
 export async function saveLog(input) {
@@ -26,18 +33,38 @@ export async function saveLog(input) {
   const timeWindows = await getTimeWindows();
   const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
 
-  let logTimestampIST, logTimeOnlyIST, deviceTime;
+  let utcInstant;
+  let deviceTime = null;
+  let captureRow = null;
   if (imageTimestamp) {
-    const ist = convertToIST(imageTimestamp);
-    logTimestampIST = ist.istTimestamp;
-    logTimeOnlyIST = ist.istTimeOnly;
-    deviceTime = ist.originalDeviceTime;
-  } else {
-    logTimestampIST = getISTTimestamp();
-    logTimeOnlyIST = logTimestampIST.substring(11, 19);
-    deviceTime = null;
+    utcInstant = parseClientTimestampToUtc(imageTimestamp).utcIso;
+    deviceTime = String(imageTimestamp);
   }
-  const isOnTime = logTimeOnlyIST >= educationWindow.start && logTimeOnlyIST <= educationWindow.end;
+  if (captureId) {
+    try {
+      captureRow = await captures.findById(captureId);
+      if (!utcInstant && captureRow?.CreatedAt) {
+        utcInstant = normalizeStoredTimestampToUtcIso(captureRow.CreatedAt);
+      }
+    } catch (err) {
+      logger.warn('education.saveLog: failed to resolve capture', {
+        captureId, userId: userId.toString(), err: err.message,
+      });
+    }
+  }
+  if (!utcInstant) {
+    utcInstant = nowUtc();
+  }
+
+  const loc = mergeLocationWithCapture(
+    { latitude, longitude, attendanceType, nutritionCenterId, centerName, city, village },
+    captureRow,
+  );
+
+  const logTimestamp = utcInstant;
+  const legacyCreatedAt = utcInstantToLegacyIstWallStorage(utcInstant, IANA_IST);
+  const logTimeOnly = timeOfDayInTimezone(utcInstant, IANA_IST);
+  const isOnTime = logTimeOnly >= educationWindow.start && logTimeOnly <= educationWindow.end;
 
   const data = await repo.insertLog({
     UserId: userId,
@@ -46,18 +73,18 @@ export async function saveLog(input) {
     Confidence: confidence || null,
     DeviceInfo: deviceInfo || null,
     ImageBase64: imageBase64ToSave,
-    latitude: latitude || null,
-    longitude: longitude || null,
-    attendance_type: attendanceType || null,
-    nutrition_center_id: nutritionCenterId || null,
+    latitude: loc.latitude || null,
+    longitude: loc.longitude || null,
+    attendance_type: loc.attendanceType || null,
+    nutrition_center_id: loc.nutritionCenterId || null,
     participant_count: participantCount || null,
-    center_name: centerName || null,
-    City: city || null,
-    Village: village || null,
+    center_name: loc.centerName || null,
+    City: loc.city || null,
+    Village: loc.village || null,
     CaptureID: captureId || null,
     IsDeleted: false,
-    CreatedAt: logTimestampIST,
-    UpdatedAt: logTimestampIST,
+    CreatedAt: legacyCreatedAt,
+    UpdatedAt: legacyCreatedAt,
   });
 
   await repo.touchLastActive(userId);
@@ -88,14 +115,14 @@ export async function saveLog(input) {
       success: true,
       message: 'Education log saved successfully',
       id: data?.Id || data?.id || data?.ID,
-      attendanceType,
+      attendanceType: loc.attendanceType,
       isOnTime,
       timeWindow: educationWindow,
-      uploadTime: logTimeOnlyIST,
-      logTimestamp: logTimestampIST,
+      uploadTime: logTimeOnly,
+      logTimestamp,
       deviceTime,
-      timestampSource: imageTimestamp ? 'EXIF (converted to IST)' : 'server (IST)',
-      timezone: 'IST (UTC+5:30)',
+      timestampSource: imageTimestamp ? 'EXIF (UTC)' : 'server (UTC)',
+      timezone: 'UTC',
     },
   };
 }

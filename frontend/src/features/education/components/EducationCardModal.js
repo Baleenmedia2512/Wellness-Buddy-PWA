@@ -3,11 +3,12 @@
  * Detail modal for a single education log entry. All async lives in
  * `useEducationDetailImage`; all formatting in `educationFormatter`.
  */
-import React from 'react';
-import { BookOpen } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { BookOpen, Share2 } from 'lucide-react';
 import EducationImagePreview from './EducationImagePreview';
 import { DeleteEducationButton } from './EducationActionButtons';
 import { useEducationDetailImage } from '../hooks/useEducationDetailImage';
+import { captureAndShare } from '../../../shared/utils/shareUtils';
 import {
   formatLogDate, formatLogTime,
   isCaloriesBurnedTopic, extractCaloriesValue,
@@ -15,7 +16,24 @@ import {
 
 const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, userId }) => {
   const { imageSrc, imageLoading } = useEducationDetailImage({ apiBaseUrl, userId, log });
+  const cardRef = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
   if (!log) return null;
+
+  const handleShare = async () => {
+    if (isSharing || !cardRef.current) return;
+    setIsSharing(true);
+    try {
+      await captureAndShare(cardRef.current, {
+        title: log.Topic || 'Education Session',
+        fileName: `wellness-education-${Date.now()}.png`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) console.error('Share failed:', err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div
@@ -23,6 +41,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
       onClick={onClose}
     >
       <div
+        ref={cardRef}
         className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-slideUp max-h-[80vh] relative"
         onClick={(e) => e.stopPropagation()}
       >
@@ -58,8 +77,18 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
           </div>
         </div>
 
-        <div className="p-4 pt-0">
-          <DeleteEducationButton onDelete={() => onDelete(log)} isDeleting={isDeleting} />
+        <div className="p-4 pt-0 flex gap-3">
+          <button
+            onClick={handleShare}
+            disabled={isSharing}
+            className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+          >
+            {isSharing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Share2 className="w-4 h-4" />}
+            {isSharing ? 'Sharing…' : 'Share'}
+          </button>
+          <div className="flex-1">
+            <DeleteEducationButton onDelete={() => onDelete(log)} isDeleting={isDeleting} />
+          </div>
         </div>
       </div>
     </div>

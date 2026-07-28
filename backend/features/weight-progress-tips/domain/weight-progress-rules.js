@@ -131,10 +131,10 @@ export function computeMacroTargets(bmr, weightKg) {
 }
 
 /**
- * BMR used as the calorie target in yesterday's analysis (matches Calories carousel card).
+ * Display calorie target for yesterday's analysis (TDEE — matches Calories carousel card).
  */
-export function computeDisplayCalorieTarget(bmr) {
-  const b = parseFloat(bmr);
+export function computeDisplayCalorieTarget(baseCalories) {
+  const b = parseFloat(baseCalories);
   if (!Number.isFinite(b) || b <= 0) return 0;
   return Math.round(b);
 }
