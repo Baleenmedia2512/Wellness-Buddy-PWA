@@ -13,9 +13,9 @@ export default function TestimonialsPage({ user }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
+      {/* <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
         <span className="font-bold text-gray-800">Results / Testimonials</span>
-      </div>
+      </div> */}
 
       {userId ? (
         <CoachTestimonialsPage

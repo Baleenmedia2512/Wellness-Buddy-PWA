@@ -58,9 +58,9 @@ export default function DownlineWeightReport({ user }) {
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
                 Ideal Weight Report
               </h1>
-              <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
+              {/* <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 Team weight · ideal range tracking
-              </p>
+              </p> */}
             </div>
             <TouchFeedbackButton
               onClick={refresh}
