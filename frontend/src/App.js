@@ -8249,8 +8249,8 @@ function WellnessValleyApp() {
                     {/* Date */}
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
                       {new Date().toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'long',
+                        weekday: 'short',
+                        month: 'short',
                         day: 'numeric',
                       })}
                     </p>
