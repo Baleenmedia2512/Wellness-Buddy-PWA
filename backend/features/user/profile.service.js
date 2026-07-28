@@ -40,7 +40,10 @@ export async function getProfile({ email }) {
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
-  const gender = user.Gender || null;
+  const bodyGender = bodyMetrics?.gender;
+  const gender = user.Gender
+    || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
+    || null;
   const profileImage = user.ProfileImage || null;
   const latestBmr = user.Bmr ? parseFloat(user.Bmr) : null;
   const physicalActivityLevel = user.PhysicalActivityLevel || null;
@@ -229,7 +232,7 @@ export async function updateProfile(input) {
   try {
     const dbProfile = await repo.findByUserId(
       userId,
-      '"UserName", "Height", "Bmr"',
+      '"UserName", "Height", "Bmr", "Gender"',
     );
     const cardSync = buildProfileCardSyncPayload(
       {
@@ -238,6 +241,7 @@ export async function updateProfile(input) {
           ? parseFloat(dbProfile.Height)
           : (height != null ? parseFloat(height) : null),
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
+        gender: gender ?? dbProfile?.Gender ?? null,
       },
       { savedBmr, latestWeight: latestWeightRow },
     );

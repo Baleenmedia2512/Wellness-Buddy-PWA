@@ -255,7 +255,7 @@ export async function deleteTeamRow(userId) {
  * Only the latest card is patched; historical cards are never touched.
  *
  * @param {number} userId
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, gender?: string|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
  * @returns {Promise<{ synced: boolean, fields: string[] }>}
  */
 export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
