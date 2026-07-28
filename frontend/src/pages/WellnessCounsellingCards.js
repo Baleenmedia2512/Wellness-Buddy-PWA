@@ -162,7 +162,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Body Parameters</h1>
+              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
               <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
             </div>
           </div>
