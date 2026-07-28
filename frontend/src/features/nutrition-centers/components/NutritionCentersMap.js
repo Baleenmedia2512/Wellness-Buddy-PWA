@@ -79,7 +79,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [error, setError] = useState(null);
-  const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
+  const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full'
   const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
   const [customDate, setCustomDate] = useState(null); // single Date object for custom
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -615,7 +615,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
               ['self', 'My Club', 'Mine'],
               ['direct', 'Direct Team', 'Direct'],
               ['full', 'Full Team', 'Full'],
-              ['all', 'All', 'All'],
             ].map(([val, label, short]) => (
               <TouchFeedbackButton
                 key={val}
