@@ -47,7 +47,6 @@ import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
 import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
-import { saveDashboardAnalysis } from "../../../services/dashboardService.js";
 
 // ── Per-capture analysis status store ────────────────────────────────────────
 // In-process map: captureId → { status, traceId, updatedAt, errorCode? }
