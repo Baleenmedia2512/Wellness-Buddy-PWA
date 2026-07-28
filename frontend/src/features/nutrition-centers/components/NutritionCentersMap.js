@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
+import { RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -533,13 +533,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         {/* Row 1: Back + Title + Refresh */}
         <div className="max-w-4xl mx-auto px-3 xs:px-4 pt-2 xs:pt-3 pb-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 xs:gap-3 min-w-0 flex-1">
-            <TouchFeedbackButton
-              onClick={onBack}
-              className="p-2 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-green-900" />
-            </TouchFeedbackButton>
             <div className="min-w-0">
               <h1 className="text-sm xs:text-base font-bold text-gray-900 truncate">Physical Club Report</h1>
               <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p>

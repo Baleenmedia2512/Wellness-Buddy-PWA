@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2, ChevronLeft } from "lucide-react";
+import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -161,12 +161,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronLeft size={24} className="text-gray-700" />
-            </button>
             <div>
               <h1 className="text-lg font-bold text-gray-900">Body Parameters</h1>
               <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
