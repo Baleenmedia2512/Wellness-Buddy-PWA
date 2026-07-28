@@ -52,6 +52,7 @@ export const saveProfile = async (payload) => {
       if (payload.bmr !== undefined) merged.latestBmr = payload.bmr;
       if (payload.dietType !== undefined) merged.dietType = payload.dietType;
       if (payload.phoneNumber !== undefined) merged.phoneNumber = payload.phoneNumber;
+      if (payload.gender !== undefined) merged.gender = payload.gender;
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
       if (payload.communityId !== undefined) merged.communityId = payload.communityId;

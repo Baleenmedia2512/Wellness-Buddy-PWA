@@ -18,7 +18,7 @@ export async function getUserWeightGoal(userId) {
   try {
     const { data, error } = await supabase
       .from('team_table')
-      .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel"')
+      .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel", "Gender"')
       .eq('UserId', parseInt(userId, 10))
       .maybeSingle();
 
@@ -27,11 +27,11 @@ export async function getUserWeightGoal(userId) {
       throw error;
     }
     console.log('✅ [repo:getUserWeightGoal] Result:', data);
-    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
+    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null, Gender: null };
   } catch (error) {
     if (error.message?.includes('column') && error.message?.includes('WeightGoalMode')) {
       console.warn('⚠️ [repo:getUserWeightGoal] WeightGoalMode column not found, using default "loss".');
-      return { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
+      return { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null, Gender: null };
     }
     throw error;
   }

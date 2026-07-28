@@ -1,7 +1,6 @@
 /**
  * fetchUserMacroProfile — fetch latestWeight + gender from the user profile endpoint.
- * Gender comes from coach-recorded body metrics (body_parameters_cards) when present.
- * Returns nulls when the profile call fails or fields are unset.
+ * Prefers team_table Gender; falls back to body_parameters_cards bodyMetrics.gender.
  *
  * @returns {Promise<{ latestWeight: number|null, gender: string|null }>}
  */
@@ -21,8 +20,13 @@ export async function fetchUserMacroProfile({ apiBaseUrl, email }) {
       latestWeight = Number.isFinite(w) && w > 0 ? w : null;
     }
 
-    const rawGender = data.data.bodyMetrics?.gender;
-    const gender = rawGender && String(rawGender).trim() ? String(rawGender).trim() : null;
+    const fromProfile = data.data.gender && String(data.data.gender).trim()
+      ? String(data.data.gender).trim()
+      : null;
+    const fromCard = data.data.bodyMetrics?.gender && String(data.data.bodyMetrics.gender).trim()
+      ? String(data.data.bodyMetrics.gender).trim()
+      : null;
+    const gender = fromProfile || fromCard;
 
     return { latestWeight, gender };
   } catch {

@@ -102,7 +102,7 @@ export async function checkProgressHandler(query) {
   const calorieTarget = computeCalorieTarget(tdee, goalMode);
   const displayCalorieTarget = computeDisplayCalorieTarget(tdee);
   const bodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
-  const gender = bodyMetricsCard?.gender || null;
+  const gender = userGoal?.Gender || bodyMetricsCard?.gender || null;
   const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue, gender);
   const proteinTargetForTips = computeProteinTarget(currentWeightValue);
   console.log('🎯 [Step 3] targets — calories:', displayCalorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');

@@ -139,7 +139,7 @@ export async function computeDailyScoreForDate({ userId, date, timezoneIana }) {
     physicalActivityLevel: userGoal?.PhysicalActivityLevel,
   }) || bmr;
   const weightKg = latestWeightKg;
-  const gender = bodyMetricsCard?.gender || null;
+  const gender = userGoal?.Gender || bodyMetricsCard?.gender || null;
   const dailyStats = aggregateDailyFoodStats(foodRecords);
   const nutritionTargets = computeNutritionTargets({ bmr: calorieTarget, weightKg, gender });
   const exerciseCalories = resolveDailyExerciseCalories(stepRows, watchRows);
