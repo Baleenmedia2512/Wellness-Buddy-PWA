@@ -281,7 +281,9 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     .update(patch)
     .eq('id', card.id)
     .eq('is_deleted', false);
-  if (updateErr) throw updateErr;
+  if (updateErr) {
+    return { synced: false, fields: [], error: updateErr.message };
+  }
 
   return { synced: true, fields: Object.keys(patch), cardId: card.id };
 }
