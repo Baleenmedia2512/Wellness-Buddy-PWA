@@ -14,6 +14,7 @@ export default function useProfileForm(initial = {}) {
   const [physicalActivityLevel, setPhysicalActivityLevel] = useState(initial.physicalActivityLevel || '');
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
+  const [loadedCommunityId, setLoadedCommunityId] = useState(initial.communityId || '');
   const [email, setEmail] = useState(initial.email || '');
   const [bodyMetrics, setBodyMetrics] = useState(null);
 
@@ -26,6 +27,7 @@ export default function useProfileForm(initial = {}) {
     setPhysicalActivityLevel(p.physicalActivityLevel ?? '');
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
     setCommunityId(p.communityId ?? '');
+    setLoadedCommunityId(p.communityId ?? '');
     setEmail(p.email ?? '');
     setBodyMetrics(p.bodyMetrics ?? null);
   };
@@ -61,18 +63,31 @@ export default function useProfileForm(initial = {}) {
     return '';
   };
 
-  const payload = (email, extras = {}) => ({
-    email,
-    name: name || undefined,
-    height: height ? parseFloat(height) : undefined,
-    bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
-    physicalActivityLevel: physicalActivityLevel || undefined,
-    dietType: dietType || undefined,
-    phoneNumber: phone.trim() || undefined,
-    weightGoalMode: weightGoalMode || 'loss',
-    communityId: communityId.trim() === '' ? null : communityId.trim(),
-    ...extras,
-  });
+  const payload = (email, extras = {}) => {
+    const trimmedCommunityId = communityId.trim();
+    const trimmedLoadedCommunityId = String(loadedCommunityId || '').trim();
+    const normalizedCommunityId = trimmedCommunityId === '' ? null : trimmedCommunityId;
+    const normalizedLoadedCommunityId = trimmedLoadedCommunityId === '' ? null : trimmedLoadedCommunityId;
+
+    const body = {
+      email,
+      name: name || undefined,
+      height: height ? parseFloat(height) : undefined,
+      bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
+      physicalActivityLevel: physicalActivityLevel || undefined,
+      dietType: dietType || undefined,
+      phoneNumber: phone.trim() || undefined,
+      weightGoalMode: weightGoalMode || 'loss',
+      ...extras,
+    };
+
+    // Optional — only send when the user changed it (set value or cleared a saved one).
+    if (normalizedCommunityId !== normalizedLoadedCommunityId) {
+      body.communityId = normalizedCommunityId;
+    }
+
+    return body;
+  };
 
   return {
     name, setName, height, setHeight, phone, setPhone,
