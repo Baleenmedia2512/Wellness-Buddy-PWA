@@ -42,8 +42,14 @@ export function parseImageBase64(imageBase64) {
 }
 
 export function validateDetectFace(body) {
-  const { imageBase64 } = body || {};
-  return parseImageBase64(imageBase64);
+  const { imageBase64, userId } = body || {};
+  const image = parseImageBase64(imageBase64);
+  return {
+    ...image,
+    // User ID is optional because face detection is also used during profile
+    // completion. When present, it is forwarded solely for AI telemetry.
+    userId: userId == null || userId === '' ? null : String(userId),
+  };
 }
 
 export function validateClubAttendance(query) {
