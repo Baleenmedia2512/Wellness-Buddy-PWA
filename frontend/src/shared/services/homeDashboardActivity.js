@@ -1,14 +1,17 @@
 /**
- * Home dashboard activity watermark (“async activity log”).
+ * Home / Wellness Score activity watermark (“async activity log”).
  *
  * There is no separate backend async-log table in this codebase. Dashboard-
  * affecting work already calls `NutritionRefreshContext.triggerRefresh({ source })`
  * after food/weight/education/camera/profile (etc.) mutations. That call also
  * records a monotonic activity-log ID here.
  *
- * Refresh decision when Home mounts or becomes active again:
- *   - If latestActivityLogId === lastProcessedActivityLogId → skip refetch
- *   - If a newer ID exists → refetch dashboard data, then mark processed
+ * Refresh decision when Home or Wellness Score mounts / becomes active again:
+ *   - If latestActivityLogId === lastProcessed*ActivityLogId → skip refetch
+ *   - If a newer ID exists → refetch, then mark that surface processed
+ *
+ * Home and Wellness Score keep separate lastProcessed IDs + snapshots so each
+ * can skip independently while sharing the same activity watermark.
  *
  * Prefer keeping Home mounted (App.js overlay) so scroll/state survive; this
  * module is the defense-in-depth when a remount still happens.
@@ -21,6 +24,15 @@ let lastSource = 'init';
 
 /** In-memory snapshot so a remount can paint without a loading spinner. */
 let homeSnapshot = null;
+
+/**
+ * Wellness Score sheet — separate processed watermark + snapshot so Home and
+ * Wellness Score can skip independently while sharing the same activity log.
+ * @type {number|null}
+ */
+let lastProcessedWellnessScoreActivityLogId = null;
+/** @type {object|null} */
+let wellnessScoreSnapshot = null;
 
 /**
  * Record that a dashboard-affecting activity completed.
@@ -79,6 +91,44 @@ export function getHomeDashboardSnapshot() {
 export function clearHomeDashboardSnapshot() {
   homeSnapshot = null;
   lastProcessedActivityLogId = null;
+  wellnessScoreSnapshot = null;
+  lastProcessedWellnessScoreActivityLogId = null;
+}
+
+/**
+ * True when Wellness Score sheet should reload from the API.
+ * First open (never processed) always refreshes.
+ */
+export function shouldRefreshWellnessScore() {
+  if (lastProcessedWellnessScoreActivityLogId == null) return true;
+  return latestActivityLogId !== lastProcessedWellnessScoreActivityLogId;
+}
+
+/**
+ * @param {number} [logId]
+ */
+export function markWellnessScoreProcessed(logId = latestActivityLogId) {
+  lastProcessedWellnessScoreActivityLogId = logId;
+}
+
+export function getLastProcessedWellnessScoreActivityLogId() {
+  return lastProcessedWellnessScoreActivityLogId;
+}
+
+/**
+ * @param {object|null} snapshot
+ */
+export function setWellnessScoreSnapshot(snapshot) {
+  wellnessScoreSnapshot = snapshot;
+}
+
+export function getWellnessScoreSnapshot() {
+  return wellnessScoreSnapshot;
+}
+
+export function clearWellnessScoreSnapshot() {
+  wellnessScoreSnapshot = null;
+  lastProcessedWellnessScoreActivityLogId = null;
 }
 
 /** @internal test helper */
@@ -87,4 +137,6 @@ export function __resetHomeDashboardActivityForTests() {
   lastProcessedActivityLogId = null;
   lastSource = 'init';
   homeSnapshot = null;
+  lastProcessedWellnessScoreActivityLogId = null;
+  wellnessScoreSnapshot = null;
 }
