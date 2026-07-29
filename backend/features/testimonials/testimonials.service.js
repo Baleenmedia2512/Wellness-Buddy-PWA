@@ -939,6 +939,8 @@ function buildTeamUploadStats(uploaded, notUploaded) {
 export async function getTeamTestimonialReport(rawQuery) {
   const { coachId } = validateTeamReport(rawQuery);
 
+  const reportingContext = await repo.loadTeamReportingContext();
+
   const [
     photoDirect,
     photoFull,
@@ -946,11 +948,11 @@ export async function getTeamTestimonialReport(rawQuery) {
     videoFull,
     teamPerformanceByUserId,
   ] = await Promise.all([
-    repo.countPhotoUploadStatsForCoach(coachId, 'direct'),
-    repo.countPhotoUploadStatsForCoach(coachId, 'full'),
-    repo.countVideoUploadStatsForCoach(coachId, 'direct'),
-    repo.countVideoUploadStatsForCoach(coachId, 'full'),
-    repo.buildTeamUploadPerformanceByUserId(coachId),
+    repo.countPhotoUploadStatsForCoach(coachId, 'direct', reportingContext),
+    repo.countPhotoUploadStatsForCoach(coachId, 'full', reportingContext),
+    repo.countVideoUploadStatsForCoach(coachId, 'direct', reportingContext),
+    repo.countVideoUploadStatsForCoach(coachId, 'full', reportingContext),
+    repo.buildTeamUploadPerformanceByUserId(coachId, reportingContext),
   ]);
 
   return {
