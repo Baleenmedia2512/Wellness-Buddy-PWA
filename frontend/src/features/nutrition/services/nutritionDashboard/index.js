@@ -5,7 +5,7 @@ export { updateMealNutrition, deleteMealById, undoMealDelete } from './mealMutat
 export { fetchCalorieTrend } from './calorieTrendApi';
 export { fetchWatchBurnedCalories } from './burnedCaloriesApi';
 export { fetchUserCalorieTarget, fetchUserBmr, DEFAULT_CALORIE_TARGET } from './userBmrApi';
-export { fetchUserLatestWeight } from './userProfileApi';
+export { fetchUserLatestWeight, fetchUserMacroProfile } from './userProfileApi';
 export {
   parseMealTimestamp,
   getMealCategory,

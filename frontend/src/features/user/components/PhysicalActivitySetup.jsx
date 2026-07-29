@@ -1,8 +1,9 @@
 /**
  * PhysicalActivitySetup.jsx
  *
- * One-time onboarding gate shown after email is set when the user has not
- * selected a physical activity level. Cannot be dismissed without a selection.
+ * One-time onboarding gate shown right after the profile wizard when the user
+ * has not selected a physical activity level. Runs before coach selection / OTP.
+ * Cannot be dismissed without a selection.
  */
 import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
@@ -36,7 +37,7 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
         setError(data.message || 'Failed to save. Please try again.');
         return;
       }
-      onComplete?.({
+      await onComplete?.({
         physicalActivityLevel: selected,
         calorieTarget: data.data?.calorieTarget ?? null,
       });
@@ -48,7 +49,7 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 305 }}>
+    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
       <div className="bg-gradient-to-r from-teal-500 to-green-600 px-6 pt-14 pb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="bg-white/20 rounded-full p-2">

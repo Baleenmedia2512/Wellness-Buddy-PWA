@@ -25,7 +25,7 @@ export async function getTeamProfileSnapshot(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('"UserName", "Height", "Bmr", "Email"')
+    .select('"UserName", "Height", "Bmr", "Email", "Gender"')
     .eq('UserId', uid)
     .maybeSingle();
   if (error) throw error;
@@ -35,6 +35,7 @@ export async function getTeamProfileSnapshot(userId) {
     height: data.Height != null ? parseFloat(data.Height) : null,
     bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
     email: data.Email ?? null,
+    gender: data.Gender ?? null,
   };
 }
 

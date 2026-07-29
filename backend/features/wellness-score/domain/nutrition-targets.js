@@ -11,6 +11,35 @@ const GI_LIMIT = 55;
 const CAL_PER_PROTEIN = 4;
 const CAL_PER_CARB = 4;
 const CAL_PER_FAT = 9;
+const FAT_PERCENT_MALE = 20;
+const FAT_PERCENT_FEMALE = 30;
+const FAT_PERCENT_DEFAULT = 25;
+
+/**
+ * Fat % of daily calorie target by gender.
+ * Male 20%, Female 30%, Other/unknown 25%.
+ *
+ * @param {string|null|undefined} gender
+ * @returns {number} percent 0–100
+ */
+export function resolveFatPercent(gender) {
+  const g = String(gender || '').trim().toLowerCase();
+  if (g === 'female') return FAT_PERCENT_FEMALE;
+  if (g === 'male') return FAT_PERCENT_MALE;
+  return FAT_PERCENT_DEFAULT;
+}
+
+/**
+ * Fat limit (g) = round(dailyCalorieTarget × fatPercent / 100 / 9).
+ *
+ * @param {number} calorieTarget
+ * @param {string|null|undefined} gender
+ * @returns {number}
+ */
+export function computeFatLimitGrams(calorieTarget, gender) {
+  const effectiveCals = calorieTarget > 0 ? calorieTarget : 1500;
+  return Math.round((effectiveCals * resolveFatPercent(gender)) / 100 / CAL_PER_FAT);
+}
 
 const MICRO_RDA = {
   totalVitaminA: 900,
@@ -33,10 +62,10 @@ const MICRO_RDA = {
 };
 
 /**
- * @param {{ bmr?: number, weightKg?: number|null }}
+ * @param {{ bmr?: number, weightKg?: number|null, gender?: string|null }}
  * @returns {Record<string, number|null>}
  */
-export function computeNutritionTargets({ bmr = 0, weightKg = null }) {
+export function computeNutritionTargets({ bmr = 0, weightKg = null, gender = null }) {
   const bmrTarget = bmr > 0 ? bmr : 1500;
   const weight = weightKg > 0 ? weightKg : null;
 
@@ -45,7 +74,7 @@ export function computeNutritionTargets({ bmr = 0, weightKg = null }) {
   let carbsLimit = null;
   if (weight) {
     proteinTarget = Math.round(weight * 1.5);
-    fatLimit = Math.round(weight * 0.75);
+    fatLimit = computeFatLimitGrams(bmrTarget, gender);
     const proteinCals = proteinTarget * CAL_PER_PROTEIN;
     const fatCals = fatLimit * CAL_PER_FAT;
     carbsLimit = Math.max(0, Math.round((bmrTarget - proteinCals - fatCals) / CAL_PER_CARB));

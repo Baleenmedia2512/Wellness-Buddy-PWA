@@ -2,12 +2,11 @@
  * sync.rules.js — Pure bidirectional sync rules between Body Parameters Card
  * and Profile (team_table + latest weight_records_table).
  *
- * Syncable intersection only (fields that exist in both modules):
- *   Name, Height, BMR  → team_table
- *   Weight, Fat %, BMI → weight_records_table (latest)
+ * Syncable intersection (fields that exist in both modules):
+ *   Name, Height, BMR, Gender → team_table
+ *   Weight, Fat %, BMI        → weight_records_table (latest)
  *
- * Card-only (Age, Gender, Visceral Fat, Body Age, Chest, Waist, Hip) are
- * intentionally excluded — Profile has no storage for them.
+ * Card-only (Age, Visceral Fat, Body Age, Chest, Waist, Hip) stay on the card.
  *
  * No I/O. Callers must skip the reciprocal sync path (write via repo, not
  * through the other feature's update pipeline) to prevent circular updates.
@@ -17,6 +16,18 @@ import {
   isPersistableBmi,
   resolveSyncedBmrFromCard,
 } from './card.rules.js';
+
+const PROFILE_GENDERS = ['Male', 'Female'];
+
+/**
+ * Normalize gender for team_table (Male | Female only).
+ * @param {*} raw
+ * @returns {'Male'|'Female'|null}
+ */
+export function normalizeSyncGender(raw) {
+  const g = String(raw || '').trim();
+  return PROFILE_GENDERS.includes(g) ? g : null;
+}
 
 /**
  * Compare two scalar values for sync purposes.
@@ -78,8 +89,8 @@ export function resolveCardBmiForPatch(card, diff = {}) {
  * Build a team_table patch from a card row, including only changed fields.
  *
  * @param {object} card - body_parameters_cards row (snake_case)
- * @param {{ userName?: string|null, height?: number|null, bmr?: number|null }} currentProfile
- * @returns {{ UserName?: string, Height?: number, Bmr?: number }}
+ * @param {{ userName?: string|null, height?: number|null, bmr?: number|null, gender?: string|null }} currentProfile
+ * @returns {{ UserName?: string, Height?: number, Bmr?: number, Gender?: string }}
  */
 export function buildTeamTableDiff(card, currentProfile = {}) {
   if (!card) return {};
@@ -89,6 +100,7 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
     : null;
   const nextHeight = card.height_cm ?? null;
   const nextBmr = resolveSyncedBmrFromCard(card);
+  const nextGender = normalizeSyncGender(card.gender);
 
   const diff = {};
   if (nextName != null && !syncValuesEqual(nextName, currentProfile.userName)) {
@@ -99,6 +111,9 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
   }
   if (nextBmr != null && !syncValuesEqual(nextBmr, currentProfile.bmr)) {
     diff.Bmr = Number(nextBmr);
+  }
+  if (nextGender != null && !syncValuesEqual(nextGender, currentProfile.gender)) {
+    diff.Gender = nextGender;
   }
   return diff;
 }
@@ -147,7 +162,7 @@ export function buildWeightInsertIfChanged(card, userId, latestWeight = null) {
  * Only includes keys that differ from the current card.
  *
  * @param {object} card - latest body_parameters_cards row (snake_case)
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} profile
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, gender?: string|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} profile
  * @returns {object} snake_case patch for body_parameters_cards
  */
 export function buildCardPatchFromProfile(card, profile = {}) {
@@ -165,6 +180,10 @@ export function buildCardPatchFromProfile(card, profile = {}) {
   }
   if (profile.bmr != null && !syncValuesEqual(profile.bmr, card.bmr)) {
     diff.bmr = Number(profile.bmr);
+  }
+  const nextGender = normalizeSyncGender(profile.gender);
+  if (nextGender != null && !syncValuesEqual(nextGender, card.gender)) {
+    diff.gender = nextGender;
   }
   if (profile.weightKg != null && !syncValuesEqual(profile.weightKg, card.weight_kg)) {
     diff.weight_kg = Number(profile.weightKg);
@@ -186,12 +205,12 @@ export function buildCardPatchFromProfile(card, profile = {}) {
 /**
  * Build the Profile → Card sync payload from profile save input and snapshots.
  *
- * @param {{ name?: string|null, height?: number|string|null, bmr?: number|string|null }} profileInput
+ * @param {{ name?: string|null, height?: number|string|null, bmr?: number|string|null, gender?: string|null }} profileInput
  * @param {{ savedBmr?: number|null, latestWeight?: { Weight?: number|string|null, BodyFat?: number|string|null, Bmi?: number|string|null }|null }} snapshots
- * @returns {{ name?: string, height?: number, bmr?: number, weightKg?: number, fatPercent?: number, bmi?: number }}
+ * @returns {{ name?: string, height?: number, bmr?: number, gender?: string, weightKg?: number, fatPercent?: number, bmi?: number }}
  */
 export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null, latestWeight = null } = {}) {
-  const { name, height, bmr } = profileInput;
+  const { name, height, bmr, gender } = profileInput;
   const cardSync = {};
 
   if (name != null && String(name).trim() !== '') {
@@ -206,6 +225,9 @@ export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null
   if (effectiveBmr != null && !Number.isNaN(effectiveBmr) && effectiveBmr > 0) {
     cardSync.bmr = effectiveBmr;
   }
+
+  const nextGender = normalizeSyncGender(gender);
+  if (nextGender) cardSync.gender = nextGender;
 
   if (latestWeight?.Weight != null) {
     const w = parseFloat(latestWeight.Weight);
@@ -227,7 +249,7 @@ export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null
 /**
  * Whether a team_table / weight sync would write anything.
  *
- * @param {{ UserName?: string, Height?: number, Bmr?: number }} teamDiff
+ * @param {{ UserName?: string, Height?: number, Bmr?: number, Gender?: string }} teamDiff
  * @param {object|null} weightRow
  * @returns {boolean}
  */
