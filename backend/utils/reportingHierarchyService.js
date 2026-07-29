@@ -7,7 +7,8 @@
  * Business rules:
  * - Active coach → direct list = own DB downline; active child coaches manage their teams.
  * - Inactive coach → shown in parent's direct list; their active members roll up to parent.
- * - Full scope → direct members + full subtree under each active child coach.
+ * - Full scope → direct members + every descendant under them at all CoachId levels
+ *   (not limited to Role=coach — nested leaders still expand).
  */
 import { isActiveTeamStatus } from './teamHierarchyBuilder.js';
 
@@ -146,15 +147,18 @@ export function collectRolledUpDescendants(inactiveCoachId, context, visited = n
 }
 
 /**
- * Full subtree under an active coach (DB downline), applying inactive-coach rollup.
+ * Full subtree under a parent (DB CoachId tree), applying inactive-coach rollup.
+ * Walks every level — not only Role=coach — so nested leaders under a sub-coach
+ * (e.g. Prethip → u2 → a3 → b1/b2) appear in Full Team.
+ *
  * @param {number} coachUserId
  * @param {ReportingContext} context
  * @returns {TeamUser[]}
  */
 export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
   const result = new Map();
-  const visited = new Set([coachUserId]);
-  const queue = [...(context.dbChildrenByCoachId.get(coachUserId) || [])];
+  const visited = new Set([Number(coachUserId)]);
+  const queue = [...(context.dbChildrenByCoachId.get(Number(coachUserId)) || [])];
 
   while (queue.length > 0) {
     const child = queue.shift();
@@ -168,6 +172,11 @@ export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
       result.set(child.UserId, child);
       for (const rolled of collectRolledUpDescendants(child.UserId, context)) {
         result.set(rolled.UserId, rolled);
+        // Rolled-up active members may themselves have a deeper CoachId downline.
+        if (isActiveTeamStatus(rolled.Status)) {
+          const rolledKids = context.dbChildrenByCoachId.get(Number(rolled.UserId)) || [];
+          if (rolledKids.length) queue.push(...rolledKids);
+        }
       }
       continue;
     }
@@ -176,10 +185,11 @@ export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
 
     result.set(child.UserId, child);
 
-    if (childIsCoach && childIsActive) {
-      for (const deeper of collectFullSubtreeUnderActiveCoach(child.UserId, context)) {
-        result.set(deeper.UserId, deeper);
-      }
+    // Full Team = entire tree: expand DB children of any active member who has
+    // a downline (Role may still be `user` while people report to them).
+    const next = context.dbChildrenByCoachId.get(Number(child.UserId)) || [];
+    if (next.length > 0) {
+      queue.push(...next);
     }
   }
 
@@ -222,6 +232,7 @@ export function getDirectReportingMembers(coachId, context) {
 
 /**
  * Full reporting members for a coach (excludes the coach themselves).
+ * Direct members + every descendant under them at all hierarchy levels.
  * @param {number} coachId
  * @param {ReportingContext} context
  * @returns {TeamUser[]}
@@ -231,10 +242,16 @@ export function getFullReportingMembers(coachId, context) {
   const result = new Map(direct.map((member) => [member.UserId, member]));
 
   for (const member of direct) {
-    if (isCoachRole(member.Role) && isActiveTeamStatus(member.Status)) {
-      for (const subtreeMember of collectFullSubtreeUnderActiveCoach(member.UserId, context)) {
-        result.set(subtreeMember.UserId, subtreeMember);
-      }
+    // Inactive coaches: their active members are already rolled into `direct`.
+    if (isCoachRole(member.Role) && !isActiveTeamStatus(member.Status)) continue;
+    if (!isActiveTeamStatus(member.Status)) continue;
+
+    const hasDownline =
+      (context.dbChildrenByCoachId.get(Number(member.UserId)) || []).length > 0;
+    if (!hasDownline) continue;
+
+    for (const subtreeMember of collectFullSubtreeUnderActiveCoach(member.UserId, context)) {
+      result.set(subtreeMember.UserId, subtreeMember);
     }
   }
 
@@ -270,8 +287,9 @@ export function getReportingMemberIds(coachId, scope, context) {
 }
 
 /**
- * parentCoachId → direct reporting child userIds (active-coach branches only).
- * Used for per-coach team compliance / upload percentage rollups.
+ * parentCoachId → direct reporting child userIds.
+ * Walks every active parent who has a DB downline (not only Role=coach) so
+ * nested team scores / Full Team rollups include deeper levels.
  * @param {ReportingContext} context
  * @param {number} rootCoachId
  * @returns {Map<number, number[]>}
@@ -290,7 +308,10 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
     index.set(coachId, children.map((member) => member.UserId));
 
     for (const child of children) {
-      if (isCoachRole(child.Role) && isActiveTeamStatus(child.Status)) {
+      if (!isActiveTeamStatus(child.Status)) continue;
+      const hasDownline =
+        (context.dbChildrenByCoachId.get(Number(child.UserId)) || []).length > 0;
+      if (hasDownline) {
         queue.push(child.UserId);
       }
     }
