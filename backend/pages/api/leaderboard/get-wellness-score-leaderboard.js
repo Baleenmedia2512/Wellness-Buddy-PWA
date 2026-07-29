@@ -10,6 +10,8 @@ import logger from '../../../shared/lib/logger.js';
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
  * Reads persisted rows from wellness_score_daily_table (not discipline %).
+ * Ranking: wellness % desc, then total_earned desc; equal scores share the same rank
+ * (competition / “1224” ranking on the % + earned score pair).
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,11 +44,14 @@ export default async function handler(req, res) {
 
     logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
 
+    // Fetch a buffer so inactive users can be filtered without under-filling topN.
+    // Primary order: wellness %; tie-break: total earned (score-wise top N).
     const { data: scores, error: scoresError } = await supabase
       .from('wellness_score_daily_table')
       .select('user_id, percentage, total_earned, total_possible, computed_at')
       .eq('score_date', scoreDate)
       .order('percentage', { ascending: false })
+      .order('total_earned', { ascending: false })
       .limit(topN * 3);
 
     if (scoresError) throw scoresError;
@@ -85,33 +90,51 @@ export default async function handler(req, res) {
       });
     }
 
-    const ranked = [];
-    let currentRank = 1;
-    let previousPct = null;
-
+    const candidates = [];
     for (const row of scores) {
       const user = activeMap.get(row.user_id);
       if (!user) continue;
 
-      const pct = Number(row.percentage) || 0;
-      if (previousPct !== null && pct !== previousPct) {
-        currentRank = ranked.length + 1;
-      }
-      if (ranked.length >= topN) break;
-
-      ranked.push({
-        rank: currentRank,
+      candidates.push({
         userId: user.UserId,
         userName: user.UserName || 'Unknown',
         email: user.Email,
         coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'No Coach') : 'No Coach',
         profileImage: user.ProfileImage || null,
-        wellnessPercentage: pct,
+        wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,
       });
+    }
 
-      previousPct = pct;
+    // Score-wise order: % desc, then earned desc.
+    candidates.sort((a, b) => {
+      if (b.wellnessPercentage !== a.wellnessPercentage) {
+        return b.wellnessPercentage - a.wellnessPercentage;
+      }
+      return (Number(b.totalEarned) || 0) - (Number(a.totalEarned) || 0);
+    });
+
+    // Same score (same % and same total earned) → same rank.
+    // Different scores get distinct ranks (e.g. 400 and 398 → #3 and #4).
+    const ranked = [];
+    let currentRank = 1;
+    let previousKey = null;
+
+    for (const entry of candidates) {
+      if (ranked.length >= topN) break;
+
+      const earned = Number(entry.totalEarned) || 0;
+      const scoreKey = `${entry.wellnessPercentage}:${earned}`;
+      if (previousKey !== null && scoreKey !== previousKey) {
+        currentRank = ranked.length + 1;
+      }
+
+      ranked.push({
+        ...entry,
+        rank: currentRank,
+      });
+      previousKey = scoreKey;
     }
 
     return res.status(200).json({
