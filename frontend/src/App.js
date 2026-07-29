@@ -409,6 +409,10 @@ function WellnessValleyApp() {
 
   // Email gate � forced for phone-OTP users who have no email in their profile
   const [showPhysicalActivitySetup, setShowPhysicalActivitySetup] = useState(false);
+  // Onboarding sequencing locks — camera/coach must wait until each gate is resolved.
+  // Expected order: CompleteProfile → PhysicalActivity → Coach setup → Coach OTP → home camera.
+  const [physicalActivityResolved, setPhysicalActivityResolved] = useState(false);
+  const [coachSetupResolved, setCoachSetupResolved] = useState(false);
 
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
@@ -923,7 +927,9 @@ function WellnessValleyApp() {
       showValidateOTP ||
       showPhysicalActivitySetup ||
       showCompleteProfile ||
-      profileChecking;
+      profileChecking ||
+      !physicalActivityResolved ||
+      !coachSetupResolved;
 
     _homeScreenActiveRef.current =
       !!user &&
@@ -940,6 +946,8 @@ function WellnessValleyApp() {
     showPhysicalActivitySetup,
     showCompleteProfile,
     profileChecking,
+    physicalActivityResolved,
+    coachSetupResolved,
     showDashboard,
     showActivityReport,
     showActivityTimeReport,
@@ -963,31 +971,45 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
   }, [user?.id, user?.email, isOtpVerified]);
 
-  // Physical activity gate: after unified profile is complete.
+  // Physical activity gate: immediately after unified profile, before coach/OTP/camera.
   useEffect(() => {
-    if (!user) return;
-    if (!isOtpVerified) return;
-    if (showCompleteProfile) return;
+    if (!user || !isOtpVerified) {
+      setPhysicalActivityResolved(false);
+      return undefined;
+    }
+    if (showCompleteProfile || profileChecking) {
+      setPhysicalActivityResolved(false);
+      setShowPhysicalActivitySetup(false);
+      return undefined;
+    }
     const email = (user.email && user.email.trim()) || Session.getUserEmail();
-    if (!email) return;
+    if (!email) {
+      setPhysicalActivityResolved(false);
+      return undefined;
+    }
 
     let cancelled = false;
+    setPhysicalActivityResolved(false);
     (async () => {
       try {
         const { data } = await fetchProfile(email);
-        if (!cancelled && data && !data.physicalActivityLevel) {
+        if (cancelled) return;
+        if (data && !data.physicalActivityLevel) {
           setShowPhysicalActivitySetup(true);
-        } else if (!cancelled) {
+        } else {
           setShowPhysicalActivitySetup(false);
         }
       } catch {
-        /* non-fatal */
+        // Fail closed for new onboarding: ask for activity rather than skipping to coach/camera.
+        if (!cancelled) setShowPhysicalActivitySetup(true);
+      } finally {
+        if (!cancelled) setPhysicalActivityResolved(true);
       }
     })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: after profile gate
-  }, [user?.id, user?.email, isOtpVerified, showCompleteProfile]);
+  }, [user?.id, user?.email, isOtpVerified, showCompleteProfile, profileChecking]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -1214,13 +1236,16 @@ function WellnessValleyApp() {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
-    // Wait until new-user onboarding is complete: email → coach setup → profile → activity level
+    // Wait until onboarding is fully done:
+    // profile → physical activity → coach selection → coach OTP → then camera.
     const onboardingActive =
       showSetupWizard ||
       showValidateOTP ||
       showPhysicalActivitySetup ||
       showCompleteProfile ||
-      profileChecking;
+      profileChecking ||
+      !physicalActivityResolved ||
+      !coachSetupResolved;
     if (onboardingActive) return;
 
     let cancelled = false;
@@ -1257,6 +1282,8 @@ function WellnessValleyApp() {
     showPhysicalActivitySetup,
     showCompleteProfile,
     profileChecking,
+    physicalActivityResolved,
+    coachSetupResolved,
     _launchUrlCheckedRef,
   ]);
 
@@ -1278,6 +1305,13 @@ function WellnessValleyApp() {
       setShowLaunchOverlay(false);
       return;
     } // profile gate
+    if (showPhysicalActivitySetup || showSetupWizard || showValidateOTP) {
+      setShowLaunchOverlay(false);
+      return;
+    } // remaining onboarding gates
+    if (!physicalActivityResolved || !coachSetupResolved) {
+      return; // still sequencing — keep overlay until home/camera path is ready
+    }
     if (!isUserActive) {
       setShowLaunchOverlay(false);
       return;
@@ -1287,7 +1321,18 @@ function WellnessValleyApp() {
       setShowLaunchOverlay(false);
       return;
     } // setup wizard
-  }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
+  }, [
+    showLaunchOverlay,
+    authLoading,
+    user,
+    showCompleteProfile,
+    showPhysicalActivitySetup,
+    showSetupWizard,
+    showValidateOTP,
+    physicalActivityResolved,
+    coachSetupResolved,
+    isUserActive,
+  ]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
@@ -2825,13 +2870,9 @@ function WellnessValleyApp() {
           sessionStorage.getItem("freshGoogleSignIn") === "true";
 
         if (!isFreshSignIn) {
-          // Fast path for returning users: surface home screen (and camera)
-          // immediately � identical to the OTP synchronous cache restore.
-          // Status/setup/profile checks run in the background; modals
-          // (inactive, setup wizard, profile gate) appear when needed but
-          // never block the initial paint or the camera auto-open.
-          // This eliminates the white screen between native splash dismiss
-          // and the camera opening for Google/Firebase returning users.
+          // Fast path for returning users: surface home immediately.
+          // Profile completeness runs here; physical activity → coach → OTP
+          // are sequenced by dedicated effects so camera never opens mid-onboarding.
           setUser(user);
           setAuthLoading(false);
 
@@ -2843,97 +2884,18 @@ function WellnessValleyApp() {
             if (!isActive) return; // inactive/not-found modal already triggered
 
             if (!userEmail) return;
-            debugLog("?? [Auth State] Checking setup wizard status...");
+            debugLog("?? [Auth State] Checking profile completeness (coach setup deferred to sequenced gate)...");
 
             // Check if user manually skipped setup (localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
               debugLog(
                 "?? [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // silent:true � Gate 3 (profileChecking spinner) must not fire
-              // when running from a background context after home screen is shown.
-              await checkProfileCompletion(userEmail, user, { silent: true });
-              return;
             }
 
-            try {
-              // Phase 3b: HTTP + response mapping moved into
-              // shared/services/auth/userSetup (`fetchSetupStatus`).
-              const status = await fetchSetupStatus({
-                apiBaseUrl,
-                email: userEmail,
-              });
-
-              // Phase 3d-a: Observe in shadow FSM (no behaviour change).
-              authFsm.send({
-                type: authFsm.E.SETUP_STATUS_RESOLVED,
-                result: status.result,
-                isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
-                coachOtpVerified: Session.isCoachOtpVerified(),
-              });
-
-              if (status.result === "error") {
-                console.warn(
-                  "?? [Auth State] Setup status check failed",
-                  status.error,
-                );
-              } else if (status.result === "skipped") {
-                debugLog(
-                  "?? [Auth State] User skipped setup (database), bypassing wizard",
-                );
-                Session.markSetupSkipped();
-                await checkProfileCompletion(userEmail, user, { silent: true });
-              } else if (status.result === "pendingOtp") {
-                if (Session.isCoachOtpVerified()) {
-                  debugLog(
-                    "? [Auth State] Coach OTP already verified (localStorage), skipping modal",
-                  );
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else if (
-                  (userEmail || "").toLowerCase().trim() === DEMO_EMAIL
-                ) {
-                  debugLog(
-                    "?? [Auth State] Demo account pending OTP � completing silently",
-                  );
-                  await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else if (!isInactiveReactivationFlowRef.current) {
-                  debugLog(
-                    "?? [Auth State] Pending OTP detected, showing OTP modal",
-                  );
-                  setShowValidateOTP(true);
-                }
-              } else if (status.result === "incomplete") {
-                if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog(
-                    "?? [Auth State] Demo account setup incomplete � completing silently",
-                  );
-                  await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else {
-                  debugLog(
-                    "?? [Auth State] Setup incomplete, showing setup wizard",
-                  );
-                  setShowSetupWizard(true);
-                }
-              } else {
-                // status.result === "complete"
-                debugLog("? [Auth State] Setup already complete");
-                await checkProfileCompletion(userEmail, user, { silent: true });
-              }
-            } catch (setupError) {
-              console.warn(
-                "?? [Auth State] Failed to check setup status:",
-                setupError,
-              );
-              // Continue without blocking � setup check is not critical
-            }
+            // Always profile first. Coach selection / OTP are owned by the
+            // setup-check effect which waits for physical activity to finish.
+            await checkProfileCompletion(userEmail, user, { silent: true });
           })();
           return; // Skip fall-through setUser/setAuthLoading � already called above
         } else {
@@ -3310,30 +3272,44 @@ function WellnessValleyApp() {
   // Re-register when any of these change so the handler has fresh closure values.
   }, [user, showGpsRequired, activePermission, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Check setup wizard after profile + physical activity gates (coach last).
+  // Coach setup / OTP — only after profile + physical activity gates.
   useEffect(() => {
-    const checkSetupStatus = async () => {
-      if (!user || !isUserActive) return;
-      if (isInactiveReactivationFlow) return;
-      if (showCompleteProfile) return;
-      if (showPhysicalActivitySetup) return;
+    if (!user || !isUserActive || isInactiveReactivationFlow) {
+      return undefined;
+    }
+    if (showCompleteProfile || profileChecking) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
+    if (!physicalActivityResolved || showPhysicalActivitySetup) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
 
-      const userEmail = user.email || user.Email;
-      if (!userEmail) return;
+    const userEmail = user.email || user.Email;
+    if (!userEmail) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
 
-      debugLog(
-        "?? [Setup Check] Checking setup wizard status for existing user...",
-      );
+    let cancelled = false;
+    setCoachSetupResolved(false);
 
-      if (Session.isSetupSkipped()) {
-        debugLog(
-          "?? [Setup Check] User skipped setup (localStorage), bypassing wizard",
-        );
-        return;
-      }
-
+    (async () => {
       try {
+        debugLog(
+          "?? [Setup Check] Checking setup wizard status for existing user...",
+        );
+
+        if (Session.isSetupSkipped()) {
+          debugLog(
+            "?? [Setup Check] User skipped setup (localStorage), bypassing wizard",
+          );
+          return;
+        }
+
         const status = await fetchSetupStatus({ apiBaseUrl, email: userEmail });
+        if (cancelled) return;
 
         authFsm.send({
           type: authFsm.E.SETUP_STATUS_RESOLVED,
@@ -3382,24 +3358,26 @@ function WellnessValleyApp() {
           debugLog("? [Setup Check] Setup already complete");
         }
       } catch (setupError) {
-        console.warn(
-          "?? [Setup Check] Failed to check setup status:",
-          setupError,
-        );
+        if (!cancelled) {
+          console.warn(
+            "?? [Setup Check] Failed to check setup status:",
+            setupError,
+          );
+        }
+      } finally {
+        if (!cancelled) setCoachSetupResolved(true);
       }
-    };
+    })();
 
-    const timeoutId = setTimeout(() => {
-      checkSetupStatus();
-    }, 1000);
-
-    return () => clearTimeout(timeoutId);
+    return () => { cancelled = true; };
   }, [
     user,
     isUserActive,
     apiBaseUrl,
     isInactiveReactivationFlow,
     showCompleteProfile,
+    profileChecking,
+    physicalActivityResolved,
     showPhysicalActivitySetup,
   ]);
 
@@ -8789,7 +8767,7 @@ function WellnessValleyApp() {
 
         {/* Email Gate removed — email is collected on CompleteProfilePage */}
 
-        {showPhysicalActivitySetup && user && !showCompleteProfile && (
+        {showPhysicalActivitySetup && user && !showCompleteProfile && !showSetupWizard && !showValidateOTP && (
           <PhysicalActivitySetup
             user={user}
             apiBaseUrl={apiBaseUrl}
@@ -8827,7 +8805,7 @@ function WellnessValleyApp() {
         />
 
         {/* -- Mandatory Profile Completion Gate (first onboarding screen) -----
-           Name, email, gender, height, diet, photo — before activity + coach.
+           Name, email, gender, height, diet, photo — then activity → coach → OTP → camera.
       ------------------------------------------------------------------- */}
         {showCompleteProfile && !profileChecking && user && (
           <CompleteProfilePage
@@ -8982,8 +8960,8 @@ function WellnessValleyApp() {
           </Suspense>
         )}
 
-        {/* Setup Wizard - Team ID + Coach Selection */}
-        {showSetupWizard && (
+        {/* Setup Wizard - Coach Selection (after profile + physical activity) */}
+        {showSetupWizard && !showCompleteProfile && !showPhysicalActivitySetup && (
           <Suspense fallback={null}>
             <SetupWizard
               userEmail={user?.email || user?.Email || Session.getUserEmail()}

@@ -1,4 +1,4 @@
-// CompleteProfilePage — unified onboarding screen (before coach / activity).
+// CompleteProfilePage — unified onboarding screen (before activity / coach / OTP).
 // Collects: name, email, gender, height, diet preference, profile photo.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';

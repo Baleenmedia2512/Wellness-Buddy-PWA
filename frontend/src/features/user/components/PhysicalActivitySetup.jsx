@@ -1,8 +1,9 @@
 /**
  * PhysicalActivitySetup.jsx
  *
- * One-time onboarding gate shown after email is set when the user has not
- * selected a physical activity level. Cannot be dismissed without a selection.
+ * One-time onboarding gate shown right after the profile wizard when the user
+ * has not selected a physical activity level. Runs before coach selection / OTP.
+ * Cannot be dismissed without a selection.
  */
 import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
