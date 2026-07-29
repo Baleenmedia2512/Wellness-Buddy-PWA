@@ -45,6 +45,9 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ Register KeepAwakePlugin to prevent screen sleep while app is active
         registerPlugin(KeepAwakePlugin.class);
+
+        // ✅ Save transformation / share cards into the device photo gallery
+        registerPlugin(com.wellnessvalley.app.plugins.SaveToGalleryPlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
