@@ -31,8 +31,13 @@ export async function getProfile({ email }) {
   const user = await repo.getProfile(email);
   if (!user) return notFound();
 
-  const latestWeight = await repo.getLatestWeight(user.UserId);
-  const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(user.UserId);
+  const [latestWeight, latestBodyMetricsCard, coachRow] = await Promise.all([
+    repo.getLatestWeight(user.UserId),
+    findLatestLinkedBodyMetricsCard(user.UserId),
+    user.CoachId
+      ? repo.findByUserId(user.CoachId, '"UserId", "UserName"')
+      : Promise.resolve(null),
+  ]);
   const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
   const height = user.Height ? parseFloat(user.Height) : null;
@@ -52,6 +57,7 @@ export async function getProfile({ email }) {
     physicalActivityLevel,
   });
   const tdeeBreakdown = buildTdeeBreakdown({ bmr: latestBmr, physicalActivityLevel });
+  const coachName = coachRow?.UserName ? String(coachRow.UserName).trim() : null;
 
   return {
     httpStatus: 200,
@@ -80,6 +86,7 @@ export async function getProfile({ email }) {
         }),
         profileImage,
         coachId: user.CoachId || null,
+        coachName,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null,
         latestBmr,
