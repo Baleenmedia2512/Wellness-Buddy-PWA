@@ -116,6 +116,7 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
+import { hasValidProfileName } from "./features/user/domain/profileCompleteness";
 import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
 import {
   startUserLocationCache,
@@ -3466,16 +3467,17 @@ function WellnessValleyApp() {
   useEffect(() => {
     const email = user?.email || user?.Email;
     if (!email) return;
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
     const cached = getCachedProfileUserName(email);
-    if (cached) {
+    if (hasValidProfileName(cached, { email, phoneNumber })) {
       setSavedUserName((prev) => (prev?.trim() ? prev : cached));
       return;
     }
     const authName = (user?.username || user?.userName || '').trim();
-    if (authName) {
+    if (hasValidProfileName(authName, { email, phoneNumber })) {
       setSavedUserName((prev) => (prev?.trim() ? prev : authName));
     }
-  }, [user?.email, user?.Email, user?.username, user?.userName]);
+  }, [user?.email, user?.Email, user?.username, user?.userName, user?.phoneNumber, user?.PhoneNumber]);
 
   useEffect(() => {
     const email = user?.email || user?.Email;
@@ -3483,6 +3485,7 @@ function WellnessValleyApp() {
       setSavedProfileImage(null);
       return undefined;
     }
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
     const { signal, cancel } = createAbortGroup();
     // Use standard caching ? no need to bust cache on every render
     fetch(
@@ -3495,22 +3498,24 @@ function WellnessValleyApp() {
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
-        if (data?.success && data?.data?.userName) {
-          setSavedUserName(data.data.userName);
-          cacheProfileUserName(email, data.data.userName);
+        const profileName = data?.success ? data?.data?.userName : null;
+        const profilePhone = data?.data?.phoneNumber || phoneNumber;
+        if (hasValidProfileName(profileName, { email, phoneNumber: profilePhone })) {
+          setSavedUserName(profileName);
+          cacheProfileUserName(email, profileName);
         } else {
           const cached = getCachedProfileUserName(email);
-          setSavedUserName(cached);
+          setSavedUserName(hasValidProfileName(cached, { email, phoneNumber: profilePhone }) ? cached : null);
         }
       })
       .catch((err) => {
         if (isAbortError(err)) return;
         setSavedProfileImage(null);
         const cached = getCachedProfileUserName(email);
-        setSavedUserName(cached);
+        setSavedUserName(hasValidProfileName(cached, { email, phoneNumber }) ? cached : null);
       });
     return cancel;
-  }, [user?.email, user?.Email, apiBaseUrl]);
+  }, [user?.email, user?.Email, user?.phoneNumber, user?.PhoneNumber, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
