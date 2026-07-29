@@ -68,8 +68,7 @@ export function buildReportingContext(allUsers) {
 export async function loadReportingContext(supabase) {
   const { data: allUsers, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height')
-    .order('UserName');
+    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height');
 
   if (error) throw new Error('Failed to fetch team data: ' + error.message);
   return buildReportingContext(allUsers || []);
