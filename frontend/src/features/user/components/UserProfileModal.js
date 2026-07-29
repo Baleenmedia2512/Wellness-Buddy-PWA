@@ -44,6 +44,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           height: data.height ? String(data.height) : '',
           phone: data.phoneNumber || '',
           dietType: data.dietType || '',
+          gender: data.gender || '',
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
           physicalActivityLevel: data.physicalActivityLevel || '',
           weightGoalMode: data.weightGoalMode || null,

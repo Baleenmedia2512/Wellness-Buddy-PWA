@@ -78,6 +78,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         height: data?.height ? String(data.height) : '',
         phone: data?.phoneNumber || '',
         dietType: data?.dietType || '',
+        gender: data?.gender || '',
         bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
         physicalActivityLevel: data?.physicalActivityLevel || '',
         weightGoalMode: data?.weightGoalMode || 'loss',
@@ -309,6 +310,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
+                  gender={form.gender} setGender={form.setGender}
                   bmr={form.bmr} setBmr={form.setBmr}
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}

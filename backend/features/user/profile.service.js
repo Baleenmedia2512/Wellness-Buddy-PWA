@@ -40,6 +40,11 @@ export async function getProfile({ email }) {
   const derivedGoalMode = deriveWeightGoalMode({ heightCm: height, currentWeightKg: latestWeightKg });
   const dietType = user.DietType || null;
   const phoneNumber = user.PhoneNumber || null;
+  const bodyGender = bodyMetrics?.gender;
+  const gender = user.Gender
+    || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
+    || null;
+  const profileImage = user.ProfileImage || null;
   const latestBmr = user.Bmr ? parseFloat(user.Bmr) : null;
   const physicalActivityLevel = user.PhysicalActivityLevel || null;
   const calorieTarget = resolveCalorieTargetFromProfile({
@@ -56,7 +61,7 @@ export async function getProfile({ email }) {
         userId: user.UserId,
         userName: user.UserName,
         email: user.Email,
-        height, dietType, phoneNumber,
+        height, dietType, phoneNumber, gender,
         weightGoalMode: derivedGoalMode || user.WeightGoalMode || 'loss',
         weightGoalModeAuto: derivedGoalMode != null,
         profileComplete: isProfileComplete({
@@ -65,12 +70,15 @@ export async function getProfile({ email }) {
           phoneNumber,
           userName: user.UserName,
           email: user.Email,
+          gender,
+          bodyMetrics,
+          profileImage,
         }),
         needsName: !hasValidProfileName(user.UserName, {
           email: user.Email,
           phoneNumber,
         }),
-        profileImage: user.ProfileImage || null,
+        profileImage,
         coachId: user.CoachId || null,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null,
@@ -88,13 +96,16 @@ export async function getProfile({ email }) {
 }
 
 function buildProfileUpdate({
-  name, height, dietType, phoneNumber, profileImage, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
+  name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
 }) {
   const updateData = {};
   let cleanedPhoneNumber;
   if (name != null) updateData.UserName = name;
   if (height != null) updateData.Height = parseFloat(height);
   if (dietType != null && VALID_DIETS.includes(dietType)) updateData.DietType = dietType;
+  if (gender != null && ['Male', 'Female'].includes(gender)) {
+    updateData.Gender = gender;
+  }
   if (weightGoalMode != null && VALID_GOAL_MODES.includes(weightGoalMode)) {
     updateData.WeightGoalMode = weightGoalMode;
   }
@@ -114,7 +125,7 @@ function buildProfileUpdate({
   return { updateData, cleanedPhoneNumber };
 }
 
-function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId, timezoneIana }) {
+function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana }) {
   if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
     throw new Error('Phone number was not saved. Please try again.');
   }
@@ -125,6 +136,9 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
   }
   if (dietType != null && updateData.DietType && verifyRow.DietType !== updateData.DietType) {
     throw new Error('Diet preference was not saved. Please try again.');
+  }
+  if (gender != null && updateData.Gender && verifyRow.Gender !== updateData.Gender) {
+    throw new Error('Gender was not saved. Please try again.');
   }
   if (communityId !== undefined) {
     const expected = updateData.CommunityId ?? null;
@@ -140,7 +154,7 @@ function verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateDa
 
 export async function updateProfile(input) {
   const {
-    email, name, height, bmr, dietType, profileImage, phoneNumber,
+    email, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
   } = input;
 
@@ -178,7 +192,7 @@ export async function updateProfile(input) {
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
     const verifyRow = await repo.verifyProfile(userId);
     if (!verifyRow) throw new Error(`Unable to verify profile update for UserId ${userId}`);
-    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, updateData, communityId, timezoneIana });
+    verifySaved(verifyRow, { cleanedPhoneNumber, height, dietType, gender, updateData, communityId, timezoneIana });
     if (communityId !== undefined) savedCommunityId = communityId;
   }
 
@@ -218,7 +232,7 @@ export async function updateProfile(input) {
   try {
     const dbProfile = await repo.findByUserId(
       userId,
-      '"UserName", "Height", "Bmr"',
+      '"UserName", "Height", "Bmr", "Gender"',
     );
     const cardSync = buildProfileCardSyncPayload(
       {
@@ -227,6 +241,7 @@ export async function updateProfile(input) {
           ? parseFloat(dbProfile.Height)
           : (height != null ? parseFloat(height) : null),
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
+        gender: gender ?? dbProfile?.Gender ?? null,
       },
       { savedBmr, latestWeight: latestWeightRow },
     );
@@ -274,6 +289,7 @@ export async function updateProfile(input) {
       bmr: savedBmr || undefined,
       dietType: dietType || undefined,
       phoneNumber: cleanedPhoneNumber || undefined,
+      gender: gender || undefined,
       weightGoalMode: derivedGoalMode || weightGoalMode || undefined,
       physicalActivityLevel: savedPhysicalActivityLevel || undefined,
       communityId: savedCommunityId !== undefined

@@ -1,7 +1,8 @@
-// Editable name / height / phone / BMR / communityId fields + read-only email.
+// Editable name / height / phone / gender / BMR / communityId fields + email.
 import React from 'react';
 import { Flame, Hash, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
+import { VALID_GENDERS } from '../../domain/profileCompleteness';
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none';
@@ -18,11 +19,11 @@ const Field = ({ label, required, children }) => (
 const UserProfileFields = ({
   email, setEmail,
   name, setName, height, setHeight, phone, setPhone, bmr, setBmr,
+  gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
 }) => (
   <div className="space-y-4">
-    {/* Email — editable for phone users; read-only hint shown for Google users */}
     <Field label="Email" required>
       <div className="relative">
         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -51,6 +52,26 @@ const UserProfileFields = ({
       <input type="text" value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Enter your name" className={inputCls} style={{ fontSize: '16px' }} />
     </Field>
+
+    <Field label="Gender" required>
+      <select
+        value={gender || ''}
+        onChange={(e) => setGender(e.target.value)}
+        required
+        className={`${inputCls} ${!gender ? 'text-gray-400' : 'text-gray-800'}`}
+        style={{ fontSize: '16px' }}
+      >
+        <option value="" disabled>
+          Select gender
+        </option>
+        {VALID_GENDERS.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </Field>
+
     <Field label="Height (cm)" required>
       <input type="text" inputMode="decimal" pattern="[0-9]*" value={height} onChange={(e) => setHeight(e.target.value)}
         placeholder="e.g. 170" min="50" max="198" className={inputCls} style={{ fontSize: '16px' }} />
@@ -73,7 +94,6 @@ const UserProfileFields = ({
       onChange={setPhysicalActivityLevel}
     />
 
-    {/* Community ID — optional */}
     <div>
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Hash className="w-4 h-4 text-blue-500" /> Community ID

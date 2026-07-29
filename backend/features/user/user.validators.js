@@ -65,6 +65,8 @@ export function validateGetProfile(query) {
   return { email };
 }
 
+const VALID_GENDERS = ['Male', 'Female'];
+
 export function validateUpdateProfile(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const email = body.email;
@@ -77,6 +79,10 @@ export function validateUpdateProfile(body) {
   if (physicalActivityLevel != null && physicalActivityLevel !== ''
     && !isValidPhysicalActivityLevel(physicalActivityLevel)) {
     throw new ValidationError(400, `Invalid physicalActivityLevel. Must be one of: ${VALID_PHYSICAL_ACTIVITY_LEVELS.join(', ')}`);
+  }
+  const gender = body.gender != null && body.gender !== '' ? String(body.gender).trim() : undefined;
+  if (gender != null && !VALID_GENDERS.includes(gender)) {
+    throw new ValidationError(400, `Invalid gender. Must be one of: ${VALID_GENDERS.join(', ')}`);
   }
 
   let communityId;
@@ -105,6 +111,7 @@ export function validateUpdateProfile(body) {
     dietType: body.dietType,
     profileImage: body.profileImage,
     phoneNumber: body.phoneNumber,
+    gender,
     weightGoalMode: weightGoalMode || undefined,
     physicalActivityLevel: physicalActivityLevel || undefined,
     communityId,
@@ -162,4 +169,4 @@ export function validateStatus(query) {
   return { email };
 }
 
-export { VALID_DIETS };
+export { VALID_DIETS, VALID_GENDERS };

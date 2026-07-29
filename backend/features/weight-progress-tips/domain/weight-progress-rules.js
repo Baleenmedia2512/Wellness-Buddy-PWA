@@ -67,27 +67,33 @@ export function computeCalorieTarget(bmr, goalMode) {
  * @param {number|null} weightKg
  * @returns {number} target protein in grams (0 = unknown)
  */
+const CALORIES_PER_PROTEIN_G = 4;
+const CALORIES_PER_CARB_G = 4;
+const CALORIES_PER_FAT_G = 9;
+
 export function computeProteinTarget(weightKg) {
   const w = parseFloat(weightKg);
   if (!Number.isFinite(w) || w <= 0) return 0;
   return Math.round(w * 1.2);
 }
 
-/** Recommended daily fat intake: 0.75 g per kg body weight. */
-export function computeFatTarget(weightKg) {
-  const w = parseFloat(weightKg);
-  if (!Number.isFinite(w) || w <= 0) return 0;
-  return Math.round(w * 0.75);
+/** Recommended daily fat intake: calorieTarget × (20%♂ / 30%♀) / 9 kcal/g. */
+export function computeFatTarget(calorieTarget, gender = null) {
+  const cals = parseFloat(calorieTarget);
+  const effectiveCals = Number.isFinite(cals) && cals > 0 ? cals : 1500;
+  const g = String(gender || '').trim().toLowerCase();
+  const fatPercent = g === 'female' ? 30 : g === 'male' ? 20 : 25;
+  return Math.round((effectiveCals * fatPercent) / 100 / CALORIES_PER_FAT_G);
 }
 
 /**
  * Carbs target derived from calorie budget minus protein and fat calories.
  * Clamped to ≥ 0 when protein+fat exceed the calorie target.
  */
-export function computeCarbsTarget(bmr, goalMode, weightKg) {
+export function computeCarbsTarget(bmr, goalMode, weightKg, gender = null) {
   const calorieTarget = computeCalorieTarget(bmr, goalMode);
   const proteinTarget = computeProteinTarget(weightKg);
-  const fatTarget = computeFatTarget(weightKg);
+  const fatTarget = computeFatTarget(calorieTarget, gender);
   if (calorieTarget <= 0) return 0;
   const remainingCals = calorieTarget - proteinTarget * 4 - fatTarget * 9;
   return Math.max(0, Math.round(remainingCals / 4));
@@ -99,27 +105,24 @@ export const STEPS_TARGET = 8000;
 /** Recommended sleep hours shown in yesterday's analysis. */
 export const SLEEP_TARGET_HRS = 8;
 
-const CALORIES_PER_PROTEIN_G = 4;
-const CALORIES_PER_CARB_G = 4;
-const CALORIES_PER_FAT_G = 9;
-
 /**
  * Macro targets aligned with the nutrition carousel (carouselRules.computeMacroTargets).
- * Protein = weight × 1.5 g, fat = weight × 0.75 g, carbs derived from BMR budget.
+ * Protein = weight × 1.5 g, fat = calorieTarget × (20%♂/30%♀) / 9, carbs derived from calorie budget.
  *
- * @param {number|null} bmr
+ * @param {number|null} bmr - daily calorie target (TDEE)
  * @param {number|null} weightKg
+ * @param {string|null} [gender]
  * @returns {{ proteinTarget: number, fatTarget: number, carbsTarget: number }}
  */
-export function computeMacroTargets(bmr, weightKg) {
+export function computeMacroTargets(bmr, weightKg, gender = null) {
   const w = parseFloat(weightKg);
   if (!Number.isFinite(w) || w <= 0) {
     return { proteinTarget: 0, fatTarget: 0, carbsTarget: 0 };
   }
   const proteinTarget = Math.round(w * 1.5);
-  const fatTarget = Math.round(w * 0.75);
   const b = parseFloat(bmr);
   const effectiveCals = Number.isFinite(b) && b > 0 ? Math.round(b) : 1500;
+  const fatTarget = computeFatTarget(effectiveCals, gender);
   const carbsTarget = Math.max(
     0,
     Math.round(

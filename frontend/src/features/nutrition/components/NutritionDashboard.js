@@ -174,9 +174,13 @@ const NutritionDashboard = ({
     nutritionRefreshKey,
   });
 
-  // Latest body weight for personalised macro targets on the summary panel.
-  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
-  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({ latestWeight, calorieTarget });
+  // Latest body weight + gender for personalised macro targets on the summary panel.
+  const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
+    latestWeight,
+    calorieTarget,
+    gender,
+  });
 
   // Multi-day calorie totals for the trend chart
   const { calorieTrendData, trendLoading, showTrendCard } = useCalorieTrend({
