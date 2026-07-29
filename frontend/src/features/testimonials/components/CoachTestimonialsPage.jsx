@@ -1329,7 +1329,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-green-700" />
           <h1 className="text-lg font-bold text-gray-900">
-            {showTeamChrome ? 'Team Testimonials' : 'My Transformation'}
+            {showTeamChrome ? 'Team Transformation' : 'My Transformation'}
           </h1>
         </div>
         <TouchFeedbackButton

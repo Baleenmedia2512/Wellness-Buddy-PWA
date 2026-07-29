@@ -153,11 +153,29 @@ describe('buildCardPatchFromProfile', () => {
   it('patches weight metrics when changed', () => {
     const patch = buildCardPatchFromProfile(
       { ...card, weight_kg: 70, fat_percent: 20, bmi: 24 },
-      { weightKg: 72, fatPercent: 18, bmi: 24.5 },
+      { weightKg: 72, fatPercent: 18 },
     );
     assert.equal(patch.weight_kg, 72);
     assert.equal(patch.fat_percent, 18);
-    assert.equal(patch.bmi, 24.5);
+    assert.equal(patch.bmi, 24.9);
+  });
+
+  it('recomputes BMI when height changes so it stays consistent with weight', () => {
+    const patch = buildCardPatchFromProfile(
+      { name: 'Ada', height_cm: 170, bmr: 1500, weight_kg: 85, bmi: 29.4 },
+      { height: 175 },
+    );
+    assert.equal(patch.height_cm, 175);
+    assert.equal(patch.bmi, 27.8);
+  });
+
+  it('always refreshes BMI when height changes even if stored BMI already matches target height', () => {
+    const patch = buildCardPatchFromProfile(
+      { name: 'Balaji', height_cm: 170, weight_kg: 85, bmi: 26.5 },
+      { height: 179 },
+    );
+    assert.equal(patch.height_cm, 179);
+    assert.equal(patch.bmi, 26.5);
   });
 
   it('syncs gender Male/Female onto the card', () => {
@@ -213,7 +231,7 @@ describe('buildProfileCardSyncPayload', () => {
       gender: 'Male',
       weightKg: 72,
       fatPercent: 18,
-      bmi: 24.5,
+      bmi: 24.3,
     });
   });
 
