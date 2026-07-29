@@ -64,7 +64,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setProfileImagePreview(img);
       face.reset();
       setShowToast(true);
-      face.run(img);
+      face.run(img, user?.id ?? null);
     },
   });
 
