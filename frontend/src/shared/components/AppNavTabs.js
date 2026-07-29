@@ -118,8 +118,8 @@ export default function AppNavTabs({
           iconClass="text-indigo-600"
           labelActiveClass="text-indigo-900"
           labelClass="text-indigo-800"
-          label="Reports"
-          ariaLabel="Reports"
+          label="Ideal Weight"
+          ariaLabel="Ideal Weight"
         />
       )}
     </div>

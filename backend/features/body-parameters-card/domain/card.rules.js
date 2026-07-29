@@ -192,6 +192,33 @@ export function buildWeightRecord(card, userId) {
 }
 
 /**
+ * Compute BMI from height (cm) and weight (kg). Matches BPC form auto-fill.
+ *
+ * @param {number|string|null|undefined} heightCm
+ * @param {number|string|null|undefined} weightKg
+ * @returns {number|null}
+ */
+export function computeBmiFromHeightWeight(heightCm, weightKg) {
+  const h = Number(heightCm);
+  const w = Number(weightKg);
+  if (!Number.isFinite(h) || h < 50 || h > 250) return null;
+  if (!Number.isFinite(w) || w < 20 || w > 300) return null;
+  const m = h / 100;
+  return Math.round((w / (m * m)) * 10) / 10;
+}
+
+/**
+ * Whether a BMI value is within card.schema.js / DB persistence bounds.
+ *
+ * @param {number|null|undefined} bmi
+ * @returns {boolean}
+ */
+export function isPersistableBmi(bmi) {
+  const n = Number(bmi);
+  return Number.isFinite(n) && n >= 5 && n <= 70;
+}
+
+/**
  * Check whether the BMI target range is met for the given gender.
  * Target BMI: 19–23 for both genders.
  *

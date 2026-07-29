@@ -260,6 +260,12 @@ export async function updateProfile(input) {
           userId,
           fields: syncResult.fields,
         });
+      } else if (syncResult.error) {
+        logger.warn('[profile/update] body-params card sync failed (non-fatal)', {
+          userId,
+          message: syncResult.error,
+          attemptedFields: Object.keys(cardSync),
+        });
       } else {
         logger.info('[profile/update] body-params card sync skipped', {
           userId,
@@ -268,11 +274,11 @@ export async function updateProfile(input) {
       }
     }
   } catch (syncErr) {
-    logger.error('[profile/update] body-params card sync failed', {
+    // Non-fatal — profile fields are already saved; card sync is best-effort.
+    logger.error('[profile/update] body-params card sync failed (non-fatal)', {
       userId,
       message: syncErr?.message,
     });
-    throw syncErr;
   }
 
   try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }

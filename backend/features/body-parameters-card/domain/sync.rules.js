@@ -11,7 +11,11 @@
  * No I/O. Callers must skip the reciprocal sync path (write via repo, not
  * through the other feature's update pipeline) to prevent circular updates.
  */
-import { resolveSyncedBmrFromCard } from './card.rules.js';
+import {
+  computeBmiFromHeightWeight,
+  isPersistableBmi,
+  resolveSyncedBmrFromCard,
+} from './card.rules.js';
 
 const PROFILE_GENDERS = ['Male', 'Female'];
 
@@ -49,6 +53,36 @@ export function syncValuesEqual(a, b) {
     return Math.abs(na - nb) < 1e-6;
   }
   return a === b;
+}
+
+/**
+ * Resolve BMI for a body_parameters_cards patch after height/weight changes.
+ * Keeps height, weight, and BMI consistent for body_parameters_cards_bmi_check.
+ *
+ * @param {{ height_cm?: number|null, weight_kg?: number|null, bmi?: number|null }} card
+ * @param {{ height_cm?: number, weight_kg?: number }} diff
+ * @returns {number|null|undefined} BMI to set, null to clear, undefined to omit
+ */
+export function resolveCardBmiForPatch(card, diff = {}) {
+  const heightOrWeightChanged = diff.height_cm != null || diff.weight_kg != null;
+  const effectiveHeight = diff.height_cm ?? card?.height_cm;
+  const effectiveWeight = diff.weight_kg ?? card?.weight_kg;
+  const computedBmi = computeBmiFromHeightWeight(effectiveHeight, effectiveWeight);
+
+  if (heightOrWeightChanged) {
+    if (computedBmi != null && isPersistableBmi(computedBmi)) return computedBmi;
+    if (card?.bmi != null) return null;
+    return undefined;
+  }
+
+  if (
+    computedBmi != null
+    && isPersistableBmi(computedBmi)
+    && !syncValuesEqual(computedBmi, card?.bmi)
+  ) {
+    return computedBmi;
+  }
+  return undefined;
 }
 
 /**
@@ -157,9 +191,14 @@ export function buildCardPatchFromProfile(card, profile = {}) {
   if (profile.fatPercent != null && !syncValuesEqual(profile.fatPercent, card.fat_percent)) {
     diff.fat_percent = Number(profile.fatPercent);
   }
-  if (profile.bmi != null && !syncValuesEqual(profile.bmi, card.bmi)) {
-    diff.bmi = Number(profile.bmi);
+
+  const nextBmi = resolveCardBmiForPatch(card, diff);
+  if (nextBmi === null) {
+    if (card.bmi != null) diff.bmi = null;
+  } else if (nextBmi !== undefined) {
+    diff.bmi = nextBmi;
   }
+
   return diff;
 }
 
@@ -198,9 +237,10 @@ export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null
     const f = parseFloat(latestWeight.BodyFat);
     if (!Number.isNaN(f)) cardSync.fatPercent = f;
   }
-  if (latestWeight?.Bmi != null) {
-    const b = parseFloat(latestWeight.Bmi);
-    if (!Number.isNaN(b)) cardSync.bmi = b;
+
+  const computedBmi = computeBmiFromHeightWeight(cardSync.height, cardSync.weightKg);
+  if (computedBmi != null && isPersistableBmi(computedBmi)) {
+    cardSync.bmi = computedBmi;
   }
 
   return cardSync;

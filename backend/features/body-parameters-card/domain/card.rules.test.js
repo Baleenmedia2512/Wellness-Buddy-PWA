@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildTeamMemberInsert,
+  computeBmiFromHeightWeight,
+  isPersistableBmi,
   shouldClearBpcLeadCoachId,
   shouldDetachCounsellorCoachAssignment,
 } from './card.rules.js';
@@ -118,5 +120,31 @@ describe('shouldDetachCounsellorCoachAssignment', () => {
       }),
       false,
     );
+  });
+});
+
+describe('computeBmiFromHeightWeight', () => {
+  it('returns BMI rounded to one decimal', () => {
+    assert.equal(computeBmiFromHeightWeight(172, 72), 24.3);
+    assert.equal(computeBmiFromHeightWeight(175, 85), 27.8);
+  });
+
+  it('returns null for invalid inputs', () => {
+    assert.equal(computeBmiFromHeightWeight(null, 70), null);
+    assert.equal(computeBmiFromHeightWeight(170, 10), null);
+  });
+});
+
+describe('isPersistableBmi', () => {
+  it('accepts card.schema.js bounds', () => {
+    assert.equal(isPersistableBmi(24.5), true);
+    assert.equal(isPersistableBmi(5), true);
+    assert.equal(isPersistableBmi(70), true);
+  });
+
+  it('rejects out-of-range values', () => {
+    assert.equal(isPersistableBmi(4.9), false);
+    assert.equal(isPersistableBmi(71), false);
+    assert.equal(isPersistableBmi(null), false);
   });
 });
