@@ -133,8 +133,11 @@ function formatTimeWindowRange(window) {
 
 function getBinaryScoringHint(parameterKey, timeWindows) {
   const windowKey = PARAMETER_TIME_WINDOW_KEYS[parameterKey];
-  const range = windowKey ? formatTimeWindowRange(timeWindows?.[windowKey]) : null;
-  if (range) {
+  // Time-based logging params must show the real window (e.g. 7:15 AM–8:45 AM).
+  // Never flash the generic fallback while windows are still loading.
+  if (windowKey) {
+    const range = formatTimeWindowRange(timeWindows?.[windowKey]);
+    if (!range) return '';
     return `Full points when logged ${range} to earn full points; late or missed = 0.`;
   }
   return SCORING_MODE_HINTS.binary;
