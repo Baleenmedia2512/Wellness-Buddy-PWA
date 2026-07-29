@@ -4,12 +4,13 @@
  * ADR-0003: tapping an unknown row on the single Diary page opens this flow.
  *   - view:    UnknownShareViewer shows the image with Retry / Edit / Delete.
  *   - Retry:   re-run Gemini on the image; if confident, promote unknown→food.
- *   - Edit:    pick a category (Food / Weight / Education) and transfer the
- *              data to that vertical:
- *                · Food      → SmartFoodSearchModal → promote the capture
- *                              unknown→food with the chosen nutrition.
- *                · Weight    → ManualWeightEntryModal → save a weight record.
- *                · Education → ManualEducationEntryModal → save an education log.
+ *   - Edit:    pick a category (Food / Weight / Education / Smartwatch) and transfer
+ *              the data to that vertical:
+ *                · Food       → SmartFoodSearchModal → promote the capture
+ *                               unknown→food with the chosen nutrition.
+ *                · Weight     → ManualWeightEntryModal → save a weight record.
+ *                · Education  → ManualEducationEntryModal → save an education log.
+ *                · Smartwatch → ManualWatchEntryModal → save calories burned.
  *   - Delete:  soft-delete the capture (2026-06-09).
  *
  * The shell layer is permitted to compose features/* (see shell/README).
@@ -27,6 +28,8 @@ import {
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
+import { ManualWatchEntryModal } from '../../features/activity';
+import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
 
 function base64ToImageFile(b64, filename = 'capture.jpg') {
   const dataUrl = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
@@ -378,11 +381,24 @@ export default function UnknownEntryFlow({
         imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       await retagCapture(captureKind);
-      finish({ kind: 'education', captureId });
+      finish({ kind: captureKind === 'smartwatch' ? 'watch' : 'education', captureId });
     } catch {
       setError("Couldn't save — please try again.");
       setStage(errorStage);
     }
+  };
+
+  const handleWatchSave = async ({ caloriesBurned, source }) => {
+    await saveLog({
+      userId,
+      platform: source || 'Smartwatch',
+      topic: `Calories Burned: ${caloriesBurned} kcal`,
+      captureId,
+      imageBase64,
+      imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
+    });
+    await retagCapture('smartwatch');
+    finish({ kind: 'watch', captureId });
   };
 
   const handleAiEducationConfirm = async () => {
@@ -712,16 +728,25 @@ export default function UnknownEntryFlow({
       />
 
       <ManualEducationEntryModal
-        isOpen={stage === 'education' || stage === 'smartwatch'}
+        isOpen={stage === 'education'}
         skipTypeSelect={true}
-        initialPlatform={aiEducation?.platform}
-        initialTopic={aiEducation?.topic}
+        initialPlatform={aiEducation?.captureKind === 'education' ? aiEducation?.platform : undefined}
+        initialTopic={aiEducation?.captureKind === 'education' ? aiEducation?.topic : undefined}
         onClose={() => setStage('view')}
         onBack={() => setStage('view')}
-        onSave={(data) => handleEducationSave(
-          data,
-          stage === 'smartwatch' ? 'smartwatch' : 'education',
-        )}
+        onSave={(data) => handleEducationSave(data, 'education')}
+      />
+
+      <ManualWatchEntryModal
+        isOpen={stage === 'smartwatch'}
+        onClose={() => setStage('view')}
+        onBack={() => setStage('view')}
+        initialCaloriesBurned={
+          aiEducation?.captureKind === 'smartwatch'
+            ? (String(extractCaloriesValue(aiEducation?.topic)).match(/[\d.]+/) || [''])[0]
+            : ''
+        }
+        onSave={handleWatchSave}
       />
     </>
   );
