@@ -20,6 +20,7 @@ const UserProfileBody = ({ isLoading, form, email, latestWeight, error, successM
           name={form.name} setName={form.setName}
           height={form.height} setHeight={form.setHeight}
           phone={form.phone} setPhone={form.setPhone}
+          gender={form.gender} setGender={form.setGender}
           bmr={form.bmr} setBmr={form.setBmr}
           physicalActivityLevel={form.physicalActivityLevel}
           setPhysicalActivityLevel={form.setPhysicalActivityLevel}

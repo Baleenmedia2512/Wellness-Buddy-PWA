@@ -70,7 +70,7 @@ export default function HomeNutritionCarousel({
 
   const { calorieTarget, bmrLoading } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
 
-  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
+  const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
 
 
 
@@ -247,6 +247,8 @@ export default function HomeNutritionCarousel({
         dailyStats={carouselData.dailyStats}
 
         latestWeight={latestWeight}
+
+        gender={gender}
 
         selectedDate={carouselData.selectedDate}
 

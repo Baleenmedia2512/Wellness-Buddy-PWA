@@ -5,7 +5,7 @@ import CarouselPeriodHeader from './CarouselPeriodHeader';
 /**
  * CaloriesCard — Mobile-First Compact Card 1 of the Nutrition Carousel.
  * Shows Remaining (Goal - Food + Exercise), Base Goal, Food, Exercise.
- * Formula: Remaining = Goal - Food + Exercise
+ * Formula: Remaining = DailyGoal − Food + calories burned
  * 
  * Design: Compact, mobile-optimized with circular progress.....z
  */
@@ -151,7 +151,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
         <p className="text-[9px] text-gray-500 text-center mb-1.5">
           {periodContext?.isMultiDay
             ? 'Progress = total food − total exercise vs period calorie goal'
-            : 'Remaining = Goal − Food + Exercise'}
+            : 'Remaining = DailyGoal − Food + calories burned'}
         </p>
 
         {/* Main Section — Circle + Remaining */}
@@ -188,7 +188,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
               <Utensils className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">{periodContext?.achievedLabel ?? 'Food'}</p>
+            <p className="text-[10px] text-gray-500 mb-0">Food</p>
             <p className="text-xs font-bold text-gray-900">{consumed.toLocaleString()}</p>
           </div>
 
@@ -197,7 +197,7 @@ const CaloriesCard = ({ target, consumed, exercise, net, remaining, progressPerc
             <div className="w-7 h-7 mx-auto mb-0.5 rounded-full bg-orange-50 flex items-center justify-center">
               <Flame className="w-3.5 h-3.5 text-orange-500" />
             </div>
-            <p className="text-[10px] text-gray-500 mb-0">Exercise (total)</p>
+            <p className="text-[10px] text-gray-500 mb-0">Calories burned</p>
             <p className="text-xs font-bold text-gray-900">{exercise.toLocaleString()}</p>
           </div>
         </div>

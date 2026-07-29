@@ -8,7 +8,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchSavedUserName, fetchTeamMembers, fetchHasTeamMembers,
   filterMembers, toSelectedUser, isCoachRole, canUseTeamSearch,
+  resolveTeamSearchDisplayName,
 } from '../services/teamSearchService';
+import { getCachedProfileUserName } from '../../../shared/utils/shareUtils';
 
 export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect } = {}) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,7 +18,9 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   const [allTeamMembers, setAllTeamMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasCleared, setHasCleared] = useState(false);
-  const [savedUserName, setSavedUserName] = useState('');
+  const [savedUserName, setSavedUserName] = useState(() => (
+    resolveTeamSearchDisplayName(getCachedProfileUserName(user?.email), user) || ''
+  ));
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
 
   const searchRef = useRef(null);
@@ -59,7 +63,7 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     setLoading(true);
     fetchTeamMembers({
       coachId: user.id,
-      coachName: savedUserName || user.name || user.email,
+      coachName: resolveTeamSearchDisplayName(savedUserName, user),
       coachEmail: user.email,
       coachRole: userRole,
     })
@@ -107,9 +111,9 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     setSearchQuery(''); setIsOpen(false); setHasCleared(true);
   }, []);
 
-  const fallbackName = savedUserName || user?.name || user?.email?.split('@')[0] || 'Me';
+  const fallbackName = resolveTeamSearchDisplayName(savedUserName, user);
   const displayName = selectedMember
-    ? (selectedMember.isSelf ? fallbackName : selectedMember.userName)
+    ? (selectedMember.isSelf ? fallbackName : (selectedMember.userName || ''))
     : fallbackName;
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
 

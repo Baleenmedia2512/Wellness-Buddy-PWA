@@ -17,15 +17,17 @@ import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
-import { findByUserId } from '../../../features/user/user.repository.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
-/** Short-lived cache so SUCCESS + FAILED telemetry in one request don't double-hit DB. */
+/** Short-lived cache so telemetry in one request doesn't double-hit DB. */
 const _endUserCache = new Map();
 const END_USER_CACHE_TTL_MS = 60_000;
+/** Hard cap so a slow/unreachable monitor never holds a Vercel function open. */
+const TELEMETRY_TIMEOUT_MS = 2_000;
 
 /**
  * Resolve end-user name/email for ai-token-monitor from trace.userId.
- * Does not put PII on TraceContext or into orchestrator logs.
+ * Lightweight team_table lookup only — not used on the Gemini critical path.
  *
  * @param {string|null|undefined} userId
  * @returns {Promise<{ endUserName: string|null, endUserEmail: string|null }>}
@@ -41,10 +43,21 @@ async function resolveEndUserForMonitor(userId) {
   }
 
   try {
-    const row = await findByUserId(key, '"UserId", "UserName", "Email"');
+    const supabase = getSupabaseClient();
+    const uid = Number.parseInt(key, 10);
+    if (!Number.isFinite(uid) || uid <= 0) {
+      return { endUserName: null, endUserEmail: null };
+    }
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserName", "Email"')
+      .eq('"UserId"', uid)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
     const resolved = {
-      endUserName: row?.UserName != null ? String(row.UserName) : null,
-      endUserEmail: row?.Email != null ? String(row.Email) : null,
+      endUserName: data?.UserName != null ? String(data.UserName) : null,
+      endUserEmail: data?.Email != null ? String(data.Email) : null,
     };
     _endUserCache.set(key, { ...resolved, at: Date.now() });
     return resolved;
@@ -55,6 +68,45 @@ async function resolveEndUserForMonitor(userId) {
     });
     return { endUserName: null, endUserEmail: null };
   }
+}
+
+/**
+ * Send monitor telemetry without blocking the AI response.
+ * Identity lookup + SDK call run in the background with a hard timeout.
+ *
+ * @param {object} basePayload
+ * @param {object|null} trace
+ */
+function enqueueMonitorTelemetry(basePayload, trace) {
+  if (!process.env.AI_MONITOR_SDK_KEY) return;
+
+  const run = async () => {
+    const endUser = await resolveEndUserForMonitor(trace?.userId);
+    await AIClient.sendTelemetry({
+      ...basePayload,
+      traceId: trace?.traceId ?? null,
+      endUserId: trace?.userId ?? null,
+      endUserEmail: endUser.endUserEmail,
+      endUserName: endUser.endUserName,
+    });
+  };
+
+  const timed = Promise.race([
+    run(),
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`ai-token-monitor timed out after ${TELEMETRY_TIMEOUT_MS}ms`)),
+        TELEMETRY_TIMEOUT_MS,
+      );
+    }),
+  ]);
+
+  void timed.catch((sdkErr) => {
+    logger.warn('geminiClient: telemetry skipped', {
+      status: basePayload?.status ?? null,
+      message: sdkErr?.message,
+    });
+  });
 }
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
@@ -287,65 +339,32 @@ export async function generateContent(
   );
 
   const start = Date.now();
-  const endUser = await resolveEndUserForMonitor(trace?.userId);
 
   try {
-
     const result = await model.generateContent(parts);
-
     const latency = Date.now() - start;
 
-    try {
-
-      await AIClient.sendTelemetry({
-        provider: "Gemini",
-        model: modelOverride ?? MODEL_NAME,
-        usage: result.response.usageMetadata,
-        latency,
-        status: "SUCCESS",
-
-        // User Context — resolved from trace.userId at telemetry send time
-        traceId: trace?.traceId,
-        endUserId: trace?.userId ?? null,
-        endUserEmail: endUser.endUserEmail,
-        endUserName: endUser.endUserName,
-      });
-
-    } catch (sdkErr) {
-
-      logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
-        message: sdkErr?.message,
-      });
-
-    }
+    // Never await monitor I/O on the request path (Vercel concurrency / timeouts).
+    enqueueMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: result.response.usageMetadata,
+      latency,
+      status: 'SUCCESS',
+    }, trace);
 
     return result;
-
   } catch (err) {
-
     const latency = Date.now() - start;
 
-    try {
-
-      await AIClient.sendTelemetry({
-        provider: "Gemini",
-        model: modelOverride ?? MODEL_NAME,
-        usage: {},
-        latency,
-        status: "FAILED",
-        errorMessage: err.message,
-        // User Context — resolved from trace.userId at telemetry send time
-        traceId: trace?.traceId,
-        endUserId: trace?.userId ?? null,
-        endUserEmail: endUser.endUserEmail,
-        endUserName: endUser.endUserName,
-      });
-
-    } catch (sdkErr) {
-
-      logger.error("Telemetry Error", sdkErr);
-
-    }
+    enqueueMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: {},
+      latency,
+      status: 'FAILED',
+      errorMessage: err.message,
+    }, trace);
 
     throw err;
   }

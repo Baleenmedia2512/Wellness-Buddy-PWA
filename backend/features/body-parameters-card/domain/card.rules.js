@@ -151,18 +151,21 @@ export function isCardShareValid(shareExpiresAt, now = new Date()) {
 /**
  * Build the profile fields that should be written to team_table when a
  * link recipient saves a card to their profile.
- * Body Age / Age / Gender / measurements are excluded — card-only (no Profile columns).
+ * Age / measurements stay card-only; Gender syncs when Male/Female.
  *
  * @param {object} card - row from body_parameters_cards
- * @returns {{ name: string|null, height: number|null, bmr: number|null }}
+ * @returns {{ name: string|null, height: number|null, bmr: number|null, gender: string|null }}
  */
 export function buildProfilePatch(card) {
+  const genderRaw = card.gender != null ? String(card.gender).trim() : '';
+  const gender = (genderRaw === 'Male' || genderRaw === 'Female') ? genderRaw : null;
   return {
     name: card.name != null && String(card.name).trim()
       ? String(card.name).trim()
       : null,
     height: card.height_cm ?? null,
     bmr: resolveSyncedBmrFromCard(card),
+    gender,
   };
 }
 
@@ -186,6 +189,33 @@ export function buildWeightRecord(card, userId) {
     Bmr:       bmr,
     // MuscleMass not on the card — omit
   };
+}
+
+/**
+ * Compute BMI from height (cm) and weight (kg). Matches BPC form auto-fill.
+ *
+ * @param {number|string|null|undefined} heightCm
+ * @param {number|string|null|undefined} weightKg
+ * @returns {number|null}
+ */
+export function computeBmiFromHeightWeight(heightCm, weightKg) {
+  const h = Number(heightCm);
+  const w = Number(weightKg);
+  if (!Number.isFinite(h) || h < 50 || h > 250) return null;
+  if (!Number.isFinite(w) || w < 20 || w > 300) return null;
+  const m = h / 100;
+  return Math.round((w / (m * m)) * 10) / 10;
+}
+
+/**
+ * Whether a BMI value is within card.schema.js / DB persistence bounds.
+ *
+ * @param {number|null|undefined} bmi
+ * @returns {boolean}
+ */
+export function isPersistableBmi(bmi) {
+  const n = Number(bmi);
+  return Number.isFinite(n) && n >= 5 && n <= 70;
 }
 
 /**

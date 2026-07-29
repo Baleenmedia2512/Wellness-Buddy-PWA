@@ -9,7 +9,7 @@
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
 import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
@@ -551,13 +551,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {/* Top bar with back button and title */}
           <div className="flex items-center justify-between p-4 md:p-6 pb-3">
-            <TouchFeedbackButton 
-              onClick={onBack} 
-              className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-700" />
-            </TouchFeedbackButton>
+            <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11" aria-hidden="true" />
 
             <div className="text-center">
               <h1 className="text-lg md:text-xl font-semibold text-gray-900">

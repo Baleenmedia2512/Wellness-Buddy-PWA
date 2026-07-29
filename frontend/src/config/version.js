@@ -82,7 +82,7 @@ export const APP_VERSION = {
   VERSION_CODE: 54,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 54,
+  IOS_BUILD_NUMBER: 55,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  3.3.5',
@@ -93,13 +93,16 @@ export const APP_VERSION = {
   // Platform release notes..
   PLATFORMS: {
     ANDROID: { versionCode: 54, versionName: '3.3.5' },
-    IOS: { buildNumber: 54, versionName: '3.3.5' },
+    IOS: { buildNumber: 55, versionName: '3.3.5' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.3.5 (Code 55) - 2026-07-28 [ANDROID + iOS RELEASE]
+ *   🔢 iOS build bumped to 55 for App Store Connect re-upload
+ *
  * Version 3.3.5 (Code 54) - 2026-07-27 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements.
  *

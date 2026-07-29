@@ -427,9 +427,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          
-          <div className="flex items-center justify-end">
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Activity Report</h1>
+            </div>
             <TouchFeedbackButton
               onClick={() => {
                 fetchSummary();
@@ -467,34 +469,31 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
         {/* Activity Type Tabs */}
         {summary && (
-          <>
-            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {ACTIVITY_TYPES.map((activity) => {
-                const Icon = activity.icon;
-                const isActive = selectedActivity === activity.id;
-                return (
-                  <TouchFeedbackButton
-                    key={activity.id}
-                    onClick={() => handleActivityClick(activity.id)}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all whitespace-nowrap ${
-                      isActive
-                        ? `${activity.bgColor} ${activity.borderColor}`
-                        : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
-                      {summary[activity.id] || 0}
-                    </span>
-                    <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
-                      {activity.label}
-                    </span>
-                  </TouchFeedbackButton>
-                );
-              })}
-            </div>
-            <hr className="mb-5 border-0 border-t border-gray-200" aria-hidden="true" />
-          </>
+          <div className="flex flex-wrap gap-2 pb-2 mb-5">
+            {ACTIVITY_TYPES.map((activity) => {
+              const Icon = activity.icon;
+              const isActive = selectedActivity === activity.id;
+              return (
+                <TouchFeedbackButton
+                  key={activity.id}
+                  onClick={() => handleActivityClick(activity.id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
+                    isActive
+                      ? `${activity.bgColor} ${activity.borderColor}`
+                      : 'bg-white border-gray-200'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
+                    {summary[activity.id] || 0}
+                  </span>
+                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {activity.label}
+                  </span>
+                </TouchFeedbackButton>
+              );
+            })}
+          </div>
         )}
 
         {/* Detail Grid */}
