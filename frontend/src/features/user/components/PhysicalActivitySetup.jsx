@@ -37,7 +37,7 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
         setError(data.message || 'Failed to save. Please try again.');
         return;
       }
-      onComplete?.({
+      await onComplete?.({
         physicalActivityLevel: selected,
         calorieTarget: data.data?.calorieTarget ?? null,
       });
@@ -49,7 +49,7 @@ export default function PhysicalActivitySetup({ user, apiBaseUrl, onComplete }) 
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 305 }}>
+    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
       <div className="bg-gradient-to-r from-teal-500 to-green-600 px-6 pt-14 pb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="bg-white/20 rounded-full p-2">
