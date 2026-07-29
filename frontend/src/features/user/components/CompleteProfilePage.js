@@ -37,7 +37,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const face = useFaceDetection();
   const cropper = useImageCropper({
     onError: setPicError,
-    onCropped: (img) => { setProfileImage(img); setPreviewUrl(img); face.reset(); face.run(img); },
+    onCropped: (img) => { setProfileImage(img); setPreviewUrl(img); face.reset(); face.run(img, user?.id ?? null); },
   });
 
   useEffect(() => {

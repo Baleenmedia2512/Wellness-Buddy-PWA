@@ -12,10 +12,10 @@ export default function useFaceDetection() {
 
   const reset = () => setStatus('idle');
 
-  const run = useCallback(async (base64) => {
+  const run = useCallback(async (base64, userId = null) => {
     promiseRef.current = new Promise((resolve) => { resolveRef.current = resolve; });
     setStatus('detecting');
-    const result = await detectFace(base64);
+    const result = await detectFace(base64, userId);
     setStatus(result);
     resolveRef.current?.(result);
   }, []);
