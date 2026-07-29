@@ -170,3 +170,12 @@ registerFlag({
   description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.ai-credits',
+  owner:          '@principal-eng',
+  createdAt:      '2026-07-27',
+  removeBy:       '2027-01-27',
+  description:    'Boolean rollout for AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI). Numeric daily limit lives in ai_credits_config_table, not this flag.',
+  defaultEnabled: true,
+});

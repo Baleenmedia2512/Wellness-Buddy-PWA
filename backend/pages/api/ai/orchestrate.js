@@ -42,6 +42,8 @@ import fs from 'fs';
 import logger from '../../../shared/lib/logger.js';
 import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.js';
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import { isEnabled } from '../../../shared/lib/feature-flags.js';
+import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
 
 export const config = {
   api: { bodyParser: false },
@@ -100,8 +102,26 @@ export default async function handler(req, res) {
     // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
     // and wants Gemini Pro instead of Flash for better accuracy.
     const modelTier  = sanitiseString(fields.modelTier);
+    // Credit gate: when ff.ai-credits is ON and client sends creditGated=1,
+    // require a valid pending reservationId (never trust client dailyLimit).
+    const creditGated = sanitiseString(fields.creditGated) === '1'
+      || sanitiseString(fields.creditGated) === 'true';
+    const reservationId = sanitiseString(fields.reservationId);
 
-    
+    if (isEnabled('ff.ai-credits') && creditGated) {
+      try {
+        await assertReservationValid({ userId, reservationId });
+      } catch (gateErr) {
+        const status = gateErr.status ?? 403;
+        return res.status(status).json({
+          ok: false,
+          error: {
+            code: gateErr.code ?? 'CREDIT_GATE_FAILED',
+            message: gateErr.message ?? 'AI credit reservation required',
+          },
+        });
+      }
+    }
 
     // Read image into buffer; keep base64 for enrichment job queue
     let imageBuffer, imageBase64;
