@@ -8,7 +8,7 @@
  */
 import React, { Suspense, lazy } from 'react';
 import { Calendar } from 'lucide-react';
-import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import { compareUtcTimestampsDesc } from '../../../shared/utils/datetimeUtils';
 import EducationUndoRow from './EducationUndoRow';
 import { UNDO_SECONDS } from '../hooks/useEducationDashboard';
 
@@ -26,7 +26,7 @@ const cardSkeleton = (
   </div>
 );
 
-const sortByCreatedDesc = (a, b) => istToLocalDate(b.CreatedAt) - istToLocalDate(a.CreatedAt);
+const sortByCreatedDesc = (a, b) => compareUtcTimestampsDesc(a.CreatedAt, b.CreatedAt);
 
 const MonthSection = ({ group, undoState, onDelete, onRestore, onExpire, onCardClick, apiBaseUrl, userId }) => (
   <div key={group.monthKey} className="mb-6">

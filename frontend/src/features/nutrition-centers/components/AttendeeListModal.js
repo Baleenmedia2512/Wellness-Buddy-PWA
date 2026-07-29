@@ -4,18 +4,7 @@ import { X, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { debugLog } from '../../../shared/utils/logger.js';
 
-/**
- * Helper to format timestamp as human-readable time
- */
-const formatTime = (timestamp) => {
-  if (!timestamp) return '';
-  try {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  } catch {
-    return '';
-  }
-};
+import { formatBusinessTime } from '../../../shared/utils/datetimeUtils';
 
 /**
  * Helper to get icon/emoji for log type
@@ -69,7 +58,8 @@ const groupLogsByUser = (logs) => {
  *   dateLabel   {string}   — e.g. "Today", "Yesterday", "Jun 1"
  *   startDate   {string}   — ISO date string YYYY-MM-DD
  *   endDate     {string}   — ISO date string YYYY-MM-DD
- *   apiBaseUrl  {string}   — base API URL
+ *   apiBaseUrl      {string} — base API URL
+ *   timezoneIana    {string} — IANA timezone for displaying log times
  */
 const AttendeeListModal = ({
   isOpen,
@@ -80,7 +70,9 @@ const AttendeeListModal = ({
   startDate,
   endDate,
   apiBaseUrl,
+  timezoneIana,
 }) => {
+  const formatTime = (timestamp) => formatBusinessTime(timestamp, timezoneIana);
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

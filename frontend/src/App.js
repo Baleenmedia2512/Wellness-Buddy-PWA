@@ -60,8 +60,11 @@ import React, {
   startTransition,
 } from "react";
 import ReactDOM, { flushSync } from "react-dom";
+import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
+import { WeightShareCard } from "./shell/components/WeightShareCard";
+import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
-import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -93,6 +96,8 @@ import {
 } from "./features/nutrition";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import * as captureQueue from './shared/services/captureQueue';
+import { useOfflineCaptureQueue } from './hooks/useOfflineCaptureQueue';
+import { useWeightCapture } from './hooks/useWeightCapture';
 import { weightDetectionService } from "./features/weight";
 import CelebrationConfetti from "./shared/components/CelebrationConfetti";
 import { duplicateDetectionService } from "./features/nutrition";
@@ -111,7 +116,14 @@ import {
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
-import { resolveLocationFields } from "./shared/utils/resolveLocationFields";
+import { hasValidProfileName } from "./features/user/domain/profileCompleteness";
+import { resolveLocationFields, stripLocationDiagnostics } from "./shared/utils/resolveLocationFields";
+import {
+  startUserLocationCache,
+  stopUserLocationCache,
+  refreshUserLocationCache,
+  getCachedLocationFields,
+} from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal } from "./features/weight";
 import { SmartFoodSearchModal } from "./features/nutrition";
@@ -143,9 +155,6 @@ import { MandatoryProfilePictureModal } from "./features/user";
 import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
-import { useWeightProgressCheck } from "./features/weight-progress-tips/hooks/useWeightProgressCheck";
-import { WeightGoalSetupPrompt } from "./features/user/components/WeightGoalSetupPrompt";
-import EmailGateModal from "./features/user/components/EmailGateModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
 import {
@@ -176,6 +185,7 @@ import {
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
+import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
 import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
 import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
@@ -195,8 +205,8 @@ import LocationGuard from "./shared/components/LocationGuard";
 const WeightLossLeaderboard = lazy(() =>
   import("./features/weight/components/WeightLossLeaderboard"),
 );
-const DisciplineLeaderboard = lazy(() =>
-  import("./features/leaderboard/components/DisciplineLeaderboard"),
+const WellnessScoreLeaderboard = lazy(() =>
+  import("./features/leaderboard/components/WellnessScoreLeaderboard"),
 );
 // ? ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./shell/components/Dashboard"));
@@ -256,6 +266,7 @@ function WellnessValleyApp() {
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
+  const [bodyParamsRefreshKey, setBodyParamsRefreshKey] = useState(0); // Increment to refresh Body Parameters cards after profile edits
 
   // -- Instant OTP session restore ------------------------------------------
   // For returning OTP users, pre-load the cached user synchronously so that
@@ -372,6 +383,7 @@ function WellnessValleyApp() {
     open: false,
     captureId: null,
     imageBase64: null,
+    createdAt: null,
     canMutate: false,
     retrying: false,
     error: null,
@@ -386,73 +398,21 @@ function WellnessValleyApp() {
     captureId: null,
   });
   const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
-  const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
   const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   // Education time window fetched from DB (e.g. 07:15 - 08:45) ? no hardcoding
   const [educationWindow, setEducationWindow] = useState(null);
-  const [weightResult, setWeightResult] = useState(null); // Store weight detection results
-  const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
-  // --- savedWeightIdRef ----------------------------------------------------
-  // INTENTIONAL ref-mirror of `savedWeightId` state.
-  //
-  // Why both exist:
-  //   - `savedWeightId` (state) drives JSX (e.g. enabling the inline-edit
-  //     pencil button, conditional render of the edit overlay).
-  //   - `savedWeightIdRef` (ref) is read inside async handlers that are
-  //     created/closed-over BEFORE the state setter resolves ? specifically:
-  //       ? performWeightSave    ? writes the new id (line ~1884)
-  //       ? handleWeightEditSave ? reads the current id mid-flight (line ~1947)
-  //                                so a user editing immediately after save
-  //                                hits the right entryId without waiting
-  //                                for React to re-render the handler.
-  //       ? saveWeightEntry      ? updates id after a manual save (line ~1973)
-  //   - Cleared together with state in showMainPage / showDashboardPage /
-  //     handleSignOut so they cannot diverge across navigation.
-  //
-  // Stale-closure risk (documented, NOT fixed in hygiene phase):
-  //   - The inline edit handler captures `weightResult` and `user` by closure
-  //     but reads `savedWeightIdRef.current` directly. If a second weight
-  //     save lands between two clicks of the edit button, the edit can race
-  //     onto the *new* entry id while the user thinks they are editing the
-  //     prior result. This is currently masked by the UI clearing the result
-  //     card on save, so practically unreachable. To eliminate fully, a
-  //     state-machine extraction of weight-save (later phase) should pair
-  //     `entryId` with the result object instead of using a sibling ref.
-  const savedWeightIdRef = useRef(null);
-  const [isEditingWeight, setIsEditingWeight] = useState(false); // Inline edit mode
-  const [editWeightValue, setEditWeightValue] = useState(""); // Value being edited
-  const [isSavingWeightEdit, setIsSavingWeightEdit] = useState(false); // Loading for edit save
-  const [weightEditError, setWeightEditError] = useState(""); // Edit validation error
-  const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
-  const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
-  const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
-  const [showWeightCelebration, setShowWeightCelebration] = useState(false); // Weight loss celebration
-  const [weightCelebrationMessage, setWeightCelebrationMessage] = useState(""); // Celebration message
-
-  // Weight Progress Tips feature (reverse progress detection)
-  const weightProgressCheck = useWeightProgressCheck();
-  const [showWeightProgressModal, setShowWeightProgressModal] = useState(false);
 
   // Weight Goal Mode setup prompt (forced for new/existing users who never set it)
-  const [showGoalModePrompt, setShowGoalModePrompt] = useState(false);
-  const [goalModePromptEmail, setGoalModePromptEmail] = useState(null);
 
   // Email gate � forced for phone-OTP users who have no email in their profile
-  const [showEmailGate, setShowEmailGate] = useState(false);
   const [showPhysicalActivitySetup, setShowPhysicalActivitySetup] = useState(false);
-
-  // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
-  // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
-  const getISTDateStr = (ts) => {
-    if (!ts) return null;
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return String(ts).substring(0, 10);
-    const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-    return istTime.toISOString().substring(0, 10);
-  };
+  // Onboarding sequencing locks — camera/coach must wait until each gate is resolved.
+  // Expected order: CompleteProfile → PhysicalActivity → Coach setup → Coach OTP → home camera.
+  const [physicalActivityResolved, setPhysicalActivityResolved] = useState(false);
+  const [coachSetupResolved, setCoachSetupResolved] = useState(false);
 
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
@@ -482,6 +442,8 @@ function WellnessValleyApp() {
   // paint it to a JPEG before the user taps share (zero-latency tap-to-share).
   // foodShareImageDataUrlRef caches that pre-painted JPEG.
   const foodCaptureIdRef = useRef(null);
+  /** Capture-time location (GPS/club) keyed by capture id — survives later save races. */
+  const captureLocationByIdRef = useRef(new Map());
   const processedImageRef = useRef(null);
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
@@ -527,9 +489,6 @@ function WellnessValleyApp() {
   useEffect(() => {
     nutritionDataRef.current = nutritionData;
   }, [nutritionData]);
-  useEffect(() => {
-    weightResultRef.current = weightResult;
-  }, [weightResult]);
   useEffect(() => {
     educationResultRef.current = educationResult;
   }, [educationResult]);
@@ -724,10 +683,6 @@ function WellnessValleyApp() {
   }, [foodShareUrl, imageType, resetCaptureUiOnly, savedUserName, user]);
 
   // Duplicate weight detection state
-  const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
-    useState(false);
-  const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
-  const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // Club selection state
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
@@ -793,6 +748,24 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
+  // Blocks Home / Profile / camera across gaps between onboarding wizards.
+  // Stays true until profile → activity → coach → OTP have all finished.
+  const onboardingBlocking =
+    !!user &&
+    isOtpVerified &&
+    isUserActive &&
+    (
+      showCompleteProfile ||
+      showPhysicalActivitySetup ||
+      showSetupWizard ||
+      (showValidateOTP && !isInactiveReactivationFlow) ||
+      profileChecking ||
+      !physicalActivityResolved ||
+      !coachSetupResolved
+    );
+  const onboardingBlockingRef = useRef(false);
+  onboardingBlockingRef.current = onboardingBlocking;
+
   // Demo account: silent coach-OTP setup is provided by
   // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
   // silentlyCompleteDemoSetup function are imported at the top of this file.
@@ -838,11 +811,13 @@ function WellnessValleyApp() {
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
         setShowTestimonials(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
+        setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
         setShowDashboard(false);
@@ -928,7 +903,7 @@ function WellnessValleyApp() {
 
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
-  const disciplineLeaderboardRef = useRef(null);
+  const wellnessLeaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -965,30 +940,17 @@ function WellnessValleyApp() {
   // even when returning to app during/after analysis (user expectation).
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
-    const onboardingActive =
-      showSetupWizard ||
-      showValidateOTP ||
-      showEmailGate ||
-      showPhysicalActivitySetup ||
-      showCompleteProfile ||
-      profileChecking;
-
     _homeScreenActiveRef.current =
       !!user &&
       !authLoading &&
-      !onboardingActive &&
+      !onboardingBlocking &&
       !showDashboard &&
       !showActivityReport &&
       !showActivityTimeReport;
   }, [
     user,
     authLoading,
-    showSetupWizard,
-    showValidateOTP,
-    showEmailGate,
-    showPhysicalActivitySetup,
-    showCompleteProfile,
-    profileChecking,
+    onboardingBlocking,
     showDashboard,
     showActivityReport,
     showActivityTimeReport,
@@ -1001,41 +963,64 @@ function WellnessValleyApp() {
     _userIdRef.current = user?.id || user?.UserId || Session.getDbUserId() || null;
   }, [user]);
 
-  // Email gate: fire for session-restored phone users who still have no email.
+  // Phone users without email: open unified profile immediately (before coach).
   useEffect(() => {
     if (!user) return;
     if (!isOtpVerified) return;
-    if (user.email && user.email.trim()) return;   // has email � no gate needed
-    if (!user.id && !user.UserId) return;           // no userId � can't save
-    setShowEmailGate(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth change
+    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    if (!email) {
+      setShowCompleteProfile(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
   }, [user?.id, user?.email, isOtpVerified]);
 
-  // Physical activity gate: after email is set, require activity level once.
+  // Never leave My Profile / other sub-pages open while onboarding is in progress.
   useEffect(() => {
-    if (!user) return;
-    if (!isOtpVerified) return;
-    if (showEmailGate) return;
+    if (!onboardingBlocking) return;
+    setShowProfilePage(false);
+    setShowDashboard(false);
+    setShowNewUserProfileModal(false);
+  }, [onboardingBlocking]);
+
+  // Physical activity gate: immediately after unified profile, before coach/OTP/camera.
+  useEffect(() => {
+    if (!user || !isOtpVerified) {
+      setPhysicalActivityResolved(false);
+      return undefined;
+    }
+    if (showCompleteProfile || profileChecking) {
+      setPhysicalActivityResolved(false);
+      setShowPhysicalActivitySetup(false);
+      return undefined;
+    }
     const email = (user.email && user.email.trim()) || Session.getUserEmail();
-    if (!email) return;
+    if (!email) {
+      setPhysicalActivityResolved(false);
+      return undefined;
+    }
 
     let cancelled = false;
+    setPhysicalActivityResolved(false);
     (async () => {
       try {
         const { data } = await fetchProfile(email);
-        if (!cancelled && data && !data.physicalActivityLevel) {
+        if (cancelled) return;
+        if (data && !data.physicalActivityLevel) {
           setShowPhysicalActivitySetup(true);
-        } else if (!cancelled) {
+        } else {
           setShowPhysicalActivitySetup(false);
         }
       } catch {
-        /* non-fatal */
+        // Fail closed for new onboarding: ask for activity rather than skipping to coach/camera.
+        if (!cancelled) setShowPhysicalActivitySetup(true);
+      } finally {
+        if (!cancelled) setPhysicalActivityResolved(true);
       }
     })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only fire on user/auth/email-gate change
-  }, [user?.id, user?.email, isOtpVerified, showEmailGate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: after profile gate
+  }, [user?.id, user?.email, isOtpVerified, showCompleteProfile, profileChecking]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -1262,15 +1247,9 @@ function WellnessValleyApp() {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
-    // Wait until new-user onboarding is complete: email → coach setup → profile → activity level
-    const onboardingActive =
-      showSetupWizard ||
-      showValidateOTP ||
-      showEmailGate ||
-      showPhysicalActivitySetup ||
-      showCompleteProfile ||
-      profileChecking;
-    if (onboardingActive) return;
+    // Wait until onboarding is fully done:
+    // profile → physical activity → coach selection → coach OTP → then camera.
+    if (onboardingBlocking) return;
 
     let cancelled = false;
     const tryOpen = () => {
@@ -1301,12 +1280,7 @@ function WellnessValleyApp() {
     user,
     permissionsReady,
     isUserActive,
-    showSetupWizard,
-    showValidateOTP,
-    showEmailGate,
-    showPhysicalActivitySetup,
-    showCompleteProfile,
-    profileChecking,
+    onboardingBlocking,
     _launchUrlCheckedRef,
   ]);
 
@@ -1324,10 +1298,10 @@ function WellnessValleyApp() {
       setShowLaunchOverlay(false);
       return;
     } // signed out
-    if (showCompleteProfile) {
+    if (onboardingBlocking) {
       setShowLaunchOverlay(false);
       return;
-    } // profile gate
+    } // onboarding bridge / wizards
     if (!isUserActive) {
       setShowLaunchOverlay(false);
       return;
@@ -1337,7 +1311,13 @@ function WellnessValleyApp() {
       setShowLaunchOverlay(false);
       return;
     } // setup wizard
-  }, [showLaunchOverlay, authLoading, user, showCompleteProfile, isUserActive]);
+  }, [
+    showLaunchOverlay,
+    authLoading,
+    user,
+    onboardingBlocking,
+    isUserActive,
+  ]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
@@ -1453,6 +1433,7 @@ function WellnessValleyApp() {
               open: true,
               captureId: share.captureId,
               imageBase64: share.imageBase64,
+              createdAt: share.createdAt ?? null,
               canMutate: !!share.canMutate,
               retrying: false,
               error: null,
@@ -1549,43 +1530,6 @@ function WellnessValleyApp() {
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
-
-  // Pre-capture the weight share image in the background as soon as the result
-  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
-  // IMPORTANT: idealWeight and weightDiff are in the dep array so the cache is
-  // invalidated and re-captured after the async profile / history API calls
-  // resolve. Without them the timer fires before those values arrive, producing
-  // a cached image that silently omits the ideal-weight strip and the
-  // vs-previous row.
-  //
-  // The 900 ms timeout acts as a debounce: weightResult, weightDiff, and
-  // idealWeight all arrive at different times (~0 ms, ~500 ms, ~800 ms after
-  // the save). Each new arrival cancels the previous timer via the cleanup
-  // function, so exactly ONE html2canvas render fires ? 900 ms after the last
-  // dependency settles ? with all three values present in the DOM.
-  useEffect(() => {
-    cachedWeightShareDataUrlRef.current = null;
-    if (imageType !== "weight" || !weightResult || !imagePreview) return;
-    let cancelled = false;
-    const t = setTimeout(() => {
-      if (!weightAnalysisShareRef.current) return;
-      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
-        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
-      });
-    }, 900);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [
-    imageType,
-    weightResult,
-    imagePreview,
-    savedProfileImage,
-    sharePhotoBase64,
-    idealWeight,
-    weightDiff,
-  ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1902,8 +1846,8 @@ function WellnessValleyApp() {
     if (leaderboardRef.current) {
       leaderboardRef.current.refresh();
     }
-    if (disciplineLeaderboardRef.current) {
-      disciplineLeaderboardRef.current.refresh();
+    if (wellnessLeaderboardRef.current) {
+      wellnessLeaderboardRef.current.refresh();
     }
   }, []);
 
@@ -1938,11 +1882,7 @@ function WellnessValleyApp() {
       setImagePreview(null);
       setWatchResult(null);
       setEducationResult(null);
-      setWeightResult(null);
-      setPendingWeightImage(null);
-      setWeightEntrySaved(false);
-      setSavedWeightId(null);
-      savedWeightIdRef.current = null;
+      clearWeightState();
       setSelectedImage(null);
       setImageType(null);
 
@@ -2004,11 +1944,7 @@ function WellnessValleyApp() {
     setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
-    setWeightResult(null);
-    setPendingWeightImage(null);
-    setWeightEntrySaved(false);
-    setSavedWeightId(null);
-    savedWeightIdRef.current = null;
+    clearWeightState();
     setEducationResult(null);
     setWatchResult(null);
     setNutritionData(null);
@@ -2048,6 +1984,11 @@ function WellnessValleyApp() {
   //   � tab switch from another sub-page ? replaceState (keeps back ? Home clean)
   //   � go Home from sub-page ? history.back() (pops the sub-page entry)
   const navigateTo = useCallback((targetPage) => {
+    // Onboarding owns the screen — do not open Profile / Diary / etc mid-wizard.
+    if (onboardingBlockingRef.current && targetPage !== 'home') {
+      return;
+    }
+
     const currentWvPage = window.history.state?.wvPage;
     const isOnSubPage = currentWvPage && currentWvPage !== 'main';
 
@@ -2086,7 +2027,8 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowReports(false);
         setShowWellnessScoreSetup(false);
-      setShowWellnessScore(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
@@ -2213,6 +2155,14 @@ function WellnessValleyApp() {
         const { granted: alreadyGranted } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
+        if (type === 'location') {
+          const gpsOn = await nativeLifecycle.checkGpsEnabled();
+          if (!gpsOn) {
+            setShowGpsRequired(true);
+            return;
+          }
+        }
+
         // Not granted � request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
@@ -2246,6 +2196,24 @@ function WellnessValleyApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Background location cache: keep latest GPS + club/city ready so photo
+  // capture never waits on a spinner for geolocation.
+  useEffect(() => {
+    if (!user || !permissionsReady || !isUserActive || !apiBaseUrl) {
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const uid = user?.id || (await getUserId(user).catch(() => null));
+      if (cancelled || !uid) return;
+      await startUserLocationCache({ apiBaseUrl, userId: uid });
+    })();
+    return () => {
+      cancelled = true;
+      stopUserLocationCache();
+    };
+  }, [user, permissionsReady, isUserActive, apiBaseUrl]);
+
   /**
    * Called when user taps "Allow Again" in PermissionDeniedModal.
    *
@@ -2260,6 +2228,15 @@ function WellnessValleyApp() {
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
     try {
+      if (type === 'location') {
+        const gpsOn = await nativeLifecycle.checkGpsEnabled();
+        if (!gpsOn) {
+          setActivePermission(null);
+          setShowGpsRequired(true);
+          return;
+        }
+      }
+
       const { granted } = await PermissionManager.requestPermission(type);
       if (granted) {
         setActivePermission(null);
@@ -2619,14 +2596,6 @@ function WellnessValleyApp() {
         setShowCompleteProfile(false);
         // Profile fields complete � check picture gate separately
         if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-        // Force goal mode setup if user has never set it
-        if (
-          result.data?.weightGoalMode === null ||
-          result.data?.weightGoalMode === undefined
-        ) {
-          setGoalModePromptEmail(userEmail);
-          setShowGoalModePrompt(true);
-        }
         return;
       }
 
@@ -2651,6 +2620,17 @@ function WellnessValleyApp() {
     [apiBaseUrl],
   );
   // -------------------------------------------------------------------------
+
+  // Email users: run profile completeness as the first gate (before activity / coach).
+  useEffect(() => {
+    if (!user) return;
+    if (!isOtpVerified) return;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    if (!email) return;
+    // Always ask the API — session "complete" flags may be stale after new required fields (gender/photo).
+    checkProfileCompletion(email, user, { silent: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: user/auth only
+  }, [user?.id, user?.email, isOtpVerified, checkProfileCompletion]);
 
   // -- Profile Picture Validation ------------------------------------------
   // Checks if user has a valid profile picture (not a letter avatar)
@@ -2880,13 +2860,9 @@ function WellnessValleyApp() {
           sessionStorage.getItem("freshGoogleSignIn") === "true";
 
         if (!isFreshSignIn) {
-          // Fast path for returning users: surface home screen (and camera)
-          // immediately � identical to the OTP synchronous cache restore.
-          // Status/setup/profile checks run in the background; modals
-          // (inactive, setup wizard, profile gate) appear when needed but
-          // never block the initial paint or the camera auto-open.
-          // This eliminates the white screen between native splash dismiss
-          // and the camera opening for Google/Firebase returning users.
+          // Fast path for returning users: surface home immediately.
+          // Profile completeness runs here; physical activity → coach → OTP
+          // are sequenced by dedicated effects so camera never opens mid-onboarding.
           setUser(user);
           setAuthLoading(false);
 
@@ -2898,97 +2874,18 @@ function WellnessValleyApp() {
             if (!isActive) return; // inactive/not-found modal already triggered
 
             if (!userEmail) return;
-            debugLog("?? [Auth State] Checking setup wizard status...");
+            debugLog("?? [Auth State] Checking profile completeness (coach setup deferred to sequenced gate)...");
 
             // Check if user manually skipped setup (localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
               debugLog(
                 "?? [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // silent:true � Gate 3 (profileChecking spinner) must not fire
-              // when running from a background context after home screen is shown.
-              await checkProfileCompletion(userEmail, user, { silent: true });
-              return;
             }
 
-            try {
-              // Phase 3b: HTTP + response mapping moved into
-              // shared/services/auth/userSetup (`fetchSetupStatus`).
-              const status = await fetchSetupStatus({
-                apiBaseUrl,
-                email: userEmail,
-              });
-
-              // Phase 3d-a: Observe in shadow FSM (no behaviour change).
-              authFsm.send({
-                type: authFsm.E.SETUP_STATUS_RESOLVED,
-                result: status.result,
-                isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
-                coachOtpVerified: Session.isCoachOtpVerified(),
-              });
-
-              if (status.result === "error") {
-                console.warn(
-                  "?? [Auth State] Setup status check failed",
-                  status.error,
-                );
-              } else if (status.result === "skipped") {
-                debugLog(
-                  "?? [Auth State] User skipped setup (database), bypassing wizard",
-                );
-                Session.markSetupSkipped();
-                await checkProfileCompletion(userEmail, user, { silent: true });
-              } else if (status.result === "pendingOtp") {
-                if (Session.isCoachOtpVerified()) {
-                  debugLog(
-                    "? [Auth State] Coach OTP already verified (localStorage), skipping modal",
-                  );
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else if (
-                  (userEmail || "").toLowerCase().trim() === DEMO_EMAIL
-                ) {
-                  debugLog(
-                    "?? [Auth State] Demo account pending OTP � completing silently",
-                  );
-                  await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else if (!isInactiveReactivationFlowRef.current) {
-                  debugLog(
-                    "?? [Auth State] Pending OTP detected, showing OTP modal",
-                  );
-                  setShowValidateOTP(true);
-                }
-              } else if (status.result === "incomplete") {
-                if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  debugLog(
-                    "?? [Auth State] Demo account setup incomplete � completing silently",
-                  );
-                  await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user, {
-                    silent: true,
-                  });
-                } else {
-                  debugLog(
-                    "?? [Auth State] Setup incomplete, showing setup wizard",
-                  );
-                  setShowSetupWizard(true);
-                }
-              } else {
-                // status.result === "complete"
-                debugLog("? [Auth State] Setup already complete");
-                await checkProfileCompletion(userEmail, user, { silent: true });
-              }
-            } catch (setupError) {
-              console.warn(
-                "?? [Auth State] Failed to check setup status:",
-                setupError,
-              );
-              // Continue without blocking � setup check is not critical
-            }
+            // Always profile first. Coach selection / OTP are owned by the
+            // setup-check effect which waits for physical activity to finish.
+            await checkProfileCompletion(userEmail, user, { silent: true });
           })();
           return; // Skip fall-through setUser/setAuthLoading � already called above
         } else {
@@ -3251,6 +3148,7 @@ function WellnessValleyApp() {
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          refreshUserLocationCache();
           // Guard: skip while CompleteProfilePage is visible. Returning from
           // camera/gallery triggers this listener; re-running checkProfileCompletion
           // would set profileChecking=true, unmounting the form and discarding
@@ -3327,7 +3225,8 @@ function WellnessValleyApp() {
           const gpsOn = await nativeLifecycle.checkGpsEnabled();
           if (!cancelled && gpsOn) {
             setShowGpsRequired(false);
-            setPermissionsReady(true);
+            _permissionFlowRunningRef.current = false;
+            await advancePermissionFlow();
           }
           return;
         }
@@ -3363,116 +3262,90 @@ function WellnessValleyApp() {
   // Re-register when any of these change so the handler has fresh closure values.
   }, [user, showGpsRequired, activePermission, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Check setup wizard status whenever user is set/updated
-  useEffect(() => {
-    const checkSetupStatus = async () => {
-      if (!user || !isUserActive) return;
+  // Coach setup / OTP — only after profile + physical activity gates.
+  // Shared helper so onboarding screens can open the next gate in the same
+  // save handler (instant page switch — no interstitial loader).
+  const resolveCoachSetupStatus = useCallback(async (userEmail) => {
+    if (!userEmail || Session.isSetupSkipped()) {
+      if (userEmail && Session.isSetupSkipped()) Session.markSetupSkipped();
+      return;
+    }
+    try {
+      const status = await fetchSetupStatus({ apiBaseUrl, email: userEmail });
+      authFsm.send({
+        type: authFsm.E.SETUP_STATUS_RESOLVED,
+        result: status.result,
+        isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
+        coachOtpVerified: Session.isCoachOtpVerified(),
+      });
 
-      // Skip during inactive reactivation flow - ValidateOTP is managed by handleContactCoach
-      if (isInactiveReactivationFlow) return;
-
-      const userEmail = user.email || user.Email;
-      if (!userEmail) return;
-
-      debugLog(
-        "?? [Setup Check] Checking setup wizard status for existing user...",
-      );
-
-      // Check if user manually skipped setup (check localStorage first for quick bypass)
-      if (Session.isSetupSkipped()) {
-        debugLog(
-          "?? [Setup Check] User skipped setup (localStorage), bypassing wizard",
-        );
-        return;
-      }
-
-      try {
-        // Phase 3b: HTTP + response mapping moved into
-        // shared/services/auth/userSetup (`fetchSetupStatus`).
-        const status = await fetchSetupStatus({ apiBaseUrl, email: userEmail });
-
-        // Phase 3d-a: Observe in shadow FSM (no behaviour change).
-        authFsm.send({
-          type: authFsm.E.SETUP_STATUS_RESOLVED,
-          result: status.result,
-          isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
-          coachOtpVerified: Session.isCoachOtpVerified(),
-        });
-
-        if (status.result === "error") {
-          console.warn(
-            "?? [Setup Check] Setup status check failed",
-            status.error,
-          );
-        } else if (status.result === "skipped") {
-          debugLog(
-            "?? [Setup Check] User skipped setup (database), bypassing wizard",
-          );
-          Session.markSetupSkipped();
-          // Profile completion must still run even when setup is skipped, so that
-          // a user who dismissed the wizard but has missing profile fields sees the gate.
-          await checkProfileCompletion(userEmail, null, { silent: true });
-          setTimeout(() => checkProfilePicture(user), 800);
-          return;
-        } else if (status.result === "pendingOtp") {
-          if (Session.isCoachOtpVerified()) {
-            debugLog(
-              "? [Setup Check] Coach OTP already verified (localStorage), skipping modal",
-            );
-            await checkProfileCompletion(userEmail, null, { silent: true });
-            setTimeout(() => checkProfilePicture(user), 800);
-          } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            debugLog(
-              "?? [Setup Check] Demo account pending OTP ? completing silently",
-            );
-            await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail, null, { silent: true });
-            setTimeout(() => checkProfilePicture(user), 800);
-          } else if (!isInactiveReactivationFlowRef.current) {
-            debugLog(
-              "?? [Setup Check] Pending OTP detected, showing OTP modal",
-            );
-            setShowValidateOTP(true);
-          }
-        } else if (status.result === "incomplete") {
-          if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            debugLog(
-              "?? [Setup Check] Demo account setup incomplete ? completing silently",
-            );
-            await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail, null, { silent: true });
-            setTimeout(() => checkProfilePicture(user), 800);
-          } else {
-            debugLog("?? [Setup Check] Setup incomplete, showing setup wizard");
-            setShowSetupWizard(true);
-          }
-        } else {
-          // status.result === "complete"
-          debugLog("? [Setup Check] Setup already complete");
-          await checkProfileCompletion(userEmail, null, { silent: true });
-          setTimeout(() => checkProfilePicture(user), 800);
+      if (status.result === "skipped") {
+        Session.markSetupSkipped();
+      } else if (status.result === "pendingOtp") {
+        if (Session.isCoachOtpVerified()) {
+          /* already verified */
+        } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+          await silentlyCompleteDemoSetup(userEmail);
+        } else if (!isInactiveReactivationFlowRef.current) {
+          setShowValidateOTP(true);
         }
-      } catch (setupError) {
-        console.warn(
-          "?? [Setup Check] Failed to check setup status:",
-          setupError,
-        );
+      } else if (status.result === "incomplete") {
+        if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+          await silentlyCompleteDemoSetup(userEmail);
+        } else {
+          setShowSetupWizard(true);
+        }
       }
-    };
+    } catch (setupError) {
+      console.warn("?? [Setup Check] Failed to check setup status:", setupError);
+    }
+  }, [apiBaseUrl]);
 
-    // Run check after a short delay to ensure auth is fully complete
-    const timeoutId = setTimeout(() => {
-      checkSetupStatus();
-    }, 1000);
+  useEffect(() => {
+    if (!user || !isUserActive || isInactiveReactivationFlow) {
+      return undefined;
+    }
+    if (showCompleteProfile || profileChecking) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
+    if (!physicalActivityResolved || showPhysicalActivitySetup) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
 
-    return () => clearTimeout(timeoutId);
+    const userEmail = user.email || user.Email;
+    if (!userEmail) {
+      setCoachSetupResolved(false);
+      return undefined;
+    }
+
+    // Already showing coach UI from an eager onComplete handoff — don't flicker.
+    if (showSetupWizard || showValidateOTP) {
+      setCoachSetupResolved(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCoachSetupResolved(false);
+
+    (async () => {
+      await resolveCoachSetupStatus(userEmail);
+      if (!cancelled) setCoachSetupResolved(true);
+    })();
+
+    return () => { cancelled = true; };
   }, [
     user,
     isUserActive,
-    apiBaseUrl,
-    checkProfileCompletion,
-    checkProfilePicture,
     isInactiveReactivationFlow,
+    showCompleteProfile,
+    profileChecking,
+    physicalActivityResolved,
+    showPhysicalActivitySetup,
+    showSetupWizard,
+    showValidateOTP,
+    resolveCoachSetupStatus,
   ]);
 
   // ? PERFORMANCE: Preload user context when user logs in (warm the cache)
@@ -3539,16 +3412,17 @@ function WellnessValleyApp() {
   useEffect(() => {
     const email = user?.email || user?.Email;
     if (!email) return;
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
     const cached = getCachedProfileUserName(email);
-    if (cached) {
+    if (hasValidProfileName(cached, { email, phoneNumber })) {
       setSavedUserName((prev) => (prev?.trim() ? prev : cached));
       return;
     }
     const authName = (user?.username || user?.userName || '').trim();
-    if (authName) {
+    if (hasValidProfileName(authName, { email, phoneNumber })) {
       setSavedUserName((prev) => (prev?.trim() ? prev : authName));
     }
-  }, [user?.email, user?.Email, user?.username, user?.userName]);
+  }, [user?.email, user?.Email, user?.username, user?.userName, user?.phoneNumber, user?.PhoneNumber]);
 
   useEffect(() => {
     const email = user?.email || user?.Email;
@@ -3556,6 +3430,7 @@ function WellnessValleyApp() {
       setSavedProfileImage(null);
       return undefined;
     }
+    const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
     const { signal, cancel } = createAbortGroup();
     // Use standard caching ? no need to bust cache on every render
     fetch(
@@ -3568,22 +3443,24 @@ function WellnessValleyApp() {
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
-        if (data?.success && data?.data?.userName) {
-          setSavedUserName(data.data.userName);
-          cacheProfileUserName(email, data.data.userName);
+        const profileName = data?.success ? data?.data?.userName : null;
+        const profilePhone = data?.data?.phoneNumber || phoneNumber;
+        if (hasValidProfileName(profileName, { email, phoneNumber: profilePhone })) {
+          setSavedUserName(profileName);
+          cacheProfileUserName(email, profileName);
         } else {
           const cached = getCachedProfileUserName(email);
-          setSavedUserName(cached);
+          setSavedUserName(hasValidProfileName(cached, { email, phoneNumber: profilePhone }) ? cached : null);
         }
       })
       .catch((err) => {
         if (isAbortError(err)) return;
         setSavedProfileImage(null);
         const cached = getCachedProfileUserName(email);
-        setSavedUserName(cached);
+        setSavedUserName(hasValidProfileName(cached, { email, phoneNumber }) ? cached : null);
       });
     return cancel;
-  }, [user?.email, user?.Email, apiBaseUrl]);
+  }, [user?.email, user?.Email, user?.phoneNumber, user?.PhoneNumber, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -3696,537 +3573,62 @@ function WellnessValleyApp() {
    * Checks if user's weight moved in wrong direction (reverse progress)
    * and shows personalized tips if needed
    */
-  const triggerReverseProgressModal = async (userId, weightId) => {
-    if (!userId || !weightId) return;
-    try {
-      console.log(
-        "?? [triggerReverseProgressModal] Checking progress for userId:",
-        userId,
-        "weightId:",
-        weightId,
-      );
-      const result = await weightProgressCheck.checkProgress(userId, weightId);
-      console.log("?? [triggerReverseProgressModal] Result:", result);
-      if (result?.shouldShow) {
-        console.log("? [triggerReverseProgressModal] Showing modal");
-        setShowWeightProgressModal(true);
-      }
-    } catch (err) {
-      console.error("? Error checking weight progress:", err);
-    }
-  };
+  // Weight capture state + save pipeline (hooks/useWeightCapture.js)
+  const {
+    weightResult, setWeightResult,
+    savedWeightId, setSavedWeightId, savedWeightIdRef,
+    weightDiff, setWeightDiff,
+    showWeightCelebration, setShowWeightCelebration, weightCelebrationMessage,
+    weightEntrySaved, setWeightEntrySaved,
+    pendingWeightImage, setPendingWeightImage,
+    showWeightProgressModal, setShowWeightProgressModal,
+    weightProgressCheck,
+    lastWeight,
+    isEditingWeight, setIsEditingWeight,
+    editWeightValue, setEditWeightValue,
+    isSavingWeightEdit, weightEditError,
+    showDuplicateWeightModal, setShowDuplicateWeightModal,
+    duplicateWeightInfo, setDuplicateWeightInfo,
+    pendingWeightSaveData, setPendingWeightSaveData,
+    saveWeightEntry, performWeightSave, handleWeightEditSave, fetchLastWeight,
+    clearWeightState,
+  } = useWeightCapture({
+    user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
+    setAlertModal, setSaveLoading, setLoadingState,
+    setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+  });
 
-  /**
-   * Perform actual weight save to database (called after duplicate check)
-   */
-  const performWeightSave = async (
-    weightData,
-    imageBase64,
-    cachedUserId = null,
-    captureTimestamp = null,
-  ) => {
-    console.log("?? [performWeightSave] FUNCTION CALLED with:", {
-      weightValue: weightData.weightValue,
-      unit: weightData.unit,
-      hasCachedUserId: !!cachedUserId,
-      hasCaptureTimestamp: !!captureTimestamp,
-    });
+  // Ref-sync: keep weightResultRef current so mount-only resume listener can
+  // read the latest value without stale closure.
+  useEffect(() => {
+    weightResultRef.current = weightResult;
+  }, [weightResult]);
 
-    try {
-      // Use cached userId if provided, otherwise get it
-      let userId = cachedUserId || user?.id;
-      console.log("?? [performWeightSave] Step 1: Getting userId...", {
-        cachedUserId,
-        hasUser: !!user,
+  // Pre-capture the weight share image in the background as soon as the result
+  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
+  useEffect(() => {
+    cachedWeightShareDataUrlRef.current = null;
+    if (imageType !== "weight" || !weightResult || !imagePreview) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!weightAnalysisShareRef.current) return;
+      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
+        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
       });
-
-      if (!userId) {
-        userId = await getUserId(user);
-        console.log("?? [performWeightSave] userId fetched:", userId);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      console.log("?? [performWeightSave] Step 2: Building payload...");
-
-      const payload = {
-        userId,
-        weightValue: weightData.weightValue,
-        unit: weightData.unit,
-        bmi: weightData.bmi,
-        bodyFat: weightData.bodyFat,
-        muscleMass: weightData.muscleMass,
-        bmr: weightData.bmr,
-        imageBase64ToSave: imageBase64,
-        // Use EXIF capture timestamp if available ? otherwise fall back to upload time
-        clientTimestamp: captureTimestamp || new Date().toISOString(),
-        clientTimezoneOffset: new Date().getTimezoneOffset(),
-        // PR 6 � link the weight record to its captures_table row so the backend
-        // can promote the capture pending ? weight in the same request.
-        // `share.id` now semantically IS the CaptureID (the speculative food-row
-        // pre-insert was removed). Undefined when no share was created (e.g. the
-        // background-analysis worker bypassed share creation).
-        captureId: foodCaptureIdRef.current || undefined,
-      };
-
-      console.log("?? [performWeightSave] Step 3: Capturing GPS location...");
-
-      const { permissionDenied: gpsDenied, ...locationFields } =
-        await resolveLocationFields(apiBaseUrl, userId);
-      if (gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
-      }
-      Object.assign(payload, locationFields);
-
-      console.log(
-        "?? [performWeightSave] GPS location captured, payload ready",
-      );
-
-      // ? REMOVED: Don't reuse weight entry IDs - always create new records
-      // This allows multiple weight entries per day with different timestamps
-      // if (savedWeightIdRef.current) {
-      //   payload.entryId = savedWeightIdRef.current;
-      //   debugLog("?? Reusing existing weight entry ID:", savedWeightIdRef.current);
-      // }
-
-      // debugLog('?? Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
-
-      console.log(
-        "?? [performWeightSave] Step 4: Calling API /api/weight/save...",
-      );
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      console.log("?? [performWeightSave] API response received:", {
-        ok: response.ok,
-        status: response.status,
-        success: data.success,
-        hasData: !!data.data,
-        hasCorrection: !!data.correction,
-      });
-
-      if (!response.ok || !data.success) {
-        debugLog("? Weight save failed:", {
-          status: response.status,
-          validation: data.validation,
-          message: data.message,
-        });
-
-        // Even though weight was rejected, BMR may have been saved by the backend.
-        // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
-        if (data.bmrSaved || data.data?.bmr) {
-          debugLog(
-            "?? [BMR] Weight rejected but BMR was saved � triggering re-fetch:",
-            data.data?.bmr,
-          );
-          setBmrUpdateKey((prev) => prev + 1);
-        }
-
-        // Distinguish a server/infrastructure failure (5xx) from a business validation
-        // failure (400/422). Showing "Unrealistic Weight Change" for a DB outage is
-        // misleading and confusing for the user.
-        if (response.status >= 500) {
-          setAlertModal({
-            isOpen: true,
-            title: "?? Couldn't Save Your Weight",
-            message:
-              "We couldn't save your weight entry right now. Please try again in a moment.",
-            type: "error",
-          });
-        } else {
-          // Validation failure � build a friendly, supportive message
-          let alertMessage = `We noticed a significant change from your last weigh-in.`;
-          if (data.validation && data.message) {
-            const detail =
-              data.message.charAt(0).toUpperCase() + data.message.slice(1);
-            alertMessage = detail;
-          }
-          setAlertModal({
-            isOpen: true,
-            title: "?? Unrealistic Weight Change",
-            message: alertMessage,
-            type: "warning",
-          });
-        }
-
-        // Clear loading states
-        setSaveLoading(false);
-        setLoadingState("idle");
-
-        // Throw so the caller knows the save failed
-        throw new Error(data.message || "Weight save failed");
-      }
-
-      debugLog("? Weight entry saved successfully");
-
-      // ? Update weight result with final saved weight (may be corrected by backend)
-      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
-      const finalSavedWeight =
-        data.data?.weightValue ||
-        data.correction?.correctedWeight ||
-        weightData.weightValue;
-      const corrInfo = data.correction || null;
-      console.log("?? [DEBUG] Updating weightResult with final saved weight:", {
-        finalSavedWeight,
-        wasCorrected: !!corrInfo?.wasCorrected,
-        corrInfo,
-      });
-
-      // Update weightResult with final backend value (overwrites the pre-save value set earlier)
-      setWeightResult((prev) => ({
-        ...prev,
-        weightValue: finalSavedWeight,
-        originalWeight: corrInfo?.originalWeight || weightData.weightValue,
-        loggedAt: captureTimestamp || new Date().toISOString(),
-      }));
-
-      // Fetch previous weight to show "vs Previous entry" diff immediately
-      try {
-        const histRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const histData = await histRes.json();
-        console.log("?? [celebration] Weight history data:", {
-          success: histData.success,
-          hasPrevious: !!histData.stats?.previousWeight,
-          previousWeight: histData.stats?.previousWeight?.value,
-          latestWeight: histData.stats?.latestWeight?.value,
-          finalSavedWeight,
-        });
-
-        if (histData.success && histData.stats?.previousWeight) {
-          const prevWeight = parseFloat(histData.stats.previousWeight.value);
-          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          const latestDate = histData.stats.latestWeight?.date;
-          const prevDate = histData.stats.previousWeight.date;
-          const isDifferentDay =
-            latestDate &&
-            prevDate &&
-            getISTDateStr(latestDate) !== getISTDateStr(prevDate);
-
-          console.log("?? [celebration] Weight comparison:", {
-            prevWeight,
-            finalSavedWeight,
-            weightChange,
-            isDifferentDay,
-            latestDate,
-            prevDate,
-          });
-
-          // Safety guard: only show diff if previous entry is from a different IST calendar date
-          if (isDifferentDay) {
-            setWeightDiff({
-              previous: Math.round(prevWeight * 100) / 100,
-              previousDate: prevDate,
-              change: Math.round(weightChange * 100) / 100,
-            });
-          } else {
-            setWeightDiff(null);
-          }
-
-          // ?? Trigger celebration if weight loss detected (at least 0.1 kg)
-          // CELEBRATION TRIGGERS REGARDLESS OF DATE - we celebrate ANY progress!
-          if (weightChange < -0.1) {
-            const lossAmount = Math.abs(weightChange).toFixed(1);
-            setWeightCelebrationMessage(
-              `You lost ${lossAmount} kg! Keep it up! ??`,
-            );
-            setShowWeightCelebration(true);
-            console.log(
-              "?? [celebration] TRIGGERING celebration! Weight loss:",
-              lossAmount,
-              "kg",
-            );
-            debugLog(
-              "?? [celebration] Weight loss detected, triggering celebration:",
-              lossAmount,
-            );
-          } else {
-            console.log(
-              "?? [celebration] No celebration - weight change:",
-              weightChange,
-              "kg (need < -0.1)",
-            );
-          }
-        } else {
-          console.log(
-            "?? [celebration] No celebration - no previous weight found",
-          );
-          setWeightDiff(null);
-        }
-      } catch (histErr) {
-        console.error(
-          "? [celebration] Failed to fetch weight history:",
-          histErr,
-        );
-        /* non-critical */
-      }
-
-      // Fetch user height ? compute ideal weight for the share card
-      refreshIdealWeight();
-
-      // Check if weight was auto-corrected
-      if (corrInfo && corrInfo.wasCorrected) {
-        // Show custom alert modal about auto-correction with user-friendly message
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "? Weight Adjusted",
-            message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
-            type: "info",
-          });
-        }, 500);
-
-        debugLog("?? Weight auto-corrected:", corrInfo);
-      } else if (corrInfo && corrInfo.message) {
-        // Weight changed significantly but within limits � only surface if notable
-        const change = Math.abs(corrInfo.difference || 0);
-        if (change > 1.5) {
-          setTimeout(() => {
-            setAlertModal({
-              isOpen: true,
-              title: "?? Weight Updated",
-              message: `Your weight changed by ${change.toFixed(
-                1,
-              )} kg. Keep up the great work!`,
-              type: "info",
-            });
-          }, 500);
-        }
-      }
-
-      // Store the saved entry ID for potential editing
-      if (data?.id) {
-        setSavedWeightId(data.id);
-        savedWeightIdRef.current = data.id;
-      }
-
-      // BMR synced to team_table by the backend (calculated or preserved)
-      const savedBmr = data.data?.bmr;
-      if (savedBmr) {
-        setBmrUpdateKey((prev) => prev + 1);
-        debugLog(
-          "?? [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:",
-          savedBmr,
-        );
-      }
-
-      // Hide saving overlay
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Show success popup (similar to nutrition save)
-      setError(null);
-
-      // Background refresh to pick up other users' data from server
-      setTimeout(() => {
-        handleLeaderboardRefresh();
-      }, 3000);
-
-      const savedId = savedWeightIdRef.current || data?.id || null;
-      await triggerReverseProgressModal(userId, savedId);
-
-      // Keep imagePreview and selectedImage visible (like food images)
-      // Don't reset them here
-    } catch (err) {
-      console.error("? Save weight error:", err);
-      setSaveLoading(false);
-      setLoadingState("idle");
-
-      // Weight validation errors are already shown via alertModal ? don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        setError(err.message || "Failed to save weight entry");
-      }
-      throw err;
-    }
-  };
-
-  /**
-   * Save weight entry to database with duplicate check
-   */
-  /**
-   * UPDATE the already-saved weight entry with the edited value.
-   * Only called after the initial auto-save has completed (savedWeightId is set).
-   */
-  const handleWeightEditSave = async () => {
-    const val = parseFloat(editWeightValue);
-    if (isNaN(val) || val < 20 || val > 300) {
-      setWeightEditError("Weight must be between 20 and 300 kg");
-      return;
-    }
-    setIsSavingWeightEdit(true);
-    setWeightEditError("");
-    try {
-      let userId = user?.id;
-      if (!userId) userId = await getUserId(user);
-
-      // Build payload ? include entryId to update the specific weight entry.
-      // If no entryId, backend will create a new entry instead of updating.
-      const payload = {
-        userId,
-        weightValue: val,
-        unit: weightResult?.unit || "kg",
-      };
-      const currentEntryId = savedWeightIdRef.current;
-      if (currentEntryId) payload.entryId = currentEntryId;
-
-      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        // Show the same friendly alert modal as photo upload validation
-        if (result.validation) {
-          setIsEditingWeight(false);
-          setAlertModal({
-            isOpen: true,
-            title: "?? Unrealistic Weight Change",
-            message: result.message
-              ? result.message.charAt(0).toUpperCase() + result.message.slice(1)
-              : `We noticed a significant change from your last weigh-in.`,
-            type: "warning",
-          });
-        }
-        throw new Error(result.message || "Failed to update");
-      }
-
-      // Keep the ref in sync with whichever row was actually updated
-      if (result?.id) {
-        setSavedWeightId(result.id);
-        savedWeightIdRef.current = result.id;
-      }
-
-      setWeightResult((prev) => ({ ...prev, weightValue: val }));
-      setIsEditingWeight(false);
-      // Refresh diff after manual edit
-      try {
-        let diffUserId = user?.id || (await getUserId(user));
-        const diffRes = await fetch(
-          `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
-        );
-        const diffData = await diffRes.json();
-        if (diffData.success && diffData.stats?.previousWeight) {
-          const prevWeight = parseFloat(diffData.stats.previousWeight.value);
-          const weightChange = val - prevWeight;
-          // Always compare against the immediately previous entry � same day is fine
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
-        }
-      } catch (_) {
-        /* non-critical */
-      }
-      // Refresh ideal weight in case the user updated their height in profile
-      refreshIdealWeight();
-
-      // ? Check for reverse weight progress after an edit-save too
-      const editWeightId = savedWeightIdRef.current || result?.id || null;
-      await triggerReverseProgressModal(userId, editWeightId);
-    } catch (err) {
-      setWeightEditError(err.message || "Failed to save");
-    } finally {
-      setIsSavingWeightEdit(false);
-    }
-  };
-
-  const saveWeightEntry = async (
-    weightData,
-    imageBase64,
-    captureTimestamp = null,
-  ) => {
-    try {
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
-
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      // Check for duplicate weight before saving (fail-safe: proceed if check fails)
-      try {
-        const duplicateCheck =
-          await duplicateDetectionService.checkForDuplicateWeight({
-            userId: userId,
-            weightValue: weightData.weightValue,
-            unit: weightData.unit || "kg",
-          });
-
-        if (false && duplicateCheck.isDuplicate) {
-          // Found duplicate - hide saving overlay and show confirmation modal
-          // debugLog('?? Duplicate weight detected:', duplicateCheck);
-          setSaveLoading(false); // Hide saving overlay while showing duplicate modal
-          setLoadingState("idle");
-          setDuplicateWeightInfo(duplicateCheck);
-          setPendingWeightSaveData({
-            weightData: weightData,
-            imageBase64: imageBase64,
-            userId: userId, // Cache userId for later use
-            captureTimestamp: captureTimestamp, // Preserve EXIF timestamp through duplicate flow
-          });
-          setShowDuplicateWeightModal(true);
-          return; // Stop here to wait for user confirmation
-        }
-      } catch (duplicateCheckErr) {
-        // If duplicate check fails, log it but continue with save (fail-open)
-        console.warn(
-          "?? Duplicate check failed, proceeding with save:",
-          duplicateCheckErr,
-        );
-      }
-
-      // No duplicate or duplicate check failed - proceed with save (pass cached userId)
-      await performWeightSave(
-        weightData,
-        imageBase64,
-        userId,
-        captureTimestamp,
-      );
-    } catch (err) {
-      console.error("? Save weight error:", err);
-      // Weight validation errors are already shown via alertModal � don't show the red error card
-      if (
-        !err.message?.toLowerCase().includes("weight validation") &&
-        !err.message?.toLowerCase().includes("unrealistic weight")
-      ) {
-        const rawMsg = err.message || "";
-        const isNetworkErr =
-          rawMsg.toLowerCase().includes("load failed") ||
-          rawMsg.includes("Failed to fetch") ||
-          rawMsg.includes("network") ||
-          rawMsg.includes("connection");
-        setError(
-          isNetworkErr
-            ? "?? Please check your internet connection (WiFi or mobile data) and try again."
-            : rawMsg || "Failed to save weight entry",
-        );
-      }
-      throw err;
-    }
-  };
+    }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    imageType,
+    weightResult,
+    imagePreview,
+    savedProfileImage,
+    sharePhotoBase64,
+    idealWeight,
+    weightDiff,
+  ]);
 
   /**
    * Handle manual weight entry from modal
@@ -4347,26 +3749,6 @@ function WellnessValleyApp() {
   };
 
   /** Fetch the user's most recent weight entry for the hint card */
-  const fetchLastWeight = async () => {
-    try {
-      let uid = user?.id;
-      if (!uid) uid = await getUserId(user);
-      if (!uid) return;
-      const res = await fetch(
-        `${apiBaseUrl}/api/weight/history?userId=${uid}&includeImage=false&_t=${Date.now()}`,
-      );
-      const data = await res.json();
-      if (data.success && data.stats?.latestWeight) {
-        setLastWeight({
-          value: data.stats.latestWeight.value,
-          unit: "kg",
-          date: data.stats.latestWeight.date,
-        });
-      }
-    } catch {
-      /* non-critical */
-    }
-  };
 
   /**
    * Handle manual food entry from modal (used when AI is unavailable)
@@ -4569,6 +3951,7 @@ function WellnessValleyApp() {
           captureId,
           viewerUserId: user.id,
           analysisResult,
+          originalCapturedAt: unknownShareView.createdAt ?? null,
         });
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Saved to your diary");
@@ -4659,6 +4042,7 @@ function WellnessValleyApp() {
         captureId,
         viewerUserId: user.id,
         analysisResult,
+        originalCapturedAt: unknownShareView.createdAt ?? null,
       });
       setShareEditView({ open: false, captureId: null });
       setUnknownShareView((v) => ({ ...v, open: false }));
@@ -4730,9 +4114,50 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // Resolve GPS + nutrition-center attendance fields in a single call.
-      const { permissionDenied: gpsDenied, ...locationFields } =
-        await resolveLocationFields(apiBaseUrl, userId);
+      // Resolve GPS + nutrition-center attendance. Prefer capture-time stash when present.
+      const captureIdForLoc = foodCaptureIdRef.current
+        ? String(foodCaptureIdRef.current)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
+      let locationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!locationFields.latitude || !locationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        locationFields = {
+          ...locationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+      } else {
+        console.warn('[EDU-SAVE-LOCATION]', {
+          status: 'success',
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+        });
+      }
       if (gpsDenied) {
         setAlertModal({
           isOpen: true,
@@ -5018,8 +4443,18 @@ function WellnessValleyApp() {
   };
 
   // Helper function to perform nutrition save
-  const performNutritionSave = async (saveData, { silent = false } = {}) => {
+  const performNutritionSave = async (
+    saveData,
+    {
+      silent = false,
+      captureId: boundCaptureId = null,
+      pendingSharePromise: boundPendingSharePromise = null,
+    } = {},
+  ) => {
     const saveStart = Date.now();
+    let resolvedCaptureId = boundCaptureId ?? foodCaptureIdRef.current;
+    const useGlobalCaptureRefs =
+      boundCaptureId == null && boundPendingSharePromise == null;
     try {
       debugLog("?? [App] Starting nutrition save:", {
         userId: saveData.userId,
@@ -5039,32 +4474,87 @@ function WellnessValleyApp() {
       // a fast Gemini response races ahead of a slow /captures network call
       // and captureId arrives as null ? the backend INSERTs a new row instead
       // of UPDATing the pre-created pending row ? two records in the DB.
-      if (pendingSharePromiseRef.current) {
-        const share = await pendingSharePromiseRef.current;
-        if (share && !foodCaptureIdRef.current) {
-          foodCaptureIdRef.current = share.id;
+      const pendingSharePromise =
+        boundPendingSharePromise ?? pendingSharePromiseRef.current;
+      if (pendingSharePromise) {
+        const share = await pendingSharePromise;
+        if (share && !resolvedCaptureId) {
+          resolvedCaptureId = share.id;
         }
-        pendingSharePromiseRef.current = null;
+        if (useGlobalCaptureRefs) {
+          pendingSharePromiseRef.current = null;
+        }
       }
       // Stage 9 � pendingSharePromise resolved (captureId now settled)
       _ctLog(9, 'pendingSharePromise settled', {
-        captureIdAfterSettle: foodCaptureIdRef.current ?? 'null',
-        pendingShareRefCleared: pendingSharePromiseRef.current == null,
+        captureIdAfterSettle: resolvedCaptureId ?? 'null',
+        pendingShareRefCleared: useGlobalCaptureRefs
+          ? pendingSharePromiseRef.current == null
+          : true,
       });
 
-      // Capture GPS location for every food photo � not just when inside a club.
-      // Raw lat/lng + city/village are always recorded; club fields added when nearby.
-      // Let determineAttendance finish (GPS up to 15 s + club lookup). Racing shorter
-      // Stage 10 — GPS started
+      // Prefer capture-time location (already on captures_table). Only re-resolve
+      // GPS when the first save had no coords — avoids missing club/city when the
+      // later domain save races or GPS fails the second time.
+      const captureIdForLoc = resolvedCaptureId
+        ? String(resolvedCaptureId)
+        : null;
+      const stashedLocation = captureIdForLoc
+        ? captureLocationByIdRef.current.get(captureIdForLoc)
+        : null;
       const _gpsStart = Date.now();
-      _ctLog(10, 'GPS started', {});
-      const { permissionDenied: gpsDenied, ...clubLocationFields } =
-        await resolveLocationFields(apiBaseUrl, saveData.userId);
+      _ctLog(10, 'GPS started', {
+        hasCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
+      });
+      let clubLocationFields = stashedLocation
+        ? stripLocationDiagnostics(stashedLocation)
+        : {};
+      let gpsDenied = false;
+      if (!clubLocationFields.latitude || !clubLocationFields.longitude) {
+        const resolved = await resolveLocationFields(apiBaseUrl, saveData.userId);
+        const {
+          permissionDenied,
+          locationStatus,
+          locationErrorCode,
+          locationErrorDetail,
+          locationLatencyMs,
+          geocodeOk,
+          ...fields
+        } = resolved;
+        gpsDenied = !!permissionDenied;
+        clubLocationFields = {
+          ...clubLocationFields,
+          ...stripLocationDiagnostics(fields),
+        };
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: locationStatus,
+          errorCode: locationErrorCode,
+          errorDetail: locationErrorDetail,
+          latencyMs: locationLatencyMs,
+          geocodeOk,
+          usedCaptureTimeLocation: false,
+          captureId: captureIdForLoc,
+        });
+        if (captureIdForLoc) {
+          captureLocationByIdRef.current.set(captureIdForLoc, { ...clubLocationFields });
+        }
+      } else {
+        console.warn('[FOOD-SAVE-LOCATION]', {
+          status: 'success',
+          errorCode: null,
+          errorDetail: null,
+          usedCaptureTimeLocation: true,
+          captureId: captureIdForLoc,
+          hasCoords: true,
+          hasCity: !!clubLocationFields.city,
+        });
+      }
       _ctLog(11, 'GPS finished', {
         attendanceType: clubLocationFields.attendanceType,
         hasCoords: !!(clubLocationFields.latitude && clubLocationFields.longitude),
         gpsLatencyMs: Date.now() - _gpsStart,
         locationError: gpsDenied ? 'PERMISSION_DENIED' : null,
+        usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
       if (!silent && gpsDenied) {
         setAlertModal({
@@ -5082,9 +4572,14 @@ function WellnessValleyApp() {
         // Pass captureId so the backend updates the pre-created pending row
         // instead of inserting a duplicate.  Reset the ref immediately after
         // so a retry cannot accidentally reuse the same row.
-        captureId: foodCaptureIdRef.current || undefined,
+        captureId: resolvedCaptureId || undefined,
       });
-      foodCaptureIdRef.current = null;
+      if (captureIdForLoc) {
+        captureLocationByIdRef.current.delete(captureIdForLoc);
+      }
+      if (useGlobalCaptureRefs) {
+        foodCaptureIdRef.current = null;
+      }
       debugLog("? [App] Save successful:", saveRes);
       debugLog(`?? [PERF] Database save: ${Date.now() - saveStart}ms`);
 
@@ -5141,6 +4636,8 @@ function WellnessValleyApp() {
     processedImage: saveProcessedImage,
     analysisResult,
     exifTimestamp: saveExifTimestamp,
+    captureId: boundCaptureId = null,
+    pendingSharePromise: boundPendingSharePromise = null,
     silent = false,
   }) => {
     if (!silent) setLoadingState("saving");
@@ -5187,7 +4684,11 @@ function WellnessValleyApp() {
             "Duplicate check failed, proceeding with save:",
             duplicateError,
           );
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
@@ -5195,7 +4696,11 @@ function WellnessValleyApp() {
           console.warn(
             "Invalid duplicate check response, proceeding with save",
           );
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
           return;
         }
 
@@ -5206,7 +4711,11 @@ function WellnessValleyApp() {
           setShowDuplicateModal(true);
           setSaveLoading(false);
         } else {
-          await performNutritionSave(savePayload, { silent });
+          await performNutritionSave(savePayload, {
+            silent,
+            captureId: boundCaptureId,
+            pendingSharePromise: boundPendingSharePromise,
+          });
         }
       } catch (err) {
         console.error("? Save failed:", err?.message || err);
@@ -5435,6 +4944,8 @@ function WellnessValleyApp() {
               setSavedUserName(shareDisplayName);
             }
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            // Dismiss overlay before opening share sheet — not after user finishes sharing.
+            clearOverlayNow();
             const result = await shareViaCapacitorAPI(fileDataUrl, {
               title: shareDisplayName,
               text: shareText,
@@ -5451,12 +4962,13 @@ function WellnessValleyApp() {
               setSavedUserName(shareDisplayName);
             }
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             const ok = await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
             if (!ok) foodAutoSharedRef.current = false;
           }
         } catch (_) {
-          // Native share failed � fall back to text-only.
+          // Native share failed — fall back to text-only.
           try {
             const shareDisplayName = await ensureShareDisplayName(
               savedUserNameRef.current ?? savedUserName,
@@ -5464,6 +4976,7 @@ function WellnessValleyApp() {
               apiBaseUrl,
             );
             const shareText = buildQuickShareText(shareDisplayName, getVersionString());
+            clearOverlayNow();
             await shareTextViaWhatsApp(shareText);
             _hasCompletedFirstShareRef.current = true;
           } catch (__) {
@@ -5581,7 +5094,8 @@ function WellnessValleyApp() {
     setImageType(null);
     setSaveError(null);
     setDetectedFoodNames([]);
-    setLoadingState("uploading");
+    setLoading(false);
+    setLoadingState(null);
     lastImageFileRef.current = file;
     savePromiseRef.current = null; // Clear any completed prior save
 
@@ -5647,14 +5161,75 @@ function WellnessValleyApp() {
         return;
       }
 
-      // Set preview and uploading state while the capture row is persisted.
+      // Set preview immediately — GPS + capture POST run in the background UI
+      // without a "Saving..." spinner (photo-first, no wait affordance).
       setImagePreview(processedImage);
-      setLoading(true);
-      setLoadingState("uploading");
+      setLoading(false);
+      setLoadingState(null);
 
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
+
+      // Instant location from background cache — never wait on GPS at photo time.
+      const captureLocation = getCachedLocationFields();
+      const {
+        permissionDenied: captureGpsDenied,
+        locationStatus,
+        locationErrorCode,
+        locationErrorDetail,
+        locationLatencyMs,
+        geocodeOk,
+        gpsAccuracyM,
+        fromCache,
+        cacheAgeMs,
+        ...captureLocationFields
+      } = captureLocation || {
+        attendanceType: 'remote',
+        locationStatus: 'failed',
+        locationErrorCode: 'NO_CACHED_LOCATION',
+        locationErrorDetail: 'No cached location available at capture time',
+      };
+      const hasCoords = !!(
+        captureLocationFields.latitude && captureLocationFields.longitude
+      );
+      // Client console (device) — also sent to Vercel via POST /captures diagnostics.
+      console.warn('[CAPTURE-LOCATION]', {
+        status: locationStatus || (hasCoords ? 'success' : 'failed'),
+        errorCode: locationErrorCode || null,
+        errorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        hasVillage: !!captureLocationFields.village,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+        latencyMs: locationLatencyMs ?? 0,
+        gpsAccuracyM: gpsAccuracyM ?? null,
+      });
+      _ctLog('loc', 'capture-time location from cache', {
+        locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+        locationErrorCode: locationErrorCode || null,
+        locationErrorDetail: locationErrorDetail || null,
+        attendanceType: captureLocationFields.attendanceType,
+        hasCoords,
+        hasCity: !!captureLocationFields.city,
+        geocodeOk: !!geocodeOk,
+        fromCache: !!fromCache,
+        cacheAgeMs: cacheAgeMs ?? null,
+      });
+      // Soft hint only when cache never got a fix (watcher still warming / denied).
+      // Do not block the photo save.
+      if (captureGpsDenied && !hasCoords) {
+        setAlertModal({
+          isOpen: true,
+          title: "Location Permission Required",
+          message:
+            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+          type: "warning",
+        });
+      }
 
       // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
       const captureApiStart = Date.now();
@@ -5665,53 +5240,96 @@ function WellnessValleyApp() {
       );
 
       let captureShare = null;
-      try {
-        const capUserId = user?.id || (await getUserId(user));
-        if (!capUserId) {
-          throw new Error("Unable to resolve user account");
-        }
-        const capRes = await fetch(
-          `${apiBaseUrl}/api/background-analysis/captures`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: capUserId,
-              imageBase64: processedImage,
-              token: instantToken,
-              shareCode: instantShareCode,
-            }),
-          },
-        );
-        if (!capRes.ok) {
-          throw new Error(`Capture save failed (${capRes.status})`);
-        }
-        const capData = await capRes.json();
+      // Retry Phase 1 up to 3 times on transient server / network errors.
+      // 4xx (auth, bad request) are not retried — they won't self-heal.
+      const CAPTURE_MAX_ATTEMPTS = 3;
+      let captureLastErr = null;
+      for (let capAttempt = 1; capAttempt <= CAPTURE_MAX_ATTEMPTS; capAttempt++) {
+        try {
+          const capUserId = user?.id || (await getUserId(user));
+          if (!capUserId) {
+            throw new Error("Unable to resolve user account");
+          }
+          const capRes = await fetch(
+            `${apiBaseUrl}/api/background-analysis/captures`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: capUserId,
+                imageBase64: processedImage,
+                token: instantToken,
+                shareCode: instantShareCode,
+                // Capture-time location / club from background cache
+                latitude: captureLocationFields.latitude ?? null,
+                longitude: captureLocationFields.longitude ?? null,
+                city: captureLocationFields.city ?? null,
+                village: captureLocationFields.village ?? null,
+                attendanceType: captureLocationFields.attendanceType ?? null,
+                nutritionCenterId: captureLocationFields.nutritionCenterId ?? null,
+                centerName: captureLocationFields.centerName ?? null,
+                locationStatus: locationStatus || (hasCoords ? 'success' : 'failed'),
+                locationErrorCode: locationErrorCode || null,
+                locationErrorDetail: locationErrorDetail || null,
+                locationLatencyMs: locationLatencyMs ?? 0,
+                geocodeOk: geocodeOk ?? null,
+                gpsAccuracyM: gpsAccuracyM ?? null,
+              }),
+            },
+          );
+          if (!capRes.ok) {
+            const retryable = capRes.status >= 500;
+            const err = new Error(`Capture save failed (${capRes.status})`);
+            err._retryable = retryable;
+            throw err;
+          }
+          // Accept flat { ok, data } or accidental nested { httpStatus, body }.
+        const capRaw = await capRes.json();
+          const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
         const capDuration = Date.now() - captureApiStart;
-        if (!capData.ok || !capData.data?.id) {
-          throw new Error("Capture save returned no id");
+          if (!capData.ok || !capData.data?.id) {
+            throw new Error("Capture save returned no id");
+          }
+          captureShare = {
+            id: capData.data.id,
+            url: `${apiBaseUrl}/share/${
+              capData.data.shareCode || capData.data.token
+            }`,
+          };
+          captureLocationByIdRef.current.set(
+            String(captureShare.id),
+            stripLocationDiagnostics(captureLocationFields),
+          );
+          debugLog(
+            `?? [PERF] ? POST /captures: ${capDuration}ms (+${
+              Date.now() - perfStart
+            }ms from capture start) ? token ready (attempt ${capAttempt})`,
+          );
+          _ctLog(2, 'capture row created', {
+            captureRowId: captureShare.id,
+            shareCode: capData.data.shareCode || capData.data.token,
+            latencyMs: capDuration,
+            attempt: capAttempt,
+          });
+          captureLastErr = null;
+          break; // success
+        } catch (capErr) {
+          captureLastErr = capErr;
+          const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
+          debugLog(
+            `?? [PERF] ? POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
+              retryable ? ` — retrying in 1s` : ''
+            }`,
+          );
+          if (!retryable) break;
+          await new Promise((r) => setTimeout(r, 1_000 * capAttempt));
         }
-        captureShare = {
-          id: capData.data.id,
-          url: `${apiBaseUrl}/share/${
-            capData.data.shareCode || capData.data.token
-          }`,
-        };
-        debugLog(
-          `?? [PERF] ? POST /captures: ${capDuration}ms (+${
-            Date.now() - perfStart
-          }ms from capture start) ? token ready`,
-        );
-        _ctLog(2, 'capture row created', {
-          captureRowId: captureShare.id,
-          shareCode: capData.data.shareCode || capData.data.token,
-          latencyMs: capDuration,
-        });
-      } catch (capErr) {
+      }
+      if (!captureShare) {
         debugLog(
           `?? [PERF] ? POST /captures FAILED after ${
             Date.now() - captureApiStart
-          }ms: ${capErr?.message || capErr}`,
+          }ms: ${captureLastErr?.message || captureLastErr}`,
         );
         setAlertModal({
           isOpen: true,
@@ -5739,9 +5357,20 @@ function WellnessValleyApp() {
       setEducationResult(null);
       setWatchResult(null);
       setError(null);
+
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try {
+          resolvedUserIdForOrchestrate = await getUserId(user);
+        } catch (_) {}
+      }
+
       markCaptureAnalyzing(captureShare.id, {
+        ownerUserId: resolvedUserIdForOrchestrate ?? null,
         imageBase64: processedImage,
         capturedAt: new Date().toISOString(),
+        currentAttempt: 1,  // Show "1/3" badge immediately; onAttempt callback keeps it in sync
+        totalAttempts: 3,   // Must match MAX_ATTEMPTS in orchestratorService.js
       });
       triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
       setDashboardInitialDate(null);
@@ -5767,13 +5396,6 @@ function WellnessValleyApp() {
         /* use original file */
       }
 
-      let resolvedUserIdForOrchestrate = user?.id;
-      if (!resolvedUserIdForOrchestrate) {
-        try {
-          resolvedUserIdForOrchestrate = await getUserId(user);
-        } catch (_) {}
-      }
-
       const pendingSharePromise = Promise.resolve(captureShare);
       const bg = true; // background mode: never block home on AI; no result cards
 
@@ -5791,6 +5413,14 @@ function WellnessValleyApp() {
           detectedType = await orchestrateAnalyzeImage(fileForOrchestrate, {
             userId: resolvedUserIdForOrchestrate ?? null,
             captureId: String(captureShare.id),
+            // Update the diary row badge ("1/3", "2/3", "3/3") before each attempt.
+            onAttempt: ({ attempt, total }) => {
+              markCaptureAnalyzing(captureShare.id, {
+                ownerUserId: resolvedUserIdForOrchestrate ?? null,
+                currentAttempt: attempt,
+                totalAttempts: total,
+              });
+            },
           });
         } catch (orchErr) {
           console.error("[Background AI] orchestrate failed:", orchErr);
@@ -5884,6 +5514,8 @@ function WellnessValleyApp() {
                 source: detectedType.details?.source || "Smartwatch",
                 captureId: watchCaptureId,
               });
+              const burned = detectedType.details?.caloriesBurned || 0;
+              if (burned > 0) setWatchBurnedCalories(burned);
             }
             updatePendingCaptureType(pendingSharePromise, "smartwatch");
             triggerNutritionRefresh({ immediate: true, source: "capture-smartwatch" });
@@ -6286,6 +5918,15 @@ function WellnessValleyApp() {
         triggerNutritionRefresh({ immediate: true, source: "capture-unknown" });
         if (bg) {
           clearCaptureAnalyzing(captureShare.id);
+          // Brief toast so the user knows why the photo landed in Diary as
+          // "Other" and what to do next — no modal, no blocking.
+          if (detectedType?.details?.defaulted === true) {
+            // All retries failed (timeout / API down)
+            showToast("⚠️ AI timed out — find it in Diary to retry");
+          } else if (detectedType?.type === "food") {
+            // Gemini recognised food but couldn't identify the items
+            showToast("🍽️ Food detected — tap in Diary to add details");
+          }
           return;
         }
         const aiFailedEntirely = detectedType?.details?.defaulted === true;
@@ -6659,6 +6300,9 @@ function WellnessValleyApp() {
             updatePendingCaptureType(pendingSharePromise, "unknown");
             triggerNutritionRefresh({ immediate: true, source: "capture-food-failed" });
             clearCaptureAnalyzing(captureShare.id);
+            // Gemini recognised food (confidence ≥ 0.65) but couldn’t itemise
+            // it — tell the user so they know to tap and add manually.
+            showToast("🍽️ Food detected — tap in Diary to add details");
             return;
           }
           setFoodShareUrl(null);
@@ -6696,6 +6340,8 @@ function WellnessValleyApp() {
           processedImage,
           analysisResult: result,
           exifTimestamp,
+          captureId: captureShare.id,
+          pendingSharePromise,
           silent: bg,
         });
         savePromiseRef.current = _saveP;
@@ -6780,47 +6426,8 @@ function WellnessValleyApp() {
     }
   };
 
-  // ── Offline capture queue ─────────────────────────────────────────────────────────
-  // Photos taken while offline are stored in localStorage and resubmitted
-  // automatically when connectivity is restored. Multiple photos queued
-  // in a row are processed sequentially with a 3 s gap to avoid flooding.
-  const [_offlineQueueTrigger, setOfflineQueueTrigger] = useState(0);
-
-  useEffect(() => {
-    // state-setter as the trigger means the second effect always has the latest
-    // handleImageSelect via its own dep without a ref.
-    const wake = () => setOfflineQueueTrigger((n) => n + 1);
-    window.addEventListener('online', wake);
-    // Process any items queued during a previous offline session on mount.
-    if (navigator.onLine && captureQueue.size() > 0) wake();
-    return () => window.removeEventListener('online', wake);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- wake only uses stable setter
-
-  useEffect(() => {
-    if (_offlineQueueTrigger === 0 || !navigator.onLine) return;
-    const items = captureQueue.flush();
-    if (items.length === 0) return;
-    showToast(`📶 Back online — processing ${items.length} queued photo${items.length === 1 ? '' : 's'}…`);
-    let idx = 0;
-    const processNext = async () => {
-      if (idx >= items.length) return;
-      const item = items[idx++];
-      try {
-        const dataUrl = item.imageBase64.startsWith('data:')
-          ? item.imageBase64
-          : `data:image/jpeg;base64,${item.imageBase64}`;
-        const res  = await fetch(dataUrl);
-        const blob = await res.blob();
-        const file = new File([blob], 'queued-capture.jpg', { type: 'image/jpeg' });
-        handleImageSelect(file, item.exifTimestamp);
-        setTimeout(processNext, 3000); // 3 s gap — avoids server flooding
-      } catch (err) {
-        console.warn('[CaptureQueue] Failed to process queued item:', err);
-        setTimeout(processNext, 1000);
-      }
-    };
-    processNext();
-  }, [_offlineQueueTrigger, handleImageSelect]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Offline capture queue: drain queued photos on network reconnection.
+  useOfflineCaptureQueue(handleImageSelect, showToast);
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";
@@ -7214,6 +6821,7 @@ function WellnessValleyApp() {
           displayName: user.displayName || user.email.split("@")[0],
           photoURL: user.photoURL || null,
           uid: user.uid,
+          timezoneIana: getDeviceTimezoneIana() ?? "",
         }),
       });
 
@@ -7463,16 +7071,8 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        if (!userEmail) {
-          // Phone-OTP user with no email � show the email gate before anything else.
-          // After the user provides an email, the setup check useEffect re-runs and
-          // handles setup wizard ? coach OTP ? profile completion in the correct order.
-          setShowEmailGate(true);
-        }
-        // For email users: profile completion and setup wizard are handled by the
-        // setup check useEffect (fires ~1 s after user state is set). This prevents
-        // the race where CompleteProfilePage and SetupWizard both rendered within
-        // 1 s of OTP verification � SetupWizard must come before CompleteProfilePage.
+        // Unified CompleteProfile (name/email/gender/height/diet/photo) runs as the
+        // first gate via the profile-completion effects — before activity and coach.
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
@@ -7539,72 +7139,7 @@ function WellnessValleyApp() {
     return (
       <>
         {alertModalPortal}
-        <div
-        data-waiting-modal="true"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 999999,
-          background: "rgba(0,0,0,0.75)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "16px",
-        }}
-      >
-        <div
-          style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "40px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 25px 50px rgba(0,0,0,0.4)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "28px",
-            }}
-          >
-            <div
-              style={{
-                width: "72px",
-                height: "72px",
-                border: "5px solid #22c55e",
-                borderTopColor: "transparent",
-                borderRadius: "50%",
-                animation: "wv-spin 1s linear infinite",
-              }}
-            ></div>
-          </div>
-          <h2
-            style={{
-              fontSize: "26px",
-              fontWeight: "bold",
-              color: "#111827",
-              marginBottom: "14px",
-            }}
-          >
-            Contacting Your Coach...
-          </h2>
-          <p
-            style={{
-              color: "#6b7280",
-              fontSize: "16px",
-              lineHeight: "1.7",
-              margin: 0,
-            }}
-          >
-            Sending a verification request to your coach. This usually takes a
-            few seconds.
-          </p>
-        </div>
-        <style>{`@keyframes wv-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-      </div>
+        <WaitingForCoachModal />
       </>
     );
   }
@@ -7829,77 +7364,7 @@ function WellnessValleyApp() {
           />
         )}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED (branch1) ???",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
@@ -7945,77 +7410,7 @@ function WellnessValleyApp() {
         )}
         {/* Waiting for Coach OTP - Portal renders to document.body */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 999999,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                backdropFilter: "blur(8px)",
-              }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED AND VISIBLE ???",
-                  );
-              }}
-            >
-              <div
-                style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "32px",
-                  maxWidth: "400px",
-                  width: "100%",
-                  textAlign: "center",
-                  boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "64px",
-                      height: "64px",
-                      border: "4px solid #22c55e",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
-                </div>
-                <h2
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: "bold",
-                    color: "#111",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Contacting Your Coach...
-                </h2>
-                <p
-                  style={{ color: "#666", fontSize: "16px", lineHeight: "1.6" }}
-                >
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </>
     );
   }
@@ -8029,7 +7424,8 @@ function WellnessValleyApp() {
   let homeOverlay = null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
-  if (showProfilePage) {
+  // Never show during onboarding (My Profile is not part of the setup wizard).
+  if (showProfilePage && !onboardingBlocking) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
@@ -8067,6 +7463,7 @@ function WellnessValleyApp() {
               setHeaderProfileKey((k) => k + 1);
               // Activity log: Home should refresh cards when returning from profile edits
               triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
+              setBodyParamsRefreshKey((k) => k + 1);
             }}
           />
         </div>
@@ -8101,6 +7498,7 @@ function WellnessValleyApp() {
               bmrUpdateKey={bmrUpdateKey}
               educationRefreshKey={educationRefreshKey}
               watchBurnedCalories={watchBurnedCalories}
+              onWatchBurnedCaloriesReset={() => setWatchBurnedCalories(0)}
               initialSelectedMember={dashboardInitialSelectedMember}
               initialDate={dashboardInitialDate}
               initialMealId={dashboardInitialMealId}
@@ -8130,6 +7528,11 @@ function WellnessValleyApp() {
           <Suspense fallback={null}>
             <WellnessCounselling
               user={user}
+              refreshKey={bodyParamsRefreshKey}
+              onCardSaved={() => {
+                setHeaderProfileKey((k) => k + 1);
+                setBmrUpdateKey((k) => k + 1);
+              }}
               onBack={() => {
                 setShowWellnessCounselling(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -8345,6 +7748,7 @@ function WellnessValleyApp() {
         <WellnessScorePage
           user={user}
           apiBaseUrl={apiBaseUrl}
+          nutritionRefreshKey={nutritionRefreshKey}
           onBack={() => {
             setShowWellnessScore(false);
             const currentWvPage = window.history.state?.wvPage;
@@ -8428,7 +7832,13 @@ function WellnessValleyApp() {
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => PermissionManager.openAppSettings()}
+            onOpenSettings={() => {
+              if (activePermission.type === 'location') {
+                nativeLifecycle.openLocationPermissionSettings();
+              } else {
+                PermissionManager.openAppSettings();
+              }
+            }}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
@@ -8625,16 +8035,15 @@ function WellnessValleyApp() {
                   flexShrink: 0,
                 }}
               >
-                {/* Spinning star icon */}
-                <span
+                <Sparkles
+                  size={20}
+                  color="#FFD700"
+                  aria-hidden="true"
                   style={{
-                    display: "inline-block",
-                    fontSize: 20,
+                    flexShrink: 0,
                     animation: "_wb_stars_spin 3s linear infinite",
                   }}
-                >
-                  ?
-                </span>
+                />
 
                 <span
                   style={{
@@ -8710,7 +8119,10 @@ function WellnessValleyApp() {
           onShowRegisterCenter={null}
           onSignOut={handleSignOut}
           onLeaderboardRefresh={handleLeaderboardRefresh}
-          onOpenProfile={() => navigateTo('profile')}
+          onOpenProfile={() => {
+            if (onboardingBlockingRef.current) return;
+            navigateTo('profile');
+          }}
           profileKey={headerProfileKey}
           // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
           // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
@@ -8727,6 +8139,7 @@ function WellnessValleyApp() {
               setBmrUpdateKey((prev) => prev + 1);
             }
             triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
+            setBodyParamsRefreshKey((k) => k + 1);
           }}
         />
 
@@ -8737,12 +8150,14 @@ function WellnessValleyApp() {
           topN={LEADERBOARD_CONFIG.TOP_N}
         />
 
-        {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
-        <DisciplineLeaderboard
-          ref={disciplineLeaderboardRef}
-          apiBaseUrl={apiBaseUrl}
-          topN={10}
-        />
+        {/* Wellness Score Leaderboard — top 10 today's IST wellness % */}
+        {isFlagEnabled('ff.wellness-score-sheet') && (
+          <WellnessScoreLeaderboard
+            ref={wellnessLeaderboardRef}
+            apiBaseUrl={apiBaseUrl}
+            topN={10}
+          />
+        )}
 
         <div
           className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
@@ -8767,8 +8182,8 @@ function WellnessValleyApp() {
                     {/* Date */}
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
                       {new Date().toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'long',
+                        weekday: 'short',
+                        month: 'short',
                         day: 'numeric',
                       })}
                     </p>
@@ -8814,7 +8229,7 @@ function WellnessValleyApp() {
                     <button
                       onClick={() => fileInputRef.current?.openGallery?.()}
                       disabled={loading}
-                      className="flex items-center justify-center gap-1.5 bg-white rounded-xl px-4 py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
                       aria-label="Choose from gallery"
                     >
                       <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -8832,6 +8247,7 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               bmrUpdateKey={bmrUpdateKey}
               nutritionRefreshKey={nutritionRefreshKey}
+              watchBurnedCalories={watchBurnedCalories}
               onOpenWellnessScore={() => navigateTo('wellness-score')}
               onOpenWellnessScoreSetup={
                 ['admin', 'developer'].includes(userRole)
@@ -8949,563 +8365,36 @@ function WellnessValleyApp() {
 
             {imageType === "weight" && weightResult && (
               <>
-                {/* Hidden container for sharing - includes image + card */}
-                <div
+                {/* Off-screen weight share card \xe2\x80\x94 captured by precaptureShareImage for instant share */}
+                <WeightShareCard
                   ref={weightAnalysisShareRef}
-                  className="fixed -left-[9999px] top-0"
-                  style={{ position: "fixed", left: "-9999px", width: 460 }}
-                >
-                  <div
-                    style={{
-                      background: "white",
-                      borderRadius: 20,
-                      boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
-                      border: "2px solid #2dd4bf",
-                    }}
-                  >
-                    {/* User header strip */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 16,
-                        padding: "32px 28px",
-                        background:
-                          "linear-gradient(135deg, #0d9488 0%, #059669 100%)",
-                        borderRadius: "18px 18px 0 0",
-                        minHeight: 110,
-                      }}
-                    >
-                      {/* Profile photo ? div+backgroundImage for reliable html2canvas rendering */}
-                      {savedProfileImage ||
-                      sharePhotoBase64 ||
-                      user?.photoURL ? (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.95)",
-                            backgroundImage: `url(${
-                              savedProfileImage ||
-                              sharePhotoBase64 ||
-                              user.photoURL
-                            })`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                            flexShrink: 0,
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: "50%",
-                            border: "3px solid rgba(255,255,255,0.9)",
-                            background: "rgba(255,255,255,0.25)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              color: "white",
-                              fontWeight: 800,
-                              fontSize: 26,
-                              lineHeight: 1,
-                            }}
-                          >
-                            {(user?.displayName || user?.email || "U")
-                              .charAt(0)
-                              .toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            color: "white",
-                            fontWeight: 800,
-                            fontSize: 19,
-                            lineHeight: 1.2,
-                            margin: "0 0 6px 0",
-                          }}
-                        >
-                          {savedUserName ||
-                            user?.displayName ||
-                            user?.name ||
-                            "Wellness User"}
-                        </p>
-                        <p
-                          style={{
-                            color: "rgba(187,247,236,0.95)",
-                            fontSize: 13,
-                            margin: 0,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {new Date().toLocaleDateString(undefined, {
-                            dateStyle: "medium",
-                          })}{" "}
-                          {new Date().toLocaleTimeString(undefined, {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <p
-                        style={{
-                          color: "rgba(187,247,236,0.85)",
-                          fontSize: 16,
-                          margin: 0,
-                          lineHeight: 1,
-                          alignSelf: "flex-end",
-                          flexShrink: 0,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {getVersionString()}
-                      </p>
-                    </div>
+                  user={user}
+                  savedUserName={savedUserName}
+                  savedProfileImage={savedProfileImage}
+                  sharePhotoBase64={sharePhotoBase64}
+                  imagePreview={imagePreview}
+                  weightResult={weightResult}
+                  weightDiff={weightDiff}
+                  idealWeight={idealWeight}
+                />
 
-                    {/* Weight Image for sharing */}
-                    {imagePreview && (
-                      <div style={{ background: "black", overflow: "hidden" }}>
-                        <img
-                          src={imagePreview}
-                          alt="Weight Scale"
-                          style={{
-                            width: "100%",
-                            height: 256,
-                            objectFit: "contain",
-                            display: "block",
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Yesterday Weight label */}
-                    {weightDiff && weightDiff.previous != null && (
-                      <div
-                        style={{
-                          background: "linear-gradient(to right, #0d9488, #059669)",
-                          color: "white",
-                          textAlign: "center",
-                          padding: "12px 24px",
-                          fontSize: 18,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Yesterday: {parseFloat((+weightDiff.previous).toFixed(2))} {weightResult.unit}
-                      </div>
-                    )}
-
-                    {/* Card content for sharing - Simple and Clean */}
-                    <div
-                      style={{
-                        background: "white",
-                        padding: 32,
-                        borderRadius: "0 0 18px 18px",
-                      }}
-                    >
-                      <h2
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 700,
-                          color: "#059669",
-                          textAlign: "center",
-                          margin: "0 0 24px 0",
-                        }}
-                      >
-                        Weight Analysis
-                      </h2>
-
-                      <div
-                        style={{
-                          background: "#f5f3ff",
-                          borderRadius: 16,
-                          padding: 24,
-                          textAlign: "center",
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "#7c3aed",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                            margin: "0 0 8px 0",
-                          }}
-                        >
-                          Weight
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 48,
-                            fontWeight: 700,
-                            color: "#6d28d9",
-                            margin: 0,
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {parseFloat((+weightResult.weightValue).toFixed(2))}
-                          <span
-                            style={{
-                              fontSize: 22,
-                              fontWeight: 400,
-                              marginLeft: 8,
-                            }}
-                          >
-                            {weightResult.unit}
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Ideal Weight Strip (share card) */}
-                      {idealWeight && (
-                        <div
-                          style={{
-                            marginTop: 16,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background: "#eff6ff",
-                            border: "1px solid #bfdbfe",
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#2563eb",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              Ideal Weight
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#6b7280",
-                                margin: 0,
-                              }}
-                            >
-                              Based on height {idealWeight.heightCm} cm
-                            </p>
-                          </div>
-                          <div style={{ textAlign: "right", color: "#1d4ed8" }}>
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: 0,
-                              }}
-                            >
-                              {(() => {
-                                const current = weightResult?.weightValue;
-                                const isLoss =
-                                  current && current > idealWeight.value + 0.5;
-                                const isGain =
-                                  current && current < idealWeight.min - 0.5;
-                                if (isLoss)
-                                  return `${idealWeight.value} ${idealWeight.unit}`;
-                                if (isGain)
-                                  return `${idealWeight.min} ${idealWeight.unit}`;
-                                return `${idealWeight.value} ${idealWeight.unit}`;
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Weight Diff Strip */}
-                      {weightDiff && (
-                        <div
-                          style={{
-                            marginTop: 20,
-                            borderRadius: 16,
-                            padding: "14px 18px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background:
-                              weightDiff.change < 0
-                                ? "#f0fdf4"
-                                : weightDiff.change > 0
-                                ? "#fff1f2"
-                                : "#f9fafb",
-                            border: `1px solid ${
-                              weightDiff.change < 0
-                                ? "#bbf7d0"
-                                : weightDiff.change > 0
-                                ? "#fecdd3"
-                                : "#e5e7eb"
-                            }`,
-                          }}
-                        >
-                          <div>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "#6b7280",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                margin: "0 0 4px 0",
-                              }}
-                            >
-                              vs Previous
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 16,
-                                fontWeight: 700,
-                                color: "#374151",
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.previous} {weightResult.unit}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#9ca3af",
-                                margin: 0,
-                              }}
-                            >
-                              {new Date(
-                                weightDiff.previousDate,
-                              ).toLocaleDateString(undefined, {
-                                dateStyle: "medium",
-                              })}
-                            </p>
-                          </div>
-                          <div
-                            style={{
-                              textAlign: "right",
-                              color:
-                                weightDiff.change < 0
-                                  ? "#16a34a"
-                                  : weightDiff.change > 0
-                                  ? "#ef4444"
-                                  : "#6b7280",
-                            }}
-                          >
-                            <p
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 700,
-                                margin: "0 0 2px 0",
-                              }}
-                            >
-                              {weightDiff.change > 0
-                                ? "?"
-                                : weightDiff.change < 0
-                                ? "?"
-                                : "�"}{" "}
-                              {weightDiff.change === 0
-                                ? "No change"
-                                : Math.abs(weightDiff.change) < 1
-                                ? `${Math.round(
-                                    Math.abs(weightDiff.change) * 1000,
-                                  )} g`
-                                : `${Math.abs(weightDiff.change).toFixed(2)} ${
-                                    weightResult.unit
-                                  }`}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 600,
-                                margin: 0,
-                              }}
-                            >
-                              {weightDiff.change < 0
-                                ? "Lost"
-                                : weightDiff.change > 0
-                                ? "Gained"
-                                : ""}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Visible card */}
-                <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-                  <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
-                    Weight Analysis
-                  </h2>
-
-                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <p className="text-sm text-purple-600 font-medium">
-                        Weight
-                      </p>
-                      {!isEditingWeight && (
-                        <button
-                          onClick={() => {
-                            setEditWeightValue(
-                              String(weightResult.weightValue),
-                            );
-                            setWeightEditError("");
-                            setIsEditingWeight(true);
-                          }}
-                          className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-700 transition-colors"
-                          title="Edit weight"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit
-                        </button>
-                      )}
-                    </div>
-
-                    {isEditingWeight ? (
-                      <div className="w-full mt-1">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={editWeightValue}
-                            onChange={(e) => setEditWeightValue(e.target.value)}
-                            className="flex-1 border border-purple-300 rounded-lg px-3 py-2 text-xl font-bold text-purple-700 text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            inputMode="decimal"
-                            step="0.1"
-                            min="20"
-                            max="300"
-                            autoFocus
-                          />
-                          <span className="text-sm text-purple-600">
-                            {weightResult.unit}
-                          </span>
-                        </div>
-                        {weightEditError && (
-                          <p className="text-xs text-red-500 mt-1 text-center">
-                            {weightEditError}
-                          </p>
-                        )}
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={handleWeightEditSave}
-                            disabled={isSavingWeightEdit}
-                            className="flex-1 flex items-center justify-center gap-1 py-2 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-                          >
-                            {isSavingWeightEdit ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Check className="w-4 h-4" />
-                            )}
-                            {isSavingWeightEdit ? "Saving?" : "Save"}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setIsEditingWeight(false);
-                              setWeightEditError("");
-                            }}
-                            disabled={isSavingWeightEdit}
-                            className="flex-1 flex items-center justify-center gap-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-                          >
-                            <XIcon className="w-4 h-4" />
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-3xl font-bold text-purple-700">
-                        {parseFloat((+weightResult.weightValue).toFixed(2))}
-                        <span className="text-lg font-normal ml-1">
-                          {weightResult.unit}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-3 text-center text-xs text-gray-500">
-                    Logged at{" "}
-                    {new Date(
-                      weightResult.loggedAt || Date.now(),
-                    ).toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </div>
-
-                  {/* Ideal weight (visible card) */}
-                  {idealWeight && (
-                    <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
-                      <div>
-                        <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">
-                          Ideal Weight
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Based on height {idealWeight.heightCm} cm
-                        </p>
-                      </div>
-                      <div className="text-blue-700 font-bold text-lg">
-                        {idealWeight.value} {idealWeight.unit}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Weight diff vs previous entry */}
-                  {weightDiff && (
-                    <div
-                      className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
-                        weightDiff.change < 0
-                          ? "bg-green-50 border border-green-100"
-                          : weightDiff.change > 0
-                          ? "bg-red-50 border border-red-100"
-                          : "bg-gray-50 border border-gray-100"
-                      }`}
-                    >
-                      <div>
-                        <p className="text-xs text-gray-500">
-                          vs Previous entry
-                        </p>
-                        <p className="text-sm font-semibold text-gray-700">
-                          {weightDiff.previous} {weightResult.unit}
-                        </p>
-                      </div>
-                      <div
-                        className={`font-bold text-lg ${
-                          weightDiff.change < 0
-                            ? "text-green-600"
-                            : weightDiff.change > 0
-                            ? "text-red-500"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        {weightDiff.change > 0
-                          ? "?"
-                          : weightDiff.change < 0
-                          ? "?"
-                          : "�"}{" "}
-                        {weightDiff.change === 0
-                          ? "No change"
-                          : `${Math.abs(weightDiff.change).toFixed(1)} ${
-                              weightResult.unit
-                            }`}
-                        {weightDiff.change < 0 && (
-                          <span className="text-sm ml-1">??</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
+                {/* Visible weight result card */}
+                <WeightResultCard
+                  weightResult={weightResult}
+                  weightDiff={weightDiff}
+                  idealWeight={idealWeight}
+                  isEditingWeight={isEditingWeight}
+                  editWeightValue={editWeightValue}
+                  isSavingWeightEdit={isSavingWeightEdit}
+                  weightEditError={weightEditError}
+                  setEditWeightValue={setEditWeightValue}
+                  setIsEditingWeight={setIsEditingWeight}
+                  setWeightEditError={setWeightEditError}
+                  handleWeightEditSave={handleWeightEditSave}
+                />
               </>
             )}
+
 
             {/* Saving Toast � hidden during async capture (photo already saved) */}
             {saveLoading && loadingState !== "saved" && (
@@ -9847,49 +8736,21 @@ function WellnessValleyApp() {
           onConfirm={alertModal.onConfirm}
         />
 
-        {/* Email Gate � forced for phone-OTP users with no email */}
-        {showEmailGate && user && (
-          <EmailGateModal
-            user={user}
-            apiBaseUrl={apiBaseUrl}
-            onComplete={({ email: savedEmail, userName: savedName }) => {
-              setShowEmailGate(false);
-              // Persist email to localStorage so SetupWizard, ValidateOTP, and
-              // all downstream session reads get a non-null value. Also patch the
-              // cached otpUser entry so a cold-restart doesn't re-trigger the gate.
-              Session.setUserEmail(savedEmail);
-              const cachedRaw = Session.getOtpUserRaw();
-              if (cachedRaw) {
-                try {
-                  const cached = JSON.parse(cachedRaw);
-                  Session.setOtpUser({
-                    ...cached,
-                    email: savedEmail,
-                    ...(savedName ? { username: savedName, userName: savedName } : {}),
-                  });
-                } catch { /* non-fatal */ }
-              }
-              // Patch the in-memory user so the rest of the app sees the email + name
-              setUser((prev) => prev ? {
-                ...prev,
-                email: savedEmail,
-                username: savedName || prev.username,
-                userName: savedName || prev.userName,
-              } : prev);
-              if (savedName) {
-                cacheProfileUserName(savedEmail, savedName);
-                setSavedUserName(savedName);
-              }
-            }}
-          />
-        )}
+        {/* Email Gate removed — email is collected on CompleteProfilePage */}
 
-        {showPhysicalActivitySetup && user && !showEmailGate && (
+        {showPhysicalActivitySetup && user && !showCompleteProfile && !showSetupWizard && !showValidateOTP && (
           <PhysicalActivitySetup
             user={user}
             apiBaseUrl={apiBaseUrl}
-            onComplete={() => {
+            onComplete={async () => {
+              const email =
+                user?.email || user?.Email || Session.getUserEmail() || "";
+              // Resolve coach gate while this screen is still visible, then switch.
+              setCoachSetupResolved(false);
+              await resolveCoachSetupStatus(email);
+              setCoachSetupResolved(true);
               setShowPhysicalActivitySetup(false);
+              setPhysicalActivityResolved(true);
               setBmrUpdateKey((prev) => prev + 1);
             }}
           />
@@ -9910,37 +8771,19 @@ function WellnessValleyApp() {
           userName={savedUserName}
         />
 
-        {/* Weight Goal Mode Setup Prompt � forced for users who never set their goal */}
-        <WeightGoalSetupPrompt
-          isOpen={showGoalModePrompt}
-          onSave={async (selectedMode) => {
-            const email = goalModePromptEmail || user?.email;
-            if (!email) return;
-            const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, weightGoalMode: selectedMode }),
-            });
-            if (!res.ok) throw new Error("Failed to save goal mode");
-            setShowGoalModePrompt(false);
-            setGoalModePromptEmail(null);
-          }}
-        />
-
-        {/* New User Profile Modal - shown for first-time users to complete their profile */}
         <UserProfileModal
           isOpen={showNewUserProfileModal}
           onClose={() => setShowNewUserProfileModal(false)}
           user={user}
           onProfileUpdate={() => {
             debugLog("? [NewUserProfile] Profile updated successfully");
+            setBodyParamsRefreshKey((k) => k + 1);
+            triggerNutritionRefresh({ immediate: true, source: 'new-user-profile' });
           }}
         />
 
-        {/* -- Mandatory Profile Completion Gate ------------------------------
-           Renders above ALL other content (z-[300]) until every required
-           field (height, gender, age, diet) is saved to the database.
-           The user cannot dismiss this page until the form is complete.
+        {/* -- Mandatory Profile Completion Gate (first onboarding screen) -----
+           Name, email, gender, height, diet, photo — then activity → coach → OTP → camera.
       ------------------------------------------------------------------- */}
         {showCompleteProfile && !profileChecking && user && (
           <CompleteProfilePage
@@ -9950,25 +8793,77 @@ function WellnessValleyApp() {
             snoozeData={profilePicSnoozeData}
             userId={user.id || user.UserId || Session.getDbUserId()}
             onComplete={async (savedData) => {
-              const email =
-                user?.email || user?.Email || Session.getUserEmail() || "";
+              const savedEmail =
+                savedData?.email
+                || user?.email
+                || user?.Email
+                || Session.getUserEmail()
+                || "";
+              if (savedEmail) {
+                Session.setUserEmail(savedEmail);
+                Session.markProfileComplete(savedEmail);
+                const cachedRaw = Session.getOtpUserRaw();
+                if (cachedRaw) {
+                  try {
+                    const cached = JSON.parse(cachedRaw);
+                    Session.setOtpUser({
+                      ...cached,
+                      email: savedEmail,
+                      ...(savedData?.userName
+                        ? { username: savedData.userName, userName: savedData.userName }
+                        : {}),
+                    });
+                  } catch { /* non-fatal */ }
+                }
+              }
               profileCompletedRef.current = true;
-              Session.markProfileComplete(email);
+
+              setUser((prevUser) => {
+                if (!prevUser) return prevUser;
+                return {
+                  ...prevUser,
+                  email: savedEmail || prevUser.email,
+                  username: savedData?.userName || prevUser.username,
+                  userName: savedData?.userName || prevUser.userName,
+                  ...(savedData?.profileImage
+                    ? {
+                        profileImage: savedData.profileImage,
+                        ProfileImage: savedData.profileImage,
+                        photoURL: savedData.profileImage,
+                      }
+                    : {}),
+                };
+              });
+              if (savedData?.userName && savedEmail) {
+                cacheProfileUserName(savedEmail, savedData.userName);
+                setSavedUserName(savedData.userName);
+              }
+
+              // Prefetch next gate while this screen is still up, then switch in one paint.
+              let needActivity = true;
+              if (savedEmail) {
+                try {
+                  const { data } = await fetchProfile(savedEmail);
+                  needActivity = !(data && data.physicalActivityLevel);
+                } catch {
+                  needActivity = true;
+                }
+              }
+
+              if (needActivity) {
+                setShowPhysicalActivitySetup(true);
+                setPhysicalActivityResolved(true);
+                setCoachSetupResolved(false);
+              } else {
+                setShowPhysicalActivitySetup(false);
+                setPhysicalActivityResolved(true);
+                setCoachSetupResolved(false);
+                await resolveCoachSetupStatus(savedEmail);
+                setCoachSetupResolved(true);
+              }
+
               setShowCompleteProfile(false);
               setProfileChecking(false);
-
-              // If picture was saved, update user state immediately
-              if (savedData?.profileImage) {
-                setUser((prevUser) => ({
-                  ...prevUser,
-                  profileImage: savedData.profileImage,
-                  ProfileImage: savedData.profileImage,
-                  photoURL: savedData.profileImage,
-                }));
-              } else {
-                // Picture was snoozed ? snooze data already saved to DB by handleRemindLater
-                setProfilePicSnoozeData(null);
-              }
             }}
           />
         )}
@@ -10067,8 +8962,8 @@ function WellnessValleyApp() {
           </Suspense>
         )}
 
-        {/* Setup Wizard - Team ID + Coach Selection */}
-        {showSetupWizard && (
+        {/* Setup Wizard - Coach Selection (after profile + physical activity) */}
+        {showSetupWizard && !showCompleteProfile && !showPhysicalActivitySetup && (
           <Suspense fallback={null}>
             <SetupWizard
               userEmail={user?.email || user?.Email || Session.getUserEmail()}
@@ -10116,12 +9011,7 @@ function WellnessValleyApp() {
                   return;
                 }
                 setShowValidateOTP(false);
-                // Regular login flow — coach OTP verified, setup is now complete.
-                const emailAfterOtp =
-                  user?.email || user?.Email || Session.getUserEmail();
-                if (emailAfterOtp) {
-                  checkProfileCompletion(emailAfterOtp, user);
-                }
+                // Coach OTP verified — profile + activity already done earlier.
               }}
               onLogout={handleSignOut}
             />
@@ -10403,35 +9293,9 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {/* CRITICAL: Waiting Modal - Rendered as Portal directly to document.body */}
+        {/* Waiting for coach OTP — portal so it renders above all other layers */}
         {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(
-            <div
-              data-waiting-modal="true"
-              className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-              style={{ zIndex: 999999 }}
-              ref={(el) => {
-                if (el)
-                  console.log(
-                    "??? [Waiting Modal] DOM RENDERED AND VISIBLE ???",
-                  );
-              }}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-fadeIn">
-                <div className="flex justify-center mb-6">
-                  <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-green-500"></div>
-                </div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Contacting Your Coach...
-                </h2>
-                <p className="text-gray-600 text-lg leading-relaxed">
-                  We've sent a request to your coach. Please wait while we
-                  prepare the verification screen.
-                </p>
-              </div>
-            </div>,
-            document.body,
-          )}
+          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
       </div>
     </LocationGuard>
       </div>
@@ -10448,5 +9312,9 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
+
+
+
+
 
 

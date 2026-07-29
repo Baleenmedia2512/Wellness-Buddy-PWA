@@ -1,12 +1,6 @@
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { enumerateScoreDates } from '../domain/date-range.js';
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-export function todayInIST(now = new Date()) {
-  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-  return ist.toISOString().split('T')[0];
-}
+import { DATE_YMD_RE } from '../../../shared/lib/datetime/index.js';
 
 export function validateGetDailyScore(query) {
   const userIdRaw = query?.userId;
@@ -15,10 +9,10 @@ export function validateGetDailyScore(query) {
   }
   const userId = String(userIdRaw);
   const dateRaw = query?.date;
-  if (dateRaw != null && dateRaw !== '' && !DATE_RE.test(String(dateRaw))) {
+  if (dateRaw != null && dateRaw !== '' && !DATE_YMD_RE.test(String(dateRaw))) {
     throw new ValidationError(400, 'date must be YYYY-MM-DD');
   }
-  const date = dateRaw && DATE_RE.test(String(dateRaw)) ? String(dateRaw) : todayInIST();
+  const date = dateRaw && DATE_YMD_RE.test(String(dateRaw)) ? String(dateRaw) : null;
   return { userId, date };
 }
 
@@ -30,7 +24,7 @@ export function validateGetScoreHistory(query) {
   const userId = String(userIdRaw);
   const startDate = String(query?.startDate || '');
   const endDate = String(query?.endDate || '');
-  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
+  if (!DATE_YMD_RE.test(startDate) || !DATE_YMD_RE.test(endDate)) {
     throw new ValidationError(400, 'startDate and endDate must be YYYY-MM-DD');
   }
   if (startDate > endDate) {

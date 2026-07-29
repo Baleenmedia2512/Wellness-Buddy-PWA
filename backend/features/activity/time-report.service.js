@@ -1,13 +1,15 @@
 ﻿import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 import {
-  parseDateRangeIST, formatDateIST, buildDateList,
+  computeAverageTime, extractLocalDateString,
   groupRecordsByDate, pickEarliestRecordPerActivity,
-  computeAverageTime, convertISTToLocalDate, extractLocalDateString,
 } from '../../utils/timeReportHelpers.js';
-import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { timestampToCalendarYmd, timeOfDayInTimezone } from '../../shared/lib/datetime/index.js';
 import * as repo from './time-report.repository.js';
 import { resolveCalorieTargetFromProfile } from '../../utils/tdeeCalculations.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
+import { enumerateScoreDates } from '../wellness-score/domain/date-range.js';
 
 const DEFAULT_WINDOWS = {
   weight:    { start: '03:00:00', end: '06:30:00' },
@@ -102,17 +104,17 @@ function indexRecords(results, usersInfo) {
   return { twData: twR.data, weightByUser, educationByUser, foodByUser, waterFoodByUser, stepByUser, userBmrMap, userBodyWeightMap };
 }
 
-function buildWaterAndCalorieMaps(uid, indexed, tzOffset) {
+function buildWaterAndCalorieMaps(uid, indexed, timezoneIana) {
   const { waterFoodByUser, foodByUser, stepByUser, userBmrMap, userBodyWeightMap } = indexed;
   const bodyWeight = userBodyWeightMap[uid] || null;
   const requiredWaterMl = bodyWeight ? Math.round((bodyWeight / 20) * 1000) : DEFAULT_WATER_REQUIRED_ML;
   const waterVolumeByDate = {}, waterLastTimeByDate = {};
   for (const r of (waterFoodByUser.get(uid) || [])) {
-    const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
-    const dateStr = extractLocalDateString(localDate);
+    const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
     if (!dateStr) continue;
     if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
-    const hhmm = `${String(localDate.getHours()).padStart(2,'0')}:${String(localDate.getMinutes()).padStart(2,'0')}`;
+    const timeOnly = timeOfDayInTimezone(r.CreatedAt, timezoneIana);
+    const hhmm = timeOnly.slice(0, 5);
     if (!waterLastTimeByDate[dateStr] || hhmm > waterLastTimeByDate[dateStr]) waterLastTimeByDate[dateStr] = hhmm;
     try {
       const analysisData = typeof r.AnalysisData === 'string' ? JSON.parse(r.AnalysisData) : r.AnalysisData;
@@ -134,8 +136,7 @@ function buildWaterAndCalorieMaps(uid, indexed, tzOffset) {
   const calBurnedByDate = {};
   for (const r of (stepByUser.get(uid) || [])) {
     if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
-      const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
-      const dateStr = extractLocalDateString(localDate);
+      const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
       if (!dateStr) continue;
       const burned = parseFloat(r.CaloriesBurned) || 0;
       if ((calBurnedByDate[dateStr] || 0) < burned) calBurnedByDate[dateStr] = burned;
@@ -145,8 +146,7 @@ function buildWaterAndCalorieMaps(uid, indexed, tzOffset) {
     const calConsumedByDate = {};
     for (const r of (foodByUser.get(uid) || [])) {
       if (isExemptedBeverageOnly(r.AnalysisData)) continue;
-      const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
-      const dateStr = extractLocalDateString(localDate);
+      const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
       if (!dateStr) continue;
       const cal = parseFloat(r.TotalCalories) || 0;
       calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
@@ -159,11 +159,11 @@ function buildWaterAndCalorieMaps(uid, indexed, tzOffset) {
   return { waterDoneSet, waterLastTimeByDate, waterVolumeByDate, calDoneSet, calLastTimeByDate, calBurnedByDate };
 }
 
-function buildUserReport(uid, info, dateList, windows, indexed, tzOffset) {
-  const weightDateMap    = groupRecordsByDate(indexed.weightByUser.get(uid)    || [], tzOffset);
-  const educationDateMap = groupRecordsByDate(indexed.educationByUser.get(uid) || [], tzOffset);
-  const foodDateMap      = groupRecordsByDate(indexed.foodByUser.get(uid)      || [], tzOffset);
-  const wcMaps = buildWaterAndCalorieMaps(uid, indexed, tzOffset);
+function buildUserReport(uid, info, dateList, windows, indexed, timezoneIana) {
+  const weightDateMap    = groupRecordsByDate(indexed.weightByUser.get(uid)    || [], timezoneIana);
+  const educationDateMap = groupRecordsByDate(indexed.educationByUser.get(uid) || [], timezoneIana);
+  const foodDateMap      = groupRecordsByDate(indexed.foodByUser.get(uid)      || [], timezoneIana);
+  const wcMaps = buildWaterAndCalorieMaps(uid, indexed, timezoneIana);
 
   const collected = { weight: [], breakfast: [], lunch: [], dinner: [], education: [] };
   const lateCounts = { weight: 0, breakfast: 0, lunch: 0, dinner: 0, education: 0 };
@@ -215,17 +215,14 @@ function buildUserReport(uid, info, dateList, windows, indexed, tzOffset) {
   };
 }
 
-export async function getTimeReport({ userId, role, dateRange, startDate, endDate, tzOffset }) {
-  const dates = parseDateRangeIST(
+export async function getTimeReport({ userId, role, dateRange, startDate, endDate }) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const { startDate: startStr, endDate: endStr } = parseRelativeDateRangeYmd(
     dateRange,
     dateRange === 'custom' ? startDate : undefined,
     dateRange === 'custom' ? endDate : undefined,
+    timezoneIana,
   );
-  if (dateRange === 'custom' && dates.start > dates.end) {
-    throw new ValidationError(400, 'startDate must be before or equal to endDate');
-  }
-  const startStr = formatDateIST(dates.start);
-  const endStr   = formatDateIST(dates.end);
 
   const usersInfo = await resolveUsers(role, userId);
   if (usersInfo === null) {
@@ -239,14 +236,14 @@ export async function getTimeReport({ userId, role, dateRange, startDate, endDat
     };
   }
 
-  const results = await repo.fetchTimeReportData(targetUserIds, startStr, endStr);
+  const results = await repo.fetchTimeReportData(targetUserIds, startStr, endStr, timezoneIana);
   const windows = buildWindowMap(results[0].data);
-  const dateList = buildDateList(dates.start, dates.end);
+  const dateList = enumerateScoreDates(startStr, endStr);
   const indexed = indexRecords(results, usersInfo);
   const userInfoMap = new Map(usersInfo.map((u) => [u.UserId, u]));
 
   const responseData = targetUserIds.map((uid) =>
-    buildUserReport(uid, userInfoMap.get(uid), dateList, windows, indexed, tzOffset)
+    buildUserReport(uid, userInfoMap.get(uid), dateList, windows, indexed, timezoneIana)
   );
 
   return {

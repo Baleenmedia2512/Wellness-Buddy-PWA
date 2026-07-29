@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialOtp } from '../services/testimonialApi.js';
 
 export default function VerifyOtpModal({ testimonialId, memberName, onVerified, onClose }) {
@@ -53,9 +54,12 @@ export default function VerifyOtpModal({ testimonialId, memberName, onVerified, 
         </p>
 
         {/* OTP input */}
-        <input
-          type="tel"
+        <NativeInput
+          otp
+          type="text"
           inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           maxLength={6}
           placeholder="_ _ _ _ _ _"
           value={otp}

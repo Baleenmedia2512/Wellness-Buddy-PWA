@@ -9,6 +9,7 @@
 
 import { restoreMembersToOriginalCoach } from '../../../features/idle-cleanup/data/idle-repo.js';
 import logger from '../../../shared/lib/logger.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Reactivates a user and restores their hierarchy.
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
   logger.info('User reactivation started', {
     correlationId,
     userId,
-    timestamp: new Date().toISOString(),
+    timestamp: nowUtc(),
   });
 
   try {

@@ -13,7 +13,7 @@
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
@@ -23,9 +23,11 @@ import { fetchProfile, saveProfile } from '../services/profileService';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import CropOverlay from './shared/CropOverlay';
 import UserProfileFields from './profile/UserProfileFields';
+import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
+import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import FaceDetectionToast from './profile/FaceDetectionToast';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -41,6 +43,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
+  const [coachName, setCoachName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -49,6 +52,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [showToast, setShowToast] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
+  const leadPreFilledRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => localStorage.getItem('wv.autoCameraOnResume') !== 'false'
   );
@@ -62,11 +66,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setProfileImagePreview(img);
       face.reset();
       setShowToast(true);
-      face.run(img);
+      face.run(img, user?.id ?? null);
     },
   });
 
   const loadProfile = useCallback(async () => {
+    if (!user?.email) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
@@ -76,66 +84,57 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         height: data?.height ? String(data.height) : '',
         phone: data?.phoneNumber || '',
         dietType: data?.dietType || '',
+        gender: data?.gender || '',
         bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
         physicalActivityLevel: data?.physicalActivityLevel || '',
         weightGoalMode: data?.weightGoalMode || 'loss',
         communityId: data?.communityId || '',
         email: data?.email || user?.email || '',
+        bodyMetrics: data?.bodyMetrics || null,
       };
-
-      // ── Counselling → Profile pre-fill ──────────────────────────────────
-      // The counselling form already captures diet type (in eating habits),
-      // health issues, sleep, etc. If the profile is missing certain fields,
-      // pull them FROM the counselling assessment.
-      //
-      // Two paths:
-      //   A) Existing user (has userId) → fetch their own counselling assessment
-      //   B) New lead (registered with same mobile the coach recorded) →
-      //      fetch unlinked lead assessment by phone number
-      if (!leadPreFilled) {
-        let counselling = null;
-
-        // Path A: user already has a DB id — fetch their own counselling record
-        if (user?.id) {
-          counselling = await fetchMyAssessment(user.id);
-        }
-
-        // Path B: no own record — check if a lead assessment was filed with
-        // this phone number (lead downloaded the app after counselling session)
-        if (!counselling) {
-          const phoneForLookup = profileData.phone || user?.phoneNumber || '';
-          if (phoneForLookup) {
-            const lead = await fetchLeadByPhone(phoneForLookup);
-            if (lead) {
-              // Pre-fill identity fields (name/phone from LeadDetailsSection)
-              if (!profileData.name && lead.name) profileData.name = lead.name;
-              if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
-              counselling = lead; // eating habits, diet type, etc. are in the same object
-            }
-          }
-        }
-
-        // Apply counselling data to profile fields that are still empty
-        if (counselling) {
-          // Diet type comes from eating habits — counselling form captures this
-          if (!profileData.dietType && counselling.dietType) {
-            profileData.dietType = counselling.dietType;
-          }
-          setLeadPreFilled(true);
-        }
-      }
-      // ────────────────────────────────────────────────────────────────────
 
       form.reload(profileData);
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
+      setCoachName(data?.coachName ? String(data.coachName).trim() : '');
       if (data?.profileImage) setProfileImagePreview(data.profileImage);
+      // Stop the spinner as soon as profile is ready — don't wait on counselling.
+      setIsLoading(false);
+
+      // Counselling pre-fill only when key fields are still empty (background).
+      const needsCounsellingPrefill =
+        !leadPreFilledRef.current
+        && (!profileData.name || !profileData.dietType || !profileData.phone);
+      if (!needsCounsellingPrefill) return;
+
+      let counselling = null;
+      if (user?.id) {
+        counselling = await fetchMyAssessment(user.id);
+      }
+      if (!counselling) {
+        const phoneForLookup = profileData.phone || user?.phoneNumber || '';
+        if (phoneForLookup) {
+          const lead = await fetchLeadByPhone(phoneForLookup);
+          if (lead) {
+            if (!profileData.name && lead.name) profileData.name = lead.name;
+            if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
+            counselling = lead;
+          }
+        }
+      }
+      if (counselling) {
+        if (!profileData.dietType && counselling.dietType) {
+          profileData.dietType = counselling.dietType;
+        }
+        leadPreFilledRef.current = true;
+        setLeadPreFilled(true);
+        form.reload(profileData);
+      }
     } catch (e) {
       setError(e.message || 'Failed to load profile.');
-    } finally {
       setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
+  }, [user?.email, user?.id, user?.name, user?.phoneNumber]);
 
   useEffect(() => {
     if (user?.email) {
@@ -146,9 +145,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       face.reset();
       setShowToast(false);
       loadProfile();
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user?.email]);
+    setIsLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
+  }, [user?.email, user?.id, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -162,11 +163,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
         if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
       }
-      const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
+      const payload = form.payload(user.email, profileImage ? { profileImage } : {});
+      // BMR is system-calculated on the profile page — never write it from this form.
+      delete payload.bmr;
+      const data = await saveProfile(payload);
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
-        bmr: form.bmr ? parseFloat(form.bmr) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         profileImage: profileImagePreview || null,
@@ -195,6 +198,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     !form.height || form.height.trim() === '' ||
     !form.phone || form.phone.trim() === '';
 
+  const derivedWeightGoalMode = useMemo(
+    () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
+    [form.height, latestWeight],
+  );
+
+  useEffect(() => {
+    if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
+  }, [derivedWeightGoalMode, form.setWeightGoalMode]);
+
+  const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = form.name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'Member';
 
@@ -258,10 +271,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>
-              {form.weightGoalMode && (
+              {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
-                  ${form.weightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : form.weightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
-                  {form.weightGoalMode === 'loss' ? '🔥 Loss Mode' : form.weightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
+                  ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>
+                  {displayWeightGoalMode === 'loss' ? '🔥 Loss Mode' : displayWeightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
+                </span>
+              )}
+              {coachName && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                  Coach: {coachName}
                 </span>
               )}
             </div>
@@ -296,14 +314,21 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
-                  bmr={form.bmr} setBmr={form.setBmr}
+                  gender={form.gender} setGender={form.setGender}
+                  bmr={form.bmr}
+                  bmrReadOnly
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId} setCommunityId={form.setCommunityId}
                 />
+                <UserProfileBodyMetrics bodyMetrics={form.bodyMetrics} />
                 <IdealWeightCards height={form.height} latestWeight={latestWeight} />
                 <DietDropdown value={form.dietType} onChange={form.setDietType} />
-                <WeightModeSelector value={form.weightGoalMode || 'loss'} onChange={form.setWeightGoalMode} />
+                <WeightModeSelector
+                  height={form.height}
+                  currentWeight={latestWeight}
+                  fallbackMode={form.weightGoalMode || 'loss'}
+                />
               </div>
             )}
           </div>

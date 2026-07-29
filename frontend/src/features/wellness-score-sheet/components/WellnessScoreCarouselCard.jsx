@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { ChevronRight, Settings, Trophy } from 'lucide-react';
 import CircularProgress from '../../nutrition/components/dashboard/carousel/CircularProgress';
 import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/CarouselPeriodHeader';
-import { useISTToday } from '../hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
+import { prefetchTimeWindows } from '../hooks/useTimeWindows';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
@@ -38,7 +39,7 @@ export default function WellnessScoreCarouselCard({
   scoreSubtitle = 'Daily Score',
   periodContext,
 }) {
-  const today = useISTToday();
+  const today = useBusinessToday(user);
   const internal = useWellnessScore({
     user: scoreDataProp == null ? user : null,
     apiBaseUrl,
@@ -46,6 +47,12 @@ export default function WellnessScoreCarouselCard({
     nutritionRefreshKey,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
+
+  // Warm time-window cache so the full sheet can show "between 7:15 AM…"
+  // hints on first open instead of the generic fallback.
+  useEffect(() => {
+    prefetchTimeWindows();
+  }, []);
 
   const loading = loadingProp ?? internal.loading;
   const data = scoreDataProp ?? internal.data;

@@ -4,7 +4,8 @@
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
-
+import { applyDateRangeFilter } from '../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../shared/lib/datetime/index.js';
 /**
  * Fetch ALL active members (used by admin role)
  */
@@ -91,19 +92,17 @@ export async function fetchTimeWindows() {
 /**
  * Fetch weight records for given user IDs and date range
  */
-export async function fetchWeightRecords(userIds, startDate, endDate) {
+export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
   
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from('weight_records_table')
     .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserId', userIds)
-    .gte('CreatedAt', `${startDate}T00:00:00`)
-    .lte('CreatedAt', `${endDate}T23:59:59`)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false });
-  
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
   return data || [];
 }
@@ -112,22 +111,19 @@ export async function fetchWeightRecords(userIds, startDate, endDate) {
  * Fetch education logs for given user IDs and date range
  * NOTE: education_logs_table uses mixed-case column names that require quoting.
  */
-export async function fetchEducationRecords(userIds, startDate, endDate) {
+export async function fetchEducationRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
   
   const supabase = getSupabaseClient();
-  // education_logs_table stores UserId as string
   const userIdsAsString = userIds.map(String);
   
-  const { data, error } = await supabase
+  let query = supabase
     .from('education_logs_table')
     .select('"UserId", "Topic", "CreatedAt", attendance_type, center_name, nutrition_center_id, "City", "Village"')
     .in('"UserId"', userIdsAsString)
-    .gte('"CreatedAt"', `${startDate}T00:00:00`)
-    .lte('"CreatedAt"', `${endDate}T23:59:59`)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false });
-  
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0');
+  query = applyDateRangeFilter(query, '"CreatedAt"', startDate, endDate, timezoneIana);
+  const { data, error } = await query.order('"CreatedAt"', { ascending: false });  
   if (error) throw error;
   
   // Filter out watch-synced "Calories Burned:" entries
@@ -140,21 +136,19 @@ export async function fetchEducationRecords(userIds, startDate, endDate) {
 /**
  * Fetch food records for given user IDs and date range
  */
-export async function fetchFoodRecords(userIds, startDate, endDate) {
+export async function fetchFoodRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
   
   const supabase = getSupabaseClient();
   const userIdsAsString = userIds.map(String);
   
-  const { data, error } = await supabase
+  let query = supabase
     .from('food_nutrition_data_table')
     .select('UserID, CreatedAt, TotalCalories, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserID', userIdsAsString)
-    .gte('CreatedAt', `${startDate}T00:00:00`)
-    .lte('CreatedAt', `${endDate}T23:59:59`)
-    .or('IsDeleted.is.null,IsDeleted.eq.0')
-    .order('CreatedAt', { ascending: false });
-  
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
   return data || [];
 }
@@ -162,19 +156,17 @@ export async function fetchFoodRecords(userIds, startDate, endDate) {
 /**
  * Fetch step activity records for given user IDs and date range
  */
-export async function fetchStepRecords(userIds, startDate, endDate) {
+export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
   
   const supabase = getSupabaseClient();
   
-  const { data, error } = await supabase
+  let query = supabase
     .from('daily_step_activity')
     .select('UserId, CreatedAt, Steps, CaloriesBurned')
-    .in('UserId', userIds)
-    .gte('CreatedAt', `${startDate}T00:00:00`)
-    .lte('CreatedAt', `${endDate}T23:59:59`)
-    .order('CreatedAt', { ascending: false });
-  
+    .in('UserId', userIds);
+  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
   return data || [];
 }
@@ -198,6 +190,39 @@ export async function fetchNutritionCenters(centerIds) {
     centerMap[center.Id] = center.CenterName;
   });
   return centerMap;
+}
+
+/**
+ * Keep only the latest log per member per calendar day (newest CreatedAt).
+ * Used for weight records where the most recent upload is the authoritative value.
+ */
+export function dedupeLatestLogPerMemberPerDay(records) {
+  if (!records || records.length === 0) return [];
+
+  // Sort descending so the latest timestamp comes first
+  const sorted = [...records].sort((a, b) =>
+    String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || ''))
+  );
+
+  const seen = new Set();
+  const deduped = [];
+
+  for (const record of sorted) {
+    const dateMatch = String(record.CreatedAt || '').match(/^(\d{4}-\d{2}-\d{2})/);
+    const date = dateMatch ? dateMatch[1] : 'unknown';
+    const userKey = String(record.UserID ?? record.UserId ?? '');
+    const key = `${userKey}-${date}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(record);
+    }
+  }
+
+  // Newest first for the report table
+  return deduped.sort((a, b) =>
+    String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || ''))
+  );
 }
 
 /**

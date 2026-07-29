@@ -1,4 +1,5 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { DATE_YMD_RE, assertCalendarDateYmd } from '../../shared/lib/datetime/index.js';
 
 export function validateSave(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');
@@ -38,6 +39,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SHARE_CODE_RE = /^[A-Za-z0-9]{6,10}$/;
 const SHARE_IDENTIFIER_RE = new RegExp(`(?:${UUID_RE.source})|(?:${SHARE_CODE_RE.source})`, 'i');
 
+function optionalNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function optionalString(value) {
+  if (value === undefined || value === null) return null;
+  const s = String(value).trim();
+  return s.length > 0 ? s : null;
+}
+
 export function validateCreateCapture(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const { userId, imageBase64, token, shareCode } = body;
@@ -52,14 +65,46 @@ export function validateCreateCapture(body) {
   if (shareCode !== undefined && !SHARE_CODE_RE.test(String(shareCode))) {
     throw new ValidationError(400, 'shareCode must be 6-10 alphanumeric characters');
   }
+  const attendanceType = optionalString(body.attendanceType);
+  if (attendanceType && attendanceType !== 'club' && attendanceType !== 'remote') {
+    throw new ValidationError(400, "attendanceType must be 'club' or 'remote'");
+  }
   // imageType is intentionally NOT accepted here. All pending captures start
   // as ImageType='pending' (set in the repository). The type is resolved via
   // PATCH /captures after AI analysis determines the correct category.
+  // Location/club fields are captured at photo time so later domain saves
+  // can copy them even if a second GPS pass fails.
+  // locationStatus / locationError* are client diagnostics for Vercel logs only.
+  const locationStatus = optionalString(body.locationStatus);
+  const locationErrorCode = optionalString(body.locationErrorCode);
+  const locationErrorDetail = optionalString(body.locationErrorDetail);
+  const locationLatencyMs = optionalNumber(body.locationLatencyMs);
+  const gpsAccuracyM = optionalNumber(body.gpsAccuracyM);
+  let geocodeOk = null;
+  if (body.geocodeOk === true || body.geocodeOk === false) {
+    geocodeOk = body.geocodeOk;
+  } else if (body.geocodeOk === 'true' || body.geocodeOk === 'false') {
+    geocodeOk = body.geocodeOk === 'true';
+  }
+
   return {
     userId,
     imageBase64,
     token: token || null,
     shareCode: shareCode ? String(shareCode) : null,
+    latitude: optionalNumber(body.latitude),
+    longitude: optionalNumber(body.longitude),
+    city: optionalString(body.city),
+    village: optionalString(body.village),
+    attendanceType,
+    nutritionCenterId: optionalNumber(body.nutritionCenterId),
+    centerName: optionalString(body.centerName),
+    locationStatus,
+    locationErrorCode,
+    locationErrorDetail,
+    locationLatencyMs,
+    geocodeOk,
+    gpsAccuracyM,
   };
 }
 
@@ -140,10 +185,12 @@ export function validateResolveUnknownShare(query) {
  *                        service so we don't duplicate the schema here.
  *   - imagePath        — optional. Falls back to the original capture's
  *                        ImagePath in the service if absent.
+ *   - originalCapturedAt — optional. UTC ISO from the diary row's capturedAt;
+ *                        used only when capture.CreatedAt cannot be read.
  */
 export function validateRetryPromotion(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const { captureId, viewerUserId, analysisResult, imagePath } = body;
+  const { captureId, viewerUserId, analysisResult, imagePath, originalCapturedAt } = body;
   if (!captureId) throw new ValidationError(400, 'captureId is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
   if (analysisResult == null) {
@@ -160,6 +207,10 @@ export function validateRetryPromotion(body) {
     viewerUserId: viewerUserId.toString(),
     analysisResult,
     imagePath: imagePath ? imagePath.toString() : null,
+    originalCapturedAt:
+      originalCapturedAt != null && originalCapturedAt !== ''
+        ? String(originalCapturedAt)
+        : null,
   };
 }
 
@@ -170,37 +221,19 @@ export function validateRetryPromotion(body) {
  *   - ownerUserId  required — the diary subject. Coach reads pass the
  *                  member's id; self reads pass the viewer's own id.
  *   - viewerUserId required — the authenticated session user.
- *   - date         required — `YYYY-MM-DD` in IST. Future dates are
- *                  rejected because no per-vertical write produces a
- *                  future row, and the predicate prevents callers from
- *                  trivially scanning years of history with a single
- *                  request.
+ *   - date         required — `YYYY-MM-DD` calendar date in the owner's timezone.
  */
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 export function validateDiaryList(query) {
   const { ownerUserId, viewerUserId, date } = query || {};
   if (!ownerUserId) throw new ValidationError(400, 'ownerUserId is required');
   if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
   if (!date) throw new ValidationError(400, 'date is required (YYYY-MM-DD)');
-  if (!DATE_RE.test(date)) {
+  if (!DATE_YMD_RE.test(date)) {
     throw new ValidationError(400, 'date must match YYYY-MM-DD');
   }
-  // Guard against impossible dates that pass the regex (e.g. 2026-02-31).
-  // Parsing as UTC because the format itself is calendar-only.
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-    throw new ValidationError(400, 'date is not a valid calendar date');
-  }
-  // Reject future dates (per ADR-0003 PR-B test plan).
-  // Use IST (UTC+5:30) so dates before 05:30 AM IST are not wrongly rejected
-  // — at 05:28 IST the UTC date is still yesterday, causing false "future" errors.
-  const todayIst = new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10);
-  if (date > todayIst) {
-    throw new ValidationError(400, 'date cannot be in the future');
-  }
+  assertCalendarDateYmd(date);
   return {
-    ownerUserId:  ownerUserId.toString(),
+    ownerUserId: ownerUserId.toString(),
     viewerUserId: viewerUserId.toString(),
     date,
   };

@@ -4,7 +4,9 @@
  */
 import {
   generateWeightInsights,
+  generateWeightInsightsFromComparison,
   determineWeightTrend,
+  determineWeightDirection,
   WEIGHT_INSIGHT_CONFIG,
 } from '../weightInsightEngine.js';
 
@@ -23,6 +25,34 @@ describe('determineWeightTrend', () => {
 
   it('returns decrease when below tolerance', () => {
     expect(determineWeightTrend(75, 74.5, WEIGHT_INSIGHT_CONFIG)).toBe('decrease');
+  });
+});
+
+describe('determineWeightDirection', () => {
+  it('detects small increases the display tolerance would miss', () => {
+    expect(determineWeightDirection(73.8, 73.85)).toBe('up');
+  });
+
+  it('detects small decreases', () => {
+    expect(determineWeightDirection(73.85, 73.8)).toBe('down');
+  });
+});
+
+describe('generateWeightInsightsFromComparison — backend direction override', () => {
+  it('treats small reverse-progress increase as increase, not stable', () => {
+    const result = generateWeightInsightsFromComparison(
+      {
+        weight: { previous: 73.8, current: 73.85, change: 0.05, direction: 'increased' },
+        nutrition: { yesterday: { calories: 1200, protein: 95, carbs: 180, fat: 35 } },
+        water: { yesterday: 2800, target: 3000 },
+        targets: { calories: 1500, protein: 90, carbs: 210, fat: 40, water: 3000 },
+      },
+      'loss',
+    );
+
+    expect(result.weightTrend).toBe('increase');
+    expect(result.status).toBe('reverse_progress');
+    expect(result.sectionTitle).toBe('Reason for weight gain');
   });
 });
 

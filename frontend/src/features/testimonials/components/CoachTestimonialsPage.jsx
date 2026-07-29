@@ -17,6 +17,7 @@ import {
   Play, X, HeartPulse, Maximize2, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
@@ -328,9 +329,12 @@ function UnifiedOtpInline({ userId, onVerified }) {
       <p className="text-xs text-amber-700 leading-relaxed">
         Your coach received a single 6-digit OTP covering all your changes. Ask them to share it.
       </p>
-      <input
-        type="tel"
+      <NativeInput
+        otp
+        type="text"
         inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
         maxLength={6}
         placeholder="_ _ _ _ _ _"
         value={otp}
@@ -608,7 +612,7 @@ function MemberCard({
               {editable && expandedSlots.has('beforeWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="number" step="0.1" min="1" max="500" autoFocus
+                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
                     defaultValue={draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''}
                     onBlur={(e) => {
                       const v = parseFloat(e.target.value);
@@ -699,7 +703,7 @@ function MemberCard({
               {editable && expandedSlots.has('afterWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="number" step="0.1" min="1" max="500" autoFocus
+                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
                     defaultValue={draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''}
                     onBlur={(e) => {
                       const v = parseFloat(e.target.value);
@@ -740,7 +744,7 @@ function MemberCard({
             <>
               <div>
                 <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="number" step="0.1" min="1" max="500"
+                <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
                   placeholder={String(testimonial?.beforeWeightKg ?? '')}
                   value={draftBefore?.weightKg ?? ''}
                   onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
@@ -767,7 +771,7 @@ function MemberCard({
           {draftAfter && (
             <div className={draftBefore ? '' : 'col-span-2'}>
               <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="number" step="0.1" min="1" max="500"
+              <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
                 placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
                 value={draftAfter?.weightKg ?? ''}
                 onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
@@ -1325,7 +1329,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-green-700" />
           <h1 className="text-lg font-bold text-gray-900">
-            {showTeamChrome ? 'Team Testimonials' : 'My Transformation'}
+            {showTeamChrome ? 'Team Transformation' : 'My Transformation'}
           </h1>
         </div>
         <TouchFeedbackButton

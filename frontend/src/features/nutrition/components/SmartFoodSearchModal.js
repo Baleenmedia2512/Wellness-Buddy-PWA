@@ -335,8 +335,9 @@ const SmartFoodSearchModal = ({
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <input
-                          type="number"
+                          type="text"
                           inputMode="decimal"
+                          pattern="[0-9]*"
                           value={item.quantity ?? 100}
                           onChange={(e) => handleQuantityChange(item.name, e.target.value)}
                           className="w-14 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
@@ -531,8 +532,9 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <input
-      type="number"
+      type="text"
       inputMode="decimal"
+      pattern="[0-9]*"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}

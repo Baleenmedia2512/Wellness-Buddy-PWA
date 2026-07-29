@@ -11,3 +11,4 @@ export { lookupUser } from './lookup.service.js';
 export { skipSetup } from './setup.service.js';
 export { getStatus } from './status.service.js';
 export { getContext } from './context.service.js';
+export { syncUserTimezoneIfChanged } from './timezone-sync.service.js';

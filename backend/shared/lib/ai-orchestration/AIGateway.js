@@ -27,7 +27,13 @@
  */
 
 import logger from '../logger.js';
-import { getModel, imageInlinePart, SchemaType, FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
+import {
+  generateContent,
+  imageInlinePart,
+  SchemaType,
+  MODEL_NAME,
+  FALLBACK_MODEL_NAME,
+} from '../gemini/geminiClient.js';
 import { safeParseJson, validateShape } from '../gemini/safeJson.js';
 import { withEnterpriseRetry } from './RetryPolicy.js';
 
@@ -196,6 +202,9 @@ const HERBALIFE_SHAKE_NAME = 'Herbalife Shake';
  * Fixed nutrition for the standard Wellness Valley prepared shake recipe.
  * Single source of truth — reused by prompts and deterministic backend overrides.
  */
+/** Standard USA water-bottle size (1 L). Used in prompts and post-processing overrides. */
+const WATER_BOTTLE_ML = 1000;
+
 const HERBALIFE_SHAKE_NUTRITION = Object.freeze({
   name:      HERBALIFE_SHAKE_NAME,
   portion:   '1 serving',
@@ -410,6 +419,68 @@ function applyHerbalifeShakeOverrides(details) {
   return { ...details, foods, total: sumNutritionFields(foods) };
 }
 
+function isPlainWater(name) {
+  const n = normalizeFoodName(name);
+  return (
+    n === 'water'
+    || n === 'plain water'
+    || n === 'drinking water'
+    || n === 'bottled water'
+    || n === 'mineral water'
+  );
+}
+
+function isWaterBottlePortion(portion) {
+  return /\bbottles?\b/i.test(String(portion ?? ''));
+}
+
+function extractBottleQuantity(portion) {
+  const match = String(portion ?? '').match(/(\d+(?:\.\d+)?)\s*bottles?\b/i);
+  return match ? parseFloat(match[1]) : 1;
+}
+
+function formatWaterBottlePortion(quantity) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  if (quantity === 1) return `1 bottle (${WATER_BOTTLE_ML} ml)`;
+  const qtyLabel = Number.isInteger(quantity) ? quantity : quantity.toFixed(1);
+  return `${qtyLabel} bottles (${volumeMl} ml)`;
+}
+
+function buildWaterBottleFoodItem(existing = {}, quantity = 1) {
+  const volumeMl = Math.round(WATER_BOTTLE_ML * quantity);
+  return {
+    ...existing,
+    name: 'Water',
+    portion: formatWaterBottlePortion(quantity),
+    weight_g: null,
+    volume_ml: volumeMl,
+    unit: 'ml',
+    isLiquid: true,
+  };
+}
+
+/**
+ * Normalize plain-water bottle servings to the standard 1 L (USA) size.
+ * @param {object|null|undefined} details
+ * @returns {object}
+ */
+function applyWaterBottleOverrides(details) {
+  if (!details || !Array.isArray(details.foods) || details.foods.length === 0) {
+    return details ?? {};
+  }
+
+  let bottleFound = false;
+  const foods = details.foods.map((food) => {
+    if (!isPlainWater(food?.name) || !isWaterBottlePortion(food?.portion)) return food;
+    bottleFound = true;
+    return buildWaterBottleFoodItem(food, extractBottleQuantity(food.portion));
+  });
+
+  if (!bottleFound) return details;
+
+  return { ...details, foods, total: sumNutritionFields(foods) };
+}
+
 function formatHerbalifeShakeEnrichmentReference() {
   const micros = extractEnrichmentNutrition(HERBALIFE_SHAKE_NUTRITION.nutrition);
   return Object.entries(micros)
@@ -545,7 +616,8 @@ Snacks: Murukku (~30 g), Sundal (~100 g), Bonda (~60 g), Bajji (~50 g).
 
 Beverages (isLiquid: true): Filter Coffee with milk (~150 ml), Masala Chai with milk (~150 ml),
   Plain Tea with milk (~150 ml), Ginger Tea with milk (~150 ml), Buttermilk/Moru (~200 ml),
-  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml).
+  Tender Coconut Water (~240 ml), Sugarcane Juice (~240 ml),
+  Plain Water (~250 ml glass), Water Bottle (~1000 ml / 1 L — USA standard, never 750 ml).
 
 Sweets: Sweet Pongal/Sakkarai Pongal (~150 g), Payasam (~150 ml), Mysore Pak (~50 g),
   Halwa (~80 g), Laddu (~50 g).
@@ -578,6 +650,7 @@ Nutrition rules:
 - All 26 fields required per item. Absent/unknown → 0, never null. All values numeric.
 - vitamin_a: µg RAE | vitamin_d/k: µg | vitamin_c, b-vitamins, minerals: mg.
 - Plain water: all nutrients 0.
+- Water bottle: always 1000 ml (1 L) per full bottle; portion e.g. "1 bottle (1000 ml)".
 - Use USDA / IFCT values for Tamil Nadu foods and Herbalife Afresh / Herbal Tea (exact values above).
 - "${HERBALIFE_SHAKE_NAME}": identify only — set all nutrition fields to 0; the server applies the fixed standard recipe profile.
 - If extra fruits or add-ins are visible, list them as separate food items with independent nutrition; sum into details.total.
@@ -700,89 +773,143 @@ function isPrimaryOverloadedError(err) {
  * @param {string|null} [opts.modelOverride]  Internal: set by fallback path.
  * @returns {Promise<{ rawText: string, attempts: number, latencyMs: number }>}
  */
-async function callModel(configKey, parts, schema, { label, trace = null, modelOverride = null }) {
-  const model = getModel(configKey, schema, modelOverride);
-
+async function callModel(
+  configKey,
+  parts,
+  schema,
+  { label, trace = null, modelOverride = null },
+) {
   // The fallback model uses its own independent circuit breaker so an opened
   // primary breaker does not also block the fallback.
-  const circuitService = modelOverride ? `${SERVICE}-fallback` : SERVICE;
+  const circuitService = modelOverride
+    ? `${SERVICE}-fallback`
+    : SERVICE;
 
   let result, attempts, totalLatencyMs;
+
   try {
     ({ result, attempts, totalLatencyMs } = await withEnterpriseRetry(
-      () => model.generateContent(parts),
+      () =>
+        generateContent(
+          configKey,
+          parts,
+          schema,
+          modelOverride,
+          trace
+        ),
       {
         label,
         service: circuitService,
-        // Primary model (Flash): cap at 2 attempts. A persistent 503 means
-        // the endpoint is saturated — burning 2 more retries on the same
-        // overloaded server delays fallback and makes congestion worse.
-        // Fallback model (Pro): keep the default 3-attempt budget; it is the
-        // last resort and worth retrying fully before surfacing an error.
-        ...(modelOverride ? {} : { maxAttempts: 2 }),
+
+        // Primary model (Flash): 1 attempt only — frontend drives all retries.
+        // Previously 2 silently doubled wait time before the caller knew it
+        // failed. Retry budget: attempt 1 = Flash, attempt 2+ = Pro (see
+        // orchestratorService.js usePro logic).
+        //
+        // Fallback model (Pro): cap at 2 backend attempts.
+        // Each backend attempt has a 30 s hard timeout (DEFAULT_TIMEOUT_MS).
+        // 2 × 30 s = 60 s, which exactly fits the Vercel maxDuration for
+        // pages/api/ai/orchestrate.js. A third attempt would hit the 504.
+        ...(modelOverride ? { maxAttempts: 2 } : { maxAttempts: 1 }),
       },
     ));
   } catch (err) {
     // Primary model saturated, circuit open, or quota exceeded → try fallback once
     if (!modelOverride && isPrimaryOverloadedError(err)) {
       const status = Number(err.status);
-      const reason = err.code === 'CIRCUIT_OPEN' ? 'circuit_open'
-                   : status === 502 ? '502_bad_gateway'
-                   : (status === 429 || (err.message ?? '').toLowerCase().includes('quota') || (err.message ?? '').toLowerCase().includes('rate limit') || (err.message ?? '').toLowerCase().includes('too many requests')) ? '429_quota_exceeded'
-                   : '503_overload';
-      logger.warn('AIGateway.callModel: primary model unavailable, switching to fallback', {
+
+      const reason =
+        err.code === 'CIRCUIT_OPEN'
+          ? 'circuit_open'
+          : status === 502
+            ? '502_bad_gateway'
+            : (
+                status === 429 ||
+                (err.message ?? '').toLowerCase().includes('quota') ||
+                (err.message ?? '').toLowerCase().includes('rate limit') ||
+                (err.message ?? '').toLowerCase().includes('too many requests')
+              )
+              ? '429_quota_exceeded'
+              : '503_overload';
+
+      logger.warn(
+        'AIGateway.callModel: primary model unavailable, switching to fallback',
+        {
+          label,
+          fallbackModel: FALLBACK_MODEL_NAME,
+          reason,
+          primaryError: err.message,
+        },
+      );
+
+      return callModel(configKey, parts, schema, {
         label,
-        fallbackModel: FALLBACK_MODEL_NAME,
-        reason,
-        primaryError:  err.message,
+        trace,
+        modelOverride: FALLBACK_MODEL_NAME,
       });
-      return callModel(configKey, parts, schema, { label, trace, modelOverride: FALLBACK_MODEL_NAME });
     }
+
     throw err;
   }
 
   // Propagate retries into trace
   if (trace && attempts > 1) {
-    for (let i = 1; i < attempts; i += 1) trace.addRetry();
+    for (let i = 1; i < attempts; i += 1) {
+      trace.addRetry();
+    }
   }
 
   const rawText = result.response.text();
 
-  // Accumulate token usage (available on supported model versions)
+  // Accumulate token usage
   const usage = result.response?.usageMetadata;
   if (trace && usage) {
     trace.addTokenUsage({
-      inputTokens:  usage.promptTokenCount     ?? 0,
+      inputTokens: usage.promptTokenCount ?? 0,
       outputTokens: usage.candidatesTokenCount ?? 0,
-      model:        configKey,
+      model: configKey,
     });
   }
 
-  // Detect MAX_TOKENS truncation — gemini-2.5-flash counts thinking + output
-  // tokens against maxOutputTokens. A too-small budget truncates the JSON
-  // response mid-field, causing a downstream parse failure that silently
-  // routes the capture to "other".
-  // Log a warning so this is immediately visible in observability dashboards.
   const finishReason = result.response?.candidates?.[0]?.finishReason;
+
   if (finishReason === 'MAX_TOKENS') {
     const err = new Error(
-      `MAX_TOKENS: Gemini truncated response after ${usage?.candidatesTokenCount ?? '?'} output tokens ` +
-      `(thinking=${usage?.thoughtsTokenCount ?? '?'}). ` +
-      `Increase maxOutputTokens in MODEL_CONFIGS.${configKey}.`
+      `MAX_TOKENS: Gemini truncated response after ${
+        usage?.candidatesTokenCount ?? '?'
+      } output tokens (thinking=${
+        usage?.thoughtsTokenCount ?? '?'
+      }). Increase maxOutputTokens in MODEL_CONFIGS.${configKey}.`,
     );
-    err.code    = 'MAX_TOKENS';
-    err.status  = 503; // treat as retryable so the caller can escalate to Pro
+
+    err.code = 'MAX_TOKENS';
+    err.status = 503;
+
     logger.error('AIGateway.callModel: MAX_TOKENS truncation', {
       label,
       configKey,
       candidatesTokenCount: usage?.candidatesTokenCount ?? null,
-      thoughtsTokenCount:   usage?.thoughtsTokenCount   ?? null,
-      promptTokenCount:     usage?.promptTokenCount      ?? null,
+      thoughtsTokenCount: usage?.thoughtsTokenCount ?? null,
+      promptTokenCount: usage?.promptTokenCount ?? null,
     });
+
     throw err;
   }
 
-  return { rawText, attempts, latencyMs: totalLatencyMs };
+  return {
+  rawText,
+  attempts,
+  latencyMs: totalLatencyMs,
+  usage: {
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: usage?.candidatesTokenCount ?? 0,
+    totalTokens:
+      (usage?.promptTokenCount ?? 0) +
+      (usage?.candidatesTokenCount ?? 0),
+    thoughtsTokens: usage?.thoughtsTokenCount ?? 0,
+  },
+  model: modelOverride ?? MODEL_NAME,
+};
 }
 
 // ── Type normalisation ────────────────────────────────────────────────────────
@@ -817,37 +944,71 @@ function normaliseType(raw, confidence) {
  * @param {import('./ObservabilityTracer.js').TraceContext|null} [opts.trace]
  * @returns {Promise<object>}
  */
-export async function analyzeUnified(imageBuffer, mimeType, { trace = null, modelOverride = null } = {}) {
-  const label     = 'unified';
+export async function analyzeUnified(
+  imageBuffer,
+  mimeType,
+  {
+    trace = null,
+    context = null,
+    modelOverride = null,
+  } = {},
+) {
+  const label = 'unified';
   const imagePart = imageInlinePart(imageBuffer, mimeType);
   const stageStart = Date.now();
 
   try {
-    const { rawText, attempts, latencyMs } = await callModel(
-      'unified', [imagePart, UNIFIED_PROMPT], UNIFIED_SCHEMA, { label, trace, modelOverride },
+    const {
+    rawText,
+    attempts,
+    latencyMs,
+    usage,
+    model,
+  } = await callModel(
+      'unified',
+      [imagePart, UNIFIED_PROMPT],
+      UNIFIED_SCHEMA,
+      {
+        label,
+        trace,
+        context,
+        modelOverride,
+      },
     );
 
     const parsed = safeParseJson(rawText, { label });
+
     if (!parsed.ok) {
       throw new Error(`AIGateway.analyzeUnified: parse error — ${parsed.error}`);
     }
 
-    const shape = validateShape(parsed.data, ['imageType', 'confidence'], { label });
+    const shape = validateShape(
+      parsed.data,
+      ['imageType', 'confidence'],
+      { label },
+    );
+
     if (!shape.ok) {
-      throw new Error(`AIGateway.analyzeUnified: schema missing ${shape.missing}`);
+      throw new Error(
+        `AIGateway.analyzeUnified: schema missing ${shape.missing}`,
+      );
     }
 
-    const d        = parsed.data;
+    const d = parsed.data;
     const normType = normaliseType(d.imageType, d.confidence);
 
     let details = d.details ?? {};
     let fastNutrition = null;
+
     if (normType === 'food') {
       details = applyHerbalifeShakeOverrides(details);
       const foods = Array.isArray(details.foods) ? details.foods : [];
       if (details.total) {
         fastNutrition = extractFastNutrition(details.total, foods);
-      } else if (foods.length === 1 && isPreparedHerbalifeShakeName(foods[0]?.name)) {
+      } else if (
+        foods.length === 1 &&
+        isPreparedHerbalifeShakeName(foods[0]?.name)
+      ) {
         details.total = cloneHerbalifeShakeNutrition();
         fastNutrition = extractHerbalifeShakeFastNutrition();
       } else {
@@ -856,30 +1017,86 @@ export async function analyzeUnified(imageBuffer, mimeType, { trace = null, mode
     }
 
     if (trace) {
-      trace.addStage({ name: label, latencyMs, success: true, extra: { attempts, imageType: normType } });
+      trace.addStage({
+        name: label,
+        latencyMs,
+        success: true,
+        extra: {
+          attempts,
+          imageType: normType,
+          requestId: context?.requestId,
+        },
+      });
     }
 
+    logger.info("AI Unified Analysis Completed", {
+  requestId: context?.requestId,
+  userId: context?.userId,
+  endpoint: context?.endpoint,
+  operation: context?.operation,
+  imageType: normType,
+
+  model,
+
+  inputTokens: usage?.inputTokens,
+  outputTokens: usage?.outputTokens,
+  totalTokens: usage?.totalTokens,
+
+  latencyMs,
+  attempts,
+});
+
     return {
-      imageType:      normType,
-      confidence:     d.confidence,
+      imageType: normType,
+      confidence: d.confidence,
       details,
       fastNutrition,
-      weightReading:  normType === 'weight'     ? (d.weightReading  ?? null) : null,
-      smartwatchData: normType === 'smartwatch' ? (d.smartwatchData ?? null) : null,
-      educationData:  normType === 'education'  ? (d.educationData  ?? null) : null,
+      weightReading:
+        normType === 'weight'
+          ? (d.weightReading ?? null)
+          : null,
+      smartwatchData:
+        normType === 'smartwatch'
+          ? (d.smartwatchData ?? null)
+          : null,
+      educationData:
+        normType === 'education'
+          ? (d.educationData ?? null)
+          : null,
       latencyMs,
       attempts,
+      usage,
+      model,
     };
   } catch (err) {
     if (trace) {
       trace.addStage({
-        name:      label,
+        name: label,
         latencyMs: Date.now() - stageStart,
-        success:   false,
-        extra:     { error: err.message },
+        success: false,
+        extra: {
+          error: err.message,
+          requestId: context?.requestId,
+        },
       });
-      trace.error({ stage: label, message: err.message, code: err.code });
+
+      trace.error({
+        stage: label,
+        message: err.message,
+        code: err.code,
+      });
     }
+
+    logger.error('AI Unified Analysis Failed', {
+      requestId: context?.requestId,
+      userId: context?.userId,
+      endpoint: context?.endpoint,
+      operation: context?.operation,
+      model: modelOverride ?? MODEL_NAME,
+      error: err.message,
+      code: err.code,
+    });
+
     throw err;
   }
 }

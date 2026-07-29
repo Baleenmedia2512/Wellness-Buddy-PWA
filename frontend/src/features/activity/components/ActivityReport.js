@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
-  ArrowLeft, RefreshCw, Download, Search, ChevronDown, ChevronUp,
+  RefreshCw, Download, Search,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -21,12 +21,12 @@ function mapRoleForApi(userRole) {
 // Activity type metadata
 const ACTIVITY_TYPES = [
   { id: 'weight', label: 'Weight', icon: Scale, color: 'blue', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
-  { id: 'education', label: 'Education Attendance', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
+  { id: 'education', label: 'Education', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
   { id: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'orange', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700' },
   { id: 'lunch', label: 'Lunch', icon: Utensils, color: 'green', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
   { id: 'dinner', label: 'Dinner', icon: Moon, color: 'purple', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
   { id: 'water', label: 'Water', icon: Droplets, color: 'cyan', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700' },
-  { id: 'calories', label: 'Calories', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+  { id: 'calories', label: 'Exercise', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
 ];
 
 // Activity Badge Component
@@ -427,15 +427,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <TouchFeedbackButton onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-6 h-6" />
-              </TouchFeedbackButton>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Attendance Report</h1>
-              </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Activity Report</h1>
             </div>
             <TouchFeedbackButton
               onClick={() => {
@@ -474,7 +469,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
         {/* Activity Type Tabs */}
         {summary && (
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-5">
+          <div className="flex flex-wrap gap-2 pb-2 mb-5">
             {ACTIVITY_TYPES.map((activity) => {
               const Icon = activity.icon;
               const isActive = selectedActivity === activity.id;

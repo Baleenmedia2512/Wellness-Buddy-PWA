@@ -17,6 +17,8 @@ import { debugLog } from '../utils/logger.js';
 import {
   validateImageFreshness,
   validateImageForEducation,
+  resolveUploadCaptureTimestamp,
+  parseExifDateStringToLocalIso,
 } from "../utils/imageValidator";
 
 /**
@@ -172,8 +174,10 @@ const ImageUpload = forwardRef(
           return;
         }
 
-        // Non-education: use file.lastModified (reflects actual file creation time on web)
-        onImageSelect(file, toLocalISOString(new Date(file.lastModified)));
+        // Non-education: EXIF shutter time when present; otherwise upload time.
+        // Do NOT use file.lastModified — it is when the file was saved, not when eaten.
+        const captureTimestamp = await resolveUploadCaptureTimestamp(file);
+        onImageSelect(file, captureTimestamp);
       }
     };
 
@@ -451,12 +455,8 @@ const ImageUpload = forwardRef(
                 photo.exif.DateTime ||
                 photo.exif.dateTime;
               if (exifDateStr) {
-                const iso = exifDateStr.replace(
-                  /^(\d{4}):(\d{2}):(\d{2})/,
-                  "$1-$2-$3",
-                );
-                const parsed = new Date(iso);
-                if (!isNaN(parsed.getTime())) {
+                galleryTimestamp = parseExifDateStringToLocalIso(exifDateStr);
+                if (galleryTimestamp) {
                   /* GALLERY_DATE_RESTRICTION_ENABLED — begin disabled block
                   // Validate photo is from today
                   const now = new Date();
@@ -476,7 +476,6 @@ const ImageUpload = forwardRef(
                   }
                   GALLERY_DATE_RESTRICTION_ENABLED — end disabled block */
 
-                  galleryTimestamp = toLocalISOString(parsed);
                   debugLog(
                     "✅ Non-education gallery image validated via EXIF:",
                     galleryTimestamp,
@@ -636,22 +635,6 @@ const ImageUpload = forwardRef(
                   className="w-full h-48 sm:h-56 md:h-64 lg:h-72 object-cover rounded-lg border-2 border-green-300 cursor-pointer hover:border-green-400 transition-all duration-200"
                   title="Click to view full size"
                 />
-
-                {/* Upload in progress — only while persisting the capture row */}
-                {loading && loadingState === "uploading" && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-gradient-to-br from-green-500 to-green-600 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-full shadow-lg flex items-center gap-1.5 sm:gap-2"
-                  >
-                    <div className="relative w-3 h-3 sm:w-4 sm:h-4">
-                      <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
-                    </div>
-                    <span className="text-[10px] sm:text-xs font-semibold">
-                      Saving...
-                    </span>
-                  </motion.div>
-                )}
 
                 {/* Saved badge — image persisted; analysis runs in Diary only */}
                 {!loading && loadingState === "saved" && (

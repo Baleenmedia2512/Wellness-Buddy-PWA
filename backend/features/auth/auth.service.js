@@ -8,7 +8,9 @@ import { MDT_OTP_EXPIRY_MINUTES, getMdtSmsConfigGaps, maskPhoneForLog, mdtApiKey
 import { buildMdtOtpMessage } from './domain/otp-message.rules.js';
 import { sendMdtSms } from './data/mdt-sms.client.js';
 
-const { getISTTimestamp } = repo;
+import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
+
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 
 /** Returns names of missing SMTP env-vars, analogous to getMdtSmsConfigGaps(). */
@@ -140,7 +142,7 @@ async function createAndDeliverOtp({ recipient, contactType }) {
     ExpiresAt: otpExpiryIst(expiryMinutes),
     ContactType: contactType,
     IsActive: true,
-    CreatedAt: getISTTimestamp(),
+    CreatedAt: nowUtc(),
   });
 
   logger.info('[sendOtp] OTP stored, dispatching', {
@@ -175,7 +177,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
       const storedPhone = canonicalPhoneForStorage(recipient);
       const { row, isNewUser: created } = await repo.findOrInsertUserByPhone(
         {
-          EntryDateTime: getISTTimestamp(),
+          EntryDateTime: nowUtc(),
           EntryUser: 'Wellness Valley',
           UserName: usernameFromPhone(recipient),
           Password: 'User@123#',
@@ -220,7 +222,7 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
   userInfo = await repo.findUserByEmail(recipient);
   if (!userInfo) {
     userInfo = await repo.insertUser({
-      EntryDateTime: getISTTimestamp(),
+      EntryDateTime: nowUtc(),
       EntryUser: 'Wellness Valley',
       UserName: recipient.split('@')[0],
       Password: 'User@123#',
@@ -378,7 +380,7 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
   if (existing) {
     userInfo = existing;
   } else {
-    const currentTime = getISTTimestamp();
+    const currentTime = nowUtc();
     userInfo = await repo.insertUser({
       EntryDateTime: currentTime,
       LastActiveAt: currentTime,
@@ -414,7 +416,11 @@ export async function verifyOtp(input) {
   const { recipient, otp, contactType, purpose } = input;
 
   if (DEMO_ACCOUNTS.includes(recipient)) {
-    return handleDemoVerify({ recipient, otp, purpose });
+    const result = await handleDemoVerify({ recipient, otp, purpose });
+    if (result.httpStatus === 200 && result.body?.user?.id) {
+      await syncUserTimezoneIfChanged(result.body.user.id, input.timezoneIana);
+    }
+    return result;
   }
 
   const otpData = await repo.fetchActiveOtp(recipient, contactType);
@@ -439,6 +445,8 @@ export async function verifyOtp(input) {
   await repo.markOtpVerified(otpData.ID);
 
   const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
+
+  await syncUserTimezoneIfChanged(user.id, input.timezoneIana);
 
   return {
     httpStatus: 200,

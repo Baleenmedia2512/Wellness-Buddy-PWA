@@ -11,10 +11,103 @@
  * GoogleGenerativeAI instance.
  * ---------------------------------------------------------------------------
  */
+// MUST be first — SDK reads localStorage at import time (Node has none).
 
+import './serverLocalStoragePolyfill.js';
+import AIClient from "ai-token-monitor";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
+/** Short-lived cache so telemetry in one request doesn't double-hit DB. */
+const _endUserCache = new Map();
+const END_USER_CACHE_TTL_MS = 60_000;
+/** Hard cap so a slow/unreachable monitor never holds a Vercel function open. */
+const TELEMETRY_TIMEOUT_MS = 2_000;
+
+/**
+ * Resolve end-user name/email for ai-token-monitor from trace.userId.
+ * Lightweight team_table lookup only — not used on the Gemini critical path.
+ *
+ * @param {string|null|undefined} userId
+ * @returns {Promise<{ endUserName: string|null, endUserEmail: string|null }>}
+ */
+async function resolveEndUserForMonitor(userId) {
+  if (userId == null || userId === '') {
+    return { endUserName: null, endUserEmail: null };
+  }
+  const key = String(userId);
+  const cached = _endUserCache.get(key);
+  if (cached && Date.now() - cached.at < END_USER_CACHE_TTL_MS) {
+    return { endUserName: cached.endUserName, endUserEmail: cached.endUserEmail };
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const uid = Number.parseInt(key, 10);
+    if (!Number.isFinite(uid) || uid <= 0) {
+      return { endUserName: null, endUserEmail: null };
+    }
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserName", "Email"')
+      .eq('"UserId"', uid)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    const resolved = {
+      endUserName: data?.UserName != null ? String(data.UserName) : null,
+      endUserEmail: data?.Email != null ? String(data.Email) : null,
+    };
+    _endUserCache.set(key, { ...resolved, at: Date.now() });
+    return resolved;
+  } catch (err) {
+    logger.warn('geminiClient: failed to resolve end-user for token monitor', {
+      userId: key,
+      message: err?.message,
+    });
+    return { endUserName: null, endUserEmail: null };
+  }
+}
+
+/**
+ * Send monitor telemetry without blocking the AI response.
+ * Identity lookup + SDK call run in the background with a hard timeout.
+ *
+ * @param {object} basePayload
+ * @param {object|null} trace
+ */
+function enqueueMonitorTelemetry(basePayload, trace) {
+  if (!process.env.AI_MONITOR_SDK_KEY) return;
+
+  const run = async () => {
+    const endUser = await resolveEndUserForMonitor(trace?.userId);
+    await AIClient.sendTelemetry({
+      ...basePayload,
+      traceId: trace?.traceId ?? null,
+      endUserId: trace?.userId ?? null,
+      endUserEmail: endUser.endUserEmail,
+      endUserName: endUser.endUserName,
+    });
+  };
+
+  const timed = Promise.race([
+    run(),
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`ai-token-monitor timed out after ${TELEMETRY_TIMEOUT_MS}ms`)),
+        TELEMETRY_TIMEOUT_MS,
+      );
+    }),
+  ]);
+
+  void timed.catch((sdkErr) => {
+    logger.warn('geminiClient: telemetry skipped', {
+      status: basePayload?.status ?? null,
+      message: sdkErr?.message,
+    });
+  });
+}
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
@@ -43,6 +136,23 @@ export const MODEL_CONFIGS = {
     topP: 1.0,
     maxOutputTokens: 256,
     responseMimeType: 'application/json',
+  },
+
+  /**
+   * Profile face check — simple boolean JSON.
+   * thinkingBudget: 0 is safe here (unlike unified nutrition): a yes/no face
+   * question does not need model introspection, and leaving Flash's default
+   * thinking on with a tiny maxOutputTokens budget often truncates output.
+   */
+  faceDetect: {
+    temperature: 0,
+    topK: 1,
+    topP: 1.0,
+    maxOutputTokens: 128,
+    responseMimeType: 'application/json',
+    thinkingConfig: {
+      thinkingBudget: 0,
+    },
   },
 
   /**
@@ -116,6 +226,31 @@ function getGenAI() {
       throw err;
     }
     _genAI = new GoogleGenerativeAI(apiKey);
+    try {
+  if (process.env.AI_MONITOR_SDK_KEY) {
+    AIClient.initialize({
+      baseURL:
+        process.env.AI_MONITOR_BASE_URL ||
+        "https://ai-token-monitor-backend.onrender.com/api",
+
+      sdkKey: process.env.AI_MONITOR_SDK_KEY,
+
+      token:
+        process.env.AI_MONITOR_TOKEN || "",
+
+      appName: "Wellness valley",
+
+      environment:
+        process.env.NODE_ENV || "development",
+    });
+
+    logger.info("AI Token Monitor SDK initialized");
+  }
+} catch (sdkInitErr) {
+  logger.warn("geminiClient: AI monitor SDK init skipped", {
+    message: sdkInitErr?.message,
+  });
+}
     logger.info('geminiClient: GoogleGenerativeAI instance created');
   }
   return _genAI;
@@ -124,7 +259,7 @@ function getGenAI() {
 /**
  * Return a cached Gemini model for the given configuration key.
  *
- * @param {'classify' | 'nutrition' | 'weight' | 'unified'} configKey
+ * @param {'classify' | 'faceDetect' | 'nutrition' | 'weight' | 'unified'} configKey
  * @param {object} [responseSchema]  Optional structured response schema (SDK SchemaType).
  * @param {string} [modelOverride]   Override the default model name (e.g. FALLBACK_MODEL_NAME).
  * @returns {import('@google/generative-ai').GenerativeModel}
@@ -177,12 +312,62 @@ export function clearModelCache() {
  * @returns {{ inlineData: { mimeType: string, data: string } }}
  */
 export function imageInlinePart(buffer, mimeType) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('imageInlinePart: image buffer is missing or empty');
+  }
   return {
     inlineData: {
       mimeType: mimeType || 'image/jpeg',
+      // Always encode from a real Buffer — String#toString('base64') is a no-op
+      // and would forward raw values like "data:," straight to Gemini.
       data: buffer.toString('base64'),
     },
   };
+}
+
+export async function generateContent(
+  configKey,
+  parts,
+  responseSchema = null,
+  modelOverride = null,
+  trace = null
+) {
+  const model = getModel(
+    configKey,
+    responseSchema,
+    modelOverride
+  );
+
+  const start = Date.now();
+
+  try {
+    const result = await model.generateContent(parts);
+    const latency = Date.now() - start;
+
+    // Never await monitor I/O on the request path (Vercel concurrency / timeouts).
+    enqueueMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: result.response.usageMetadata,
+      latency,
+      status: 'SUCCESS',
+    }, trace);
+
+    return result;
+  } catch (err) {
+    const latency = Date.now() - start;
+
+    enqueueMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: {},
+      latency,
+      status: 'FAILED',
+      errorMessage: err.message,
+    }, trace);
+
+    throw err;
+  }
 }
 
 // Export SchemaType so callers don't need to re-import @google/generative-ai

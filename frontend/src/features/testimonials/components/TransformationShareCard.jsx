@@ -2,7 +2,7 @@
  * TransformationShareCard.jsx
  * Pro shareable card: before/after photos + result + verified badge.
  * Uses html2canvas (already in package.json) for PNG capture.
- * Uses @capacitor/share for native share; falls back to browser download.
+ * Uses @capacitor/share for native share; Download saves to the device gallery.
  *
  * html2canvas compat rules applied throughout:
  *   - No flex/grid layout — uses table + block + margin:0 auto
@@ -13,6 +13,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { X, Download, Share2, CheckCircle } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { saveImageBlobToGallery } from '../../../shared/plugins/saveToGalleryPlugin';
 
 async function captureCardAsBlob(el) {
   const html2canvas = (await import('html2canvas')).default;
@@ -27,29 +28,17 @@ async function captureCardAsBlob(el) {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 async function shareOrDownload(blob, filename) {
-  try {
-    const { Share }                  = await import('@capacitor/share');
-    const { Filesystem, Directory }  = await import('@capacitor/filesystem');
-    const reader = new FileReader();
-    const base64 = await new Promise((res) => {
-      reader.onload = () => res(reader.result.split(',')[1]);
-      reader.readAsDataURL(blob);
-    });
-    const saved = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache });
-    await Share.share({ title: 'My Wellness Transformation', url: saved.uri });
-  } catch {
-    downloadBlob(blob, filename);
-  }
+  const { Share }                  = await import('@capacitor/share');
+  const { Filesystem, Directory }  = await import('@capacitor/filesystem');
+  const reader = new FileReader();
+  const base64 = await new Promise((res, rej) => {
+    reader.onload = () => res(reader.result.split(',')[1]);
+    reader.onerror = () => rej(new Error('Failed to read image'));
+    reader.readAsDataURL(blob);
+  });
+  const saved = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache });
+  await Share.share({ title: 'My Wellness Transformation', url: saved.uri });
 }
 
 // ─── Card rendering (html2canvas-safe) ───────────────────────────────────────
@@ -69,7 +58,6 @@ function TransformationCardContent({ testimonial, userName, hasAfter }) {
 
   const CARD_W    = 360;
   const PHOTO_H   = 210;
-  const HALF_W    = (CARD_W - 14 * 2 - 8) / 2; // 14px side pad, 8px gap
 
   return (
     <div id="wv-share-card" style={{ width: CARD_W, background: '#ffffff', borderRadius: 20, overflow: 'hidden', fontFamily: 'Arial, Helvetica, sans-serif' }}>
@@ -128,7 +116,7 @@ function TransformationCardContent({ testimonial, userName, hasAfter }) {
         </div>
       )}
 
-      {/* ── Result pill ── no flex/inline-flex → inline-block + margin auto ── */}
+      {/* ── Result pill ── */}
       {diff && (
         <div style={{ padding: '10px 20px 6px', textAlign: 'center' }}>
           <span style={{
@@ -181,25 +169,29 @@ function TransformationCardContent({ testimonial, userName, hasAfter }) {
 export default function TransformationShareCard({ testimonial, userName, hasAfter, onClose }) {
   const cardRef  = useRef(null);
   const [busy,   setBusy]   = useState(false);
+  const [busyMode, setBusyMode] = useState(null);
   const [status, setStatus] = useState(null);
 
   const capture = useCallback(async (mode) => {
     if (!cardRef.current || busy) return;
     setBusy(true);
+    setBusyMode(mode);
     setStatus(null);
     try {
       const blob     = await captureCardAsBlob(cardRef.current);
       const filename = `transformation-${String(userName || 'result').replace(/\s+/g, '-').toLowerCase()}.png`;
       if (mode === 'share') {
         await shareOrDownload(blob, filename);
+        setStatus('shared');
       } else {
-        downloadBlob(blob, filename);
+        await saveImageBlobToGallery(blob, filename);
+        setStatus('saved');
       }
-      setStatus('ok');
     } catch {
       setStatus('error');
     } finally {
       setBusy(false);
+      setBusyMode(null);
     }
   }, [busy, userName]);
 
@@ -210,7 +202,6 @@ export default function TransformationShareCard({ testimonial, userName, hasAfte
     >
       <div className="w-full max-w-[380px] space-y-4" onClick={(e) => e.stopPropagation()}>
 
-        {/* top bar */}
         <div className="flex items-center justify-between">
           <p className="text-white text-sm font-semibold">Your Transformation Card</p>
           <button type="button" onClick={onClose} className="p-1.5 rounded-full bg-white/20 text-white hover:bg-white/30">
@@ -218,21 +209,30 @@ export default function TransformationShareCard({ testimonial, userName, hasAfte
           </button>
         </div>
 
-        {/* scrollable preview */}
         <div className="overflow-auto rounded-2xl shadow-2xl" style={{ maxHeight: '65vh' }}>
           <div ref={cardRef}>
             <TransformationCardContent testimonial={testimonial} userName={userName} hasAfter={hasAfter} />
           </div>
         </div>
 
-        {status === 'ok'    && <p className="text-green-400 text-xs text-center font-semibold flex items-center justify-center gap-1"><CheckCircle className="h-3.5 w-3.5" /> Saved!</p>}
-        {status === 'error' && <p className="text-red-400 text-xs text-center">Could not save — please screenshot manually.</p>}
+        {status === 'saved' && (
+          <p className="text-green-400 text-xs text-center font-semibold flex items-center justify-center gap-1">
+            <CheckCircle className="h-3.5 w-3.5" /> Saved to Gallery
+          </p>
+        )}
+        {status === 'shared' && (
+          <p className="text-green-400 text-xs text-center font-semibold flex items-center justify-center gap-1">
+            <CheckCircle className="h-3.5 w-3.5" /> Ready to share
+          </p>
+        )}
+        {status === 'error' && (
+          <p className="text-red-400 text-xs text-center">Could not save — please screenshot manually.</p>
+        )}
 
-        {/* actions */}
         <div className="flex gap-3">
           <TouchFeedbackButton onClick={() => capture('download')} disabled={busy}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-white text-gray-800 text-sm font-bold shadow disabled:opacity-60">
-            <Download className="h-4 w-4" /> Download
+            <Download className="h-4 w-4" /> {busyMode === 'download' ? 'Saving…' : 'Download'}
           </TouchFeedbackButton>
           <TouchFeedbackButton onClick={() => capture('share')} disabled={busy}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-500 text-white text-sm font-bold shadow disabled:opacity-60">

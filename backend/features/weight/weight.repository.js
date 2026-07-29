@@ -2,7 +2,12 @@
  * Weight feature — repository layer.
  * The ONLY place in this feature allowed to talk to Supabase / weight_records_table.
  */
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
+
+function legacyIstWallNow() {
+  return utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+}
 
 const TABLE = 'weight_records_table';
 
@@ -70,11 +75,18 @@ export async function insertEntry(payload) {
   return data;
 }
 
+const IMMUTABLE_TIMESTAMP_FIELDS = new Set([
+  'CreatedAt', 'created_at', 'UpdatedAt', 'updated_at',
+]);
+
 export async function updateEntry(entryId, userId, updates) {
   const supabase = getSupabaseClient();
+  const safeUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([key]) => !IMMUTABLE_TIMESTAMP_FIELDS.has(key)),
+  );
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ ...updates, UpdatedAt: getISTTimestamp() })
+    .update({ ...safeUpdates, UpdatedAt: legacyIstWallNow() })
     .eq('ID', entryId)
     .eq('UserId', parseInt(userId))
     .or('IsDeleted.is.null,IsDeleted.eq.0')
@@ -147,7 +159,7 @@ export async function softDelete(entryId, userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ IsDeleted: 1, UpdatedAt: getISTTimestamp() })
+    .update({ IsDeleted: 1, UpdatedAt: legacyIstWallNow() })
     .eq('ID', entryId)
     .eq('UserId', userId)
     .select();
@@ -171,7 +183,7 @@ export async function restoreEntry(entryId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TABLE)
-    .update({ IsDeleted: 0, UpdatedAt: getISTTimestamp() })
+    .update({ IsDeleted: 0, UpdatedAt: legacyIstWallNow() })
     .eq('"ID"', entryId)
     .select();
   if (error) throw error;

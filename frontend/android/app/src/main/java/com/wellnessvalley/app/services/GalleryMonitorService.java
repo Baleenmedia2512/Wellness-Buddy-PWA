@@ -28,6 +28,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.wellnessvalley.app.MainActivity;
+import com.wellnessvalley.app.ApiConfig;
 import android.content.SharedPreferences;
 
 import java.io.File;
@@ -67,9 +68,6 @@ public class GalleryMonitorService extends Service {
     // ── GPS Tracking (writes to WellnessGPS SharedPrefs for map display) ────────
     private com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient;
     private com.google.android.gms.location.LocationCallback gpsLocationCallback;
-
-    // Database API configuration
-    private static final String DEFAULT_API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
 
     @Override
     public void onCreate() {
@@ -369,14 +367,14 @@ public class GalleryMonitorService extends Service {
     }
     
 
-    // Get current user ID from SharedPreferences and lookup database UserId
+    // REACT_APP_API_BASE_URL (SharedPreferences override, else ApiConfig default)
     private String resolveApiBaseUrl() {
         SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_PRIVATE);
         String configured = prefs.getString("api_base_url", null);
         if (configured != null && !configured.trim().isEmpty()) {
-            return configured.trim();
+            return ApiConfig.normalizeBaseUrl(configured);
         }
-        return DEFAULT_API_BASE_URL;
+        return ApiConfig.getDefaultApiBaseUrl();
     }
 
     // Get current user ID from SharedPreferences and lookup database UserId
@@ -514,7 +512,9 @@ public class GalleryMonitorService extends Service {
                     editor.putString("current_user_id", intentUserId);
                 }
                 if (intentApiUrl != null && !intentApiUrl.isEmpty()) {
-                    editor.putString("api_base_url", intentApiUrl);
+                    editor.putString("api_base_url", ApiConfig.normalizeBaseUrl(intentApiUrl));
+                } else {
+                    editor.putString("api_base_url", ApiConfig.getDefaultApiBaseUrl());
                 }
                 // commit() instead of apply() — synchronous write so getCurrentUserId()
                 // reads the correct value on the very next scheduled save tick.

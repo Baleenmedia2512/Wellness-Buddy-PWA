@@ -24,7 +24,7 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
 } from './testimonials.validators.js';
-import { getISTTimestamp } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
   buildTestimonialCoachEmailText,
@@ -367,7 +367,7 @@ export async function verifyOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP');
 
-  const verifiedAt = getISTTimestamp();
+  const verifiedAt = nowUtc();
   await repo.updateTestimonial(testimonialId, { status: 'verified', verifiedAt, otpHash: null });
 
   return {
@@ -887,7 +887,7 @@ export async function verifyVideoOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.video_otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP');
 
-  const videoVerifiedAt = getISTTimestamp();
+  const videoVerifiedAt = nowUtc();
   await repo.updateTestimonialVideos(testimonialId, {
     videoStatus:     'verified',
     videoVerifiedAt,
@@ -939,6 +939,8 @@ function buildTeamUploadStats(uploaded, notUploaded) {
 export async function getTeamTestimonialReport(rawQuery) {
   const { coachId } = validateTeamReport(rawQuery);
 
+  const reportingContext = await repo.loadTeamReportingContext();
+
   const [
     photoDirect,
     photoFull,
@@ -946,11 +948,11 @@ export async function getTeamTestimonialReport(rawQuery) {
     videoFull,
     teamPerformanceByUserId,
   ] = await Promise.all([
-    repo.countPhotoUploadStatsForCoach(coachId, 'direct'),
-    repo.countPhotoUploadStatsForCoach(coachId, 'full'),
-    repo.countVideoUploadStatsForCoach(coachId, 'direct'),
-    repo.countVideoUploadStatsForCoach(coachId, 'full'),
-    repo.buildTeamUploadPerformanceByUserId(coachId),
+    repo.countPhotoUploadStatsForCoach(coachId, 'direct', reportingContext),
+    repo.countPhotoUploadStatsForCoach(coachId, 'full', reportingContext),
+    repo.countVideoUploadStatsForCoach(coachId, 'direct', reportingContext),
+    repo.countVideoUploadStatsForCoach(coachId, 'full', reportingContext),
+    repo.buildTeamUploadPerformanceByUserId(coachId, reportingContext),
   ]);
 
   return {
@@ -1234,7 +1236,7 @@ export async function verifyUnifiedOtp(rawBody) {
   const valid = await bcrypt.compare(otp, row.otp_hash);
   if (!valid) throw new ValidationError(422, 'Invalid OTP. Please check with your coach and try again.');
 
-  const verifiedAt = getISTTimestamp();
+  const verifiedAt = nowUtc();
 
   // Mark photo as verified if it was pending
   const photoPending = row.status === 'pending';

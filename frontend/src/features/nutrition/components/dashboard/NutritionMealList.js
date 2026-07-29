@@ -3,10 +3,10 @@ import { UtensilsCrossed } from 'lucide-react';
 import MealCard from './MealCard';
 import UndoRow from './UndoRow';
 import {
-  parseAnalysisData,
-  istToLocalDate,
   getMealCategory,
+  parseAnalysisData,
 } from '../../services/nutritionDashboard/analysisHelpers';
+import { compareUtcTimestampsAsc, formatUtcTime } from '../../../../shared/utils/datetimeUtils';
 import {
   getMealCategoryInfo,
   formatTimeRangeAMPM,
@@ -87,7 +87,7 @@ const NutritionMealList = ({
             <div className="space-y-2">
               {meals
                 .slice()
-                .sort((a, b) => istToLocalDate(a.CreatedAt) - istToLocalDate(b.CreatedAt))
+                .sort((a, b) => compareUtcTimestampsAsc(a.CreatedAt, b.CreatedAt))
                 .map((meal, mealIndex) => {
                   if (meal.isUndoPlaceholder) {
                     const entry = undoState[meal.ID];
@@ -107,7 +107,7 @@ const NutritionMealList = ({
                     );
                   }
                   const foodData = parseAnalysisData(meal.AnalysisData);
-                  const mealTime = istToLocalDate(meal.CreatedAt).toLocaleTimeString('en-US', {
+                  const mealTime = formatUtcTime(meal.CreatedAt, {
                     hour: '2-digit',
                     minute: '2-digit',
                   });

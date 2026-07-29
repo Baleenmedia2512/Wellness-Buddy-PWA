@@ -99,7 +99,9 @@ const EatingHabitsSection = ({ eatingHabits, onChange }) => {
           </div>
           <div className="flex items-center gap-2">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*"
               step="0.5"
               min="0"
               max="10"

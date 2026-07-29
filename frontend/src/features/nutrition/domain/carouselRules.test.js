@@ -10,7 +10,7 @@
  *
  * Run: npx react-scripts test --watchAll=false --testPathPattern=carouselRules.test
  */
-import { computeCaloriesCard } from './carouselRules';
+import { computeCaloriesCard, computeMacroTargets, computeFatTargetGrams } from './carouselRules';
 
 // ─── Helper ────────────────────────────────────────────────────────────────────
 
@@ -77,10 +77,18 @@ describe('computeCaloriesCard — smartwatch burns but still over target', () =>
 
 // ─── Scenario 4: Exercise exceeds food (aggressive workout) ───────────────────
 describe('computeCaloriesCard — burned > consumed', () => {
-  test('1000 food, 1500 watch burned → net clamped to 0', () => {
+  test('1000 food, 1500 watch burned → remaining = goal − food + exercise', () => {
     const r = calc(1800, 1000, 1500);
-    expect(r.net).toBe(0);            // max(0, 1000-1500)
-    expect(r.remaining).toBe(1800);   // full target remaining
+    expect(r.net).toBe(-500);         // 1000 − 1500
+    expect(r.remaining).toBe(2300);   // 1800 − 1000 + 1500
+    expect(r.progressPercent).toBe(0); // no net food intake toward goal
+  });
+
+  test('0 food, 441 watch burned → remaining = goal + exercise (home carousel case)', () => {
+    const r = calc(1845, 0, 441);
+    expect(r.net).toBe(-441);
+    expect(r.remaining).toBe(2286);   // 1845 + 441
+    expect(r.exercise).toBe(441);
     expect(r.progressPercent).toBe(0);
   });
 });
@@ -138,5 +146,46 @@ describe('computeCaloriesCard — return shape includes net', () => {
     expect(r).toHaveProperty('net', 1700);
     expect(r).toHaveProperty('remaining', 100);
     expect(r).toHaveProperty('progressPercent', 94);
+  });
+});
+
+// ─── Fat target: calorieTarget × gender% / 9 ──────────────────────────────────
+describe('computeFatTargetGrams', () => {
+  test('male: 20% of calorie target / 9', () => {
+    // 1800 × 0.20 / 9 = 40
+    expect(computeFatTargetGrams(1800, 'Male')).toBe(40);
+  });
+
+  test('female: 30% of calorie target / 9', () => {
+    // 1800 × 0.30 / 9 = 60
+    expect(computeFatTargetGrams(1800, 'Female')).toBe(60);
+  });
+
+  test('unknown gender uses 25% midpoint', () => {
+    // 1800 × 0.25 / 9 = 50
+    expect(computeFatTargetGrams(1800, null)).toBe(50);
+  });
+});
+
+describe('computeMacroTargets — gender-based fat', () => {
+  test('uses gender fat formula and derives carbs from remaining calories', () => {
+    const r = computeMacroTargets({
+      latestWeight: 70,
+      calorieTarget: 1800,
+      gender: 'Male',
+    });
+    expect(r.proteinTarget).toBe(105); // 70 × 1.5
+    expect(r.fatTarget).toBe(40); // 1800 × 20% / 9
+    // carbs = (1800 - 105*4 - 40*9) / 4 = (1800 - 420 - 360) / 4 = 255
+    expect(r.carbsTarget).toBe(255);
+  });
+
+  test('female fat target is 30% of calories / 9', () => {
+    const r = computeMacroTargets({
+      latestWeight: 70,
+      calorieTarget: 1800,
+      gender: 'Female',
+    });
+    expect(r.fatTarget).toBe(60);
   });
 });

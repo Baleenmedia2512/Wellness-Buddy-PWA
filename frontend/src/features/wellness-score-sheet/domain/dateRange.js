@@ -1,8 +1,12 @@
-import { formatLocalDateString, todayDateInIST } from '../../../shared/utils/timezoneUtils';
+import {
+  formatCalendarPickerDate,
+  todayBusinessDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
 function ymdFromValue(val) {
   if (!val) return '';
-  if (val instanceof Date) return formatLocalDateString(val);
+  if (val instanceof Date) return formatCalendarPickerDate(val);
   return String(val);
 }
 
@@ -14,7 +18,7 @@ function parseYmd(dateStr) {
 export function addDaysYmd(dateStr, deltaDays) {
   const d = parseYmd(dateStr);
   d.setDate(d.getDate() + deltaDays);
-  return formatLocalDateString(d);
+  return formatCalendarPickerDate(d);
 }
 
 export function ymdToLocalDate(dateStr) {
@@ -36,7 +40,7 @@ export function resolveWellnessDateRange({
   preset,
   customStartDate,
   customEndDate,
-  today = todayDateInIST(),
+  today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE),
 }) {
   switch (preset) {
     case 'yesterday': {
@@ -46,6 +50,12 @@ export function resolveWellnessDateRange({
     case 'last7days':
       return {
         startDate: addDaysYmd(today, -6),
+        endDate: today,
+        isMultiDay: true,
+      };
+    case 'last10days':
+      return {
+        startDate: addDaysYmd(today, -9),
         endDate: today,
         isMultiDay: true,
       };
@@ -66,7 +76,7 @@ export function resolveWellnessDateRange({
   }
 }
 
-export function formatWellnessDayLabel(dateStr, today = todayDateInIST()) {
+export function formatWellnessDayLabel(dateStr, today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE)) {
   if (dateStr === today) return 'Today';
   if (dateStr === addDaysYmd(today, -1)) return 'Yesterday';
   const [y, m, d] = dateStr.split('-').map(Number);

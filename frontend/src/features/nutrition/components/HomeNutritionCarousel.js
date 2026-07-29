@@ -16,9 +16,9 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 
-import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import { HOME_NUTRITION_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 
-import { useISTToday } from '../../wellness-score-sheet/hooks/useISTToday';
+import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 
 import WellnessScoreCarouselCard from '../../wellness-score-sheet/components/WellnessScoreCarouselCard';
 
@@ -48,13 +48,15 @@ export default function HomeNutritionCarousel({
 
   nutritionRefreshKey = 0,
 
+  watchBurnedCalories = 0,
+
   onOpenWellnessScore,
 
   onOpenWellnessScoreSetup,
 
 }) {
 
-  const today = useISTToday();
+  const today = useBusinessToday(user);
 
   const [dateRange, setDateRange] = useState('today');
 
@@ -68,7 +70,7 @@ export default function HomeNutritionCarousel({
 
   const { calorieTarget, bmrLoading } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
 
-  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
+  const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
 
 
 
@@ -81,8 +83,7 @@ export default function HomeNutritionCarousel({
     resolveUserId,
 
     nutritionRefreshKey,
-    // Skip refetch on Home remount unless a newer async activity log exists.
-    enableActivityLogGate: true,
+    watchBurnedCalories,
 
     dateRange,
 
@@ -205,7 +206,7 @@ export default function HomeNutritionCarousel({
 
           <ReportDateRangeFilter
 
-            ranges={WELLNESS_SCORE_DATE_RANGES}
+            ranges={HOME_NUTRITION_DATE_RANGES}
 
             dateRange={dateRange}
 
@@ -246,6 +247,8 @@ export default function HomeNutritionCarousel({
         dailyStats={carouselData.dailyStats}
 
         latestWeight={latestWeight}
+
+        gender={gender}
 
         selectedDate={carouselData.selectedDate}
 

@@ -16,6 +16,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import com.wellnessvalley.app.services.GalleryMonitorService;
+import com.wellnessvalley.app.ApiConfig;
 
 import org.json.JSONArray;
 
@@ -79,6 +80,11 @@ public class GalleryMonitorPlugin extends Plugin {
             String userEmail = call.getString("userEmail");
             String cachedDbUserId = call.getString("cachedDbUserId");
             String apiBaseUrl = call.getString("apiBaseUrl");
+            if (apiBaseUrl == null || apiBaseUrl.isEmpty()) {
+                apiBaseUrl = ApiConfig.getDefaultApiBaseUrl();
+            } else {
+                apiBaseUrl = ApiConfig.normalizeBaseUrl(apiBaseUrl);
+            }
 
             if (cachedDbUserId == null) {
                 Integer cachedDbUserIdNum = call.getInt("cachedDbUserId");
@@ -111,10 +117,8 @@ public class GalleryMonitorPlugin extends Plugin {
                 Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
             }
 
-            if (apiBaseUrl != null && !apiBaseUrl.isEmpty()) {
-                editor.putString("api_base_url", apiBaseUrl);
-                Log.d(TAG, "✅ API base URL cached for service: " + apiBaseUrl);
-            }
+            editor.putString("api_base_url", apiBaseUrl);
+            Log.d(TAG, "✅ API base URL cached for service: " + apiBaseUrl);
 
             editor.apply();
             
@@ -134,10 +138,8 @@ public class GalleryMonitorPlugin extends Plugin {
                 if (finalCachedId != null && !finalCachedId.isEmpty()) {
                     serviceIntent.putExtra("cachedDbUserId", finalCachedId);
                 }
-                String finalApiUrl = prefs.getString("api_base_url", null);
-                if (finalApiUrl != null && !finalApiUrl.isEmpty()) {
-                    serviceIntent.putExtra("apiBaseUrl", finalApiUrl);
-                }
+                String finalApiUrl = prefs.getString("api_base_url", ApiConfig.getDefaultApiBaseUrl());
+                serviceIntent.putExtra("apiBaseUrl", finalApiUrl);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent);
                 } else {

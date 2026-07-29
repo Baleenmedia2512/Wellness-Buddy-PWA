@@ -65,7 +65,7 @@ export default function AppNavTabs({
         iconClass="text-emerald-700"
         labelActiveClass="text-emerald-900"
         labelClass="text-emerald-800"
-        label="Enroll"
+        label="Programs"
         ariaLabel="Enrollment"
       />
       <NavTabButton
@@ -78,7 +78,7 @@ export default function AppNavTabs({
         iconClass="text-teal-600"
         labelActiveClass="text-teal-900"
         labelClass="text-teal-800"
-        label="Counsel"
+        label="BCM"
         ariaLabel="Counselling"
       />
       <NavTabButton
@@ -104,7 +104,7 @@ export default function AppNavTabs({
         iconClass="text-yellow-600"
         labelActiveClass="text-yellow-900"
         labelClass="text-yellow-800"
-        label="Results"
+        label="Transformation"
         ariaLabel="Testimonials"
       />
       {reportsEnabled && (
@@ -118,8 +118,8 @@ export default function AppNavTabs({
           iconClass="text-indigo-600"
           labelActiveClass="text-indigo-900"
           labelClass="text-indigo-800"
-          label="Reports"
-          ariaLabel="Reports"
+          label="Ideal Weight"
+          ariaLabel="Ideal Weight"
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2, ChevronLeft } from "lucide-react";
+import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -15,7 +15,7 @@ import { format } from 'date-fns';
  * Wellness Counselling - Body Parameters Cards View
  * Shows body parameter cards for team members in a tile/grid layout
  */
-const WellnessCounsellingCards = ({ user, onBack }) => {
+const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
@@ -108,8 +108,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     // Cancel any in-flight fetch when the component unmounts or user changes.
     // Incrementing the generation makes every pending setBodyParamsCards a no-op.
     return () => { fetchGenerationRef.current++; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user is the only meaningful dep
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user + refreshKey are the meaningful deps
+  }, [user, refreshKey]);
 
   const handleRefresh = () => fetchData(true);
 
@@ -123,8 +123,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     );
   });
 
-  const handleEditCard = (card) => {
-    setSelectedCard(card);
+  const fetchFreshCard = async (cardId) => {
+    if (!user?.email || !cardId) return null;
+    try {
+      const userId = await getUserId(user.email);
+      const cards = await listBodyParamsCards(userId);
+      setBodyParamsCards(cards || []);
+      return (cards || []).find((c) => c.id === cardId) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleEditCard = async (card) => {
+    const fresh = await fetchFreshCard(card.id);
+    const merged = fresh
+      ? { ...fresh, phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null }
+      : card;
+    setSelectedCard(merged);
     setIsBodyParamsFormOpen(true);
   };
 
@@ -145,14 +161,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronLeft size={24} className="text-gray-700" />
-            </button>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Body Parameters</h1>
+              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
               <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
             </div>
           </div>
@@ -295,6 +305,7 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
+          onCardSaved?.(card);
 
           // Optimistic update — new card appears in the grid immediately.
           // Do NOT call fetchData here: a background fetch that completes while
@@ -305,12 +316,17 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
           // below, once the user is back and looking at the grid.
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
+            const merged = {
+              ...(idx >= 0 ? prevCards[idx] : {}),
+              ...card,
+              phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+            };
             if (idx >= 0) {
               const next = [...prevCards];
-              next[idx] = { ...prevCards[idx], ...card };
+              next[idx] = merged;
               return next;
             }
-            return [card, ...prevCards];
+            return [merged, ...prevCards];
           });
 
           setSelectedCard(null);

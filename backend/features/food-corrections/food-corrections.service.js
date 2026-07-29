@@ -2,8 +2,13 @@ import * as repo from './food-corrections.repository.js';
 import { identifyFoodType } from '../../utils/foodTypeDetection.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { buildGlobalCorrections } from './global-corrections.service.js';
-
-const { getISTTimestamp } = repo;
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import {
+  resolveRequestedDateYmd,
+  assertNotFutureDateYmd,
+  nowUtc,
+  resolveFoodTimestamp,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -31,7 +36,7 @@ export async function saveCorrection(input) {
   } = input;
 
   const correctedFoodType = identifyFoodType({ name: userCorrected, unit: correctedUnit });
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const existing = await repo.findCorrection(userId, aiDetected, userCorrected);
 
   const optionalFields = {};
@@ -154,7 +159,7 @@ export async function updateAnalysis(input) {
     totalVitaminB1, totalVitaminB2, totalVitaminB3, totalVitaminB6, totalVitaminB9, totalVitaminB12,
     totalCalcium, totalIron, totalMagnesium, totalPotassium, totalZinc, totalPhosphorus,
   } = input;
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const updatePayload = {
     AnalysisData: JSON.stringify(analysisData),
     TotalCalories:    totalCalories    || 0,
@@ -221,8 +226,12 @@ export async function getStats({ userId, date, detailed }) {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
+  const timezoneIana = await getUserTimezoneIana(userId);
+
   if (detailed && date) {
-    const meals = await repo.fetchMealsForDate(userId, date);
+    const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
+    assertNotFutureDateYmd(resolvedDate, timezoneIana);
+    const meals = await repo.fetchMealsForDate(userId, resolvedDate, timezoneIana);
     const filtered = meals.filter((record) => {
       try {
         const data = JSON.parse(record.AnalysisData);
@@ -295,12 +304,12 @@ export async function getStats({ userId, date, detailed }) {
           totalCholesterol: round2(dailyTotals.totalCholesterol),
           ...roundedMicros,
         },
-        queryInfo: { userId, date, recordCount: filtered.length },
+        queryInfo: { userId, date: resolvedDate, recordCount: filtered.length },
       },
     };
   }
 
-  const counts = await repo.getStatsCounts(userId);
+  const counts = await repo.getStatsCounts(userId, timezoneIana);
   const weeklyNutrition = counts.weeklyData.reduce((t, r) => ({
     totalCalories: t.totalCalories + (r.TotalCalories || 0),
     totalProtein: t.totalProtein + (r.TotalProtein || 0),
@@ -311,7 +320,12 @@ export async function getStats({ userId, date, detailed }) {
 
   const dailyMap = {};
   counts.weeklyData.forEach((record) => {
-    const d = new Date(record.CreatedAt).toISOString().split('T')[0];
+    let d;
+    try {
+      d = resolveFoodTimestamp(record.CreatedAt, timezoneIana).calendarYmd;
+    } catch {
+      return;
+    }
     if (!dailyMap[d]) dailyMap[d] = { date: d, calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
     dailyMap[d].calories += record.TotalCalories || 0;
     dailyMap[d].protein += record.TotalProtein || 0;

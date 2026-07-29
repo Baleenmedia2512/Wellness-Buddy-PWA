@@ -8,8 +8,8 @@
 
 import {
   getSupabaseClient,
-  getISTTimestamp,
 } from "../../../utils/supabaseClient.js";
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { resolveActiveCoach } from "../../../utils/hierarchyHelpers.js";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
       // Cancel any existing pending requests
       await supabase
         .from('approval_requests_table')
-        .update({ Status: 'cancelled', ProcessedAt: new Date().toISOString() })
+        .update({ Status: 'cancelled', ProcessedAt: nowUtc() })
         .eq('RequesterId', demoRequester.UserId)
         .eq('Status', 'pending');
 
@@ -272,7 +272,7 @@ export default async function handler(req, res) {
     }
 
     // Cancel any existing pending requests for this user
-    const now = new Date().toISOString();
+    const now = nowUtc();
     await supabase
       .from("approval_requests_table")
       .update({ Status: "cancelled", ProcessedAt: now })
@@ -305,7 +305,7 @@ export default async function handler(req, res) {
     // Calculate 24-hour expiry
     const requestedAt = new Date();
     const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
-    const currentTime = getISTTimestamp();
+    const currentTime = nowUtc();
 
     // Create approval request with 24-hour expiry
     const { data: insertResult, error: insertError } = await supabase

@@ -1,54 +1,61 @@
-// Weight goal mode toggle — Loss / Gain.
-// Placed in the profile form, below DietDropdown.
-import React from 'react';
+// Auto-derived weight goal mode — read-only display (not user-switchable).
+import React, { useMemo } from 'react';
+import { deriveWeightGoalMode } from '../../../weight/services/weightFormService';
 
-const HINTS = {
-  loss: 'App will alert you when weight increases unexpectedly.',
-  gain: 'App will alert you when weight decreases unexpectedly.',
+const MODE_META = {
+  loss: {
+    pill: 'bg-red-500',
+    wrap: 'bg-red-100',
+    icon: '🔥',
+    label: 'Loss Mode',
+    hint: 'App will alert you when weight increases unexpectedly.',
+  },
+  gain: {
+    pill: 'bg-blue-500',
+    wrap: 'bg-blue-100',
+    icon: '💪',
+    label: 'Gain Mode',
+    hint: 'App will alert you when weight decreases unexpectedly.',
+  },
+  maintain: {
+    pill: 'bg-green-500',
+    wrap: 'bg-green-100',
+    icon: '⚖️',
+    label: 'Maintain',
+    hint: 'You are within your ideal weight range.',
+  },
 };
 
-const WeightModeSelector = ({ value, onChange }) => {
-  const isGain = value === 'gain';
+const WeightModeSelector = ({ height, currentWeight, fallbackMode = 'loss' }) => {
+  const derivedMode = useMemo(
+    () => deriveWeightGoalMode({ heightCm: height, currentWeightKg: currentWeight }),
+    [height, currentWeight],
+  );
+  const mode = derivedMode || fallbackMode;
+  const meta = MODE_META[mode] || MODE_META.loss;
+  const isAuto = derivedMode != null;
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-gray-700">Weight Goal Mode</p>
 
-      {/* Toggle pill */}
       <div
-        className={`relative flex items-center w-full h-12 rounded-full p-1 cursor-pointer transition-colors duration-300
-          ${isGain ? 'bg-blue-100' : 'bg-red-100'}`}
-        onClick={() => onChange(isGain ? 'loss' : 'gain')}
-        role="switch"
-        aria-checked={isGain}
+        className={`flex items-center justify-center gap-2 h-12 rounded-full px-4 ${meta.wrap}`}
+        aria-live="polite"
       >
-        {/* Sliding thumb */}
-        <div
-          className={`absolute top-1 h-10 w-[calc(50%-4px)] rounded-full shadow-md flex items-center justify-center gap-2
-            font-bold text-sm text-white transition-all duration-300
-            ${isGain
-              ? 'left-[calc(50%+2px)] bg-blue-500'
-              : 'left-1 bg-red-500'
-            }`}
+        <span
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-md ${meta.pill}`}
         >
-          <span>{isGain ? '💪' : '🔥'}</span>
-          <span>{isGain ? 'Gain Mode' : 'Loss Mode'}</span>
-        </div>
-
-        {/* Background labels */}
-        <div className="flex w-full">
-          <div className={`flex-1 flex items-center justify-center gap-1 text-sm font-semibold
-            ${!isGain ? 'text-transparent' : 'text-red-400'}`}>
-            <span>🔥</span><span>Loss Mode</span>
-          </div>
-          <div className={`flex-1 flex items-center justify-center gap-1 text-sm font-semibold
-            ${isGain ? 'text-transparent' : 'text-blue-400'}`}>
-            <span>💪</span><span>Gain Mode</span>
-          </div>
-        </div>
+          <span>{meta.icon}</span>
+          <span>{meta.label}</span>
+        </span>
       </div>
 
-      <p className="text-xs text-gray-400">{HINTS[value] || HINTS.loss}</p>
+      <p className="text-xs text-gray-400">
+        {isAuto
+          ? `Set automatically from your current weight vs ideal (BMI 19–23). ${meta.hint}`
+          : 'Log your weight to detect your goal mode automatically.'}
+      </p>
     </div>
   );
 };

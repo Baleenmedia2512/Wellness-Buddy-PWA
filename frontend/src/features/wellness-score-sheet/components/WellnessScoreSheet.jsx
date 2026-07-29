@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ClipboardList, Loader2, Trophy } from 'lucide-react';
-import { todayDateInIST } from '../../../shared/utils/timezoneUtils';
+import {
+  todayBusinessDate,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 import ScoreCategoryRow from './ScoreCategoryRow';
+import ParameterContributionModal from './ParameterContributionModal';
 import { PARAMETER_SECTIONS, parametersBySection } from '../domain/parameterRegistry';
 import { getSectionIcon } from '../domain/parameterIcons';
+import {
+  buildParameterContributionView,
+  parameterNeedsMeals,
+} from '../domain/parameterContributions';
 import { formatWellnessDayLabel } from '../domain/dateRange';
+import { fetchDayMealsForScore } from '../services/dayMeals.api';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { WELLNESS_SCORE_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import WellnessScoreDayStrip from './WellnessScoreDayStrip';
@@ -24,7 +33,7 @@ export default function WellnessScoreSheet({
   loading = false,
   error = null,
   onRetry,
-  today = todayDateInIST(),
+  today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE),
   dateRange = 'today',
   onDateRangeChange,
   customStartDate = null,
@@ -34,13 +43,68 @@ export default function WellnessScoreSheet({
   selectedDate,
   onSelectDate,
   isMultiDay = false,
+  timeWindows = null,
+  userId = null,
+  apiBaseUrl,
+  nutritionRefreshKey = 0,
 }) {
-  const dateStr = scoreData?.date || selectedDate || todayDateInIST();
+  const dateStr = scoreData?.date || selectedDate || todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
   const parameters = scoreData?.parameters || [];
   const grouped = parametersBySection(parameters);
   const progressPct = scoreData?.percentage ?? 0;
   const earned = Math.round(scoreData?.totalEarned ?? 0);
   const possible = Math.round(scoreData?.totalPossible ?? 0);
+
+  const [selectedParam, setSelectedParam] = useState(null);
+  const [mealsByDate, setMealsByDate] = useState({});
+  const mealsCacheRef = useRef({});
+  const [mealsLoading, setMealsLoading] = useState(false);
+  const [mealsError, setMealsError] = useState(null);
+
+  useEffect(() => {
+    setSelectedParam(null);
+    setMealsError(null);
+  }, [dateStr]);
+
+  useEffect(() => {
+    mealsCacheRef.current = {};
+    setMealsByDate({});
+    setMealsError(null);
+  }, [nutritionRefreshKey, userId]);
+
+  const ensureMeals = useCallback(async (date) => {
+    if (!userId || !date) return [];
+    if (mealsCacheRef.current[date]) return mealsCacheRef.current[date];
+
+    setMealsLoading(true);
+    setMealsError(null);
+    try {
+      const list = await fetchDayMealsForScore({ userId, date, apiBaseUrl });
+      mealsCacheRef.current[date] = list;
+      setMealsByDate((prev) => ({ ...prev, [date]: list }));
+      return list;
+    } catch (err) {
+      setMealsError(err?.message || 'Failed to load contributions');
+      return [];
+    } finally {
+      setMealsLoading(false);
+    }
+  }, [userId, apiBaseUrl]);
+
+  const handleOpenContribution = useCallback(async (param) => {
+    setSelectedParam(param);
+    if (parameterNeedsMeals(param?.key)) {
+      await ensureMeals(dateStr);
+    }
+  }, [dateStr, ensureMeals]);
+
+  const contributionView = selectedParam
+    ? buildParameterContributionView({
+      parameter: selectedParam,
+      meals: mealsByDate[dateStr] || mealsCacheRef.current[dateStr] || [],
+      timeWindows,
+    })
+    : null;
 
   return (
     <div className="min-h-screen bg-[#f4f7f5]">
@@ -134,7 +198,7 @@ export default function WellnessScoreSheet({
                   {' '}
                   <span className="font-semibold text-gray-900">{parameters.length}</span>
                   {' '}
-                  active parameters
+                  active parameters · tap a row for contribution
                 </p>
                 <div className="mt-4">
                   <div className="mb-1.5 flex justify-between text-[11px] font-medium text-gray-500">
@@ -185,6 +249,8 @@ export default function WellnessScoreSheet({
                         key={param.key}
                         category={param}
                         goalMode={scoreData?.goalMode}
+                        timeWindows={timeWindows}
+                        onOpenContribution={handleOpenContribution}
                       />
                     ))}
                   </div>
@@ -194,6 +260,14 @@ export default function WellnessScoreSheet({
           </>
         )}
       </main>
+
+      <ParameterContributionModal
+        isOpen={!!selectedParam}
+        onClose={() => setSelectedParam(null)}
+        view={contributionView}
+        loading={!!selectedParam && parameterNeedsMeals(selectedParam?.key) && mealsLoading}
+        error={selectedParam && parameterNeedsMeals(selectedParam?.key) ? mealsError : null}
+      />
     </div>
   );
 }

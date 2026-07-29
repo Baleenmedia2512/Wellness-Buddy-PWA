@@ -5,58 +5,18 @@
 import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
 
 /**
- * Parse date range and return start/end dates
+ * Resolve date range for activity reports using the requesting user's timezone.
  */
-function parseDateRange(dateRange, customStartDate, customEndDate) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  let startDate, endDate;
-  
-  switch (dateRange) {
-    case 'today':
-      startDate = new Date(today);
-      endDate = new Date(today);
-      break;
-    case 'yesterday':
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 1);
-      endDate = new Date(startDate);
-      break;
-    case 'last7days':
-      endDate = new Date(today);
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 6);
-      break;
-    case 'last30days':
-      endDate = new Date(today);
-      startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 29);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new ValidationError(400, 'Custom date range requires startDate and endDate');
-      }
-      startDate = new Date(customStartDate);
-      endDate = new Date(customEndDate);
-      break;
-    default:
-      throw new ValidationError(400, 'Invalid dateRange');
-  }
-  
-  return { startDate, endDate };
-}
-
-/**
- * Format date for SQL query (YYYY-MM-DD)
- */
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+async function resolveReportDateRange(userId, dateRange, customStart, customEnd) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  return {
+    timezoneIana,
+    ...parseRelativeDateRangeYmd(dateRange, customStart, customEnd, timezoneIana),
+  };
 }
 
 /**
@@ -75,10 +35,9 @@ function extractDateTime(timestamp) {
  * Get activity counts summary for all activity types
  */
 export async function getActivitySummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
-  // Parse date range
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
   
   // Get downline members
   // admin/developer ΓåÆ all active members
@@ -120,10 +79,10 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
   
   // Fetch all activity records
   const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
-    repo.fetchWeightRecords(userIds, startStr, endStr),
-    repo.fetchEducationRecords(userIds, startStr, endStr),
-    repo.fetchFoodRecords(userIds, startStr, endStr),
-    repo.fetchStepRecords(userIds, startStr, endStr),
+    repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
   ]);
   
   // Get time windows for meal filtering
@@ -157,9 +116,9 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
  * Includes members with 0 attendance so coaches can spot who hasn't attended.
  */
 export async function getActivityMemberSummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
 
   // Get downline members
   let downlineMembers = [];
@@ -206,7 +165,7 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
   });
 
   // Fetch education records — count first log per member per day only
-  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr);
+  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
   const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
   const countMap = {};
   dedupedEducation.forEach(record => {
@@ -257,10 +216,9 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
  * Get detailed activity records for a specific activity type
  */
 export async function getActivityDetails({ userId, role, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
-  // Parse date range
-  const { startDate, endDate } = parseDateRange(dateRange, customStart, customEnd);
-  const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
+    userId, dateRange, customStart, customEnd,
+  );
   
   // Get downline members
   // admin/developer ΓåÆ all active members
@@ -323,7 +281,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
   switch (activityType) {
     case 'weight':
       {
-        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr);
+        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana);
         const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords);
 
         const centerIds = [...new Set(
@@ -355,7 +313,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'education':
       {
-        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr);
+        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
         const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
 
         // Fetch nutrition center names for records that don't have center_name stored
@@ -395,7 +353,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
     case 'lunch':
     case 'dinner':
       {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr);
+        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const timeWindows = await repo.fetchTimeWindows();
         const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows);
         // One row per member per day — first meal log only (matches summary counts)
@@ -433,7 +391,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'water':
       {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr);
+        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const waterRecords = repo.filterWaterRecords(foodRecords);
 
         const centerIds = [...new Set(
@@ -468,7 +426,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       
     case 'calories':
       {
-        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr);
+        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana);
         
         records = stepRecords.map(record => {
           const member = memberMap[record.UserId] || {};

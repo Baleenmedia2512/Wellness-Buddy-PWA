@@ -2,6 +2,10 @@
   "version": 2,
   "regions": ["sin1"],
   "functions": {
+    "pages/api/ai/orchestrate.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "pages/api/**/*.js": {
       "maxDuration": 30,
       "memory": 1024
@@ -126,6 +130,7 @@
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "NODE_OPTIONS": "--dns-result-order=ipv4first"
   }
 }

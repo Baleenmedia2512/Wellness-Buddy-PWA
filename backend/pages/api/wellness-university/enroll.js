@@ -6,7 +6,8 @@
  * Stores enrollment with IST timezone
  */
 
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
 
@@ -138,7 +139,7 @@ export default async function handler(req, res) {
     }
 
     // Create enrollment record — store as map: { programName: isoDate }
-    const enrollmentDate = getISTTimestamp();
+    const enrollmentDate = nowUtc();
     const programsMap = {};
     programs.forEach((p) => { programsMap[p] = enrollmentDate; });
     const programsJson = JSON.stringify(programsMap);

@@ -8,8 +8,8 @@
 // (not `shared/`) so the §2.2 `shared-cannot-import-features` rule no
 // longer flags it. See `frontend/src/shell/README.md` for the layer's
 // charter and import policy.
-import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
 import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
@@ -28,6 +28,7 @@ import {
   deleteEducationLog,
   undoEducationDelete,
 } from '../../features/education/services/educationDashboardService';
+import { isCaloriesBurnedTopic } from '../../features/education/services/educationFormatter';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
@@ -40,6 +41,23 @@ const EducationDashboard = lazy(() => import('../../features/education/component
 const DiaryFeed = lazy(() =>
   import('../../features/diary').then((m) => ({ default: m.DiaryFeed })),
 );
+
+/** Matches the inline calendar panel expand/collapse transition (duration-300). */
+const CALENDAR_EXPAND_MS = 320;
+
+/** Nearest scrollable ancestor (e.g. App.js `.ios-scroll-body` on Capacitor/Web). */
+function getScrollParent(el) {
+  if (!el) return null;
+  let parent = el.parentElement;
+  while (parent) {
+    const { overflowY } = window.getComputedStyle(parent);
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
 
 /** Noon on the diary day — keeps saves inside activity windows. */
 function buildNoonTimestamp(date) {
@@ -67,7 +85,7 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -113,6 +131,19 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Calendar visibility and month navigation
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  // Timeline date can lag selectedDate briefly while scrolling back to the
+  // calendar after "Today" is tapped away from the top of the page.
+  const [diaryTimelineDate, setDiaryTimelineDate] = useState(() => {
+    if (initialDate) {
+      const d = new Date(initialDate);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
+  const stickyHeaderRef = useRef(null);
+  const calendarSectionRef = useRef(null);
+  const scrollEndTimerRef = useRef(null);
+  const scrollSessionRef = useRef(0);
 
   // Respond to deep-link prop changes while the component is already mounted.
   // The useState initializers above only run on first mount, so if a new
@@ -136,8 +167,83 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   useEffect(() => {
     if (!initialDate) return;
     const d = new Date(initialDate);
-    if (!Number.isNaN(d.getTime())) setSelectedDate(d);
+    if (!Number.isNaN(d.getTime())) {
+      setSelectedDate(d);
+      setDiaryTimelineDate(d);
+    }
   }, [initialDate]);
+
+  useEffect(() => () => {
+    if (scrollEndTimerRef.current) clearTimeout(scrollEndTimerRef.current);
+  }, []);
+
+  const applySelectedDate = useCallback((date) => {
+    setSelectedDate(date);
+    setDiaryTimelineDate(date);
+  }, []);
+
+  const isCalendarSectionVisible = useCallback(() => {
+    const calendarEl = calendarSectionRef.current;
+    if (!calendarEl) return true;
+    const headerBottom = stickyHeaderRef.current?.getBoundingClientRect().bottom ?? 0;
+    const calendarTop = calendarEl.getBoundingClientRect().top;
+    return calendarTop >= headerBottom - 4 && calendarTop < window.innerHeight;
+  }, []);
+
+  const handleDiaryDateButtonClick = useCallback(() => {
+    const calendarVisible = isCalendarSectionVisible();
+
+    setCalendarMonth(new Date(selectedDate));
+
+    if (calendarVisible) {
+      setShowCalendar((prev) => !prev);
+      return;
+    }
+
+    // Scrolled down — expand the calendar for the current selection and scroll it into view.
+    setShowCalendar(true);
+
+    const session = scrollSessionRef.current + 1;
+    scrollSessionRef.current = session;
+
+    const scrollToCalendar = () => {
+      const calendarEl = calendarSectionRef.current;
+      if (!calendarEl) return;
+
+      const margin = (stickyHeaderRef.current?.offsetHeight ?? 120) + 8;
+      calendarEl.style.scrollMarginTop = `${margin}px`;
+
+      let finished = false;
+      const scrollRoot = getScrollParent(calendarEl);
+      const scrollTarget = scrollRoot && scrollRoot !== document.documentElement
+        ? scrollRoot
+        : window;
+
+      const complete = () => {
+        if (finished || scrollSessionRef.current !== session) return;
+        finished = true;
+        scrollTarget.removeEventListener('scroll', onScroll);
+        if (scrollEndTimerRef.current) {
+          clearTimeout(scrollEndTimerRef.current);
+          scrollEndTimerRef.current = null;
+        }
+      };
+
+      const onScroll = () => {
+        if (scrollEndTimerRef.current) clearTimeout(scrollEndTimerRef.current);
+        scrollEndTimerRef.current = setTimeout(complete, 150);
+      };
+
+      scrollTarget.addEventListener('scroll', onScroll, { passive: true });
+      calendarEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollEndTimerRef.current = setTimeout(complete, 800);
+    };
+
+    const expandDelay = showCalendar ? 0 : CALENDAR_EXPAND_MS;
+    setTimeout(() => {
+      requestAnimationFrame(scrollToCalendar);
+    }, expandDelay);
+  }, [selectedDate, showCalendar, isCalendarSectionVisible]);
 
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
@@ -154,7 +260,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setActiveTab(tab);
     localStorage.setItem('dashboard_activeTab', tab);
     if (tab === 'screen') {
-      setSelectedDate(new Date());
+      applySelectedDate(new Date());
     }
   };
 
@@ -248,17 +354,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // The core dispatch loop (handleEntryOpen) is NEVER modified for new kinds.
   //
   // KNOWN_KIND_HANDLERS maps entry.kind → synchronous open fn.
-  // Any kind NOT in this map and NOT 'unknown' is silently ignored (e.g. watch
-  // is informational only — kcal is already visible on the card).
+  // Each handler receives the full diary entry so hidden dashboards can
+  // open from the row payload when their own lists have not loaded yet.
   //
   // The 'unknown' path is handled separately because it requires an async
   // AI retry pipeline with its own resilience contract (see below).
 
   // Registry: add new diary kinds here — zero changes elsewhere.
   const KNOWN_KIND_HANDLERS = {
-    food:      (entry) => nutritionOpenRef.current?.(entry.payload?.id),
+    food:      (entry) => nutritionOpenRef.current?.(entry),
     weight:    (entry) => weightOpenRef.current?.(entry),
-    education: (entry) => educationOpenRef.current?.(entry.payload?.id),
+    education: (entry) => educationOpenRef.current?.(entry),
+    watch:     (entry) => educationOpenRef.current?.(entry),
   };
 
   // ── Resilient unknown-tap handler ─────────────────────────────────────────
@@ -278,6 +385,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       captureId,
       imageBase64:     p.imageBase64,
       diaryDate:       selectedDate,
+      originalCapturedAt: entry.capturedAt ?? null,
       initialAiResult: null,
       deleteOnly:      false,
     });
@@ -288,17 +396,31 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     const knownHandler = KNOWN_KIND_HANDLERS[entry.kind];
     if (knownHandler) { knownHandler(entry); return; }
     if (entry.kind === 'unknown') { handleUnknownTap(entry); }
-    // All other kinds (e.g. watch) are intentionally no-ops.
   };
 
   const diaryUndoLabels = {
-    food: 'Food entry deleted',
-    weight: 'Weight entry deleted',
-    education: 'Education entry deleted',
-    watch: 'Smartwatch entry deleted',
+    food: 'Food entry removed',
+    weight: 'Weight entry removed',
+    education: 'Education entry removed',
+    watch: 'Smartwatch entry removed',
+    unknown: 'Capture removed',
   };
 
-  const restoreDiaryEntry = async ({ kind, entryId, userId }) => {
+  const affectsExerciseCalories = (entry) => {
+    if (!entry) return false;
+    if (entry.kind === 'watch') return true;
+    if (entry.kind === 'education') {
+      return isCaloriesBurnedTopic(entry.payload?.topic);
+    }
+    return false;
+  };
+
+  const refreshExerciseCalories = (source) => {
+    onWatchBurnedCaloriesReset?.();
+    triggerNutritionRefresh({ immediate: true, source });
+  };
+
+  const restoreDiaryEntry = async ({ kind, entryId, userId, topic = null }) => {
     switch (kind) {
       case 'food':
         await undoMealDelete({ apiBaseUrl, id: entryId, userId });
@@ -316,6 +438,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'watch':
         await undoEducationDelete({ apiBaseUrl, userId, logId: entryId });
         setDiaryEducationRefreshKey((k) => k + 1);
+        if (affectsExerciseCalories({ kind, payload: { topic } })) {
+          refreshExerciseCalories('diary-undo-watch');
+        }
         break;
       default:
         return;
@@ -325,7 +450,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Swipe-to-delete for timeline rows including unknown ("Other") rows.
   const handleEntryDelete = async (entry) => {
-    if (!entry || !ownerId || !viewingSelf) return;
+    if (!entry || !ownerId) return;
+    if (!viewingSelf) {
+      reloadDiary();
+      return;
+    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -347,6 +476,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         case 'watch': {
           await deleteEducationLog({ apiBaseUrl, userId: ownerId, logId: entryId });
           setDiaryEducationRefreshKey((k) => k + 1);
+          if (affectsExerciseCalories(entry)) {
+            refreshExerciseCalories('diary-swipe-delete-watch');
+          }
           break;
         }
         case 'unknown': {
@@ -363,6 +495,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         kind: entry.kind,
         entryId,
         userId: ownerId,
+        topic: entry.payload?.topic ?? null,
         message: diaryUndoLabels[entry.kind] || 'Entry deleted',
         expiresAt: Date.now() + DIARY_UNDO_SECONDS * 1000,
       });
@@ -384,7 +517,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // open, restore the original diary date so the reload targets the correct
     // day instead of wherever selectedDate currently points.
     if (diaryDate && diaryDate.toDateString() !== selectedDate.toDateString()) {
-      setSelectedDate(diaryDate);
+      applySelectedDate(diaryDate);
     }
     reloadDiary();
     if (change.kind === 'food') {
@@ -406,7 +539,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       </div>
 
       {/* Header with tabs */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+      <div ref={stickyHeaderRef} className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
         {/* Team Member Search - Only visible for coaches */}
         <TeamMemberSearch
           user={user}
@@ -418,13 +551,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {/* Top bar with back button and title */}
           <div className="flex items-center justify-between p-4 md:p-6 pb-3">
-            <TouchFeedbackButton 
-              onClick={onBack} 
-              className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-700" />
-            </TouchFeedbackButton>
+            <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11" aria-hidden="true" />
 
             <div className="text-center">
               <h1 className="text-lg md:text-xl font-semibold text-gray-900">
@@ -457,9 +584,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             </div>
 
             {/* Calendar button — for the steps/screen tabs (disabled) AND the
-                single-page Diary. In the Diary, this one shell-level "Today"
-                button opens the month-grid date picker and drives the day for
-                every stacked dashboard (Nutrition's own strip is suppressed). */}
+                single-page Diary. In the Diary, this shell-level date button
+                toggles the month grid for the currently selected day and scrolls
+                the calendar into view when the user is lower on the page. */}
             {(activeTab === 'screen') && (
               <TouchFeedbackButton 
                 onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }} 
@@ -472,9 +599,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             {diaryEnabled && (
               <div className="flex items-center gap-1">
                 <TouchFeedbackButton
-                  onClick={() => { setShowCalendar(prev => !prev); setCalendarMonth(new Date(selectedDate)); }}
+                  onClick={handleDiaryDateButtonClick}
                   className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
-                  ariaLabel="Open date picker"
+                  ariaLabel="Toggle date picker"
                 >
                   <Calendar className="h-4 w-4 md:h-5 md:w-5 text-emerald-700" />
                   <span className="text-sm md:text-base font-semibold text-emerald-700">{dateButtonLabel}</span>
@@ -507,7 +634,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       {/* Inline Calendar — month-grid date picker. Shown for the
           (disabled) steps/screen tabs AND the single-page Diary. */}
       {(activeTab === 'screen' || diaryEnabled) && (
-        <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
+        <div
+          ref={calendarSectionRef}
+          className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
         }`}>
         <div className={`max-w-md mx-auto p-0 md:p-4 transform transition-transform duration-300 ease-in-out ${
@@ -617,7 +746,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                       key={index}
                       onClick={() => {
                         if (!isDisabled) {
-                          setSelectedDate(day.date);
+                          applySelectedDate(day.date);
                           setShowCalendar(false);
                         }
                       }}
@@ -707,9 +836,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
-                  date={selectedDate}
+                  timezoneSource={displayUser}
+                  date={diaryTimelineDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  canDelete={viewingSelf}
+                  pendingUndo={diaryUndo}
                   analyzingCaptureIds={analyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
@@ -736,7 +868,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   hideDateStrip
                   hideOverview
                   selectedDate={selectedDate}
-                  setSelectedDate={setSelectedDate}
+                  setSelectedDate={applySelectedDate}
                   bmrUpdateKey={bmrUpdateKey}
                   watchBurnedCalories={watchBurnedCalories}
                   initialMealId={initialMealId}
@@ -782,7 +914,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 hideDateStrip={true}
                 hideOverview={true}
                 selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
+                setSelectedDate={applySelectedDate}
                 bmrUpdateKey={bmrUpdateKey}
                 watchBurnedCalories={watchBurnedCalories}
                 initialMealId={initialMealId}
@@ -818,10 +950,12 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
-                  date={selectedDate}
+                  timezoneSource={displayUser}
+                  date={diaryTimelineDate}
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
+                  canDelete={viewingSelf}
                   analyzingCaptureIds={analyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
@@ -838,7 +972,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideHeader={true}
               hideOverview={true}
               selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
+              setSelectedDate={applySelectedDate}
               bmrUpdateKey={bmrUpdateKey}
               watchBurnedCalories={watchBurnedCalories}
               initialMealId={initialMealId}
@@ -877,7 +1011,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
               selectedDate={selectedDate}
-              setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
+              setSelectedDate={(d) => { applySelectedDate(d); setShowCalendar(false); }}
             />
           )}
           */}
@@ -903,6 +1037,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         imageBase64={unknownFlow.imageBase64}
         initialAiResult={unknownFlow.initialAiResult ?? null}
         diaryDate={unknownFlow.diaryDate ?? null}
+        originalCapturedAt={unknownFlow.originalCapturedAt ?? null}
         deleteOnly={unknownFlow.deleteOnly ?? false}
         canMutate={viewingSelf}
         userId={ownerId}

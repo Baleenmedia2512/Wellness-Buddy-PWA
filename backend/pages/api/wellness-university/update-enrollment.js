@@ -6,7 +6,8 @@
  */
 
 
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
 
@@ -118,7 +119,7 @@ export default async function handler(req, res) {
     logger.debug('✅ [update-enrollment] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Update enrollment record — preserve existing per-program dates, add new ones
-    const updateTime = getISTTimestamp();
+    const updateTime = nowUtc();
 
     // Fetch existing record to get current program dates
     const { data: existing } = await supabase

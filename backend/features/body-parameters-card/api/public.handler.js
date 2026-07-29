@@ -3,11 +3,10 @@
  * Also handles the profile-save path (POST with requestingUserId).
  */
 import { validateToken } from '../validation/card.schema.js';
-import { isCardShareValid, buildProfilePatch, buildWeightRecord } from '../domain/card.rules.js';
+import { isCardShareValid } from '../domain/card.rules.js';
 import { canSaveCardToProfile } from '../domain/permissions/card.policy.js';
 import { findCardByToken, findTeamPhoneByUserId } from '../data/card.repo.js';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { syncCardToProfile } from '../data/sync.repo.js';
 
 /**
  * GET: resolve card by token for public display.
@@ -61,34 +60,18 @@ export async function handleSaveCardToProfile(token, requestingUserId) {
     };
   }
 
-  const supabase = getSupabaseClient();
-
-  // 1. Update team_table (height + BMR) — reuse existing update pattern.
-  const profilePatch = buildProfilePatch(card);
-  const profileUpdates = {};
-  if (profilePatch.height !== null) profileUpdates.Height = profilePatch.height;
-  if (profilePatch.bmr    !== null) profileUpdates.Bmr    = profilePatch.bmr;
-
-  if (Object.keys(profileUpdates).length > 0) {
-    const { error: profileErr } = await supabase
-      .from('team_table')
-      .update(profileUpdates)
-      .eq('UserId', parseInt(requestingUserId));
-    if (profileErr) throw profileErr;
-  }
-
-  // 2. Insert weight record if weight is present on the card.
-  const weightRow = buildWeightRecord(card, requestingUserId);
-  if (weightRow) {
-    const { error: weightErr } = await supabase
-      .from('weight_records_table')
-      .insert(weightRow);
-    if (weightErr) throw weightErr;
-  }
+  // Reuse shared card→profile sync (compare-before-write; no circular path).
+  const cardForSync = { ...card, user_id: requestingUserId };
+  const syncResult = await syncCardToProfile(cardForSync);
 
   return {
     httpStatus: 200,
-    body: { success: true, data: await _safeCard(card), saved: true },
+    body: {
+      success: true,
+      data: await _safeCard(card),
+      saved: true,
+      synced: syncResult.synced,
+    },
   };
 }
 

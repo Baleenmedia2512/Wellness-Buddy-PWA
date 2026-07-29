@@ -276,6 +276,26 @@ export async function checkGpsEnabled() {
 }
 
 /**
+ * Open the right Settings screen for location access.
+ *
+ * Many users grant app-level Location permission but leave device Location
+ * Services (GPS) off — sending them to App Settings feels broken. When GPS is
+ * off we deep-link to the system Location toggle; otherwise App Settings.
+ *
+ * @returns {Promise<'location'|'app'>} Which screen was opened.
+ */
+export async function openLocationPermissionSettings() {
+  if (!Capacitor.isNativePlatform()) return 'app';
+  const gpsOn = await checkGpsEnabled();
+  if (!gpsOn) {
+    await openLocationSettings();
+    return 'location';
+  }
+  await openAppSettings();
+  return 'app';
+}
+
+/**
  * Open the device Location Settings screen so the user can enable GPS.
  *
  * - Android: opens ACTION_LOCATION_SOURCE_SETTINGS (the Location on/off toggle)
@@ -367,8 +387,14 @@ export async function checkNotificationPermission() {
  */
 export async function openAppSettings() {
   if (!Capacitor.isNativePlatform()) return;
+  const platform = Capacitor.getPlatform();
   try {
-    await CapacitorApp.openUrl({ url: 'app-settings:' });
+    if (platform === 'android') {
+      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
+      await GalleryMonitorPlugin.openAppSettings();
+    } else {
+      await CapacitorApp.openUrl({ url: 'app-settings:' });
+    }
   } catch (err) {
     console.warn('Failed to open App Settings:', err);
   }

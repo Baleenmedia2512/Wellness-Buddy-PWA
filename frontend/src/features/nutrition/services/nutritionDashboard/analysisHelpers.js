@@ -20,22 +20,30 @@ export const formatFoodsTitle = (foods) => {
   return `${topName}+${count - 1}more`;
 };
 
-/** Treat API timestamps without trailing-Z as local time. */
-export const istToLocalDate = (value) => {
-  if (!value) return new Date(NaN);
+/** Treat API timestamps without trailing-Z as UTC wall time. */
+export const parseMealTimestamp = (value) => {
+  if (!value) return null;
   if (value instanceof Date) return new Date(value.getTime());
   if (typeof value === 'string') {
-    // Normalise MySQL datetime strings ("YYYY-MM-DD HH:MM:SS") to ISO-8601
-    // ("YYYY-MM-DDTHH:MM:SS") so all browsers parse them correctly.
-    const normalized = value.replace(' ', 'T').replace(/Z$/, '');
-    const localDate = new Date(normalized);
-    if (!Number.isNaN(localDate.getTime())) return localDate;
+    const normalized = value.trim().replace(' ', 'T');
+    const withZone = normalized.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(normalized)
+      ? normalized
+      : `${normalized}Z`;
+    const parsed = new Date(withZone);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
   }
-  return new Date(value);
+  const fallback = new Date(value);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 
-export const getMealCategory = (timeString) => {
-  const hour = istToLocalDate(timeString).getHours();
+export const getMealCategory = (timeString, timezoneIana = 'Asia/Kolkata') => {
+  const date = parseMealTimestamp(timeString);
+  if (!date) return 'late-night';
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: timezoneIana,
+    hour: 'numeric',
+    hour12: false,
+  }).format(date));
   if (hour >= 5 && hour < 10) return 'breakfast';
   if (hour >= 10 && hour < 12) return 'morning-snack';
   if (hour >= 12 && hour < 16) return 'lunch';

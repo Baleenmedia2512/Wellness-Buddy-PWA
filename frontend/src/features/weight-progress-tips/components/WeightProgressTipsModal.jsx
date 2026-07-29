@@ -8,6 +8,7 @@ import React, { useMemo } from 'react';
 import { X, AlertCircle, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import {
   generateWeightInsightsFromComparison,
+  determineWeightDirection,
   INSIGHT_DISCLAIMER,
 } from '../services/weightInsightEngine.js';
 
@@ -134,7 +135,9 @@ export function WeightProgressTipsModal({
 
   const prevWeight = comparison.weight?.previous;
   const currWeight = comparison.weight?.current;
-  const weightWentUp = insight.weightTrend === 'increase';
+  const weightDirection = determineWeightDirection(prevWeight, currWeight);
+  const weightWentUp = weightDirection === 'up';
+  const weightWentDown = weightDirection === 'down';
 
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
@@ -142,7 +145,9 @@ export function WeightProgressTipsModal({
     ? `You followed your plan correctly, but your weight increased. Please contact your coach for guidance.`
     : weightWentUp
     ? `Your weight is higher than your previous weight.`
-    : `Your weight is lower than your previous weight.`;
+    : weightWentDown
+    ? `Your weight is lower than your previous weight.`
+    : `Your weight is unchanged from your previous reading.`;
 
   const handleContactCoach = () => {
     if (coachPhone) {
@@ -198,8 +203,10 @@ export function WeightProgressTipsModal({
                 <div className="flex flex-col items-center">
                   {weightWentUp ? (
                     <TrendingUp className="text-red-500" size={28} />
-                  ) : (
+                  ) : weightWentDown ? (
                     <TrendingDown className="text-green-500" size={28} />
+                  ) : (
+                    <span className="text-gray-500 text-2xl font-bold">→</span>
                   )}
                 </div>
                 <div className="text-center">

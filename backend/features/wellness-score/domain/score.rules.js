@@ -1,4 +1,5 @@
 import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isOnTime, isLate, filterFoodByMealWindow } from './window.helpers.js';
 import { filterEducationLogsOnly } from './education-log.helpers.js';
 import { WELLNESS_PARAMETERS } from './parameter-registry.js';
@@ -36,6 +37,14 @@ function roundEarned(ratio, maxPoints) {
   return Math.min(maxPoints, Math.max(0, Math.round(ratio * maxPoints)));
 }
 
+/** Display-safe nutrient amounts — strips IEEE-754 noise (e.g. 2.3200000000000003 → 2.32). */
+function formatDisplayAmount(value, decimals = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (decimals <= 0) return String(Math.round(n));
+  return String(parseFloat(n.toFixed(decimals)));
+}
+
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
 export function calculateBinaryLogScore({
@@ -43,6 +52,8 @@ export function calculateBinaryLogScore({
   records = [],
   window,
   activityLabel,
+  timezoneIana = IANA_IST,
+  timestampKind = 'activity',
 }) {
   if (!records.length) {
     return buildParameterScore({
@@ -55,7 +66,8 @@ export function calculateBinaryLogScore({
       calculationReason: 'Not completed',
     });
   }
-  const onTime = records.some((r) => isOnTime(r.CreatedAt, window));
+  const onTime = records.some((r) =>
+    isOnTime(r.CreatedAt, window, timezoneIana, timestampKind));
   if (onTime) {
     return buildParameterScore({
       key: activityLabel,
@@ -67,7 +79,8 @@ export function calculateBinaryLogScore({
       calculationReason: 'Done within allowed time',
     });
   }
-  const late = records.some((r) => isLate(r.CreatedAt, window));
+  const late = records.some((r) =>
+    isLate(r.CreatedAt, window, timezoneIana, timestampKind));
   return buildParameterScore({
     key: activityLabel,
     label: activityLabel,
@@ -82,6 +95,8 @@ export function calculateBinaryLogScore({
 export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
   const consumed = Math.max(0, Number(consumedMl) || 0);
   const required = Math.max(0, Number(requiredMl) || 0);
+  const consumedLabel = formatDisplayAmount(consumed, 0);
+  const requiredLabel = formatDisplayAmount(required, 0);
   if (required <= 0) {
     return buildParameterScore({
       key: 'water_qty',
@@ -101,7 +116,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Target reached (${consumed} / ${required} ml)`,
+      calculationReason: `Target reached (${consumedLabel} / ${requiredLabel} ml)`,
     });
   }
   const earned = roundEarned(consumed / required, maxPoints);
@@ -112,7 +127,7 @@ export function calculateWaterQuantity({ maxPoints, consumedMl, requiredMl }) {
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${consumed} / ${required} ml`,
+    calculationReason: `${consumedLabel} / ${requiredLabel} ml`,
   });
 }
 
@@ -123,9 +138,12 @@ export function calculateTargetNutrient({
   consumed,
   target,
   unit = '',
+  decimals = 2,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const tgt = Number(target);
+  const actualLabel = formatDisplayAmount(actual, decimals);
+  const targetLabel = formatDisplayAmount(tgt, decimals);
   if (!Number.isFinite(tgt) || tgt <= 0) {
     return buildParameterScore({
       key,
@@ -145,7 +163,7 @@ export function calculateTargetNutrient({
       scoringMode: 'proportional',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Target reached (${actual}${unit} / ${tgt}${unit})`,
+      calculationReason: `Target reached (${actualLabel}${unit} / ${targetLabel}${unit})`,
     });
   }
   const earned = roundEarned(actual / tgt, maxPoints);
@@ -156,7 +174,7 @@ export function calculateTargetNutrient({
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${actual}${unit} / ${tgt}${unit}`,
+    calculationReason: `${actualLabel}${unit} / ${targetLabel}${unit}`,
   });
 }
 
@@ -169,9 +187,12 @@ export function calculateLimitNutrient({
   unit = '',
   lowerIsBetter = false,
   goalMode,
+  decimals = 2,
 }) {
   const actual = Math.max(0, Number(consumed) || 0);
   const lim = Number(limit);
+  const actualLabel = formatDisplayAmount(actual, decimals);
+  const limitLabel = formatDisplayAmount(lim, decimals);
   if (!Number.isFinite(lim) || lim <= 0) {
     return buildParameterScore({
       key,
@@ -203,7 +224,7 @@ export function calculateLimitNutrient({
         scoringMode: 'limit',
         maxPoints,
         earnedPoints: 0,
-        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+        calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
       });
     }
     return buildParameterScore({
@@ -213,7 +234,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: maxPoints,
-      calculationReason: `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
+      calculationReason: `Within limit (${actualLabel}${unit} ≤ ${limitLabel}${unit})`,
     });
   }
 
@@ -227,7 +248,7 @@ export function calculateLimitNutrient({
         scoringMode: 'limit',
         maxPoints,
         earnedPoints: 0,
-        calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+        calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
       });
     }
     return buildParameterScore({
@@ -238,8 +259,8 @@ export function calculateLimitNutrient({
       maxPoints,
       earnedPoints: maxPoints,
       calculationReason: actual <= 0
-        ? `Within limit (0${unit} ≤ ${lim}${unit})`
-        : `Within limit (${actual}${unit} ≤ ${lim}${unit})`,
+        ? `Within limit (0${unit} ≤ ${limitLabel}${unit})`
+        : `Within limit (${actualLabel}${unit} ≤ ${limitLabel}${unit})`,
     });
   }
 
@@ -252,7 +273,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: 0,
-      calculationReason: `Above limit (${actual}${unit} > ${lim}${unit})`,
+      calculationReason: `Above limit (${actualLabel}${unit} > ${limitLabel}${unit})`,
     });
   }
   if (actual <= 0) {
@@ -263,7 +284,7 @@ export function calculateLimitNutrient({
       scoringMode: 'limit',
       maxPoints,
       earnedPoints: 0,
-      calculationReason: `0${unit} / ${lim}${unit}`,
+      calculationReason: `0${unit} / ${limitLabel}${unit}`,
     });
   }
   const earned = roundEarned(actual / lim, maxPoints);
@@ -274,29 +295,37 @@ export function calculateLimitNutrient({
     scoringMode: 'limit',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${actual}${unit} / ${lim}${unit}`,
+    calculationReason: `${actualLabel}${unit} / ${limitLabel}${unit}`,
   });
 }
 
 // ─── Logging parameters ──────────────────────────────────────────────────────
 
-export function calculateWeightPost({ maxPoints, weightRecords, window }) {
+export function calculateWeightPost({
+  maxPoints, weightRecords, window, timezoneIana = IANA_IST,
+}) {
   const base = calculateBinaryLogScore({
     maxPoints,
     records: weightRecords,
     window,
     activityLabel: 'Weight Post',
+    timezoneIana,
+    timestampKind: 'activity',
   });
   return { ...base, key: 'weight_post', label: 'Weight Post' };
 }
 
-export function calculateEducationPost({ maxPoints, educationLogs, window }) {
+export function calculateEducationPost({
+  maxPoints, educationLogs, window, timezoneIana = IANA_IST,
+}) {
   const logs = filterEducationLogsOnly(educationLogs);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: logs,
     window,
     activityLabel: 'Education Post',
+    timezoneIana,
+    timestampKind: 'activity',
   });
   return { ...base, key: 'edu_post', label: 'Education Post' };
 }
@@ -305,35 +334,47 @@ function solidFoodRecords(foodRecords) {
   return (foodRecords || []).filter((r) => !isExemptedBeverageOnly(r.AnalysisData));
 }
 
-export function calculateBreakfastPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateBreakfastPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Breakfast Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'breakfast_post', label: 'Breakfast Post' };
 }
 
-export function calculateLunchPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateLunchPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Lunch Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'lunch_post', label: 'Lunch Post' };
 }
 
-export function calculateDinnerPost({ maxPoints, foodRecords, window }) {
-  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window);
+export function calculateDinnerPost({
+  maxPoints, foodRecords, window, timezoneIana = IANA_IST,
+}) {
+  const meals = filterFoodByMealWindow(solidFoodRecords(foodRecords), window, timezoneIana);
   const base = calculateBinaryLogScore({
     maxPoints,
     records: meals,
     window,
     activityLabel: 'Dinner Post',
+    timezoneIana,
+    timestampKind: 'food',
   });
   return { ...base, key: 'dinner_post', label: 'Dinner Post' };
 }
@@ -499,7 +540,15 @@ export function calculateVitaminD({ maxPoints, consumed, target }) {
   return calculateTargetNutrient({ key: 'vitamin_d', label: 'Vitamin D', maxPoints, consumed, target, unit: 'mcg' });
 }
 export function calculateVitaminE({ maxPoints, consumed, target }) {
-  return calculateTargetNutrient({ key: 'vitamin_e', label: 'Vitamin E', maxPoints, consumed, target, unit: 'mg' });
+  return calculateTargetNutrient({
+    key: 'vitamin_e',
+    label: 'Vitamin E',
+    maxPoints,
+    consumed,
+    target,
+    unit: 'mg',
+    decimals: 1,
+  });
 }
 export function calculateVitaminK({ maxPoints, consumed, target }) {
   return calculateTargetNutrient({ key: 'vitamin_k', label: 'Vitamin K', maxPoints, consumed, target, unit: 'mcg' });
@@ -596,7 +645,7 @@ export function calculatePhysicalActivity({ maxPoints, exerciseCalories, bmr }) 
       calculationReason: 'BMR unavailable',
     });
   }
-  const target = bmrVal * 0.1;
+  const target = bmrVal * 0.3;
   if (burned >= target) {
     return buildParameterScore({
       key: 'physical_activity',
@@ -616,7 +665,7 @@ export function calculatePhysicalActivity({ maxPoints, exerciseCalories, bmr }) 
     scoringMode: 'proportional',
     maxPoints,
     earnedPoints: earned,
-    calculationReason: `${Math.round(burned)} / ${Math.round(target)} kcal (10% BMR)`,
+    calculationReason: `${Math.round(burned)} / ${Math.round(target)} kcal (30% BMR)`,
   });
 }
 
@@ -706,15 +755,40 @@ export function aggregateDailyFoodStats(foodRecords = []) {
 
 const CALCULATOR_BY_KEY = {
   weight_post: (cfg, ctx) =>
-    calculateWeightPost({ maxPoints: cfg.maxPoints, weightRecords: ctx.weightRecords, window: ctx.timeWindows.weight }),
+    calculateWeightPost({
+      maxPoints: cfg.maxPoints,
+      weightRecords: ctx.weightRecords,
+      window: ctx.timeWindows.weight,
+      timezoneIana: ctx.timezoneIana,
+    }),
   edu_post: (cfg, ctx) =>
-    calculateEducationPost({ maxPoints: cfg.maxPoints, educationLogs: ctx.educationLogs, window: ctx.timeWindows.education }),
+    calculateEducationPost({
+      maxPoints: cfg.maxPoints,
+      educationLogs: ctx.educationLogs,
+      window: ctx.timeWindows.education,
+      timezoneIana: ctx.timezoneIana,
+    }),
   breakfast_post: (cfg, ctx) =>
-    calculateBreakfastPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.breakfast }),
+    calculateBreakfastPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.breakfast,
+      timezoneIana: ctx.timezoneIana,
+    }),
   lunch_post: (cfg, ctx) =>
-    calculateLunchPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.lunch }),
+    calculateLunchPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.lunch,
+      timezoneIana: ctx.timezoneIana,
+    }),
   dinner_post: (cfg, ctx) =>
-    calculateDinnerPost({ maxPoints: cfg.maxPoints, foodRecords: ctx.foodRecords, window: ctx.timeWindows.dinner }),
+    calculateDinnerPost({
+      maxPoints: cfg.maxPoints,
+      foodRecords: ctx.foodRecords,
+      window: ctx.timeWindows.dinner,
+      timezoneIana: ctx.timezoneIana,
+    }),
   water_qty: (cfg, ctx) =>
     calculateWater({ maxPoints: cfg.maxPoints, consumedMl: ctx.waterConsumedMl, requiredMl: ctx.waterRequiredMl }),
   calories: (cfg, ctx) =>
@@ -846,6 +920,7 @@ export function calculateWellnessScore({
   goalMode,
   exerciseCalories,
   bmr,
+  timezoneIana = IANA_IST,
 }) {
   const ctx = {
     educationLogs,
@@ -861,6 +936,7 @@ export function calculateWellnessScore({
     goalMode,
     exerciseCalories,
     bmr,
+    timezoneIana,
   };
 
   const parameters = [];

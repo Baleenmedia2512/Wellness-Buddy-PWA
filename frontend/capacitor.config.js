@@ -7,7 +7,9 @@ const config = {
   // ✅ ANDROID PERFORMANCE: Optimize for fast image loading
   android: {
     allowMixedContent: true,
-    captureInput: true,
+    // Must stay false: captureInput=true replaces the WebView IME with a generic
+    // BaseInputConnection, which always shows QWERTY and ignores type="tel"/inputmode.
+    captureInput: false,
     webContentsDebuggingEnabled: false,
     backgroundColor: '#ffffff',
     loggingBehavior: 'none',
@@ -21,15 +23,17 @@ const config = {
     }
   },
   
-  // WebView may open backend / share URLs. Phone OTP SMS is sent server-side (MDT on
-  // Vercel) — set REACT_APP_API_BASE_URL in .env.production before `npm run build`.
+  // WebView origin MUST NOT equal the API host. If hostname is
+  // wellness-valley.vercel.app, Android intercepts same-origin /api/* calls and
+  // returns local index.html (text/html 200) → OTP "Unexpected server response".
+  // API calls use REACT_APP_API_BASE_URL → https://wellness-valley.vercel.app (cross-origin).
   server: {
     androidScheme: 'https',
-    hostname: 'wellness-valley.vercel.app',
+    hostname: 'app.wellnessvalley.app',
     allowNavigation: [
+      'wellness-valley.vercel.app',
       'wellness-valley-pwa-backend-test.vercel.app',
       'wellness-buddy-pwa-backend-test.vercel.app',
-      'wellness-buddy-pwa-eta.vercel.app',
       '*.vercel.app',
       '*.googleapis.com',
       '*.firebase.com',

@@ -152,13 +152,28 @@ export async function analyse(params) {
   _setStatus(captureId, ANALYSIS_STATUS.ANALYZING, { traceId: trace.traceId });
 
   // ── Step 2: Fast analysis (single unified Gemini call) ────────────────────
-  let fastResult;
-  try {
-    fastResult = await analyzeUnified(imageBuffer, mimeType, {
-      trace,
-      modelOverride: usePro ? FALLBACK_MODEL_NAME : null,
-    });
-  } catch (err) {
+  //
+  // PERMANENT INJECTION GUARD — do NOT convert this back to try/catch.
+  //
+  // Why .catch() instead of try { ... } catch:
+  //   A try/catch block shares its catch handler with ALL code inside the
+  //   block. If any code is ever injected between the analyzeUnified() call
+  //   and the closing brace (as happened with the rogue `query` call), that
+  //   injected error silently falls into the catch → returns FAST_FALLBACK →
+  //   discards a successful Gemini result. The frontend then sees "Other".
+  //
+  //   Using .catch() limits the error scope strictly to analyzeUnified().
+  //   Any code that runs AFTER this block throws normally (un-caught), making
+  //   the bug immediately visible in logs rather than silently eating results.
+  //
+  let _geminiErr = null;
+  const fastResult = await analyzeUnified(imageBuffer, mimeType, {
+    trace,
+    modelOverride: usePro ? FALLBACK_MODEL_NAME : null,
+  }).catch((err) => { _geminiErr = err; return null; });
+
+  if (_geminiErr !== null || !fastResult) {
+    const err = _geminiErr ?? new Error('analyzeUnified returned null');
     // Graceful degradation — never crash the capture flow
     logger.error('orchestrator: fast analysis failed, using fallback', {
       traceId:   trace.traceId,
@@ -189,6 +204,9 @@ export async function analyse(params) {
       observability:   null,
     };
   }
+
+  // fastResult is guaranteed valid from this point — Gemini succeeded.
+
 
   // ── Step 3: Enqueue enrichment job (food images only, non-blocking) ────────
   // NOTE: FAST_COMPLETE is NOT set here. It is set by confirmPersisted() after

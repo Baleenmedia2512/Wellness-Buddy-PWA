@@ -8,7 +8,8 @@
  * Migration: backend/migrations/wellness_counselling_assessments.sql
  */
 
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -94,7 +95,7 @@ export default async function handler(req, res) {
 
     // Get Supabase client
     const supabase = getSupabaseClient();
-    const timestamp = getISTTimestamp();
+    const timestamp = nowUtc();
 
     // Insert assessment into database (SERIAL auto-generates ID)
     const { data, error } = await supabase

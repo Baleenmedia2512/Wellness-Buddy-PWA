@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Video, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 import { verifyTestimonialVideoOtp } from '../services/testimonialApi.js';
 
 export default function VerifyVideoOtpModal({ testimonialId, onVerified, onClose }) {
@@ -53,9 +54,12 @@ export default function VerifyVideoOtpModal({ testimonialId, onVerified, onClose
         </p>
 
         {/* OTP input */}
-        <input
-          type="tel"
+        <NativeInput
+          otp
+          type="text"
           inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           maxLength={6}
           placeholder="_ _ _ _ _ _"
           value={otp}

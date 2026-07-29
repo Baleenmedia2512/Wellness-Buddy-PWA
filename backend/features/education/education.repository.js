@@ -1,4 +1,5 @@
-import { getSupabaseClient, getISTTimestamp, convertToIST } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
 
 export async function insertLog(payload) {
   const supabase = getSupabaseClient();
@@ -72,7 +73,7 @@ export async function summaryLogs(userId) {
 
 export async function softDeleteLog(logId, userId) {
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const { data, error } = await supabase
     .from('education_logs_table')
     .update({ IsDeleted: 1, UpdatedAt: currentTime })
@@ -97,7 +98,7 @@ export async function checkOwnership(id, userId) {
 
 export async function restoreLog(id) {
   const supabase = getSupabaseClient();
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
   const { data, error } = await supabase
     .from('education_logs_table')
     .update({ IsDeleted: 0, UpdatedAt: currentTime })
@@ -113,9 +114,7 @@ export async function touchLastActive(userId) {
     const supabase = getSupabaseClient();
     await supabase
       .from('team_table')
-      .update({ LastActiveAt: getISTTimestamp() })
+      .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }
-
-export { getISTTimestamp, convertToIST };

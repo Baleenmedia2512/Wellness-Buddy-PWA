@@ -17,13 +17,14 @@ import {
 import {
   getUserWeightGoal,
   getRecentWeights,
-  getYesterdayNutrition,
-  getTodayNutrition,
-  getYesterdayWater,
-  getYesterdayActivity,
+  getNutritionForDate,
+  getWaterForDate,
+  getActivityForDate,
   getCoachPhone,
 } from '../data/weight-progress.repo.js';
-import { convertToIST } from '../../../utils/supabaseClient.js';
+import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
+import { findLatestLinkedBodyMetricsCard } from '../../body-parameters-card/data/card.repo.js';
+import { todayInTimezone, shiftDateYmd } from '../../../shared/lib/datetime/index.js';
 import { resolveCalorieTargetFromProfile } from '../../../utils/tdeeCalculations.js';
 
 /**
@@ -100,7 +101,9 @@ export async function checkProgressHandler(query) {
   const waterTarget = calculateWaterTarget(currentWeightValue);
   const calorieTarget = computeCalorieTarget(tdee, goalMode);
   const displayCalorieTarget = computeDisplayCalorieTarget(tdee);
-  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue);
+  const bodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
+  const gender = userGoal?.Gender || bodyMetricsCard?.gender || null;
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets(tdee, currentWeightValue, gender);
   const proteinTargetForTips = computeProteinTarget(currentWeightValue);
   console.log('🎯 [Step 3] targets — calories:', displayCalorieTarget, 'kcal | protein:', proteinTarget, 'g | water:', waterTarget, 'ml');
 
@@ -186,31 +189,26 @@ export async function checkProgressHandler(query) {
 
   console.log('🚨 [Step 4] REVERSE PROGRESS DETECTED! change:', reverseCheck.change, 'kg direction:', reverseCheck.direction);
 
-  // Step 5: Calculate date ranges for yesterday (IST timezone)
-  console.log('🕐 [Step 5] Calculating IST date ranges...');
-  const now = new Date();
-  const istResult = convertToIST(now);
-  const todayIST = istResult.istDate;
-  const todayStart = new Date(todayIST.toISOString().substring(0, 10) + 'T00:00:00.000Z');
-  const yesterdayIST = new Date(todayIST);
-  yesterdayIST.setDate(yesterdayIST.getDate() - 1);
-  const yesterdayStart = new Date(yesterdayIST.toISOString().substring(0, 10) + 'T00:00:00.000Z');
-  const yesterdayEnd = todayStart.toISOString();
-  console.log('✅ [Step 5] Date ranges — yesterdayStart:', yesterdayStart.toISOString(), 'yesterdayEnd:', yesterdayEnd);
+  // Step 5: Resolve yesterday in the user's timezone
+  console.log('🕐 [Step 5] Resolving user timezone and yesterday date...');
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const todayYmd = todayInTimezone(timezoneIana);
+  const yesterdayYmd = shiftDateYmd(todayYmd, -1, timezoneIana);
+  console.log('✅ [Step 5] yesterday:', yesterdayYmd, 'timezone:', timezoneIana);
 
   // Step 6: Fetch yesterday's nutrition
   console.log('🔍 [Step 6] Fetching yesterday nutrition for userId:', userId);
-  const yesterdayNutrition = await getYesterdayNutrition(userId, yesterdayStart.toISOString(), yesterdayEnd);
+  const yesterdayNutrition = await getNutritionForDate(userId, yesterdayYmd, timezoneIana);
   console.log('📋 [Step 6] yesterdayNutrition:', JSON.stringify(yesterdayNutrition));
 
-  // Step 7: Fetch yesterday's water intake (now implemented)
+  // Step 7: Fetch yesterday's water intake
   console.log('🔍 [Step 7] Fetching yesterday water for userId:', userId);
-  const waterYesterday = await getYesterdayWater(userId, yesterdayStart.toISOString(), yesterdayEnd);
+  const waterYesterday = await getWaterForDate(userId, yesterdayYmd, timezoneIana);
   console.log('📋 [Step 7] waterYesterday:', waterYesterday, 'ml');
 
   // Step 8: Fetch yesterday's activity (steps, calories burned)
   console.log('🔍 [Step 8] Fetching yesterday activity for userId:', userId);
-  const activityYesterday = await getYesterdayActivity(userId, yesterdayStart.toISOString(), yesterdayEnd);
+  const activityYesterday = await getActivityForDate(userId, yesterdayYmd, timezoneIana);
   console.log('📋 [Step 8] activityYesterday:', JSON.stringify(activityYesterday));
 
   // Step 9: Generate yesterday-focused tips using domain logic

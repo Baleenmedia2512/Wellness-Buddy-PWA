@@ -3,14 +3,19 @@
  *
  * Modal form for creating a Body Parameters Card.
  * Pure presentational — all logic in useBodyParamsCard hook.
- * Fields: Date, Location, Name, Phone, Age, Gender, Height, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
+ * Fields: Date, Name, Age, Height, Phone, Gender, Weight, BMI, Fat%, BMR, Body Age, Chest, Waist, Hip.
  */
 import React, { useRef } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { useBodyParamsCard } from '../hooks/useBodyParamsCard.js';
 import PhoneAutocomplete from './PhoneAutocomplete.jsx';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 
-const InputField = ({ label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter, maxLength, inputMode: customInputMode }) => {
+const InputField = ({
+  label, value, onChange, type = 'text', placeholder = '', inputRef, onEnter,
+  maxLength, inputMode: customInputMode, pattern: customPattern, autoComplete,
+  ...rest
+}) => {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && onEnter) {
       e.preventDefault();
@@ -20,28 +25,25 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '', i
 
   // Use inputMode for better mobile keyboard control
   // For Capacitor APK: use type="text" with inputMode for numeric fields to force numeric keypad
-  const inputMode = customInputMode || (type === 'number' ? 'numeric' : type === 'tel' ? 'tel' : 'text');
-  
-  // For Capacitor/native apps: use pattern to force numeric keyboard
-  const pattern = type === 'number' ? '[0-9.]*' : undefined;
-  
-  // Convert type="number" to type="text" with inputMode for better mobile support
+  const inputMode = customInputMode || (type === 'number' ? 'numeric' : 'text');
+  const pattern = customPattern || (type === 'number' || customInputMode ? '[0-9]*' : undefined);
   const inputType = type === 'number' ? 'text' : type;
 
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">{label}</label>
-      <input
+      <NativeInput
         ref={inputRef}
         type={inputType}
         inputMode={inputMode}
         pattern={pattern}
+        autoComplete={autoComplete ?? 'off'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         maxLength={maxLength}
-        autoComplete="off"
+        {...rest}
         className="border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
       />
     </div>
@@ -77,7 +79,7 @@ const SelectField = ({ label, value, onChange, options, inputRef, onEnter }) => 
  * @param {{ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard, onSaveStart }} props
  */
 const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, existingCard = null, onSaveStart = null }) => {
-  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart });
+  const vm = useBodyParamsCard({ user, selectedMember, onSaveSuccess, existingCard, onSaveStart, isOpen });
 
   // Refs for all input fields
   const phoneRef = useRef(null);
@@ -121,8 +123,8 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
 
   const handleSave = async () => {
     await vm.handleSave();
-    // After successful save, reset form so next open shows empty form
-    if (!vm.error) {
+    // Only reset for new-card flow; edit mode reloads from existingCard on next open.
+    if (!vm.error && !vm.isEditMode) {
       vm.resetForm();
     }
   };
@@ -179,19 +181,9 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             label="Name" 
             value={vm.form.name} 
             onChange={(v) => vm.setField('name', v)} 
-            placeholder="Full name"
+            placeholder="FULL NAME"
+            autoCapitalize="characters"
             inputRef={nameRef}
-            onEnter={() => focusNextField(phoneRef)}
-          />
-
-          {/* Phone Number */}
-          <PhoneAutocomplete
-            value={vm.form.phoneNumber}
-            onChange={vm.setPhoneField}
-            suggestions={vm.phoneSuggestions}
-            onSelect={vm.fillFromMember}
-            isLoading={vm.phoneSearchLoading}
-            inputRef={phoneRef}
             onEnter={() => focusNextField(ageRef)}
           />
 
@@ -204,16 +196,6 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             inputMode="decimal"
             maxLength={2}
             inputRef={ageRef}
-            onEnter={() => focusNextField(genderRef)}
-          />
-
-          {/* Gender - Full Width */}
-          <SelectField 
-            label="Gender" 
-            value={vm.form.gender} 
-            onChange={(v) => vm.setField('gender', v)} 
-            options={['Male', 'Female']}
-            inputRef={genderRef}
             onEnter={() => focusNextField(heightRef)}
           />
 
@@ -228,6 +210,27 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
             type="number" 
             placeholder="cm"
             inputRef={heightRef}
+            onEnter={() => focusNextField(phoneRef)}
+          />
+
+          {/* Phone Number */}
+          <PhoneAutocomplete
+            value={vm.form.phoneNumber}
+            onChange={vm.setPhoneField}
+            suggestions={vm.phoneSuggestions}
+            onSelect={vm.fillFromMember}
+            isLoading={vm.phoneSearchLoading}
+            inputRef={phoneRef}
+            onEnter={() => focusNextField(genderRef)}
+          />
+
+          {/* Gender - Full Width */}
+          <SelectField 
+            label="Gender" 
+            value={vm.form.gender} 
+            onChange={(v) => vm.setField('gender', v)} 
+            options={['Male', 'Female']}
+            inputRef={genderRef}
             onEnter={() => focusNextField(weightRef)}
           />
 
@@ -259,7 +262,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     ref={weightRef}
                     type="text"
                     inputMode="decimal"
-                    pattern="[0-9.]*"
+                    pattern="[0-9]*"
                     value={vm.form.weightKg}
                     onChange={(e) => vm.setWeightManually(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -311,7 +314,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     ref={fatRef}
                     type="text"
                     inputMode="decimal"
-                    pattern="[0-9.]*"
+                    pattern="[0-9]*"
                     value={vm.form.fatPercent}
                     onChange={(e) => vm.setField('fatPercent', e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -376,7 +379,7 @@ const BodyParamsForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess, 
                     ref={bmiRef}
                     type="text"
                     inputMode="decimal"
-                    pattern="[0-9.]*"
+                    pattern="[0-9]*"
                     value={vm.form.bmi}
                     onChange={(e) => vm.setBmiManually(e.target.value)}
                     onKeyDown={handleKeyDown}
