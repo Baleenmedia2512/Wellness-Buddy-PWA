@@ -150,9 +150,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       face.reset();
       setShowToast(false);
       loadProfile();
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user?.email]);
+    // No email yet (pre-onboarding) — never spin forever on My Profile.
+    setIsLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
+  }, [user?.email, user?.id, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -166,11 +169,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
         if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
       }
-      const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
+      const payload = form.payload(user.email, profileImage ? { profileImage } : {});
+      // BMR is system-calculated on the profile page — never write it from this form.
+      delete payload.bmr;
+      const data = await saveProfile(payload);
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
-        bmr: form.bmr ? parseFloat(form.bmr) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         profileImage: profileImagePreview || null,
@@ -311,7 +316,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
                   gender={form.gender} setGender={form.setGender}
-                  bmr={form.bmr} setBmr={form.setBmr}
+                  bmr={form.bmr}
+                  bmrReadOnly
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId} setCommunityId={form.setCommunityId}

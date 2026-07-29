@@ -1,4 +1,5 @@
-// Editable name / height / phone / gender / BMR / communityId fields + email.
+// Editable name / height / phone / gender / communityId fields + email.
+// BMR is display-only when bmrReadOnly (profile page) — calculated from weight/formula.
 import React from 'react';
 import { Flame, Hash, Mail } from 'lucide-react';
 import PhysicalActivityField from './PhysicalActivityField';
@@ -19,6 +20,7 @@ const Field = ({ label, required, children }) => (
 const UserProfileFields = ({
   email, setEmail,
   name, setName, height, setHeight, phone, setPhone, bmr, setBmr,
+  bmrReadOnly = false,
   gender, setGender,
   physicalActivityLevel, setPhysicalActivityLevel,
   communityId, setCommunityId,
@@ -84,9 +86,24 @@ const UserProfileFields = ({
       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
         <Flame className="w-4 h-4 text-orange-500" /> BMR (kcal)
       </label>
-      <input type="text" inputMode="numeric" pattern="[0-9]*" value={bmr} onChange={(e) => setBmr(e.target.value)}
-        placeholder="e.g. 2200" style={{ fontSize: '16px' }}
-        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none" />
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={bmr}
+        onChange={bmrReadOnly ? undefined : (e) => setBmr(e.target.value)}
+        readOnly={bmrReadOnly}
+        placeholder={bmrReadOnly ? 'Calculated automatically' : 'e.g. 2200'}
+        style={{ fontSize: '16px' }}
+        className={
+          bmrReadOnly
+            ? 'w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-600 rounded-lg cursor-not-allowed outline-none'
+            : 'w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none'
+        }
+      />
+      {bmrReadOnly && (
+        <p className="text-xs text-gray-400 mt-1">Auto-calculated from your weight and profile — not editable</p>
+      )}
     </div>
 
     <PhysicalActivityField

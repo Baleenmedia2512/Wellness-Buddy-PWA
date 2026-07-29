@@ -1,4 +1,4 @@
-// CompleteProfilePage — unified onboarding screen (before coach / activity).
+// CompleteProfilePage — unified onboarding screen (before activity / coach / OTP).
 // Collects: name, email, gender, height, diet preference, profile photo.
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from 'lucide-react';
@@ -220,9 +220,9 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   ]);
 
   return (
-    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 300 }}>
+    <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: 9999 }}>
       {cropper.showCropper && cropper.rawImageSrc && (
-        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={310} />
+        <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={10050} />
       )}
       <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 pt-14 pb-8">
         <div className="flex items-center gap-3 mb-2">
