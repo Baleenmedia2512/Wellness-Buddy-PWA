@@ -1,7 +1,7 @@
 /**
  * Admin/developer gate for AI credits configuration.
  */
-import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { ValidationError } from '../../../../shared/lib/ValidationError.js';
 
 const ADMIN_ROLES = new Set(['admin', 'developer']);
 

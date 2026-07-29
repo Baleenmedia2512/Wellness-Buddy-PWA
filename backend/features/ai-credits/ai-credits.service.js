@@ -1,18 +1,18 @@
 /**
  * ai-credits service — status, reserve, confirm, release, admin config.
  */
-import { todayInTimezone } from '../../../shared/lib/datetime/index.js';
-import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
-import { ValidationError } from '../../../shared/lib/ValidationError.js';
-import * as userRepo from '../../user/user.repository.js';
-import { assertAiCreditsAdmin } from '../domain/permissions/credits.policy.js';
+import { todayInTimezone } from '../../shared/lib/datetime/index.js';
+import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+import * as userRepo from '../user/user.repository.js';
+import { assertAiCreditsAdmin } from './domain/permissions/credits.policy.js';
 import {
   buildStatus,
   canReserve,
   normalizeConfig,
   isSuccessfulFoodAnalysis,
-} from '../domain/credits.rules.js';
-import * as repo from '../data/ai-credits.repo.js';
+} from './domain/credits.rules.js';
+import * as repo from './data/ai-credits.repo.js';
 
 const REQUESTER_COLUMNS = '"UserId", "Role"';
 
