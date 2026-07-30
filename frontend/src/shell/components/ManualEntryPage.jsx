@@ -154,16 +154,14 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/80">
               Daily AI credits
             </p>
-            <p className="mt-0.5 text-sm font-bold text-gray-900">
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-sm font-bold text-gray-900">
               <span className={outOfCredits ? 'text-amber-600' : 'text-emerald-700'}>
                 {remaining}
               </span>
               <span className="font-semibold text-gray-400"> of {limit} left</span>
             </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-xs text-gray-500">Used today</p>
-            <p className="text-sm font-extrabold tabular-nums text-emerald-700">{used}/{limit}</p>
           </div>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: BRAND.mint }}>
@@ -615,12 +613,12 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'water'}
         title="Water"
-        subtitle="Log how much you drank"
+        subtitle="How much you drank so far today"
         unitLabel="Amount"
         min={100}
         max={2000}
         step={100}
-        defaultValue={250}
+        defaultValue={200}
         formatValue={(n) => `${n} ml`}
         onClose={() => setActiveForm(null)}
         onConfirm={handleWaterConfirm}
