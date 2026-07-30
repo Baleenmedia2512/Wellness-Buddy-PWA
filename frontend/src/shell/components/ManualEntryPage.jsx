@@ -55,8 +55,8 @@ const CATEGORIES = [
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
   { id: 'water', Icon: Droplets, label: 'Water' },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Exercise (green fire)
-  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green fire)
+  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Workout', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -639,10 +639,10 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'afresh'}
         title="Afresh"
-        subtitle="Macros scale by scoops — e.g. 2–3 scoops in one cup of water"
-        unitLabel="Scoops"
-        min={AFRESH_PRODUCT.minScoops}
-        max={AFRESH_PRODUCT.maxScoops}
+        subtitle="Log number of scoops consumed so far"
+        unitLabel="Cups"
+        min={1}
+        max={8}
         step={1}
         defaultValue={AFRESH_PRODUCT.defaultScoops}
         onClose={() => setActiveForm(null)}

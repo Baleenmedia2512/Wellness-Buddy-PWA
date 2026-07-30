@@ -134,8 +134,8 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
             <FlaskConical className="w-5 h-5 text-green-600" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-gray-900 text-base leading-tight">Shake Calculator</h2>
-            <p className="text-xs text-gray-500">Build your Herbalife shake combination</p>
+            <h2 className="font-bold text-gray-900 text-base leading-tight">Personalized Protein</h2>
+            <p className="text-xs text-gray-500">Select Number of scoops used in this shake</p>
           </div>
           <button
             onClick={handleClose}
