@@ -566,7 +566,9 @@ Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
 - Brown, amber, green or yellow colours are acceptable.
 - Examples: transparent brown drink → Herbalife Afresh Energy Drink; semi-transparent tea → Herbalife Afresh Energy Drink.
 - Always classify as "Herbalife Afresh Energy Drink".
-- Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
+- Per scoop of powder: 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber, sodium 20 mg.
+- Scale linearly by scoop count (2–3 scoops in one cup of water → 2× / 3× these values).
+- Prepared drink volume is typically ~200 ml water; do not multiply volume by scoops.
 
 Herbalife Shake (standard meal-replacement — prepared drink in cup/glass/bottle/shaker):
 - Users upload photos of PREPARED shakes, not dry powder.
@@ -709,8 +711,9 @@ ${HERBALIFE_SHAKE_NAME} (1 serving — fixed; server-side profile):
   ${formatHerbalifeShakeEnrichmentReference()}
   When "${HERBALIFE_SHAKE_NAME}" is the only identified item, return these exact micronutrient values.
 
-Herbalife Afresh Energy Drink (1 cup):
+Herbalife Afresh Energy Drink (1 scoop of powder):
   vitamin_c: 15, potassium: 30. All others: 0.
+  Scale linearly by scoop count (2 scoops in one cup → 2× these values).
 Herbalife Herbal Tea Concentrate (1 cup):
   vitamin_c: 5. All others: 0.
 Herbalife Formula 2 Multivitamin (per daily dose):

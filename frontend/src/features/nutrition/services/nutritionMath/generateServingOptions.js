@@ -89,6 +89,36 @@ export function generateServingOptions(
     }
   }
 
+  // Absolute volume portions like "100 ml" / "250ml" — treat as ml amounts, not
+  // "100 servings of ml". Count-style increments around 100 produce junk labels
+  // (e.g. 102.5 ml) when the user edits to 300 ml.
+  const isAbsoluteVolumeUnit = /^(ml|milliliters?|millilitres?|l|liters?|litres?)$/i.test(
+    String(itemUnit || '').trim(),
+  );
+  if (isAbsoluteVolumeUnit && detectedQuantity >= 10) {
+    const baseMl = Math.round(Number(baseServing?.grams) || detectedQuantity || 100);
+    const presets = [50, 100, 150, 200, 250, 300, 500, 750, 1000, 1500, 2000];
+    const sizes = [...new Set([baseMl, ...presets.filter((ml) => ml !== baseMl)])]
+      .filter((ml) => ml > 0)
+      .sort((a, b) => a - b);
+
+    return sizes.map((ml) => {
+      const nutritionMultiplier = ml / 100;
+      return {
+        description: `${ml} ml`,
+        grams: ml,
+        nutrition: {
+          calories: Math.round(per100g.calories * nutritionMultiplier),
+          protein: Math.ceil(per100g.protein * nutritionMultiplier),
+          carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
+          fat: Math.ceil(per100g.fat * nutritionMultiplier),
+          fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier),
+        },
+        isOriginal: Math.abs(ml - baseMl) < 0.5,
+      };
+    });
+  }
+
   // Generate serving options dynamically following the pattern:
   // 0.25 (1/4) → 0.25, 0.5, 0.75, 1, 1.5
   // 0.5 (1/2) → 0.25, 0.5, 1, 1.5, 2
