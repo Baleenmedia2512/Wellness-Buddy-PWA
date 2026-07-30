@@ -322,6 +322,7 @@ function WellnessValleyApp() {
   const [isWaitingForCoachOTP, setIsWaitingForCoachOTP] = useState(false); // true during 5-second wait after contacting coach
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const [inactiveCoachName, setInactiveCoachName] = useState(null);
+  const [inactiveCoachNameLoading, setInactiveCoachNameLoading] = useState(false);
   const inactiveCoachIdRef = useRef(null);
   const isInactiveReactivationFlowRef = useRef(false);
 
@@ -332,16 +333,22 @@ function WellnessValleyApp() {
   useEffect(() => {
     if (!showInactiveModal) {
       setInactiveCoachName(null);
+      setInactiveCoachNameLoading(false);
       inactiveCoachIdRef.current = null;
       return undefined;
     }
 
     let cancelled = false;
+    setInactiveCoachNameLoading(true);
     (async () => {
-      const info = await fetchInactiveCoachInfo({ apiBaseUrl, user });
-      if (cancelled) return;
-      setInactiveCoachName(info.coachName);
-      inactiveCoachIdRef.current = info.coachId;
+      try {
+        const info = await fetchInactiveCoachInfo({ apiBaseUrl, user });
+        if (cancelled) return;
+        setInactiveCoachName(info.coachName);
+        inactiveCoachIdRef.current = info.coachId;
+      } finally {
+        if (!cancelled) setInactiveCoachNameLoading(false);
+      }
     })();
 
     return () => {
@@ -6388,6 +6395,7 @@ function WellnessValleyApp() {
         user?.email || user?.Email || Session.getUserEmail() || "your account"
       }
       coachName={inactiveCoachName}
+      coachNameLoading={inactiveCoachNameLoading}
       onClose={handleInactiveModalClose}
       onContactCoach={handleContactCoach}
     />
@@ -6628,6 +6636,7 @@ function WellnessValleyApp() {
               "your account"
             }
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -6673,6 +6682,7 @@ function WellnessValleyApp() {
               "your account"
             }
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -7811,6 +7821,7 @@ function WellnessValleyApp() {
           <InactiveUserModal
             userEmail={user?.email || user?.Email || "your account"}
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
