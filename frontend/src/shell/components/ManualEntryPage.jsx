@@ -47,14 +47,14 @@ function PublicIcon({ src, className = '', alt = '' }) {
 }
 
 const CATEGORIES = [
-  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
   { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
+  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
   { id: 'education', Icon: GraduationCap, label: 'Education' },
+  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
+  { id: 'water', Icon: Droplets, label: 'Water' },
+  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
   // smartwatch flow = calories burned; label is Exercise (green fire)
   { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
-  { id: 'water', Icon: Droplets, label: 'Water' },
-  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
