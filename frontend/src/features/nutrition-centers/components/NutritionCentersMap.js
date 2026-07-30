@@ -535,7 +535,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
           <div className="flex items-center gap-2 xs:gap-3 min-w-0 flex-1">
             <div className="min-w-0">
               <h1 className="text-sm xs:text-base font-bold text-gray-900 truncate">Physical Club Report</h1>
-              <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p>
+              {/* <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p> */}
             </div>
           </div>
           <TouchFeedbackButton
