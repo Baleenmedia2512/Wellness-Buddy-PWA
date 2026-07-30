@@ -100,7 +100,14 @@ const FALLBACK = Object.freeze({
  */
 export async function analyzeImage(
   imageFile,
-  { captureId = null, userId = null, foodRowId = null, onAttempt = null } = {},
+  {
+    captureId = null,
+    userId = null,
+    foodRowId = null,
+    onAttempt = null,
+    reservationId = null,
+    creditGated = false,
+  } = {},
 ) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Attempt 1 = Flash (fast, cheap). Attempts 2+ = Pro (better accuracy).
@@ -109,7 +116,15 @@ export async function analyzeImage(
     // Notify the caller before the request so the UI badge updates immediately.
     onAttempt?.({ attempt, total: MAX_ATTEMPTS, usePro });
 
-    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro });
+    const result = await _singleAttempt(imageFile, {
+      captureId,
+      userId,
+      foodRowId,
+      attempt,
+      usePro,
+      reservationId,
+      creditGated,
+    });
 
     // ── Valid classification — return immediately ──────────────────────────
     if (!result.details?.defaulted && result.type !== 'other') return result;
@@ -151,7 +166,15 @@ export async function analyzeImage(
  * Never throws. Returns FALLBACK (with _retryable flag) on any error.
  * @private
  */
-async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro = false }) {
+async function _singleAttempt(imageFile, {
+  captureId,
+  userId,
+  foodRowId,
+  attempt,
+  usePro = false,
+  reservationId = null,
+  creditGated = false,
+}) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -171,6 +194,10 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
     // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
     if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
+    if (creditGated && reservationId) {
+      formData.append('creditGated', '1');
+      formData.append('reservationId', String(reservationId));
+    }
 
     const response = await fetch(ORCHESTRATE_URL, {
       method: 'POST',

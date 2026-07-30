@@ -30,6 +30,12 @@ import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
+import { isFlagEnabled } from '../../config/featureFlags';
+import {
+  reserveAiCredit,
+  confirmAiCredit,
+  releaseAiCredit,
+} from '../../features/ai-credits';
 
 function base64ToImageFile(b64, filename = 'capture.jpg') {
   const dataUrl = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
@@ -220,18 +226,53 @@ export default function UnknownEntryFlow({
     if (!imageBase64 || !userId) return;
     setRetrying(true);
     setError(null);
+    let reservationId = null;
+    const creditsEnabled = isFlagEnabled('ff.ai-credits');
     try {
+      if (creditsEnabled) {
+        const reserved = await reserveAiCredit({ userId, apiBaseUrl });
+        if (!reserved?.allowed || !reserved.reservationId) {
+          setRetrying(false);
+          setError(
+            reserved?.reason === 'limit_reached'
+              ? 'Daily AI limit reached'
+              : 'AI Mode is unavailable right now',
+          );
+          setStage('view');
+          return;
+        }
+        reservationId = reserved.reservationId;
+      }
+
       const file = base64ToImageFile(imageBase64);
       // Do NOT pass captureId — avoids idempotency guard returning cached "other"
-      const detectedType = await analyzeImage(file, { userId });
+      const detectedType = await analyzeImage(file, {
+        userId,
+        reservationId,
+        creditGated: Boolean(creditsEnabled && reservationId),
+      });
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
         if (!hasRecognizedFood(analysis)) {
-          // AI returned food type but with no recognisable items — go to picker.
+          if (creditsEnabled && reservationId) {
+            await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+          }
           setRetrying(false);
           setStage('view');
           return;
+        }
+        if (creditsEnabled && reservationId) {
+          await confirmAiCredit({
+            userId,
+            reservationId,
+            analysisResult: {
+              imageType: 'food',
+              details: analysis,
+              fastNutrition: detectedType.fastNutrition,
+            },
+            apiBaseUrl,
+          }).catch(() => {});
         }
         // Success: transition to AI review stage so the user can inspect and
         // confirm the detected food before it is saved.
@@ -243,6 +284,9 @@ export default function UnknownEntryFlow({
         setStage('ai-review-food');
 
       } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        if (creditsEnabled && reservationId) {
+          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+        }
         // Transition to weight modal with the detected value pre-filled.
         setRetrying(false);
         setAiWeight({
@@ -252,6 +296,9 @@ export default function UnknownEntryFlow({
         setStage('weight');
 
       } else if (detectedType.type === 'education') {
+        if (creditsEnabled && reservationId) {
+          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+        }
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.platform || 'Online Meeting',
@@ -261,6 +308,9 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else if (detectedType.type === 'smartwatch') {
+        if (creditsEnabled && reservationId) {
+          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+        }
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.source || 'Smartwatch',
@@ -270,12 +320,18 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else {
+        if (creditsEnabled && reservationId) {
+          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+        }
         // AI could not identify after all automatic retries — go to the manual
         // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);
         setStage('view');
       }
     } catch {
+      if (creditsEnabled && reservationId) {
+        await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+      }
       setRetrying(false);
       setStage('view');
     }

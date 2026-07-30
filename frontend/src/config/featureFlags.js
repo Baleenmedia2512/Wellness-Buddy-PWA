@@ -102,6 +102,17 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
   },
+
+  // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.
+  // Numeric daily limit is DB-backed (admin config); this flag is rollout only.
+  // Default ON. Set REACT_APP_FF_AI_CREDITS=false or
+  // localStorage 'ff.ai-credits'='false' to disable.
+  'ff.ai-credits': {
+    envKey:         'REACT_APP_FF_AI_CREDITS',
+    storageKey:     'ff.ai-credits',
+    defaultEnabled: true,
+    description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
+  },
 });
 
 function readStorage(key) {

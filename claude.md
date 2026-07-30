@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.0 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.1 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -142,6 +142,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.testimonials` | ON | @testimonials-team | 2027-01-06 | Before/after testimonial upload + coach OTP verification flow |
 | `ff.reports-module` | ON | @reports-team | 2026-12-31 | Reports module — direct-downline weight status report for coaches/uplines |
 | `ff.wellness-score-sheet` | ON | @wellness-score-team | 2027-01-08 | Wellness Score home tile, daily score API, admin score-setup config |
+| `ff.ai-credits` | ON | @principal-eng | 2027-01-27 | AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI); numeric limit in DB |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 
