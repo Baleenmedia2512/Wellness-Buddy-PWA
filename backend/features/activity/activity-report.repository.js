@@ -29,6 +29,20 @@ export async function fetchAllActiveMembers() {
 }
 
 /**
+ * Active members whose CoachId is the given user (indexed lookup — no full-table scan).
+ */
+export async function fetchDirectMemberIds(coachId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('UserId')
+    .eq('CoachId', coachId)
+    .eq('Status', 'Active');
+  if (error) throw error;
+  return (data || []).map((row) => row.UserId).filter(Boolean);
+}
+
+/**
  * Fetch member details from team_table for given user IDs
  */
 export async function fetchMemberDetails(userIds) {
