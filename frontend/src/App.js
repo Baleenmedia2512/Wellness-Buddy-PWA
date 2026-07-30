@@ -205,6 +205,8 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
+import AdminFab from "./shared/components/AdminFab";
+import { isAdminLikeRole } from "./shared/constants/roles";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
@@ -2142,12 +2144,12 @@ function WellnessValleyApp() {
         setShowWellnessScore(true);
         break;
       case 'wellness-score-setup':
-        if (['admin', 'developer'].includes(userRole)) {
+        if (isAdminLikeRole(userRole)) {
           setShowWellnessScoreSetup(true);
         }
         break;
       case 'ai-credits-setup':
-        if (['admin', 'developer'].includes(userRole)) {
+        if (isAdminLikeRole(userRole)) {
           setShowAiCreditsSetup(true);
         }
         break;
@@ -6700,7 +6702,7 @@ function WellnessValleyApp() {
     );
   }
 
-  const adminLikeRole = ['admin', 'developer'].includes(userRole);
+  const adminLikeRole = isAdminLikeRole(userRole);
 
   // Home keep-alive: sub-pages overlay Home instead of early-return
   // unmounting it. Returning to Home preserves scroll/state and avoids
@@ -7587,18 +7589,6 @@ function WellnessValleyApp() {
               }
             />
 
-            {['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.ai-credits') && (
-              <div className="mx-4 mb-3">
-                <button
-                  type="button"
-                  onClick={() => navigateTo('ai-credits-setup')}
-                  className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm"
-                >
-                  AI Credits Setup
-                </button>
-              </div>
-            )}
-
             <ImageUpload
               onImageSelect={handleImageSelect}
               imagePreview={imagePreview}
@@ -7846,6 +7836,14 @@ function WellnessValleyApp() {
                 : "? Manual mode disabled"}
             </span>
           </div>
+        )}
+
+        {!homeOverlay && (
+          <AdminFab
+            userRole={userRole}
+            showAiCreditsItem={isFlagEnabled('ff.ai-credits')}
+            onNavigate={navigateTo}
+          />
         )}
 
         {/* User Not Found Modal */}
