@@ -131,7 +131,7 @@ import {
 } from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
-import { SmartFoodSearchModal } from "./features/nutrition";
+import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
 // VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
@@ -3940,43 +3940,7 @@ function WellnessValleyApp() {
 
   // Build the analysisResult envelope extractNutrition() understands from a
   // SmartFoodSearchModal manual payload (single food or plate).
-  const buildAnalysisFromManualFood = (m) => {
-    const toItem = (f) => ({
-      name: f.name,
-      nutrition: {
-        calories: f.calories ?? 0,
-        protein: f.protein ?? 0,
-        carbs: f.carbs ?? 0,
-        fat: f.fat ?? 0,
-        fiber: f.fiber ?? 0,
-      },
-    });
-    if (m.isPlate && Array.isArray(m.items)) {
-      const foods = m.items.map(toItem);
-      const total =
-        m.total ||
-        foods.reduce(
-          (a, f) => ({
-            calories: a.calories + (f.nutrition.calories || 0),
-            protein: a.protein + (f.nutrition.protein || 0),
-            carbs: a.carbs + (f.nutrition.carbs || 0),
-            fat: a.fat + (f.nutrition.fat || 0),
-            fiber: a.fiber + (f.nutrition.fiber || 0),
-          }),
-          { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-        );
-      return { foods, total, confidence: "high" };
-    }
-    const item = toItem({
-      name: m.foodName,
-      calories: m.calories,
-      protein: m.protein,
-      carbs: m.carbs,
-      fat: m.fat,
-      fiber: m.fiber,
-    });
-    return { foods: [item], total: item.nutrition, confidence: "high" };
-  };
+  const buildAnalysisFromManualFood = (m) => buildManualFoodAnalysis(m);
 
   // Retry: re-run Gemini on the stored image and, if confident, promote the
   // capture unknown ? food. Still-low-confidence keeps the row as unknown.
