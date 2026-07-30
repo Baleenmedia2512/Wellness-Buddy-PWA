@@ -10,6 +10,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
 import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
@@ -80,6 +81,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [effectiveRole, setEffectiveRole] = useState(() => mapRoleForApi(userRole));
+  const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
+  const [teamScopeCounts, setTeamScopeCounts] = useState(null);
+  const [showTeamScope, setShowTeamScope] = useState(false);
 
   // Treat users with downline members in team_table as coaches for attendance data.
   useEffect(() => {
@@ -119,6 +123,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         activityType: 'summary',
         dateRange,
         role: effectiveRole,
+        teamScope,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -137,12 +142,19 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       }
 
       setSummary(data.summary);
+      if (data.teamScopeCounts) {
+        setTeamScopeCounts(data.teamScopeCounts);
+        setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
+      }
+      if (data.teamScope && data.teamScope !== teamScope) {
+        setTeamScope(data.teamScope);
+      }
     } catch (err) {
       setError(err.message || 'Failed to load activity summary');
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
 
   const fetchDetails = useCallback(async (activityType) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
@@ -157,6 +169,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         activityType,
         dateRange,
         role: effectiveRole,
+        teamScope,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -181,7 +194,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
 
   const fetchMemberSummary = useCallback(async () => {
     if (!user?.id || !apiBaseUrl) return;
@@ -194,6 +207,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         activityType: 'member-summary',
         dateRange,
         role: effectiveRole,
+        teamScope,
       });
 
       if (dateRange === 'custom' && customStartDate && customEndDate) {
@@ -217,7 +231,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     } finally {
       setMemberSummaryLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
 
   useEffect(() => {
     fetchSummary();
@@ -228,6 +242,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
     fetchDetails(activityId);
+  };
+
+  const handleTeamScopeChange = (scope) => {
+    setTeamScope(scope);
+    setSearchQuery('');
+    setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
+    setError('');
   };
 
   const handleDateRangeChange = (range) => {
@@ -460,6 +483,39 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
             variant="compact"
           />
         </div>
+
+        {/* Team scope: Mine / Direct / Full */}
+        {showTeamScope && (
+          <div
+            className="mb-4 bg-white rounded-xl border border-gray-200 shadow-sm px-1 py-1 flex gap-1 w-full"
+            role="group"
+            aria-label="Team scope filter"
+          >
+            {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+              const isActive = teamScope === value;
+              const count = teamScopeCounts?.[value] ?? 0;
+              const showCount = value !== TEAM_SCOPES.MINE;
+              const desktopLabel = showCount ? `${label} (${count})` : label;
+              const mobileLabel = showCount ? `${short} (${count})` : short;
+              return (
+                <TouchFeedbackButton
+                  key={value}
+                  onClick={() => handleTeamScopeChange(value)}
+                  disabled={loading || memberSummaryLoading}
+                  className={`flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all px-1 sm:px-2 disabled:opacity-50 ${
+                    isActive
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-green-800 hover:bg-green-50'
+                  }`}
+                  title={desktopLabel}
+                >
+                  <span className="hidden sm:inline truncate">{desktopLabel}</span>
+                  <span className="sm:hidden truncate">{mobileLabel}</span>
+                </TouchFeedbackButton>
+              );
+            })}
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (

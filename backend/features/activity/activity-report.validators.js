@@ -6,6 +6,7 @@ import { ValidationError } from '../../shared/lib/ValidationError.js';
 const VALID_ACTIVITY_TYPES = new Set(['summary', 'member-summary', 'weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']);
 const VALID_DATE_RANGES = new Set(['today', 'yesterday', 'last7days', 'last30days', 'custom']);
 const VALID_ROLES = new Set(['admin', 'coach', 'member', 'developer']);
+const VALID_TEAM_SCOPES = new Set(['mine', 'direct', 'full']);
 
 /**
  * Validate activity report request parameters
@@ -54,6 +55,11 @@ export function validateActivityReport(query) {
   if (!VALID_ROLES.has(role)) {
     throw new ValidationError(400, `role must be one of: ${Array.from(VALID_ROLES).join(', ')}`);
   }
+
+  const teamScope = query.teamScope ? String(query.teamScope).toLowerCase() : 'full';
+  if (!VALID_TEAM_SCOPES.has(teamScope)) {
+    throw new ValidationError(400, `teamScope must be one of: ${Array.from(VALID_TEAM_SCOPES).join(', ')}`);
+  }
   
   return {
     userId,
@@ -62,5 +68,6 @@ export function validateActivityReport(query) {
     startDate: query.startDate,
     endDate: query.endDate,
     role,
+    teamScope,
   };
 }

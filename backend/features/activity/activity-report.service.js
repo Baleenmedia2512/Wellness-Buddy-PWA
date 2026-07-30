@@ -2,9 +2,9 @@
  * Activity Report Service
  * Orchestrates activity report generation for downline members
  */
-import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
+import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import {
   parseRelativeDateRangeYmd,
@@ -43,27 +43,14 @@ function extractDateTime(timestamp, timezoneIana, { food = false } = {}) {
 /**
  * Get activity counts summary for all activity types
  */
-export async function getActivitySummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivitySummary({ userId, role, teamScope, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
-  
-  // Get downline members
-  // admin/developer ΓåÆ all active members
-  // coach          ΓåÆ their full downline hierarchy
-  // member         ΓåÆ only themselves
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    // coach
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-  
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
   
   if (userIds.length === 0) {
     return {
@@ -73,6 +60,8 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         summary: {
           weight: 0,
           education: 0,
@@ -115,6 +104,8 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       summary: counts,
     },
   };
@@ -124,23 +115,14 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
  * Get per-member education attendance summary for all downline members.
  * Includes members with 0 attendance so coaches can spot who hasn't attended.
  */
-export async function getActivityMemberSummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivityMemberSummary({ userId, role, teamScope, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
 
-  // Get downline members
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
 
   if (userIds.length === 0) {
     return {
@@ -150,6 +132,8 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         members: [],
         stats: { totalMembers: 0, attended: 0, notAttended: 0, topMember: null, avgAttendance: 0 },
       },
@@ -209,6 +193,8 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       members: memberList,
       stats: {
         totalMembers: memberList.length,
@@ -224,27 +210,14 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
 /**
  * Get detailed activity records for a specific activity type
  */
-export async function getActivityDetails({ userId, role, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivityDetails({ userId, role, teamScope, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
-  
-  // Get downline members
-  // admin/developer ΓåÆ all active members
-  // coach          ΓåÆ their full downline hierarchy
-  // member         ΓåÆ only themselves
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    // coach
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-  
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
   
   if (userIds.length === 0) {
     return {
@@ -255,6 +228,8 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         records: [],
       },
     };
@@ -470,6 +445,8 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       records,
     },
   };
