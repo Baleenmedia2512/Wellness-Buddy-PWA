@@ -9,10 +9,7 @@ import {
   Sparkles,
   UtensilsCrossed,
   GraduationCap,
-  Watch,
   Droplets,
-  CupSoda,
-  Milk,
   Info,
   Timer,
 } from 'lucide-react';
@@ -34,16 +31,29 @@ import {
   fetchAiCreditsStatus,
   reserveAiCredit,
 } from '../../features/ai-credits';
-import BathroomScaleIcon from '../../shared/components/icons/BathroomScaleIcon';
+
+/** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
+function PublicIcon({ src, className = '', alt = '' }) {
+  const base = process.env.PUBLIC_URL || '';
+  return (
+    <img
+      src={`${base}${src}`}
+      alt={alt}
+      draggable={false}
+      className={`inline-block select-none object-contain ${className}`}
+    />
+  );
+}
 
 const CATEGORIES = [
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  { id: 'weight', Icon: BathroomScaleIcon, label: 'Weight', isImgIcon: true },
+  { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
   { id: 'education', Icon: GraduationCap, label: 'Education' },
-  { id: 'smartwatch', Icon: Watch, label: 'Watch' },
+  // smartwatch flow = calories burned; label is Exercise (green fire)
+  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
   { id: 'water', Icon: Droplets, label: 'Water' },
-  { id: 'afresh', Icon: CupSoda, label: 'Afresh' },
-  { id: 'shake', Icon: Milk, label: 'Shake' },
+  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
+  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -211,8 +221,8 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
       >
         <Info className="mt-0.5 h-3 w-3 shrink-0 text-emerald-700" aria-hidden />
         {outOfCredits
-          ? 'Limit reached for today. Log with a type below — no AI charge. Resets at midnight.'
-          : '1 credit = 1 successful food AI recognition. Types below use 0 credits.'}
+          ? 'Limit reached for today. Log with a type below — no AI charge.'
+          : '1 credit = 1 successful AI recognition. Types below use 0 credits.'}
       </div>
     </div>
   );
@@ -223,6 +233,7 @@ export default function ManualEntryPage({
   apiBaseUrl,
   captureId,
   imageBase64,
+  originalCapturedAt = null,
   onBack,
   onSaved,
   onStartBackgroundAi,
@@ -230,7 +241,8 @@ export default function ManualEntryPage({
 }) {
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
   const [credits, setCredits] = useState(null);
-  const [creditsLoading, setCreditsLoading] = useState(false);
+  // Start loading=true so first paint never flashes green "Analyze" before status returns.
+  const [creditsLoading, setCreditsLoading] = useState(() => isFlagEnabled('ff.ai-credits'));
   const [aiStarting, setAiStarting] = useState(false);
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
@@ -244,7 +256,10 @@ export default function ManualEntryPage({
   }, [imageBase64]);
 
   const refreshCredits = useCallback(async () => {
-    if (!creditsEnabled || !userId) return;
+    if (!creditsEnabled || !userId) {
+      setCreditsLoading(false);
+      return;
+    }
     setCreditsLoading(true);
     try {
       const data = await fetchAiCreditsStatus({ userId, apiBaseUrl });
@@ -270,7 +285,7 @@ export default function ManualEntryPage({
       captureId,
       viewerUserId: userId,
       analysisResult,
-      originalCapturedAt: null,
+      originalCapturedAt: originalCapturedAt || null,
     });
     onToast?.(toastMsg);
     exit();
@@ -409,9 +424,14 @@ export default function ManualEntryPage({
     setActiveForm(null);
   };
 
-  const showAiButton = !creditsEnabled || credits?.enabled !== false;
-  const outOfCredits = creditsEnabled && credits && (credits.remaining ?? 0) <= 0;
-  const aiDisabled = aiStarting || outOfCredits || creditsLoading;
+  // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
+  const creditsChecking = creditsEnabled && creditsLoading;
+  const creditsFailed = creditsEnabled && !creditsLoading && credits == null;
+  const outOfCredits = creditsEnabled && credits != null && (credits.remaining ?? 0) <= 0;
+  const aiModeOff = creditsEnabled && credits != null && credits.enabled === false;
+  const showAiButton = !creditsEnabled || creditsChecking || creditsFailed || !aiModeOff;
+  const aiLockedUi = creditsChecking || creditsFailed || outOfCredits || aiModeOff;
+  const aiDisabled = aiStarting || aiLockedUi;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -468,14 +488,14 @@ export default function ManualEntryPage({
               onClick={handleAiAnalyze}
               disabled={aiDisabled}
               className={[
-                'flex min-h-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-center shadow-lg transition active:scale-[0.99]',
-                outOfCredits
-                  ? 'cursor-not-allowed bg-white text-gray-400 ring-1 ring-gray-200 shadow-sm'
-                  : 'text-white',
+                'flex min-h-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-center transition active:scale-[0.99]',
+                aiLockedUi || aiModeOff
+                  ? 'cursor-not-allowed bg-white text-gray-400 shadow-sm ring-1 ring-gray-200'
+                  : 'text-white shadow-lg',
               ].join(' ')}
-              style={outOfCredits ? undefined : { background: BRAND.hero }}
+              style={aiLockedUi || aiModeOff ? undefined : { background: BRAND.hero }}
             >
-              {aiStarting ? (
+              {aiStarting || creditsChecking ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <Sparkles className="h-5 w-5" />
@@ -483,18 +503,32 @@ export default function ManualEntryPage({
               <span className="text-sm font-bold leading-tight">
                 {aiStarting
                   ? 'Starting…'
-                  : outOfCredits
-                    ? 'AI limit reached'
-                    : 'Analyze with AI'}
+                  : creditsChecking
+                    ? 'Checking credits…'
+                    : creditsFailed
+                      ? 'AI unavailable'
+                      : outOfCredits || aiModeOff
+                        ? 'AI limit reached'
+                        : 'Analyze with AI'}
               </span>
-              {!aiStarting && !outOfCredits && (
+              {!aiStarting && !aiLockedUi && (
                 <span className="text-[10px] font-medium text-emerald-200">
                   Uses 1 credit · result in Diary
                 </span>
               )}
-              {outOfCredits && (
+              {(outOfCredits || aiModeOff) && !creditsChecking && (
                 <span className="text-[10px] font-medium text-gray-400">
                   Use a type below instead
+                </span>
+              )}
+              {creditsChecking && (
+                <span className="text-[10px] font-medium text-gray-400">
+                  Please wait
+                </span>
+              )}
+              {creditsFailed && (
+                <span className="text-[10px] font-medium text-gray-400">
+                  Try again later
                 </span>
               )}
             </button>
@@ -516,7 +550,7 @@ export default function ManualEntryPage({
             <p className="text-[10px] font-medium text-green-600/70">0 credits · no AI</p>
           </div>
           <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2">
-            {CATEGORIES.map(({ id, Icon, label, isImgIcon }) => (
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => (
               <button
                 key={id}
                 type="button"
@@ -529,7 +563,7 @@ export default function ManualEntryPage({
                   style={{ background: BRAND.mint }}
                 >
                   {isImgIcon ? (
-                    <Icon className="h-5 w-5" alt="" />
+                    <PublicIcon src={src} className="h-5 w-5" alt="" />
                   ) : (
                     <Icon className="h-[18px] w-[18px]" strokeWidth={2.1} aria-hidden />
                   )}

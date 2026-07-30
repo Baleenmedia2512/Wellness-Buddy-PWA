@@ -6789,6 +6789,8 @@ function WellnessValleyApp() {
               initialSelectedMember={dashboardInitialSelectedMember}
               initialDate={dashboardInitialDate}
               initialMealId={dashboardInitialMealId}
+              onStartBackgroundCaptureAi={startBackgroundCaptureAi}
+              onToast={(msg) => showToast(msg)}
             />
           </Suspense>
         </div>
@@ -7062,6 +7064,7 @@ function WellnessValleyApp() {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
           }}
           onToast={(msg) => showToast(msg)}
+          originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
           onStartBackgroundAi={({ reservationId }) => {
             const p = manualEntryPayload;
             if (!p) return;
