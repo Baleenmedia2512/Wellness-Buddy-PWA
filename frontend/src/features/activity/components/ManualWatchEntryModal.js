@@ -86,8 +86,8 @@ const ManualWatchEntryModal = ({
           <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
             <span className="text-3xl">⌚</span>
           </div>
-          <h2 className="text-base font-bold text-gray-800 tracking-tight">Manual Watch Entry</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Log your activity manually</p>
+          <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
+          <p className="text-xs text-gray-400 mt-0.5">How much calories burned in workout</p>
         </div>
 
         <div className="p-5 space-y-4">
