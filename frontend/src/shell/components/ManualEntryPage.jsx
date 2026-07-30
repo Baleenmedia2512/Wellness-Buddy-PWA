@@ -53,8 +53,8 @@ const CATEGORIES = [
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
   { id: 'water', Icon: Droplets, label: 'Water' },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Exercise (green fire)
-  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green fire)
+  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Workout', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -604,7 +604,7 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'afresh'}
         title="Afresh"
-        subtitle="Uses preset Herbalife Afresh macros per cup"
+        subtitle="Log number of scoops consumed so far"
         unitLabel="Cups"
         min={1}
         max={8}

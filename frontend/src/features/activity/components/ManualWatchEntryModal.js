@@ -83,7 +83,7 @@ const ManualWatchEntryModal = ({
           <button onClick={handleCancel} className="absolute right-3 top-3 p-2 rounded-xl hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
-          <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center mb-2.5">
+          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
             <span className="text-3xl">⌚</span>
           </div>
           <h2 className="text-base font-bold text-gray-800 tracking-tight">Manual Watch Entry</h2>
@@ -104,7 +104,7 @@ const ManualWatchEntryModal = ({
               placeholder="e.g., 350"
               min="1"
               max="10000"
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white"
               style={{ fontSize: "16px" }}
             />
           </div>
@@ -128,7 +128,7 @@ const ManualWatchEntryModal = ({
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 px-4 py-3 bg-purple-500 text-white rounded-xl text-sm font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSaving ? (
               <>
