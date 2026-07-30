@@ -12,7 +12,7 @@
 // fields for autofill.
 import React, { useCallback, useEffect } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
-import NativeInput, { otpAutoCompleteForCell } from '../../../../shared/components/NativeInput.jsx';
+import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../../../../shared/components/NativeInput.jsx';
 
 const LoginOtpEntry = ({
   otpCtl, onVerify, loading, verified, errorMessage, successMessage,
@@ -66,7 +66,7 @@ const LoginOtpEntry = ({
             inputMode="numeric"
             pattern="[0-9]*"
             autoComplete={otpAutoCompleteForCell(index)}
-            maxLength={1}
+            maxLength={otpMaxLengthForCell(index, otp.length)}
             value={digit}
             onChange={(e) => onCellChange(e, index)}
             onKeyDown={(e) => handleKeyDown(index, e)}
