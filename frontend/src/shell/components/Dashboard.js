@@ -1,4 +1,4 @@
-﻿// src/shell/components/Dashboard.js
+// src/shell/components/Dashboard.js
 //
 // Moved from `frontend/src/shared/components/Dashboard.js` in F1 of
 // ADR-0003 (preceded by ADR-0001 §"shell composition layer").
@@ -296,6 +296,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     () => [...(contextAnalyzingIds ?? [])].sort().join(','),
     [contextAnalyzingIds],
   );
+
+  // Merge Dashboard (Retry) + App.js (background AI) analyzing sets for diary cards.
+  const mergedAnalyzingCaptureIds = useMemo(() => {
+    const merged = new Set(analyzingCaptureIds);
+    if (contextAnalyzingIds) {
+      contextAnalyzingIds.forEach((id) => merged.add(id));
+    }
+    return merged;
+  }, [analyzingCaptureIds, contextAnalyzingIds]);
 
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
@@ -842,7 +851,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
                   pendingUndo={diaryUndo}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>
@@ -956,7 +965,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>

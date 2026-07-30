@@ -136,6 +136,7 @@ export default function AiCreditsSetup({ user, apiBaseUrl, onBack }) {
               />
               <span className="block text-xs text-gray-500">
                 Deducted only on successful food recognition. Resets at midnight in each user&apos;s timezone.
+                Click Save — the new daily limit applies today for all users.
               </span>
             </label>
           </div>

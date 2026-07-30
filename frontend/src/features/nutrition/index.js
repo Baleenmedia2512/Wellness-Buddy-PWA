@@ -1,9 +1,12 @@
-﻿// Public surface of the `nutrition` feature slice.
+// Public surface of the `nutrition` feature slice.
 export { default as NutritionCard } from './components/NutritionCard';
 export { default as HomeNutritionCarousel } from './components/HomeNutritionCarousel';
 export { default as FoodImageShareCard } from './components/FoodImageShareCard';
 export { default as NutritionDashboard } from './components/NutritionDashboard';
 export { default as SmartFoodSearchModal } from './components/SmartFoodSearchModal';
+export { default as ShakeCalculatorModal } from './components/ShakeCalculatorModal';
+export { default as ServingStepperModal, buildWaterAnalysisResult } from './components/ServingStepperModal';
+export { buildAfreshAnalysisResult, AFRESH_PRODUCT } from './domain/afreshProductProfiles';
 export { default as ManualFoodEntryModal } from './components/ManualFoodEntryModal';
 export { default as DuplicateFoodModal } from './components/DuplicateFoodModal';
 export { default as EditableFoodItem } from './components/EditableFoodItem';
