@@ -1,9 +1,11 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
+ * Direct and Full always include Active members only.
  * Uses targeted queries — never loadReportingContext (full team_table scan times out).
  */
 import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import * as repo from '../activity-report.repository.js';
 
 export const TEAM_SCOPES = Object.freeze({
@@ -26,15 +28,23 @@ export function normalizeTeamScope(teamScope) {
 
 /**
  * Coach/upline: dual-coaching hierarchy (level 1 = direct, all downline = full).
+ * Only Active status; co-coach peer is excluded from Direct/Full counts.
  */
 async function resolveCoachScope(userId) {
   const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
+  const isActiveDownline = (m) => (
+    Number(m.UserId) !== Number(userId)
+    && isActiveTeamStatus(m.Status)
+    && !m.IsCoCoach
+    && !m.IsLoggedInCoach
+  );
+
   const directIds = hierarchy
-    .filter((m) => m.HierarchyLevel === 1)
+    .filter((m) => m.HierarchyLevel === 1 && isActiveDownline(m))
     .map((m) => m.UserId)
     .filter(Boolean);
   const fullIds = hierarchy
-    .filter((m) => Number(m.UserId) !== Number(userId))
+    .filter(isActiveDownline)
     .map((m) => m.UserId)
     .filter(Boolean);
 
@@ -52,6 +62,7 @@ async function resolveCoachScope(userId) {
 
 /**
  * Admin/developer: indexed direct lookup + active-member list for full scope.
+ * Both paths query team_table with Status = Active only.
  */
 async function resolveAdminScope(userId) {
   const [allMembers, directIds] = await Promise.all([
