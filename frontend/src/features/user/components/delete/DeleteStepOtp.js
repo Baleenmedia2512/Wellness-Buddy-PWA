@@ -2,7 +2,7 @@
 import React from 'react';
 import { Loader, Mail, ShieldCheck, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
-import NativeInput, { otpAutoCompleteForCell } from '../../../../shared/components/NativeInput.jsx';
+import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../../../../shared/components/NativeInput.jsx';
 
 const DeleteStepOtp = ({
   userEmail, otpCtl, onVerify, verifying,
@@ -37,7 +37,7 @@ const DeleteStepOtp = ({
               inputMode="numeric"
               pattern="[0-9]*"
               autoComplete={otpAutoCompleteForCell(i)}
-              maxLength={1}
+              maxLength={otpMaxLengthForCell(i, otp.length)}
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
