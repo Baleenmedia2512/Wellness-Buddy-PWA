@@ -1,7 +1,13 @@
 import React from 'react';
-import { AlertTriangle, X, User } from 'lucide-react';
+import { AlertTriangle, Loader2, User, X } from 'lucide-react';
 
-const InactiveUserModal = ({ userEmail, coachName, onClose, onContactCoach }) => {
+const InactiveUserModal = ({
+  userEmail,
+  coachName,
+  coachNameLoading = false,
+  onClose,
+  onContactCoach,
+}) => {
   const displayCoachName = coachName?.trim() || 'Your assigned coach';
 
   const handleClose = () => {
@@ -45,9 +51,18 @@ const InactiveUserModal = ({ userEmail, coachName, onClose, onContactCoach }) =>
             <p className="text-sm text-gray-600 text-center">
               To request access, please contact your Coach
             </p>
-            <div className="flex items-center justify-center space-x-2 text-gray-700">
-              <User className="h-4 w-4 text-gray-500 shrink-0" />
-              <span className="font-medium text-sm text-gray-800">{displayCoachName}</span>
+            <div className="flex items-center justify-center space-x-2 text-gray-700 min-h-[20px]">
+              {coachNameLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 text-gray-400 shrink-0 animate-spin" aria-hidden="true" />
+                  <span className="font-medium text-sm text-gray-500">Loading coach...</span>
+                </>
+              ) : (
+                <>
+                  <User className="h-4 w-4 text-gray-500 shrink-0" />
+                  <span className="font-medium text-sm text-gray-800">{displayCoachName}</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -56,7 +71,8 @@ const InactiveUserModal = ({ userEmail, coachName, onClose, onContactCoach }) =>
             {onContactCoach ? (
               <button
                 onClick={onContactCoach}
-                className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+                disabled={coachNameLoading}
+                className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-green-400 disabled:to-green-400 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
               >
                 Contact Your Coach
               </button>

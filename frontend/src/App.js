@@ -205,6 +205,8 @@ import {
 } from "./shared/services/firebase";
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
+import AdminFab from "./shared/components/AdminFab";
+import { isAdminLikeRole } from "./shared/constants/roles";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
@@ -322,6 +324,7 @@ function WellnessValleyApp() {
   const [isWaitingForCoachOTP, setIsWaitingForCoachOTP] = useState(false); // true during 5-second wait after contacting coach
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const [inactiveCoachName, setInactiveCoachName] = useState(null);
+  const [inactiveCoachNameLoading, setInactiveCoachNameLoading] = useState(false);
   const inactiveCoachIdRef = useRef(null);
   const isInactiveReactivationFlowRef = useRef(false);
 
@@ -332,16 +335,22 @@ function WellnessValleyApp() {
   useEffect(() => {
     if (!showInactiveModal) {
       setInactiveCoachName(null);
+      setInactiveCoachNameLoading(false);
       inactiveCoachIdRef.current = null;
       return undefined;
     }
 
     let cancelled = false;
+    setInactiveCoachNameLoading(true);
     (async () => {
-      const info = await fetchInactiveCoachInfo({ apiBaseUrl, user });
-      if (cancelled) return;
-      setInactiveCoachName(info.coachName);
-      inactiveCoachIdRef.current = info.coachId;
+      try {
+        const info = await fetchInactiveCoachInfo({ apiBaseUrl, user });
+        if (cancelled) return;
+        setInactiveCoachName(info.coachName);
+        inactiveCoachIdRef.current = info.coachId;
+      } finally {
+        if (!cancelled) setInactiveCoachNameLoading(false);
+      }
     })();
 
     return () => {
@@ -2135,12 +2144,12 @@ function WellnessValleyApp() {
         setShowWellnessScore(true);
         break;
       case 'wellness-score-setup':
-        if (['admin', 'developer'].includes(userRole)) {
+        if (isAdminLikeRole(userRole)) {
           setShowWellnessScoreSetup(true);
         }
         break;
       case 'ai-credits-setup':
-        if (['admin', 'developer'].includes(userRole)) {
+        if (isAdminLikeRole(userRole)) {
           setShowAiCreditsSetup(true);
         }
         break;
@@ -6388,6 +6397,7 @@ function WellnessValleyApp() {
         user?.email || user?.Email || Session.getUserEmail() || "your account"
       }
       coachName={inactiveCoachName}
+      coachNameLoading={inactiveCoachNameLoading}
       onClose={handleInactiveModalClose}
       onContactCoach={handleContactCoach}
     />
@@ -6628,6 +6638,7 @@ function WellnessValleyApp() {
               "your account"
             }
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -6673,6 +6684,7 @@ function WellnessValleyApp() {
               "your account"
             }
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -6690,7 +6702,7 @@ function WellnessValleyApp() {
     );
   }
 
-  const adminLikeRole = ['admin', 'developer'].includes(userRole);
+  const adminLikeRole = isAdminLikeRole(userRole);
 
   // Home keep-alive: sub-pages overlay Home instead of early-return
   // unmounting it. Returning to Home preserves scroll/state and avoids
@@ -7580,18 +7592,6 @@ function WellnessValleyApp() {
               }
             />
 
-            {['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.ai-credits') && (
-              <div className="mx-4 mb-3">
-                <button
-                  type="button"
-                  onClick={() => navigateTo('ai-credits-setup')}
-                  className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm"
-                >
-                  AI Credits Setup
-                </button>
-              </div>
-            )}
-
             <ImageUpload
               onImageSelect={handleImageSelect}
               imagePreview={imagePreview}
@@ -7815,6 +7815,7 @@ function WellnessValleyApp() {
           <InactiveUserModal
             userEmail={user?.email || user?.Email || "your account"}
             coachName={inactiveCoachName}
+            coachNameLoading={inactiveCoachNameLoading}
             onClose={handleInactiveModalClose}
             onContactCoach={handleContactCoach}
           />
@@ -7838,6 +7839,14 @@ function WellnessValleyApp() {
                 : "? Manual mode disabled"}
             </span>
           </div>
+        )}
+
+        {!homeOverlay && (
+          <AdminFab
+            userRole={userRole}
+            showAiCreditsItem={isFlagEnabled('ff.ai-credits')}
+            onNavigate={navigateTo}
+          />
         )}
 
         {/* User Not Found Modal */}

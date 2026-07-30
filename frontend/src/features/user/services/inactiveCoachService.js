@@ -1,7 +1,7 @@
 /**
- * Fetches active-coach info for inactive account reactivation.
- * Falls back to originalCoachId / originalCoachName when the upline chain
- * has no currently Active coach.
+ * Fetches coach info for inactive account reactivation.
+ * Shows the user's direct coach when active; only falls back to the upline
+ * coach when the direct coach is inactive.
  */
 import { getUserId } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
@@ -50,9 +50,20 @@ async function resolveDbUserId(user) {
 
 function mapCoachResponse(json) {
   const data = json?.data || {};
-  const coachId = data.coachId || data.originalCoachId || null;
-  const coachName = data.coachName || data.originalCoachName || null;
-  return { coachId, coachName };
+  const directCoachActive =
+    data.isOriginalCoach === true || data.originalCoachStatus === 'Active';
+
+  if (directCoachActive) {
+    return {
+      coachId: data.contactCoachId || data.originalCoachId || data.coachId || null,
+      coachName: data.contactCoachName || data.originalCoachName || data.coachName || null,
+    };
+  }
+
+  return {
+    coachId: data.contactCoachId || data.coachId || null,
+    coachName: data.contactCoachName || data.coachName || null,
+  };
 }
 
 async function fetchCoachByQuery(apiBaseUrl, query) {
