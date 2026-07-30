@@ -188,8 +188,9 @@ export default function AiCreditsSetup({ user, apiBaseUrl, onBack }) {
                 </button>
               </div>
               <span className="block text-xs text-gray-500">
-                Deducted only on successful food recognition. Resets at midnight in each user&apos;s timezone.
-                Click Save — the new daily limit applies today for all users.
+                Deducted when AI finishes a classification (including unrecognised photos).
+                Not deducted on technical failures (timeout / server error).
+                Resets at midnight. Click Save — changes apply today for all users.
               </span>
             </div>
           </div>

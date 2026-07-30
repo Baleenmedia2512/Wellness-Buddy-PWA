@@ -4013,30 +4013,36 @@ function WellnessValleyApp() {
         creditGated: Boolean(creditsEnabled && reservationId),
       });
 
+      const creditPayload = {
+        imageType: detectedType.type,
+        type: detectedType.type,
+        confidence: detectedType.confidence,
+        defaulted: detectedType.details?.defaulted === true,
+        error: detectedType.details?.error || null,
+        details: detectedType.details,
+        fastNutrition: detectedType.fastNutrition,
+      };
+      const settleRetryCredit = async () => {
+        if (!creditsEnabled || !reservationId) return;
+        await confirmAiCredit({
+          userId: user.id,
+          reservationId,
+          analysisResult: creditPayload,
+          apiBaseUrl,
+        }).catch(() => {});
+      };
+
       if (detectedType.type === "food") {
         const analysis = detectedType.details;
+        // Completed AI call — charge even when items aren't usable (anti-spam).
+        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
-          if (creditsEnabled && reservationId) {
-            await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
-          }
           setUnknownShareView((v) => ({
             ...v,
             retrying: false,
             error: "Still couldn't recognise it — try Edit instead.",
           }));
           return;
-        }
-        if (creditsEnabled && reservationId) {
-          await confirmAiCredit({
-            userId: user.id,
-            reservationId,
-            analysisResult: {
-              imageType: 'food',
-              details: analysis,
-              fastNutrition: detectedType.fastNutrition,
-            },
-            apiBaseUrl,
-          }).catch(() => {});
         }
         const analysisResult = buildAnalysisFromGeminiAnalysis(analysis);
         await promoteUnknownToFood({
@@ -4052,9 +4058,7 @@ function WellnessValleyApp() {
         detectedType.type === "weight" &&
         detectedType.details?.weightValue
       ) {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         const weightValue = detectedType.details.weightValue;
         const unit = detectedType.details.unit || "kg";
         await updatePendingCaptureType(
@@ -4064,9 +4068,7 @@ function WellnessValleyApp() {
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast(`Weight ${weightValue} ${unit} saved`);
       } else if (detectedType.type === "education") {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "education",
@@ -4074,9 +4076,7 @@ function WellnessValleyApp() {
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Education session saved");
       } else if (detectedType.type === "smartwatch") {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         await updatePendingCaptureType(
           Promise.resolve({ id: captureId }),
           "smartwatch",
@@ -4084,9 +4084,8 @@ function WellnessValleyApp() {
         setUnknownShareView((v) => ({ ...v, open: false, retrying: false }));
         showToast("Activity saved");
       } else {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId: user.id, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        // other / unknown — still a completed classification → charge
+        await settleRetryCredit();
         setUnknownShareView((v) => ({
           ...v,
           retrying: false,
@@ -4252,22 +4251,31 @@ function WellnessValleyApp() {
 
         const analysisPayload = {
           imageType: detectedType?.type,
+          type: detectedType?.type,
+          confidence: detectedType?.confidence,
+          defaulted: detectedType?.details?.defaulted === true,
+          error: detectedType?.details?.error || null,
           details: detectedType?.details,
           fastNutrition: detectedType?.fastNutrition,
         };
         const foodOk =
           detectedType?.type === 'food' && hasRecognizedFood(detectedType.details);
 
+        const settleCredit = async () => {
+          if (!creditsOn) return;
+          // Confirm with result — backend deducts for completed classifications
+          // (including other) and releases only on technical-failure shaped payloads.
+          await confirmAiCredit({
+            userId: ownerUserId,
+            reservationId,
+            analysisResult: analysisPayload,
+            apiBaseUrl,
+          }).catch(() => {});
+        };
+
         try {
           if (foodOk) {
-            if (creditsOn) {
-              await confirmAiCredit({
-                userId: ownerUserId,
-                reservationId,
-                analysisResult: analysisPayload,
-                apiBaseUrl,
-              }).catch(() => {});
-            }
+            await settleCredit();
             const analysisResult = buildAnalysisFromGeminiAnalysis(detectedType.details);
             await promoteUnknownToFood({
               captureId,
@@ -4281,9 +4289,8 @@ function WellnessValleyApp() {
             return;
           }
 
-          if (creditsOn) {
-            await releaseAiCredit({ userId: ownerUserId, reservationId, apiBaseUrl }).catch(() => {});
-          }
+          // AI finished (weight / education / watch / other) — charge before branching.
+          await settleCredit();
 
           if (
             detectedType?.type === 'weight' &&

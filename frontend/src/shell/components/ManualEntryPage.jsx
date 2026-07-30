@@ -222,7 +222,7 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
         <Info className="mt-0.5 h-3 w-3 shrink-0 text-emerald-700" aria-hidden />
         {outOfCredits
           ? 'Limit reached for today. Log with a type below — no AI charge.'
-          : '1 credit = 1 successful AI recognition. Types below use 0 credits.'}
+          : '1 credit = 1 AI run (including unrecognised photos). Types below use 0 credits.'}
       </div>
     </div>
   );

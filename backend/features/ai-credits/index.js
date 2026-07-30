@@ -12,6 +12,7 @@ export {
   buildStatus,
   canReserve,
   isSuccessfulFoodAnalysis,
+  shouldDeductAiCredit,
   normalizeConfig,
   DEFAULT_DAILY_AI_CREDITS,
 } from './domain/credits.rules.js';
