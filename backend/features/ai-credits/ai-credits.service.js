@@ -10,7 +10,7 @@ import {
   buildStatus,
   canReserve,
   normalizeConfig,
-  isSuccessfulFoodAnalysis,
+  shouldDeductAiCredit,
 } from './domain/credits.rules.js';
 import * as repo from './data/ai-credits.repo.js';
 
@@ -169,8 +169,9 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
     throw new ValidationError(409, `Reservation is ${reservation.status}`);
   }
 
-  // Only deduct on successful food analysis when result is provided.
-  if (analysisResult != null && !isSuccessfulFoodAnalysis(analysisResult)) {
+  // Deduct on completed AI classification (food / weight / education / watch / other).
+  // Release only when analysis is missing or looks like a technical failure.
+  if (analysisResult != null && !shouldDeductAiCredit(analysisResult)) {
     await repo.resolveReservation(reservationId, 'released');
     const ctx = await loadDayContext(uid);
     return {
@@ -179,7 +180,7 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
         ok: true,
         data: {
           deducted: false,
-          reason: 'not_food_success',
+          reason: 'technical_failure',
           ...buildStatus({
             enabled: ctx.config.aiModeEnabled,
             dailyLimit: ctx.limit,

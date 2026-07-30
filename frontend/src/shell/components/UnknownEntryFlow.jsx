@@ -252,27 +252,29 @@ export default function UnknownEntryFlow({
         creditGated: Boolean(creditsEnabled && reservationId),
       });
 
+      const creditPayload = {
+        imageType: detectedType.type,
+        type: detectedType.type,
+        details: detectedType.details,
+        fastNutrition: detectedType.fastNutrition,
+      };
+      const settleRetryCredit = async () => {
+        if (!creditsEnabled || !reservationId) return;
+        await confirmAiCredit({
+          userId,
+          reservationId,
+          analysisResult: creditPayload,
+          apiBaseUrl,
+        }).catch(() => {});
+      };
+
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
+        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
-          if (creditsEnabled && reservationId) {
-            await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
-          }
           setRetrying(false);
           setStage('view');
           return;
-        }
-        if (creditsEnabled && reservationId) {
-          await confirmAiCredit({
-            userId,
-            reservationId,
-            analysisResult: {
-              imageType: 'food',
-              details: analysis,
-              fastNutrition: detectedType.fastNutrition,
-            },
-            apiBaseUrl,
-          }).catch(() => {});
         }
         // Success: transition to AI review stage so the user can inspect and
         // confirm the detected food before it is saved.
@@ -284,9 +286,7 @@ export default function UnknownEntryFlow({
         setStage('ai-review-food');
 
       } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         // Transition to weight modal with the detected value pre-filled.
         setRetrying(false);
         setAiWeight({
@@ -296,9 +296,7 @@ export default function UnknownEntryFlow({
         setStage('weight');
 
       } else if (detectedType.type === 'education') {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.platform || 'Online Meeting',
@@ -308,9 +306,7 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else if (detectedType.type === 'smartwatch') {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.source || 'Smartwatch',
@@ -320,9 +316,7 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else {
-        if (creditsEnabled && reservationId) {
-          await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
-        }
+        await settleRetryCredit();
         // AI could not identify after all automatic retries — go to the manual
         // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);

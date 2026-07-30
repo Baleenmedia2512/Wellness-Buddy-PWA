@@ -51,6 +51,30 @@ export function isSuccessfulFoodAnalysis(result) {
 }
 
 /**
+ * When to deduct a daily AI credit after orchestrate returns.
+ *
+ * Charge when the model completed a classification — including `other` /
+ * unrecognised photos — so users cannot spam free AI on random images.
+ *
+ * Do NOT charge on technical failures (orchestrator fallback / defaulted /
+ * timeout-shaped payloads). Those should `release` the reservation instead.
+ *
+ * @param {{ imageType?: string, type?: string, details?: object }|null|undefined} result
+ */
+export function shouldDeductAiCredit(result) {
+  if (!result || typeof result !== 'object') return false;
+  const details = result.details || {};
+  // Client/orchestrator failure markers — not a real model classification.
+  if (details.defaulted === true) return false;
+  if (details.error && details.defaulted !== false && !result.imageType && result.type === 'other') {
+    return false;
+  }
+  const type = String(result.imageType || result.type || '');
+  if (!type) return false;
+  return ['food', 'weight', 'education', 'smartwatch', 'other', 'unknown'].includes(type);
+}
+
+/**
  * Normalize admin config payload.
  */
 export function normalizeConfig({ dailyAiCredits, aiModeEnabled } = {}) {
