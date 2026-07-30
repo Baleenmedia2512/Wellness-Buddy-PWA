@@ -426,12 +426,12 @@ export default function ManualEntryPage({
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
   const creditsChecking = creditsEnabled && creditsLoading;
-  const creditsFailed = creditsEnabled && !creditsLoading && credits == null;
   const outOfCredits = creditsEnabled && credits != null && (credits.remaining ?? 0) <= 0;
-  const aiModeOff = creditsEnabled && credits != null && credits.enabled === false;
-  const showAiButton = !creditsEnabled || creditsChecking || creditsFailed || !aiModeOff;
-  const aiLockedUi = creditsChecking || creditsFailed || outOfCredits || aiModeOff;
-  const aiDisabled = aiStarting || aiLockedUi;
+  // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
+  const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
+  const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
+  const aiLockedUi = outOfCredits;
+  const aiDisabled = aiStarting || outOfCredits || creditsChecking;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -448,20 +448,29 @@ export default function ManualEntryPage({
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
-            <p className="truncate text-xs text-green-600">AI analyze, or log a type now</p>
+            <p className="truncate text-xs text-green-600">
+              {showAiButton
+                ? 'AI analyze, or log a type now'
+                : 'Choose a type to log now'}
+            </p>
           </div>
           <div
             className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
             style={{ background: BRAND.hero }}
+            aria-hidden
           >
-            <Sparkles className="h-4 w-4" aria-hidden />
+            {showAiButton ? (
+              <Sparkles className="h-4 w-4" />
+            ) : (
+              <UtensilsCrossed className="h-4 w-4" />
+            )}
           </div>
         </div>
       </header>
 
       {/* Body — flex layout, no page scroll */}
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {creditsEnabled && (
+        {showCreditsPanel && (
           <AiCreditsPanel
             credits={credits}
             loading={creditsLoading}
@@ -469,33 +478,33 @@ export default function ManualEntryPage({
           />
         )}
 
-        {/* Compact photo + AI CTA (hero greens = Take Photo banner) */}
-        <section className="flex shrink-0 items-stretch gap-2.5">
-          {previewSrc ? (
-            <div className="h-[4.75rem] w-[4.75rem] shrink-0 overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
-              <img
-                src={previewSrc}
-                alt="Captured"
-                className="h-full w-full object-cover"
-              />
-            </div>
-          ) : (
-            <div className="h-[4.75rem] w-[4.75rem] shrink-0 rounded-2xl bg-white" style={{ background: BRAND.mint }} />
-          )}
-          {showAiButton && (
+        {/* Photo: thumb + AI CTA when AI on; full preview when AI off */}
+        {showAiButton ? (
+          <section className="flex shrink-0 items-stretch gap-2.5">
+            {previewSrc ? (
+              <div className="h-[4.75rem] w-[4.75rem] shrink-0 overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
+                <img
+                  src={previewSrc}
+                  alt="Captured"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="h-[4.75rem] w-[4.75rem] shrink-0 rounded-2xl" style={{ background: BRAND.mint }} />
+            )}
             <button
               type="button"
               onClick={handleAiAnalyze}
               disabled={aiDisabled}
               className={[
                 'flex min-h-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-center transition active:scale-[0.99]',
-                aiLockedUi || aiModeOff
+                aiLockedUi
                   ? 'cursor-not-allowed bg-white text-gray-400 shadow-sm ring-1 ring-gray-200'
                   : 'text-white shadow-lg',
               ].join(' ')}
-              style={aiLockedUi || aiModeOff ? undefined : { background: BRAND.hero }}
+              style={aiLockedUi ? undefined : { background: BRAND.hero }}
             >
-              {aiStarting || creditsChecking ? (
+              {aiStarting ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <Sparkles className="h-5 w-5" />
@@ -503,37 +512,43 @@ export default function ManualEntryPage({
               <span className="text-sm font-bold leading-tight">
                 {aiStarting
                   ? 'Starting…'
-                  : creditsChecking
-                    ? 'Checking credits…'
-                    : creditsFailed
-                      ? 'AI unavailable'
-                      : outOfCredits || aiModeOff
-                        ? 'AI limit reached'
-                        : 'Analyze with AI'}
+                  : outOfCredits
+                    ? 'Daily limit reached'
+                    : 'Analyze with AI'}
               </span>
-              {!aiStarting && !aiLockedUi && (
+              {!aiStarting && !outOfCredits && (
                 <span className="text-[10px] font-medium text-emerald-200">
                   Uses 1 credit · result in Diary
                 </span>
               )}
-              {(outOfCredits || aiModeOff) && !creditsChecking && (
+              {outOfCredits && (
                 <span className="text-[10px] font-medium text-gray-400">
                   Use a type below instead
                 </span>
               )}
-              {creditsChecking && (
-                <span className="text-[10px] font-medium text-gray-400">
-                  Please wait
-                </span>
-              )}
-              {creditsFailed && (
-                <span className="text-[10px] font-medium text-gray-400">
-                  Try again later
-                </span>
-              )}
             </button>
-          )}
-        </section>
+          </section>
+        ) : (
+          <section className="shrink-0">
+            {previewSrc ? (
+              <div
+                className="flex w-full items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm"
+                style={{ background: BRAND.mint, maxHeight: '11rem', minHeight: '7.5rem' }}
+              >
+                <img
+                  src={previewSrc}
+                  alt="Captured"
+                  className="max-h-44 w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div
+                className="w-full rounded-2xl"
+                style={{ background: BRAND.mint, height: '7.5rem' }}
+              />
+            )}
+          </section>
+        )}
 
         {hint && (
           <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -541,13 +556,15 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {/* Type grid — white cards, forest-green icons (Home nav style) */}
+        {/* Type grid */}
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
-              Or log as
+              {showAiButton ? 'Or log as' : 'Log as'}
             </p>
-            <p className="text-[10px] font-medium text-green-600/70">0 credits · no AI</p>
+            {showAiButton && (
+              <p className="text-[10px] font-medium text-green-600/70">0 credits · no AI</p>
+            )}
           </div>
           <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2">
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => (
