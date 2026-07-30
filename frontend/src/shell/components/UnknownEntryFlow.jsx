@@ -27,7 +27,7 @@ import {
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
 import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
@@ -163,6 +163,10 @@ export default function UnknownEntryFlow({
     setError(initialAiResult?.status === 'failed' ? initialAiResult.error : null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, captureId]);
+
+  React.useEffect(() => {
+    if (open && userId) warmLatestWeightCache(userId);
+  }, [open, userId]);
 
   if (!open) return null;
 
@@ -749,6 +753,7 @@ export default function UnknownEntryFlow({
         onBack={() => setStage('view')}
         onSave={handleWeightSave}
         imagePreview={imageBase64}
+        userId={userId}
         initialWeightValue={aiWeight?.weightValue ?? null}
         initialWeightUnit={aiWeight?.unit ?? null}
       />

@@ -25,7 +25,7 @@ import {
   buildAfreshAnalysisResult,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
@@ -242,6 +242,10 @@ export default function ManualEntryPage({
   useEffect(() => {
     refreshCredits();
   }, [refreshCredits]);
+
+  useEffect(() => {
+    if (userId) warmLatestWeightCache(userId);
+  }, [userId]);
 
   const exit = () => {
     onSaved?.();
@@ -580,6 +584,8 @@ export default function ManualEntryPage({
         onClose={() => setActiveForm(null)}
         onSave={handleWeightSave}
         onBack={() => setActiveForm(null)}
+        userId={userId}
+        imagePreview={previewSrc}
         skipTypeSelect
       />
       <ManualWatchEntryModal

@@ -1,4 +1,5 @@
 export { useWeightForm } from './useWeightForm';
+export { useLastWeightReference } from './useLastWeightReference';
 export { useSwipeToDelete } from './useSwipeToDelete';
 export { useWeightDetailImage } from './useWeightDetailImage';
 export { useWeightHistoryData } from './useWeightHistoryData';

@@ -7926,6 +7926,20 @@ function WellnessValleyApp() {
           altSwitchButtons={getAltSwitchButtons("food")}
         />
 
+        {/* Manual Weight Entry Modal */}
+        <ManualWeightEntryModal
+          isOpen={showManualWeightModal}
+          onClose={() => {
+            setShowManualWeightModal(false);
+            setCurrentWeightImage(null);
+          }}
+          onSave={handleManualWeightSave}
+          imagePreview={currentWeightImage || imagePreview}
+          userId={user?.id}
+          lastWeight={lastWeight}
+          skipTypeSelect
+        />
+
         {/* Manual Education Entry Modal */}
         <ManualEducationEntryModal
           isOpen={showManualEducationModal}
