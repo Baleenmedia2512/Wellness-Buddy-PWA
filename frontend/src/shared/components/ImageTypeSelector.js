@@ -1,6 +1,7 @@
 // src/components/ImageTypeSelector.js
 import React from "react";
 import { X } from "lucide-react";
+import { EmojiOrNative } from "./icons/EmojiImage";
 
 /**
  * ImageTypeSelector
@@ -78,7 +79,7 @@ const ImageTypeSelector = ({ isOpen, onClose, onSelect }) => {
                 onClick={() => onSelect(t.id)}
                 className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-colors ${c.bg} ${c.border} ${c.hover}`}
               >
-                <span className="text-3xl">{t.emoji}</span>
+                <EmojiOrNative emoji={t.emoji} className="w-9 h-9" nativeClassName="text-3xl" />
                 <span className={`text-sm font-bold ${c.text}`}>{t.label}</span>
                 <span className="text-xs text-gray-500 text-center leading-tight">{t.description}</span>
               </button>

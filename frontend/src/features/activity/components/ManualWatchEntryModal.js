@@ -1,6 +1,7 @@
 // src/components/ManualWatchEntryModal.js
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
 
 const DEFAULT_SOURCE = "Smartwatch";
 
@@ -84,7 +85,7 @@ const ManualWatchEntryModal = ({
             <X className="w-5 h-5 text-gray-400" />
           </button>
           <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
-            <span className="text-3xl">⌚</span>
+            <EmojiOrNative emoji="⌚" className="w-9 h-9" nativeClassName="text-3xl" />
           </div>
           <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
           <p className="text-xs text-gray-400 mt-0.5">How much calories burned in workout</p>
@@ -111,7 +112,7 @@ const ManualWatchEntryModal = ({
 
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">
-              <span>⚠️</span>
+              <EmojiOrNative emoji="⚠️" className="w-4 h-4" nativeClassName="text-sm" />
               <span>{error}</span>
             </div>
           )}
