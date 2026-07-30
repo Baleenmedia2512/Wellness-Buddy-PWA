@@ -25,9 +25,7 @@ export const HOME_NUTRITION_DATE_RANGES = Object.freeze([
 export const ACTIVITY_REPORT_DATE_RANGES = Object.freeze([
   REPORT_DATE_RANGE_TODAY,
   REPORT_DATE_RANGE_YESTERDAY,
-  REPORT_DATE_RANGE_LAST_7,
-  REPORT_DATE_RANGE_LAST_30,
-  REPORT_DATE_RANGE_CUSTOM,
+  Object.freeze({ value: 'custom', label: 'Custom' }),
 ]);
 
 export function formatCustomRangeLabel(startDate, endDate) {
