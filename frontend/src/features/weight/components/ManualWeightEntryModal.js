@@ -80,7 +80,7 @@ function ManualWeightEntryForm({
               <button
                 onClick={vm.handleSave}
                 disabled={!vm.canSubmit}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {vm.isSaving ? (
                   <span className="flex items-center justify-center gap-1.5">

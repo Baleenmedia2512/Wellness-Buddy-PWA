@@ -85,7 +85,13 @@ const ManualWatchEntryModal = ({
             <X className="w-5 h-5 text-gray-400" />
           </button>
           <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
-            <EmojiOrNative emoji="⌚" className="w-9 h-9" nativeClassName="text-3xl" />
+            <img
+              src={`${process.env.PUBLIC_URL || ''}/emoji/1f3cb-green.svg`}
+              alt=""
+              draggable={false}
+              aria-hidden="true"
+              className="h-9 w-9 inline-block select-none object-contain"
+            />
           </div>
           <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
           <p className="text-xs text-gray-400 mt-0.5">How much calories burned in workout</p>

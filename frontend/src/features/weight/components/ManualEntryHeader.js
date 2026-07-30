@@ -37,11 +37,11 @@ export default function ManualEntryHeader({ onBack, onCancel }) {
       >
         <X className="w-4 h-4 text-gray-400" />
       </button>
-      <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-2">
-        <WeighingScaleIcon className="w-5 h-5 text-green-600" />
+      <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mb-2">
+        <WeighingScaleIcon className="w-5 h-5 text-emerald-600" />
       </div>
-      <h2 className="text-sm font-bold text-gray-800">Enter Weight Manually</h2>
-      <p className="text-xs text-gray-400 mt-0.5">Could not detect weight automatically</p>
+      <h2 className="text-sm font-bold text-gray-800">Weight</h2>
+      <p className="text-xs text-gray-400 mt-0.5">How much weight logged so far today</p>
     </div>
   );
 }

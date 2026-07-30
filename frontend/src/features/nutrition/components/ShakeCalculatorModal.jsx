@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { X, FlaskConical } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useShakeCalculator } from '../hooks/useShakeCalculator';
 import { SHAKE_PRODUCTS, SHAKE_PRODUCT_IDS } from '../domain/shakeProductProfiles';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -131,7 +131,13 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-gray-100 shrink-0">
           <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
-            <FlaskConical className="w-5 h-5 text-green-600" aria-hidden="true" />
+            <img
+              src={`${process.env.PUBLIC_URL || ''}/bottle.png`}
+              alt=""
+              draggable={false}
+              aria-hidden="true"
+              className="h-5 w-5 inline-block select-none object-contain"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-gray-900 text-base leading-tight">Personalized Protein</h2>
@@ -214,36 +220,38 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
         </div>
 
         {/* Footer actions */}
-        <div className="px-5 pb-5 pt-3 border-t border-gray-100 shrink-0 space-y-2">
+        <div className="px-5 pb-5 pt-3 border-t border-gray-100 shrink-0">
           {error && (
-            <p className="text-sm text-red-600 text-center" role="alert">{error}</p>
+            <p className="text-sm text-red-600 text-center mb-3" role="alert">{error}</p>
           )}
-          <TouchFeedbackButton
-            onClick={handleLog}
-            disabled={!hasServings || saving}
-            className={`w-full py-3.5 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
-              !hasServings || saving
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:from-green-500 hover:to-teal-500 shadow-sm hover:shadow-md'
-            }`}
-            aria-label={saving ? 'Saving shake...' : 'Log shake to diary'}
-          >
-            {saving ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                <span>Saving...</span>
-              </>
-            ) : (
-              <span>Log Shake to Diary</span>
-            )}
-          </TouchFeedbackButton>
-          <button
-            onClick={handleClose}
-            disabled={saving}
-            className="w-full py-2.5 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleClose}
+              disabled={saving}
+              className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <TouchFeedbackButton
+              onClick={handleLog}
+              disabled={!hasServings || saving}
+              className={`flex-1 px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
+                !hasServings || saving
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800'
+              }`}
+              aria-label={saving ? 'Saving shake...' : 'Log shake to diary'}
+            >
+              {saving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Log Shake to Diary</span>
+              )}
+            </TouchFeedbackButton>
+          </div>
         </div>
       </div>
     </div>

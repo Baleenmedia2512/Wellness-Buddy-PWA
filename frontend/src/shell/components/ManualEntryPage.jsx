@@ -55,8 +55,8 @@ const CATEGORIES = [
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
   { id: 'water', Icon: Droplets, label: 'Water' },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Workout (green fire)
-  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Workout', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green weightlifter)
+  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -451,11 +451,11 @@ export default function ManualEntryPage({
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
-            <p className="truncate text-xs text-green-600">
+            {/* <p className="truncate text-xs text-green-600">
               {showAiButton
                 ? 'AI analyze, or log a type now'
                 : 'Choose a type to log now'}
-            </p>
+            </p> */}
           </div>
           <div
             className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
