@@ -35,7 +35,7 @@ export const SHAKE_PRODUCTS = Object.freeze({
 
   shakemate: {
     id: 'shakemate',
-    label: 'Shakemate (PDM)',
+    label: 'Shakemate',
     unit: 'scoop (2 scoops = 27 g)',
     scoopsPerPack: 2,
     packWeightG: 27,
@@ -46,7 +46,7 @@ export const SHAKE_PRODUCTS = Object.freeze({
 
   protein: {
     id: 'protein',
-    label: 'Protein Powder (PPP)',
+    label: 'Protein Powder',
     unit: 'scoop (1 scoop = 6 g)',
     scoopsPerPack: 1,
     packWeightG: 6,

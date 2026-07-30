@@ -23,6 +23,7 @@ import {
   ServingStepperModal,
   buildWaterAnalysisResult,
   buildAfreshAnalysisResult,
+  AFRESH_PRODUCT,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
@@ -32,6 +33,7 @@ import {
   fetchAiCreditsStatus,
   reserveAiCredit,
 } from '../../features/ai-credits';
+import { fetchWaterIntake, todayLocal } from '../../features/water';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -53,8 +55,8 @@ const CATEGORIES = [
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
   { id: 'water', Icon: Droplets, label: 'Water' },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Exercise (green fire)
-  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green fire)
+  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Workout', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -215,6 +217,9 @@ export default function ManualEntryPage({
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Today's hydration total (all exempted beverages) — water stepper tracks this.
+  const [waterTodayMl, setWaterTodayMl] = useState(0);
+  const [waterTodayLoading, setWaterTodayLoading] = useState(false);
 
   const previewSrc = useMemo(() => {
     if (!imageBase64) return null;
@@ -242,6 +247,26 @@ export default function ManualEntryPage({
   useEffect(() => {
     refreshCredits();
   }, [refreshCredits]);
+
+  // Load today's consumed water whenever the water stepper opens (diary edits reflect here).
+  useEffect(() => {
+    if (activeForm !== 'water' || !userId) return undefined;
+    let cancelled = false;
+    setWaterTodayLoading(true);
+    fetchWaterIntake(userId, todayLocal())
+      .then((data) => {
+        if (cancelled) return;
+        const total = Math.max(0, Math.round(Number(data?.totalMl) || 0));
+        setWaterTodayMl(total);
+      })
+      .catch(() => {
+        if (!cancelled) setWaterTodayMl(0);
+      })
+      .finally(() => {
+        if (!cancelled) setWaterTodayLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeForm, userId]);
 
   useEffect(() => {
     if (userId) warmLatestWeightCache(userId);
@@ -360,14 +385,24 @@ export default function ManualEntryPage({
     setActiveForm(null);
   };
 
-  const handleAfreshConfirm = async (cups) => {
-    await saveFoodAnalysis(buildAfreshAnalysisResult(cups), 'Afresh saved to Diary');
+  const handleAfreshConfirm = async (scoops) => {
+    await saveFoodAnalysis(buildAfreshAnalysisResult(scoops), 'Afresh saved to Diary');
     setActiveForm(null);
   };
 
-  const handleWaterConfirm = async (ml) => {
-    await saveFoodAnalysis(buildWaterAnalysisResult(ml), 'Water saved to Diary');
-    setActiveForm(null);
+  const handleWaterConfirm = async (targetMl) => {
+    const target = Math.max(0, Math.round(Number(targetMl) || 0));
+    const current = Math.max(0, Math.round(Number(waterTodayMl) || 0));
+    const delta = target - current;
+    if (delta <= 0) {
+      // Already at/above target — reductions happen via Diary edit/delete.
+      setActiveForm(null);
+      return;
+    }
+    await saveFoodAnalysis(
+      buildWaterAnalysisResult(delta),
+      `+${delta} ml water logged (today ${target} ml)`,
+    );
   };
 
   const handleEducationSave = async ({ platform, topic }) => {
@@ -610,12 +645,12 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'afresh'}
         title="Afresh"
-        subtitle="Uses preset Herbalife Afresh macros per cup"
+        subtitle="Log number of scoops consumed so far"
         unitLabel="Cups"
         min={1}
         max={8}
         step={1}
-        defaultValue={1}
+        defaultValue={AFRESH_PRODUCT.defaultScoops}
         onClose={() => setActiveForm(null)}
         onConfirm={handleAfreshConfirm}
         confirmLabel="Log Afresh"
@@ -625,10 +660,16 @@ export default function ManualEntryPage({
         title="Water"
         subtitle="How much you drank so far today"
         unitLabel="Amount"
-        min={100}
-        max={2000}
+        min={waterTodayMl}
+        max={Math.max(5000, waterTodayMl + 3000)}
         step={100}
-        defaultValue={200}
+        defaultValue={waterTodayMl}
+        baseline={waterTodayMl}
+        loading={waterTodayLoading}
+        quickAddPresets={[
+          { label: '100 ml', amount: 100 },
+          { label: '1 L', amount: 1000 },
+        ]}
         formatValue={(n) => `${n} ml`}
         onClose={() => setActiveForm(null)}
         onConfirm={handleWaterConfirm}

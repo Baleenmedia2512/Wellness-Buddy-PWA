@@ -2,18 +2,22 @@
  * frontend/src/features/nutrition/domain/afreshProductProfiles.js
  *
  * Static nutritional profile for Herbalife Afresh Energy Drink.
- * Values aligned with AIGateway recognition reference (1 cup ~200 ml).
+ * Nutrition is per SCOOP of powder — not per cup of water.
+ * Users often mix 2–3 scoops in one cup; macros scale by scoop count.
+ * Prepared drink volume stays ~200 ml (one cup) for hydration inference.
  * Pure constants — zero I/O.
  */
 export const AFRESH_PRODUCT = Object.freeze({
   id: 'afresh',
   label: 'Herbalife Afresh Energy Drink',
-  unit: 'cup (200 ml)',
-  mlPerCup: 200,
-  defaultServings: 1,
-  minServings: 1,
-  maxServings: 8,
-  perServing: Object.freeze({
+  unit: 'scoop',
+  /** Typical prepared drink volume (ml) — not multiplied by scoop count. */
+  mlPerPreparedDrink: 200,
+  defaultScoops: 1,
+  minScoops: 1,
+  maxScoops: 8,
+  /** Nutrition for 1 scoop of Afresh powder. */
+  perScoop: Object.freeze({
     calories: 15,
     protein: 0,
     carbs: 4,
@@ -22,21 +26,25 @@ export const AFRESH_PRODUCT = Object.freeze({
     sugar: 4,
     sodium: 0.02, // g (20 mg)
     cholesterol: 0,
-    // Micros (mg / µg as used elsewhere)
     vitamin_c: 15,
     potassium: 30,
   }),
 });
 
+/** @deprecated Use perScoop — kept for older callers. */
+export const AFRESH_PER_SERVING = AFRESH_PRODUCT.perScoop;
+
 /**
- * Scale Afresh profile by cup count → promoteUnknownToFood / analysis shape.
- * Always sets volume_ml (200 ml per cup) so diary does not fall back to 100 ml.
- * @param {number} servings
+ * Scale Afresh profile by scoop count → promoteUnknownToFood / analysis shape.
+ * Volume stays one prepared cup (~200 ml) so hydration does not inflate with scoops.
+ * @param {number} scoops
  */
-export function buildAfreshAnalysisResult(servings = 1) {
-  const count = Math.max(AFRESH_PRODUCT.minServings, Math.min(AFRESH_PRODUCT.maxServings, Number(servings) || 1));
-  const volumeMl = count * AFRESH_PRODUCT.mlPerCup;
-  const s = AFRESH_PRODUCT.perServing;
+export function buildAfreshAnalysisResult(scoops = 1) {
+  const count = Math.max(
+    AFRESH_PRODUCT.minScoops,
+    Math.min(AFRESH_PRODUCT.maxScoops, Number(scoops) || 1),
+  );
+  const s = AFRESH_PRODUCT.perScoop;
   const nutrition = {
     calories: s.calories * count,
     protein: s.protein * count,
@@ -51,18 +59,18 @@ export function buildAfreshAnalysisResult(servings = 1) {
   };
   const name = count === 1
     ? AFRESH_PRODUCT.label
-    : `${AFRESH_PRODUCT.label} ×${count}`;
-  // Portion label only — volume is in volume_ml so EditableFoodItem shows "1 cup (200ml)" once
-  const portion = count === 1 ? '1 cup' : `${count} cups`;
+    : `${AFRESH_PRODUCT.label} (${count} scoops)`;
+  const portion = count === 1 ? '1 scoop' : `${count} scoops`;
   return {
     foods: [{
       name,
       nutrition,
       portion,
-      volume_ml: volumeMl,
+      volume_ml: AFRESH_PRODUCT.mlPerPreparedDrink,
       unit: 'ml',
       isLiquid: true,
       weight_g: null,
+      scoops: count,
     }],
     total: nutrition,
     confidence: 'high',

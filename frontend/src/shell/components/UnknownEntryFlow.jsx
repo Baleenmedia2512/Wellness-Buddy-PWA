@@ -30,6 +30,7 @@ import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../fe
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
+import { EmojiOrNative } from '../../shared/components/icons/EmojiImage';
 import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
@@ -694,7 +695,7 @@ export default function UnknownEntryFlow({
                           onClick={() => { setError(null); setStage(type); }}
                           className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
                         >
-                          <span className="text-2xl">{icon}</span>
+                          <EmojiOrNative emoji={icon} className="w-8 h-8" nativeClassName="text-2xl" />
                           <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
                           <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
                         </button>
@@ -707,7 +708,12 @@ export default function UnknownEntryFlow({
                       onClick={handleDelete}
                       className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                      {deleting ? 'Deleting…' : (
+                        <>
+                          <EmojiOrNative emoji="🗑️" className="w-4 h-4 inline-block align-text-bottom mr-1" nativeClassName="text-sm" />
+                          Delete this photo
+                        </>
+                      )}
                     </button>
               </div>
             )}
@@ -724,7 +730,12 @@ export default function UnknownEntryFlow({
                   onClick={handleDelete}
                   className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
                 >
-                  {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                  {deleting ? 'Deleting…' : (
+                    <>
+                      <EmojiOrNative emoji="🗑️" className="w-4 h-4 inline-block align-text-bottom mr-1" nativeClassName="text-sm" />
+                      Delete this photo
+                    </>
+                  )}
                 </button>
               </div>
             )}

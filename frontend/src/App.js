@@ -7496,7 +7496,7 @@ function WellnessValleyApp() {
                     </p>
 
                     {/* Greeting */}
-                   <h2 className="text-xs font-bold text-white text-right">
+                   <h2 className="text-xs font-bold text-white text-right inline-flex items-center justify-end gap-1 max-w-[65%] ml-auto">
   {(() => {
     const h = new Date().getHours();
     const firstName = (savedUserName || user?.displayName || '').split(' ')[0];
@@ -7512,9 +7512,12 @@ function WellnessValleyApp() {
         ? 'Good Afternoon'
         : 'Good Evening';
 
-    return name
-      ? `${greeting}, ${name}! 👋`
-      : `${greeting}! 👋`;
+    return (
+      <>
+        <span>{name ? `${greeting}, ${name}!` : `${greeting}!`}</span>
+        <EmojiOrNative emoji="👋" className="w-3.5 h-3.5" nativeClassName="text-xs" />
+      </>
+    );
   })()}
 </h2>
                   </div>

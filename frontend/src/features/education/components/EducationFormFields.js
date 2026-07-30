@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { X } from 'lucide-react';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 
 const PLATFORMS = ['Zoom', 'Microsoft Teams', 'Google Meet', 'In-person', 'Other'];
 
@@ -42,7 +43,7 @@ export default function EducationFormFields({
           <X className="w-4 h-4 text-gray-400" />
         </button>
         <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mb-2">
-          <span className="text-xl">🎓</span>
+          <EmojiOrNative emoji="🎓" className="w-6 h-6" nativeClassName="text-xl" />
         </div>
         <h2 className="text-sm font-bold text-gray-800">{formTitle}</h2>
         <p className="text-xs text-gray-400 mt-0.5">{formSubtitle}</p>
@@ -94,7 +95,7 @@ export default function EducationFormFields({
 
         {error && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-xl">
-            <span>⚠️</span>
+            <EmojiOrNative emoji="⚠️" className="w-4 h-4" nativeClassName="text-sm" />
             <span>{error}</span>
           </div>
         )}

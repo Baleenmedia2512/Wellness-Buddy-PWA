@@ -294,8 +294,8 @@ const SmartFoodSearchModal = ({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Log Food</h2>
-              <p className="text-xs text-gray-400">Search your previous food</p>
+              <h2 className="text-sm font-bold text-gray-900">Regular food</h2>
+              <p className="text-xs text-gray-400">Type the food item below</p>
             </div>
           </div>
           <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
