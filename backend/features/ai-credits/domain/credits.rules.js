@@ -59,16 +59,24 @@ export function isSuccessfulFoodAnalysis(result) {
  * Do NOT charge on technical failures (orchestrator fallback / defaulted /
  * timeout-shaped payloads). Those should `release` the reservation instead.
  *
- * @param {{ imageType?: string, type?: string, details?: object }|null|undefined} result
+ * @param {{ imageType?: string, type?: string, details?: object, defaulted?: boolean, analysisStatus?: string, error?: string }|null|undefined} result
  */
 export function shouldDeductAiCredit(result) {
   if (!result || typeof result !== 'object') return false;
+
   const details = result.details || {};
-  // Client/orchestrator failure markers — not a real model classification.
-  if (details.defaulted === true) return false;
-  if (details.error && details.defaulted !== false && !result.imageType && result.type === 'other') {
+  // Technical failure markers (top-level or nested in details).
+  if (result.defaulted === true || details.defaulted === true) return false;
+  if (String(result.analysisStatus || '').toUpperCase() === 'FAILED') return false;
+  // Orchestrator FAST_FALLBACK: other + confidence 0 + error, no real model output.
+  if (
+    result.error
+    && (result.imageType === 'other' || result.type === 'other')
+    && Number(result.confidence ?? details.confidence ?? 0) === 0
+  ) {
     return false;
   }
+
   const type = String(result.imageType || result.type || '');
   if (!type) return false;
   return ['food', 'weight', 'education', 'smartwatch', 'other', 'unknown'].includes(type);

@@ -170,8 +170,8 @@ export async function confirmCredit({ userId, reservationId, analysisResult = nu
   }
 
   // Deduct on completed AI classification (food / weight / education / watch / other).
-  // Release only when analysis is missing or looks like a technical failure.
-  if (analysisResult != null && !shouldDeductAiCredit(analysisResult)) {
+  // Release when analysis is missing or looks like a technical failure (e.g. Gemini 401).
+  if (!shouldDeductAiCredit(analysisResult)) {
     await repo.resolveReservation(reservationId, 'released');
     const ctx = await loadDayContext(uid);
     return {

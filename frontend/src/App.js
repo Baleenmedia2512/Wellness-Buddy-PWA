@@ -4016,6 +4016,9 @@ function WellnessValleyApp() {
       const creditPayload = {
         imageType: detectedType.type,
         type: detectedType.type,
+        confidence: detectedType.confidence,
+        defaulted: detectedType.details?.defaulted === true,
+        error: detectedType.details?.error || null,
         details: detectedType.details,
         fastNutrition: detectedType.fastNutrition,
       };
@@ -4249,6 +4252,9 @@ function WellnessValleyApp() {
         const analysisPayload = {
           imageType: detectedType?.type,
           type: detectedType?.type,
+          confidence: detectedType?.confidence,
+          defaulted: detectedType?.details?.defaulted === true,
+          error: detectedType?.details?.error || null,
           details: detectedType?.details,
           fastNutrition: detectedType?.fastNutrition,
         };

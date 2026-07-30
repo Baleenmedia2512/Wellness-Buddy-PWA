@@ -231,6 +231,30 @@ async function _singleAttempt(imageFile, {
       return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
     }
 
+    // HTTP 200 + ok:true but Gemini failed and orchestrator returned FAST_FALLBACK
+    // (imageType other, defaulted:true, analysisStatus FAILED). Treat as technical
+    // failure so retries run and AI credits are released, not deducted.
+    if (
+      data.defaulted === true
+      || String(data.analysisStatus || '').toUpperCase() === 'FAILED'
+    ) {
+      const errMsg = typeof data.error === 'string'
+        ? data.error
+        : (data.error?.message ?? 'Fast analysis failed');
+      _trace('FAIL', {
+        attempt,
+        duration,
+        code: 'FAST_ANALYSIS_FAILED',
+        message: errMsg,
+        captureId,
+      });
+      return {
+        ...FALLBACK,
+        details: { defaulted: true, error: errMsg, _retryable: true },
+        duration,
+      };
+    }
+
     // Backend returned a cached duplicate result (idempotency guard hit on
     // attempt 1). This happens when two rapid captures share the same captureId.
     // Treat as retryable so attempt 2 gets a fresh classification (captureId is
@@ -302,6 +326,10 @@ async function _singleAttempt(imageFile, {
 function _normalise(data, duration) {
   const type    = data.imageType ?? 'other';
   const details = { ...(data.details ?? {}) };
+
+  // Preserve top-level failure markers so credit settlement can release holds.
+  if (data.defaulted === true) details.defaulted = true;
+  if (typeof data.error === 'string' && data.error) details.error = data.error;
 
   // ── FOOD ────────────────────────────────────────────────────────────────────
   if (type === 'food') {

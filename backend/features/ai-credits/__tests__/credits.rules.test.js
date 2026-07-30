@@ -95,6 +95,27 @@ describe('shouldDeductAiCredit', () => {
       false,
     );
     assert.equal(shouldDeductAiCredit(null), false);
+    // Gemini 401 / FAST_FALLBACK shape from POST /api/ai/orchestrate
+    assert.equal(
+      shouldDeductAiCredit({
+        imageType: 'other',
+        confidence: 0,
+        defaulted: true,
+        analysisStatus: 'FAILED',
+        error: '[GoogleGenerativeAI Error]: 401 Unauthorized',
+      }),
+      false,
+    );
+    assert.equal(
+      shouldDeductAiCredit({
+        imageType: 'other',
+        type: 'other',
+        confidence: 0,
+        error: 'Fast analysis failed',
+        details: {},
+      }),
+      false,
+    );
   });
 });
 
