@@ -9,6 +9,12 @@ import {
   nowUtc,
   resolveFoodTimestamp,
 } from '../../shared/lib/datetime/index.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
+import {
+  listMasterSearchItems,
+  NUTRITION_KEYS,
+  pickNutrition,
+} from '../nutrition-knowledge/index.js';
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -95,15 +101,32 @@ function extractMatchingItems(row, lowerTerm) {
     const foods = analysis?.foods || [];
     return foods
       .filter((f) => (f.name || '').toLowerCase().includes(lowerTerm))
-      .map((f) => ({
-        name: (f.name || '').trim(),
-        weight_g: f.weight_g != null ? Math.round(f.weight_g) : 100,
-        calories: f.nutrition?.calories != null ? Math.round(f.nutrition.calories) : null,
-        protein: f.nutrition?.protein != null ? Math.round(f.nutrition.protein) : null,
-        carbs: f.nutrition?.carbs != null ? Math.round(f.nutrition.carbs) : null,
-        fat: f.nutrition?.fat != null ? Math.round(f.nutrition.fat) : null,
-        fiber: f.nutrition?.fiber != null ? Math.round(f.nutrition.fiber) : null,
-      }));
+      .map((f) => {
+        const nutrition = pickNutrition(f.nutrition || f);
+        const weight_g = f.weight_g != null ? Math.round(f.weight_g) : 100;
+        // Flat macros for backward-compatible clients + full nutrition blob.
+        const flat = {};
+        for (const key of NUTRITION_KEYS) {
+          if (nutrition[key] == null) continue;
+          flat[key] = key === 'calories' || key === 'protein' || key === 'carbs'
+            || key === 'fat' || key === 'fiber'
+            ? Math.round(Number(nutrition[key]))
+            : Number(nutrition[key]);
+        }
+        return {
+          name: (f.name || '').trim(),
+          weight_g,
+          source: 'history',
+          ...flat,
+          nutrition: Object.keys(nutrition).length ? nutrition : {
+            calories: flat.calories ?? null,
+            protein: flat.protein ?? null,
+            carbs: flat.carbs ?? null,
+            fat: flat.fat ?? null,
+            fiber: flat.fiber ?? null,
+          },
+        };
+      });
   } catch { return []; }
 }
 
@@ -135,14 +158,18 @@ function dedupItems(rows, lowerTerm) {
 
 export async function searchFoodHistory({ userId, searchTerm }) {
   const lowerTerm = searchTerm.toLowerCase();
-  const [myRows, communityRows] = await Promise.all([
+  const [myRows, communityRows, masterItems] = await Promise.all([
     repo.searchUserMeals(userId, searchTerm),
     repo.searchCommunityMeals(userId, searchTerm),
+    isEnabled('ff.nutrition-knowledge')
+      ? listMasterSearchItems(searchTerm).catch(() => [])
+      : Promise.resolve([]),
   ]);
   return {
     httpStatus: 200,
     body: {
       success: true,
+      masterItems: masterItems || [],
       myItems: dedupItems(myRows, lowerTerm),
       communityItems: dedupItems(communityRows, lowerTerm),
     },

@@ -7,6 +7,16 @@ export { default as SmartFoodSearchModal } from './components/SmartFoodSearchMod
 export { default as ShakeCalculatorModal } from './components/ShakeCalculatorModal';
 export { default as ServingStepperModal, buildWaterAnalysisResult } from './components/ServingStepperModal';
 export { buildAfreshAnalysisResult, AFRESH_PRODUCT } from './domain/afreshProductProfiles';
+export {
+  buildAnalysisFromManualFood,
+  pickNutrition,
+  scaleNutritionFields,
+  NUTRITION_KEYS,
+  dedupeSearchBuckets,
+  resolveQuantityUnit,
+  formatServingPortion,
+  referenceWeightG,
+} from './domain/nutritionFields';
 export { default as ManualFoodEntryModal } from './components/ManualFoodEntryModal';
 export { default as DuplicateFoodModal } from './components/DuplicateFoodModal';
 export { default as EditableFoodItem } from './components/EditableFoodItem';
@@ -25,6 +35,10 @@ export * from './services/nutritionFallback';
 export { deleteMealById, updateMealNutrition, undoMealDelete } from './services/nutritionDashboard';
 export { aggregateFoodTotals, FOOD_TOTAL_FIELDS } from './domain/aggregateFoodTotals';
 export { parseAnalysisData } from './services/duplicateDetection/foodNameExtractor';
+export {
+  enrichFoodWithAi,
+  resolveNutritionProfile,
+} from './services/nutritionKnowledge.api';
 // parseMealAnalysisData — the full {name, nutrition, detailedItems} parser (analysisHelpers version).
 export { parseAnalysisData as parseMealAnalysisData } from './services/nutritionDashboard/analysisHelpers';
 export { transformDbItemToEditable } from './services/nutritionDashboard/foodItemTransform';

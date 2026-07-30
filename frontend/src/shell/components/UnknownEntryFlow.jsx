@@ -26,6 +26,7 @@ import {
   hasRecognizedFood,
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
+import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
@@ -48,35 +49,7 @@ function base64ToImageFile(b64, filename = 'capture.jpg') {
 }
 
 function buildAnalysisFromManualFood(m) {
-  const toItem = (f) => ({
-    name: f.name,
-    nutrition: {
-      calories: f.calories ?? 0,
-      protein: f.protein ?? 0,
-      carbs: f.carbs ?? 0,
-      fat: f.fat ?? 0,
-      fiber: f.fiber ?? 0,
-    },
-  });
-  if (m.isPlate && Array.isArray(m.items)) {
-    const foods = m.items.map(toItem);
-    const total = m.total || foods.reduce(
-      (a, f) => ({
-        calories: a.calories + (f.nutrition.calories || 0),
-        protein: a.protein + (f.nutrition.protein || 0),
-        carbs: a.carbs + (f.nutrition.carbs || 0),
-        fat: a.fat + (f.nutrition.fat || 0),
-        fiber: a.fiber + (f.nutrition.fiber || 0),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-    );
-    return { foods, total, confidence: 'high' };
-  }
-  const item = toItem({
-    name: m.foodName,
-    calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber,
-  });
-  return { foods: [item], total: item.nutrition, confidence: 'high' };
+  return buildManualFoodAnalysis(m);
 }
 
 /**

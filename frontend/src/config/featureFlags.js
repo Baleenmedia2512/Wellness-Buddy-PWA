@@ -113,6 +113,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
   },
+
+  // ADR-0005 — master nutrition knowledge base (search/resolve micros).
+  // Default ON. Set REACT_APP_FF_NUTRITION_KNOWLEDGE=false or
+  // localStorage 'ff.nutrition-knowledge'='false' to disable.
+  'ff.nutrition-knowledge': {
+    envKey:         'REACT_APP_FF_NUTRITION_KNOWLEDGE',
+    storageKey:     'ff.nutrition-knowledge',
+    defaultEnabled: true,
+    description:    'Master nutrition DB + history micros in food search (ADR-0005).',
+  },
 });
 
 function readStorage(key) {
