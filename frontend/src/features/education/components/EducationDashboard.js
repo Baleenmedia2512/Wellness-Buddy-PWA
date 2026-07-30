@@ -17,13 +17,18 @@ import { educationLogFromDiaryRow } from '../services/educationFormatter';
 
 const EducationDashboard = ({
   user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null, hideOverview = false,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
   // Imperative handle: parent passes a React ref; we write `openRef.current =
   // (entry) => ...` each render so the timeline shell can open a log entry.
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
 }) => {
-  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
+  const vm = useEducationDashboard({
+    user, apiBaseUrl, refreshKey, selectedDate,
+    onDeleteWithUndo, onDeleteUndoCancel,
+  });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const pendingOpenRef = useRef(null);
@@ -92,7 +97,7 @@ const EducationDashboard = ({
         setDeletingId(log.Id);
         setSelectedLog(null);
         onAfterModalClose?.();
-        await vm.handleDeleteEducationLog(log);
+        await vm.handleDeleteEducationLogFromModal(log);
         setDeletingId(null);
       }}
       isDeleting={deletingId === selectedLog?.Id}
