@@ -6,7 +6,13 @@ import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculations
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
-import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
+import {
+  parseRelativeDateRangeYmd,
+  normalizeStoredTimestampToUtcIso,
+  timestampToCalendarYmd,
+  timeOfDayInTimezone,
+} from '../../shared/lib/datetime/index.js';
+import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
 
 /**
  * Resolve date range for activity reports using the requesting user's timezone.
@@ -20,14 +26,17 @@ async function resolveReportDateRange(userId, dateRange, customStart, customEnd)
 }
 
 /**
- * Extract date and time from ISO timestamp
+ * Extract date and time from a stored timestamp in the requester's timezone.
  */
-function extractDateTime(timestamp) {
-  const dateMatch = String(timestamp || '').match(/^(\d{4}-\d{2}-\d{2})/);
-  const timeMatch = String(timestamp || '').match(/(\d{2}:\d{2}:\d{2})/);
+function extractDateTime(timestamp, timezoneIana, { food = false } = {}) {
+  if (food) {
+    const { calendarYmd, timeOfDay } = resolveFoodTimestamp(timestamp, timezoneIana);
+    return { date: calendarYmd, time: timeOfDay };
+  }
+  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, timezoneIana);
   return {
-    date: dateMatch ? dateMatch[1] : null,
-    time: timeMatch ? timeMatch[1] : null,
+    date: timestampToCalendarYmd(utcIso, timezoneIana),
+    time: timeOfDayInTimezone(utcIso, timezoneIana),
   };
 }
 
@@ -92,9 +101,9 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
   const counts = {
     weight: new Set(weightRecords.map(r => r.UserId)).size,
     education: new Set(educationRecords.map(r => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows).map(r => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows).map(r => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows).map(r => parseInt(r.UserID, 10))).size,
+    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
+    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
+    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana).map(r => parseInt(r.UserID, 10))).size,
     water: new Set(repo.filterWaterRecords(foodRecords).map(r => parseInt(r.UserID, 10))).size,
     calories: new Set(stepRecords.filter(r => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map(r => r.UserId)).size,
   };
@@ -166,7 +175,7 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
 
   // Fetch education records — count first log per member per day only
   const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
   const countMap = {};
   dedupedEducation.forEach(record => {
     const key = String(record.UserId);
@@ -282,7 +291,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
     case 'weight':
       {
         const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords);
+        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana);
 
         const centerIds = [...new Set(
           dedupedWeight
@@ -293,7 +302,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
 
         records = dedupedWeight.map(record => {
           const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
+          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
           const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
           return {
             userId: record.UserId,
@@ -314,7 +323,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
     case 'education':
       {
         const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
+        const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
 
         // Fetch nutrition center names for records that don't have center_name stored
         const centerIds = [...new Set(
@@ -328,7 +337,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
           // UserId in education_logs_table is stored as string
           const uidKey = String(record.UserId);
           const member = memberMap[uidKey] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
+          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
           // Prefer the stored center_name; fall back to looked-up center name
           const clubName = record.center_name || centerMap[record.nutrition_center_id] || 'N/A';
 
@@ -355,9 +364,9 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       {
         const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const timeWindows = await repo.fetchTimeWindows();
-        const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows);
+        const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows, timezoneIana);
         // One row per member per day — first meal log only (matches summary counts)
-        const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords);
+        const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords, timezoneIana, { foodTimestamp: true });
 
         const centerIds = [...new Set(
           dedupedMeals
@@ -369,7 +378,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
         records = dedupedMeals.map(record => {
           const memberUserId = parseInt(record.UserID, 10);
           const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
+          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
           const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
 
           return {
@@ -404,7 +413,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
         records = waterRecords.map(record => {
           const memberUserId = parseInt(record.UserID, 10);
           const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
+          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana, { food: true });
           const volumeLiters = repo.calculateWaterVolume(record);
           const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
 
@@ -430,7 +439,7 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
         
         records = stepRecords.map(record => {
           const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
+          const { date, time } = extractDateTime(record.CreatedAt, timezoneIana);
           
           return {
             userId: record.UserId,

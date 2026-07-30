@@ -4,8 +4,17 @@
  */
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
-import { applyDateRangeFilter } from '../../shared/lib/datetime/applyDayFilter.js';
-import { IANA_IST } from '../../shared/lib/datetime/index.js';
+import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
+import {
+  IANA_IST,
+  filterRowsByCalendarDateRange,
+  normalizeStoredTimestampToUtcIso,
+  timestampToCalendarYmd,
+} from '../../shared/lib/datetime/index.js';
+import {
+  filterFoodRowsByCalendarDateRange,
+  resolveFoodTimestamp,
+} from '../../shared/lib/datetime/foodTimestamp.js';
 /**
  * Fetch ALL active members (used by admin role)
  */
@@ -101,10 +110,10 @@ export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIa
     .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserId', userIds)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
-  return data || [];
+  return filterRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
 }
 
 /**
@@ -122,15 +131,16 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
     .select('"UserId", "Topic", "CreatedAt", attendance_type, center_name, nutrition_center_id, "City", "Village"')
     .in('"UserId"', userIdsAsString)
     .or('"IsDeleted".is.null,"IsDeleted".eq.0');
-  query = applyDateRangeFilter(query, '"CreatedAt"', startDate, endDate, timezoneIana);
+  query = applyDateRangeFilterWidened(query, '"CreatedAt"', startDate, endDate, timezoneIana);
   const { data, error } = await query.order('"CreatedAt"', { ascending: false });  
   if (error) throw error;
   
   // Filter out watch-synced "Calories Burned:" entries
-  return (data || []).filter(log => {
+  const filtered = (data || []).filter(log => {
     const topic = String(log.Topic || '');
     return !topic.startsWith('Calories Burned:');
   });
+  return filterRowsByCalendarDateRange(filtered, startDate, endDate, timezoneIana, 'CreatedAt');
 }
 
 /**
@@ -147,15 +157,11 @@ export async function fetchFoodRecords(userIds, startDate, endDate, timezoneIana
     .select('UserID, CreatedAt, TotalCalories, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId')
     .in('UserID', userIdsAsString)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
-  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
-  return data || [];
+  return filterFoodRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
 }
-
-/**
- * Fetch step activity records for given user IDs and date range
- */
 export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
   
@@ -165,10 +171,10 @@ export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana
     .from('daily_step_activity')
     .select('UserId, CreatedAt, Steps, CaloriesBurned')
     .in('UserId', userIds);
-  query = applyDateRangeFilter(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
   const { data, error } = await query.order('CreatedAt', { ascending: false });  
   if (error) throw error;
-  return data || [];
+  return filterRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
 }
 
 /**
@@ -193,10 +199,25 @@ export async function fetchNutritionCenters(centerIds) {
 }
 
 /**
+ * Resolve business calendar YYYY-MM-DD for a record's CreatedAt.
+ */
+function recordCalendarYmd(record, timezoneIana, { foodTimestamp = false, column = 'CreatedAt' } = {}) {
+  try {
+    const raw = record?.[column] ?? record?.CreatedAt;
+    if (foodTimestamp) {
+      return resolveFoodTimestamp(raw, timezoneIana).calendarYmd;
+    }
+    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, timezoneIana), timezoneIana);
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * Keep only the latest log per member per calendar day (newest CreatedAt).
  * Used for weight records where the most recent upload is the authoritative value.
  */
-export function dedupeLatestLogPerMemberPerDay(records) {
+export function dedupeLatestLogPerMemberPerDay(records, timezoneIana = IANA_IST, options = {}) {
   if (!records || records.length === 0) return [];
 
   // Sort descending so the latest timestamp comes first
@@ -208,8 +229,7 @@ export function dedupeLatestLogPerMemberPerDay(records) {
   const deduped = [];
 
   for (const record of sorted) {
-    const dateMatch = String(record.CreatedAt || '').match(/^(\d{4}-\d{2}-\d{2})/);
-    const date = dateMatch ? dateMatch[1] : 'unknown';
+    const date = recordCalendarYmd(record, timezoneIana, options);
     const userKey = String(record.UserID ?? record.UserId ?? '');
     const key = `${userKey}-${date}`;
 
@@ -229,7 +249,7 @@ export function dedupeLatestLogPerMemberPerDay(records) {
  * Keep only the first log per member per calendar day (earliest CreatedAt).
  * Used by attendance report detail so repeated uploads on the same day show once.
  */
-export function dedupeFirstLogPerMemberPerDay(records) {
+export function dedupeFirstLogPerMemberPerDay(records, timezoneIana = IANA_IST, options = {}) {
   if (!records || records.length === 0) return [];
 
   const sorted = [...records].sort((a, b) =>
@@ -240,8 +260,7 @@ export function dedupeFirstLogPerMemberPerDay(records) {
   const deduped = [];
 
   for (const record of sorted) {
-    const dateMatch = String(record.CreatedAt || '').match(/^(\d{4}-\d{2}-\d{2})/);
-    const date = dateMatch ? dateMatch[1] : 'unknown';
+    const date = recordCalendarYmd(record, timezoneIana, options);
     const userKey = String(record.UserID ?? record.UserId ?? '');
     const key = `${userKey}-${date}`;
 
@@ -260,7 +279,7 @@ export function dedupeFirstLogPerMemberPerDay(records) {
 /**
  * Filter food records by meal time window
  */
-export function filterFoodByMealTime(foodRecords, mealType, timeWindows) {
+export function filterFoodByMealTime(foodRecords, mealType, timeWindows, timezoneIana = IANA_IST) {
   const window = timeWindows[mealType];
   if (!window) return [];
   
@@ -268,12 +287,12 @@ export function filterFoodByMealTime(foodRecords, mealType, timeWindows) {
     // Skip beverage-only entries
     if (isExemptedBeverageOnly(record.AnalysisData)) return false;
     
-    // Extract time from CreatedAt
-    const timeMatch = String(record.CreatedAt || '').match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) return false;
-    
-    const time = timeMatch[1];
-    return time >= window.start && time <= window.end;
+    try {
+      const { timeOfDay } = resolveFoodTimestamp(record.CreatedAt, timezoneIana);
+      return timeOfDay >= window.start && timeOfDay <= window.end;
+    } catch {
+      return false;
+    }
   });
 }
 

@@ -137,3 +137,33 @@ export function filterFoodRowsByCalendarDay(
     }
   });
 }
+
+/**
+ * Keep food rows whose CreatedAt falls within [startDate, endDate] in `timezoneIana`.
+ *
+ * @param {object[]} rows
+ * @param {string} startDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} endDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [column='CreatedAt']
+ * @returns {object[]}
+ */
+export function filterFoodRowsByCalendarDateRange(
+  rows,
+  startDate,
+  endDate,
+  timezoneIana = IANA_IST,
+  column = 'CreatedAt',
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.filter((row) => {
+    const raw = row?.[column];
+    if (raw == null) return false;
+    try {
+      const { calendarYmd } = resolveFoodTimestamp(raw, timezoneIana);
+      return calendarYmd >= startDate && calendarYmd <= endDate;
+    } catch {
+      return false;
+    }
+  });
+}
