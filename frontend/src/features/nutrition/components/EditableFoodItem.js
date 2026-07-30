@@ -455,24 +455,25 @@ const EditableFoodItem = forwardRef(
             debugLog("   🎯 Exact match found at index:", exactMatchIndex);
             debugLog("      - Serving:", servingOptions[exactMatchIndex].description);
           } else {
-            // Find closest serving option for display only
-            // IMPORTANT: Never override customGrams - let user type any value
-            const closestIndex = servingOptions.reduce(
-              (closestIdx, opt, idx) => {
-                const currentDiff = Math.abs(
-                  servingOptions[closestIdx].grams - gramsValue,
-                );
-                const newDiff = Math.abs(opt.grams - gramsValue);
-                return newDiff < currentDiff ? idx : closestIdx;
-              },
-              0,
-            );
-
-            setCurrentServing(servingOptions[closestIndex]);
-            setCurrentServingIndex(closestIndex);
-            debugLog("   ðŸ” Closest match at index:", closestIndex);
-            debugLog("      - Serving:", servingOptions[closestIndex].description);
-            // customGrams is already set above - don't override it
+            // Custom amount — keep the typed value; do NOT adopt a mismatched
+            // closest label (e.g. "102.5 ml" while grams are 300).
+            const liquid = selectedFood?.isLiquid
+              || foodItem.isLiquid
+              || foodItem.serving?.isLiquid
+              || false;
+            const unitLabel = liquid ? "ml" : "g";
+            const customDesc = liquid
+              ? `${Math.round(gramsValue)} ml`
+              : `${gramsValue}${unitLabel}`;
+            setCurrentServing({
+              description: customDesc,
+              grams: gramsValue,
+              nutrition: null,
+              isOriginal: false,
+              isCustom: true,
+            });
+            setCurrentServingIndex(-1);
+            debugLog("   ✅ Custom amount — description synced to", customDesc);
           }
         } else {
           debugLog("   âš ï¸ No valid gramsValue or no serving options available");
@@ -588,8 +589,18 @@ const EditableFoodItem = forwardRef(
       const isLiquid = foodToSave.isLiquid || false;
       const unit = isLiquid ? "ml" : "g";
       debugLog("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
-      
-      // 🔄 REVERSAL DETECTION:
+
+      // Keep portion label in sync with the saved amount. Never keep a stale
+      // closest-option description (e.g. "102.5 ml") when grams are 300.
+      const servingMatchesGrams = currentServing
+        && Number.isFinite(Number(currentServing.grams))
+        && Math.abs(Number(currentServing.grams) - grams) < 1
+        && !currentServing.isCustom;
+      const syncedDescription = isLiquid
+        ? `${Math.round(grams)} ml`
+        : `${grams}${unit}`;
+      const resolvedDescription = overrideServingDesc
+        || (servingMatchesGrams ? currentServing.description : syncedDescription);
       // If the user has edited the food name back to the ORIGINAL AI-detected
       // name, treat this entry as a reversal of the auto-correction. The
       // global/personal correction in the DB stays intact (other entries /
@@ -612,10 +623,7 @@ const EditableFoodItem = forwardRef(
         name: foodToSave.name,
         category: foodToSave.category,
         serving: {
-          description:
-            overrideServingDesc ||
-            currentServing?.description ||
-            `${grams}${unit}`,
+          description: resolvedDescription,
           grams: grams,
           unit: unit,
           isLiquid: isLiquid,
@@ -623,6 +631,8 @@ const EditableFoodItem = forwardRef(
         grams: grams,
         unit: unit,
         isLiquid: isLiquid,
+        volume_ml: isLiquid ? grams : null,
+        weight_g: isLiquid ? null : grams,
         nutrition: nutrition,
         per100g: foodToSave.per100g,
         // 🔴 CRITICAL: Preserve originalAiName and correction metadata
@@ -1052,7 +1062,20 @@ const EditableFoodItem = forwardRef(
               {/* Row 2: serving + weight */}
               {(servingDesc || displayGrams) && (
                 <p className="text-xs text-gray-400 mt-0.5 leading-tight">
-                  {servingDesc}{displayGrams ? ` (${displayGrams}${unit})` : ''}
+                  {(() => {
+                    const desc = String(servingDesc || '').trim();
+                    if (!displayGrams) return desc;
+                    // Avoid "100 ml (100ml)" / "300 ml (300ml)" duplication.
+                    const compact = desc.replace(/\s+/g, '').toLowerCase();
+                    const amountToken = `${displayGrams}${unit}`.toLowerCase();
+                    if (compact.includes(amountToken) || compact === amountToken) {
+                      return desc || `${displayGrams} ${unit}`;
+                    }
+                    if (/^\d+(\.\d+)?\s*(ml|g)$/i.test(desc)) {
+                      return `${displayGrams} ${unit}`;
+                    }
+                    return `${desc} (${displayGrams}${unit})`;
+                  })()}
                 </p>
               )}
 
