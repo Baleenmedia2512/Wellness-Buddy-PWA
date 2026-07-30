@@ -424,6 +424,19 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     unknown: 'Capture removed',
   };
 
+  const handleMealDeleteWithUndo = useCallback(({ mealId, expiresAt }) => {
+    onMealDelete?.(mealId);
+    setDiaryUndo({
+      kind: 'food',
+      entryId: mealId,
+      userId: ownerId,
+      message: diaryUndoLabels.food,
+      expiresAt: expiresAt ?? Date.now() + DIARY_UNDO_SECONDS * 1000,
+    });
+    reloadDiary();
+    triggerNutritionRefresh({ immediate: true, source: 'meal-modal-delete' });
+  }, [onMealDelete, ownerId, reloadDiary, triggerNutritionRefresh]);
+
   const affectsExerciseCalories = (entry) => {
     if (!entry) return false;
     if (entry.kind === 'watch') return true;
@@ -882,6 +895,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onBack={onBack}
                   apiBaseUrl={apiBaseUrl}
                   onMealDelete={onMealDelete}
+                  onMealDeleteWithUndo={handleMealDeleteWithUndo}
                   hideHeader
                   hideDateStrip
                   hideOverview
@@ -928,6 +942,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 onBack={onBack}
                 apiBaseUrl={apiBaseUrl}
                 onMealDelete={onMealDelete}
+                onMealDeleteWithUndo={handleMealDeleteWithUndo}
                 hideHeader={true}
                 hideDateStrip={true}
                 hideOverview={true}
@@ -987,6 +1002,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
+              onMealDeleteWithUndo={handleMealDeleteWithUndo}
               hideHeader={true}
               hideOverview={true}
               selectedDate={selectedDate}

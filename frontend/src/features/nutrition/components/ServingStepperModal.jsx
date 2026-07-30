@@ -135,8 +135,8 @@ export default function ServingStepperModal({
 }
 
 /** Water as food beverage analysis (inferred hydration / diary). */
-export function buildWaterAnalysisResult(ml = 250) {
-  const amount = Math.max(50, Math.min(5000, Number(ml) || 250));
+export function buildWaterAnalysisResult(ml = 200) {
+  const amount = Math.max(50, Math.min(5000, Number(ml) || 200));
   const nutrition = {
     calories: 0,
     protein: 0,

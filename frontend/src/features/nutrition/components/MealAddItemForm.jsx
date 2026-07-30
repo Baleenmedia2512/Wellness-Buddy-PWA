@@ -317,8 +317,8 @@ export default function MealAddItemForm({
           </div>
         ) : null}
         <div className="flex gap-3">
-          {isAddingItem ? null : addItemButton}
           {footerExtra}
+          {isAddingItem ? null : addItemButton}
         </div>
       </div>
     );

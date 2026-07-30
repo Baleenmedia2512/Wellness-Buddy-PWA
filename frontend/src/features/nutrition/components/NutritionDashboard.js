@@ -81,6 +81,7 @@ const NutritionDashboard = ({
   onBack,
   apiBaseUrl,
   onMealDelete,
+  onMealDeleteWithUndo,
   hideHeader,
   hideDateStrip = false,
   hideOverview = false,
@@ -237,6 +238,7 @@ const NutritionDashboard = ({
     setLocalNutrition,
     isAutoSaveUpdateRef,
     onMealDelete,
+    onMealDeleteWithUndo,
     undoSeconds: UNDO_SECONDS,
   });
 

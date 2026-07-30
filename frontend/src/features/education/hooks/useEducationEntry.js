@@ -52,11 +52,15 @@ export function useEducationEntry({
       setError('Please select a platform');
       return;
     }
+    if (!topic.trim()) {
+      setError('Please select a meeting session');
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave?.({
         platform,
-        topic: topic.trim() || 'Education Meeting',
+        topic: topic.trim(),
       });
       reset();
       if (onClose) onClose();

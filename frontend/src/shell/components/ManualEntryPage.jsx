@@ -26,7 +26,7 @@ import {
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
-import { saveLog } from '../../features/education';
+import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
   fetchAiCreditsStatus,
@@ -47,14 +47,14 @@ function PublicIcon({ src, className = '', alt = '' }) {
 }
 
 const CATEGORIES = [
-  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
   { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
+  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
   { id: 'education', Icon: GraduationCap, label: 'Education' },
+  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
+  { id: 'water', Icon: Droplets, label: 'Water' },
+  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
   // smartwatch flow = calories burned; label is Exercise (green fire)
   { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Exercise', isImgIcon: true },
-  { id: 'water', Icon: Droplets, label: 'Water' },
-  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -154,16 +154,14 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/80">
               Daily AI credits
             </p>
-            <p className="mt-0.5 text-sm font-bold text-gray-900">
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-sm font-bold text-gray-900">
               <span className={outOfCredits ? 'text-amber-600' : 'text-emerald-700'}>
                 {remaining}
               </span>
               <span className="font-semibold text-gray-400"> of {limit} left</span>
             </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-xs text-gray-500">Used today</p>
-            <p className="text-sm font-extrabold tabular-nums text-emerald-700">{used}/{limit}</p>
           </div>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: BRAND.mint }}>
@@ -289,34 +287,8 @@ export default function ManualEntryPage({
     }
   };
 
-  /** Education: one tap — always Zoom, no platform picker. */
-  const handleEducationTap = async () => {
-    if (saving) return;
-    setSaving(true);
-    setHint(null);
-    try {
-      await saveLog({
-        userId,
-        platform: 'Zoom',
-        topic: 'Education Meeting',
-        captureId,
-        imageBase64,
-      });
-      onToast?.('Education saved to Diary');
-      exit();
-    } catch (err) {
-      setHint(err?.message || 'Failed to save education');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleCategoryClick = (id) => {
     if (saving || aiStarting) return;
-    if (id === 'education') {
-      handleEducationTap();
-      return;
-    }
     setActiveForm(id);
   };
 
@@ -392,6 +364,28 @@ export default function ManualEntryPage({
   const handleWaterConfirm = async (ml) => {
     await saveFoodAnalysis(buildWaterAnalysisResult(ml), 'Water saved to Diary');
     setActiveForm(null);
+  };
+
+  const handleEducationSave = async ({ platform, topic }) => {
+    setSaving(true);
+    try {
+      await saveLog({
+        userId,
+        platform,
+        topic,
+        captureId,
+        imageBase64,
+      });
+      setActiveForm(null);
+      onToast?.('Education saved to Diary');
+      exit();
+    } catch (err) {
+      const msg = err?.message || 'Failed to save education';
+      setHint(msg);
+      throw new Error(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
@@ -594,6 +588,14 @@ export default function ManualEntryPage({
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
       />
+      <ManualEducationEntryModal
+        isOpen={activeForm === 'education'}
+        onClose={() => setActiveForm(null)}
+        onSave={handleEducationSave}
+        skipTypeSelect
+        formTitle="Education"
+        formSubtitle="Choose platform and meeting session"
+      />
       <ShakeCalculatorModal
         isOpen={activeForm === 'shake'}
         onClose={() => setActiveForm(null)}
@@ -615,12 +617,12 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'water'}
         title="Water"
-        subtitle="Log how much you drank"
+        subtitle="How much you drank so far today"
         unitLabel="Amount"
         min={100}
         max={2000}
         step={100}
-        defaultValue={250}
+        defaultValue={200}
         formatValue={(n) => `${n} ml`}
         onClose={() => setActiveForm(null)}
         onConfirm={handleWaterConfirm}
