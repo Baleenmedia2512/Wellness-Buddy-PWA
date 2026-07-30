@@ -7059,6 +7059,7 @@ function WellnessValleyApp() {
           onSaved={() => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
           }}
+          onToast={(msg) => showToast(msg)}
           onStartBackgroundAi={({ reservationId }) => {
             const p = manualEntryPayload;
             if (!p) return;

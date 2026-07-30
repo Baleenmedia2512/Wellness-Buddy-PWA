@@ -339,14 +339,23 @@ export default function DiaryFeed({
         captureIdStr !== '' &&
         analyzingCaptureIds != null &&
         analyzingCaptureIds.has(captureIdStr);
+      // Only show "Analyzing…" when AI is actually in flight (local markCaptureAnalyzing
+      // / analyzingCaptureIds). API isPendingAnalysis alone means the user saved the
+      // photo but has not chosen a type or started AI — that is "Needs logging", not
+      // Analyzing, and must NOT become Other / couldn't identify.
       const isBackgroundPending =
         entry.kind === 'unknown' &&
+        !isAnalyzing &&
         !isStalePendingAnalysis(entry.capturedAt) &&
+        captureIdStr !== '' &&
+        scopedPendingCaptureMeta != null &&
+        scopedPendingCaptureMeta.has(captureIdStr);
+      const needsClassify =
+        entry.kind === 'unknown' &&
+        !isAnalyzing &&
+        !isBackgroundPending &&
         (entry.payload?.isPendingAnalysis === true ||
-          (captureIdStr !== '' &&
-            scopedPendingCaptureMeta != null &&
-            scopedPendingCaptureMeta.has(captureIdStr))) &&
-        !isAnalyzing;
+          entry.capture?.type === 'pending');
       // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
       // Look up for both isAnalyzing (user-initiated re-detect) and
       // isBackgroundPending (camera capture flow) so both states show the badge.
@@ -366,6 +375,7 @@ export default function DiaryFeed({
             ? {
                 isAnalyzing,
                 isBackgroundPending,
+                needsClassify,
                 currentAttempt: captureMeta?.currentAttempt ?? null,
                 totalAttempts:  captureMeta?.totalAttempts  ?? null,
               }

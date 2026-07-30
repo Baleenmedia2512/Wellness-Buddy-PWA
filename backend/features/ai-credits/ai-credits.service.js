@@ -33,9 +33,11 @@ async function loadDayContext(userId) {
   const usageDate = todayInTimezone(timezoneIana);
   const configRow = await repo.getLatestConfig();
   const config = repo.configOrDefault(configRow);
+  // Syncs credits_limit_snapshot to live admin config (mid-day changes take effect).
   const usage = await repo.ensureUsageRow(userId, usageDate, config.dailyAiCredits);
   const pending = await repo.countPendingReservations(userId, usageDate);
-  const limit = usage?.credits_limit_snapshot ?? config.dailyAiCredits;
+  // Prefer live config so admin Save is reflected even if snapshot update races.
+  const limit = config.dailyAiCredits;
   const used = usage?.credits_used ?? 0;
   return {
     timezoneIana,

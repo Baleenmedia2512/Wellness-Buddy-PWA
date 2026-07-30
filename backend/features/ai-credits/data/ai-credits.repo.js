@@ -66,7 +66,14 @@ export async function getUsageRow(userId, usageDate) {
 
 export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
   const existing = await getUsageRow(userId, usageDate);
-  if (existing) return existing;
+  if (existing) {
+    // Admin may change daily_ai_credits mid-day — keep today's snapshot in sync
+    // so status/reserve use the live config, not a stale freeze.
+    if (Number(existing.credits_limit_snapshot) !== Number(limitSnapshot)) {
+      return updateUsageLimitSnapshot(existing.id, limitSnapshot) || existing;
+    }
+    return existing;
+  }
   const uid = Number.parseInt(String(userId), 10);
   const supabase = getSupabaseClient();
   const now = nowUtc();
@@ -87,6 +94,27 @@ export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
       return getUsageRow(userId, usageDate);
     }
     throw error;
+  }
+  return data;
+}
+
+/** Update credits_limit_snapshot when admin config changes mid-day. */
+export async function updateUsageLimitSnapshot(usageRowId, limitSnapshot) {
+  if (!usageRowId) return null;
+  const supabase = getSupabaseClient();
+  const now = nowUtc();
+  const { data, error } = await supabase
+    .from('ai_credits_daily_usage_table')
+    .update({
+      credits_limit_snapshot: limitSnapshot,
+      updated_at: now,
+    })
+    .eq('id', usageRowId)
+    .select('id, user_id, usage_date, credits_used, credits_limit_snapshot, updated_at')
+    .maybeSingle();
+  if (error) {
+    logger.error('[ai-credits.repo] limit snapshot update failed', { err: error.message });
+    return null;
   }
   return data;
 }

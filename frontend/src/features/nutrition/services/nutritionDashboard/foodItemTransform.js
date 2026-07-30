@@ -4,7 +4,7 @@
 const LIQUID_KEYWORDS = [
   'shake', 'juice', 'milk', 'lassi', 'coffee', 'tea', 'water', 'smoothie',
   'soup', 'drink', 'beverage', 'cola', 'soda', 'beer', 'wine', 'cocktail',
-  'latte', 'cappuccino', 'espresso',
+  'latte', 'cappuccino', 'espresso', 'afresh',
 ];
 
 const isLiquidByName = (name) => {

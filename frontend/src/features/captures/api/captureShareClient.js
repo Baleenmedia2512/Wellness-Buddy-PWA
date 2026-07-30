@@ -73,23 +73,40 @@ export async function promoteUnknownToFood({
 
   const url = `${getApiBaseUrl()}/api/background-analysis/captures/retry-promotion`;
   debugLog('[captures] promoteUnknownToFood →', String(captureId));
-  const res = await axios.post(
-    url,
-    {
-      captureId: String(captureId),
-      viewerUserId: String(viewerUserId),
-      analysisResult,
-      ...(originalCapturedAt ? { originalCapturedAt: String(originalCapturedAt) } : {}),
-    },
-    { signal },
-  );
-  const body = res?.data;
-  if (!isCaptureApiSuccess(body)) {
-    const err = new Error('promoteUnknownToFood: promotion failed');
-    err.body = body;
-    throw err;
+  try {
+    const res = await axios.post(
+      url,
+      {
+        captureId: String(captureId),
+        viewerUserId: String(viewerUserId),
+        analysisResult,
+        ...(originalCapturedAt ? { originalCapturedAt: String(originalCapturedAt) } : {}),
+      },
+      { signal },
+    );
+    const body = res?.data;
+    if (!isCaptureApiSuccess(body)) {
+      const err = new Error(
+        body?.error?.message || body?.message || 'promoteUnknownToFood: promotion failed',
+      );
+      err.body = body;
+      throw err;
+    }
+    return body.data ?? body;
+  } catch (err) {
+    if (err?.body || !err?.response) throw err;
+    const body = err.response?.data;
+    const msg =
+      body?.error?.message ||
+      body?.message ||
+      (err.response?.status === 409
+        ? 'This photo was already logged. Open Diary to view or edit it.'
+        : err.message || 'Failed to save food');
+    const wrapped = new Error(msg);
+    wrapped.status = err.response?.status;
+    wrapped.body = body;
+    throw wrapped;
   }
-  return body.data ?? body;
 }
 
 /**
