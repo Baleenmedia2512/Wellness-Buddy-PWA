@@ -48,7 +48,7 @@ export function EducationFormActions({ onCancel, onSave, isSaving }) {
       <button
         onClick={onSave}
         disabled={isSaving}
-        className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-semibold hover:bg-blue-600 active:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {isSaving ? (
           <>

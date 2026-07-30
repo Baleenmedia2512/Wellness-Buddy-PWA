@@ -26,7 +26,7 @@ import {
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
-import { saveLog } from '../../features/education';
+import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
   fetchAiCreditsStatus,
@@ -287,34 +287,8 @@ export default function ManualEntryPage({
     }
   };
 
-  /** Education: one tap — always Zoom, no platform picker. */
-  const handleEducationTap = async () => {
-    if (saving) return;
-    setSaving(true);
-    setHint(null);
-    try {
-      await saveLog({
-        userId,
-        platform: 'Zoom',
-        topic: 'Education Meeting',
-        captureId,
-        imageBase64,
-      });
-      onToast?.('Education saved to Diary');
-      exit();
-    } catch (err) {
-      setHint(err?.message || 'Failed to save education');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleCategoryClick = (id) => {
     if (saving || aiStarting) return;
-    if (id === 'education') {
-      handleEducationTap();
-      return;
-    }
     setActiveForm(id);
   };
 
@@ -390,6 +364,28 @@ export default function ManualEntryPage({
   const handleWaterConfirm = async (ml) => {
     await saveFoodAnalysis(buildWaterAnalysisResult(ml), 'Water saved to Diary');
     setActiveForm(null);
+  };
+
+  const handleEducationSave = async ({ platform, topic }) => {
+    setSaving(true);
+    try {
+      await saveLog({
+        userId,
+        platform,
+        topic,
+        captureId,
+        imageBase64,
+      });
+      setActiveForm(null);
+      onToast?.('Education saved to Diary');
+      exit();
+    } catch (err) {
+      const msg = err?.message || 'Failed to save education';
+      setHint(msg);
+      throw new Error(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
@@ -591,6 +587,14 @@ export default function ManualEntryPage({
         onClose={() => setActiveForm(null)}
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
+      />
+      <ManualEducationEntryModal
+        isOpen={activeForm === 'education'}
+        onClose={() => setActiveForm(null)}
+        onSave={handleEducationSave}
+        skipTypeSelect
+        formTitle="Education"
+        formSubtitle="Choose platform and meeting session"
       />
       <ShakeCalculatorModal
         isOpen={activeForm === 'shake'}
