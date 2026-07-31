@@ -1,12 +1,13 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
- * Direct and Full always include Active members only.
- * Uses targeted queries — never loadReportingContext (full team_table scan times out).
+ * Direct and Full include all team members (Active + Inactive).
+ * Co-coach peer is excluded from Direct/Full counts.
  */
-import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
-import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
-import * as repo from '../activity-report.repository.js';
+import {
+  buildActivityReportAdminScope,
+  buildActivityReportCoachScope,
+} from './activity-report.hierarchy.js';
 
 export const TEAM_SCOPES = Object.freeze({
   MINE: 'mine',
@@ -26,60 +27,36 @@ export function normalizeTeamScope(teamScope) {
   return TEAM_SCOPES.FULL;
 }
 
-/**
- * Coach/upline: dual-coaching hierarchy (level 1 = direct, all downline = full).
- * Only Active status; co-coach peer is excluded from Direct/Full counts.
- */
-async function resolveCoachScope(userId) {
-  const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-  const isActiveDownline = (m) => (
-    Number(m.UserId) !== Number(userId)
-    && isActiveTeamStatus(m.Status)
-    && !m.IsCoCoach
-    && !m.IsLoggedInCoach
-  );
-
-  const directIds = hierarchy
-    .filter((m) => m.HierarchyLevel === 1 && isActiveDownline(m))
-    .map((m) => m.UserId)
-    .filter(Boolean);
-  const fullIds = hierarchy
-    .filter(isActiveDownline)
-    .map((m) => m.UserId)
-    .filter(Boolean);
-
+function buildTeamScopeCounts(directIds, fullIds) {
   return {
-    directIds,
-    fullIds,
-    teamScopeCounts: {
-      mine: 1,
-      direct: directIds.length,
-      full: fullIds.length,
-      hasTeam: directIds.length > 0 || fullIds.length > 0,
-    },
+    mine: 1,
+    direct: directIds.length,
+    full: fullIds.length,
+    hasTeam: directIds.length > 0 || fullIds.length > 0,
   };
 }
 
 /**
- * Admin/developer: indexed direct lookup + active-member list for full scope.
- * Both paths query team_table with Status = Active only.
+ * Coach/upline: dual-coaching hierarchy (level 1 = direct, all downline = full).
  */
-async function resolveAdminScope(userId) {
-  const [allMembers, directIds] = await Promise.all([
-    repo.fetchAllActiveMembers(),
-    repo.fetchDirectMemberIds(userId),
-  ]);
-  const fullIds = allMembers.map((m) => m.UserId).filter(Boolean);
-
+async function resolveCoachScope(userId) {
+  const { directIds, fullIds } = await buildActivityReportCoachScope(userId);
   return {
     directIds,
     fullIds,
-    teamScopeCounts: {
-      mine: 1,
-      direct: directIds.length,
-      full: fullIds.length,
-      hasTeam: directIds.length > 0 || fullIds.length > 0,
-    },
+    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds),
+  };
+}
+
+/**
+ * Admin/developer: all team_table members (Active + Inactive).
+ */
+async function resolveAdminScope(userId) {
+  const { directIds, fullIds } = await buildActivityReportAdminScope(userId);
+  return {
+    directIds,
+    fullIds,
+    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds),
   };
 }
 

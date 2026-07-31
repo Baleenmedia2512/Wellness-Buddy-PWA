@@ -6,17 +6,16 @@ import assert from 'node:assert/strict';
 import { normalizeTeamScope, TEAM_SCOPES } from '../domain/activity-report.scope.js';
 
 function buildCoachScopeIds(hierarchy, userId) {
-  const isActiveDownline = (m) => (
+  const isDownline = (m) => (
     Number(m.UserId) !== Number(userId)
-    && String(m.Status || '').toLowerCase() === 'active'
     && !m.IsCoCoach
     && !m.IsLoggedInCoach
   );
   return {
     directIds: hierarchy
-      .filter((m) => m.HierarchyLevel === 1 && isActiveDownline(m))
+      .filter((m) => m.HierarchyLevel === 1 && isDownline(m))
       .map((m) => m.UserId),
-    fullIds: hierarchy.filter(isActiveDownline).map((m) => m.UserId),
+    fullIds: hierarchy.filter(isDownline).map((m) => m.UserId),
   };
 }
 
@@ -32,17 +31,17 @@ describe('activity-report.scope', () => {
     assert.equal(normalizeTeamScope('FULL'), TEAM_SCOPES.FULL);
   });
 
-  it('coach scope excludes inactive and co-coach from direct/full', () => {
+  it('coach scope includes inactive members but excludes co-coach peer', () => {
     const userId = 100;
     const hierarchy = [
-      { UserId: 100, HierarchyLevel: 0, Status: 'Active', IsLoggedInCoach: true },
-      { UserId: 101, HierarchyLevel: 1, Status: 'Active', IsCoCoach: true },
-      { UserId: 102, HierarchyLevel: 1, Status: 'Active' },
-      { UserId: 103, HierarchyLevel: 1, Status: 'Inactive' },
-      { UserId: 104, HierarchyLevel: 2, Status: 'Active' },
+      { UserId: 100, HierarchyLevel: 0, IsLoggedInCoach: true },
+      { UserId: 101, HierarchyLevel: 1, IsCoCoach: true },
+      { UserId: 102, HierarchyLevel: 1 },
+      { UserId: 103, HierarchyLevel: 1 },
+      { UserId: 104, HierarchyLevel: 2 },
     ];
     const { directIds, fullIds } = buildCoachScopeIds(hierarchy, userId);
-    assert.deepEqual(directIds, [102]);
-    assert.deepEqual(fullIds, [102, 104]);
+    assert.deepEqual(directIds, [102, 103]);
+    assert.deepEqual(fullIds, [102, 103, 104]);
   });
 });
