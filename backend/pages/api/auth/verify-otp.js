@@ -3,6 +3,7 @@ import { readJsonBody } from '../../../shared/lib/readJsonBody.js';
 import { validateVerifyOtp } from '../../../features/auth/auth.validators.js';
 import { verifyOtp } from '../../../features/auth/auth.service.js';
 import logger from '../../../shared/lib/logger.js';
+import { buildConsentDeviceInfo, extractClientIp } from '../../../shared/lib/clientMeta.js';
 
 export const config = {
   api: { bodyParser: false },
@@ -18,5 +19,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: parsed.message });
   }
 
-  return runService(res, () => verifyOtp(validateVerifyOtp(parsed.body)));
+  const body = {
+    ...parsed.body,
+    ipAddress: extractClientIp(req),
+    deviceInfo: buildConsentDeviceInfo(req, parsed.body?.deviceInfo),
+  };
+
+  return runService(res, () => verifyOtp(validateVerifyOtp(body)));
 }
