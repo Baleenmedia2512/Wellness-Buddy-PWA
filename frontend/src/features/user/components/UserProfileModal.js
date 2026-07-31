@@ -30,7 +30,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     onError: setError,
     onCropped: (img) => {
       setProfileImage(img); setProfileImagePreview(img); face.reset();
-      setShowToast(true); face.run(img, user?.id ?? null);
+      setShowToast(true); face.run(img, user?.id ?? null, 'PROFILE_IMAGE_UPDATE');
     },
   });
 

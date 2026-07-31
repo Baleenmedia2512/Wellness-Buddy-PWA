@@ -119,6 +119,7 @@ export async function processNextJob() {
     captureId: job.captureId,
     userId:    job.userId,
     traceId:   job.traceId,   // Replay the original traceId for correlation
+    module:    job.module,
   });
 
   logger.info('jobWorker: starting enrichment', {
