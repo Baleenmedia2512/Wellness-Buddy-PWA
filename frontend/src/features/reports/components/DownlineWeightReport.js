@@ -29,7 +29,7 @@ function getStatusCountKey(filterKey) {
   return 'all';
 }
 
-export default function DownlineWeightReport({ user }) {
+export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
   const coachId = user?.id ?? null;
   const {
     teamScope,
@@ -46,7 +46,7 @@ export default function DownlineWeightReport({ user }) {
     loading,
     error,
     refresh,
-  } = useDownlineWeightReport({ coachId });
+  } = useDownlineWeightReport({ coachId, tabVisitKey });
 
   return (
     <div className="min-h-full bg-gray-50">

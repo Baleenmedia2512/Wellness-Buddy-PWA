@@ -25,6 +25,7 @@ export function useMealMutations({
   isAutoSaveUpdateRef,
   onMealDelete,
   onMealDeleteWithUndo,
+  onMealDeleteUndoCancel,
   undoSeconds,
 }) {
   const itemMutations = useMealItemMutations({
@@ -52,6 +53,7 @@ export function useMealMutations({
     setError,
     onMealDelete,
     onMealDeleteWithUndo,
+    onMealDeleteUndoCancel,
     undoSeconds,
   });
 

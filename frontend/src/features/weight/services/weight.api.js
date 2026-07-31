@@ -5,6 +5,25 @@
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
+/** In-memory latest-weight cache — sync read for instant manual-entry pre-fill. */
+const latestWeightCache = new Map();
+
+export function getCachedLatestWeight(userId) {
+  if (!userId) return null;
+  return latestWeightCache.get(String(userId)) ?? null;
+}
+
+export function setCachedLatestWeight(userId, entry) {
+  if (!userId || entry?.value == null) return;
+  const parsed = parseFloat(entry.value);
+  if (!Number.isFinite(parsed)) return;
+  latestWeightCache.set(String(userId), {
+    value: parsed,
+    unit: entry.unit || 'kg',
+    date: entry.date || null,
+  });
+}
+
 async function request(path, opts = {}) {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}${path}`, {
@@ -16,11 +35,23 @@ async function request(path, opts = {}) {
   return { ok: res.ok, status: res.status, data: json };
 }
 
-export function saveWeight(payload) {
-  return request('/api/weight/save', {
+export async function saveWeight(payload) {
+  const result = await request('/api/weight/save', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  if (result.ok && result.data?.success && payload?.userId != null) {
+    const raw = result.data.data?.weightValue ?? payload.weightValue;
+    const parsed = parseFloat(raw);
+    if (Number.isFinite(parsed)) {
+      setCachedLatestWeight(payload.userId, {
+        value: parsed,
+        unit: payload.unit || 'kg',
+        date: result.data.data?.createdAt || new Date().toISOString(),
+      });
+    }
+  }
+  return result;
 }
 
 export function getWeightHistory(userId, { includeImage = false, cacheBust = true } = {}) {
@@ -30,6 +61,28 @@ export function getWeightHistory(userId, { includeImage = false, cacheBust = tru
     method: 'GET',
     headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
   });
+}
+
+/**
+ * Most recently saved weight entry — used as reference in manual entry.
+ * @returns {Promise<{ value: number, unit: string, date: string } | null>}
+ */
+export async function fetchLatestWeightEntry(userId) {
+  if (!userId) return null;
+  const { ok, data } = await getWeightHistory(userId, { includeImage: false, cacheBust: true });
+  if (!ok || !data?.success || !data.stats?.latestWeight) return null;
+  const { value, date } = data.stats.latestWeight;
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed)) return null;
+  const entry = { value: parsed, unit: 'kg', date };
+  setCachedLatestWeight(userId, entry);
+  return entry;
+}
+
+/** Warm cache in background — safe to call on page mount. */
+export function warmLatestWeightCache(userId) {
+  if (!userId) return;
+  fetchLatestWeightEntry(userId).catch(() => {});
 }
 
 export function deleteWeight({ userId, entryId }) {

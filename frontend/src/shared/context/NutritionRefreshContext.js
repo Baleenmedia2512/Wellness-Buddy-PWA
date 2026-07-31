@@ -177,9 +177,20 @@ export function NutritionRefreshProvider({ children }) {
     });
   }, []); // stable — uses functional-update form for setRefreshKey, no stale closure risk
 
+  /**
+   * Refetch Home dashboard data when the user returns from a nav tab overlay.
+   * Does not advance the async activity log — navigation alone is enough to reload.
+   */
+  const refreshOnTabFocus = useCallback(() => {
+    startTransition(() => {
+      setRefreshKey((prev) => prev + 1);
+    });
+  }, []);
+
   const value = {
     refreshKey,
     triggerRefresh,
+    refreshOnTabFocus,
     pendingRefresh,
     analyzingCaptureIds,
     pendingCaptureMeta,

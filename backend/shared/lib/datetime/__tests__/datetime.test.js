@@ -17,6 +17,7 @@ import {
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
   filterRowsByCalendarDay,
+  filterRowsByCalendarDateRange,
   utcInstantToLegacyIstWallStorage,
   timestampToCalendarYmd,
 } from '../index.js';
@@ -24,6 +25,7 @@ import {
   applyDayFilter,
   applyDayFilterWidened,
   applyDateRangeFilter,
+  applyDateRangeFilterWidened,
 } from '../applyDayFilter.js';
 
 describe('nowUtc', () => {
@@ -224,5 +226,46 @@ describe('filterRowsByCalendarDay', () => {
     assert.equal(today.length, 0);
     const yesterday = filterRowsByCalendarDay([lambShank], '2026-07-23', IANA_IST);
     assert.equal(yesterday.length, 1);
+  });
+});
+
+describe('filterRowsByCalendarDateRange', () => {
+  it('includes rows within inclusive start/end dates', () => {
+    const rows = [
+      { ID: 1, CreatedAt: '2026-07-29 19:00:00' },
+      { ID: 2, CreatedAt: '2026-07-30 19:00:00' },
+      { ID: 3, CreatedAt: '2026-07-31 08:00:00' },
+    ];
+    const jul30Only = filterRowsByCalendarDateRange(rows, '2026-07-30', '2026-07-30', IANA_IST);
+    assert.deepEqual(jul30Only.map((r) => r.ID), [2]);
+  });
+
+  it('excludes yesterday dinner from today-only range at midnight boundary', () => {
+    const yesterdayDinner = { UserID: '1', CreatedAt: '2026-07-30 19:30:00', TotalCalories: 320 };
+    const todayBreakfast = { UserID: '2', CreatedAt: '2026-07-31 07:00:00', TotalCalories: 200 };
+    const rows = [yesterdayDinner, todayBreakfast];
+    const todayOnly = filterRowsByCalendarDateRange(rows, '2026-07-31', '2026-07-31', IANA_IST);
+    assert.deepEqual(todayOnly.map((r) => r.UserID), ['2']);
+  });
+});
+
+describe('applyDateRangeFilterWidened', () => {
+  it('expands start/end by ±1 calendar day in UTC bounds', () => {
+    const calls = [];
+    const query = {
+      gte(col, val) {
+        calls.push(['gte', col, val]);
+        return this;
+      },
+      lte(col, val) {
+        calls.push(['lte', col, val]);
+        return this;
+      },
+    };
+    applyDateRangeFilterWidened(query, 'CreatedAt', '2026-07-30', '2026-07-31', IANA_IST);
+    assert.deepEqual(calls, [
+      ['gte', 'CreatedAt', '2026-07-28T18:30:00.000Z'],
+      ['lte', 'CreatedAt', '2026-08-01T18:29:59.999Z'],
+    ]);
   });
 });

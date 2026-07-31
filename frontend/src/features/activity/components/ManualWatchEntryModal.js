@@ -1,9 +1,14 @@
 // src/components/ManualWatchEntryModal.js
 import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
 
 const DEFAULT_SOURCE = "Smartwatch";
+
+function parseKcal(value) {
+  const n = Number(String(value ?? '').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
 
 /**
  * ManualWatchEntryModal
@@ -15,19 +20,29 @@ const ManualWatchEntryModal = ({
   onSave,
   onBack,
   initialCaloriesBurned = '',
+  /** Changes when the underlying capture changes — forces a fresh form. */
+  formKey = null,
+  /** Today's highest logged watch kcal (same-day policy: max, not sum). */
+  todayBaseline = 0,
+  loading = false,
 }) => {
   const [caloriesBurned, setCaloriesBurned] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const kcal = initialCaloriesBurned != null && String(initialCaloriesBurned).trim() !== ''
-      ? String(initialCaloriesBurned).trim()
-      : '';
-    setCaloriesBurned(kcal);
+    if (!isOpen) {
+      setCaloriesBurned('');
+      setError('');
+      return;
+    }
+    if (loading) return;
+    const fromAi = parseKcal(initialCaloriesBurned);
+    const baseline = parseKcal(todayBaseline);
+    const prefill = Math.max(fromAi, baseline);
+    setCaloriesBurned(prefill > 0 ? String(prefill) : '');
     setError('');
-  }, [isOpen, initialCaloriesBurned]);
+  }, [isOpen, initialCaloriesBurned, formKey, todayBaseline, loading]);
 
   const resetForm = () => {
     setCaloriesBurned("");
@@ -66,6 +81,21 @@ const ManualWatchEntryModal = ({
 
   if (!isOpen) return null;
 
+  const enteredKcal = parseKcal(caloriesBurned);
+  const baselineKcal = parseKcal(todayBaseline);
+  const noChange = !loading && enteredKcal > 0 && enteredKcal <= baselineKcal;
+  const saveDisabled = isSaving || loading || noChange;
+
+  const saveLabel = (() => {
+    if (isSaving) return 'Saving…';
+    if (loading) return 'Loading…';
+    if (noChange) return 'Up to date';
+    if (baselineKcal > 0 && enteredKcal > baselineKcal) {
+      return `Update to ${enteredKcal} kcal`;
+    }
+    return 'Log Activity';
+  })();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
@@ -85,17 +115,34 @@ const ManualWatchEntryModal = ({
             <X className="w-5 h-5 text-gray-400" />
           </button>
           <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
-            <EmojiOrNative emoji="⌚" className="w-9 h-9" nativeClassName="text-3xl" />
+            <img
+              src={`${process.env.PUBLIC_URL || ''}/emoji/1f3cb-green.svg`}
+              alt=""
+              draggable={false}
+              aria-hidden="true"
+              className="h-9 w-9 inline-block select-none object-contain"
+            />
           </div>
           <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
-          <p className="text-xs text-gray-400 mt-0.5">How much calories burned in workout</p>
+          <p className="text-xs text-gray-400 mt-0.5">How much you&apos;ve burned so far today</p>
         </div>
 
         <div className="p-5 space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Loading today&apos;s total…
+            </div>
+          ) : (
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
               Calories Burned (kcal) <span className="text-red-500">*</span>
             </label>
+            {baselineKcal > 0 && (
+              <p className="mb-2 text-xs text-emerald-700">
+                {/* Logged today: {baselineKcal} kcal — enter a higher total to update */}
+              </p>
+            )}
             <input
               type="text"
               inputMode="decimal"
@@ -105,10 +152,12 @@ const ManualWatchEntryModal = ({
               placeholder="e.g., 350"
               min="1"
               max="10000"
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white"
+              disabled={isSaving}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white disabled:opacity-60"
               style={{ fontSize: "16px" }}
             />
           </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">
@@ -128,7 +177,7 @@ const ManualWatchEntryModal = ({
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={saveDisabled}
             className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSaving ? (
@@ -140,7 +189,7 @@ const ManualWatchEntryModal = ({
                 Saving...
               </>
             ) : (
-              <>Log Activity</>
+              <>{saveLabel}</>
             )}
           </button>
         </div>

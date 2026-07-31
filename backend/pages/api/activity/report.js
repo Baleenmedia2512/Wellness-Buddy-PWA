@@ -1,6 +1,11 @@
 ﻿import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { validateActivityReport } from '../../../features/activity/activity-report.validators.js';
-import { getActivitySummary, getActivityDetails, getActivityMemberSummary } from '../../../features/activity/activity-report.service.js';
+import {
+  getActivitySummary,
+  getActivityDetails,
+  getActivityMemberSummary,
+  getActivityReportBootstrap,
+} from '../../../features/activity/activity-report.service.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
@@ -11,6 +16,10 @@ export default async function handler(req, res) {
   return runService(res, () => {
     const params = validateActivityReport(req.query);
     
+    if (params.activityType === 'bootstrap') {
+      return getActivityReportBootstrap(params);
+    }
+
     if (params.activityType === 'summary') {
       return getActivitySummary(params);
     }
@@ -18,7 +27,7 @@ export default async function handler(req, res) {
     if (params.activityType === 'member-summary') {
       return getActivityMemberSummary(params);
     }
-    
+
     return getActivityDetails(params);
   });
 }

@@ -7,29 +7,31 @@
  */
 import React from 'react';
 import { useWeightForm } from '../hooks/useWeightForm';
+import { useLastWeightReference } from '../hooks/useLastWeightReference';
+import { getCachedLatestWeight } from '../services/weight.api';
 import ManualEntryTypeSelect from './ManualEntryTypeSelect';
 import ManualEntryHeader from './ManualEntryHeader';
 import WeightFormFields from './WeightFormFields';
 
-const ManualWeightEntryModal = ({
-  isOpen,
-  onClose,
+function ManualWeightEntryForm({
   onSave,
+  onClose,
   imagePreview,
   onBack,
-  lastWeight,
   initialWeightValue = null,
   initialWeightUnit = null,
   skipTypeSelect = false,
-}) => {
+  cachedLastWeight = null,
+}) {
+  const resolvedInitial = initialWeightValue ?? cachedLastWeight?.value ?? null;
+
   const vm = useWeightForm({
     onSave,
     onClose,
-    initialWeightValue,
+    initialWeightValue: resolvedInitial,
     initialWeightUnit,
     skipTypeSelect,
   });
-  if (!isOpen) return null;
 
   const showImage =
     imagePreview && typeof imagePreview === 'string' &&
@@ -51,22 +53,6 @@ const ManualWeightEntryModal = ({
                 <div className="relative rounded-xl overflow-hidden bg-gray-100" style={{ height: '180px' }}>
                   <img src={imagePreview} alt="Weight scale"
                     style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-                </div>
-              )}
-              {lastWeight && (
-                <div className="flex items-center gap-2 bg-purple-50 border border-purple-100 rounded-xl px-3 py-2">
-                  <span className="text-sm">📌</span>
-                  <div>
-                    <p className="text-xs text-purple-600 font-semibold">Last entry</p>
-                    <p className="text-xs text-purple-800 font-bold">
-                      {lastWeight.value} {lastWeight.unit || 'kg'}
-                      {lastWeight.date && (
-                        <span className="font-normal text-purple-500 ml-1.5">
-                          — {new Date(lastWeight.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
-                    </p>
-                  </div>
                 </div>
               )}
               <div className="space-y-3">
@@ -94,7 +80,7 @@ const ManualWeightEntryModal = ({
               <button
                 onClick={vm.handleSave}
                 disabled={!vm.canSubmit}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {vm.isSaving ? (
                   <span className="flex items-center justify-center gap-1.5">
@@ -110,6 +96,43 @@ const ManualWeightEntryModal = ({
         )}
       </div>
     </div>
+  );
+}
+
+const ManualWeightEntryModal = ({
+  isOpen,
+  onClose,
+  onSave,
+  imagePreview,
+  onBack,
+  userId = null,
+  lastWeight: lastWeightProp = null,
+  initialWeightValue = null,
+  initialWeightUnit = null,
+  skipTypeSelect = false,
+}) => {
+  // Keep cache warm even while modal is closed.
+  useLastWeightReference({
+    userId,
+    enabled: !!userId && !lastWeightProp,
+  });
+
+  if (!isOpen) return null;
+
+  const cachedLastWeight = lastWeightProp ?? (userId ? getCachedLatestWeight(userId) : null);
+
+  return (
+    <ManualWeightEntryForm
+      key={`${userId}-${initialWeightValue ?? cachedLastWeight?.value ?? 'empty'}`}
+      onSave={onSave}
+      onClose={onClose}
+      imagePreview={imagePreview}
+      onBack={onBack}
+      initialWeightValue={initialWeightValue}
+      initialWeightUnit={initialWeightUnit}
+      skipTypeSelect={skipTypeSelect}
+      cachedLastWeight={cachedLastWeight}
+    />
   );
 };
 

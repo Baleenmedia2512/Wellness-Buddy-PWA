@@ -7,11 +7,48 @@
  */
 import { useState } from 'react';
 import { UNDO_SECONDS } from '../services/weightDashboardFormatter';
+import { UNDO_SECONDS as DIARY_UNDO_SECONDS } from '../../nutrition/hooks/useNutritionUndo';
 
 export function useWeightUndoActions({
   user, apiBaseUrl, userIdRef, setWeightHistory, setSelectedEntry,
+  onDeleteWithUndo,
+  onDeleteUndoCancel,
+  undoSeconds = UNDO_SECONDS,
 }) {
   const [undoState, setUndoState] = useState({});
+
+  const performDeleteRequest = async (entryToDelete) => {
+    const userId = userIdRef.current || user?.id;
+    const r = await fetch(`${apiBaseUrl}/api/weight/delete`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, entryId: entryToDelete.ID }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) throw new Error(data.message || 'Failed to delete entry');
+  };
+
+  const handleDeleteEntryFromModal = async (entryToDelete) => {
+    if (!entryToDelete?.ID) return;
+    setSelectedEntry(null);
+    const expiresAt = Date.now() + DIARY_UNDO_SECONDS * 1000;
+
+    if (typeof onDeleteWithUndo === 'function') {
+      onDeleteWithUndo({ entryId: entryToDelete.ID, expiresAt });
+    }
+
+    setWeightHistory((prev) => prev.filter((e) => e.ID !== entryToDelete.ID));
+
+    try {
+      await performDeleteRequest(entryToDelete);
+    } catch (err) {
+      console.error('Delete error:', err);
+      onDeleteUndoCancel?.();
+      setWeightHistory((prev) => (
+        prev.some((e) => e.ID === entryToDelete.ID) ? prev : [entryToDelete, ...prev]
+      ));
+      alert(err.message || 'Failed to delete. Please try again.');
+    }
+  };
 
   const handleDeleteEntry = async (entryToDelete) => {
     const placeholder = {
@@ -108,6 +145,7 @@ export function useWeightUndoActions({
 
   return {
     undoState,
-    handleDeleteEntry, handleUndoRestore, handleUndoExpire, handleUpdateEntry,
+    handleDeleteEntry, handleDeleteEntryFromModal,
+    handleUndoRestore, handleUndoExpire, handleUpdateEntry,
   };
 }

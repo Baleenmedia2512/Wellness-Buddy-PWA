@@ -10,6 +10,7 @@ export {
   addUtcDays,
   timestampToCalendarYmd,
   filterRowsByCalendarDay,
+  filterRowsByCalendarDateRange,
   timeOfDayInTimezone,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
@@ -20,6 +21,7 @@ export {
   normalizeFoodCreatedAt,
   resolveFoodTimestamp,
   filterFoodRowsByCalendarDay,
+  filterFoodRowsByCalendarDateRange,
 } from './foodTimestamp.js';
 
 export {
@@ -34,6 +36,7 @@ export {
   applyDayFilter,
   applyDayFilterWidened,
   applyDateRangeFilter,
+  applyDateRangeFilterWidened,
   applySinceDayStartFilter,
   applyBeforeDayFilter,
 } from './applyDayFilter.js';
