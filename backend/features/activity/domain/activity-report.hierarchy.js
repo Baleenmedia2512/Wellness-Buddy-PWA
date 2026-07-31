@@ -1,8 +1,9 @@
 /**
- * Activity Report team scope — dual-coaching hierarchy including Active + Inactive members.
+ * Activity Report team scope — dual-coaching hierarchy, Active members only.
  * Uses indexed CoachId lookups per level (no full team_table scan).
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 
 const MEMBER_SELECT = 'UserId, UserName, CoachId, CoachTeamId, Status, Role';
 
@@ -31,7 +32,8 @@ async function resolveCoachPartnerIds(supabase, userIdNum, userRow) {
 }
 
 /**
- * Walk the coach downline (all statuses) using dual-coaching level rules.
+ * Walk the coach downline (Active only) using dual-coaching level rules.
+ * Same audience as getDualCoachingTeamHierarchy — scoped to this coach's tree.
  *
  * @param {number} userId
  * @returns {Promise<{ directIds: number[], fullIds: number[] }>}
@@ -44,6 +46,7 @@ export async function buildActivityReportCoachScope(userId) {
     .from('team_table')
     .select(MEMBER_SELECT)
     .eq('UserId', userIdNum)
+    .eq('Status', 'Active')
     .maybeSingle();
 
   if (userError) throw userError;
@@ -63,6 +66,7 @@ export async function buildActivityReportCoachScope(userId) {
       .from('team_table')
       .select(MEMBER_SELECT)
       .eq('UserId', coCoachPeerId)
+      .eq('Status', 'Active')
       .maybeSingle();
 
     if (partner) {
@@ -79,7 +83,8 @@ export async function buildActivityReportCoachScope(userId) {
     const { data: levelMembers, error: levelError } = await supabase
       .from('team_table')
       .select(MEMBER_SELECT)
-      .in('CoachId', currentCoachIds);
+      .in('CoachId', currentCoachIds)
+      .eq('Status', 'Active');
 
     if (levelError) throw levelError;
     if (!levelMembers?.length) break;
@@ -89,6 +94,7 @@ export async function buildActivityReportCoachScope(userId) {
     for (const member of levelMembers) {
       if (processed.has(member.UserId)) continue;
       if (partnerIds.includes(member.UserId) && member.UserId !== userIdNum) continue;
+      if (!isActiveTeamStatus(member.Status)) continue;
 
       processed.add(member.UserId);
       hierarchy.push({
@@ -116,36 +122,4 @@ export async function buildActivityReportCoachScope(userId) {
       .map((m) => m.UserId)
       .filter(Boolean),
   };
-}
-
-/**
- * Admin/developer scope — indexed lookups only (no full-table context load).
- *
- * @param {number} userId
- * @returns {Promise<{ directIds: number[], fullIds: number[] }>}
- */
-export async function buildActivityReportAdminScope(userId) {
-  const supabase = getSupabaseClient();
-  const userIdNum = Number(userId);
-
-  const [directResult, fullResult] = await Promise.all([
-    supabase
-      .from('team_table')
-      .select('UserId')
-      .eq('CoachId', userIdNum),
-    supabase
-      .from('team_table')
-      .select('UserId')
-      .in('Status', ['Active', 'Inactive']),
-  ]);
-
-  if (directResult.error) throw directResult.error;
-  if (fullResult.error) throw fullResult.error;
-
-  const directIds = (directResult.data || []).map((row) => row.UserId).filter(Boolean);
-  const fullIds = (fullResult.data || [])
-    .map((row) => row.UserId)
-    .filter((id) => id !== userIdNum);
-
-  return { directIds, fullIds };
 }

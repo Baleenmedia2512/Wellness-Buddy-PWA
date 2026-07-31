@@ -1,13 +1,10 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
- * Direct and Full include all team members (Active + Inactive).
+ * Direct and Full = Active members in the logged-in coach's hierarchy only.
  * Uses indexed CoachId lookups per level — never loadReportingContext (times out).
  */
-import {
-  buildActivityReportAdminScope,
-  buildActivityReportCoachScope,
-} from './activity-report.hierarchy.js';
+import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
 
 export const TEAM_SCOPES = Object.freeze({
   MINE: 'mine',
@@ -37,22 +34,10 @@ function buildTeamScopeCounts(directIds, fullIds) {
 }
 
 /**
- * Coach/upline: dual-coaching hierarchy (level 1 = direct, all downline = full).
+ * Coach / upline / admin — same dual-coaching tree (Active downline only).
  */
-async function resolveCoachScope(userId) {
+async function resolveTeamScope(userId) {
   const { directIds, fullIds } = await buildActivityReportCoachScope(userId);
-  return {
-    directIds,
-    fullIds,
-    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds),
-  };
-}
-
-/**
- * Admin/developer: all team_table members (Active + Inactive).
- */
-async function resolveAdminScope(userId) {
-  const { directIds, fullIds } = await buildActivityReportAdminScope(userId);
   return {
     directIds,
     fullIds,
@@ -77,11 +62,7 @@ export async function resolveActivityReportUserIds({ userId, role, teamScope }) 
     };
   }
 
-  const resolved = (role === 'admin' || role === 'developer')
-    ? await resolveAdminScope(userId)
-    : await resolveCoachScope(userId);
-
-  const { directIds, fullIds, teamScopeCounts } = resolved;
+  const { directIds, fullIds, teamScopeCounts } = await resolveTeamScope(userId);
 
   if (!teamScopeCounts.hasTeam) {
     scope = TEAM_SCOPES.MINE;

@@ -52,7 +52,8 @@ export async function fetchMemberDetails(userIds) {
   const { data, error } = await supabase
     .from('team_table')
     .select('UserId, UserName, PhoneNumber, Email, CoachId, Role, Status')
-    .in('UserId', userIds);
+    .in('UserId', userIds)
+    .eq('Status', 'Active');
   
   if (error) throw error;
   return data || [];
