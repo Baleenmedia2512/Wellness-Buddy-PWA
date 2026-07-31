@@ -140,7 +140,7 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-gray-900 text-base leading-tight">Personalized Protein</h2>
+            <h2 className="font-bold text-gray-900 text-base leading-tight">Shake</h2>
             <p className="text-xs text-gray-500">Select Number of scoops used in this shake</p>
           </div>
           <button

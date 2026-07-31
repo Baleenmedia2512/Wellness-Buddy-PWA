@@ -123,7 +123,7 @@ const ManualWatchEntryModal = ({
               className="h-9 w-9 inline-block select-none object-contain"
             />
           </div>
-          <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
+          <h2 className="truncate text-base font-bold text-gray-800 tracking-tight">Calories burnt</h2>
           <p className="text-xs text-gray-400 mt-0.5">How much you&apos;ve burned so far today</p>
         </div>
 
