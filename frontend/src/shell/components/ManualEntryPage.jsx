@@ -130,14 +130,51 @@ function shakePayloadToAnalysis(payload) {
   };
 }
 
-function AiCreditsPanel({ credits, loading, outOfCredits }) {
-  const resetIn = useCreditsResetCountdown(credits?.timezoneIana);
+function CreditsRefreshRow({ timezoneIana, muted = false, className = '' }) {
+  const resetIn = useCreditsResetCountdown(timezoneIana);
+
+  return (
+    <div
+      className={`mt-2.5 flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-2 ${className}`}
+      style={{ background: muted ? '#f3f4f6' : BRAND.mint }}
+    >
+      <span
+        className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+          muted ? 'text-gray-500' : 'text-emerald-800'
+        }`}
+      >
+        <Timer
+          className={`h-3.5 w-3.5 ${muted ? 'text-gray-400' : 'text-emerald-700'}`}
+          aria-hidden
+        />
+        AI credit will unlock in
+      </span>
+      <span
+        className={`font-mono text-sm font-extrabold tabular-nums ${
+          muted ? 'text-gray-600' : 'text-emerald-900'
+        }`}
+        aria-live="polite"
+      >
+        {resetIn}
+      </span>
+    </div>
+  );
+}
+
+function AiCreditsPanel({ credits, loading, outOfCredits, embedded = false, inButton = false }) {
 
   if (loading && !credits) {
+    const loadingShell = inButton
+      ? 'w-full rounded-lg border border-green-100 bg-white shadow-sm'
+      : embedded
+        ? outOfCredits
+          ? 'rounded-xl border border-gray-100 bg-gray-50'
+          : 'rounded-xl border border-green-100 bg-white shadow-sm'
+        : 'rounded-2xl border border-green-100 bg-white shadow-sm';
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-green-100 bg-white px-3.5 py-3 shadow-sm">
-        <Loader2 className="h-4 w-4 animate-spin text-emerald-700" />
-        <span className="text-sm text-green-700/70">Checking AI credits…</span>
+      <div className={`flex items-center gap-1.5 ${inButton ? 'px-2 py-1.5' : 'px-3.5 py-3'} ${loadingShell}`}>
+        <Loader2 className={`${inButton ? 'h-3 w-3' : 'h-4 w-4'} animate-spin text-emerald-700`} />
+        <span className={`${inButton ? 'text-[10px]' : 'text-sm'} text-green-700/70`}>Checking AI credits…</span>
       </div>
     );
   }
@@ -148,17 +185,33 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
   const remaining = Math.max(0, Number(credits.remaining) ?? Math.max(0, limit - used));
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
 
+  const shellClass = inButton
+    ? 'w-full overflow-hidden rounded-lg border border-green-100 bg-white text-left shadow-sm'
+    : embedded
+      ? outOfCredits
+        ? 'overflow-hidden rounded-xl border border-gray-100 bg-gray-50'
+        : 'overflow-hidden rounded-xl border border-green-100 bg-white shadow-sm'
+      : 'overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm';
+
+  const trackBg = embedded && outOfCredits ? '#e5e7eb' : BRAND.mint;
+  const padClass = inButton ? 'px-2 py-1.5' : 'px-3.5 py-3';
+  const labelClass = inButton
+    ? 'text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700/80'
+    : 'text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/80';
+  const countClass = inButton ? 'text-[11px] font-bold text-gray-900' : 'text-sm font-bold text-gray-900';
+  const barClass = inButton ? 'mt-1 h-1' : 'mt-2 h-1.5';
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
-      <div className="px-3.5 py-3">
-        <div className="flex items-start justify-between gap-3">
+    <div className={shellClass}>
+      <div className={padClass}>
+        <div className={`flex items-center justify-between ${inButton ? 'gap-2' : 'gap-3'}`}>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/80">
+            <p className={labelClass}>
               Daily AI credits
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-sm font-bold text-gray-900">
+            <p className={countClass}>
               <span className={outOfCredits ? 'text-amber-600' : 'text-emerald-700'}>
                 {remaining}
               </span>
@@ -166,7 +219,7 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
             </p>
           </div>
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: BRAND.mint }}>
+        <div className={`${barClass} overflow-hidden rounded-full`} style={{ background: trackBg }}>
           <div
             className="h-full rounded-full transition-all"
             style={{
@@ -174,15 +227,6 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
               background: outOfCredits ? '#d97706' : BRAND.active,
             }}
           />
-        </div>
-        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl px-2.5 py-2" style={{ background: BRAND.mint }}>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-            <Timer className="h-3.5 w-3.5 text-emerald-700" aria-hidden />
-            {outOfCredits ? 'New AI unlocks in' : 'Credits refresh in'}
-          </span>
-          <span className="font-mono text-sm font-extrabold tabular-nums text-emerald-900" aria-live="polite">
-            {resetIn}
-          </span>
         </div>
       </div>
       {/* <div
@@ -433,7 +477,6 @@ export default function ManualEntryPage({
   // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
-  const aiLockedUi = outOfCredits;
   const aiDisabled = aiStarting || outOfCredits || creditsChecking;
 
   return (
@@ -471,17 +514,9 @@ export default function ManualEntryPage({
 
       {/* Body — flex layout, no page scroll */}
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {showCreditsPanel && (
-          <AiCreditsPanel
-            credits={credits}
-            loading={creditsLoading}
-            outOfCredits={outOfCredits}
-          />
-        )}
-
         {/* Photo: thumb + AI CTA when AI on; full preview when AI off */}
         {showAiButton ? (
-          <section className="flex shrink-0 items-stretch gap-2.5">
+          <section className="flex shrink-0 items-start gap-2.5">
             {previewSrc ? (
               <div className="h-[4.75rem] w-[4.75rem] shrink-0 overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
                 <img
@@ -493,41 +528,63 @@ export default function ManualEntryPage({
             ) : (
               <div className="h-[4.75rem] w-[4.75rem] shrink-0 rounded-2xl" style={{ background: BRAND.mint }} />
             )}
-            <button
-              type="button"
-              onClick={handleAiAnalyze}
-              disabled={aiDisabled}
-              className={[
-                'flex min-h-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-center transition active:scale-[0.99]',
-                aiLockedUi
-                  ? 'cursor-not-allowed bg-white text-gray-400 shadow-sm ring-1 ring-gray-200'
-                  : 'text-white shadow-lg',
-              ].join(' ')}
-              style={aiLockedUi ? undefined : { background: BRAND.hero }}
-            >
-              {aiStarting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              {outOfCredits ? (
+                <div className="flex w-full flex-col gap-2 rounded-2xl bg-white px-3 py-2.5 text-center shadow-sm ring-1 ring-gray-200">
+                  <div className="flex flex-col items-center gap-1 text-gray-400">
+                    <Sparkles className="h-5 w-5" aria-hidden />
+                    <span className="text-sm font-bold leading-tight">Daily limit reached</span>
+                  </div>
+                  {showCreditsPanel && credits && (
+                    <AiCreditsPanel
+                      credits={credits}
+                      loading={false}
+                      outOfCredits={outOfCredits}
+                      embedded
+                    />
+                  )}
+                  {showCreditsPanel && creditsLoading && !credits && (
+                    <AiCreditsPanel credits={null} loading outOfCredits={false} embedded />
+                  )}
+                  {!aiStarting && showCreditsPanel && credits && (
+                    <CreditsRefreshRow timezoneIana={credits.timezoneIana} muted />
+                  )}
+                </div>
               ) : (
-                <Sparkles className="h-5 w-5" />
+                <button
+                  type="button"
+                  onClick={handleAiAnalyze}
+                  disabled={aiDisabled}
+                  className={[
+                    'flex w-full flex-col items-stretch gap-1.5 rounded-2xl px-2.5 py-2 text-center text-white shadow-lg transition active:scale-[0.99]',
+                    creditsChecking ? 'opacity-80' : '',
+                  ].join(' ')}
+                  style={{ background: BRAND.hero }}
+                >
+                  <div className="flex flex-col items-center gap-0.5">
+                    {aiStarting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    <span className="text-xs font-bold leading-tight">
+                      {aiStarting ? 'Starting…' : 'Analyze with AI'}
+                    </span>
+                  </div>
+                  {showCreditsPanel && credits && (
+                    <AiCreditsPanel
+                      credits={credits}
+                      loading={false}
+                      outOfCredits={outOfCredits}
+                      inButton
+                    />
+                  )}
+                  {showCreditsPanel && creditsLoading && !credits && (
+                    <AiCreditsPanel credits={null} loading outOfCredits={false} inButton />
+                  )}
+                </button>
               )}
-              <span className="text-sm font-bold leading-tight">
-                {aiStarting
-                  ? 'Starting…'
-                  : outOfCredits
-                    ? 'Daily limit reached'
-                    : 'Analyze with AI'}
-              </span>
-              {!aiStarting && !outOfCredits && (
-                <span className="text-[10px] font-medium text-emerald-200">
-                  Uses 1 credit · result in Diary
-                </span>
-              )}
-              {outOfCredits && (
-                <span className="text-[10px] font-medium text-gray-400">
-                  Use a type below instead
-                </span>
-              )}
-            </button>
+            </div>
           </section>
         ) : (
           <section className="shrink-0">
@@ -564,7 +621,7 @@ export default function ManualEntryPage({
               {showAiButton ? 'Or log as' : 'Log as'}
             </p>
             {showAiButton && (
-              <p className="text-[10px] font-medium text-green-600/70">0 credits · no AI</p>
+              <p className="text-[10px] font-medium text-green-600/70"></p>
             )}
           </div>
           <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2">
