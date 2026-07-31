@@ -185,7 +185,7 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
           </span>
         </div>
       </div>
-      <div
+      {/* <div
         className="flex items-start gap-1.5 border-t border-green-50 px-3.5 py-2 text-[11px] leading-snug text-emerald-800/80"
         style={{ background: BRAND.mint }}
       >
@@ -193,7 +193,7 @@ function AiCreditsPanel({ credits, loading, outOfCredits }) {
         {outOfCredits
           ? 'Limit reached for today. Log with a type below — no AI charge.'
           : '1 credit = 1 AI run (including unrecognised photos). Types below use 0 credits.'}
-      </div>
+      </div> */}
     </div>
   );
 }
@@ -451,11 +451,9 @@ export default function ManualEntryPage({
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
-            {/* <p className="truncate text-xs text-green-600">
-              {showAiButton
-                ? 'AI analyze, or log a type now'
-                : 'Choose a type to log now'}
-            </p> */}
+            <p className="truncate text-xs text-green-600">
+              What is this image?
+            </p>
           </div>
           <div
             className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"

@@ -618,6 +618,103 @@ function WellnessValleyApp() {
     // set so the background AI analysis can finish and persist to the DB.
   }, []);
 
+  // Open the native share sheet after the user finishes the Classify photo step
+  // (AI analyze or manual type save). Skipped when auto-share is disabled or user
+  // taps "Later — keep in Diary".
+  const shareCaptureAfterClassify = useCallback(
+    async (imageBase64) => {
+      const autoShareEnabled =
+        localStorage.getItem("autoShareOnCapture") !== "false";
+      if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) return;
+
+      foodAutoSharedRef.current = true;
+
+      const dataUrl = imageBase64.startsWith("data:")
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
+
+      const clearOverlayNow = () => {
+        setSharingPendingImage((prev) => {
+          if (prev && prev.startsWith("blob:")) {
+            try {
+              URL.revokeObjectURL(prev);
+            } catch (_) {}
+          }
+          return null;
+        });
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
+      };
+
+      // Snapchat-style "Getting ready to share" overlay while prep runs.
+      setSharingPendingImage(dataUrl);
+      if (sharingPendingTimerRef.current) {
+        clearTimeout(sharingPendingTimerRef.current);
+      }
+      sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
+
+      // Paint overlay before opening the native share sheet.
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+
+      try {
+        const shareDisplayName = await ensureShareDisplayName(
+          savedUserNameRef.current ?? savedUserName,
+          user,
+          apiBaseUrl,
+        );
+        if (shareDisplayName && user?.email) {
+          cacheProfileUserName(user.email, shareDisplayName);
+          setSavedUserName(shareDisplayName);
+        }
+        const shareText = buildQuickShareText(
+          shareDisplayName,
+          getVersionString(),
+        );
+
+        clearOverlayNow();
+        if (Capacitor.isNativePlatform()) {
+          const result = await shareViaCapacitorAPI(dataUrl, {
+            title: shareDisplayName,
+            text: shareText,
+            fileName: `wellness-meal-${Date.now()}.jpg`,
+          });
+          _hasCompletedFirstShareRef.current = true;
+          if (!result?.ok && !result?.dismissed) {
+            foodAutoSharedRef.current = false;
+          }
+        } else {
+          const ok = await shareTextViaWhatsApp(shareText);
+          _hasCompletedFirstShareRef.current = true;
+          if (!ok) foodAutoSharedRef.current = false;
+        }
+      } catch (_) {
+        try {
+          const shareDisplayName = await ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
+          const shareText = buildQuickShareText(
+            shareDisplayName,
+            getVersionString(),
+          );
+          clearOverlayNow();
+          await shareTextViaWhatsApp(shareText);
+          _hasCompletedFirstShareRef.current = true;
+        } catch (__) {
+          foodAutoSharedRef.current = false;
+        }
+      } finally {
+        clearOverlayNow();
+      }
+    },
+    [apiBaseUrl, savedUserName, user],
+  );
+
   // Tag a pending capture row with the correct image type so it is excluded
   // from the nutrition dashboard (which filters on ImageType='food') but the
   // share link continues to work and routes to the correct dashboard tab.
@@ -5134,17 +5231,8 @@ function WellnessValleyApp() {
     }
     imageProcessingInProgress.current = true;
 
-    // ?? [BUG 1 FIX] Snapchat-style overlay must mount BEFORE any setState
-    // below, otherwise React commits a home-screen render during the
-    // FileReader await (~100�300ms flash). URL.createObjectURL is fully
-    // synchronous ? the overlay paints on the SAME frame this function is
-    // called, so the home screen is never visible. The object URL is
-    // revoked when the overlay is cleared (in the share .then / safety
-    // timeout below) to avoid the memory leak.
-    // ? INSTANT SHARE � generate token synchronously so the share sheet
-    // fires on the exact same tick the overlay paints. All async operations
-    // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
-    // that used to add 2�4 s of delay now run AFTER the share is already open.
+    // Pre-generate share token/code synchronously so POST /captures can persist
+    // the row immediately. Share sheet opens only after Classify photo completes.
     const instantToken = crypto.randomUUID();
     const generateInstantShareCode = (length = 8) => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -5155,139 +5243,8 @@ function WellnessValleyApp() {
       return out;
     };
     const instantShareCode = generateInstantShareCode();
-    const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
 
-    // ? Kick off FileReader NOW � before overlay paints � so it runs during
-    // the React commit phase (~16ms). By the time the share IIFE awaits it,
-    // the read is typically already done: net delay � 0ms on the share sheet.
-    const fileDataUrlPromise =
-      Capacitor.isNativePlatform() && file
-        ? new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          })
-        : null;
-
-    // Check user preference for auto-share BEFORE creating overlay
-    const autoShareEnabled =
-      localStorage.getItem("autoShareOnCapture") !== "false";
-
-    // Flag set here so the later share-fire block (post-compression) is skipped.
     foodAutoSharedRef.current = false;
-
-    // Only create share overlay and fire share sheet if auto-share is enabled
-    if (autoShareEnabled) {
-      try {
-        if (file && typeof URL?.createObjectURL === "function") {
-          const objectUrl = URL.createObjectURL(file);
-          setSharingPendingImage(objectUrl);
-        }
-      } catch (_) {
-        /* non-fatal � overlay is a UX nicety */
-      }
-    }
-
-    // Fire share sheet � overlay is now painted (if auto-share enabled) (if auto-share enabled).
-    // On native: await the pre-started FileReader (� 0ms extra wait) then
-    // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
-    // WhatsApp, not just an OG preview card.
-    // On web: fall back to text+URL share.
-    if (autoShareEnabled && !foodAutoSharedRef.current) {
-      foodAutoSharedRef.current = true;
-      const clearOverlayNow = () => {
-        setSharingPendingImage((prev) => {
-          if (prev && prev.startsWith("blob:")) {
-            try {
-              URL.revokeObjectURL(prev);
-            } catch (_) {}
-          }
-          return null;
-        });
-        if (sharingPendingTimerRef.current) {
-          clearTimeout(sharingPendingTimerRef.current);
-          sharingPendingTimerRef.current = null;
-        }
-      };
-      (async () => {
-        try {
-          const shareNamePromise = ensureShareDisplayName(
-            savedUserNameRef.current ?? savedUserName,
-            user,
-            apiBaseUrl,
-          );
-          if (fileDataUrlPromise) {
-            // FileReader started before overlay � usually already resolved.
-            const [fileDataUrl, shareDisplayName] = await Promise.all([
-              fileDataUrlPromise,
-              shareNamePromise,
-            ]);
-            if (shareDisplayName && user?.email) {
-              cacheProfileUserName(user.email, shareDisplayName);
-              setSavedUserName(shareDisplayName);
-            }
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            // Dismiss overlay before opening share sheet — not after user finishes sharing.
-            clearOverlayNow();
-            const result = await shareViaCapacitorAPI(fileDataUrl, {
-              title: shareDisplayName,
-              text: shareText,
-              fileName: `wellness-meal-${Date.now()}.jpg`,
-            });
-            _hasCompletedFirstShareRef.current = true;
-            if (!result?.ok && !result?.dismissed)
-              foodAutoSharedRef.current = false;
-          } else {
-            // Web fallback: text + URL only.
-            const shareDisplayName = await shareNamePromise;
-            if (shareDisplayName && user?.email) {
-              cacheProfileUserName(user.email, shareDisplayName);
-              setSavedUserName(shareDisplayName);
-            }
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            clearOverlayNow();
-            const ok = await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-            if (!ok) foodAutoSharedRef.current = false;
-          }
-        } catch (_) {
-          // Native share failed — fall back to text-only.
-          try {
-            const shareDisplayName = await ensureShareDisplayName(
-              savedUserNameRef.current ?? savedUserName,
-              user,
-              apiBaseUrl,
-            );
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            clearOverlayNow();
-            await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-          } catch (__) {
-            /* ignore */
-          }
-        } finally {
-          clearOverlayNow();
-        }
-      })();
-    }
-
-    // Safety timer: last-resort fallback if the share IIFE somehow never
-    // reaches its `finally` block (e.g. the JS bridge hangs indefinitely).
-    // 120 s is intentionally long � clearOverlayNow() in the `finally` block
-    // always cancels this before it fires under normal operation.
-    if (sharingPendingTimerRef.current)
-      clearTimeout(sharingPendingTimerRef.current);
-    sharingPendingTimerRef.current = setTimeout(() => {
-      setSharingPendingImage((prev) => {
-        if (prev && prev.startsWith("blob:")) {
-          try {
-            URL.revokeObjectURL(prev);
-          } catch (_) {}
-        }
-        return null;
-      });
-    }, 120000);
 
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
@@ -7081,6 +7038,7 @@ function WellnessValleyApp() {
           }}
           onSaved={() => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
+            void shareCaptureAfterClassify(manualEntryPayload.imageBase64);
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
