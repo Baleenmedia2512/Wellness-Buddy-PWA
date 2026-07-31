@@ -10,8 +10,26 @@ import { sendMdtSms } from './data/mdt-sms.client.js';
 
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { syncUserTimezoneIfChanged } from '../user/timezone-sync.service.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
+import { isConsentRecorded } from './domain/consent.rules.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+
+function consentGateOn() {
+  return isEnabled('ff.consent-gate');
+}
+
+function toAuthUserPayload(userInfo, { phone, consentGate } = {}) {
+  const consentRequired = consentGate === true && !isConsentRecorded(userInfo);
+  return {
+    id: userInfo.UserId,
+    username: userInfo.UserName,
+    email: userInfo.Email || '',
+    phone: userInfo.PhoneNumber || phone || '',
+    status: userInfo.Status,
+    consentRequired,
+  };
+}
 
 /** Returns names of missing SMTP env-vars, analogous to getMdtSmsConfigGaps(). */
 function getSmtpConfigGaps() {
@@ -167,7 +185,13 @@ async function createAndDeliverOtp({ recipient, contactType }) {
   }
 }
 
+/**
+ * Enterprise consent: identify (create/find) the user on OTP first.
+ * Consent is recorded later via POST /api/user/consent against this UserId.
+ * New accounts start with ConsentAcceptedAt = null → consentRequired until Agree.
+ */
 async function resolveUserAfterOtp({ recipient, contactType }) {
+  const gate = consentGateOn();
   let userInfo;
   let isNewUser = false;
 
@@ -175,9 +199,10 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
     userInfo = await repo.findUserByPhone(recipient);
     if (!userInfo) {
       const storedPhone = canonicalPhoneForStorage(recipient);
+      const createdAt = nowUtc();
       const { row, isNewUser: created } = await repo.findOrInsertUserByPhone(
         {
-          EntryDateTime: nowUtc(),
+          EntryDateTime: createdAt,
           EntryUser: 'Wellness Valley',
           UserName: usernameFromPhone(recipient),
           Password: 'User@123#',
@@ -191,9 +216,10 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
       userInfo = row;
       isNewUser = created;
       if (created) {
-        logger.info('[verify-otp] new phone user created', {
+        logger.info('[verify-otp] new phone user created (consent pending)', {
           phoneHint: maskPhoneForLog(recipient),
           storedPhoneHint: storedPhone.length >= 4 ? `***${storedPhone.slice(-4)}` : '****',
+          userId: userInfo.UserId,
         });
       } else {
         logger.info('[verify-otp] concurrent-insert resolved: returning existing user', {
@@ -209,20 +235,15 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
     }
     return {
       isNewUser,
-      user: {
-        id: userInfo.UserId,
-        username: userInfo.UserName,
-        email: userInfo.Email || '',
-        phone: userInfo.PhoneNumber || recipient,
-        status: userInfo.Status,
-      },
+      user: toAuthUserPayload(userInfo, { phone: recipient, consentGate: gate }),
     };
   }
 
   userInfo = await repo.findUserByEmail(recipient);
   if (!userInfo) {
+    const createdAt = nowUtc();
     userInfo = await repo.insertUser({
-      EntryDateTime: nowUtc(),
+      EntryDateTime: createdAt,
       EntryUser: 'Wellness Valley',
       UserName: recipient.split('@')[0],
       Password: 'User@123#',
@@ -232,17 +253,12 @@ async function resolveUserAfterOtp({ recipient, contactType }) {
       Email: recipient,
     });
     isNewUser = true;
-    logger.debug('🆕 [verify-otp] New user created:', recipient);
+    logger.debug('🆕 [verify-otp] New user created (consent pending):', recipient);
   }
 
   return {
     isNewUser,
-    user: {
-      id: userInfo.UserId,
-      username: userInfo.UserName,
-      email: userInfo.Email,
-      status: userInfo.Status,
-    },
+    user: toAuthUserPayload(userInfo, { consentGate: gate }),
   };
 }
 
@@ -373,7 +389,8 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
     return { httpStatus: 400, body: { success: false, message: 'Invalid OTP. Please try again.' } };
   }
 
-  const existing = await repo.findUserByEmailLite(recipient);
+  const gate = consentGateOn();
+  const existing = await repo.findUserByEmail(recipient);
   let userInfo;
   let isNewUser = false;
 
@@ -393,7 +410,7 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
       Email: recipient,
     });
     isNewUser = true;
-    logger.debug('🆕 [verify-otp] Demo account created in DB:', recipient);
+    logger.debug('🆕 [verify-otp] Demo account created in DB (consent pending):', recipient);
   }
 
   return {
@@ -402,12 +419,7 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
       success: true,
       message: 'OTP verified successfully',
       isNewUser,
-      user: {
-        id: userInfo.UserId,
-        username: userInfo.UserName,
-        email: userInfo.Email,
-        status: userInfo.Status,
-      },
+      user: toAuthUserPayload(userInfo, { consentGate: gate }),
     },
   };
 }
@@ -444,7 +456,8 @@ export async function verifyOtp(input) {
 
   await repo.markOtpVerified(otpData.ID);
 
-  const { isNewUser, user } = await resolveUserAfterOtp({ recipient, contactType });
+  const resolved = await resolveUserAfterOtp({ recipient, contactType });
+  const { isNewUser, user } = resolved;
 
   await syncUserTimezoneIfChanged(user.id, input.timezoneIana);
 

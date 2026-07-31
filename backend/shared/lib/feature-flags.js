@@ -188,3 +188,12 @@ registerFlag({
   description:    'ADR-0005 — master nutrition knowledge base: search/resolve prefer approved master profiles, pass micros from AI history, draft candidates from successful AI, optional text enrich.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.consent-gate',
+  owner:          '@principal-eng',
+  createdAt:      '2026-07-31',
+  removeBy:       '2027-01-31',
+  description:    'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
+  defaultEnabled: true,
+});

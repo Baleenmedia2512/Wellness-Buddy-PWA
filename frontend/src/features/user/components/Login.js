@@ -1,8 +1,7 @@
 // src/features/user/components/Login.js
 // Orchestrator — wires useAuthFlow + useOtpInput + useResendCountdown.
-// Entry step goes directly to the unified Mobile / Email input (no intro panel).
-// OTP screen auto-verifies via WebOTP (Android) / iOS autofill / paste — no
-// manual Verify button required.
+// Enterprise consent flow: Phone → OTP (identify user) → Consent Form in App.js
+// (bound to userId). Consent is NOT asked before identity is known.
 import React, { useEffect, useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
@@ -18,7 +17,6 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
   const auth = useAuthFlow({ onOtpVerified });
   const otpCtl = useOtpInput(6);
   const resend = useResendCountdown(60, auth.otpSent);
-  // Always start on the email/phone entry — no intro panel step.
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
 
