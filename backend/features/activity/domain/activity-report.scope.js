@@ -2,7 +2,7 @@
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
  * Direct and Full include all team members (Active + Inactive).
- * Co-coach peer is excluded from Direct/Full counts.
+ * Uses indexed CoachId lookups per level — never loadReportingContext (times out).
  */
 import {
   buildActivityReportAdminScope,
