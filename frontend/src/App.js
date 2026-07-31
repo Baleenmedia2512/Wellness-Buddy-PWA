@@ -921,6 +921,7 @@ function WellnessValleyApp() {
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualEntryPayload, setManualEntryPayload] = useState(null);
+  const pendingClassifyRestoredRef = useRef(false);
   /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
   const [tabVisitKeys, setTabVisitKeys] = useState({});
   const bumpTabVisitKey = useCallback((pageId) => {
@@ -949,6 +950,23 @@ function WellnessValleyApp() {
     const handlePopState = (event) => {
       const page = event.state?.wvPage ?? 'main';
       if (page === 'main') {
+        // Incomplete classify flow must survive reload/back — restore Classify photo.
+        const pendingClassify = Session.getPendingClassifyCapture();
+        if (pendingClassify?.captureId && pendingClassify?.imageBase64) {
+          const userId =
+            pendingClassify.userId || Session.getDbUserId() || null;
+          if (userId) {
+            setManualEntryPayload({
+              captureId: pendingClassify.captureId,
+              imageBase64: pendingClassify.imageBase64,
+              userId,
+              originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
+            });
+            setShowManualEntry(true);
+            window.history.pushState({ wvPage: 'manual-entry' }, '');
+            return;
+          }
+        }
         // Returning to home from any full-screen route:
         enrollmentHistoryPushedRef.current = false;
         setShowDashboard(false);
@@ -1113,6 +1131,7 @@ function WellnessValleyApp() {
       !authLoading &&
       !onboardingBlocking &&
       !showDashboard &&
+      !showManualEntry &&
       !showActivityReport &&
       !showActivityTimeReport;
   }, [
@@ -1120,6 +1139,7 @@ function WellnessValleyApp() {
     authLoading,
     onboardingBlocking,
     showDashboard,
+    showManualEntry,
     showActivityReport,
     showActivityTimeReport,
   ]);
@@ -1289,6 +1309,8 @@ function WellnessValleyApp() {
         if (!_launchUrlCheckedRef.current) return;
         // Guard 4: skip unless home screen is the active surface
         if (!_homeScreenActiveRef.current) return;
+        // Guard 4b: skip while Classify photo is pending (log + share required)
+        if (Session.getPendingClassifyCapture()?.captureId) return;
         // Guard 5: skip if ImageUpload is not yet mounted
         if (!fileInputRef.current?.openCamera) return;
         // Guard 6: skip for the entire session when launched via /share deep link
@@ -1825,6 +1847,54 @@ function WellnessValleyApp() {
     }
   }, []);
 
+  // Restore Classify photo after reload / app relaunch until log + share completes.
+  useEffect(() => {
+    if (authLoading || forceLoggedOut) return;
+    if (pendingClassifyRestoredRef.current) return;
+    if (showManualEntry && manualEntryPayload) return;
+
+    const pending = Session.getPendingClassifyCapture();
+    if (!pending?.captureId || !pending?.imageBase64) return;
+
+    let cancelled = false;
+    (async () => {
+      let userId = pending.userId || user?.id || Session.getDbUserId();
+      if (!userId && user) {
+        try {
+          userId = await getUserId(user);
+        } catch (_) {}
+      }
+      if (!userId || cancelled) return;
+
+      pendingClassifyRestoredRef.current = true;
+      setManualEntryPayload({
+        captureId: pending.captureId,
+        imageBase64: pending.imageBase64,
+        userId,
+        originalCapturedAt: pending.originalCapturedAt ?? null,
+      });
+      setShowManualEntry(true);
+      window.history.pushState({ wvPage: 'manual-entry' }, '');
+
+      if (pending.awaitingShare) {
+        const result = await shareCaptureAfterClassify(pending.imageBase64);
+        if (cancelled) return;
+        if (result?.shared) {
+          Session.clearPendingClassifyCapture();
+          setShowManualEntry(false);
+          setManualEntryPayload(null);
+          setImagePreview(null);
+          const currentWvPage = window.history.state?.wvPage;
+          if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, forceLoggedOut, user, showManualEntry, manualEntryPayload, shareCaptureAfterClassify]);
+
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
@@ -2168,6 +2238,10 @@ function WellnessValleyApp() {
   const navigateTo = useCallback((targetPage) => {
     // Onboarding owns the screen — do not open Profile / Diary / etc mid-wizard.
     if (onboardingBlockingRef.current && targetPage !== 'home') {
+      return;
+    }
+    if (Session.getPendingClassifyCapture()?.captureId) {
+      showToast('Log and share your photo to continue');
       return;
     }
 
@@ -5626,6 +5700,11 @@ function WellnessValleyApp() {
         imageBase64: processedImage,
         userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
       });
+      Session.setPendingClassifyCapture({
+        captureId: captureShare.id,
+        imageBase64: processedImage,
+        userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
+      });
       setShowManualEntry(true);
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
@@ -6153,6 +6232,7 @@ function WellnessValleyApp() {
       Session.clearDbUserId();
       // Clear demo meal history on sign-out
       Session.clearDemoMeals();
+      Session.clearPendingClassifyCapture();
       // Clear profile-complete flag so a new/different user sees the gate if needed
       const emailKey = Session.getUserEmail() || "";
       Session.clearProfileComplete(emailKey);
@@ -7037,12 +7117,14 @@ function WellnessValleyApp() {
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
           onBack={() => {
+            Session.clearPendingClassifyCapture();
             setShowManualEntry(false);
             setManualEntryPayload(null);
             setImagePreview(null);
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
+          onAwaitingShare={() => Session.markPendingClassifyAwaitingShare()}
           onSaved={async () => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
             return shareCaptureAfterClassify(manualEntryPayload.imageBase64);

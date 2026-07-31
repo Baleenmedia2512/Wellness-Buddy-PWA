@@ -248,6 +248,7 @@ export default function ManualEntryPage({
   originalCapturedAt = null,
   onBack,
   onSaved,
+  onAwaitingShare,
   onStartBackgroundAi,
   onToast,
 }) {
@@ -344,6 +345,8 @@ export default function ManualEntryPage({
     const result = await onSaved?.();
     if (result?.shared) {
       onBack?.();
+    } else {
+      onAwaitingShare?.();
     }
   };
 
