@@ -19,6 +19,11 @@ function mapRoleForApi(userRole) {
   return 'member';
 }
 
+function isBootstrapUnsupportedResponse(data) {
+  const msg = String(data?.message || '').toLowerCase();
+  return msg.includes('activitytype') || msg.includes('bootstrap');
+}
+
 // Activity type metadata
 const ACTIVITY_TYPES = [
   { id: 'weight', label: 'Weight', icon: Scale, color: 'blue', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
@@ -110,51 +115,112 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return `${year}-${month}-${day}`;
   };
 
-  const fetchSummary = useCallback(async () => {
+  const buildReportParams = useCallback((activityType, extra = {}) => {
+    const params = new URLSearchParams({
+      userId: String(user.id),
+      activityType,
+      dateRange,
+      role: effectiveRole,
+      teamScope,
+    });
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value != null && value !== '') params.set(key, String(value));
+    });
+    if (dateRange === 'custom' && customStartDate && customEndDate) {
+      params.set('startDate', formatDateForApi(customStartDate));
+      params.set('endDate', formatDateForApi(customEndDate));
+    }
+    return params;
+  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
+
+  const applyReportMeta = useCallback((data) => {
+    if (data.teamScopeCounts) {
+      setTeamScopeCounts(data.teamScopeCounts);
+      setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
+    }
+    if (data.teamScope) {
+      setTeamScope(data.teamScope);
+    }
+  }, []);
+
+  const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
+    const [summaryRes, memberRes, detailRes] = await Promise.all([
+      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`, { cache: 'no-store' }),
+      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`, { cache: 'no-store' }),
+      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`, { cache: 'no-store' }),
+    ]);
+
+    const [summaryData, memberData, detailData] = await Promise.all([
+      summaryRes.json(),
+      memberRes.json(),
+      detailRes.json(),
+    ]);
+
+    if (!summaryRes.ok || !summaryData.success) {
+      throw new Error(summaryData.message || 'Failed to fetch activity summary');
+    }
+    if (!memberRes.ok || !memberData.success) {
+      throw new Error(memberData.message || 'Failed to fetch member summaries');
+    }
+    if (!detailRes.ok || !detailData.success) {
+      throw new Error(detailData.message || 'Failed to fetch activity details');
+    }
+
+    setSummary(summaryData.summary || null);
+    applyReportMeta(summaryData);
+    setMemberSummaries(memberData.members || []);
+    setMemberStats(memberData.stats || null);
+    setDetailRecords(detailData.records || []);
+    setCurrentPage(1);
+  }, [apiBaseUrl, buildReportParams, applyReportMeta]);
+
+  const fetchBootstrap = useCallback(async (detailActivity = 'education') => {
     if (!user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
     setLoading(true);
+    setMemberSummaryLoading(true);
     setError('');
 
     try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType: 'summary',
-        dateRange,
-        role: effectiveRole,
-        teamScope,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
-
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', { detailActivity: detailActivity || 'education' })}`,
+        { cache: 'no-store' },
+      );
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch activity summary');
+      // Older backends (not yet deployed with bootstrap) reject the new activityType.
+      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
+        await fetchLegacyReportBundle(detailActivity);
+        return;
       }
 
-      setSummary(data.summary);
-      if (data.teamScopeCounts) {
-        setTeamScopeCounts(data.teamScopeCounts);
-        setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load activity report');
       }
-      if (data.teamScope && data.teamScope !== teamScope) {
-        setTeamScope(data.teamScope);
-      }
+
+      setSummary(data.summary || null);
+      setMemberSummaries(data.members || []);
+      setMemberStats(data.stats || null);
+      setDetailRecords(data.records || []);
+      setCurrentPage(1);
+      applyReportMeta(data);
     } catch (err) {
-      setError(err.message || 'Failed to load activity summary');
+      setError(err.message || 'Failed to load activity report');
     } finally {
       setLoading(false);
+      setMemberSummaryLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
+  }, [
+    user?.id,
+    apiBaseUrl,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    buildReportParams,
+    fetchLegacyReportBundle,
+    applyReportMeta,
+  ]);
 
   const fetchDetails = useCallback(async (activityType) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
@@ -164,22 +230,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setError('');
 
     try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType,
-        dateRange,
-        role: effectiveRole,
-        teamScope,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType)}`,
+        { cache: 'no-store' },
+      );
 
       const data = await response.json();
 
@@ -194,50 +248,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } finally {
       setLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
-
-  const fetchMemberSummary = useCallback(async () => {
-    if (!user?.id || !apiBaseUrl) return;
-    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
-
-    setMemberSummaryLoading(true);
-    try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType: 'member-summary',
-        dateRange,
-        role: effectiveRole,
-        teamScope,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch member summaries');
-      }
-
-      setMemberSummaries(data.members || []);
-      setMemberStats(data.stats || null);
-    } catch (err) {
-      console.warn('Member summary fetch failed:', err.message);
-    } finally {
-      setMemberSummaryLoading(false);
-    }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
+  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
 
   useEffect(() => {
-    fetchSummary();
-    fetchMemberSummary();
-    if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [fetchSummary, fetchMemberSummary, fetchDetails, tabVisitKey]);
+    fetchBootstrap(selectedActivity);
+  }, [fetchBootstrap, tabVisitKey, teamScope, dateRange, customStartDate, customEndDate, effectiveRole]);
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
@@ -456,11 +471,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               <h1 className="text-lg font-bold text-gray-900">Activity Report</h1>
             </div>
             <TouchFeedbackButton
-              onClick={() => {
-                fetchSummary();
-                fetchMemberSummary();
-                if (selectedActivity) fetchDetails(selectedActivity);
-              }}
+              onClick={() => fetchBootstrap(selectedActivity)}
               className="p-2 hover:bg-gray-100 rounded-lg"
               disabled={loading || memberSummaryLoading}
             >

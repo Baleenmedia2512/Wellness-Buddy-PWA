@@ -1,44 +1,44 @@
 /**
- * Activity Report team scope — same hierarchy as Ideal Weight & Transformation reports.
- * Uses reportingHierarchyService (inactive-coach rollup, direct vs full rules).
+ * Activity Report team scope — indexed dual-coaching hierarchy (Active downline).
+ * Fast CoachId level queries; same pattern as getDualCoachingTeamHierarchy.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import {
-  loadReportingContext,
-  getReportingMemberIds,
-} from '../../../utils/reportingHierarchyService.js';
+import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 
-/** In-process cache — activity report fires 3 API calls per page (summary + member + detail). */
-let contextCache = { value: null, expiresAt: 0 };
-const CONTEXT_TTL_MS = 60_000;
-
-async function getSharedReportingContext() {
-  const now = Date.now();
-  if (contextCache.value && contextCache.expiresAt > now) {
-    return contextCache.value;
-  }
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContext(supabase);
-  contextCache = { value: context, expiresAt: now + CONTEXT_TTL_MS };
-  return context;
-}
+/** In-process cache — warm lambda serves bootstrap + detail without re-walking tree. */
+const scopeCache = new Map();
+const SCOPE_TTL_MS = 60_000;
 
 /**
- * Direct / full member IDs for a coach — matches downline-weight & testimonial scopes.
- *
  * @param {number} userId
  * @returns {Promise<{ directIds: number[], fullIds: number[] }>}
  */
 export async function buildActivityReportCoachScope(userId) {
   const userIdNum = Number(userId);
-  const context = await getSharedReportingContext();
+  const key = String(userIdNum);
+  const now = Date.now();
+  const hit = scopeCache.get(key);
+  if (hit && hit.expiresAt > now) return hit.value;
 
-  if (!context.userById.has(userIdNum)) {
-    return { directIds: [], fullIds: [] };
-  }
+  const hierarchy = await getDualCoachingTeamHierarchy(userIdNum, false);
+  const isDownline = (m) => (
+    Number(m.UserId) !== userIdNum
+    && isActiveTeamStatus(m.Status)
+    && !m.IsCoCoach
+    && !m.IsLoggedInCoach
+  );
 
-  return {
-    directIds: getReportingMemberIds(userIdNum, 'direct', context),
-    fullIds: getReportingMemberIds(userIdNum, 'full', context),
+  const value = {
+    directIds: hierarchy
+      .filter((m) => m.HierarchyLevel === 1 && isDownline(m))
+      .map((m) => m.UserId)
+      .filter(Boolean),
+    fullIds: hierarchy
+      .filter(isDownline)
+      .map((m) => m.UserId)
+      .filter(Boolean),
   };
+
+  scopeCache.set(key, { value, expiresAt: now + SCOPE_TTL_MS });
+  return value;
 }

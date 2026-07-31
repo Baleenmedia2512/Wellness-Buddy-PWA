@@ -1,8 +1,7 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
- * Same Direct / Full audience as Ideal Weight & Transformation reports
- * (reportingHierarchyService — active members, inactive-coach rollup).
+ * Active downline via indexed dual-coaching hierarchy (fast, no full-table scan).
  */
 import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
 
