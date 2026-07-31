@@ -8,8 +8,6 @@ import {
   Loader2,
   Sparkles,
   UtensilsCrossed,
-  GraduationCap,
-  Droplets,
   Info,
   Timer,
 } from 'lucide-react';
@@ -29,6 +27,7 @@ import {
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
+import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
@@ -51,9 +50,9 @@ function PublicIcon({ src, className = '', alt = '' }) {
 const CATEGORIES = [
   { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
   { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'education', Icon: GraduationCap, label: 'Education' },
+  { id: 'education', src: '/education.svg', label: 'Education', isImgIcon: true },
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
-  { id: 'water', Icon: Droplets, label: 'Water' },
+  { id: 'water', src: '/water.svg', label: 'Water', isImgIcon: true },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
   // smartwatch flow = calories burned; label is Workout (green weightlifter)
   { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true },
@@ -264,6 +263,13 @@ export default function ManualEntryPage({
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
+  const [workoutTodayKcal, setWorkoutTodayKcal] = useState(0);
+  const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
+
+  // New capture while this screen stays mounted — close any open sub-form.
+  useEffect(() => {
+    setActiveForm(null);
+  }, [captureId]);
 
   const previewSrc = useMemo(() => {
     if (!imageBase64) return null;
@@ -311,6 +317,25 @@ export default function ManualEntryPage({
       });
     return () => { cancelled = true; };
   }, [activeForm, userId]);
+
+  // Load today's watch calories whenever the workout modal opens.
+  useEffect(() => {
+    if (activeForm !== 'smartwatch' || !userId) return undefined;
+    let cancelled = false;
+    setWorkoutTodayLoading(true);
+    fetchWatchBurnedCalories({ apiBaseUrl, userId, date: todayLocal() })
+      .then((total) => {
+        if (cancelled) return;
+        setWorkoutTodayKcal(Math.max(0, Math.round(Number(total) || 0)));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkoutTodayKcal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkoutTodayLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeForm, userId, apiBaseUrl]);
 
   useEffect(() => {
     if (userId) warmLatestWeightCache(userId);
@@ -679,10 +704,14 @@ export default function ManualEntryPage({
         skipTypeSelect
       />
       <ManualWatchEntryModal
+        key={captureId}
+        formKey={captureId}
         isOpen={activeForm === 'smartwatch'}
         onClose={() => setActiveForm(null)}
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
+        todayBaseline={workoutTodayKcal}
+        loading={workoutTodayLoading}
       />
       <ManualEducationEntryModal
         isOpen={activeForm === 'education'}
@@ -702,6 +731,7 @@ export default function ManualEntryPage({
         title="Afresh"
         subtitle="Log number of scoops consumed so far"
         unitLabel="Cups"
+        iconSrc="/coffee.png"
         min={1}
         max={8}
         step={1}
@@ -714,6 +744,7 @@ export default function ManualEntryPage({
         isOpen={activeForm === 'water'}
         title="Water"
         subtitle="How much you drank so far today"
+        iconSrc="/water.svg"
         unitLabel=""
         min={waterTodayMl}
         max={Math.max(5000, waterTodayMl + 3000)}

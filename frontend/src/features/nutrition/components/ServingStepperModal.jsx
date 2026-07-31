@@ -5,6 +5,21 @@ import React, { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
+function ModalHeaderIcon({ iconSrc }) {
+  if (!iconSrc) return null;
+  const base = process.env.PUBLIC_URL || '';
+  return (
+    <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8f5e9]">
+      <img
+        src={`${base}${iconSrc}`}
+        alt=""
+        draggable={false}
+        className="h-5 w-5 select-none object-contain"
+      />
+    </div>
+  );
+}
+
 /**
  * @param {{
  *   isOpen: boolean,
@@ -24,6 +39,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
  *   onClose: () => void,
  *   onConfirm: (value: number) => Promise<void>,
  *   confirmLabel?: string,
+ *   iconSrc?: string,
  * }} props
  */
 export default function ServingStepperModal({
@@ -44,6 +60,7 @@ export default function ServingStepperModal({
   onClose,
   onConfirm,
   confirmLabel = 'Save',
+  iconSrc,
 }) {
   const [value, setValue] = useState(defaultValue);
   const [saving, setSaving] = useState(false);
@@ -106,6 +123,7 @@ export default function ServingStepperModal({
           >
             <X className="w-4 h-4 text-gray-400" />
           </button>
+          <ModalHeaderIcon iconSrc={iconSrc} />
           <h2 className="text-base font-bold text-gray-900">{title}</h2>
           {subtitle && <p className="text-xs text-gray-500 mt-1 text-center">{subtitle}</p>}
         </div>

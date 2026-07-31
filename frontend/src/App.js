@@ -7025,6 +7025,7 @@ function WellnessValleyApp() {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading…" />}>
         <ManualEntryPage
+          key={manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}

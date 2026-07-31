@@ -18,7 +18,6 @@
  */
 import React, { useState } from 'react';
 import { analyzeImage } from '../../shared/services/orchestratorService';
-// VSA-compliant barrel imports (helpers exported via features/captures/index.js)
 import {
   promoteUnknownToFood,
   deleteCapture,
@@ -30,6 +29,8 @@ import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../fe
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
+import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
+import { todayLocal } from '../../features/water';
 import { EmojiOrNative } from '../../shared/components/icons/EmojiImage';
 import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
 import { isFlagEnabled } from '../../config/featureFlags';
@@ -150,6 +151,8 @@ export default function UnknownEntryFlow({
         }
       : null,
   );
+  const [workoutTodayKcal, setWorkoutTodayKcal] = useState(0);
+  const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
 
   // Reset internal stage/error whenever the modal is re-opened for a different
   // capture (captureId changes while open=true is uncommon but possible).
@@ -162,12 +165,53 @@ export default function UnknownEntryFlow({
     setRetrying(false);
     setDeleting(false);
     setError(initialAiResult?.status === 'failed' ? initialAiResult.error : null);
+    setAiFood(
+      initialAiResult?.status === 'success' && initialAiResult.type === 'food'
+        ? { analysisResult: initialAiResult.analysisResult, raw: initialAiResult.raw }
+        : null,
+    );
+    setAiWeight(
+      initialAiResult?.status === 'success' && initialAiResult.type === 'weight'
+        ? { weightValue: initialAiResult.weightValue, unit: initialAiResult.unit }
+        : null,
+    );
+    setAiEducation(
+      initialAiResult?.status === 'success'
+        && (initialAiResult.type === 'education' || initialAiResult.type === 'smartwatch')
+        ? {
+            platform: initialAiResult.platform,
+            topic: initialAiResult.topic,
+            captureKind: initialAiResult.type,
+          }
+        : null,
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, captureId]);
 
   React.useEffect(() => {
     if (open && userId) warmLatestWeightCache(userId);
   }, [open, userId]);
+
+  React.useEffect(() => {
+    if (stage !== 'smartwatch' || !userId || !apiBaseUrl) return undefined;
+    let cancelled = false;
+    setWorkoutTodayLoading(true);
+    const watchDate = diaryDate instanceof Date && !Number.isNaN(diaryDate.getTime())
+      ? diaryDate
+      : todayLocal();
+    fetchWatchBurnedCalories({ apiBaseUrl, userId, date: watchDate })
+      .then((total) => {
+        if (cancelled) return;
+        setWorkoutTodayKcal(Math.max(0, Math.round(Number(total) || 0)));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkoutTodayKcal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkoutTodayLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [stage, userId, apiBaseUrl, diaryDate]);
 
   if (!open) return null;
 
@@ -780,6 +824,8 @@ export default function UnknownEntryFlow({
       />
 
       <ManualWatchEntryModal
+        key={captureId}
+        formKey={captureId}
         isOpen={stage === 'smartwatch'}
         onClose={() => setStage('view')}
         onBack={() => setStage('view')}
@@ -788,6 +834,8 @@ export default function UnknownEntryFlow({
             ? (String(extractCaloriesValue(aiEducation?.topic)).match(/[\d.]+/) || [''])[0]
             : ''
         }
+        todayBaseline={workoutTodayKcal}
+        loading={workoutTodayLoading}
         onSave={handleWatchSave}
       />
     </>
