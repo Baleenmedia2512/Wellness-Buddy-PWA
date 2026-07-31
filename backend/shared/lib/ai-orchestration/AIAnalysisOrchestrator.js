@@ -47,11 +47,9 @@ import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
 import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
-<<<<<<< HEAD
 import { findByUserId } from '../../../features/user/user.repository.js';
-=======
 import { ANALYSIS_MODULES } from 'ai-token-monitor';
->>>>>>> origin/TM/Nitheesh
+
 
 // ── Per-capture analysis status store ────────────────────────────────────────
 // In-process map: captureId → { status, traceId, updatedAt, errorCode? }
