@@ -11,6 +11,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
  *   title: string,
  *   subtitle?: string,
  *   unitLabel: string,
+ *   showStepper?: boolean,
  *   min?: number,
  *   max?: number,
  *   step?: number,
@@ -30,6 +31,7 @@ export default function ServingStepperModal({
   title,
   subtitle,
   unitLabel,
+  showStepper = true,
   min = 1,
   max = 8,
   step = 1,
@@ -109,7 +111,6 @@ export default function ServingStepperModal({
         </div>
 
         <div className="px-6 py-6 flex flex-col items-center gap-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{unitLabel}</p>
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -117,27 +118,32 @@ export default function ServingStepperModal({
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-5">
-                <TouchFeedbackButton
-                  onClick={() => setValue((v) => Math.max(min, v - step))}
-                  disabled={saving || value <= min}
-                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
-                  aria-label="Decrease"
-                >
-                  −
-                </TouchFeedbackButton>
-                <span className="min-w-[4.5rem] text-center text-2xl font-bold text-gray-900 tabular-nums">
-                  {display}
-                </span>
-                <TouchFeedbackButton
-                  onClick={() => setValue((v) => Math.min(max, v + step))}
-                  disabled={saving || value >= max}
-                  className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
-                  aria-label="Increase"
-                >
-                  +
-                </TouchFeedbackButton>
-              </div>
+              {showStepper && (
+                <>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{unitLabel}</p>
+                  <div className="flex items-center gap-5">
+                    <TouchFeedbackButton
+                      onClick={() => setValue((v) => Math.max(min, v - step))}
+                      disabled={saving || value <= min}
+                      className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
+                      aria-label="Decrease"
+                    >
+                      −
+                    </TouchFeedbackButton>
+                    <span className="min-w-[4.5rem] text-center text-2xl font-bold text-gray-900 tabular-nums">
+                      {display}
+                    </span>
+                    <TouchFeedbackButton
+                      onClick={() => setValue((v) => Math.min(max, v + step))}
+                      disabled={saving || value >= max}
+                      className="w-11 h-11 rounded-full border-2 border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 disabled:opacity-30"
+                      aria-label="Increase"
+                    >
+                      +
+                    </TouchFeedbackButton>
+                  </div>
+                </>
+              )}
 
               {quickAddPresets.length > 0 && (
                 <div className="w-full">

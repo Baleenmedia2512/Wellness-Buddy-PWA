@@ -501,6 +501,7 @@ function WellnessValleyApp() {
   const {
     refreshKey: nutritionRefreshKey,
     triggerRefresh: triggerNutritionRefresh,
+    refreshOnTabFocus,
     markCaptureAnalyzing,
     clearCaptureAnalyzing,
   } = useNutritionRefresh();
@@ -814,10 +815,25 @@ function WellnessValleyApp() {
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualEntryPayload, setManualEntryPayload] = useState(null);
+  /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
+  const [tabVisitKeys, setTabVisitKeys] = useState({});
+  const bumpTabVisitKey = useCallback((pageId) => {
+    if (!pageId) return;
+    setTabVisitKeys((prev) => ({
+      ...prev,
+      [pageId]: (prev[pageId] || 0) + 1,
+    }));
+  }, []);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
   const navLockRef = useRef(false);
+  const bumpTabVisitKeyRef = useRef(bumpTabVisitKey);
+  const refreshOnTabFocusRef = useRef(refreshOnTabFocus);
+  useEffect(() => {
+    bumpTabVisitKeyRef.current = bumpTabVisitKey;
+    refreshOnTabFocusRef.current = refreshOnTabFocus;
+  }, [bumpTabVisitKey, refreshOnTabFocus]);
 
   // -- Browser history management ----------------------------------------------
   // Push a new history entry when navigating to a top-level "page". This
@@ -833,36 +849,54 @@ function WellnessValleyApp() {
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowReports(false);
         setShowProfilePage(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
         setShowManualEntry(false);
         setManualEntryPayload(null);
         setShowWellnessScore(false);
+        refreshOnTabFocusRef.current();
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
+        bumpTabVisitKeyRef.current('dashboard');
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
+        bumpTabVisitKeyRef.current('counselling');
         setShowDashboard(false);
         startTransition(() => setShowWellnessCounselling(true));
         setShowUniversityEnrollment(false);
         Session.setCurrentPage('main');
       } else if (page === 'enrollment') {
+        bumpTabVisitKeyRef.current('enrollment');
         enrollmentHistoryPushedRef.current = true;
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         startTransition(() => setShowUniversityEnrollment(true));
         Session.setCurrentPage('main');
       } else if (page === 'physical-club') {
+        bumpTabVisitKeyRef.current('physical-club');
         startTransition(() => setShowNutritionCentersMap(true));
         Session.setCurrentPage('main');
+      } else if (page === 'activity-report') {
+        bumpTabVisitKeyRef.current('activity-report');
+        setShowDashboard(false);
+        startTransition(() => setShowActivityReport(true));
+        Session.setCurrentPage('main');
       } else if (page === 'testimonials') {
+        bumpTabVisitKeyRef.current('testimonials');
         startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'reports') {
+        bumpTabVisitKeyRef.current('reports');
+        startTransition(() => setShowReports(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
         setShowProfilePage(true);
@@ -1957,7 +1991,9 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
-      // Urgent update � navigation flags are now used directly (no useDeferredValue),\n      // so this is an immediate render with no deferral possible.
+      // Urgent update — navigation flags are now used directly (no useDeferredValue),
+      // so this is an immediate render with no deferral possible.
+      bumpTabVisitKey('dashboard');
       setShowDashboard(true);
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
@@ -1971,7 +2007,7 @@ function WellnessValleyApp() {
     // is now cleared unconditionally and read via refs, so it is NOT a dep.
     // This keeps showDashboardPage stable across AI analysis cycles and
     // prevents the gallery-monitoring effect from re-initialising on every result.
-    [user, checkUserStatus],
+    [user, checkUserStatus, bumpTabVisitKey],
   );
 
   // showMainPage is stable across renders (useCallback with no deps) because
@@ -2053,7 +2089,10 @@ function WellnessValleyApp() {
       setShowProfilePage(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
-      if (isOnSubPage) window.history.back();
+      if (isOnSubPage) {
+        refreshOnTabFocus();
+        window.history.back();
+      }
       return;
     }
 
@@ -2079,6 +2118,7 @@ function WellnessValleyApp() {
         setShowWellnessScore(false);
         setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
+        bumpTabVisitKey('dashboard');
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
         setShowDashboard(true); // urgent � same reason as showDashboardPage
@@ -2106,6 +2146,8 @@ function WellnessValleyApp() {
     setShowWellnessScore(false);
     setShowProfilePage(false);
     enrollmentHistoryPushedRef.current = false;
+
+    bumpTabVisitKey(targetPage);
 
     if (isOnSubPage) {
       window.history.replaceState({ wvPage: targetPage }, '');
@@ -2160,7 +2202,7 @@ function WellnessValleyApp() {
         break;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
-  }, [showDashboardPage, userRole]);
+  }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
   // -- Permission flow ------------------------------------------------------
   //
   // Design: zero custom screens before OS dialogs. Permissions are requested
@@ -6751,6 +6793,7 @@ function WellnessValleyApp() {
               user={user}
               onBack={showMainPage}
               apiBaseUrl={apiBaseUrl}
+              tabVisitKey={tabVisitKeys.dashboard ?? 0}
               initialTab={dashboardInitialTab}
               userRole={userRole}
               bmrUpdateKey={bmrUpdateKey}
@@ -6788,6 +6831,7 @@ function WellnessValleyApp() {
           <Suspense fallback={null}>
             <WellnessCounselling
               user={user}
+              tabVisitKey={tabVisitKeys.counselling ?? 0}
               refreshKey={bodyParamsRefreshKey}
               onCardSaved={() => {
                 setHeaderProfileKey((k) => k + 1);
@@ -6826,6 +6870,7 @@ function WellnessValleyApp() {
               embedded
               user={user}
               userRole={userRole}
+              tabVisitKey={tabVisitKeys.enrollment ?? 0}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
                 setShowUniversityEnrollment(false);
@@ -6859,6 +6904,7 @@ function WellnessValleyApp() {
               user={user}
               userRole={userRole}
               apiBaseUrl={apiBaseUrl}
+              tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
               onBack={() => {
                 setShowActivityReport(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -6925,6 +6971,7 @@ function WellnessValleyApp() {
               <NutritionCentersMap
                 embedded
                 user={user}
+                tabVisitKey={tabVisitKeys['physical-club'] ?? 0}
                 onBack={() => {
                   setShowNutritionCentersMap(false);
                   const currentWvPage = window.history.state?.wvPage;
@@ -6978,6 +7025,7 @@ function WellnessValleyApp() {
             <TestimonialsPage
               user={{ userId: user?.id ?? userContext?.userId ?? null }}
               userRole={userRole}
+              tabVisitKey={tabVisitKeys.testimonials ?? 0}
               onBack={() => {
                 setShowTestimonials(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7085,6 +7133,7 @@ function WellnessValleyApp() {
           <Suspense fallback={<LoadingSpinner message="Loading reports�" />}>
             <DownlineWeightReport
               user={user}
+              tabVisitKey={tabVisitKeys.reports ?? 0}
               onBack={() => {
                 setShowReports(false);
                 const currentWvPage = window.history.state?.wvPage;

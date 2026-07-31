@@ -60,7 +60,7 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
-const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
+const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
@@ -237,7 +237,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     fetchSummary();
     fetchMemberSummary();
     if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
+  }, [fetchSummary, fetchMemberSummary, fetchDetails, tabVisitKey]);
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);

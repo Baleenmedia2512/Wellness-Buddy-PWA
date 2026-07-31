@@ -65,9 +65,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      // debugLog("≡ƒÅå [LEADERBOARD] Response status:", response.status);
+      if (!response.ok) {
+        debugLog("[LEADERBOARD] API returned", response.status);
+        return;
+      }
+
       const result = await response.json();
-      // debugLog("≡ƒÅå [LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
         // debugLog(
@@ -87,7 +90,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         setIsVisible(false);
       }
     } catch (error) {
-      console.error("Γ¥î [LEADERBOARD] Error fetching data:", error);
+      debugLog("[LEADERBOARD] Error fetching data:", error?.message || error);
       setLeaderboardData([]);
       setIsVisible(false);
     }
