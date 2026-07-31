@@ -144,24 +144,29 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   }, []);
 
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
-    const [summaryRes, memberRes, detailRes] = await Promise.all([
-      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`, { cache: 'no-store' }),
-      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`, { cache: 'no-store' }),
-      fetch(`${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`, { cache: 'no-store' }),
-    ]);
-
-    const [summaryData, memberData, detailData] = await Promise.all([
-      summaryRes.json(),
-      memberRes.json(),
-      detailRes.json(),
-    ]);
-
+    const summaryRes = await fetch(
+      `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
+      { cache: 'no-store' },
+    );
+    const summaryData = await summaryRes.json();
     if (!summaryRes.ok || !summaryData.success) {
       throw new Error(summaryData.message || 'Failed to fetch activity summary');
     }
+
+    const memberRes = await fetch(
+      `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
+      { cache: 'no-store' },
+    );
+    const memberData = await memberRes.json();
     if (!memberRes.ok || !memberData.success) {
       throw new Error(memberData.message || 'Failed to fetch member summaries');
     }
+
+    const detailRes = await fetch(
+      `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
+      { cache: 'no-store' },
+    );
+    const detailData = await detailRes.json();
     if (!detailRes.ok || !detailData.success) {
       throw new Error(detailData.message || 'Failed to fetch activity details');
     }

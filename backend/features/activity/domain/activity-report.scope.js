@@ -1,7 +1,7 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
- * Active downline via indexed dual-coaching hierarchy (fast, no full-table scan).
+ * Active downline via indexed reporting hierarchy (matches Ideal Weight / Reports).
  */
 import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
 

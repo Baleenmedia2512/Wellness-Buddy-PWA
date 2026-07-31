@@ -309,17 +309,18 @@ export async function getActivityReportBootstrap({
     members,
     weightRecords,
     educationRecords,
-    foodRecords,
     stepRecords,
     timeWindows,
   ] = await Promise.all([
     repo.fetchMemberDetails(userIds),
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
-    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
   ]);
+
+  // Food rows carry large AnalysisData JSON — fetch after lighter tables to reduce parallel DB load.
+  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
 
   const coachIds = [...new Set(members.map((m) => m.CoachId).filter(Boolean))];
   const coachNames = await repo.fetchCoachNames(coachIds);
@@ -390,13 +391,12 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
     };
   }
   
-  // Fetch all activity records
-  const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
+  const [weightRecords, educationRecords, stepRecords] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
-    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
   ]);
+  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
   
   // Get time windows for meal filtering
   const timeWindows = await repo.fetchTimeWindows();
