@@ -1,32 +1,53 @@
 // Profile REST helpers — fetch, save, snooze profile picture reminder.
-const API = process.env.REACT_APP_API_BASE_URL;
+import { getApiBaseUrl } from '../../../config/api.config.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
   DEMO_ACCOUNTS.includes((email || '').toLowerCase().trim());
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
+const PROFILE_FETCH_TIMEOUT_MS = 12000;
+
 export const fetchProfile = async (email) => {
-  const res = await fetch(
-    `${API}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) throw new Error('Failed to load profile.');
-  const data = await res.json();
-  // Demo accounts: API returns top-level fields with no `data` wrapper.
-  if (data.success && !data.data && isDemoAccount(email)) {
-    const stored = localStorage.getItem(demoStorageKey(email));
-    if (stored) {
-      try { return { success: true, data: JSON.parse(stored), demo: true }; }
-      catch { /* fall through */ }
+  const apiBase = getApiBaseUrl();
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS)
+    : null;
+  try {
+    const res = await fetch(
+      `${apiBase}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+      {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        signal: controller?.signal,
+      },
+    );
+    if (!res.ok) throw new Error('Failed to load profile.');
+    const data = await res.json();
+    // Demo accounts: API returns top-level fields with no `data` wrapper.
+    if (data.success && !data.data && isDemoAccount(email)) {
+      const stored = localStorage.getItem(demoStorageKey(email));
+      if (stored) {
+        try { return { success: true, data: JSON.parse(stored), demo: true }; }
+        catch { /* fall through */ }
+      }
+      return { success: true, data: null, demo: true };
     }
-    return { success: true, data: null, demo: true };
+    return data;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Profile is taking too long to load. Please try again.');
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return data;
 };
 
 export const saveProfile = async (payload) => {
-  const res = await fetch(`${API}/api/user/profile`, {
+  const apiBase = getApiBaseUrl();
+  const res = await fetch(`${apiBase}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -63,7 +84,7 @@ export const saveProfile = async (payload) => {
 };
 
 export const snoozeProfilePicture = async (userId) => {
-  const res = await fetch(`${API}/api/user/snooze-pic`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/user/snooze-pic`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
