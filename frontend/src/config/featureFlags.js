@@ -123,6 +123,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Master nutrition DB + history micros in food search (ADR-0005).',
   },
+
+  // ADR-0006 — User Consent Form before account creation / app use.
+  // Default ON. Set REACT_APP_FF_CONSENT_GATE=false or
+  // localStorage 'ff.consent-gate'='false' to disable.
+  'ff.consent-gate': {
+    envKey:         'REACT_APP_FF_CONSENT_GATE',
+    storageKey:     'ff.consent-gate',
+    defaultEnabled: true,
+    description:    'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
+  },
 });
 
 function readStorage(key) {

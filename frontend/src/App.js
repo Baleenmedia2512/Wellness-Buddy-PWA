@@ -74,9 +74,20 @@ import {
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
-import { Login } from "./features/user";
+import { Login, ConsentForm } from "./features/user";
 import { InactiveUserModal } from "./features/user";
 import { UserNotFoundModal } from "./features/user";
+import {
+  recordConsentAcceptance,
+  fetchConsentStatus,
+  discardUnconsentedUser,
+} from "./features/user/services/consent.api";
+import {
+  persistLocalConsentAcceptance,
+  clearLocalConsentAcceptance,
+  CURRENT_CONSENT_VERSION,
+  consentPayload,
+} from "./features/user/domain/consent";
 import { fetchInactiveCoachInfo } from "./features/user/services/inactiveCoachService";
 import Header from "./shared/components/Header";
 import {
@@ -855,6 +866,11 @@ function WellnessValleyApp() {
   // Start hidden ? only checkProfileCompletion() (called after setup is confirmed complete)
   // will turn this on, preventing the gate from flashing for new users going through SetupWizard.
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
+  // ADR-0006 — existing users without ConsentAcceptedAt must accept before using the app.
+  const [showConsentGate, setShowConsentGate] = useState(false);
+  const [consentSubmitting, setConsentSubmitting] = useState(false);
+  // Covers the OTP → consent/home handoff so Login never flashes mid-transition.
+  const [postAuthBridge, setPostAuthBridge] = useState(false);
 
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
@@ -881,6 +897,7 @@ function WellnessValleyApp() {
     isOtpVerified &&
     isUserActive &&
     (
+      showConsentGate ||
       showCompleteProfile ||
       showPhysicalActivitySetup ||
       showSetupWizard ||
@@ -2890,6 +2907,13 @@ function WellnessValleyApp() {
         missingFields: result.missingFields,
       });
 
+      if (
+        isFlagEnabled("ff.consent-gate") &&
+        result.data?.consentRequired === true
+      ) {
+        setShowConsentGate(true);
+      }
+
       if (result.status === "complete") {
         profileCompletedRef.current = true;
         if (!silent) setProfileChecking(false);
@@ -2931,6 +2955,34 @@ function WellnessValleyApp() {
     checkProfileCompletion(email, user, { silent: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: user/auth only
   }, [user?.id, user?.email, isOtpVerified, checkProfileCompletion]);
+
+  // Consent gate: ask only when DB has no ConsentAcceptedAt for this UserId.
+  useEffect(() => {
+    if (!isFlagEnabled("ff.consent-gate")) return;
+    if (!user || !isOtpVerified) return;
+    const userId = user.id || user.UserId || user.userId;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail() || "";
+    if (!userId && !email) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const consent = await fetchConsentStatus({
+          userId: userId || undefined,
+          email: email || undefined,
+        });
+        if (cancelled || !consent.ok) return;
+        if (consent.consentRequired) {
+          setShowConsentGate(true);
+        } else {
+          setShowConsentGate(false);
+        }
+      } catch {
+        // fail-soft
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: identity only
+  }, [user?.id, user?.UserId, user?.email, isOtpVerified]);
 
   // -- Profile Picture Validation ------------------------------------------
   // Checks if user has a valid profile picture (not a letter avatar)
@@ -3299,6 +3351,7 @@ function WellnessValleyApp() {
       if (isInactiveReactivationFlow) return;
 
       if (isOtpVerified && !user) {
+        setPostAuthBridge(true);
         const otpUserRaw = Session.getOtpUserRaw();
 
         if (otpUserRaw) {
@@ -3352,6 +3405,7 @@ function WellnessValleyApp() {
             if (!isActive) {
               // Set user state so modal can show
               setUser(parsedUser);
+              setPostAuthBridge(false);
               // Modal close handler will clear localStorage
               return;
             }
@@ -3359,16 +3413,46 @@ function WellnessValleyApp() {
             setUser(parsedUser);
             setAuthLoading(false); // safety net: clear loading gate for fresh OTP logins
             handleSaveUserCache(parsedUser);
+
+            // Consent: DB is source of truth. Never trust stale otpUser.consentRequired
+            // (that flag can remain true after Agree and wrongly re-prompt on every login).
+            if (isFlagEnabled("ff.consent-gate")) {
+              try {
+                const consent = await fetchConsentStatus({
+                  userId: parsedUser.id || parsedUser.UserId,
+                  email: userEmail || undefined,
+                });
+                if (consent.ok) {
+                  if (consent.consentRequired) {
+                    setShowConsentGate(true);
+                  } else {
+                    setShowConsentGate(false);
+                    const refreshed = { ...parsedUser, consentRequired: false };
+                    Session.setOtpUser(refreshed);
+                    setUser(refreshed);
+                  }
+                } else if (parsedUser?.consentRequired === true) {
+                  setShowConsentGate(true);
+                }
+              } catch {
+                if (parsedUser?.consentRequired === true) {
+                  setShowConsentGate(true);
+                }
+              }
+            }
+
             // ? Check profile completion after OTP user is restored on refresh
             if (userEmail) {
               await checkProfileCompletion(userEmail, parsedUser, {
                 silent: true,
               });
             }
+            setPostAuthBridge(false);
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
             Session.clearOtpUser();
             setIsOtpVerified(false);
+            setPostAuthBridge(false);
           }
         } else {
           // isOtpVerified=true but no user data in localStorage � stale flag
@@ -3378,6 +3462,7 @@ function WellnessValleyApp() {
           Session.clearOtpUser();
           setIsOtpVerified(false);
           setAuthLoading(false);
+          setPostAuthBridge(false);
         }
       }
     };
@@ -3740,6 +3825,13 @@ function WellnessValleyApp() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (signal.aborted) return;
+        if (
+          isFlagEnabled("ff.consent-gate") &&
+          data?.success &&
+          data?.data?.consentRequired === true
+        ) {
+          setShowConsentGate(true);
+        }
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
@@ -5865,6 +5957,9 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    setShowConsentGate(false);
+    setConsentSubmitting(false);
+    setPostAuthBridge(false);
     setSaveError(null);
     setLoadingState("analyzing"); // Reset loading state
 
@@ -6182,6 +6277,7 @@ function WellnessValleyApp() {
           photoURL: user.photoURL || null,
           uid: user.uid,
           timezoneIana: getDeviceTimezoneIana() ?? "",
+          ...consentPayload(),
         }),
       });
 
@@ -6196,6 +6292,9 @@ function WellnessValleyApp() {
           "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
+        if (data.user?.consentRequired) {
+          setShowConsentGate(true);
+        }
 
         // If this is a new user, trigger the profile modal
         if (data.isNewUser) {
@@ -6233,6 +6332,12 @@ function WellnessValleyApp() {
 
       // ? Ensure loading is false BEFORE showing Login screen
       setLoading(false);
+
+      // Keep device consent acceptance across logout (do not clear consent.acceptedVersion).
+      // Only show Consent Form again if they never Agreed, or declined.
+      setShowConsentGate(false);
+      setConsentSubmitting(false);
+      setPostAuthBridge(false);
 
       // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
@@ -6322,6 +6427,11 @@ function WellnessValleyApp() {
   const handleOtpVerified = async (isNewUser = false) => {
     debugLog("?? [handleOtpVerified] Called with isNewUser:", isNewUser);
 
+    // Hold a logo bridge so Login never remounts while status/consent resolve.
+    setPostAuthBridge(true);
+    Session.clearUserSignedOut();
+    setForceLoggedOut(false);
+
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
 
@@ -6346,7 +6456,7 @@ function WellnessValleyApp() {
 
         // Fast-path inactive check: the verify-otp API already returns the
         // user's current Status in the stored object. If it's already
-        // 'Inactive', show the Account Restricted modal immediately � do NOT
+        // 'Inactive', show the Account Restricted modal immediately — do NOT
         // rely on a separate network call that can time out or fail-open.
         // Check both lowercase 'status' and capital 'Status' for compatibility
         const userStatus = (
@@ -6373,6 +6483,7 @@ function WellnessValleyApp() {
           setUser(parsedUser);
           setIsUserActive(false);
           setShowInactiveModal(true);
+          setPostAuthBridge(false);
 
           console.log(
             "?? [handleOtpVerified] State set - user:",
@@ -6398,29 +6509,6 @@ function WellnessValleyApp() {
           isActive = true; // Default to active on error
         }
 
-        if (!isActive) {
-          // User is inactive � set user + mark OTP verified so the app renders
-          // past the login gate and shows the InactiveUserModal (which fires in
-          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
-          // the modal never renders and the user is stuck on the OTP screen.
-          const userEmail = parsedUser.email || parsedUser.Email;
-          if (userEmail) Session.setUserEmail(userEmail);
-          Session.clearUserSignedOut();
-          setForceLoggedOut(false);
-          setUser(parsedUser);
-          setIsOtpVerified(true);
-          Session.markOtpVerified();
-          return;
-        }
-
-        setIsOtpVerified(true);
-        Session.markOtpVerified();
-
-        // ? User is logging in via OTP ? clear the sign-out gate
-        Session.clearUserSignedOut();
-        setForceLoggedOut(false);
-
-        // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
           Session.setUserEmail(userEmail);
@@ -6430,25 +6518,44 @@ function WellnessValleyApp() {
           );
         }
 
+        if (!isActive) {
+          // User is inactive � set user + mark OTP verified so the app renders
+          // past the login gate and shows the InactiveUserModal (which fires in
+          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
+          // the modal never renders and the user is stuck on the OTP screen.
+          setUser(parsedUser);
+          setIsOtpVerified(true);
+          Session.markOtpVerified();
+          setPostAuthBridge(false);
+          return;
+        }
+
+        // Consent from verify-otp payload (DB). Resolve before leaving the bridge
+        // so we never flash Login → consent/home.
+        const needsConsent =
+          isFlagEnabled("ff.consent-gate") &&
+          parsedUser?.consentRequired === true;
+        setShowConsentGate(needsConsent);
         setUser(parsedUser);
+        setIsOtpVerified(true);
+        Session.markOtpVerified();
+        setPostAuthBridge(false);
 
         // Unified CompleteProfile (name/email/gender/height/diet/photo) runs as the
         // first gate via the profile-completion effects — before activity and coach.
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
-        Session.clearUserSignedOut();
-        setForceLoggedOut(false);
         setIsOtpVerified(true);
         Session.markOtpVerified();
+        setPostAuthBridge(false);
       }
     } else {
       // No OTP user found, proceed with verification
-      Session.clearUserSignedOut();
       Session.clearAccountDeleted();
-      setForceLoggedOut(false);
       setIsOtpVerified(true);
       Session.markOtpVerified();
+      setPostAuthBridge(false);
     }
   };
 
@@ -6546,37 +6653,42 @@ function WellnessValleyApp() {
   }
   // -------------------------------------------------------------------------
 
+  // Shared logo bridge — used after OTP while consent/status resolve (no Login flash).
+  const authBridgeScreen = (
+    <>
+      {inactiveModalPortal}
+      <div
+        aria-busy="true"
+        aria-label="Signing you in"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "#ffffff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <img
+          src="/logo.png"
+          alt="Wellness Valley"
+          style={{ width: 120, height: 120, objectFit: "contain" }}
+        />
+      </div>
+    </>
+  );
+
+  if (postAuthBridge) {
+    return authBridgeScreen;
+  }
+
   if (authLoading) {
-    // On native, show the logo overlay instead of a blank screen � the native
-    // splash may have already faded, so returning null would show white.
+    // On native, show the logo overlay instead of a blank screen.
     if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
+      return authBridgeScreen;
     }
-    // On web, show the Login page while Firebase resolves. Previously this
-    // returned `inactiveModalPortal` (null for new/signed-out users), giving
-    // a blank white screen for up to 5 seconds until the auth timeout fired.
+    // On web, show the Login page while Firebase resolves.
     return (
       <>
         {inactiveModalPortal}
@@ -6590,89 +6702,85 @@ function WellnessValleyApp() {
     );
   }
 
-  // OTP user restore in progress � stay invisible on native, show Login on web.
-  // On web, returning null causes a white screen if the OTP state is stale
-  // (isOtpVerified=true in localStorage but no valid otpUser data to restore).
+  // OTP user restore / post-OTP handoff — never remount Login (looks like a glitch).
   if (isOtpVerified && !user) {
-    if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
-    }
-    // Web: show Login so the user is never stuck on a blank page.
+    return authBridgeScreen;
+  }
+
+  // ADR-0006 — existing + returning users without DB consent cannot use the app.
+  // Placed before profileChecking so consent is never skipped for logged-in users.
+  if (
+    isFlagEnabled("ff.consent-gate") &&
+    showConsentGate &&
+    user &&
+    isOtpVerified
+  ) {
+    const consentUserId = user.id || user.UserId || user.userId;
+    const consentEmail = user.email || user.Email || Session.getUserEmail() || "";
+    const consentPhone = user.phone || user.PhoneNumber || "";
+    const identityLabel = consentPhone || consentEmail || (consentUserId ? `User #${consentUserId}` : "");
     return (
-      <>
-        {inactiveModalPortal}
-        <Login
-          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-          loading={loading}
-          error={error}
-          onOtpVerified={handleOtpVerified}
-        />
-      </>
+      <ConsentForm
+        mode="post-auth"
+        identityLabel={identityLabel}
+        submitting={consentSubmitting}
+        onAgree={async () => {
+          setConsentSubmitting(true);
+          try {
+            const result = await recordConsentAcceptance({
+              userId: consentUserId,
+              email: consentEmail || undefined,
+            });
+            if (!result.ok) {
+              setAlertModal({
+                isOpen: true,
+                title: "Consent required",
+                message:
+                  result.data?.message ||
+                  "Could not save your consent. Please try again.",
+                type: "error",
+                confirmText: "OK",
+              });
+              return;
+            }
+            persistLocalConsentAcceptance(CURRENT_CONSENT_VERSION);
+            setUser((prev) => {
+              if (!prev) return prev;
+              const next = { ...prev, consentRequired: false };
+              try { Session.setOtpUser(next); } catch { /* non-fatal */ }
+              return next;
+            });
+            setShowConsentGate(false);
+          } finally {
+            setConsentSubmitting(false);
+          }
+        }}
+        onDecline={async () => {
+          setConsentSubmitting(true);
+          try {
+            // New / never-consented accounts: remove the identified row so we
+            // do not keep an account without consent. Existing consented users
+            // are never deleted here (server enforces that).
+            await discardUnconsentedUser({
+              userId: consentUserId,
+              email: consentEmail || undefined,
+            });
+          } catch {
+            // still sign out
+          } finally {
+            clearLocalConsentAcceptance();
+            setShowConsentGate(false);
+            setConsentSubmitting(false);
+            await handleSignOut();
+          }
+        }}
+      />
     );
   }
 
-  // Profile check in progress � stay invisible on native, show Login on web
-  // as a safety net so non-native users never see a blank page.
+  // Profile check in progress — logo bridge (never flash Login after OTP).
   if (profileChecking) {
-    if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
-    }
-    // Web: show Login so the user is never stuck on a blank page.
-    return (
-      <>
-        {inactiveModalPortal}
-        <Login
-          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-          loading={loading}
-          error={error}
-          onOtpVerified={handleOtpVerified}
-        />
-      </>
-    );
+    return authBridgeScreen;
   }
 
   // ? iOS Sign-out gate: user explicitly signed out ? always show Login
