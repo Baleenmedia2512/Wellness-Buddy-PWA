@@ -449,7 +449,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Date Range Filter */}
-        <div className="mb-6">
+        <div className="mb-4">
           <ReportDateRangeFilter
             ranges={ACTIVITY_REPORT_DATE_RANGES}
             dateRange={dateRange}
@@ -457,6 +457,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
             customStartDate={customStartDate}
             customEndDate={customEndDate}
             onCustomDateSelect={handleCustomDateSelect}
+            variant="compact"
           />
         </div>
 

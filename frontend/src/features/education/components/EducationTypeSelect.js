@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { X } from 'lucide-react';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 
 export default function EducationTypeSelect({ onPick, onCancel }) {
   return (
@@ -31,7 +32,7 @@ export default function EducationTypeSelect({ onPick, onCancel }) {
             boxShadow: '0 6px 18px rgba(37,99,235,0.30)',
           }}
         >
-          <span className="text-2xl leading-none">🎓</span>
+          <EmojiOrNative emoji="🎓" className="w-7 h-7" nativeClassName="text-2xl leading-none" />
           <span className="text-sm font-bold tracking-tight">Log Education</span>
           <span className="text-[11px] font-normal opacity-80">It&apos;s education time! Log manually</span>
         </button>

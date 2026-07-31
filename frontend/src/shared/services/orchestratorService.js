@@ -100,7 +100,14 @@ const FALLBACK = Object.freeze({
  */
 export async function analyzeImage(
   imageFile,
-  { captureId = null, userId = null, foodRowId = null, onAttempt = null } = {},
+  {
+    captureId = null,
+    userId = null,
+    foodRowId = null,
+    onAttempt = null,
+    reservationId = null,
+    creditGated = false,
+  } = {},
 ) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Attempt 1 = Flash (fast, cheap). Attempts 2+ = Pro (better accuracy).
@@ -109,7 +116,15 @@ export async function analyzeImage(
     // Notify the caller before the request so the UI badge updates immediately.
     onAttempt?.({ attempt, total: MAX_ATTEMPTS, usePro });
 
-    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro });
+    const result = await _singleAttempt(imageFile, {
+      captureId,
+      userId,
+      foodRowId,
+      attempt,
+      usePro,
+      reservationId,
+      creditGated,
+    });
 
     // ── Valid classification — return immediately ──────────────────────────
     if (!result.details?.defaulted && result.type !== 'other') return result;
@@ -151,7 +166,15 @@ export async function analyzeImage(
  * Never throws. Returns FALLBACK (with _retryable flag) on any error.
  * @private
  */
-async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro = false }) {
+async function _singleAttempt(imageFile, {
+  captureId,
+  userId,
+  foodRowId,
+  attempt,
+  usePro = false,
+  reservationId = null,
+  creditGated = false,
+}) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -171,6 +194,10 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
     // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
     if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
+    if (creditGated && reservationId) {
+      formData.append('creditGated', '1');
+      formData.append('reservationId', String(reservationId));
+    }
 
     const response = await fetch(ORCHESTRATE_URL, {
       method: 'POST',
@@ -202,6 +229,30 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
       const errMsg = data.error?.message ?? 'Orchestration failed';
       _trace('FAIL', { attempt, duration, code: data.error?.code, message: errMsg, captureId });
       return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
+    }
+
+    // HTTP 200 + ok:true but Gemini failed and orchestrator returned FAST_FALLBACK
+    // (imageType other, defaulted:true, analysisStatus FAILED). Treat as technical
+    // failure so retries run and AI credits are released, not deducted.
+    if (
+      data.defaulted === true
+      || String(data.analysisStatus || '').toUpperCase() === 'FAILED'
+    ) {
+      const errMsg = typeof data.error === 'string'
+        ? data.error
+        : (data.error?.message ?? 'Fast analysis failed');
+      _trace('FAIL', {
+        attempt,
+        duration,
+        code: 'FAST_ANALYSIS_FAILED',
+        message: errMsg,
+        captureId,
+      });
+      return {
+        ...FALLBACK,
+        details: { defaulted: true, error: errMsg, _retryable: true },
+        duration,
+      };
     }
 
     // Backend returned a cached duplicate result (idempotency guard hit on
@@ -275,6 +326,10 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
 function _normalise(data, duration) {
   const type    = data.imageType ?? 'other';
   const details = { ...(data.details ?? {}) };
+
+  // Preserve top-level failure markers so credit settlement can release holds.
+  if (data.defaulted === true) details.defaulted = true;
+  if (typeof data.error === 'string' && data.error) details.error = data.error;
 
   // ── FOOD ────────────────────────────────────────────────────────────────────
   if (type === 'food') {

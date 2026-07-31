@@ -408,6 +408,22 @@ export async function save(input) {
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
 
+  // ADR-0005 — grow master nutrition catalog from successful AI / saved foods.
+  try {
+    const parsed = typeof analysisResult === 'string'
+      ? JSON.parse(analysisResult)
+      : analysisResult;
+    if (parsed && typeof parsed === 'object') {
+      const { recordAiFoodCandidate } = await import('../nutrition-knowledge/index.js');
+      await recordAiFoodCandidate(parsed);
+    }
+  } catch (err) {
+    logger.warn('analysis.save: nutrition-knowledge candidate skipped', {
+      err: err?.message,
+      userId: userId?.toString(),
+    });
+  }
+
   const totalLatencyMs = Date.now() - saveStart;
   logger.info('analysis.save: completed', {
     userId: userId?.toString(),

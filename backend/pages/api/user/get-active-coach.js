@@ -107,38 +107,37 @@ export default async function handler(req, res) {
       .single();
 
     const originalCoachName = originalCoachRow?.UserName || null;
+    const originalCoachStatus = originalCoachRow?.Status || null;
+    const directCoachIsActive = originalCoachStatus === 'Active';
 
-    // Resolve the active coach
+    // Resolve upline when the direct coach is inactive
     const {
-      coachId,
-      coachName,
+      coachId: resolvedCoachId,
+      coachName: resolvedCoachName,
       isOriginalCoach,
     } = await resolveActiveCoach(user.UserId, supabase);
 
-    // Get coach status for additional info
-    let coachStatus = 'Active';
-    if (!isOriginalCoach) {
-      const { data: originalCoach } = await supabase
-        .from('team_table')
-        .select('Status, UserName')
-        .eq('UserId', user.CoachId)
-        .single();
-      coachStatus = originalCoach?.Status || 'Unknown';
-    }
+    // Inactive-account contact rule: show/contact direct coach unless they are
+    // inactive — then fall back to the nearest active upline coach.
+    const contactCoachId = directCoachIsActive ? user.CoachId : resolvedCoachId;
+    const contactCoachName = directCoachIsActive ? originalCoachName : resolvedCoachName;
 
     return res.status(200).json({
       ok: true,
       data: {
         userId: user.UserId,
         userName: user.UserName,
-        coachId,
-        coachName,
+        coachId: resolvedCoachId,
+        coachName: resolvedCoachName,
+        contactCoachId,
+        contactCoachName,
         originalCoachId: user.CoachId,
         originalCoachName,
-        coachStatus,
-        isOriginalCoach,
-        message: !isOriginalCoach
-          ? `Your original coach is inactive. You are now managed by ${coachName}.`
+        originalCoachStatus,
+        coachStatus: originalCoachStatus,
+        isOriginalCoach: directCoachIsActive,
+        message: !directCoachIsActive && contactCoachName
+          ? `Your original coach is inactive. You are now managed by ${contactCoachName}.`
           : null,
       },
     });

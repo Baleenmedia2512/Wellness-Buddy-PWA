@@ -1,6 +1,7 @@
 // src/components/ManualWatchEntryModal.js
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
 
 const DEFAULT_SOURCE = "Smartwatch";
 
@@ -83,11 +84,11 @@ const ManualWatchEntryModal = ({
           <button onClick={handleCancel} className="absolute right-3 top-3 p-2 rounded-xl hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
-          <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center mb-2.5">
-            <span className="text-3xl">⌚</span>
+          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
+            <EmojiOrNative emoji="⌚" className="w-9 h-9" nativeClassName="text-3xl" />
           </div>
-          <h2 className="text-base font-bold text-gray-800 tracking-tight">Manual Watch Entry</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Log your activity manually</p>
+          <h2 className="text-base font-bold text-gray-800 tracking-tight">Calories burned</h2>
+          <p className="text-xs text-gray-400 mt-0.5">How much calories burned in workout</p>
         </div>
 
         <div className="p-5 space-y-4">
@@ -104,14 +105,14 @@ const ManualWatchEntryModal = ({
               placeholder="e.g., 350"
               min="1"
               max="10000"
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-emerald-400 focus:outline-none text-base bg-white"
               style={{ fontSize: "16px" }}
             />
           </div>
 
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">
-              <span>⚠️</span>
+              <EmojiOrNative emoji="⚠️" className="w-4 h-4" nativeClassName="text-sm" />
               <span>{error}</span>
             </div>
           )}
@@ -128,7 +129,7 @@ const ManualWatchEntryModal = ({
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 px-4 py-3 bg-purple-500 text-white rounded-xl text-sm font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSaving ? (
               <>

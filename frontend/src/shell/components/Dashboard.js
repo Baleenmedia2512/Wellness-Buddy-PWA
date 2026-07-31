@@ -1,4 +1,4 @@
-﻿// src/shell/components/Dashboard.js
+// src/shell/components/Dashboard.js
 //
 // Moved from `frontend/src/shared/components/Dashboard.js` in F1 of
 // ADR-0003 (preceded by ADR-0001 §"shell composition layer").
@@ -16,8 +16,8 @@ import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileMod
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
 import DashboardTabs from './DashboardTabs';
-// ADR-0003 (revised) — Food / Weight / Education keep their original
-// dashboards; the shell only hosts the "Other" (unknown capture) flow.
+// ADR-0003 — delete-only unknown captures still use UnknownEntryFlow; classify/manual
+// log for Other / Needs logging reuses ManualEntryPage (same as post-capture).
 import UnknownEntryFlow from './UnknownEntryFlow';
 import UnknownCaptureUndoBanner, { UNDO_SECONDS } from './UnknownCaptureUndoBanner';
 import DiaryEntryUndoBanner, { DIARY_UNDO_SECONDS } from './DiaryEntryUndoBanner';
@@ -34,6 +34,7 @@ import { isCaloriesBurnedTopic } from '../../features/education/services/educati
 const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
 const WeightDashboard = lazy(() => import('../../features/weight/components/WeightDashboard'));
 const EducationDashboard = lazy(() => import('../../features/education/components/EducationDashboard'));
+const ManualEntryPage = lazy(() => import('./ManualEntryPage'));
 // PR-C / ADR-0003 — mounted only when `ff.diary-feed` is enabled. The
 // import call is still wrapped in `lazy()` so the bundle chunk for
 // `features/diary/` is fetched on-demand the first time the tab is
@@ -85,7 +86,7 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -281,8 +282,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const reloadDiary = () => setDiaryReloadKey((k) => k + 1);
   const [weightReloadKey, setWeightReloadKey] = useState(0);
   const [diaryEducationRefreshKey, setDiaryEducationRefreshKey] = useState(0);
-  // Unknown ("Other") row flow: image viewer + Retry / Edit → respective vertical.
+  // Unknown ("Other") row: delete-only → UnknownEntryFlow; classify → ManualEntryPage.
   const [unknownFlow, setUnknownFlow] = useState(null);
+  const [classifyFlow, setClassifyFlow] = useState(null);
 
   // Set of capture IDs whose AI analysis is currently in flight.
   // Passed to DiaryFeed → OtherRow so the card shows an inline loading state
@@ -296,6 +298,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     () => [...(contextAnalyzingIds ?? [])].sort().join(','),
     [contextAnalyzingIds],
   );
+
+  // Merge Dashboard (Retry) + App.js (background AI) analyzing sets for diary cards.
+  const mergedAnalyzingCaptureIds = useMemo(() => {
+    const merged = new Set(analyzingCaptureIds);
+    if (contextAnalyzingIds) {
+      contextAnalyzingIds.forEach((id) => merged.add(id));
+    }
+    return merged;
+  }, [analyzingCaptureIds, contextAnalyzingIds]);
 
   // 2026-06-09 — undo state for unknown capture deletion (shell-level)
   const [unknownUndo, setUnknownUndo] = useState(null);
@@ -368,10 +379,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     watch:     (entry) => educationOpenRef.current?.(entry),
   };
 
-  // ── Resilient unknown-tap handler ─────────────────────────────────────────
-  //
-  // orchestratorService.analyzeImage() already ran 3 attempts (Flash×2 + Pro)
-  // at capture time. No further AI retry here — open Manual Log directly.
+  // ── Unknown / Needs logging tap → same ManualEntryPage as post-capture ──
   const handleUnknownTap = (entry) => {
     const p = entry.payload || {};
     const captureIdRaw = entry.capture?.id ?? p.id;
@@ -381,13 +389,23 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // Guard: prevent double-tap opening two modals.
     if (captureId && analyzingRef.current.has(captureId)) return;
 
-    setUnknownFlow({
+    // Coach viewing member diary — read-only / legacy delete flow only.
+    if (!viewingSelf) {
+      setUnknownFlow({
+        captureId,
+        imageBase64: p.imageBase64,
+        diaryDate: selectedDate,
+        originalCapturedAt: entry.capturedAt ?? null,
+        initialAiResult: null,
+        deleteOnly: true,
+      });
+      return;
+    }
+
+    setClassifyFlow({
       captureId,
-      imageBase64:     p.imageBase64,
-      diaryDate:       selectedDate,
+      imageBase64: p.imageBase64 || null,
       originalCapturedAt: entry.capturedAt ?? null,
-      initialAiResult: null,
-      deleteOnly:      false,
     });
   };
 
@@ -405,6 +423,19 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     watch: 'Smartwatch entry removed',
     unknown: 'Capture removed',
   };
+
+  const handleMealDeleteWithUndo = useCallback(({ mealId, expiresAt }) => {
+    onMealDelete?.(mealId);
+    setDiaryUndo({
+      kind: 'food',
+      entryId: mealId,
+      userId: ownerId,
+      message: diaryUndoLabels.food,
+      expiresAt: expiresAt ?? Date.now() + DIARY_UNDO_SECONDS * 1000,
+    });
+    reloadDiary();
+    triggerNutritionRefresh({ immediate: true, source: 'meal-modal-delete' });
+  }, [onMealDelete, ownerId, reloadDiary, triggerNutritionRefresh]);
 
   const affectsExerciseCalories = (entry) => {
     if (!entry) return false;
@@ -842,7 +873,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
                   pendingUndo={diaryUndo}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>
@@ -864,6 +895,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onBack={onBack}
                   apiBaseUrl={apiBaseUrl}
                   onMealDelete={onMealDelete}
+                  onMealDeleteWithUndo={handleMealDeleteWithUndo}
                   hideHeader
                   hideDateStrip
                   hideOverview
@@ -910,6 +942,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 onBack={onBack}
                 apiBaseUrl={apiBaseUrl}
                 onMealDelete={onMealDelete}
+                onMealDeleteWithUndo={handleMealDeleteWithUndo}
                 hideHeader={true}
                 hideDateStrip={true}
                 hideOverview={true}
@@ -956,7 +989,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
                   canDelete={viewingSelf}
-                  analyzingCaptureIds={analyzingCaptureIds}
+                  analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
                 />
               </div>
@@ -969,6 +1002,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
+              onMealDeleteWithUndo={handleMealDeleteWithUndo}
               hideHeader={true}
               hideOverview={true}
               selectedDate={selectedDate}
@@ -1029,7 +1063,40 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       />
     )}
 
-    {/* ADR-0003 — "Other" (unknown) row: image viewer + Retry / Edit */}
+    {/* ADR-0003 — classify / manual log: same ManualEntryPage as post-capture */}
+    {classifyFlow && viewingSelf && (
+      <Suspense fallback={null}>
+        <ManualEntryPage
+          userId={ownerId}
+          apiBaseUrl={apiBaseUrl}
+          captureId={classifyFlow.captureId}
+          imageBase64={classifyFlow.imageBase64}
+          originalCapturedAt={classifyFlow.originalCapturedAt}
+          onBack={() => setClassifyFlow(null)}
+          onSaved={() => {
+            setClassifyFlow(null);
+            reloadDiary();
+            triggerNutritionRefresh({ immediate: true, source: 'diary-classify-saved' });
+            setWeightReloadKey((k) => k + 1);
+            setDiaryEducationRefreshKey((k) => k + 1);
+          }}
+          onStartBackgroundAi={({ reservationId }) => {
+            const flow = classifyFlow;
+            setClassifyFlow(null);
+            onStartBackgroundCaptureAi?.({
+              captureId: flow.captureId,
+              imageBase64: flow.imageBase64,
+              userId: ownerId,
+              reservationId: reservationId || null,
+            });
+            reloadDiary();
+          }}
+          onToast={onToast}
+        />
+      </Suspense>
+    )}
+
+    {/* ADR-0003 — delete-only / coach view for unknown captures */}
     {unknownFlow && (
       <UnknownEntryFlow
         open

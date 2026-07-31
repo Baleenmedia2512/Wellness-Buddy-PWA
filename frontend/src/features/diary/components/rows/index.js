@@ -579,11 +579,12 @@ function formatRemaining(secs) {
  */
 const TOTAL_BUDGET_SECS = 140;
 
-export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
+export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzing = false, isBackgroundPending = false, needsClassify = false, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE, currentAttempt = null, totalAttempts = null }) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled: canSwipeDelete } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const swipeEnabled = canSwipeDelete && !isAnalyzing;
   const showBackgroundHint = isBackgroundPending && !isAnalyzing;
+  const showNeedsClassify = needsClassify && !isAnalyzing && !showBackgroundHint;
 
   // Elapsed-time ticker — active for both isAnalyzing and isBackgroundPending.
   //   isAnalyzing      (user re-detect tap)   → starts from Date.now()
@@ -645,6 +646,8 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             ? 'AI is analysing this photo — please wait'
             : showBackgroundHint
             ? 'Photo uploaded — AI analysis in progress'
+            : showNeedsClassify
+            ? 'Photo saved — tap to choose type or analyze'
             : swipeEnabled
             ? 'Unrecognised capture, tap to identify or swipe to delete'
             : 'Unrecognised capture, tap to identify'
@@ -666,6 +669,8 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             ? 'bg-emerald-50/80 border border-emerald-200 cursor-wait'
             : showBackgroundHint
             ? 'bg-emerald-50/80 border border-emerald-200 cursor-pointer hover:shadow-md'
+            : showNeedsClassify
+            ? 'bg-amber-50/70 border border-amber-200 cursor-pointer hover:shadow-md'
             : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
         ].join(' ')}
         style={{
@@ -723,6 +728,15 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
                 {hideTime ? 'AI is analysing your photo' : `${formatTime(entry.capturedAt, timezoneIana)} · AI is analysing`}
               </p>
             </>
+          ) : showNeedsClassify ? (
+            <>
+              <h4 className="font-semibold text-amber-800 truncate">Needs logging</h4>
+              <p className="text-xs text-amber-700/80">
+                {hideTime
+                  ? 'Tap to choose type or analyze'
+                  : `${formatTime(entry.capturedAt, timezoneIana)} · tap to choose type`}
+              </p>
+            </>
           ) : (
             <>
               <h4 className="font-semibold text-gray-900 truncate">Other</h4>
@@ -745,6 +759,8 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin shrink-0"
             aria-hidden="true"
           />
+        ) : showNeedsClassify ? (
+          <span className="text-xs text-amber-700 font-medium" aria-hidden="true">Choose type</span>
         ) : (
           <span className="text-xs text-amber-600 font-medium" aria-hidden="true">Manual Log</span>
         )}

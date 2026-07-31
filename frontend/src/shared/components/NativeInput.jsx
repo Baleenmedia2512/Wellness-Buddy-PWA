@@ -73,4 +73,10 @@ export function otpAutoCompleteForCell(index) {
   return Capacitor.getPlatform() === 'ios' ? 'one-time-code' : 'off';
 }
 
+/** First OTP cell on iOS must accept the full code — maxLength=1 truncates SMS autofill. */
+export function otpMaxLengthForCell(index, length = 6) {
+  if (index !== 0) return 1;
+  return Capacitor.getPlatform() === 'ios' ? length : 1;
+}
+
 export default NativeInput;
