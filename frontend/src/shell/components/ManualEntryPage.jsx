@@ -657,8 +657,7 @@ export default function ManualEntryPage({
         isOpen={activeForm === 'water'}
         title="Water"
         subtitle="How much you drank so far today"
-        unitLabel="Amount"
-        showStepper={false}
+        unitLabel=""
         min={waterTodayMl}
         max={Math.max(5000, waterTodayMl + 3000)}
         step={100}

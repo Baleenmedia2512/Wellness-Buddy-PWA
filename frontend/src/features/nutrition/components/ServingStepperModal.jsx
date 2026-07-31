@@ -120,7 +120,9 @@ export default function ServingStepperModal({
             <>
               {showStepper && (
                 <>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{unitLabel}</p>
+                  {unitLabel ? (
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{unitLabel}</p>
+                  ) : null}
                   <div className="flex items-center gap-5">
                     <TouchFeedbackButton
                       onClick={() => setValue((v) => Math.max(min, v - step))}
