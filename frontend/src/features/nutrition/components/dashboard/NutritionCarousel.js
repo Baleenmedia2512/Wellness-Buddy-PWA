@@ -4,7 +4,7 @@
  * Cards (in order):
  *   0 — Wellness Score  (when ff.wellness-score-sheet is enabled)
  *   1 — Calories       (BMR target, consumed, exercise=0, remaining)
- *   1 — Macros         (protein/fat/carbs with weight-derived targets)
+ *   1 — Macros         (protein/fat/carbs; fat = calorieTarget × 20%|30% / 9)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
  *   3 — Low Carb       (GI, sugar ≤50g, fiber ≥25g; carbs in footer)
  *   4 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
@@ -54,6 +54,7 @@ const NutritionCarousel = ({
   burnedCalories,
   dailyStats,
   latestWeight,
+  gender = null,
   selectedDate,
   rangeKey,
   analyses = [],
@@ -96,6 +97,7 @@ const NutritionCarousel = ({
   const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
     latestWeight,
     calorieTarget,
+    gender,
   });
   const scaledProteinTarget = scaleTarget(proteinTarget);
   const scaledFatTarget = scaleTarget(fatTarget);

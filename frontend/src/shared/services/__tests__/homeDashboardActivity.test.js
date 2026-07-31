@@ -9,6 +9,12 @@ import {
   getLastProcessedActivityLogId,
   setHomeDashboardSnapshot,
   getHomeDashboardSnapshot,
+  shouldRefreshWellnessScore,
+  markWellnessScoreProcessed,
+  getLastProcessedWellnessScoreActivityLogId,
+  setWellnessScoreSnapshot,
+  getWellnessScoreSnapshot,
+  clearHomeDashboardSnapshot,
   __resetHomeDashboardActivityForTests,
 } from '../homeDashboardActivity';
 
@@ -52,5 +58,34 @@ describe('homeDashboardActivity', () => {
     expect(getHomeDashboardSnapshot()?.dateKey).toBe('2026-07-14');
     __resetHomeDashboardActivityForTests();
     expect(getHomeDashboardSnapshot()).toBeNull();
+  });
+
+  it('tracks wellness score refresh independently of home', () => {
+    expect(shouldRefreshWellnessScore()).toBe(true);
+    markWellnessScoreProcessed(0);
+    markHomeDashboardProcessed(0);
+    expect(shouldRefreshWellnessScore()).toBe(false);
+    expect(shouldRefreshHomeDashboard()).toBe(false);
+
+    const id = recordDashboardActivity('food-upload');
+    expect(shouldRefreshWellnessScore()).toBe(true);
+    expect(shouldRefreshHomeDashboard()).toBe(true);
+
+    markWellnessScoreProcessed(id);
+    expect(shouldRefreshWellnessScore()).toBe(false);
+    expect(shouldRefreshHomeDashboard()).toBe(true);
+    expect(getLastProcessedWellnessScoreActivityLogId()).toBe(id);
+  });
+
+  it('stores wellness score snapshot and clears it with home clear', () => {
+    setWellnessScoreSnapshot({
+      rangeKey: '2026-07-14__2026-07-14',
+      days: [{ date: '2026-07-14', totalEarned: 10 }],
+    });
+    expect(getWellnessScoreSnapshot()?.days).toHaveLength(1);
+
+    clearHomeDashboardSnapshot();
+    expect(getWellnessScoreSnapshot()).toBeNull();
+    expect(getLastProcessedWellnessScoreActivityLogId()).toBeNull();
   });
 });

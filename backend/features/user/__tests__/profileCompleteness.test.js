@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasValidProfileName,
+  hasValidProfileGender,
   isPlaceholderUserName,
   isProfileComplete,
 } from '../domain/profileCompleteness.js';
@@ -35,41 +36,107 @@ describe('isPlaceholderUserName', () => {
   });
 });
 
+describe('hasValidProfileGender', () => {
+  it('accepts profile Gender', () => {
+    assert.equal(hasValidProfileGender('Male'), true);
+    assert.equal(hasValidProfileGender('Female'), true);
+  });
+
+  it('accepts BPC bodyMetrics.gender when profile gender missing', () => {
+    assert.equal(hasValidProfileGender(null, { gender: 'Female' }), true);
+  });
+
+  it('rejects missing gender', () => {
+    assert.equal(hasValidProfileGender(null, null), false);
+  });
+});
+
 describe('isProfileComplete', () => {
-  it('requires height, diet, phone, and a real name', () => {
+  it('requires name, email, height, diet, gender — not phone', () => {
     assert.equal(
       isProfileComplete({
         height: 170,
         dietType: 'Vegetarian',
-        phoneNumber: '+919876543210',
-        userName: 'adithya',
+        userName: 'Adithya Kumar',
         email: 'adithya@example.com',
+        gender: 'Male',
       }),
-      false,
+      true,
     );
 
     assert.equal(
       isProfileComplete({
         height: 170,
         dietType: 'Vegetarian',
-        phoneNumber: '+919876543210',
         userName: 'Adithya Kumar',
         email: 'adithya@example.com',
+        phoneNumber: '',
+        gender: 'Male',
+      }),
+      true,
+    );
+
+    assert.equal(
+      isProfileComplete({
+        height: 170,
+        dietType: 'Vegetarian',
+        userName: 'Adithya Kumar',
+        email: 'adithya@example.com',
+        gender: null,
+      }),
+      false,
+    );
+  });
+
+  it('accepts BPC gender when team Gender missing', () => {
+    assert.equal(
+      isProfileComplete({
+        height: 170,
+        dietType: 'Vegetarian',
+        userName: 'Adithya Kumar',
+        email: 'adithya@example.com',
+        gender: null,
+        bodyMetrics: { gender: 'Female' },
       }),
       true,
     );
   });
 
-  it('is incomplete when phone is missing', () => {
+  it('is incomplete when email missing', () => {
     assert.equal(
       isProfileComplete({
         height: 170,
         dietType: 'Vegetarian',
-        phoneNumber: '',
         userName: 'Adithya Kumar',
-        email: 'adithya@example.com',
+        email: '',
+        gender: 'Male',
       }),
       false,
+    );
+  });
+
+  it('requires profileImage when provided', () => {
+    assert.equal(
+      isProfileComplete({
+        height: 170,
+        dietType: 'Vegetarian',
+        userName: 'Adithya Kumar',
+        email: 'adithya@example.com',
+        gender: 'Male',
+        profileImage: null,
+      }),
+      false,
+    );
+    assert.equal(
+      isProfileComplete({
+        height: 170,
+        dietType: 'Vegetarian',
+        userName: 'Adithya Kumar',
+        email: 'adithya@example.com',
+        gender: 'Male',
+        profileImage: 'data:image/jpeg;base64,abc',
+      }),
+      true,
     );
   });
 });

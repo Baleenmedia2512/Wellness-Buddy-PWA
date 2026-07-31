@@ -4,12 +4,13 @@
  * ADR-0003: tapping an unknown row on the single Diary page opens this flow.
  *   - view:    UnknownShareViewer shows the image with Retry / Edit / Delete.
  *   - Retry:   re-run Gemini on the image; if confident, promote unknown→food.
- *   - Edit:    pick a category (Food / Weight / Education) and transfer the
- *              data to that vertical:
- *                · Food      → SmartFoodSearchModal → promote the capture
- *                              unknown→food with the chosen nutrition.
- *                · Weight    → ManualWeightEntryModal → save a weight record.
- *                · Education → ManualEducationEntryModal → save an education log.
+ *   - Edit:    pick a category (Food / Weight / Education / Smartwatch) and transfer
+ *              the data to that vertical:
+ *                · Food       → SmartFoodSearchModal → promote the capture
+ *                               unknown→food with the chosen nutrition.
+ *                · Weight     → ManualWeightEntryModal → save a weight record.
+ *                · Education  → ManualEducationEntryModal → save an education log.
+ *                · Smartwatch → ManualWatchEntryModal → save calories burned.
  *   - Delete:  soft-delete the capture (2026-06-09).
  *
  * The shell layer is permitted to compose features/* (see shell/README).
@@ -25,8 +26,18 @@ import {
   hasRecognizedFood,
 } from '../../features/captures';
 import { SmartFoodSearchModal } from '../../features/nutrition';
+import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
+import { ManualWatchEntryModal } from '../../features/activity';
+import { EmojiOrNative } from '../../shared/components/icons/EmojiImage';
+import { extractCaloriesValue } from '../../features/education/services/educationFormatter';
+import { isFlagEnabled } from '../../config/featureFlags';
+import {
+  reserveAiCredit,
+  confirmAiCredit,
+  releaseAiCredit,
+} from '../../features/ai-credits';
 
 function base64ToImageFile(b64, filename = 'capture.jpg') {
   const dataUrl = b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`;
@@ -39,35 +50,7 @@ function base64ToImageFile(b64, filename = 'capture.jpg') {
 }
 
 function buildAnalysisFromManualFood(m) {
-  const toItem = (f) => ({
-    name: f.name,
-    nutrition: {
-      calories: f.calories ?? 0,
-      protein: f.protein ?? 0,
-      carbs: f.carbs ?? 0,
-      fat: f.fat ?? 0,
-      fiber: f.fiber ?? 0,
-    },
-  });
-  if (m.isPlate && Array.isArray(m.items)) {
-    const foods = m.items.map(toItem);
-    const total = m.total || foods.reduce(
-      (a, f) => ({
-        calories: a.calories + (f.nutrition.calories || 0),
-        protein: a.protein + (f.nutrition.protein || 0),
-        carbs: a.carbs + (f.nutrition.carbs || 0),
-        fat: a.fat + (f.nutrition.fat || 0),
-        fiber: a.fiber + (f.nutrition.fiber || 0),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-    );
-    return { foods, total, confidence: 'high' };
-  }
-  const item = toItem({
-    name: m.foodName,
-    calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, fiber: m.fiber,
-  });
-  return { foods: [item], total: item.nutrition, confidence: 'high' };
+  return buildManualFoodAnalysis(m);
 }
 
 /**
@@ -217,15 +200,55 @@ export default function UnknownEntryFlow({
     if (!imageBase64 || !userId) return;
     setRetrying(true);
     setError(null);
+    let reservationId = null;
+    const creditsEnabled = isFlagEnabled('ff.ai-credits');
     try {
+      if (creditsEnabled) {
+        const reserved = await reserveAiCredit({ userId, apiBaseUrl });
+        if (!reserved?.allowed || !reserved.reservationId) {
+          setRetrying(false);
+          setError(
+            reserved?.reason === 'limit_reached'
+              ? 'Daily AI limit reached'
+              : 'AI Mode is unavailable right now',
+          );
+          setStage('view');
+          return;
+        }
+        reservationId = reserved.reservationId;
+      }
+
       const file = base64ToImageFile(imageBase64);
       // Do NOT pass captureId — avoids idempotency guard returning cached "other"
-      const detectedType = await analyzeImage(file, { userId });
+      const detectedType = await analyzeImage(file, {
+        userId,
+        reservationId,
+        creditGated: Boolean(creditsEnabled && reservationId),
+      });
+
+      const creditPayload = {
+        imageType: detectedType.type,
+        type: detectedType.type,
+        confidence: detectedType.confidence,
+        defaulted: detectedType.details?.defaulted === true,
+        error: detectedType.details?.error || null,
+        details: detectedType.details,
+        fastNutrition: detectedType.fastNutrition,
+      };
+      const settleRetryCredit = async () => {
+        if (!creditsEnabled || !reservationId) return;
+        await confirmAiCredit({
+          userId,
+          reservationId,
+          analysisResult: creditPayload,
+          apiBaseUrl,
+        }).catch(() => {});
+      };
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
+        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
-          // AI returned food type but with no recognisable items — go to picker.
           setRetrying(false);
           setStage('view');
           return;
@@ -240,6 +263,7 @@ export default function UnknownEntryFlow({
         setStage('ai-review-food');
 
       } else if (detectedType.type === 'weight' && detectedType.details?.weightValue) {
+        await settleRetryCredit();
         // Transition to weight modal with the detected value pre-filled.
         setRetrying(false);
         setAiWeight({
@@ -249,6 +273,7 @@ export default function UnknownEntryFlow({
         setStage('weight');
 
       } else if (detectedType.type === 'education') {
+        await settleRetryCredit();
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.platform || 'Online Meeting',
@@ -258,6 +283,7 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else if (detectedType.type === 'smartwatch') {
+        await settleRetryCredit();
         setRetrying(false);
         setAiEducation({
           platform: detectedType.details?.source || 'Smartwatch',
@@ -267,12 +293,16 @@ export default function UnknownEntryFlow({
         setStage('ai-review-education');
 
       } else {
+        await settleRetryCredit();
         // AI could not identify after all automatic retries — go to the manual
         // category picker. The Retry AI button will be hidden on next render.
         setRetrying(false);
         setStage('view');
       }
     } catch {
+      if (creditsEnabled && reservationId) {
+        await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+      }
       setRetrying(false);
       setStage('view');
     }
@@ -378,11 +408,24 @@ export default function UnknownEntryFlow({
         imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
       });
       await retagCapture(captureKind);
-      finish({ kind: 'education', captureId });
+      finish({ kind: captureKind === 'smartwatch' ? 'watch' : 'education', captureId });
     } catch {
       setError("Couldn't save — please try again.");
       setStage(errorStage);
     }
+  };
+
+  const handleWatchSave = async ({ caloriesBurned, source }) => {
+    await saveLog({
+      userId,
+      platform: source || 'Smartwatch',
+      topic: `Calories Burned: ${caloriesBurned} kcal`,
+      captureId,
+      imageBase64,
+      imageTimestamp: resolveManualLogTimestamp(originalCapturedAt, diaryDate),
+    });
+    await retagCapture('smartwatch');
+    finish({ kind: 'watch', captureId });
   };
 
   const handleAiEducationConfirm = async () => {
@@ -648,7 +691,7 @@ export default function UnknownEntryFlow({
                           onClick={() => { setError(null); setStage(type); }}
                           className="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50 transition-colors"
                         >
-                          <span className="text-2xl">{icon}</span>
+                          <EmojiOrNative emoji={icon} className="w-8 h-8" nativeClassName="text-2xl" />
                           <span className="text-sm font-semibold text-gray-900 text-center">{label}</span>
                           <span className="text-xs text-gray-500 text-center leading-tight">{sub}</span>
                         </button>
@@ -661,7 +704,12 @@ export default function UnknownEntryFlow({
                       onClick={handleDelete}
                       className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                      {deleting ? 'Deleting…' : (
+                        <>
+                          <EmojiOrNative emoji="🗑️" className="w-4 h-4 inline-block align-text-bottom mr-1" nativeClassName="text-sm" />
+                          Delete this photo
+                        </>
+                      )}
                     </button>
               </div>
             )}
@@ -678,7 +726,12 @@ export default function UnknownEntryFlow({
                   onClick={handleDelete}
                   className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
                 >
-                  {deleting ? 'Deleting…' : '🗑️ Delete this photo'}
+                  {deleting ? 'Deleting…' : (
+                    <>
+                      <EmojiOrNative emoji="🗑️" className="w-4 h-4 inline-block align-text-bottom mr-1" nativeClassName="text-sm" />
+                      Delete this photo
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -712,16 +765,25 @@ export default function UnknownEntryFlow({
       />
 
       <ManualEducationEntryModal
-        isOpen={stage === 'education' || stage === 'smartwatch'}
+        isOpen={stage === 'education'}
         skipTypeSelect={true}
-        initialPlatform={aiEducation?.platform}
-        initialTopic={aiEducation?.topic}
+        initialPlatform={aiEducation?.captureKind === 'education' ? aiEducation?.platform : undefined}
+        initialTopic={aiEducation?.captureKind === 'education' ? aiEducation?.topic : undefined}
         onClose={() => setStage('view')}
         onBack={() => setStage('view')}
-        onSave={(data) => handleEducationSave(
-          data,
-          stage === 'smartwatch' ? 'smartwatch' : 'education',
-        )}
+        onSave={(data) => handleEducationSave(data, 'education')}
+      />
+
+      <ManualWatchEntryModal
+        isOpen={stage === 'smartwatch'}
+        onClose={() => setStage('view')}
+        onBack={() => setStage('view')}
+        initialCaloriesBurned={
+          aiEducation?.captureKind === 'smartwatch'
+            ? (String(extractCaloriesValue(aiEducation?.topic)).match(/[\d.]+/) || [''])[0]
+            : ''
+        }
+        onSave={handleWatchSave}
       />
     </>
   );

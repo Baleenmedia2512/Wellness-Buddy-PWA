@@ -17,6 +17,8 @@ const ManualEducationEntryModal = ({
   skipTypeSelect = false,
   initialPlatform,
   initialTopic,
+  formTitle,
+  formSubtitle,
 }) => {
   const vm = useEducationEntry({
     onSave,
@@ -38,9 +40,13 @@ const ManualEducationEntryModal = ({
             <EducationFormFields
               platform={vm.platform}
               onSelectPlatform={vm.setPlatform}
+              topic={vm.topic}
+              onSelectTopic={vm.setTopic}
               error={vm.error}
               onCancel={vm.handleCancel}
               onBack={onBack ? () => vm.handleBack(onBack) : null}
+              formTitle={formTitle}
+              formSubtitle={formSubtitle}
             />
             <EducationFormActions
               onCancel={vm.handleCancel}

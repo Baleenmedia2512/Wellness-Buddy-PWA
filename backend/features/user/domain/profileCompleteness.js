@@ -4,6 +4,7 @@
  */
 
 const PLACEHOLDER_PHONE_USER_RE = /^user_\d+$/i;
+const VALID_GENDERS = ['Male', 'Female'];
 
 function emailLocalPart(email) {
   const local = String(email || '').split('@')[0]?.trim().toLowerCase();
@@ -37,16 +38,44 @@ export function hasValidProfileName(userName, context = {}) {
   return name.length > 0 && !isPlaceholderUserName(userName, context);
 }
 
+/**
+ * Gender is satisfied from team_table.Gender or BPC bodyMetrics.gender.
+ * @param {string|null|undefined} gender
+ * @param {object|null|undefined} bodyMetrics
+ * @returns {boolean}
+ */
+export function hasValidProfileGender(gender, bodyMetrics = null) {
+  const fromProfile = String(gender || '').trim();
+  if (VALID_GENDERS.includes(fromProfile)) return true;
+  const fromCard = String(bodyMetrics?.gender || '').trim();
+  return VALID_GENDERS.includes(fromCard);
+}
+
+/**
+ * Profile gate fields for unified onboarding (phone is not blocking).
+ * Photo is enforced on the CompleteProfile UI; when profileImage is passed,
+ * a custom data-URL image is required for completeness.
+ */
 export function isProfileComplete({
   height,
   dietType,
-  phoneNumber,
   userName,
   email,
+  phoneNumber,
+  gender = null,
+  bodyMetrics = null,
+  profileImage = undefined,
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
-  const hasPhone = typeof phoneNumber === 'string' && phoneNumber.trim() !== '';
+  const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
-  return !!(hasHeight && hasDiet && hasPhone && hasName);
+  const hasGender = hasValidProfileGender(gender, bodyMetrics);
+  const hasPhoto = profileImage === undefined
+    ? true
+    : typeof profileImage === 'string'
+      && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
+  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasPhoto);
 }
+
+export { VALID_GENDERS };

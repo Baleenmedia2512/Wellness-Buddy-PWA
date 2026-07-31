@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.0 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.1 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -33,6 +33,7 @@ If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every 
 | **Water** | Daily hydration goal (50 ml × body-weight kg) inferred from food log, reminder scheduling | Goal met / reminder fired |
 | **Weight** | Weight recording (with photo, location, nutrition center), OCR/AI correction, trend history, reverse-progress detection | Weight saved / reverse-progress flagged |
 | **Nutrition / Food Diary** | Food entry, meal classification, calorie + macro tracking, beverage detection | Food logged |
+| **Nutrition Knowledge** | Master nutrition profiles (macros+micros), search/resolve priority, AI draft candidates (ADR-0005) | Profile resolved / candidate recorded |
 | **Background Analysis** | AI food-photo pipeline: classify items, extract 20+ nutrition fields, confidence score | Photo analysed → food record created |
 | **Captures** | Canonical photo record, state machine (`pending`→`food|weight|education|smartwatch|unknown`), share tokens | Photo captured |
 | **Body Parameters Card** | Composite body metrics card (body fat, muscle mass, BMR, visceral fat, etc.) | Coach creates and shares card |
@@ -142,6 +143,8 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.testimonials` | ON | @testimonials-team | 2027-01-06 | Before/after testimonial upload + coach OTP verification flow |
 | `ff.reports-module` | ON | @reports-team | 2026-12-31 | Reports module — direct-downline weight status report for coaches/uplines |
 | `ff.wellness-score-sheet` | ON | @wellness-score-team | 2027-01-08 | Wellness Score home tile, daily score API, admin score-setup config |
+| `ff.ai-credits` | ON | @principal-eng | 2027-01-27 | AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI); numeric limit in DB |
+| `ff.nutrition-knowledge` | ON | @nutrition-team | 2027-01-30 | Master nutrition knowledge base (ADR-0005) — free master/history lookup; AI enrich optional |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

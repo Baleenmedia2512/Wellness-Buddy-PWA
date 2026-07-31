@@ -18,6 +18,7 @@ export { config };
  * 200:   { ok: true, data: { id, message, data: { … } } }    // save() shape
  * 404:   { ok: false, error: { code: 'CAPTURE_NOT_FOUND' } }
  * 409:   { ok: false, error: { code: 'NOT_RETRYABLE', currentType, … } }
+ *        (only pending|unknown → food is allowed)
  * 401:   { success: false, message: 'Authentication required …' }
  * 403:   { success: false, message: 'You do not have permission …' }
  */

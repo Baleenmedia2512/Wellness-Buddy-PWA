@@ -170,3 +170,21 @@ registerFlag({
   description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.ai-credits',
+  owner:          '@principal-eng',
+  createdAt:      '2026-07-27',
+  removeBy:       '2027-01-27',
+  description:    'Boolean rollout for AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI). Numeric daily limit lives in ai_credits_config_table, not this flag.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.nutrition-knowledge',
+  owner:          '@nutrition-team',
+  createdAt:      '2026-07-30',
+  removeBy:       '2027-01-30',
+  description:    'ADR-0005 — master nutrition knowledge base: search/resolve prefer approved master profiles, pass micros from AI history, draft candidates from successful AI, optional text enrich.',
+  defaultEnabled: true,
+});

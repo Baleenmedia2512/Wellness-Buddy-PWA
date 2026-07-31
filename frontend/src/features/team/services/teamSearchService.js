@@ -3,6 +3,7 @@
  * Owns the network call(s) and any list normalisation. No React.
  */
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
+import { hasValidProfileName } from '../../user/domain/profileCompleteness';
 
 /** Coach-like roles that may search/view other team members. */
 const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
@@ -29,7 +30,10 @@ export async function fetchHasTeamMembers(userId) {
   return Boolean(data?.hasTeamMembers);
 }
 
-/** Fetch the saved profile name for the current user (best-effort). */
+/**
+ * Fetch the saved profile UserName for the current user.
+ * Returns '' when missing or when UserName is a placeholder (email local-part / phone user_*).
+ */
 export async function fetchSavedUserName(email) {
   if (!email) return '';
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -40,7 +44,38 @@ export async function fetchSavedUserName(email) {
   );
   if (!res.ok) return '';
   const data = await res.json();
-  return (data?.success && data?.data?.userName) || '';
+  if (!data?.success || !data?.data) return '';
+  const name = String(data.data.userName || '').trim();
+  const profileEmail = data.data.email || email;
+  if (!hasValidProfileName(name, {
+    email: profileEmail,
+    phoneNumber: data.data.phoneNumber,
+  })) {
+    return '';
+  }
+  return name;
+}
+
+/**
+ * Display name for the team search input — profile UserName only.
+ * Never falls back to email local-part.
+ */
+export function resolveTeamSearchDisplayName(savedUserName, user) {
+  const email = user?.email || user?.Email || '';
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || '';
+  const candidates = [
+    savedUserName,
+    user?.userName,
+    user?.username,
+    user?.name,
+    user?.displayName,
+  ];
+  for (const candidate of candidates) {
+    if (hasValidProfileName(candidate, { email, phoneNumber })) {
+      return String(candidate).trim();
+    }
+  }
+  return '';
 }
 
 /** Fetch the coach's full team (Active members only) and prepend the coach themselves. */
@@ -56,7 +91,7 @@ export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRo
   const withCoach = [
     {
       userId: coachId,
-      userName: coachName,
+      userName: coachName || '',
       email: coachEmail,
       role: coachRole,
       status: 'Active',

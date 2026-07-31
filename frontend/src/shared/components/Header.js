@@ -5,6 +5,25 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 
+/** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
+const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
+
+function canAccessReportsTab(role, hasTeamMembers) {
+  return REPORTS_TAB_ROLES.includes(role) || Boolean(hasTeamMembers);
+}
+
+async function fetchHasTeamMembers(userId) {
+  if (!userId) return false;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const res = await fetch(
+    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
+    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  );
+  if (!res.ok) return false;
+  const data = await res.json();
+  return Boolean(data?.hasTeamMembers);
+}
+
 const Header = ({
   user,
   userRole = "user",
@@ -31,6 +50,22 @@ const Header = ({
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [hasTeamMembers, setHasTeamMembers] = useState(false);
+
+  const reportsEnabled = canAccessReportsTab(userRole, hasTeamMembers);
+
+  // Grant report tab to downline leaders even when Role is still "user" (e.g. u2, a3).
+  useEffect(() => {
+    if (!user?.id || REPORTS_TAB_ROLES.includes(userRole)) {
+      setHasTeamMembers(false);
+      return undefined;
+    }
+    let cancelled = false;
+    fetchHasTeamMembers(user.id)
+      .then((has) => { if (!cancelled) setHasTeamMembers(has); })
+      .catch(() => { if (!cancelled) setHasTeamMembers(false); });
+    return () => { cancelled = true; };
+  }, [user?.id, userRole]);
 
   // Fetch saved user name + avatar for header display.
   // Re-runs when email changes OR when profileKey is incremented (after a save).
@@ -98,7 +133,7 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
-          reportsEnabled={['coach', 'upline', 'admin', 'developer'].includes(userRole)}
+          reportsEnabled={reportsEnabled}
         />
       </nav>
     );
@@ -182,7 +217,7 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowReports={onShowReports}
-          reportsEnabled={['coach', 'upline', 'admin', 'developer'].includes(userRole)}
+          reportsEnabled={reportsEnabled}
         />
       </nav>
     </header>

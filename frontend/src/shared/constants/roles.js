@@ -4,10 +4,13 @@
  * scattered across features.
  */
 
-/** @typedef {'admin'|'coach'|'member'|'guest'} Role */
+/** @typedef {'admin'|'developer'|'coach'|'member'|'guest'} Role */
 
 /** Administrative super-user. */
 export const ROLE_ADMIN = 'admin';
+
+/** Engineering / QA role with admin-like tooling access. */
+export const ROLE_DEVELOPER = 'developer';
 
 /** Coach who manages a team of members. */
 export const ROLE_COACH = 'coach';
@@ -45,4 +48,15 @@ export function hasAtLeastRole(role, minRole) {
   const a = ROLE_RANK[/** @type {Role} */ (role)] ?? -1;
   const b = ROLE_RANK[minRole] ?? Infinity;
   return a >= b;
+}
+
+/** Roles that see admin tooling (FAB, setup screens). */
+export const ADMIN_LIKE_ROLES = [ROLE_ADMIN, ROLE_DEVELOPER];
+
+/**
+ * @param {string|null|undefined} role
+ * @returns {boolean}
+ */
+export function isAdminLikeRole(role) {
+  return ADMIN_LIKE_ROLES.includes(role);
 }

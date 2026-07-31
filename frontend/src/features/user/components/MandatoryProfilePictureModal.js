@@ -20,7 +20,7 @@ const MandatoryProfilePictureModal = ({ user, onComplete }) => {
   const cropper = useImageCropper({
     onError: setError,
     onCropped: (cropped) => {
-      setProfileImage(cropped); setPreviewUrl(cropped); face.reset(); face.run(cropped);
+      setProfileImage(cropped); setPreviewUrl(cropped); face.reset(); face.run(cropped, user?.id ?? null);
     },
   });
 

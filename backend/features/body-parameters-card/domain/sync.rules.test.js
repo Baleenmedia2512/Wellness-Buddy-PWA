@@ -153,28 +153,72 @@ describe('buildCardPatchFromProfile', () => {
   it('patches weight metrics when changed', () => {
     const patch = buildCardPatchFromProfile(
       { ...card, weight_kg: 70, fat_percent: 20, bmi: 24 },
-      { weightKg: 72, fatPercent: 18, bmi: 24.5 },
+      { weightKg: 72, fatPercent: 18 },
     );
     assert.equal(patch.weight_kg, 72);
     assert.equal(patch.fat_percent, 18);
-    assert.equal(patch.bmi, 24.5);
+    assert.equal(patch.bmi, 24.9);
   });
 
-  it('never includes card-only fields', () => {
+  it('recomputes BMI when height changes so it stays consistent with weight', () => {
+    const patch = buildCardPatchFromProfile(
+      { name: 'Ada', height_cm: 170, bmr: 1500, weight_kg: 85, bmi: 29.4 },
+      { height: 175 },
+    );
+    assert.equal(patch.height_cm, 175);
+    assert.equal(patch.bmi, 27.8);
+  });
+
+  it('always refreshes BMI when height changes even if stored BMI already matches target height', () => {
+    const patch = buildCardPatchFromProfile(
+      { name: 'Balaji', height_cm: 170, weight_kg: 85, bmi: 26.5 },
+      { height: 179 },
+    );
+    assert.equal(patch.height_cm, 179);
+    assert.equal(patch.bmi, 26.5);
+  });
+
+  it('syncs gender Male/Female onto the card', () => {
     const patch = buildCardPatchFromProfile(card, {
       name: 'Ada',
-      age: 30,
       gender: 'Female',
+    });
+    assert.deepEqual(patch, { gender: 'Female' });
+  });
+
+  it('ignores invalid gender values', () => {
+    const patch = buildCardPatchFromProfile(card, {
+      name: 'Ada',
+      gender: 'Other',
+      age: 30,
       chest: 90,
     });
     assert.deepEqual(patch, {});
   });
 });
 
+describe('buildTeamTableDiff gender', () => {
+  it('syncs card gender onto team_table', () => {
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, bmr: 1500, gender: 'Female' },
+      { userName: 'Ada', height: 170, bmr: 1500, gender: null },
+    );
+    assert.deepEqual(diff, { Gender: 'Female' });
+  });
+
+  it('skips Other gender for team_table', () => {
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, bmr: 1500, gender: 'Other' },
+      { userName: 'Ada', height: 170, bmr: 1500, gender: null },
+    );
+    assert.deepEqual(diff, {});
+  });
+});
+
 describe('buildProfileCardSyncPayload', () => {
   it('includes team_table and weight metrics for card sync', () => {
     const payload = buildProfileCardSyncPayload(
-      { name: 'Ada', height: 172, bmr: 1600 },
+      { name: 'Ada', height: 172, bmr: 1600, gender: 'Male' },
       {
         savedBmr: 1600,
         latestWeight: { Weight: 72, BodyFat: 18, Bmi: 24.5 },
@@ -184,9 +228,10 @@ describe('buildProfileCardSyncPayload', () => {
       name: 'Ada',
       height: 172,
       bmr: 1600,
+      gender: 'Male',
       weightKg: 72,
       fatPercent: 18,
-      bmi: 24.5,
+      bmi: 24.3,
     });
   });
 
