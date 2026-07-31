@@ -1,8 +1,8 @@
 /**
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
- * Direct and Full = Active members in the logged-in coach's hierarchy only.
- * Uses indexed CoachId lookups per level — never loadReportingContext (times out).
+ * Same Direct / Full audience as Ideal Weight & Transformation reports
+ * (reportingHierarchyService — active members, inactive-coach rollup).
  */
 import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
 
