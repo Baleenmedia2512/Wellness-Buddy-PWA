@@ -248,7 +248,6 @@ export default function ManualEntryPage({
   originalCapturedAt = null,
   onBack,
   onSaved,
-  onAwaitingShare,
   onStartBackgroundAi,
   onToast,
 }) {
@@ -342,12 +341,9 @@ export default function ManualEntryPage({
   }, [userId]);
 
   const exit = async () => {
-    const result = await onSaved?.();
-    if (result?.shared) {
-      onBack?.();
-    } else {
-      onAwaitingShare?.();
-    }
+    await onSaved?.();
+    // Share sheet was shown — return to main whether user shared or dismissed.
+    onBack?.();
   };
 
   const saveFoodAnalysis = async (analysisResult, toastMsg) => {

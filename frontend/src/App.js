@@ -381,7 +381,7 @@ function WellnessValleyApp() {
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
   // Dismissed right before openCamera() is called, or by safety effects below.
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(() =>
-    Capacitor.isNativePlatform(),
+    Capacitor.isNativePlatform() && !Session.getPendingClassifyCapture()?.captureId,
   );
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
@@ -618,9 +618,8 @@ function WellnessValleyApp() {
     // set so the background AI analysis can finish and persist to the DB.
   }, []);
 
-  // Open the native share sheet after the user finishes the Classify photo step
-  // (AI analyze or manual type save). Resolves { shared: true } only when the
-  // user completes sharing — caller navigates home only on shared: true.
+  // Open the native share sheet after Classify photo save / AI start. Caller
+  // navigates home once the sheet closes (shared or dismissed).
   const shareCaptureAfterClassify = useCallback(
     async (imageBase64) => {
       const autoShareEnabled =
@@ -919,8 +918,20 @@ function WellnessValleyApp() {
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [manualEntryPayload, setManualEntryPayload] = useState(null);
+  const [showManualEntry, setShowManualEntry] = useState(() => {
+    const pending = Session.getPendingClassifyCapture();
+    return !!(pending?.captureId && pending?.imageBase64);
+  });
+  const [manualEntryPayload, setManualEntryPayload] = useState(() => {
+    const pending = Session.getPendingClassifyCapture();
+    if (!pending?.captureId || !pending?.imageBase64) return null;
+    return {
+      captureId: pending.captureId,
+      imageBase64: pending.imageBase64,
+      userId: pending.userId || Session.getDbUserId() || null,
+      originalCapturedAt: pending.originalCapturedAt ?? null,
+    };
+  });
   const pendingClassifyRestoredRef = useRef(false);
   /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
   const [tabVisitKeys, setTabVisitKeys] = useState({});
@@ -1437,6 +1448,11 @@ function WellnessValleyApp() {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
+    // Pending Classify photo — restore that screen; do not auto-open camera.
+    if (Session.getPendingClassifyCapture()?.captureId) {
+      setShowLaunchOverlay(false);
+      return;
+    }
     // Wait until onboarding is fully done:
     // profile → physical activity → coach selection → coach OTP → then camera.
     if (onboardingBlocking) return;
@@ -1444,6 +1460,10 @@ function WellnessValleyApp() {
     let cancelled = false;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
+      if (Session.getPendingClassifyCapture()?.captureId) {
+        setShowLaunchOverlay(false);
+        return;
+      }
       // Wait until the launch-URL check has completed (prevents opening the
       // camera on share-link cold starts where getLaunchUrl() or appUrlOpen
       // hasn't resolved yet). Re-queues the RAF n++ adds at most ~16ms per
@@ -1484,6 +1504,10 @@ function WellnessValleyApp() {
       return;
     }
     if (authLoading) return; // still settling n++ wait
+    if (Session.getPendingClassifyCapture()?.captureId || showManualEntry) {
+      setShowLaunchOverlay(false);
+      return;
+    }
     if (!user) {
       setShowLaunchOverlay(false);
       return;
@@ -1507,6 +1531,7 @@ function WellnessValleyApp() {
     user,
     onboardingBlocking,
     isUserActive,
+    showManualEntry,
   ]);
 
   // Deep-link handler: open the app via Android App Link
@@ -1847,11 +1872,9 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  // Restore Classify photo after reload / app relaunch until log + share completes.
+  // Restore Classify photo after reload / app relaunch until log + share sheet.
   useEffect(() => {
     if (authLoading || forceLoggedOut) return;
-    if (pendingClassifyRestoredRef.current) return;
-    if (showManualEntry && manualEntryPayload) return;
 
     const pending = Session.getPendingClassifyCapture();
     if (!pending?.captureId || !pending?.imageBase64) return;
@@ -1866,34 +1889,32 @@ function WellnessValleyApp() {
       }
       if (!userId || cancelled) return;
 
-      pendingClassifyRestoredRef.current = true;
-      setManualEntryPayload({
-        captureId: pending.captureId,
-        imageBase64: pending.imageBase64,
-        userId,
-        originalCapturedAt: pending.originalCapturedAt ?? null,
-      });
-      setShowManualEntry(true);
-      window.history.pushState({ wvPage: 'manual-entry' }, '');
-
-      if (pending.awaitingShare) {
-        const result = await shareCaptureAfterClassify(pending.imageBase64);
-        if (cancelled) return;
-        if (result?.shared) {
-          Session.clearPendingClassifyCapture();
-          setShowManualEntry(false);
-          setManualEntryPayload(null);
-          setImagePreview(null);
-          const currentWvPage = window.history.state?.wvPage;
-          if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        }
+      if (!showManualEntry || !manualEntryPayload) {
+        pendingClassifyRestoredRef.current = true;
+        setManualEntryPayload({
+          captureId: pending.captureId,
+          imageBase64: pending.imageBase64,
+          userId,
+          originalCapturedAt: pending.originalCapturedAt ?? null,
+        });
+        setShowManualEntry(true);
+        window.history.pushState({ wvPage: 'manual-entry' }, '');
+      } else if (!manualEntryPayload.userId) {
+        setManualEntryPayload((prev) => (prev ? { ...prev, userId } : prev));
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [authLoading, forceLoggedOut, user, showManualEntry, manualEntryPayload, shareCaptureAfterClassify]);
+  }, [authLoading, forceLoggedOut, user, showManualEntry, manualEntryPayload]);
+
+  // Sync history when Classify photo was bootstrapped synchronously from storage.
+  useEffect(() => {
+    if (!showManualEntry || !manualEntryPayload) return;
+    if (window.history.state?.wvPage === 'manual-entry') return;
+    window.history.pushState({ wvPage: 'manual-entry' }, '');
+  }, [showManualEntry, manualEntryPayload]);
 
   // Initialize back button handler
   useEffect(() => {
@@ -7121,13 +7142,14 @@ function WellnessValleyApp() {
             setShowManualEntry(false);
             setManualEntryPayload(null);
             setImagePreview(null);
-            const currentWvPage = window.history.state?.wvPage;
-            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+            setShowDashboard(false);
+            Session.setCurrentPage('main');
+            // Always land on Home — history.back() can pop to a stale Diary entry.
+            window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onAwaitingShare={() => Session.markPendingClassifyAwaitingShare()}
           onSaved={async () => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
-            return shareCaptureAfterClassify(manualEntryPayload.imageBase64);
+            await shareCaptureAfterClassify(manualEntryPayload.imageBase64);
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
