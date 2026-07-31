@@ -69,6 +69,8 @@ export function validateActivityReport(query) {
     throw new ValidationError(400, `detailActivity must be one of: ${Array.from(VALID_DETAIL_ACTIVITIES).join(', ')}`);
   }
 
+  const includeRecords = query.includeRecords !== '0' && query.includeRecords !== 'false';
+
   return {
     userId,
     activityType,
@@ -78,5 +80,6 @@ export function validateActivityReport(query) {
     endDate: query.endDate,
     role,
     teamScope,
+    includeRecords,
   };
 }

@@ -275,6 +275,7 @@ export async function getActivityReportBootstrap({
   startDate: customStart,
   endDate: customEnd,
   detailActivity = 'education',
+  includeRecords = true,
 }) {
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
@@ -305,52 +306,54 @@ export async function getActivityReportBootstrap({
     };
   }
 
-  const [
-    members,
-    weightRecords,
-    educationRecords,
-    stepRecords,
-    timeWindows,
-  ] = await Promise.all([
-    repo.fetchMemberDetails(userIds),
+  const activityFetches = [
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
-  ]);
+  ];
+  if (includeRecords) {
+    activityFetches.unshift(repo.fetchMemberDetails(userIds));
+  }
+
+  const fetchResults = await Promise.all(activityFetches);
+  const members = includeRecords ? fetchResults[0] : [];
+  const weightRecords = fetchResults[includeRecords ? 1 : 0];
+  const educationRecords = fetchResults[includeRecords ? 2 : 1];
+  const stepRecords = fetchResults[includeRecords ? 3 : 2];
+  const timeWindows = fetchResults[includeRecords ? 4 : 3];
 
   // Food rows carry large AnalysisData JSON — fetch after lighter tables to reduce parallel DB load.
   const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
 
-  const coachIds = [...new Set(members.map((m) => m.CoachId).filter(Boolean))];
-  const coachNames = await repo.fetchCoachNames(coachIds);
-
   const summary = buildSummaryCounts({
     weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana,
   });
-  const simpleMap = buildSimpleMemberMap(members, coachNames);
-  const { members: memberList, stats } = buildMemberSummaryList(
-    userIds, simpleMap, educationRecords, timezoneIana,
-  );
-  const detailMemberMap = buildDetailMemberMap(members, coachNames);
-  const records = await buildDetailRecordsFromBundle({
-    activityType: detailActivity,
-    memberMap: detailMemberMap,
-    timezoneIana,
-    weightRecords,
-    educationRecords,
-    foodRecords,
-    stepRecords,
-    timeWindows,
-  });
+
+  let records = [];
+  if (includeRecords) {
+    const coachIds = [...new Set(members.map((m) => m.CoachId).filter(Boolean))];
+    const coachNames = await repo.fetchCoachNames(coachIds);
+    const detailMemberMap = buildDetailMemberMap(members, coachNames);
+    records = await buildDetailRecordsFromBundle({
+      activityType: detailActivity,
+      memberMap: detailMemberMap,
+      timezoneIana,
+      weightRecords,
+      educationRecords,
+      foodRecords,
+      stepRecords,
+      timeWindows,
+    });
+  }
 
   return {
     httpStatus: 200,
     body: {
       ...baseBody,
       summary,
-      members: memberList,
-      stats,
+      members: [],
+      stats: EMPTY_STATS,
       records,
     },
   };

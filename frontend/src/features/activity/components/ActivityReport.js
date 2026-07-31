@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   RefreshCw, Download, Search,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
@@ -66,7 +66,8 @@ const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
-  const [loading, setLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
@@ -80,30 +81,40 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
-  // Member summary (education attendance per member — shown on mount)
+  // Member summary state kept for legacy fallback responses (not rendered in UI).
   const [memberSummaries, setMemberSummaries] = useState([]);
   const [memberStats, setMemberStats] = useState(null);
-  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [effectiveRole, setEffectiveRole] = useState(() => mapRoleForApi(userRole));
+  const [roleReady, setRoleReady] = useState(() => mapRoleForApi(userRole) !== 'member');
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [teamScopeCounts, setTeamScopeCounts] = useState(null);
   const [showTeamScope, setShowTeamScope] = useState(false);
+  const fetchAbortRef = useRef(null);
+  const fetchGenerationRef = useRef(0);
 
-  // Treat users with downline members in team_table as coaches for attendance data.
+  // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
     let cancelled = false;
     const baseRole = mapRoleForApi(userRole);
     if (baseRole !== 'member' || !user?.id) {
       setEffectiveRole(baseRole);
+      setRoleReady(true);
       return undefined;
     }
+    setRoleReady(false);
     fetchHasTeamMembers(user.id)
       .then((hasTeam) => {
-        if (!cancelled) setEffectiveRole(hasTeam ? 'coach' : 'member');
+        if (!cancelled) {
+          setEffectiveRole(hasTeam ? 'coach' : 'member');
+          setRoleReady(true);
+        }
       })
       .catch(() => {
-        if (!cancelled) setEffectiveRole('member');
+        if (!cancelled) {
+          setEffectiveRole('member');
+          setRoleReady(true);
+        }
       });
     return () => { cancelled = true; };
   }, [user?.id, userRole]);
@@ -192,65 +203,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setCurrentPage(1);
   }, [apiBaseUrl, buildReportParams, applyReportMeta]);
 
-  const fetchBootstrap = useCallback(async (detailActivity = 'education') => {
-    if (!user?.id || !apiBaseUrl) return;
-    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
-
-    setLoading(true);
-    setMemberSummaryLoading(true);
-    setError('');
-
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', { detailActivity: detailActivity || 'education' })}`,
-        { cache: 'no-store' },
-      );
-      const data = await response.json();
-
-      // Older backends (not yet deployed with bootstrap) reject the new activityType.
-      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
-        await fetchLegacyReportBundle(detailActivity);
-        return;
-      }
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to load activity report');
-      }
-
-      setSummary(data.summary || null);
-      setMemberSummaries(data.members || []);
-      setMemberStats(data.stats || null);
-      setDetailRecords(data.records || []);
-      setCurrentPage(1);
-      applyReportMeta(data);
-    } catch (err) {
-      setError(err.message || 'Failed to load activity report');
-    } finally {
-      setLoading(false);
-      setMemberSummaryLoading(false);
-    }
-  }, [
-    user?.id,
-    apiBaseUrl,
-    dateRange,
-    customStartDate,
-    customEndDate,
-    buildReportParams,
-    fetchLegacyReportBundle,
-    applyReportMeta,
-  ]);
-
-  const fetchDetails = useCallback(async (activityType) => {
+  const fetchDetails = useCallback(async (activityType, { signal } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    setLoading(true);
+    setDetailLoading(true);
     setError('');
 
     try {
       const response = await fetch(
         `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType)}`,
-        { cache: 'no-store' },
+        { cache: 'no-store', signal },
       );
 
       const data = await response.json();
@@ -262,19 +225,115 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       setDetailRecords(data.records || []);
       setCurrentPage(1);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity details');
     } finally {
-      setLoading(false);
+      setDetailLoading(false);
     }
   }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
 
+  /** Phase 1: team scope + summary pills. Phase 2: detail table (async, non-blocking). */
+  const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
+    if (!user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+
+    setSummaryLoading(true);
+    setDetailLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
+          detailActivity: detailActivity || 'education',
+          includeRecords: '0',
+        })}`,
+        { cache: 'no-store', signal },
+      );
+      const data = await response.json();
+
+      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
+        await fetchLegacyReportBundle(detailActivity);
+        setSummaryLoading(false);
+        setDetailLoading(false);
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load activity report');
+      }
+
+      setSummary(data.summary || null);
+      applyReportMeta(data);
+      setMemberSummaries(data.members || []);
+      setMemberStats(data.stats || null);
+      setSummaryLoading(false);
+
+      await fetchDetails(detailActivity, { signal });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Failed to load activity report');
+      setSummaryLoading(false);
+      setDetailLoading(false);
+    }
+  }, [
+    user?.id,
+    apiBaseUrl,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    buildReportParams,
+    fetchLegacyReportBundle,
+    applyReportMeta,
+    fetchDetails,
+  ]);
+
+  // Fetch only when this page is open (component mounted) and role is resolved.
   useEffect(() => {
-    fetchBootstrap(selectedActivity);
-  }, [fetchBootstrap, tabVisitKey, teamScope, dateRange, customStartDate, customEndDate, effectiveRole]);
+    if (!roleReady || !user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const generation = fetchGenerationRef.current + 1;
+    fetchGenerationRef.current = generation;
+
+    loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
+      if (fetchGenerationRef.current !== generation) return;
+    });
+
+    return () => {
+      controller.abort();
+      if (fetchAbortRef.current === controller) {
+        fetchAbortRef.current = null;
+      }
+    };
+  }, [
+    roleReady,
+    loadReport,
+    tabVisitKey,
+    teamScope,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    effectiveRole,
+    user?.id,
+    apiBaseUrl,
+  ]);
+
+  const handleRefresh = () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    loadReport(selectedActivity, { signal: controller.signal });
+  };
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
-    fetchDetails(activityId);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(activityId, { signal: controller.signal });
   };
 
   const handleTeamScopeChange = (scope) => {
@@ -489,11 +548,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               <h1 className="text-lg font-bold text-gray-900">Activity Report</h1>
             </div>
             <TouchFeedbackButton
-              onClick={() => fetchBootstrap(selectedActivity)}
+              onClick={handleRefresh}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading || memberSummaryLoading}
+              disabled={summaryLoading || detailLoading}
             >
-              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${(summaryLoading || detailLoading) ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
@@ -530,7 +589,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                 <TouchFeedbackButton
                   key={value}
                   onClick={() => handleTeamScopeChange(value)}
-                  disabled={loading || memberSummaryLoading}
+                  disabled={summaryLoading || detailLoading}
                   className={`flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all px-1 sm:px-2 disabled:opacity-50 ${
                     isActive
                       ? 'bg-green-600 text-white shadow-sm'
@@ -746,16 +805,22 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               </div>
             )}
 
-            {paginatedRecords.length === 0 && !loading && (
+            {paginatedRecords.length === 0 && !detailLoading && (
               <div className="p-12 text-center">
                 <p className="text-gray-500">No records found</p>
+              </div>
+            )}
+
+            {detailLoading && (
+              <div className="p-12 flex justify-center">
+                <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
               </div>
             )}
           </div>
         )}
 
-        {/* Loading State */}
-        {loading && !summary && (
+        {/* Initial load — summary / team scope */}
+        {summaryLoading && !summary && (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
           </div>

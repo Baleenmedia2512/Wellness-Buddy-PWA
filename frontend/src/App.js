@@ -619,13 +619,15 @@ function WellnessValleyApp() {
   }, []);
 
   // Open the native share sheet after the user finishes the Classify photo step
-  // (AI analyze or manual type save). Skipped when auto-share is disabled or user
-  // taps "Later — keep in Diary".
+  // (AI analyze or manual type save). Resolves { shared: true } only when the
+  // user completes sharing — caller navigates home only on shared: true.
   const shareCaptureAfterClassify = useCallback(
     async (imageBase64) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
-      if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) return;
+      if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
+        return { shared: false };
+      }
 
       foodAutoSharedRef.current = true;
 
@@ -683,14 +685,19 @@ function WellnessValleyApp() {
             fileName: `wellness-meal-${Date.now()}.jpg`,
           });
           _hasCompletedFirstShareRef.current = true;
-          if (!result?.ok && !result?.dismissed) {
+          if (!result?.ok || result.dismissed) {
             foodAutoSharedRef.current = false;
+            return { shared: false };
           }
-        } else {
-          const ok = await shareTextViaWhatsApp(shareText);
-          _hasCompletedFirstShareRef.current = true;
-          if (!ok) foodAutoSharedRef.current = false;
+          return { shared: true };
         }
+        const ok = await shareTextViaWhatsApp(shareText);
+        _hasCompletedFirstShareRef.current = true;
+        if (!ok) {
+          foodAutoSharedRef.current = false;
+          return { shared: false };
+        }
+        return { shared: true };
       } catch (_) {
         try {
           const shareDisplayName = await ensureShareDisplayName(
@@ -705,8 +712,10 @@ function WellnessValleyApp() {
           clearOverlayNow();
           await shareTextViaWhatsApp(shareText);
           _hasCompletedFirstShareRef.current = true;
+          return { shared: true };
         } catch (__) {
           foodAutoSharedRef.current = false;
+          return { shared: false };
         }
       } finally {
         clearOverlayNow();
@@ -1880,10 +1889,7 @@ function WellnessValleyApp() {
         return true;
       }
       if (showManualEntry) {
-        setShowManualEntry(false);
-        setManualEntryPayload(null);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        showToast('Log and share your photo to continue');
         return true;
       }
       if (showWellnessScore) {
@@ -7037,9 +7043,9 @@ function WellnessValleyApp() {
             const currentWvPage = window.history.state?.wvPage;
             if (currentWvPage && currentWvPage !== 'main') window.history.back();
           }}
-          onSaved={() => {
+          onSaved={async () => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
-            void shareCaptureAfterClassify(manualEntryPayload.imageBase64);
+            return shareCaptureAfterClassify(manualEntryPayload.imageBase64);
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}

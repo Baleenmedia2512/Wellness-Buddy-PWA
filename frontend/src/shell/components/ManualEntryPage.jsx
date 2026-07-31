@@ -340,9 +340,11 @@ export default function ManualEntryPage({
     if (userId) warmLatestWeightCache(userId);
   }, [userId]);
 
-  const exit = () => {
-    onSaved?.();
-    onBack?.();
+  const exit = async () => {
+    const result = await onSaved?.();
+    if (result?.shared) {
+      onBack?.();
+    }
   };
 
   const saveFoodAnalysis = async (analysisResult, toastMsg) => {
@@ -353,7 +355,7 @@ export default function ManualEntryPage({
       originalCapturedAt: originalCapturedAt || null,
     });
     onToast?.(toastMsg);
-    exit();
+    await exit();
   };
 
   const handleAiAnalyze = async () => {
@@ -377,7 +379,7 @@ export default function ManualEntryPage({
         reservationId = reserved.reservationId;
       }
       onStartBackgroundAi?.({ reservationId });
-      exit();
+      await exit();
     } catch (err) {
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
@@ -416,7 +418,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Weight saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save weight';
       setHint(msg);
@@ -438,7 +440,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Activity saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save activity';
       setHint(msg);
@@ -485,7 +487,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Education saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save education';
       setHint(msg);
