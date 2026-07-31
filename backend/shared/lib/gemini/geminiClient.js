@@ -59,7 +59,14 @@ async function resolveEndUserForMonitor(userId) {
       endUserName: data?.UserName != null ? String(data.UserName) : null,
       endUserEmail: data?.Email != null ? String(data.Email) : null,
     };
-    _endUserCache.set(key, { ...resolved, at: Date.now() });
+    
+    // Only cache if we actually found the user.
+    // If they are mid-registration, they might not be in team_table yet.
+    // Caching a "null" here would break telemetry for them for the next hour.
+    if (resolved.endUserName !== null || resolved.endUserEmail !== null) {
+      _endUserCache.set(key, { ...resolved, at: Date.now() });
+    }
+    
     return resolved;
   } catch (err) {
     logger.warn('geminiClient: failed to resolve end-user for token monitor', {
@@ -82,6 +89,7 @@ function enqueueMonitorTelemetry(basePayload, trace) {
 
   const run = async () => {
     const endUser = await resolveEndUserForMonitor(trace?.userId);
+
     await AIClient.sendTelemetry({
       ...basePayload,
       traceId: trace?.traceId ?? null,

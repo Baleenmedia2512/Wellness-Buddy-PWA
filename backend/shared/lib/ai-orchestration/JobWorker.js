@@ -27,6 +27,7 @@ import { TraceContext } from './ObservabilityTracer.js';
 import { enrichNutrition } from './AIGateway.js';
 import { jobQueue, JOB_STATUS } from './JobQueue.js';
 import { confirmEnrichmentComplete } from './AIAnalysisOrchestrator.js';
+import { findByUserId } from '../../../features/user/user.repository.js';
 
 // ── Micronutrient column mapping ──────────────────────────────────────────────
 // Maps enrichment JSON keys → food_nutrition_data_table PascalCase columns.
@@ -129,7 +130,9 @@ export async function processNextJob() {
   });
 
   try {
-    // 2. Decode base64 image
+    // Removed user validation as per request
+
+    // 3. Decode base64 image
     if (!job.imageBase64) {
       throw new Error('jobWorker: imageBase64 is missing from job payload');
     }
