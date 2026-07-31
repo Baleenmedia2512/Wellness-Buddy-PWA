@@ -4,7 +4,6 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   Loader2,
   Sparkles,
   UtensilsCrossed,
@@ -508,32 +507,11 @@ export default function ManualEntryPage({
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center gap-2 px-3 py-2.5">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-xl p-2 text-emerald-700 transition hover:bg-[#e8f5e9]"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
-            <p className="truncate text-xs text-green-600">
-              What is this image?
-            </p>
-          </div>
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
-            style={{ background: BRAND.hero }}
-            aria-hidden
-          >
-            {showAiButton ? (
-              <Sparkles className="h-4 w-4" />
-            ) : (
-              <UtensilsCrossed className="h-4 w-4" />
-            )}
-          </div>
+        <div className="mx-auto max-w-lg px-3 py-2.5">
+          <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
+          <p className="truncate text-xs text-green-600">
+            What is this image?
+          </p>
         </div>
       </header>
 
@@ -674,16 +652,6 @@ export default function ManualEntryPage({
           </div>
         </section>
 
-        {/* Footer — mint pill like Wellness Score “Tap to view…” */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99]"
-          style={{ background: BRAND.mint }}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Later — keep in Diary
-        </button>
       </main>
 
       <SmartFoodSearchModal
