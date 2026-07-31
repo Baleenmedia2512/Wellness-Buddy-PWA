@@ -429,11 +429,13 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
     const children = await fetchTeamUsersByCoachIds(supabase, currentCoachIds);
     const nextCoachIds = [];
     for (const child of children) {
-      if (usersById.has(child.UserId)) continue;
-      usersById.set(child.UserId, child);
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      // Always expand — user may have been pre-loaded (co-coach) without walking their downline.
       nextCoachIds.push(child.UserId);
     }
-    currentCoachIds = nextCoachIds;
+    currentCoachIds = [...new Set(nextCoachIds)];
     depth += 1;
   }
 

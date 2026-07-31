@@ -8,7 +8,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
-import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
@@ -138,10 +138,23 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       setTeamScopeCounts(data.teamScopeCounts);
       setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
     }
-    if (data.teamScope) {
-      setTeamScope(data.teamScope);
-    }
   }, []);
+
+  const activeScopeLabel = useMemo(() => {
+    const option = TEAM_SCOPE_OPTIONS.find((o) => o.value === teamScope);
+    if (!option) return '';
+    if (teamScope === TEAM_SCOPES.MINE) return option.label;
+    const count = teamScopeCounts?.[teamScope] ?? 0;
+    return `${option.label} (${count})`;
+  }, [teamScope, teamScopeCounts]);
+
+  const activeDateLabel = useMemo(() => {
+    const preset = ACTIVITY_REPORT_DATE_RANGES.find((r) => r.value === dateRange);
+    if (dateRange === 'custom') {
+      return formatCustomRangeLabel(customStartDate, customEndDate);
+    }
+    return preset?.label || 'Today';
+  }, [dateRange, customStartDate, customEndDate]);
 
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
     const summaryRes = await fetch(
@@ -531,6 +544,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               );
             })}
           </div>
+        )}
+
+        {(showTeamScope || summary) && (
+          <p className="mb-3 text-[11px] sm:text-xs text-gray-500">
+            Activity counts for{' '}
+            <span className="font-semibold text-gray-700">{activeScopeLabel || 'your team'}</span>
+            {' · '}
+            <span className="font-semibold text-gray-700">{activeDateLabel}</span>
+          </p>
         )}
 
         {/* Error Display */}

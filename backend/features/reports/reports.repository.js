@@ -46,6 +46,46 @@ export async function getCoachMember(coachId) {
 }
 
 /**
+ * Fetch every descendant in the coach hierarchy (excludes the coach).
+ * Uses indexed subtree load — same member set as getFullTeamMembers without full-table scan.
+ *
+ * @param {number} coachId
+ * @returns {Promise<{
+ *   rawMembers: Array<{ UserId: number, UserName: string, Height: string|null, CoachId: number, HierarchyParent: number, isDirectToRoot: boolean }>,
+ *   childrenByParentId: Map<number, number[]>
+ * }>}
+ */
+export async function getFullTeamMembersIndexed(coachId) {
+  const supabase = getSupabaseClient();
+  const context = await loadReportingContextForCoach(supabase, coachId);
+  const reportingMembers = getFullReportingMembers(coachId, context);
+  const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
+    context,
+    coachId,
+  );
+
+  if (reportingMembers.length === 0) {
+    return { rawMembers: [], childrenByParentId };
+  }
+
+  const rawMembers = reportingMembers
+    .filter((member) => member.UserId !== coachId)
+    .map((member) => ({
+      UserId: member.UserId,
+      UserName: member.UserName,
+      Height: member.Height ?? null,
+      CoachId: member.CoachId,
+      Role: member.Role,
+      Status: member.Status,
+      HierarchyParent: parentByUserId.get(Number(member.UserId)) ?? member.CoachId,
+      isDirectToRoot: directToRoot.has(Number(member.UserId)),
+    }))
+    .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
+
+  return { rawMembers, childrenByParentId };
+}
+
+/**
  * Fetch every Active descendant in the coach hierarchy (excludes the coach).
  *
  * @param {number} coachId

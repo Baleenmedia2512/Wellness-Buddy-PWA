@@ -1,12 +1,7 @@
 /**
- * Activity Report team scope — indexed reporting hierarchy (matches Ideal Weight reports).
+ * Activity Report team scope — same member set as Ideal Weight Report (indexed load).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import {
-  getDirectReportingMembers,
-  getFullReportingMembers,
-  loadReportingContextForCoach,
-} from '../../../utils/reportingHierarchyService.js';
+import { getFullTeamMembersIndexed } from '../../reports/reports.repository.js';
 
 /** In-process cache — warm lambda serves bootstrap + detail without re-walking tree. */
 const scopeCache = new Map();
@@ -23,14 +18,14 @@ export async function buildActivityReportCoachScope(userId) {
   const hit = scopeCache.get(key);
   if (hit && hit.expiresAt > now) return hit.value;
 
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, userIdNum);
+  const { rawMembers } = await getFullTeamMembersIndexed(userIdNum);
 
   const value = {
-    directIds: getDirectReportingMembers(userIdNum, context)
+    directIds: rawMembers
+      .filter((member) => member.isDirectToRoot)
       .map((member) => member.UserId)
       .filter(Boolean),
-    fullIds: getFullReportingMembers(userIdNum, context)
+    fullIds: rawMembers
       .map((member) => member.UserId)
       .filter(Boolean),
   };
