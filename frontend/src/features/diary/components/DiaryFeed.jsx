@@ -24,7 +24,7 @@
  */
 
 import React, { useMemo, useEffect, useState } from 'react';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
@@ -469,17 +469,6 @@ export default function DiaryFeed({
   if (showTimeline) {
     return (
       <div data-testid="diary-timeline">
-        {/* Refreshing indicator */}
-        {loading && (
-          <div
-            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1 mb-2"
-            aria-live="polite"
-          >
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Refreshing…
-          </div>
-        )}
-
         {/* Read-only hint when a coach views a member diary */}
         {canDelete === false && (
           <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
@@ -519,15 +508,6 @@ export default function DiaryFeed({
   return (
     <div data-testid="diary-feed">
       <div className="space-y-3">
-        {loading && (
-          <div
-            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1"
-            aria-live="polite"
-          >
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Refreshing…
-          </div>
-        )}
         {visibleEntries.map(renderRow)}
       </div>
     </div>
