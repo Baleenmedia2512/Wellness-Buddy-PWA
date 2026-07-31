@@ -47,7 +47,11 @@ import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
 import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
+<<<<<<< HEAD
 import { findByUserId } from '../../../features/user/user.repository.js';
+=======
+import { ANALYSIS_MODULES } from 'ai-token-monitor';
+>>>>>>> origin/TM/Nitheesh
 
 // ── Per-capture analysis status store ────────────────────────────────────────
 // In-process map: captureId → { status, traceId, updatedAt, errorCode? }
@@ -119,9 +123,10 @@ export async function analyse(params) {
     // usePro: true forces Gemini Pro on this request (used by frontend
     // attempt-3 escalation when Flash failed twice to classify the image).
     usePro       = false,
+    module       = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
   } = params;
 
-  const trace = new TraceContext({ captureId, userId });
+  const trace = new TraceContext({ captureId, userId, module });
 
   // ── Step 1: Idempotency guard ──────────────────────────────────────────────
   if (captureId) {
@@ -221,6 +226,7 @@ export async function analyse(params) {
         captureId:    captureId ?? '',
         userId:       userId    ?? '',
         traceId:      trace.traceId,
+        module:       trace.module,
         imageBase64,
         mimeType,
         fastNutrition: fastResult.fastNutrition ?? {},

@@ -14,7 +14,7 @@
 // MUST be first — SDK reads localStorage at import time (Node has none).
 
 import './serverLocalStoragePolyfill.js';
-import AIClient from "ai-token-monitor";
+import AIClient, { ANALYSIS_MODULES } from "ai-token-monitor";
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
@@ -96,6 +96,9 @@ function enqueueMonitorTelemetry(basePayload, trace) {
       endUserId: trace?.userId ?? null,
       endUserEmail: endUser.endUserEmail,
       endUserName: endUser.endUserName,
+      // Image-analysis attribution is carried by the request trace. Default
+      // food calls for compatibility with legacy callers that predate modules.
+      module: trace?.module ?? ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
     });
   };
 
@@ -239,7 +242,7 @@ function getGenAI() {
     AIClient.initialize({
       baseURL:
         process.env.AI_MONITOR_BASE_URL ||
-        "https://ai-token-monitor-backend.onrender.com/api",
+        "http://localhost:5000/api",
 
       sdkKey: process.env.AI_MONITOR_SDK_KEY,
 

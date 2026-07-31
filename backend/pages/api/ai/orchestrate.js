@@ -44,6 +44,7 @@ import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
+import { ANALYSIS_MODULES } from 'ai-token-monitor';
 
 export const config = {
   api: { bodyParser: false },
@@ -107,6 +108,8 @@ export default async function handler(req, res) {
     const creditGated = sanitiseString(fields.creditGated) === '1'
       || sanitiseString(fields.creditGated) === 'true';
     const reservationId = sanitiseString(fields.reservationId);
+    // Food-capture analysis is the only supported journey for this endpoint.
+    const module = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS;
 
     if (isEnabled('ff.ai-credits') && creditGated) {
       try {
@@ -169,6 +172,7 @@ export default async function handler(req, res) {
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
+        module,
       });
 
       return res.status(200).json({ ok: true, ...result });
