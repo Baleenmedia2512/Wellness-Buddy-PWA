@@ -183,6 +183,12 @@ const WeightCardModal = ({
 
           <div className="flex gap-3">
             <button
+              onClick={() => { onDelete?.(data); }}
+              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+            <button
               onClick={async () => {
                 if (isSharing || !cardRef.current) return;
                 setIsSharing(true);
@@ -202,12 +208,6 @@ const WeightCardModal = ({
             >
               {isSharing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Share2 className="w-4 h-4" />}
               {isSharing ? 'Sharing…' : 'Share'}
-            </button>
-            <button
-              onClick={() => { onDelete?.(data); onClose?.(); }}
-              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
-            >
-              <Trash2 className="w-4 h-4" /> Delete
             </button>
           </div>
         </div>

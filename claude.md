@@ -145,6 +145,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.wellness-score-sheet` | ON | @wellness-score-team | 2027-01-08 | Wellness Score home tile, daily score API, admin score-setup config |
 | `ff.ai-credits` | ON | @principal-eng | 2027-01-27 | AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI); numeric limit in DB |
 | `ff.nutrition-knowledge` | ON | @nutrition-team | 2027-01-30 | Master nutrition knowledge base (ADR-0005) — free master/history lookup; AI enrich optional |
+| `ff.consent-gate` | ON | @principal-eng | 2027-01-31 | User Consent Form gate (ADR-0006) — Agree required before account creation / app use |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

@@ -101,11 +101,13 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
       setSuccessMessage('OTP verified successfully!');
       const userDataWithNewFlag = { ...data.user, isNewUser: data.isNewUser === true };
       storage.set('otpUser', JSON.stringify(userDataWithNewFlag));
+      // Short success beat, then hand off immediately — App shows a logo bridge
+      // while consent/status resolve (avoids Login remount flicker).
       setTimeout(async () => {
         setSuccessMessage('');
         if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
-        setTimeout(() => setVerified(false), 2000);
-      }, 1500);
+        setVerified(false);
+      }, 400);
       return true;
     } catch {
       setErrorMessage('Failed to verify OTP. Please try again.');

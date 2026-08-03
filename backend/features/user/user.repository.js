@@ -91,10 +91,20 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  return findByEmail(
-    email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana'
-  );
+  // Consent columns are optional until migration is applied — never block profile load.
+  try {
+    return await findByEmail(
+      email,
+      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"',
+    );
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/ConsentAcceptedAt|ConsentVersion|column/i.test(msg)) throw err;
+    return findByEmail(
+      email,
+      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana',
+    );
+  }
 }
 
 export async function getLatestWeight(userId) {

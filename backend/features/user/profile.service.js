@@ -24,6 +24,8 @@ import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
+import { isConsentRecorded } from '../auth/domain/consent.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -93,6 +95,9 @@ export async function getProfile({ email }) {
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         timezone: resolveProfileTimezone(user.timezone_iana),
+        consentAccepted: isConsentRecorded(user),
+        consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),
+        consentVersion: user.ConsentVersion || null,
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,

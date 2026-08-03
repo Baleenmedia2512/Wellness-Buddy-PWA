@@ -119,7 +119,7 @@ const Modal = ({ vm }) => (
     <WeightCardModal
       data={vm.selectedEntry}
       onClose={vm.closeModal}
-      onDelete={vm.handleDeleteEntry}
+      onDelete={(entry) => vm.handleDeleteEntryFromModal(entry)}
       onUpdate={vm.handleUpdateEntry}
       apiBaseUrl={vm.apiBaseUrl}
       userId={vm.userIdRef.current}
@@ -133,13 +133,18 @@ const Modal = ({ vm }) => (
 const WeightDashboard = ({
   user, apiBaseUrl, hideHeader, hideOverview = false,
   initialEntryId = null, selectedDate = null, refreshKey = 0,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
   // Imperative handle: parent passes a React ref; we write `openRef.current =
   // (entryId) => ...` each render so the timeline shell can open an entry.
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
 }) => {
-  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
+  const vm = useWeightDashboard({
+    user, apiBaseUrl, initialEntryId, selectedDate, refreshKey,
+    onDeleteWithUndo, onDeleteUndoCancel,
+  });
   const pendingOpenIdRef = useRef(null);
 
   // If history was stale when the user tapped a diary row, open once fetch catches up.

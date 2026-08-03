@@ -86,7 +86,7 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null, tabVisitKey = 0 }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
   // once per mount so toggling the flag at runtime requires a re-mount
@@ -338,6 +338,17 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable (closure over setState)
   }, [nutritionContextRefreshKey]);
 
+  // Refetch all dashboard data whenever the Diary tab is opened again.
+  const prevTabVisitKeyRef = useRef(tabVisitKey);
+  useEffect(() => {
+    if (!tabVisitKey || tabVisitKey === prevTabVisitKeyRef.current) return;
+    prevTabVisitKeyRef.current = tabVisitKey;
+    reloadDiary();
+    setWeightReloadKey((k) => k + 1);
+    setDiaryEducationRefreshKey((k) => k + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
+  }, [tabVisitKey]);
+
   // Poll the diary feed while background AI is in flight so the card
   // auto-upgrades from "Analyzing…" to food / weight / education rows.
   useEffect(() => {
@@ -424,18 +435,58 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     unknown: 'Capture removed',
   };
 
-  const handleMealDeleteWithUndo = useCallback(({ mealId, expiresAt }) => {
-    onMealDelete?.(mealId);
+  const handleEntryDeleteWithUndo = useCallback(({
+    kind, entryId, expiresAt, topic = null,
+  }) => {
     setDiaryUndo({
-      kind: 'food',
-      entryId: mealId,
+      kind,
+      entryId,
       userId: ownerId,
-      message: diaryUndoLabels.food,
+      topic,
+      message: diaryUndoLabels[kind] || 'Entry deleted',
       expiresAt: expiresAt ?? Date.now() + DIARY_UNDO_SECONDS * 1000,
     });
     reloadDiary();
+  }, [ownerId, reloadDiary]);
+
+  const handleMealDeleteWithUndo = useCallback(({ mealId, expiresAt }) => {
+    onMealDelete?.(mealId);
+    handleEntryDeleteWithUndo({ kind: 'food', entryId: mealId, expiresAt });
     triggerNutritionRefresh({ immediate: true, source: 'meal-modal-delete' });
-  }, [onMealDelete, ownerId, reloadDiary, triggerNutritionRefresh]);
+  }, [onMealDelete, handleEntryDeleteWithUndo, triggerNutritionRefresh]);
+
+  const handleMealDeleteUndoCancel = useCallback(() => {
+    setDiaryUndo(null);
+  }, []);
+
+  const handleWeightDeleteWithUndo = useCallback(({ entryId, expiresAt }) => {
+    handleEntryDeleteWithUndo({ kind: 'weight', entryId, expiresAt });
+    setWeightReloadKey((k) => k + 1);
+  }, [handleEntryDeleteWithUndo]);
+
+  const handleWeightDeleteUndoCancel = useCallback(() => {
+    setDiaryUndo(null);
+    setWeightReloadKey((k) => k + 1);
+  }, []);
+
+  const refreshExerciseCalories = (source) => {
+    onWatchBurnedCaloriesReset?.();
+    triggerNutritionRefresh({ immediate: true, source });
+  };
+
+  const handleEducationDeleteWithUndo = useCallback(({ entryId, expiresAt, topic = null }) => {
+    const kind = isCaloriesBurnedTopic(topic) ? 'watch' : 'education';
+    handleEntryDeleteWithUndo({ kind, entryId, expiresAt, topic });
+    setDiaryEducationRefreshKey((k) => k + 1);
+    if (kind === 'watch') {
+      refreshExerciseCalories('diary-modal-delete-watch');
+    }
+  }, [handleEntryDeleteWithUndo, triggerNutritionRefresh, onWatchBurnedCaloriesReset]);
+
+  const handleEducationDeleteUndoCancel = useCallback(() => {
+    setDiaryUndo(null);
+    setDiaryEducationRefreshKey((k) => k + 1);
+  }, []);
 
   const affectsExerciseCalories = (entry) => {
     if (!entry) return false;
@@ -444,11 +495,6 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       return isCaloriesBurnedTopic(entry.payload?.topic);
     }
     return false;
-  };
-
-  const refreshExerciseCalories = (source) => {
-    onWatchBurnedCaloriesReset?.();
-    triggerNutritionRefresh({ immediate: true, source });
   };
 
   const restoreDiaryEntry = async ({ kind, entryId, userId, topic = null }) => {
@@ -896,6 +942,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   apiBaseUrl={apiBaseUrl}
                   onMealDelete={onMealDelete}
                   onMealDeleteWithUndo={handleMealDeleteWithUndo}
+                  onMealDeleteUndoCancel={handleMealDeleteUndoCancel}
                   hideHeader
                   hideDateStrip
                   hideOverview
@@ -916,6 +963,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   initialEntryId={initialMealId}
                   openRef={weightOpenRef}
                   onAfterModalClose={reloadDiary}
+                  onDeleteWithUndo={handleWeightDeleteWithUndo}
+                  onDeleteUndoCancel={handleWeightDeleteUndoCancel}
                 />
                 <EducationDashboard
                   user={displayUser}
@@ -927,6 +976,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   initialEntryId={initialMealId}
                   openRef={educationOpenRef}
                   onAfterModalClose={reloadDiary}
+                  onDeleteWithUndo={handleEducationDeleteWithUndo}
+                  onDeleteUndoCancel={handleEducationDeleteUndoCancel}
                 />
               </div>
             </>
@@ -943,6 +994,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 apiBaseUrl={apiBaseUrl}
                 onMealDelete={onMealDelete}
                 onMealDeleteWithUndo={handleMealDeleteWithUndo}
+                onMealDeleteUndoCancel={handleMealDeleteUndoCancel}
                 hideHeader={true}
                 hideDateStrip={true}
                 hideOverview={true}
@@ -962,6 +1014,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 selectedDate={selectedDate}
                 initialEntryId={initialMealId}
                 refreshKey={weightReloadKey}
+                onDeleteWithUndo={handleWeightDeleteWithUndo}
+                onDeleteUndoCancel={handleWeightDeleteUndoCancel}
               />
 
               <EducationDashboard
@@ -972,6 +1026,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 selectedDate={selectedDate}
                 refreshKey={educationRefreshKey + diaryEducationRefreshKey}
                 initialEntryId={initialMealId}
+                onDeleteWithUndo={handleEducationDeleteWithUndo}
+                onDeleteUndoCancel={handleEducationDeleteUndoCancel}
               />
 
               {/* "Other" — unrecognised ("unknown") captures only. Reuses the
@@ -1003,6 +1059,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
               onMealDeleteWithUndo={handleMealDeleteWithUndo}
+              onMealDeleteUndoCancel={handleMealDeleteUndoCancel}
               hideHeader={true}
               hideOverview={true}
               selectedDate={selectedDate}
@@ -1021,6 +1078,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideHeader={true}
               hideOverview={true}
               initialEntryId={initialMealId}
+              onDeleteWithUndo={handleWeightDeleteWithUndo}
+              onDeleteUndoCancel={handleWeightDeleteUndoCancel}
             />
           )}
 
@@ -1032,6 +1091,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideOverview={true}
               refreshKey={educationRefreshKey}
               initialEntryId={initialMealId}
+              onDeleteWithUndo={handleEducationDeleteWithUndo}
+              onDeleteUndoCancel={handleEducationDeleteUndoCancel}
             />
           )}
           </>

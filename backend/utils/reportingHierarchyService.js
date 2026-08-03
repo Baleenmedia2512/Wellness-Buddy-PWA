@@ -319,6 +319,131 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
   return index;
 }
 
+const TEAM_USER_SELECT =
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height';
+const MAX_SUBTREE_DEPTH = 12;
+const SUBTREE_CONTEXT_CACHE = new Map();
+const SUBTREE_CONTEXT_TTL_MS = 60_000;
+
+/**
+ * @param {object} supabase
+ * @param {number} userId
+ * @returns {Promise<TeamUser|null>}
+ */
+async function fetchTeamUserById(supabase, userId) {
+  const { data, error } = await supabase
+    .from('team_table')
+    .select(TEAM_USER_SELECT)
+    .eq('UserId', userId)
+    .maybeSingle();
+  if (error) throw new Error('Failed to fetch team user: ' + error.message);
+  return data || null;
+}
+
+/**
+ * @param {object} supabase
+ * @param {number[]} coachIds
+ * @returns {Promise<TeamUser[]>}
+ */
+async function fetchTeamUsersByCoachIds(supabase, coachIds) {
+  const ids = [...new Set(coachIds.filter((id) => Number.isFinite(Number(id))))];
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('team_table')
+    .select(TEAM_USER_SELECT)
+    .in('CoachId', ids);
+  if (error) throw new Error('Failed to fetch team children: ' + error.message);
+  return data || [];
+}
+
+/**
+ * Co-coaching partners share the same downline (dual-coaching model).
+ * @param {object} supabase
+ * @param {TeamUser} rootUser
+ * @returns {Promise<number[]>}
+ */
+async function resolveCoCoachRootCoachIds(supabase, rootUser) {
+  if (!rootUser?.TeamId) return [rootUser.UserId];
+
+  const { data: coachTeam, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .eq('TeamId', rootUser.TeamId)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (error || !coachTeam?.CoachId || !coachTeam?.CoCoachId) {
+    return [rootUser.UserId];
+  }
+
+  return [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
+}
+
+/**
+ * Load reporting context for one coach subtree via indexed CoachId walks
+ * (no full team_table scan). Includes ancestor chain for inactive-coach rollup.
+ *
+ * @param {object} supabase
+ * @param {number} rootCoachId
+ * @returns {Promise<ReportingContext>}
+ */
+export async function loadReportingContextForCoach(supabase, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  if (!Number.isFinite(rootId)) return buildReportingContext([]);
+
+  const cacheKey = String(rootId);
+  const now = Date.now();
+  const cached = SUBTREE_CONTEXT_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const usersById = new Map();
+  const rootUser = await fetchTeamUserById(supabase, rootId);
+  if (!rootUser) {
+    const empty = buildReportingContext([]);
+    SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: empty, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
+    return empty;
+  }
+
+  usersById.set(rootUser.UserId, rootUser);
+
+  let walkId = Number(rootUser.CoachId);
+  const visitedUp = new Set([rootId]);
+  while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
+    visitedUp.add(walkId);
+    const ancestor = await fetchTeamUserById(supabase, walkId);
+    if (!ancestor) break;
+    usersById.set(ancestor.UserId, ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  const rootCoachIds = await resolveCoCoachRootCoachIds(supabase, rootUser);
+  for (const partnerId of rootCoachIds) {
+    if (partnerId === rootId || usersById.has(partnerId)) continue;
+    const partner = await fetchTeamUserById(supabase, partnerId);
+    if (partner) usersById.set(partner.UserId, partner);
+  }
+
+  let currentCoachIds = rootCoachIds;
+  let depth = 0;
+  while (currentCoachIds.length > 0 && depth < MAX_SUBTREE_DEPTH) {
+    const children = await fetchTeamUsersByCoachIds(supabase, currentCoachIds);
+    const nextCoachIds = [];
+    for (const child of children) {
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      // Always expand — user may have been pre-loaded (co-coach) without walking their downline.
+      nextCoachIds.push(child.UserId);
+    }
+    currentCoachIds = [...new Set(nextCoachIds)];
+    depth += 1;
+  }
+
+  const context = buildReportingContext([...usersById.values()]);
+  SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
+  return context;
+}
+
 /**
  * Convenience: load context + return reporting members in one call.
  * @param {object} supabase
@@ -327,7 +452,7 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
  * @returns {Promise<TeamUser[]>}
  */
 export async function fetchReportingMembers(supabase, coachId, scope = 'direct') {
-  const context = await loadReportingContext(supabase);
+  const context = await loadReportingContextForCoach(supabase, coachId);
   return getReportingMembers(coachId, scope, context);
 }
 

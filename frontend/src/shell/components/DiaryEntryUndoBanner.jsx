@@ -56,7 +56,7 @@ const DiaryEntryUndoBanner = ({
 
   return (
     <div
-      className="fixed bottom-20 left-4 right-4 z-50 pointer-events-auto"
+      className="fixed bottom-20 left-4 right-4 z-[100] pointer-events-auto"
       role="status"
       aria-live="polite"
       data-testid="diary-entry-undo-banner"

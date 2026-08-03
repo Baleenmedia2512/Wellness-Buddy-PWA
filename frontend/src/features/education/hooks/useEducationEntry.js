@@ -4,6 +4,7 @@
  * form. UI components consuming this hook only render — no async, no parsing.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { DEFAULT_MEETING_SESSION } from '../components/EducationFormFields';
 
 const DEFAULT_PLATFORM = 'Zoom';
 
@@ -17,7 +18,7 @@ export function useEducationEntry({
 } = {}) {
   const [showTypeSelect, setShowTypeSelect] = useState(!skipTypeSelect);
   const [platform, setPlatform] = useState(initialPlatform || DEFAULT_PLATFORM);
-  const [topic, setTopic] = useState(initialTopic || '');
+  const [topic, setTopic] = useState(initialTopic || DEFAULT_MEETING_SESSION);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -25,13 +26,13 @@ export function useEducationEntry({
     if (!isOpen) return;
     setShowTypeSelect(!skipTypeSelect);
     setPlatform(initialPlatform || DEFAULT_PLATFORM);
-    setTopic(initialTopic || '');
+    setTopic(initialTopic || DEFAULT_MEETING_SESSION);
     setError('');
   }, [isOpen, skipTypeSelect, initialPlatform, initialTopic]);
 
   const reset = useCallback(() => {
     setPlatform(initialPlatform || DEFAULT_PLATFORM);
-    setTopic(initialTopic || '');
+    setTopic(initialTopic || DEFAULT_MEETING_SESSION);
     setError('');
     setShowTypeSelect(!skipTypeSelect);
   }, [initialPlatform, initialTopic, skipTypeSelect]);
