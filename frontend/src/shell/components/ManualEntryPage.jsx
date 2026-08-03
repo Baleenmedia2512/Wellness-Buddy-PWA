@@ -542,7 +542,8 @@ export default function ManualEntryPage({
                   {label}
                 </span>
               </button>
-            ))}
+              );
+            })}
 
             {showAiButton && (
               outOfCredits ? (
