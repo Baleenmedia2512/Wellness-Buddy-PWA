@@ -229,6 +229,9 @@ export function getDirectReportingMembers(coachId, context) {
 
   return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
 }
+
+/**
+ * Full reporting members for a coach (excludes the coach themselves).
  * Direct members + every descendant under them at all hierarchy levels.
  * @param {number} coachId
  * @param {ReportingContext} context
