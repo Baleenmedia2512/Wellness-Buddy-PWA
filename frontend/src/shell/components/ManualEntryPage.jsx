@@ -9,6 +9,7 @@ import {
   UtensilsCrossed,
   Info,
   Timer,
+  X,
 } from 'lucide-react';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
@@ -628,17 +629,17 @@ export default function ManualEntryPage({
               <p className="text-[10px] font-medium text-green-600/70"></p>
             )}
           </div>
-          <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2">
+          <div className="grid w-full grid-cols-3 content-start gap-2 sm:gap-2.5">
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => (
               <button
                 key={id}
                 type="button"
                 disabled={saving || aiStarting}
                 onClick={() => handleCategoryClick(id)}
-                className="flex min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-green-100 bg-white px-1.5 py-3 text-center shadow-sm transition hover:border-green-300 hover:shadow-md active:scale-[0.97] disabled:opacity-50"
+                className="aspect-square flex w-full flex-col items-center justify-center gap-1 rounded-2xl border border-green-100 bg-white px-1 text-center shadow-sm transition hover:border-green-300 hover:shadow-md active:scale-[0.97] disabled:opacity-50 sm:gap-1.5 sm:px-1.5"
               >
                 <span
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-emerald-700"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-emerald-700 sm:h-10 sm:w-10"
                   style={{ background: BRAND.mint }}
                 >
                   {isImgIcon ? (
@@ -647,12 +648,24 @@ export default function ManualEntryPage({
                     <Icon className="h-[18px] w-[18px]" strokeWidth={2.1} aria-hidden />
                   )}
                 </span>
-                <span className="text-[12px] font-bold leading-tight text-emerald-900">{label}</span>
+                <span className="max-w-full truncate px-0.5 text-[11px] font-bold leading-tight text-emerald-900 sm:text-[12px]">
+                  {label}
+                </span>
               </button>
             ))}
           </div>
         </section>
 
+        {/* Footer — leave without classifying; do not delete the capture */}
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={saving || aiStarting}
+          className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-green-100 bg-white py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99] disabled:opacity-50"
+        >
+          <X className="h-4 w-4" aria-hidden />
+          Close without log
+        </button>
       </main>
 
       <SmartFoodSearchModal
