@@ -2698,20 +2698,20 @@ function WellnessValleyApp() {
         const errMsg =
           otpJson.message ||
           otpJson.error ||
-          "Could not reach your coach. Please try again.";
+          "Could not reach your sponsor. Please try again.";
         setAlertModal({
           isOpen: true,
-          title: "Unable to contact coach",
+          title: "Unable to contact sponsor",
           message:
             otpJson.error === "NO_COACH_ASSIGNED"
-              ? "No coach is assigned to your account. Please ask your wellness center to link you to a coach first."
+              ? "No sponsor is assigned to your account. Please ask your wellness center to link you to a sponsor first."
               : errMsg,
           type: "warning",
         });
       } else {
         setAlertModal({
           isOpen: true,
-          title: "Unable to contact coach",
+          title: "Unable to contact sponsor",
           message:
             "Your account is missing contact details. Please sign in again or contact support.",
           type: "warning",
@@ -5465,7 +5465,7 @@ function WellnessValleyApp() {
         isOpen: true,
         title: "Account inactive",
         message:
-          "Your account is inactive. Please contact your coach to reactivate.",
+          "Your account is inactive. Please contact your sponsor to reactivate.",
         type: "warning",
       });
       imageProcessingInProgress.current = false;

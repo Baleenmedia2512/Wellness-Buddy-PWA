@@ -235,7 +235,7 @@ export function useTestimonial({ userId, healthIssues = [] }) {
       setIsCompletingMode(false);
 
       if (updated?.status === 'pending') {
-        setSuccess('Testimonial complete! Your coach received a verification email with the OTP.');
+        setSuccess('Testimonial complete! Your sponsor received a verification email with the OTP.');
       } else if (updated?.status === 'incomplete') {
         setSuccess('Before photo saved! Add your after photo when you\'re ready.');
       } else {

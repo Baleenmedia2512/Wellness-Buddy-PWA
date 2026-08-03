@@ -80,7 +80,7 @@ export default function EmailGateModal({ user, apiBaseUrl, onComplete }) {
           <h1 className="text-2xl font-bold text-white">Complete Your Details</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Your name and email help your coach recognise you and keep your account secure.
+          Your name and email help your sponsor recognise you and keep your account secure.
         </p>
       </div>
 
@@ -107,7 +107,7 @@ export default function EmailGateModal({ user, apiBaseUrl, onComplete }) {
               />
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Shown to your coach when you request to join their team.
+              Shown to your sponsor when you request to join their team.
             </p>
           </div>
 

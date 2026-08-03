@@ -43,6 +43,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
   const [coachName, setCoachName] = useState('');
+  const [idealCoachName, setIdealCoachName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,7 +94,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
       form.reload(profileData);
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
-      setCoachName(data?.coachName ? String(data.coachName).trim() : '');
+      setCoachName(
+        (data?.sponsorName || data?.coachName)
+          ? String(data.sponsorName || data.coachName).trim()
+          : '',
+      );
+      setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       if (data?.profileImage) setProfileImagePreview(data.profileImage);
       // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
@@ -271,7 +277,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               )}
               {coachName && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
-                  Coach: {coachName}
+                  Sponsor: {coachName}
+                </span>
+              )}
+              {idealCoachName && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                  Coach: {idealCoachName}
                 </span>
               )}
             </div>

@@ -262,7 +262,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
           
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-left">
             <p className="text-blue-800 text-sm leading-relaxed">
-              We've sent a request to <span className="font-bold">{requestInfo?.coachName || coachNameProp || 'your coach'}</span>. 
+              We've sent a request to <span className="font-bold">{requestInfo?.coachName || coachNameProp || 'your sponsor'}</span>. 
               Please contact them to approve your request and provide your 6-digit verification code.
             </p>
           </div>
@@ -373,7 +373,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                    <span>Go Back To Select Different Coach</span>
+                    <span>Go Back To Select Different Sponsor</span>
                   </>
                 )}
               </button>

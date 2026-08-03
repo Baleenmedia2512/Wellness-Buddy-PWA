@@ -11,7 +11,7 @@ import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 
 const STATUS_CONFIG = {
   pending: {
-    label: 'Pending Coach Verification',
+    label: 'Pending Sponsor Verification',
     badgeClass: 'bg-amber-100 text-amber-800',
     Icon: Clock,
   },
@@ -41,7 +41,7 @@ export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }
   const handleVerify = async () => {
     setOtpError(null);
     if (!/^\d{6}$/.test(otp.trim())) {
-      setOtpError('Enter the 6-digit OTP your coach shared with you');
+      setOtpError('Enter the 6-digit OTP your sponsor shared with you');
       return;
     }
     setVerifying(true);
@@ -51,7 +51,7 @@ export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }
       setOtp('');
       if (onVerified) onVerified();
     } catch (err) {
-      setOtpError(err.message || 'Invalid OTP. Ask your coach to share it again.');
+      setOtpError(err.message || 'Invalid OTP. Ask your sponsor to share it again.');
     } finally {
       setVerifying(false);
     }
@@ -101,7 +101,7 @@ export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }
       {video.videoStatus === 'pending' && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
           <p className="text-sm text-amber-800 font-medium">
-            📧 Your coach received a verification email with a 6-digit OTP.
+            📧 Your sponsor received a verification email with a 6-digit OTP.
             Ask them to share it with you, then enter it below.
           </p>
           {!showOtpBox ? (
@@ -163,7 +163,7 @@ export default function TestimonialVideoStatusCard({ video, onEdit, onVerified }
             Change Videos
           </TouchFeedbackButton>
           <p className="text-xs text-gray-400 text-center">
-            Replacing a video resets verification — your coach receives a new OTP by email.
+            Replacing a video resets verification — your sponsor receives a new OTP by email.
           </p>
         </>
       )}

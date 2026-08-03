@@ -402,7 +402,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
               <p className="text-green-700 text-sm mt-1">
                 {existingEnrollment
                   ? "Your programs have been updated."
-                  : "Your coach will be notified."}
+                  : "Your sponsor will be notified."}
               </p>
             </motion.div>
           )}

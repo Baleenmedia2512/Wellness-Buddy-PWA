@@ -66,7 +66,7 @@ export function WaitingForCoachModal() {
             marginBottom: '14px',
           }}
         >
-          Contacting Your Coach...
+          Contacting Your Sponsor...
         </h2>
         <p
           style={{
@@ -76,7 +76,7 @@ export function WaitingForCoachModal() {
             margin: 0,
           }}
         >
-          Sending a verification request to your coach. This usually takes a
+          Sending a verification request to your sponsor. This usually takes a
           few seconds.
         </p>
       </div>
