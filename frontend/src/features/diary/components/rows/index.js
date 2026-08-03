@@ -16,7 +16,6 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
@@ -117,61 +116,26 @@ function Thumb({ imageBase64, imagePath, fallback }) {
 }
 
 /**
- * Lifts the swiped tile into a document.body portal at its screen position,
- * then fades/slides it away. The list slot collapses underneath — escapes
- * overflow:hidden ancestors that previously made the tile look like it dropped.
+ * Keeps list-slot height stable while the tile slides away horizontally.
+ * Collapsing to 0 made the row below jump up before the inline undo card
+ * mounted — undo must stay in the same card slot.
  */
 function SwipeDeleteShell({ swipe, enabled = true, children }) {
   const leaving = enabled && swipe.leaving;
-  const rect = leaving ? swipe.fixedRect : null;
-  const usePortal = Boolean(leaving && rect && typeof document !== 'undefined');
 
-  const tile = (
+  return (
     <div
-      ref={swipe.wrapperRef}
       className="relative w-full"
       style={{
         touchAction: (swipe.dragging && enabled) ? 'none' : 'pan-y',
-        minHeight: usePortal ? undefined : 84,
-        height: usePortal ? rect.height : undefined,
-        width: usePortal ? rect.width : '100%',
-        opacity: enabled ? swipe.opacity : 1,
+        minHeight: 84,
         overflow: 'hidden',
         overflowAnchor: 'none',
-        transition: leaving ? 'opacity 220ms ease-out' : 'none',
         pointerEvents: leaving ? 'none' : undefined,
-        ...(usePortal
-          ? {
-              position: 'fixed',
-              top: rect.top,
-              left: rect.left,
-              zIndex: 9999,
-              margin: 0,
-              boxSizing: 'border-box',
-            }
-          : null),
       }}
     >
       {children}
     </div>
-  );
-
-  return (
-    <>
-      <div
-        aria-hidden={leaving || undefined}
-        style={{
-          height: leaving ? 0 : undefined,
-          minHeight: leaving ? 0 : 84,
-          overflow: 'hidden',
-          overflowAnchor: 'none',
-          pointerEvents: leaving ? 'none' : undefined,
-        }}
-      >
-        {!usePortal ? tile : null}
-      </div>
-      {usePortal ? createPortal(tile, document.body) : null}
-    </>
   );
 }
 

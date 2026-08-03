@@ -14,6 +14,7 @@ import {
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
   promoteUnknownToFood,
+  deleteCapture,
 } from '../../features/captures';
 import {
   SmartFoodSearchModal,
@@ -260,6 +261,7 @@ export default function ManualEntryPage({
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
@@ -345,6 +347,21 @@ export default function ManualEntryPage({
     await onSaved?.();
     // Share sheet was shown — return to main whether user shared or dismissed.
     onBack?.();
+  };
+
+  /** Discard capture and leave — must not remain in Diary as unknown/Other. */
+  const handleCloseWithoutLog = async () => {
+    if (closingWithoutLog || saving || aiStarting) return;
+    setClosingWithoutLog(true);
+    try {
+      if (captureId && userId) {
+        await deleteCapture({ captureId, userId });
+      }
+      onBack?.();
+    } catch {
+      onToast?.("Couldn't discard photo — try again.");
+      setClosingWithoutLog(false);
+    }
   };
 
   const saveFoodAnalysis = async (analysisResult, toastMsg) => {
@@ -503,7 +520,7 @@ export default function ManualEntryPage({
   // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
-  const aiDisabled = aiStarting || outOfCredits || creditsChecking;
+  const aiDisabled = aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -634,7 +651,7 @@ export default function ManualEntryPage({
               <button
                 key={id}
                 type="button"
-                disabled={saving || aiStarting}
+                disabled={saving || aiStarting || closingWithoutLog}
                 onClick={() => handleCategoryClick(id)}
                 className="aspect-square flex w-full flex-col items-center justify-center gap-1 rounded-2xl border border-green-100 bg-white px-1 text-center shadow-sm transition hover:border-green-300 hover:shadow-md active:scale-[0.97] disabled:opacity-50 sm:gap-1.5 sm:px-1.5"
               >
@@ -656,15 +673,19 @@ export default function ManualEntryPage({
           </div>
         </section>
 
-        {/* Footer — leave without classifying; do not delete the capture */}
+        {/* Footer — discard capture (not saved to Diary) and return */}
         <button
           type="button"
-          onClick={onBack}
-          disabled={saving || aiStarting}
+          onClick={handleCloseWithoutLog}
+          disabled={saving || aiStarting || closingWithoutLog}
           className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-green-100 bg-white py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99] disabled:opacity-50"
         >
-          <X className="h-4 w-4" aria-hidden />
-          Close without log
+          {closingWithoutLog ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <X className="h-4 w-4" aria-hidden />
+          )}
+          Cancel, Don't Log
         </button>
       </main>
 
