@@ -28,7 +28,6 @@ import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
-import FaceDetectionToast from './profile/FaceDetectionToast';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
@@ -49,7 +48,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
@@ -65,7 +63,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setProfileImage(img);
       setProfileImagePreview(img);
       face.reset();
-      setShowToast(true);
+      // Accept any photo (no AI face check) — mark ready for auto-save.
       face.run(img, user?.id ?? null);
     },
   });
@@ -147,7 +145,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setError('');
       setProfileImage(null);
       face.reset();
-      setShowToast(false);
       loadProfile();
       return;
     }
@@ -162,11 +159,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      if (profileImage) {
-        const status = await face.awaitResult();
-        if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
-        if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
-      }
       const payload = form.payload(user.email, profileImage ? { profileImage } : {});
       // BMR is system-calculated on the profile page — never write it from this form.
       delete payload.bmr;
@@ -188,14 +180,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
 
   handleSaveRef.current = handleSave;
 
   useEffect(() => {
     if (face.status === 'face_found' && profileImage) handleSaveRef.current?.();
-    else if (face.status === 'no_face') setError('No face detected. Please upload a clear real photo of your face.');
-    else if (face.status === 'detection_error') setError('Photo verification failed. Please try again.');
   }, [face.status, profileImage]);
 
   const saveDisabled = isSaving || !form.nameValid ||
@@ -217,8 +207,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
-      <FaceDetectionToast status={face.status} visible={showToast} onDismiss={() => setShowToast(false)} />
-
       {cropper.showCropper && cropper.rawImageSrc && (
         <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={60} />
       )}
