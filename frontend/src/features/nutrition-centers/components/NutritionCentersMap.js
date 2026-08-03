@@ -74,7 +74,7 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
-const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false }) => {
+const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false, tabVisitKey = 0 }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -482,7 +482,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
       fetchCenters();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [mapLoaded, user, teamFilter, dateRange, customDate]);
+  }, [mapLoaded, user, teamFilter, dateRange, customDate, tabVisitKey]);
 
   // Set up global functions for info window buttons
   useEffect(() => {

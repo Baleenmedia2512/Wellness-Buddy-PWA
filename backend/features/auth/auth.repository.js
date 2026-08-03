@@ -114,6 +114,15 @@ export async function insertUser(payload) {
   return data;
 }
 
+export async function updateUserConsent(userId, fields) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('team_table')
+    .update(fields)
+    .eq('UserId', userId);
+  if (error) throw error;
+}
+
 /**
  * Insert a new user keyed on phone number (race-condition-safe).
  *

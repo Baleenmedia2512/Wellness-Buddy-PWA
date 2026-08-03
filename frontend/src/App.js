@@ -74,9 +74,20 @@ import {
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
-import { Login } from "./features/user";
+import { Login, ConsentForm } from "./features/user";
 import { InactiveUserModal } from "./features/user";
 import { UserNotFoundModal } from "./features/user";
+import {
+  recordConsentAcceptance,
+  fetchConsentStatus,
+  discardUnconsentedUser,
+} from "./features/user/services/consent.api";
+import {
+  persistLocalConsentAcceptance,
+  clearLocalConsentAcceptance,
+  CURRENT_CONSENT_VERSION,
+  consentPayload,
+} from "./features/user/domain/consent";
 import { fetchInactiveCoachInfo } from "./features/user/services/inactiveCoachService";
 import Header from "./shared/components/Header";
 import {
@@ -381,7 +392,7 @@ function WellnessValleyApp() {
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
   // Dismissed right before openCamera() is called, or by safety effects below.
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(() =>
-    Capacitor.isNativePlatform(),
+    Capacitor.isNativePlatform() && !Session.getPendingClassifyCapture()?.captureId,
   );
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
@@ -501,6 +512,7 @@ function WellnessValleyApp() {
   const {
     refreshKey: nutritionRefreshKey,
     triggerRefresh: triggerNutritionRefresh,
+    refreshOnTabFocus,
     markCaptureAnalyzing,
     clearCaptureAnalyzing,
   } = useNutritionRefresh();
@@ -616,6 +628,111 @@ function WellnessValleyApp() {
     // Note: processedImageRef, foodCaptureIdRef, pendingSharePromiseRef stay
     // set so the background AI analysis can finish and persist to the DB.
   }, []);
+
+  // Open the native share sheet after Classify photo save / AI start. Caller
+  // navigates home once the sheet closes (shared or dismissed).
+  const shareCaptureAfterClassify = useCallback(
+    async (imageBase64) => {
+      const autoShareEnabled =
+        localStorage.getItem("autoShareOnCapture") !== "false";
+      if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
+        return { shared: false };
+      }
+
+      foodAutoSharedRef.current = true;
+
+      const dataUrl = imageBase64.startsWith("data:")
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
+
+      const clearOverlayNow = () => {
+        setSharingPendingImage((prev) => {
+          if (prev && prev.startsWith("blob:")) {
+            try {
+              URL.revokeObjectURL(prev);
+            } catch (_) {}
+          }
+          return null;
+        });
+        if (sharingPendingTimerRef.current) {
+          clearTimeout(sharingPendingTimerRef.current);
+          sharingPendingTimerRef.current = null;
+        }
+      };
+
+      // Snapchat-style "Getting ready to share" overlay while prep runs.
+      setSharingPendingImage(dataUrl);
+      if (sharingPendingTimerRef.current) {
+        clearTimeout(sharingPendingTimerRef.current);
+      }
+      sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
+
+      // Paint overlay before opening the native share sheet.
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+
+      try {
+        const shareDisplayName = await ensureShareDisplayName(
+          savedUserNameRef.current ?? savedUserName,
+          user,
+          apiBaseUrl,
+        );
+        if (shareDisplayName && user?.email) {
+          cacheProfileUserName(user.email, shareDisplayName);
+          setSavedUserName(shareDisplayName);
+        }
+        const shareText = buildQuickShareText(
+          shareDisplayName,
+          getVersionString(),
+        );
+
+        clearOverlayNow();
+        if (Capacitor.isNativePlatform()) {
+          const result = await shareViaCapacitorAPI(dataUrl, {
+            title: shareDisplayName,
+            text: shareText,
+            fileName: `wellness-meal-${Date.now()}.jpg`,
+          });
+          _hasCompletedFirstShareRef.current = true;
+          if (!result?.ok || result.dismissed) {
+            foodAutoSharedRef.current = false;
+            return { shared: false };
+          }
+          return { shared: true };
+        }
+        const ok = await shareTextViaWhatsApp(shareText);
+        _hasCompletedFirstShareRef.current = true;
+        if (!ok) {
+          foodAutoSharedRef.current = false;
+          return { shared: false };
+        }
+        return { shared: true };
+      } catch (_) {
+        try {
+          const shareDisplayName = await ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
+          const shareText = buildQuickShareText(
+            shareDisplayName,
+            getVersionString(),
+          );
+          clearOverlayNow();
+          await shareTextViaWhatsApp(shareText);
+          _hasCompletedFirstShareRef.current = true;
+          return { shared: true };
+        } catch (__) {
+          foodAutoSharedRef.current = false;
+          return { shared: false };
+        }
+      } finally {
+        clearOverlayNow();
+      }
+    },
+    [apiBaseUrl, savedUserName, user],
+  );
 
   // Tag a pending capture row with the correct image type so it is excluded
   // from the nutrition dashboard (which filters on ImageType='food') but the
@@ -749,6 +866,11 @@ function WellnessValleyApp() {
   // Start hidden ? only checkProfileCompletion() (called after setup is confirmed complete)
   // will turn this on, preventing the gate from flashing for new users going through SetupWizard.
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
+  // ADR-0006 — existing users without ConsentAcceptedAt must accept before using the app.
+  const [showConsentGate, setShowConsentGate] = useState(false);
+  const [consentSubmitting, setConsentSubmitting] = useState(false);
+  // Covers the OTP → consent/home handoff so Login never flashes mid-transition.
+  const [postAuthBridge, setPostAuthBridge] = useState(false);
 
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
@@ -775,6 +897,7 @@ function WellnessValleyApp() {
     isOtpVerified &&
     isUserActive &&
     (
+      showConsentGate ||
       showCompleteProfile ||
       showPhysicalActivitySetup ||
       showSetupWizard ||
@@ -812,12 +935,40 @@ function WellnessValleyApp() {
   const [showWellnessScore, setShowWellnessScore] = useState(false);
   const [showWellnessScoreSetup, setShowWellnessScoreSetup] = useState(false);
   const [showAiCreditsSetup, setShowAiCreditsSetup] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [manualEntryPayload, setManualEntryPayload] = useState(null);
+  const [showManualEntry, setShowManualEntry] = useState(() => {
+    const pending = Session.getPendingClassifyCapture();
+    return !!(pending?.captureId && pending?.imageBase64);
+  });
+  const [manualEntryPayload, setManualEntryPayload] = useState(() => {
+    const pending = Session.getPendingClassifyCapture();
+    if (!pending?.captureId || !pending?.imageBase64) return null;
+    return {
+      captureId: pending.captureId,
+      imageBase64: pending.imageBase64,
+      userId: pending.userId || Session.getDbUserId() || null,
+      originalCapturedAt: pending.originalCapturedAt ?? null,
+    };
+  });
+  const pendingClassifyRestoredRef = useRef(false);
+  /** Bumped on each overlay-tab open so pages refetch even when kept mounted. */
+  const [tabVisitKeys, setTabVisitKeys] = useState({});
+  const bumpTabVisitKey = useCallback((pageId) => {
+    if (!pageId) return;
+    setTabVisitKeys((prev) => ({
+      ...prev,
+      [pageId]: (prev[pageId] || 0) + 1,
+    }));
+  }, []);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
   // duplicate rapid taps while the async checkUserStatus is in-flight.
   const navLockRef = useRef(false);
+  const bumpTabVisitKeyRef = useRef(bumpTabVisitKey);
+  const refreshOnTabFocusRef = useRef(refreshOnTabFocus);
+  useEffect(() => {
+    bumpTabVisitKeyRef.current = bumpTabVisitKey;
+    refreshOnTabFocusRef.current = refreshOnTabFocus;
+  }, [bumpTabVisitKey, refreshOnTabFocus]);
 
   // -- Browser history management ----------------------------------------------
   // Push a new history entry when navigating to a top-level "page". This
@@ -827,42 +978,77 @@ function WellnessValleyApp() {
     const handlePopState = (event) => {
       const page = event.state?.wvPage ?? 'main';
       if (page === 'main') {
+        // Incomplete classify flow must survive reload/back — restore Classify photo.
+        const pendingClassify = Session.getPendingClassifyCapture();
+        if (pendingClassify?.captureId && pendingClassify?.imageBase64) {
+          const userId =
+            pendingClassify.userId || Session.getDbUserId() || null;
+          if (userId) {
+            setManualEntryPayload({
+              captureId: pendingClassify.captureId,
+              imageBase64: pendingClassify.imageBase64,
+              userId,
+              originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
+            });
+            setShowManualEntry(true);
+            window.history.pushState({ wvPage: 'manual-entry' }, '');
+            return;
+          }
+        }
         // Returning to home from any full-screen route:
         enrollmentHistoryPushedRef.current = false;
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowReports(false);
         setShowProfilePage(false);
         setShowWellnessScoreSetup(false);
         setShowAiCreditsSetup(false);
         setShowManualEntry(false);
         setManualEntryPayload(null);
         setShowWellnessScore(false);
+        refreshOnTabFocusRef.current();
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
+        bumpTabVisitKeyRef.current('dashboard');
         startTransition(() => setShowDashboard(true));
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
         setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
+        bumpTabVisitKeyRef.current('counselling');
         setShowDashboard(false);
         startTransition(() => setShowWellnessCounselling(true));
         setShowUniversityEnrollment(false);
         Session.setCurrentPage('main');
       } else if (page === 'enrollment') {
+        bumpTabVisitKeyRef.current('enrollment');
         enrollmentHistoryPushedRef.current = true;
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         startTransition(() => setShowUniversityEnrollment(true));
         Session.setCurrentPage('main');
       } else if (page === 'physical-club') {
+        bumpTabVisitKeyRef.current('physical-club');
         startTransition(() => setShowNutritionCentersMap(true));
         Session.setCurrentPage('main');
+      } else if (page === 'activity-report') {
+        bumpTabVisitKeyRef.current('activity-report');
+        setShowDashboard(false);
+        startTransition(() => setShowActivityReport(true));
+        Session.setCurrentPage('main');
       } else if (page === 'testimonials') {
+        bumpTabVisitKeyRef.current('testimonials');
         startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'reports') {
+        bumpTabVisitKeyRef.current('reports');
+        startTransition(() => setShowReports(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
         setShowProfilePage(true);
@@ -973,6 +1159,7 @@ function WellnessValleyApp() {
       !authLoading &&
       !onboardingBlocking &&
       !showDashboard &&
+      !showManualEntry &&
       !showActivityReport &&
       !showActivityTimeReport;
   }, [
@@ -980,6 +1167,7 @@ function WellnessValleyApp() {
     authLoading,
     onboardingBlocking,
     showDashboard,
+    showManualEntry,
     showActivityReport,
     showActivityTimeReport,
   ]);
@@ -1149,6 +1337,8 @@ function WellnessValleyApp() {
         if (!_launchUrlCheckedRef.current) return;
         // Guard 4: skip unless home screen is the active surface
         if (!_homeScreenActiveRef.current) return;
+        // Guard 4b: skip while Classify photo is pending (log + share required)
+        if (Session.getPendingClassifyCapture()?.captureId) return;
         // Guard 5: skip if ImageUpload is not yet mounted
         if (!fileInputRef.current?.openCamera) return;
         // Guard 6: skip for the entire session when launched via /share deep link
@@ -1275,6 +1465,11 @@ function WellnessValleyApp() {
     if (!user || !permissionsReady || !isUserActive) return;
     if (_hasFiredCameraOnLoginRef.current) return;
     if (_suppressAutoCameraOnDeepLinkRef.current) return;
+    // Pending Classify photo — restore that screen; do not auto-open camera.
+    if (Session.getPendingClassifyCapture()?.captureId) {
+      setShowLaunchOverlay(false);
+      return;
+    }
     // Wait until onboarding is fully done:
     // profile → physical activity → coach selection → coach OTP → then camera.
     if (onboardingBlocking) return;
@@ -1282,6 +1477,10 @@ function WellnessValleyApp() {
     let cancelled = false;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
+      if (Session.getPendingClassifyCapture()?.captureId) {
+        setShowLaunchOverlay(false);
+        return;
+      }
       // Wait until the launch-URL check has completed (prevents opening the
       // camera on share-link cold starts where getLaunchUrl() or appUrlOpen
       // hasn't resolved yet). Re-queues the RAF n++ adds at most ~16ms per
@@ -1322,6 +1521,10 @@ function WellnessValleyApp() {
       return;
     }
     if (authLoading) return; // still settling n++ wait
+    if (Session.getPendingClassifyCapture()?.captureId || showManualEntry) {
+      setShowLaunchOverlay(false);
+      return;
+    }
     if (!user) {
       setShowLaunchOverlay(false);
       return;
@@ -1345,6 +1548,7 @@ function WellnessValleyApp() {
     user,
     onboardingBlocking,
     isUserActive,
+    showManualEntry,
   ]);
 
   // Deep-link handler: open the app via Android App Link
@@ -1685,6 +1889,50 @@ function WellnessValleyApp() {
     }
   }, []);
 
+  // Restore Classify photo after reload / app relaunch until log + share sheet.
+  useEffect(() => {
+    if (authLoading || forceLoggedOut) return;
+
+    const pending = Session.getPendingClassifyCapture();
+    if (!pending?.captureId || !pending?.imageBase64) return;
+
+    let cancelled = false;
+    (async () => {
+      let userId = pending.userId || user?.id || Session.getDbUserId();
+      if (!userId && user) {
+        try {
+          userId = await getUserId(user);
+        } catch (_) {}
+      }
+      if (!userId || cancelled) return;
+
+      if (!showManualEntry || !manualEntryPayload) {
+        pendingClassifyRestoredRef.current = true;
+        setManualEntryPayload({
+          captureId: pending.captureId,
+          imageBase64: pending.imageBase64,
+          userId,
+          originalCapturedAt: pending.originalCapturedAt ?? null,
+        });
+        setShowManualEntry(true);
+        window.history.pushState({ wvPage: 'manual-entry' }, '');
+      } else if (!manualEntryPayload.userId) {
+        setManualEntryPayload((prev) => (prev ? { ...prev, userId } : prev));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, forceLoggedOut, user, showManualEntry, manualEntryPayload]);
+
+  // Sync history when Classify photo was bootstrapped synchronously from storage.
+  useEffect(() => {
+    if (!showManualEntry || !manualEntryPayload) return;
+    if (window.history.state?.wvPage === 'manual-entry') return;
+    window.history.pushState({ wvPage: 'manual-entry' }, '');
+  }, [showManualEntry, manualEntryPayload]);
+
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
@@ -1749,10 +1997,7 @@ function WellnessValleyApp() {
         return true;
       }
       if (showManualEntry) {
-        setShowManualEntry(false);
-        setManualEntryPayload(null);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        showToast('Log and share your photo to continue');
         return true;
       }
       if (showWellnessScore) {
@@ -1957,7 +2202,9 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
       }
-      // Urgent update � navigation flags are now used directly (no useDeferredValue),\n      // so this is an immediate render with no deferral possible.
+      // Urgent update — navigation flags are now used directly (no useDeferredValue),
+      // so this is an immediate render with no deferral possible.
+      bumpTabVisitKey('dashboard');
       setShowDashboard(true);
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
@@ -1971,7 +2218,7 @@ function WellnessValleyApp() {
     // is now cleared unconditionally and read via refs, so it is NOT a dep.
     // This keeps showDashboardPage stable across AI analysis cycles and
     // prevents the gallery-monitoring effect from re-initialising on every result.
-    [user, checkUserStatus],
+    [user, checkUserStatus, bumpTabVisitKey],
   );
 
   // showMainPage is stable across renders (useCallback with no deps) because
@@ -2031,6 +2278,10 @@ function WellnessValleyApp() {
     if (onboardingBlockingRef.current && targetPage !== 'home') {
       return;
     }
+    if (Session.getPendingClassifyCapture()?.captureId) {
+      showToast('Log and share your photo to continue');
+      return;
+    }
 
     const currentWvPage = window.history.state?.wvPage;
     const isOnSubPage = currentWvPage && currentWvPage !== 'main';
@@ -2053,7 +2304,10 @@ function WellnessValleyApp() {
       setShowProfilePage(false);
       enrollmentHistoryPushedRef.current = false;
       Session.setCurrentPage('main');
-      if (isOnSubPage) window.history.back();
+      if (isOnSubPage) {
+        refreshOnTabFocus();
+        window.history.back();
+      }
       return;
     }
 
@@ -2079,6 +2333,7 @@ function WellnessValleyApp() {
         setShowWellnessScore(false);
         setShowProfilePage(false);
         enrollmentHistoryPushedRef.current = false;
+        bumpTabVisitKey('dashboard');
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
         setShowDashboard(true); // urgent � same reason as showDashboardPage
@@ -2106,6 +2361,8 @@ function WellnessValleyApp() {
     setShowWellnessScore(false);
     setShowProfilePage(false);
     enrollmentHistoryPushedRef.current = false;
+
+    bumpTabVisitKey(targetPage);
 
     if (isOnSubPage) {
       window.history.replaceState({ wvPage: targetPage }, '');
@@ -2160,7 +2417,7 @@ function WellnessValleyApp() {
         break;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
-  }, [showDashboardPage, userRole]);
+  }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
   // -- Permission flow ------------------------------------------------------
   //
   // Design: zero custom screens before OS dialogs. Permissions are requested
@@ -2650,6 +2907,13 @@ function WellnessValleyApp() {
         missingFields: result.missingFields,
       });
 
+      if (
+        isFlagEnabled("ff.consent-gate") &&
+        result.data?.consentRequired === true
+      ) {
+        setShowConsentGate(true);
+      }
+
       if (result.status === "complete") {
         profileCompletedRef.current = true;
         if (!silent) setProfileChecking(false);
@@ -2691,6 +2955,34 @@ function WellnessValleyApp() {
     checkProfileCompletion(email, user, { silent: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: user/auth only
   }, [user?.id, user?.email, isOtpVerified, checkProfileCompletion]);
+
+  // Consent gate: ask only when DB has no ConsentAcceptedAt for this UserId.
+  useEffect(() => {
+    if (!isFlagEnabled("ff.consent-gate")) return;
+    if (!user || !isOtpVerified) return;
+    const userId = user.id || user.UserId || user.userId;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail() || "";
+    if (!userId && !email) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const consent = await fetchConsentStatus({
+          userId: userId || undefined,
+          email: email || undefined,
+        });
+        if (cancelled || !consent.ok) return;
+        if (consent.consentRequired) {
+          setShowConsentGate(true);
+        } else {
+          setShowConsentGate(false);
+        }
+      } catch {
+        // fail-soft
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: identity only
+  }, [user?.id, user?.UserId, user?.email, isOtpVerified]);
 
   // -- Profile Picture Validation ------------------------------------------
   // Checks if user has a valid profile picture (not a letter avatar)
@@ -3059,6 +3351,7 @@ function WellnessValleyApp() {
       if (isInactiveReactivationFlow) return;
 
       if (isOtpVerified && !user) {
+        setPostAuthBridge(true);
         const otpUserRaw = Session.getOtpUserRaw();
 
         if (otpUserRaw) {
@@ -3112,6 +3405,7 @@ function WellnessValleyApp() {
             if (!isActive) {
               // Set user state so modal can show
               setUser(parsedUser);
+              setPostAuthBridge(false);
               // Modal close handler will clear localStorage
               return;
             }
@@ -3119,16 +3413,46 @@ function WellnessValleyApp() {
             setUser(parsedUser);
             setAuthLoading(false); // safety net: clear loading gate for fresh OTP logins
             handleSaveUserCache(parsedUser);
+
+            // Consent: DB is source of truth. Never trust stale otpUser.consentRequired
+            // (that flag can remain true after Agree and wrongly re-prompt on every login).
+            if (isFlagEnabled("ff.consent-gate")) {
+              try {
+                const consent = await fetchConsentStatus({
+                  userId: parsedUser.id || parsedUser.UserId,
+                  email: userEmail || undefined,
+                });
+                if (consent.ok) {
+                  if (consent.consentRequired) {
+                    setShowConsentGate(true);
+                  } else {
+                    setShowConsentGate(false);
+                    const refreshed = { ...parsedUser, consentRequired: false };
+                    Session.setOtpUser(refreshed);
+                    setUser(refreshed);
+                  }
+                } else if (parsedUser?.consentRequired === true) {
+                  setShowConsentGate(true);
+                }
+              } catch {
+                if (parsedUser?.consentRequired === true) {
+                  setShowConsentGate(true);
+                }
+              }
+            }
+
             // ? Check profile completion after OTP user is restored on refresh
             if (userEmail) {
               await checkProfileCompletion(userEmail, parsedUser, {
                 silent: true,
               });
             }
+            setPostAuthBridge(false);
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
             Session.clearOtpUser();
             setIsOtpVerified(false);
+            setPostAuthBridge(false);
           }
         } else {
           // isOtpVerified=true but no user data in localStorage � stale flag
@@ -3138,6 +3462,7 @@ function WellnessValleyApp() {
           Session.clearOtpUser();
           setIsOtpVerified(false);
           setAuthLoading(false);
+          setPostAuthBridge(false);
         }
       }
     };
@@ -3500,6 +3825,13 @@ function WellnessValleyApp() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (signal.aborted) return;
+        if (
+          isFlagEnabled("ff.consent-gate") &&
+          data?.success &&
+          data?.data?.consentRequired === true
+        ) {
+          setShowConsentGate(true);
+        }
         if (data?.success && data?.data?.profileImage)
           setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
@@ -5092,17 +5424,8 @@ function WellnessValleyApp() {
     }
     imageProcessingInProgress.current = true;
 
-    // ?? [BUG 1 FIX] Snapchat-style overlay must mount BEFORE any setState
-    // below, otherwise React commits a home-screen render during the
-    // FileReader await (~100�300ms flash). URL.createObjectURL is fully
-    // synchronous ? the overlay paints on the SAME frame this function is
-    // called, so the home screen is never visible. The object URL is
-    // revoked when the overlay is cleared (in the share .then / safety
-    // timeout below) to avoid the memory leak.
-    // ? INSTANT SHARE � generate token synchronously so the share sheet
-    // fires on the exact same tick the overlay paints. All async operations
-    // (checkUserStatus, validateImageFreshness, FileReader, compressImage)
-    // that used to add 2�4 s of delay now run AFTER the share is already open.
+    // Pre-generate share token/code synchronously so POST /captures can persist
+    // the row immediately. Share sheet opens only after Classify photo completes.
     const instantToken = crypto.randomUUID();
     const generateInstantShareCode = (length = 8) => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -5113,139 +5436,8 @@ function WellnessValleyApp() {
       return out;
     };
     const instantShareCode = generateInstantShareCode();
-    const instantShareUrl = `${apiBaseUrl}/share/${instantShareCode}`;
 
-    // ? Kick off FileReader NOW � before overlay paints � so it runs during
-    // the React commit phase (~16ms). By the time the share IIFE awaits it,
-    // the read is typically already done: net delay � 0ms on the share sheet.
-    const fileDataUrlPromise =
-      Capacitor.isNativePlatform() && file
-        ? new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          })
-        : null;
-
-    // Check user preference for auto-share BEFORE creating overlay
-    const autoShareEnabled =
-      localStorage.getItem("autoShareOnCapture") !== "false";
-
-    // Flag set here so the later share-fire block (post-compression) is skipped.
     foodAutoSharedRef.current = false;
-
-    // Only create share overlay and fire share sheet if auto-share is enabled
-    if (autoShareEnabled) {
-      try {
-        if (file && typeof URL?.createObjectURL === "function") {
-          const objectUrl = URL.createObjectURL(file);
-          setSharingPendingImage(objectUrl);
-        }
-      } catch (_) {
-        /* non-fatal � overlay is a UX nicety */
-      }
-    }
-
-    // Fire share sheet � overlay is now painted (if auto-share enabled) (if auto-share enabled).
-    // On native: await the pre-started FileReader (� 0ms extra wait) then
-    // call shareViaCapacitorAPI so the ACTUAL PHOTO appears inline in
-    // WhatsApp, not just an OG preview card.
-    // On web: fall back to text+URL share.
-    if (autoShareEnabled && !foodAutoSharedRef.current) {
-      foodAutoSharedRef.current = true;
-      const clearOverlayNow = () => {
-        setSharingPendingImage((prev) => {
-          if (prev && prev.startsWith("blob:")) {
-            try {
-              URL.revokeObjectURL(prev);
-            } catch (_) {}
-          }
-          return null;
-        });
-        if (sharingPendingTimerRef.current) {
-          clearTimeout(sharingPendingTimerRef.current);
-          sharingPendingTimerRef.current = null;
-        }
-      };
-      (async () => {
-        try {
-          const shareNamePromise = ensureShareDisplayName(
-            savedUserNameRef.current ?? savedUserName,
-            user,
-            apiBaseUrl,
-          );
-          if (fileDataUrlPromise) {
-            // FileReader started before overlay � usually already resolved.
-            const [fileDataUrl, shareDisplayName] = await Promise.all([
-              fileDataUrlPromise,
-              shareNamePromise,
-            ]);
-            if (shareDisplayName && user?.email) {
-              cacheProfileUserName(user.email, shareDisplayName);
-              setSavedUserName(shareDisplayName);
-            }
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            // Dismiss overlay before opening share sheet — not after user finishes sharing.
-            clearOverlayNow();
-            const result = await shareViaCapacitorAPI(fileDataUrl, {
-              title: shareDisplayName,
-              text: shareText,
-              fileName: `wellness-meal-${Date.now()}.jpg`,
-            });
-            _hasCompletedFirstShareRef.current = true;
-            if (!result?.ok && !result?.dismissed)
-              foodAutoSharedRef.current = false;
-          } else {
-            // Web fallback: text + URL only.
-            const shareDisplayName = await shareNamePromise;
-            if (shareDisplayName && user?.email) {
-              cacheProfileUserName(user.email, shareDisplayName);
-              setSavedUserName(shareDisplayName);
-            }
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            clearOverlayNow();
-            const ok = await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-            if (!ok) foodAutoSharedRef.current = false;
-          }
-        } catch (_) {
-          // Native share failed — fall back to text-only.
-          try {
-            const shareDisplayName = await ensureShareDisplayName(
-              savedUserNameRef.current ?? savedUserName,
-              user,
-              apiBaseUrl,
-            );
-            const shareText = buildQuickShareText(shareDisplayName, getVersionString());
-            clearOverlayNow();
-            await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-          } catch (__) {
-            /* ignore */
-          }
-        } finally {
-          clearOverlayNow();
-        }
-      })();
-    }
-
-    // Safety timer: last-resort fallback if the share IIFE somehow never
-    // reaches its `finally` block (e.g. the JS bridge hangs indefinitely).
-    // 120 s is intentionally long � clearOverlayNow() in the `finally` block
-    // always cancels this before it fires under normal operation.
-    if (sharingPendingTimerRef.current)
-      clearTimeout(sharingPendingTimerRef.current);
-    sharingPendingTimerRef.current = setTimeout(() => {
-      setSharingPendingImage((prev) => {
-        if (prev && prev.startsWith("blob:")) {
-          try {
-            URL.revokeObjectURL(prev);
-          } catch (_) {}
-        }
-        return null;
-      });
-    }, 120000);
 
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
@@ -5621,6 +5813,11 @@ function WellnessValleyApp() {
         imageBase64: processedImage,
         userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
       });
+      Session.setPendingClassifyCapture({
+        captureId: captureShare.id,
+        imageBase64: processedImage,
+        userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
+      });
       setShowManualEntry(true);
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
@@ -5760,6 +5957,9 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    setShowConsentGate(false);
+    setConsentSubmitting(false);
+    setPostAuthBridge(false);
     setSaveError(null);
     setLoadingState("analyzing"); // Reset loading state
 
@@ -6077,6 +6277,7 @@ function WellnessValleyApp() {
           photoURL: user.photoURL || null,
           uid: user.uid,
           timezoneIana: getDeviceTimezoneIana() ?? "",
+          ...consentPayload(),
         }),
       });
 
@@ -6091,6 +6292,9 @@ function WellnessValleyApp() {
           "? [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
+        if (data.user?.consentRequired) {
+          setShowConsentGate(true);
+        }
 
         // If this is a new user, trigger the profile modal
         if (data.isNewUser) {
@@ -6129,6 +6333,12 @@ function WellnessValleyApp() {
       // ? Ensure loading is false BEFORE showing Login screen
       setLoading(false);
 
+      // Keep device consent acceptance across logout (do not clear consent.acceptedVersion).
+      // Only show Consent Form again if they never Agreed, or declined.
+      setShowConsentGate(false);
+      setConsentSubmitting(false);
+      setPostAuthBridge(false);
+
       // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
@@ -6148,6 +6358,7 @@ function WellnessValleyApp() {
       Session.clearDbUserId();
       // Clear demo meal history on sign-out
       Session.clearDemoMeals();
+      Session.clearPendingClassifyCapture();
       // Clear profile-complete flag so a new/different user sees the gate if needed
       const emailKey = Session.getUserEmail() || "";
       Session.clearProfileComplete(emailKey);
@@ -6216,6 +6427,11 @@ function WellnessValleyApp() {
   const handleOtpVerified = async (isNewUser = false) => {
     debugLog("?? [handleOtpVerified] Called with isNewUser:", isNewUser);
 
+    // Hold a logo bridge so Login never remounts while status/consent resolve.
+    setPostAuthBridge(true);
+    Session.clearUserSignedOut();
+    setForceLoggedOut(false);
+
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
 
@@ -6240,7 +6456,7 @@ function WellnessValleyApp() {
 
         // Fast-path inactive check: the verify-otp API already returns the
         // user's current Status in the stored object. If it's already
-        // 'Inactive', show the Account Restricted modal immediately � do NOT
+        // 'Inactive', show the Account Restricted modal immediately — do NOT
         // rely on a separate network call that can time out or fail-open.
         // Check both lowercase 'status' and capital 'Status' for compatibility
         const userStatus = (
@@ -6267,6 +6483,7 @@ function WellnessValleyApp() {
           setUser(parsedUser);
           setIsUserActive(false);
           setShowInactiveModal(true);
+          setPostAuthBridge(false);
 
           console.log(
             "?? [handleOtpVerified] State set - user:",
@@ -6292,29 +6509,6 @@ function WellnessValleyApp() {
           isActive = true; // Default to active on error
         }
 
-        if (!isActive) {
-          // User is inactive � set user + mark OTP verified so the app renders
-          // past the login gate and shows the InactiveUserModal (which fires in
-          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
-          // the modal never renders and the user is stuck on the OTP screen.
-          const userEmail = parsedUser.email || parsedUser.Email;
-          if (userEmail) Session.setUserEmail(userEmail);
-          Session.clearUserSignedOut();
-          setForceLoggedOut(false);
-          setUser(parsedUser);
-          setIsOtpVerified(true);
-          Session.markOtpVerified();
-          return;
-        }
-
-        setIsOtpVerified(true);
-        Session.markOtpVerified();
-
-        // ? User is logging in via OTP ? clear the sign-out gate
-        Session.clearUserSignedOut();
-        setForceLoggedOut(false);
-
-        // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
           Session.setUserEmail(userEmail);
@@ -6324,25 +6518,44 @@ function WellnessValleyApp() {
           );
         }
 
+        if (!isActive) {
+          // User is inactive � set user + mark OTP verified so the app renders
+          // past the login gate and shows the InactiveUserModal (which fires in
+          // checkUserStatus via setShowInactiveModal). Without isOtpVerified=true
+          // the modal never renders and the user is stuck on the OTP screen.
+          setUser(parsedUser);
+          setIsOtpVerified(true);
+          Session.markOtpVerified();
+          setPostAuthBridge(false);
+          return;
+        }
+
+        // Consent from verify-otp payload (DB). Resolve before leaving the bridge
+        // so we never flash Login → consent/home.
+        const needsConsent =
+          isFlagEnabled("ff.consent-gate") &&
+          parsedUser?.consentRequired === true;
+        setShowConsentGate(needsConsent);
         setUser(parsedUser);
+        setIsOtpVerified(true);
+        Session.markOtpVerified();
+        setPostAuthBridge(false);
 
         // Unified CompleteProfile (name/email/gender/height/diet/photo) runs as the
         // first gate via the profile-completion effects — before activity and coach.
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
-        Session.clearUserSignedOut();
-        setForceLoggedOut(false);
         setIsOtpVerified(true);
         Session.markOtpVerified();
+        setPostAuthBridge(false);
       }
     } else {
       // No OTP user found, proceed with verification
-      Session.clearUserSignedOut();
       Session.clearAccountDeleted();
-      setForceLoggedOut(false);
       setIsOtpVerified(true);
       Session.markOtpVerified();
+      setPostAuthBridge(false);
     }
   };
 
@@ -6440,37 +6653,42 @@ function WellnessValleyApp() {
   }
   // -------------------------------------------------------------------------
 
+  // Shared logo bridge — used after OTP while consent/status resolve (no Login flash).
+  const authBridgeScreen = (
+    <>
+      {inactiveModalPortal}
+      <div
+        aria-busy="true"
+        aria-label="Signing you in"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "#ffffff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <img
+          src="/logo.png"
+          alt="Wellness Valley"
+          style={{ width: 120, height: 120, objectFit: "contain" }}
+        />
+      </div>
+    </>
+  );
+
+  if (postAuthBridge) {
+    return authBridgeScreen;
+  }
+
   if (authLoading) {
-    // On native, show the logo overlay instead of a blank screen � the native
-    // splash may have already faded, so returning null would show white.
+    // On native, show the logo overlay instead of a blank screen.
     if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
+      return authBridgeScreen;
     }
-    // On web, show the Login page while Firebase resolves. Previously this
-    // returned `inactiveModalPortal` (null for new/signed-out users), giving
-    // a blank white screen for up to 5 seconds until the auth timeout fired.
+    // On web, show the Login page while Firebase resolves.
     return (
       <>
         {inactiveModalPortal}
@@ -6484,89 +6702,85 @@ function WellnessValleyApp() {
     );
   }
 
-  // OTP user restore in progress � stay invisible on native, show Login on web.
-  // On web, returning null causes a white screen if the OTP state is stale
-  // (isOtpVerified=true in localStorage but no valid otpUser data to restore).
+  // OTP user restore / post-OTP handoff — never remount Login (looks like a glitch).
   if (isOtpVerified && !user) {
-    if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
-    }
-    // Web: show Login so the user is never stuck on a blank page.
+    return authBridgeScreen;
+  }
+
+  // ADR-0006 — existing + returning users without DB consent cannot use the app.
+  // Placed before profileChecking so consent is never skipped for logged-in users.
+  if (
+    isFlagEnabled("ff.consent-gate") &&
+    showConsentGate &&
+    user &&
+    isOtpVerified
+  ) {
+    const consentUserId = user.id || user.UserId || user.userId;
+    const consentEmail = user.email || user.Email || Session.getUserEmail() || "";
+    const consentPhone = user.phone || user.PhoneNumber || "";
+    const identityLabel = consentPhone || consentEmail || (consentUserId ? `User #${consentUserId}` : "");
     return (
-      <>
-        {inactiveModalPortal}
-        <Login
-          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-          loading={loading}
-          error={error}
-          onOtpVerified={handleOtpVerified}
-        />
-      </>
+      <ConsentForm
+        mode="post-auth"
+        identityLabel={identityLabel}
+        submitting={consentSubmitting}
+        onAgree={async () => {
+          setConsentSubmitting(true);
+          try {
+            const result = await recordConsentAcceptance({
+              userId: consentUserId,
+              email: consentEmail || undefined,
+            });
+            if (!result.ok) {
+              setAlertModal({
+                isOpen: true,
+                title: "Consent required",
+                message:
+                  result.data?.message ||
+                  "Could not save your consent. Please try again.",
+                type: "error",
+                confirmText: "OK",
+              });
+              return;
+            }
+            persistLocalConsentAcceptance(CURRENT_CONSENT_VERSION);
+            setUser((prev) => {
+              if (!prev) return prev;
+              const next = { ...prev, consentRequired: false };
+              try { Session.setOtpUser(next); } catch { /* non-fatal */ }
+              return next;
+            });
+            setShowConsentGate(false);
+          } finally {
+            setConsentSubmitting(false);
+          }
+        }}
+        onDecline={async () => {
+          setConsentSubmitting(true);
+          try {
+            // New / never-consented accounts: remove the identified row so we
+            // do not keep an account without consent. Existing consented users
+            // are never deleted here (server enforces that).
+            await discardUnconsentedUser({
+              userId: consentUserId,
+              email: consentEmail || undefined,
+            });
+          } catch {
+            // still sign out
+          } finally {
+            clearLocalConsentAcceptance();
+            setShowConsentGate(false);
+            setConsentSubmitting(false);
+            await handleSignOut();
+          }
+        }}
+      />
     );
   }
 
-  // Profile check in progress � stay invisible on native, show Login on web
-  // as a safety net so non-native users never see a blank page.
+  // Profile check in progress — logo bridge (never flash Login after OTP).
   if (profileChecking) {
-    if (Capacitor.isNativePlatform()) {
-      return (
-        <>
-          {inactiveModalPortal}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        </>
-      );
-    }
-    // Web: show Login so the user is never stuck on a blank page.
-    return (
-      <>
-        {inactiveModalPortal}
-        <Login
-          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-          loading={loading}
-          error={error}
-          onOtpVerified={handleOtpVerified}
-        />
-      </>
-    );
+    return authBridgeScreen;
   }
 
   // ? iOS Sign-out gate: user explicitly signed out ? always show Login
@@ -6751,6 +6965,7 @@ function WellnessValleyApp() {
               user={user}
               onBack={showMainPage}
               apiBaseUrl={apiBaseUrl}
+              tabVisitKey={tabVisitKeys.dashboard ?? 0}
               initialTab={dashboardInitialTab}
               userRole={userRole}
               bmrUpdateKey={bmrUpdateKey}
@@ -6788,6 +7003,7 @@ function WellnessValleyApp() {
           <Suspense fallback={null}>
             <WellnessCounselling
               user={user}
+              tabVisitKey={tabVisitKeys.counselling ?? 0}
               refreshKey={bodyParamsRefreshKey}
               onCardSaved={() => {
                 setHeaderProfileKey((k) => k + 1);
@@ -6826,6 +7042,7 @@ function WellnessValleyApp() {
               embedded
               user={user}
               userRole={userRole}
+              tabVisitKey={tabVisitKeys.enrollment ?? 0}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
                 setShowUniversityEnrollment(false);
@@ -6859,6 +7076,7 @@ function WellnessValleyApp() {
               user={user}
               userRole={userRole}
               apiBaseUrl={apiBaseUrl}
+              tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
               onBack={() => {
                 setShowActivityReport(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -6925,6 +7143,7 @@ function WellnessValleyApp() {
               <NutritionCentersMap
                 embedded
                 user={user}
+                tabVisitKey={tabVisitKeys['physical-club'] ?? 0}
                 onBack={() => {
                   setShowNutritionCentersMap(false);
                   const currentWvPage = window.history.state?.wvPage;
@@ -6978,6 +7197,7 @@ function WellnessValleyApp() {
             <TestimonialsPage
               user={{ userId: user?.id ?? userContext?.userId ?? null }}
               userRole={userRole}
+              tabVisitKey={tabVisitKeys.testimonials ?? 0}
               onBack={() => {
                 setShowTestimonials(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7020,19 +7240,24 @@ function WellnessValleyApp() {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading…" />}>
         <ManualEntryPage
+          key={manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
           onBack={() => {
+            Session.clearPendingClassifyCapture();
             setShowManualEntry(false);
             setManualEntryPayload(null);
             setImagePreview(null);
-            const currentWvPage = window.history.state?.wvPage;
-            if (currentWvPage && currentWvPage !== 'main') window.history.back();
+            setShowDashboard(false);
+            Session.setCurrentPage('main');
+            // Always land on Home — history.back() can pop to a stale Diary entry.
+            window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onSaved={() => {
+          onSaved={async () => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
+            await shareCaptureAfterClassify(manualEntryPayload.imageBase64);
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}
@@ -7085,6 +7310,7 @@ function WellnessValleyApp() {
           <Suspense fallback={<LoadingSpinner message="Loading reports�" />}>
             <DownlineWeightReport
               user={user}
+              tabVisitKey={tabVisitKeys.reports ?? 0}
               onBack={() => {
                 setShowReports(false);
                 const currentWvPage = window.history.state?.wvPage;
@@ -7927,6 +8153,20 @@ function WellnessValleyApp() {
           userId={user?.id}
           timeLabel="It's food time! Do you want to add manually?"
           altSwitchButtons={getAltSwitchButtons("food")}
+        />
+
+        {/* Manual Weight Entry Modal */}
+        <ManualWeightEntryModal
+          isOpen={showManualWeightModal}
+          onClose={() => {
+            setShowManualWeightModal(false);
+            setCurrentWeightImage(null);
+          }}
+          onSave={handleManualWeightSave}
+          imagePreview={currentWeightImage || imagePreview}
+          userId={user?.id}
+          lastWeight={lastWeight}
+          skipTypeSelect
         />
 
         {/* Manual Education Entry Modal */}

@@ -22,6 +22,24 @@ import * as activityReportRepo from '../../../features/activity/activity-report.
  * - Returns: rank, profile (email for avatar), userName, coachName, weightLoss
  */
 const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
+/** PostgREST `.in()` limit — batch weight lookups for large active-user sets. */
+const WEIGHT_LOOKUP_CHUNK = 150;
+
+async function fetchWeightRecordsBatched(userIds, startDate, endDate, timezoneIana) {
+  if (!userIds?.length) return [];
+  const rows = [];
+  for (let i = 0; i < userIds.length; i += WEIGHT_LOOKUP_CHUNK) {
+    const chunk = userIds.slice(i, i + WEIGHT_LOOKUP_CHUNK);
+    const chunkRows = await activityReportRepo.fetchWeightRecords(
+      chunk,
+      startDate,
+      endDate,
+      timezoneIana,
+    );
+    rows.push(...chunkRows);
+  }
+  return rows;
+}
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -61,10 +79,10 @@ export default async function handler(req, res) {
       `🏆 [LEADERBOARD] Calculating global weight loss leaderboard (Top ${topN})...`,
     );
 
-    // Step 1: Get all active users
+    // Step 1: Active users — omit ProfileImage (base64 blobs) to avoid OOM / 500 on large teams.
     const { data: activeUsers, error: usersError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, CoachId, Status, ProfileImage")
+      .select("UserId, UserName, Email, CoachId, Status")
       .ilike("Status", "Active"); // Case-insensitive match for 'active' or 'Active'
 
     if (usersError) throw usersError;
@@ -116,8 +134,8 @@ export default async function handler(req, res) {
     const activeUserIds = activeUsers.map((u) => u.UserId);
 
     const [todayWeights, yesterdayWeights] = await Promise.all([
-      activityReportRepo.fetchWeightRecords(activeUserIds, todayYmd, todayYmd, IANA_IST),
-      activityReportRepo.fetchWeightRecords(activeUserIds, yesterdayYmd, yesterdayYmd, IANA_IST),
+      fetchWeightRecordsBatched(activeUserIds, todayYmd, todayYmd, IANA_IST),
+      fetchWeightRecordsBatched(activeUserIds, yesterdayYmd, yesterdayYmd, IANA_IST),
     ]);
 
     // Create maps for quick lookup (get latest weight per user)
@@ -160,7 +178,6 @@ export default async function handler(req, res) {
             userName: user.UserName || "Unknown",
             email: user.Email || "",
             coachName: user.CoachName || "No Coach",
-            profileImage: user.ProfileImage || null,
             weightLoss: parseFloat(weightLoss.toFixed(2)),
             todayWeight: parseFloat(todayWeight.toFixed(2)),
             yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
@@ -195,7 +212,7 @@ export default async function handler(req, res) {
         userName: user.userName,
         email: user.email,
         coachName: user.coachName,
-        profileImage: user.profileImage,
+        profileImage: null,
         weightLoss: user.weightLoss,
         todayWeight: user.todayWeight,
         yesterdayWeight: user.yesterdayWeight,
@@ -205,8 +222,24 @@ export default async function handler(req, res) {
       previousWeightLoss = user.weightLoss;
     });
 
-    // Step 7: Reverse order for display (show worst to best: Rank 10 → Rank 1)
+    // Step 8: Reverse order for display (show worst to best: Rank 10 → Rank 1)
     topResults.reverse();
+
+    // Profile images only for top N — never load base64 for every active user.
+    if (topResults.length > 0) {
+      const topUserIds = topResults.map((u) => u.userId);
+      const { data: profileRows } = await supabase
+        .from("team_table")
+        .select("UserId, ProfileImage")
+        .in("UserId", topUserIds);
+      const imageByUserId = {};
+      (profileRows || []).forEach((row) => {
+        imageByUserId[row.UserId] = row.ProfileImage || null;
+      });
+      topResults.forEach((entry) => {
+        entry.profileImage = imageByUserId[entry.userId] ?? null;
+      });
+    }
 
     logger.debug(
       `🏆 [LEADERBOARD] Top ${topResults.length} weight losers calculated`,

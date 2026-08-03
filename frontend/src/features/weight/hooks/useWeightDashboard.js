@@ -15,7 +15,11 @@ import {
 } from '../services/weightDashboardFormatter';
 import { compareUtcTimestampsDesc } from '../../../shared/utils/datetimeUtils';
 
-export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
+export function useWeightDashboard({
+  user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
+}) {
   const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
@@ -51,6 +55,8 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
     userIdRef: data.userIdRef,
     setWeightHistory: data.setWeightHistory,
     setSelectedEntry,
+    onDeleteWithUndo,
+    onDeleteUndoCancel,
   });
 
   // History list is scoped to the selected day when one is provided (the

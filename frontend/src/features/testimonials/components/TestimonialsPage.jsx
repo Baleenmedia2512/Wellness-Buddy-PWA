@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
 
-export default function TestimonialsPage({ user }) {
+export default function TestimonialsPage({ user, tabVisitKey = 0 }) {
   const userId = user?.userId ?? user?.id ?? null;
   const [reloadSignal, setReloadSignal] = useState(0);
 
@@ -21,6 +21,7 @@ export default function TestimonialsPage({ user }) {
         <CoachTestimonialsPage
           user={user}
           reloadSignal={reloadSignal}
+          tabVisitKey={tabVisitKey}
         />
       ) : (
         <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
