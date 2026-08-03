@@ -16,6 +16,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
+import {
+  isAutoCameraOnResumeEnabled,
+  setAutoCameraOnResumeEnabled,
+} from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import useImageCropper from '../hooks/useImageCropper';
 import useFaceDetection from '../hooks/useFaceDetection';
@@ -53,7 +57,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
-    () => localStorage.getItem('wv.autoCameraOnResume') !== 'false'
+    () => isAutoCameraOnResumeEnabled()
   );
   const face = useFaceDetection();
   const handleSaveRef = useRef(null);
@@ -398,7 +402,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 onClick={() => {
                   const next = !autoCameraEnabled;
                   setAutoCameraEnabled(next);
-                  localStorage.setItem('wv.autoCameraOnResume', String(next));
+                  setAutoCameraOnResumeEnabled(next);
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoCameraEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
                 aria-label="Toggle auto camera"
