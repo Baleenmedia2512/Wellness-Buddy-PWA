@@ -5,7 +5,8 @@
  * primary pointer only) but supports N cards and exposes an active index rather
  * than a named panel key.
  *
- * Resets to card 0 whenever `resetKey` changes (e.g. on date change).
+ * Optionally resets to card 0 whenever `resetKey` changes.
+ * Home carousel omits resetKey so date-range changes keep the active card.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 
@@ -15,8 +16,9 @@ export function useCarouselSwipe({ cardCount, resetKey }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const swipeRef = useRef({ active: false, startX: 0, lastX: 0 });
 
-  // Reset to first card when the caller supplies a new resetKey.
+  // Reset to first card only when the caller explicitly supplies a changing resetKey.
   useEffect(() => {
+    if (resetKey === undefined) return;
     setActiveIndex(0);
   }, [resetKey]);
 
