@@ -14,6 +14,7 @@ import {
 } from '../../shared/lib/datetime/index.js';
 import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
 
 /**
  * Attach sponsor + ideal-coach fields onto a member info object (ADR-0007).
@@ -343,7 +344,10 @@ export async function getActivityReportBootstrap({
   }
 
   const fetchResults = await Promise.all(activityFetches);
-  const members = includeRecords ? fetchResults[0] : [];
+  const members = filterPublicAggregateUsers(
+    includeRecords ? fetchResults[0] : [],
+    { viewerUserId: userId },
+  );
   const weightRecords = fetchResults[includeRecords ? 1 : 0];
   const educationRecords = fetchResults[includeRecords ? 2 : 1];
   const stepRecords = fetchResults[includeRecords ? 3 : 2];
@@ -359,7 +363,8 @@ export async function getActivityReportBootstrap({
   let records = [];
   if (includeRecords) {
     const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+      { viewerUserId: userId },
     );
     const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
     records = await buildDetailRecordsFromBundle({
@@ -486,9 +491,13 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
   }
 
   // Fetch member details + sponsor / ideal coach (ADR-0007)
-  const members = await repo.fetchMemberDetails(userIds);
+  const members = filterPublicAggregateUsers(
+    await repo.fetchMemberDetails(userIds),
+    { viewerUserId: userId },
+  );
   const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+    { viewerUserId: userId },
   );
 
   // Build member info map (keyed by both numeric and string UserId)
@@ -581,9 +590,13 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
   }
   
   // Fetch member details + sponsor / ideal coach (ADR-0007)
-  const members = await repo.fetchMemberDetails(userIds);
+  const members = filterPublicAggregateUsers(
+    await repo.fetchMemberDetails(userIds),
+    { viewerUserId: userId },
+  );
   const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+    { viewerUserId: userId },
   );
 
   // Build member info map ? keyed by both numeric and string UserId

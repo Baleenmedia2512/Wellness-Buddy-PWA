@@ -7,6 +7,7 @@ import {
 } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
@@ -69,13 +70,15 @@ export default async function handler(req, res) {
 
     const userIds = [...new Set(scores.map((s) => s.user_id))];
 
-    const { data: users, error: usersError } = await supabase
+    const { data: usersRaw, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, ProfileImage')
+      .select('UserId, UserName, Email, CoachId, Status, ProfileImage, Role')
       .in('UserId', userIds)
       .ilike('Status', 'Active');
 
     if (usersError) throw usersError;
+
+    const users = filterPublicAggregateUsers(usersRaw || []);
 
     const activeMap = new Map((users || []).map((u) => [u.UserId, u]));
 

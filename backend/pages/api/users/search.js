@@ -8,6 +8,7 @@
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -74,7 +75,7 @@ export default async function handler(req, res) {
     // Search for coaches by name or email, excluding current user
     const { data: coaches, error } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, TeamId')
+      .select('UserId, UserName, Email, TeamId, Role')
       .eq('Status', 'Active')
       .neq('Email', currentUserEmail || '')
       .or(`UserName.ilike.%${searchQuery}%,Email.ilike.%${searchQuery}%`)
@@ -84,9 +85,11 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
+    const eligibleCoaches = filterPublicAggregateUsers(coaches || []);
+
     // Format results with masked email, deduplicating by email (case-insensitive)
     const seenEmails = new Set();
-    const results = (coaches || []).reduce((acc, coach) => {
+    const results = (eligibleCoaches || []).reduce((acc, coach) => {
       const emailKey = (coach.Email || '').toLowerCase();
       if (!seenEmails.has(emailKey)) {
         seenEmails.add(emailKey);

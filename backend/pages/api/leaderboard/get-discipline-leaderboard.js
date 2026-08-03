@@ -11,6 +11,7 @@ import { enumerateScoreDates } from "../../../features/wellness-score/domain/dat
 import * as activityReportRepo from "../../../features/activity/activity-report.repository.js";
 import logger from '../../../shared/lib/logger.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
@@ -76,12 +77,14 @@ export default async function handler(req, res) {
     );
 
     // Step 1: Get all active users
-    const { data: activeUsers, error: usersError } = await supabase
+    const { data: activeUsersRaw, error: usersError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, CoachId, Status, ProfileImage")
+      .select("UserId, UserName, Email, CoachId, Status, ProfileImage, Role")
       .ilike("Status", "Active");
 
     if (usersError) throw usersError;
+
+    const activeUsers = filterPublicAggregateUsers(activeUsersRaw || []);
 
     if (!activeUsers || activeUsers.length === 0) {
       logger.debug("⚠️ [DISCIPLINE-LEADERBOARD] No active users found");
