@@ -389,7 +389,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 <div>
                   <p className="text-sm font-medium text-gray-900">Auto Camera</p>
                   <p className="text-xs text-gray-500">
-                    {autoCameraEnabled ? 'Opens on app resume' : 'Open manually'}
+                    {autoCameraEnabled ? 'Open Camera Automatically' : 'Open Camera Manually'}
                   </p>
                 </div>
               </div>
