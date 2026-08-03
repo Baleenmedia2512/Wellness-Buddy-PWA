@@ -24,12 +24,14 @@ function EducationHeaderIcon() {
 
 const PLATFORMS = ['Zoom', 'Microsoft Teams', 'Google Meet', 'In-person', 'Other'];
 
-const MEETING_SESSIONS = [
-  'Blueprint',
-  'Hala',
-  'Morning Education',
-  'Wellness Training Education',
+export const MEETING_SESSIONS = [
+  'Blueprint for Success',
+  'HALA',
+  'Daily Education',
+  'Wellness Secminar',
 ];
+
+export const DEFAULT_MEETING_SESSION = 'Daily Education';
 
 export default function EducationFormFields({
   platform,

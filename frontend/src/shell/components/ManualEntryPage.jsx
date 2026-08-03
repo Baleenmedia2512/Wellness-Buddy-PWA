@@ -509,9 +509,9 @@ export default function ManualEntryPage({
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
         <div className="mx-auto max-w-lg px-3 py-2.5">
-          <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
+          <h1 className="truncate text-base font-extrabold text-green-700">What is this image?</h1>
           <p className="truncate text-xs text-green-600">
-            What is this image?
+            Select one button from below — e.g. Weight, Afresh, Food…
           </p>
         </div>
       </header>
@@ -699,7 +699,7 @@ export default function ManualEntryPage({
         isOpen={activeForm === 'afresh'}
         title="Afresh"
         subtitle="Log number of scoops consumed so far"
-        unitLabel="Cups"
+        unitLabel="Scoops"
         iconSrc="/coffee.png"
         min={1}
         max={8}
