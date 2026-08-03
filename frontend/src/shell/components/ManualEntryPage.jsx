@@ -9,7 +9,6 @@ import {
   Lock,
   Sparkles,
   UtensilsCrossed,
-  X,
 } from 'lucide-react';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
@@ -616,10 +615,8 @@ export default function ManualEntryPage({
           disabled={saving || aiStarting || closingWithoutLog}
           className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-green-100 bg-white py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99] disabled:opacity-50"
         >
-          {closingWithoutLog ? (
+          {closingWithoutLog && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <X className="h-4 w-4" aria-hidden />
           )}
           Cancel, Don't Log
         </button>
