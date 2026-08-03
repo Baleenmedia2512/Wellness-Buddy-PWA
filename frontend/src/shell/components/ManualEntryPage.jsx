@@ -506,7 +506,7 @@ export default function ManualEntryPage({
               <button
                 key={id}
                 type="button"
-                disabled={saving || aiStarting || closingWithoutLog}
+                disabled={saving || closingWithoutLog}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
               >
@@ -537,17 +537,17 @@ export default function ManualEntryPage({
             {showAiButton && (
               outOfCredits ? (
                 <div
-                  className={`${LOG_AS_BTN_BASE} log-as-btn--idle border-2 border-emerald-200/70 bg-gradient-to-b from-gray-50 to-white opacity-80 shadow-[0_2px_0_0_rgba(6,95,70,0.12)]`}
+                  className={`${LOG_AS_BTN_IDLE} cursor-default`}
                   aria-disabled="true"
                   title="Daily AI limit reached — unlocks at midnight"
                 >
-                  <LogAsIconWrap muted compact>
+                  <LogAsIconWrap compact>
                     <Lock
                       className="h-7 w-7 min-[380px]:h-8 min-[380px]:w-8 sm:h-9 sm:w-9"
                       aria-hidden
                     />
                   </LogAsIconWrap>
-                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-gray-500 min-[380px]:text-[11px] sm:text-[12px]">
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
                     Unlock in
                   </span>
                   {showCreditsPanel && (

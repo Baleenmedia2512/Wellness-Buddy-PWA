@@ -21,18 +21,16 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function buildEmailHtml({ coachName, memberName, idleDays }) {
+function buildEmailHtml({ coachName, memberName }) {
   const safeCoach = escapeHtml(coachName || 'Coach');
   const safeMember = escapeHtml(memberName || 'Your team member');
-  const daysLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
       <h2 style="color: #047857; margin-bottom: 8px;">Member returned to the app</h2>
       <p style="margin: 0 0 16px;">Hi ${safeCoach},</p>
       <p style="margin: 0 0 16px;">
-        <strong>${safeMember}</strong> just opened Wellness Valley again after being inactive for
-        <strong>${daysLabel}</strong>.
+        <strong>${safeMember}</strong> just came back to Wellness Valley.
       </p>
       <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
         Wellness Valley · idle return notice
@@ -84,7 +82,6 @@ export async function notifyCoachIfReturningIdleUser({
     const html = buildEmailHtml({
       coachName: coach.name,
       memberName,
-      idleDays,
     });
 
     const sent = await repo.sendCoachEmail({
