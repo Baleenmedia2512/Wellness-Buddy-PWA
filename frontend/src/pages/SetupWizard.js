@@ -391,7 +391,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
                       className="w-full pl-11 pr-4 py-3.5 bg-white border-2 border-green-500 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-500/10 transition-all shadow-sm"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Type your coach name or email..."
+                      placeholder="Type your sponsor name or email..."
                       autoFocus
                     />
                     <svg
@@ -470,7 +470,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout, userEmail: userEmailP
                     <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm p-4 text-center">
                       <p>
                         {searchQuery.length > 1 && !searching
-                          ? "No coaches found"
+                          ? "No sponsors found"
                           : "Start typing to search..."}
                       </p>
                     </div>

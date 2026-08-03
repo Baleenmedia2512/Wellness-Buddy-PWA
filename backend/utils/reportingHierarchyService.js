@@ -11,6 +11,7 @@
  *   (not limited to Role=coach — nested leaders still expand).
  */
 import { isActiveTeamStatus } from './teamHierarchyBuilder.js';
+import { filterPublicAggregateUsers } from '../features/user/domain/aggregate-eligibility.rules.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
 
@@ -226,7 +227,7 @@ export function getDirectReportingMembers(coachId, context) {
     }
   }
 
-  return [...result.values()];
+  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
 }
 
 /**
@@ -254,7 +255,7 @@ export function getFullReportingMembers(coachId, context) {
     }
   }
 
-  return [...result.values()];
+  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
 }
 
 /**

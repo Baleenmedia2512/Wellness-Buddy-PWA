@@ -113,7 +113,7 @@ export default function TestimonialVideoForm({
       <p className="text-xs text-gray-500 leading-relaxed">
         {isEditMode
           ? 'Select the video(s) you want to replace. You can change health, business, or both. Unchanged videos stay as they are.'
-          : 'Share your real results! Upload a short health or business results video. Your coach will verify the upload with an OTP. Photo testimonials are optional.'}
+          : 'Share your real results! Upload a short health or business results video. Your sponsor will verify the upload with an OTP. Photo testimonials are optional.'}
       </p>
 
       {isEditMode && existingVideo && (
@@ -170,7 +170,7 @@ export default function TestimonialVideoForm({
           ? 'Uploading…'
           : isEditMode
             ? 'Save Changes & Re-verify'
-            : 'Upload & Notify Coach'}
+            : 'Upload & Notify Sponsor'}
       </TouchFeedbackButton>
 
       {onCancel && (
