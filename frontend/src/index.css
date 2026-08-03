@@ -519,7 +519,7 @@ header img,
   }
 }
 
-/* ManualEntry / Log-as premium button tiles */
+/* ManualEntry / Log-as action buttons (3D press, not floating cards) */
 .log-as-btn {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -535,28 +535,28 @@ header img,
   border-radius: inherit;
   background: radial-gradient(
     circle at center,
-    rgba(6, 95, 70, 0.2) 0%,
-    rgba(6, 95, 70, 0.08) 40%,
-    transparent 70%
+    rgba(6, 95, 70, 0.16) 0%,
+    rgba(6, 95, 70, 0.06) 42%,
+    transparent 72%
   );
   opacity: 0;
-  transform: scale(0.65);
-  transition: opacity 200ms ease, transform 200ms ease;
+  transform: scale(0.85);
+  transition: opacity 120ms ease, transform 120ms ease;
   pointer-events: none;
   z-index: 1;
 }
 
 .log-as-btn:active::after {
   opacity: 1;
-  transform: scale(1.2);
+  transform: scale(1.05);
 }
 
 .log-as-btn--selected::after {
   background: radial-gradient(
     circle at center,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(255, 255, 255, 0.08) 45%,
-    transparent 70%
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.06) 45%,
+    transparent 72%
   );
 }
 
@@ -566,22 +566,23 @@ header img,
 }
 
 .log-as-btn--idle:active {
-  background-color: #ecfdf5 !important;
+  background: linear-gradient(to bottom, #ecfdf5, #d1fae5) !important;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .log-as-btn--idle:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
+    border-color: rgba(16, 185, 129, 0.55);
     box-shadow:
-      0 8px 20px rgba(6, 78, 59, 0.12),
-      0 2px 6px rgba(6, 78, 59, 0.08);
+      0 4px 0 0 rgba(6, 95, 70, 0.24),
+      0 6px 14px rgba(6, 78, 59, 0.1);
   }
 
   .log-as-btn--selected:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow:
-      0 10px 26px rgba(6, 95, 70, 0.42),
-      0 0 0 3px rgba(6, 95, 70, 0.2);
+      0 4px 0 0 #064e3b,
+      0 6px 16px rgba(6, 95, 70, 0.28);
   }
 }
 
