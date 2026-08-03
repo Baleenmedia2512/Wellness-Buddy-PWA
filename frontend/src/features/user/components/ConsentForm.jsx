@@ -35,7 +35,7 @@ const ConsentForm = ({
       onDecline?.();
       return;
     }
-    setLocalError('Please select I Agree or I Do Not Agree to continue.');
+    setLocalError('Please select I Agree or I Don\'t Agree to continue.');
   };
 
   const linkClass = 'font-medium underline underline-offset-2';
@@ -335,52 +335,54 @@ const ConsentForm = ({
         <div className="mt-8 pt-6 space-y-3" style={{ borderTop: `1px solid ${BRAND}33` }}>
           <p className="text-[15px] font-semibold text-gray-900">Agreement</p>
 
-          <label
-            className="flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors"
-            style={{
-              borderColor: choice === 'agree' ? BRAND : '#e5e7eb',
-              backgroundColor: choice === 'agree' ? `${BRAND}0D` : '#fff',
-            }}
-          >
-            <input
-              type="radio"
-              name="consentChoice"
-              className="mt-1 accent-[#047857]"
-              checked={choice === 'agree'}
-              onChange={() => setChoice('agree')}
-              disabled={submitting}
-            />
-            <span>
-              <span className="block font-semibold text-gray-900">I Agree</span>
-              <span className="block text-xs text-gray-500 mt-1 leading-snug">
-                I consent to the collection and use of my information as described in this form.
+          <div className="flex flex-row gap-3 items-stretch">
+            <label
+              className="flex-1 flex items-start gap-2.5 p-3.5 rounded-2xl border-2 cursor-pointer transition-colors min-w-0"
+              style={{
+                borderColor: choice === 'disagree' ? BRAND : '#e5e7eb',
+                backgroundColor: choice === 'disagree' ? `${BRAND}0D` : '#fff',
+              }}
+            >
+              <input
+                type="radio"
+                name="consentChoice"
+                className="mt-1 shrink-0 accent-[#047857]"
+                checked={choice === 'disagree'}
+                onChange={() => setChoice('disagree')}
+                disabled={submitting}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-gray-900 text-sm leading-snug">I Don&apos;t Agree</span>
+                <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                  I do not consent. I understand I will not be able to use Wellness Valley&apos;s health
+                  and coaching features.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          <label
-            className="flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors"
-            style={{
-              borderColor: choice === 'disagree' ? BRAND : '#e5e7eb',
-              backgroundColor: choice === 'disagree' ? `${BRAND}0D` : '#fff',
-            }}
-          >
-            <input
-              type="radio"
-              name="consentChoice"
-              className="mt-1 accent-[#047857]"
-              checked={choice === 'disagree'}
-              onChange={() => setChoice('disagree')}
-              disabled={submitting}
-            />
-            <span>
-              <span className="block font-semibold text-gray-900">I Do Not Agree</span>
-              <span className="block text-xs text-gray-500 mt-1 leading-snug">
-                I do not consent. I understand I will not be able to use Wellness Valley’s health
-                and coaching features.
+            <label
+              className="flex-1 flex items-start gap-2.5 p-3.5 rounded-2xl border-2 cursor-pointer transition-colors min-w-0"
+              style={{
+                borderColor: choice === 'agree' ? BRAND : '#e5e7eb',
+                backgroundColor: choice === 'agree' ? `${BRAND}0D` : '#fff',
+              }}
+            >
+              <input
+                type="radio"
+                name="consentChoice"
+                className="mt-1 shrink-0 accent-[#047857]"
+                checked={choice === 'agree'}
+                onChange={() => setChoice('agree')}
+                disabled={submitting}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-gray-900 text-sm leading-snug">I Agree</span>
+                <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                  I consent to the collection and use of my information as described in this form.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
 
           {localError ? (
             <p className="text-sm text-red-600" role="alert">{localError}</p>
