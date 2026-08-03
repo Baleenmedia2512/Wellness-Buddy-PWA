@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Dumbbell,
   Loader2,
   Lock,
   Sparkles,
@@ -33,6 +34,7 @@ import {
   reserveAiCredit,
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
+import { isIOS } from '../../shared/utils/platform';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -54,8 +56,8 @@ const CATEGORIES = [
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
   { id: 'water', src: '/water.svg', label: 'Water', isImgIcon: true },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Workout (green weightlifter)
-  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
+  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true, Icon: Dumbbell },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -504,7 +506,10 @@ export default function ManualEntryPage({
             </p>
           </div>
           <div className="grid w-full grid-cols-2 content-start justify-items-center gap-2.5 min-[400px]:grid-cols-3 min-[400px]:gap-3 sm:gap-3.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => (
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+              // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
+              const useLucideOnIos = id === 'smartwatch' && isIOS() && Icon;
+              return (
               <button
                 key={id}
                 type="button"
@@ -514,7 +519,9 @@ export default function ManualEntryPage({
                 style={{ borderColor: BRAND.btnBorder }}
               >
                 <LogAsIconWrap>
-                  {isImgIcon ? (
+                  {useLucideOnIos ? (
+                    <Icon className="h-5 w-5" strokeWidth={2.1} aria-hidden />
+                  ) : isImgIcon ? (
                     <PublicIcon
                       src={src}
                       className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
