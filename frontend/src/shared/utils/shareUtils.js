@@ -5,35 +5,119 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { debugLog } from './logger.js';
+import { hasValidProfileName } from '../../features/user/domain/profileCompleteness';
+
+const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
+
+/** UTF-8 middle dot separator for share captions: "Name · Wellness Valley v X.Y.Z" */
+export const SHARE_TEXT_SEPARATOR = '\u00B7';
+
+/** Build the standard Quick Share caption line. */
+export function buildQuickShareText(displayName, versionString) {
+  const name = (displayName || 'Wellness User').trim();
+  const version = (versionString || '').trim();
+  return `${name} ${SHARE_TEXT_SEPARATOR} Wellness Valley ${version}`.replace(/\uFFFD/g, '');
+}
+
+function getUserPhone(user) {
+  return (user?.phoneNumber || user?.PhoneNumber || '').trim() || null;
+}
+
+/** Persist profile UserName locally so instant share can read it synchronously. */
+export function cacheProfileUserName(email, userName) {
+  if (!email || !userName?.trim()) return;
+  if (!hasValidProfileName(userName, { email })) return;
+  try {
+    localStorage.setItem(`${PROFILE_USER_NAME_KEY}.${email}`, userName.trim());
+  } catch {
+    /* quota / private mode — non-fatal */
+  }
+}
+
+/** Best-effort sync read of the last known profile UserName for this email. */
+export function getCachedProfileUserName(email) {
+  if (!email) return null;
+  try {
+    const cached = localStorage.getItem(`${PROFILE_USER_NAME_KEY}.${email}`);
+    const trimmed = cached?.trim() || null;
+    if (!trimmed || !hasValidProfileName(trimmed, { email })) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/** Session email — supports both `email` and legacy `Email` fields. */
+function getUserEmail(user) {
+  return (user?.email || user?.Email || '').trim() || null;
+}
 
 /**
  * Resolve the best display name for a user in share text / cards.
  *
- * Priority order:
- *   1. savedUserName — the username the user explicitly set in the app profile
- *      (loaded from /api/user/profile → data.userName).
- *   2. user.displayName — Firebase Auth display name (rarely populated for
- *      email+password accounts).
- *   3. user.name — generic name field on the session object.
- *   4. Email prefix (user.email split at '@') — last resort only; this is
- *      a technical identifier, NOT a display name.
- *   5. fallback string (default: 'Wellness Valley').
- *
- * Pure function — no side-effects, no I/O.
- *
- * @param {string|null}  savedUserName   App-profile username from state.
- * @param {object|null}  user            Session user object.
- * @param {string}       [fallback]      Used when every field is falsy.
- * @returns {string}
+ * Priority order (valid profile UserName only — never email local-part):
+ *   1. savedUserName — profile UserName loaded into app state.
+ *   2. Cached profile UserName — last successful /api/user/profile fetch.
+ *   3. user.username / user.userName — value returned by auth on login.
+ *   4. user.displayName — Firebase Auth display name.
+ *   5. user.name — generic name field on the session object.
+ *   6. fallback string (default: 'Wellness User').
  */
-export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness Valley') {
-  return (
-    (savedUserName && savedUserName.trim()) ||
-    user?.displayName ||
-    user?.name ||
-    (user?.email ? user.email.split('@')[0] : null) ||
-    fallback
+export function resolveShareDisplayName(savedUserName, user, fallback = 'Wellness User') {
+  const email = getUserEmail(user);
+  const phoneNumber = getUserPhone(user);
+  const candidates = [
+    savedUserName,
+    email ? getCachedProfileUserName(email) : null,
+    user?.username,
+    user?.userName,
+    user?.displayName,
+    user?.name,
+  ];
+  for (const candidate of candidates) {
+    if (hasValidProfileName(candidate, { email, phoneNumber })) {
+      return String(candidate).trim();
+    }
+  }
+  return fallback;
+}
+
+/** Fetch UserName from /api/user/profile (best-effort). */
+async function fetchProfileUserName(email, apiBaseUrl) {
+  if (!email || !apiBaseUrl) return null;
+  const res = await fetch(
+    `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
   );
+  if (!res.ok) return null;
+  const data = await res.json();
+  const name = data?.success ? data?.data?.userName?.trim() : null;
+  if (!hasValidProfileName(name, { email, phoneNumber: data?.data?.phoneNumber })) return null;
+  return name;
+}
+
+/**
+ * Resolve share display name for Quick Share — always reads fresh UserName
+ * from /api/user/profile so instant share never uses a stale cache or email
+ * prefix when the profile has a real name. Falls back to resolveShareDisplayName
+ * only when the profile fetch fails (offline / error).
+ */
+export async function ensureShareDisplayName(savedUserName, user, apiBaseUrl) {
+  const email = getUserEmail(user);
+
+  if (email && apiBaseUrl) {
+    try {
+      const fetched = await fetchProfileUserName(email, apiBaseUrl);
+      if (fetched) {
+        cacheProfileUserName(email, fetched);
+        return fetched;
+      }
+    } catch {
+      /* network — fall through to sync resolution */
+    }
+  }
+
+  return resolveShareDisplayName(savedUserName, user);
 }
 
 /**

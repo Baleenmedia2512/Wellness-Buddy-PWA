@@ -143,3 +143,48 @@ registerFlag({
   description:    'Unified activity timeline layout in Diary: replaces stacked section-dashboards (NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)) with a single chronological DiaryFeed covering all entry kinds (food, weight, education, watch, unknown) for the selected IST day. Requires ff.diary-feed=ON. Toggle FF_DIARY_TIMELINE=false to revert to the stacked layout.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.testimonials',
+  owner:          '@testimonials-team',
+  createdAt:      '2026-07-06',
+  removeBy:       '2027-01-06',
+  description:    'Before/after testimonial upload for members + coach OTP verification flow. Members upload photos + weights; coach receives email with OTP to verify. Coach dashboard shows team upload status.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.reports-module',
+  owner:          '@reports-team',
+  createdAt:      '2026-07-06',
+  removeBy:       '2026-12-31',
+  description:    'Reports module: coach/upline analytics starting with the direct-downline weight status report (current vs BMI 19–23 ideal range). Tab visible only to coach/upline/admin/developer roles.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.wellness-score-sheet',
+  owner:          '@wellness-score-team',
+  createdAt:      '2026-07-08',
+  removeBy:       '2027-01-08',
+  description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.ai-credits',
+  owner:          '@principal-eng',
+  createdAt:      '2026-07-27',
+  removeBy:       '2027-01-27',
+  description:    'Boolean rollout for AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI). Numeric daily limit lives in ai_credits_config_table, not this flag.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.nutrition-knowledge',
+  owner:          '@nutrition-team',
+  createdAt:      '2026-07-30',
+  removeBy:       '2027-01-30',
+  description:    'ADR-0005 — master nutrition knowledge base: search/resolve prefer approved master profiles, pass micros from AI history, draft candidates from successful AI, optional text enrich.',
+  defaultEnabled: true,
+});

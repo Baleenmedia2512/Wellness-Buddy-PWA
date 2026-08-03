@@ -17,28 +17,62 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId } = req.query;
+    const { userId: userIdQuery, email: emailQuery, phone: phoneQuery } = req.query;
 
-    if (!userId) {
+    if (!userIdQuery && !emailQuery && !phoneQuery) {
       return res.status(400).json({
         ok: false,
         error: {
-          code: 'MISSING_USER_ID',
-          message: 'userId is required',
+          code: 'MISSING_IDENTIFIER',
+          message: 'userId, email, or phone is required',
         },
       });
     }
 
     const supabase = getSupabaseClient();
 
-    // Get user's basic info
-    const { data: user, error: userError } = await supabase
-      .from('team_table')
-      .select('UserId, UserName, CoachId, Status')
-      .eq('UserId', userId)
-      .single();
+    let user = null;
 
-    if (userError || !user) {
+    if (userIdQuery) {
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('UserId', userIdQuery)
+        .single();
+      if (!userError && data) user = data;
+    }
+
+    if (!user && emailQuery) {
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .ilike('Email', String(emailQuery).trim())
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+    }
+
+    if (!user && phoneQuery) {
+      const normalized = String(phoneQuery).trim();
+      const { data, error: userError } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId, Status')
+        .eq('PhoneNumber', normalized)
+        .limit(1);
+      if (!userError && data?.[0]) user = data[0];
+      if (!user) {
+        const digits = normalized.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          const { data: bySuffix, error: suffixErr } = await supabase
+            .from('team_table')
+            .select('UserId, UserName, CoachId, Status')
+            .ilike('PhoneNumber', `%${digits.slice(-10)}`)
+            .limit(1);
+          if (!suffixErr && bySuffix?.[0]) user = bySuffix[0];
+        }
+      }
+    }
+
+    if (!user) {
       return res.status(404).json({
         ok: false,
         error: {
@@ -57,6 +91,8 @@ export default async function handler(req, res) {
           userName: user.UserName,
           coachId: null,
           coachName: null,
+          originalCoachId: null,
+          originalCoachName: null,
           coachStatus: null,
           isOriginalCoach: true,
           message: 'User has no coach (top-level)',
@@ -64,36 +100,44 @@ export default async function handler(req, res) {
       });
     }
 
-    // Resolve the active coach
-    const {
-      coachId,
-      coachName,
-      isOriginalCoach,
-    } = await resolveActiveCoach(userId, supabase);
+    const { data: originalCoachRow } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, Status')
+      .eq('UserId', user.CoachId)
+      .single();
 
-    // Get coach status for additional info
-    let coachStatus = 'Active';
-    if (!isOriginalCoach) {
-      const { data: originalCoach } = await supabase
-        .from('team_table')
-        .select('Status, UserName')
-        .eq('UserId', user.CoachId)
-        .single();
-      coachStatus = originalCoach?.Status || 'Unknown';
-    }
+    const originalCoachName = originalCoachRow?.UserName || null;
+    const originalCoachStatus = originalCoachRow?.Status || null;
+    const directCoachIsActive = originalCoachStatus === 'Active';
+
+    // Resolve upline when the direct coach is inactive
+    const {
+      coachId: resolvedCoachId,
+      coachName: resolvedCoachName,
+      isOriginalCoach,
+    } = await resolveActiveCoach(user.UserId, supabase);
+
+    // Inactive-account contact rule: show/contact direct coach unless they are
+    // inactive — then fall back to the nearest active upline coach.
+    const contactCoachId = directCoachIsActive ? user.CoachId : resolvedCoachId;
+    const contactCoachName = directCoachIsActive ? originalCoachName : resolvedCoachName;
 
     return res.status(200).json({
       ok: true,
       data: {
         userId: user.UserId,
         userName: user.UserName,
-        coachId,
-        coachName,
-        coachStatus,
-        isOriginalCoach,
+        coachId: resolvedCoachId,
+        coachName: resolvedCoachName,
+        contactCoachId,
+        contactCoachName,
         originalCoachId: user.CoachId,
-        message: !isOriginalCoach
-          ? `Your original coach is inactive. You are now managed by ${coachName}.`
+        originalCoachName,
+        originalCoachStatus,
+        coachStatus: originalCoachStatus,
+        isOriginalCoach: directCoachIsActive,
+        message: !directCoachIsActive && contactCoachName
+          ? `Your original coach is inactive. You are now managed by ${contactCoachName}.`
           : null,
       },
     });

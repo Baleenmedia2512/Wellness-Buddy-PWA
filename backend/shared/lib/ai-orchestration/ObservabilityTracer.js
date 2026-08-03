@@ -28,7 +28,8 @@
 import { randomUUID } from 'crypto';
 import logger from '../logger.js';
 
-// Approximate pricing for gemini-2.5-flash-lite (USD per 1 M tokens).
+// Approximate pricing for gemini-2.5-flash (USD per 1 M tokens).
+// Primary model. Fallback (gemini-2.5-pro) only fires on 502/503/429 spikes.
 // Update when Google publishes revised pricing.
 const PRICING = Object.freeze({
   inputPerMToken:  0.075,

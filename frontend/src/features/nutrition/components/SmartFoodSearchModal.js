@@ -1,13 +1,19 @@
 // src/components/SmartFoodSearchModal.js
 import React, { useState, useEffect, useRef } from "react";
 import { X, Search, Check } from "lucide-react";
+import {
+  scaleNutritionFields,
+  sumNutrition,
+  pickNutrition,
+  dedupeSearchBuckets,
+  resolveQuantityUnit,
+  formatServingPortion,
+  referenceWeightG,
+} from "../domain/nutritionFields";
 
 /**
  * SmartFoodSearchModal
- * 3-phase food entry when AI is unavailable:
- *  Phase 1 — search own history (food_corrections_table where UserId = me)
- *  Phase 2 — search global corrections (all users)
- *  Phase 3 — quick manual add form (type all macros)
+ * Master DB + history search, then manual macros. Micros preserved (ADR-0005).
  */
 const SmartFoodSearchModal = ({
   isOpen,
@@ -25,6 +31,7 @@ const SmartFoodSearchModal = ({
 }) => {
   const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
   const [searchQuery, setSearchQuery] = useState("");
+  const [masterItems, setMasterItems] = useState([]);
   const [myItems, setMyItems] = useState([]);
   const [communityItems, setCommunityItems] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -49,6 +56,7 @@ const SmartFoodSearchModal = ({
     if (isOpen) {
       setShowTypeSelect(!skipTypeSelect);
       setSearchQuery("");
+      setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
       setShowManualForm(false);
@@ -62,6 +70,7 @@ const SmartFoodSearchModal = ({
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
       return;
@@ -82,13 +91,21 @@ const SmartFoodSearchModal = ({
       );
       const data = await res.json();
       if (data.success) {
-        setMyItems(data.myItems || []);
-        setCommunityItems(data.communityItems || []);
+        const buckets = dedupeSearchBuckets({
+          masterItems: data.masterItems || [],
+          myItems: data.myItems || [],
+          communityItems: data.communityItems || [],
+        });
+        setMasterItems(buckets.masterItems);
+        setMyItems(buckets.myItems);
+        setCommunityItems(buckets.communityItems);
       } else {
+        setMasterItems([]);
         setMyItems([]);
         setCommunityItems([]);
       }
     } catch {
+      setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
     } finally {
@@ -109,30 +126,39 @@ const SmartFoodSearchModal = ({
     setSelectedItems(prev => {
       const exists = prev.some(s => s.name === item.name);
       if (exists) return prev.filter(s => s.name !== item.name);
-      // Store base macros with the original weight_g as reference
-      return [...prev, { ...item, quantity: item.weight_g ?? 100 }];
+      const qtyUnit = resolveQuantityUnit(item);
+      // Quantity is servings/pcs/cups — nutrition on the item is for 1 unit.
+      return [...prev, {
+        ...item,
+        servings: 1,
+        refWeightG: referenceWeightG(item),
+        quantityUnit: qtyUnit.unit,
+        quantityLabel: qtyUnit.shortLabel,
+      }];
     });
   };
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
     setSelectedItems(prev =>
-      prev.map(s => s.name === name ? { ...s, quantity: isNaN(qty) || qty < 0 ? 0 : qty } : s)
+      prev.map(s => s.name === name
+        ? { ...s, servings: isNaN(qty) || qty < 0 ? 0 : qty }
+        : s)
     );
   };
 
-  // Scale macros by quantity relative to original weight_g
+  // Scale nutrition by serving count (1 unit = reference weight / profile portion).
   const scaledItem = (item) => {
-    const baseWeight = item.weight_g ?? 100;
-    const ratio = (item.quantity ?? baseWeight) / baseWeight;
+    const servings = Number(item.servings);
+    const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
+    const nutrition = scaleNutritionFields(item, count);
+    const refW = item.refWeightG ?? referenceWeightG(item);
     return {
       name: item.name,
-      calories: Math.round((item.calories ?? 0) * ratio),
-      protein: Math.round((item.protein ?? 0) * ratio),
-      carbs: Math.round((item.carbs ?? 0) * ratio),
-      fat: Math.round((item.fat ?? 0) * ratio),
-      fiber: Math.round((item.fiber ?? 0) * ratio),
-      portion: `${item.quantity ?? 100}g`,
+      weight_g: Math.round(refW * count),
+      portion: formatServingPortion(item, count),
+      nutrition,
+      ...nutrition,
     };
   };
 
@@ -142,13 +168,7 @@ const SmartFoodSearchModal = ({
     setIsSaving(true);
     try {
       const scaled = selectedItems.map(scaledItem);
-      const total = scaled.reduce((acc, f) => ({
-        calories: acc.calories + f.calories,
-        protein: acc.protein + f.protein,
-        carbs: acc.carbs + f.carbs,
-        fat: acc.fat + f.fat,
-        fiber: acc.fiber + f.fiber,
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
+      const total = sumNutrition(scaled.map((f) => pickNutrition(f)));
       await onSave({
         items: scaled,
         total,
@@ -194,6 +214,7 @@ const SmartFoodSearchModal = ({
   const handleClose = () => {
     setShowTypeSelect(true);
     setSearchQuery("");
+    setMasterItems([]);
     setMyItems([]);
     setCommunityItems([]);
     setShowManualForm(false);
@@ -205,13 +226,14 @@ const SmartFoodSearchModal = ({
 
   if (!isOpen) return null;
 
+  const hasMasterItems = masterItems.length > 0;
   const hasMyItems = myItems.length > 0;
   const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
   const selectedTotal = selectedItems.reduce((s, f) => {
-    const base = f.weight_g ?? 100;
-    const ratio = (f.quantity ?? base) / base;
-    return s + Math.round((f.calories ?? 0) * ratio);
+    const count = Number(f.servings);
+    const servings = Number.isFinite(count) && count > 0 ? count : 1;
+    return s + Math.round((f.calories ?? 0) * servings);
   }, 0);
 
   return (
@@ -272,8 +294,8 @@ const SmartFoodSearchModal = ({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Log Food</h2>
-              <p className="text-xs text-gray-400">Search your previous food</p>
+              <h2 className="text-sm font-bold text-gray-900">Regular food</h2>
+              <p className="text-xs text-gray-400">Type the food item below</p>
             </div>
           </div>
           <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
@@ -325,25 +347,33 @@ const SmartFoodSearchModal = ({
               </div>
               <div className="space-y-1.5">
                 {selectedItems.map(item => {
-                  const base = item.weight_g ?? 100;
-                  const kcal = Math.round((item.calories ?? 0) * (item.quantity ?? base) / base);
+                  const count = Number(item.servings);
+                  const servings = Number.isFinite(count) && count > 0 ? count : 1;
+                  const kcal = Math.round((item.calories ?? 0) * servings);
+                  const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
                   return (
                     <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
+                        <p className="text-[11px] text-orange-600 font-semibold">
+                          {kcal} kcal
+                          {(item.portion || item.portion_label) ? (
+                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
+                          ) : null}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <input
-                          type="number"
+                          type="text"
                           inputMode="decimal"
-                          value={item.quantity ?? 100}
+                          pattern="[0-9]*"
+                          value={item.servings ?? 1}
                           onChange={(e) => handleQuantityChange(item.name, e.target.value)}
-                          className="w-14 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
+                          className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
                           style={{ fontSize: "14px" }}
-                          min="0"
+                          aria-label={`Number of ${unitLabel}`}
                         />
-                        <span className="text-[11px] text-gray-400">g</span>
+                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
                       </div>
                       <button onClick={() => handleToggleItem(item)} className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors">
                         <X className="w-3.5 h-3.5" />
@@ -358,14 +388,30 @@ const SmartFoodSearchModal = ({
           {/* ── Search results ── */}
           {!showManualForm && searchQuery.trim().length >= 2 && (
             <div className="space-y-4">
+              {hasMasterItems && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Nutrition library</p>
+                  <div className="space-y-1.5">
+                    {masterItems.map((item) => (
+                      <FoodItemRow
+                        key={`master-${item.name}`}
+                        item={item}
+                        selected={selectedItems.some(s => s.name === item.name)}
+                        onToggle={handleToggleItem}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* My items */}
               {hasMyItems && (
                 <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">📌 My History</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
                   <div className="space-y-1.5">
                     {myItems.map((item) => (
                       <FoodItemRow
-                        key={item.name}
+                        key={`my-${item.name}`}
                         item={item}
                         selected={selectedItems.some(s => s.name === item.name)}
                         onToggle={handleToggleItem}
@@ -378,11 +424,11 @@ const SmartFoodSearchModal = ({
               {/* Community items */}
               {hasCommunityItems && (
                 <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">🌐 Community</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
                   <div className="space-y-1.5">
                     {communityItems.map((item) => (
                       <FoodItemRow
-                        key={item.name}
+                        key={`community-${item.name}`}
                         item={item}
                         selected={selectedItems.some(s => s.name === item.name)}
                         onToggle={handleToggleItem}
@@ -393,7 +439,7 @@ const SmartFoodSearchModal = ({
               )}
 
               {/* No results */}
-              {!isSearching && !hasMyItems && !hasCommunityItems && (
+              {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
                 <p className="text-sm text-gray-400 text-center py-4">No food found — try a different name or add manually</p>
               )}
             </div>
@@ -504,26 +550,33 @@ const SmartFoodSearchModal = ({
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-const FoodItemRow = ({ item, selected, onToggle }) => (
-  <button
-    onClick={() => onToggle(item)}
-    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
-      selected
-        ? "bg-orange-50 border-orange-400"
-        : "bg-white border-gray-200 hover:border-orange-300"
-    }`}
-  >
-    <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-      selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
-    }`}>
-      {selected && <Check className="w-3 h-3 text-white" />}
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className={`text-sm font-medium truncate ${selected ? "text-orange-800" : "text-gray-800"}`}>{item.name}</p>
-      <p className="text-xs text-gray-400 mt-0.5">{item.calories ?? "?"} kcal{item.protein ? ` · ${item.protein}g protein` : ""}</p>
-    </div>
-  </button>
-);
+const FoodItemRow = ({ item, selected, onToggle }) => {
+  const portion = item.portion || item.portion_label;
+  return (
+    <button
+      onClick={() => onToggle(item)}
+      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
+        selected
+          ? "bg-orange-50 border-orange-400"
+          : "bg-white border-gray-200 hover:border-orange-300"
+      }`}
+    >
+      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+        selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
+      }`}>
+        {selected && <Check className="w-3 h-3 text-white" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium truncate ${selected ? "text-orange-800" : "text-gray-800"}`}>{item.name}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {portion ? <span>{portion} · </span> : null}
+          {item.calories ?? "?"} kcal
+          {item.protein ? ` · ${item.protein}g protein` : ""}
+        </p>
+      </div>
+    </button>
+  );
+};
 
 const MacroField = ({ label, value, onChange, placeholder, required, span }) => (
   <div className={span ? "col-span-2" : ""}>
@@ -531,8 +584,9 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <input
-      type="number"
+      type="text"
       inputMode="decimal"
+      pattern="[0-9]*"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}

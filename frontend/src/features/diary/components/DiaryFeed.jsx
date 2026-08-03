@@ -23,30 +23,54 @@
  * unchanged — the timeline is a presentation wrapper only.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
+import { getProfile } from '../../user/services/user.api';
 
 const SKELETON_ROWS = 6;
 
-// ─── Timeline helpers ────────────────────────────────────────────────────────
+/** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
+function dedupePendingDiaryEntries(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return entries;
 
-/**
- * Formats `capturedAt` (ISO string) to a short time label for the
- * left-hand column of the timeline (e.g. "08:15 AM").
- * Uses IST locale string so the time matches the business day the
- * backend already scoped the query to.
- */
-function formatTimelineTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', {
-    hour:   'numeric',
-    minute: '2-digit',
-    hour12: true,
+  const entryCaptureId = (entry) => {
+    const id = entry.capture?.id ?? entry.payload?.id;
+    if (id == null || id === '') return '';
+    return String(id);
+  };
+  const isPendingAnalysisEntry = (entry) =>
+    entry.kind === 'unknown'
+    && entry.payload?.isPendingAnalysis === true
+    && !isStalePendingAnalysis(entry.capturedAt);
+
+  const resolvedCaptureIds = new Set();
+  for (const entry of entries) {
+    if (isPendingAnalysisEntry(entry)) continue;
+    const captureId = entryCaptureId(entry);
+    if (captureId !== '') resolvedCaptureIds.add(captureId);
+  }
+
+  const seenPendingCaptureIds = new Set();
+  return entries.filter((entry) => {
+    if (!isPendingAnalysisEntry(entry)) return true;
+    const captureId = entryCaptureId(entry);
+    if (captureId === '') return true;
+    if (resolvedCaptureIds.has(captureId)) return false;
+    if (seenPendingCaptureIds.has(captureId)) return false;
+    seenPendingCaptureIds.add(captureId);
+    return true;
   });
+}
+
+function formatTimelineTime(iso, timezoneIana) {
+  if (!iso) return '';
+  return formatBusinessTime(iso, timezoneIana);
 }
 
 /**
@@ -55,26 +79,26 @@ function formatTimelineTime(iso) {
  *   yesterday → "Yesterday · Jun 17, 2026"
  *   other     → "Jun 16, 2026"
  *
- * `dateStr` is `YYYY-MM-DD` in IST (the value the backend echoes back).
+ * `dateStr` is `YYYY-MM-DD` business calendar date from the API.
  */
-function formatTimelineDate(dateStr) {
+function formatTimelineDate(dateStr, timezoneIana) {
   if (!dateStr) return '';
-  // Parse as a local-midnight date (no timezone shift) so the header
-  // matches the IST business-date used throughout the diary feature.
   const [y, m, d] = dateStr.split('-').map(Number);
-  const target   = new Date(y, m - 1, d);
-  const today    = new Date();
+  const target = new Date(y, m - 1, d);
+  const todayYmd = todayBusinessDate(timezoneIana);
+  const [ty, tm, td] = todayYmd.split('-').map(Number);
+  const today = new Date(ty, tm - 1, td);
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
 
   const isToday =
     target.getFullYear() === today.getFullYear() &&
-    target.getMonth()    === today.getMonth() &&
-    target.getDate()     === today.getDate();
+    target.getMonth() === today.getMonth() &&
+    target.getDate() === today.getDate();
   const isYesterday =
     target.getFullYear() === yesterday.getFullYear() &&
-    target.getMonth()    === yesterday.getMonth() &&
-    target.getDate()     === yesterday.getDate();
+    target.getMonth() === yesterday.getMonth() &&
+    target.getDate() === yesterday.getDate();
 
   const long = target.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -161,17 +185,25 @@ function FeedError({ error, onRetry }) {
 }
 
 function FeedEmpty({ date, isSelf, filterKinds }) {
-  // The "Other" tab (filterKinds === ['unknown']) gets its own copy so an
-  // empty list doesn't read like the whole day is empty.
   const isUnknownOnly =
     Array.isArray(filterKinds) &&
     filterKinds.length === 1 &&
     filterKinds[0] === 'unknown';
 
+  const emptyEmoji = isUnknownOnly ? '🗂️' : '📔';
+  const emptyIcon = (
+    <div className="flex justify-center mb-4">
+      <EmojiOrNative emoji={emptyEmoji} className="w-14 h-14" nativeClassName="text-5xl" />
+    </div>
+  );
+
   if (isUnknownOnly) {
     return (
-      <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-        <p className="text-5xl mb-4" aria-hidden="true">🗂️</p>
+      <div
+        className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+        data-testid="diary-feed-empty"
+      >
+        {emptyIcon}
         <p className="text-base font-semibold text-gray-900 mb-1">
           No unrecognised captures
         </p>
@@ -185,8 +217,11 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
   }
 
   return (
-    <div className="text-center py-16 px-4" data-testid="diary-feed-empty">
-      <p className="text-5xl mb-4" aria-hidden="true">📔</p>
+    <div
+      className="flex flex-col items-center justify-center text-center min-h-[50dvh] px-3 xs:px-4"
+      data-testid="diary-feed-empty"
+    >
+      {emptyIcon}
       <p className="text-base font-semibold text-gray-900 mb-1">
         {isSelf ? 'No entries yet for this day' : 'Nothing logged on this day'}
       </p>
@@ -205,54 +240,217 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
  * @param {Date|string} props.date     selected calendar day
+ * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
+ * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled (coach read-only view)
+ * @param {{ kind: string, entryId: string|number, message: string, expiresAt: number }|null} [props.pendingUndo]
+ *        active undo window — keeps empty feed visible while countdown runs
  * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
  *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
  *        Empty-state copy adapts accordingly.
  * @param {boolean} [props.showTimeline]  when true the feed is rendered as a
  *        vertical activity timeline with a date-group header and left-side
  *        time labels (ff.diary-timeline). Default false (flat card list).
+ * @param {Set<string>} [props.analyzingCaptureIds]  capture IDs with a
+ *        user-initiated pre-flight AI run (handleEntryOpen). Locks tap/swipe.
+ * @param {Map<string, { imageBase64?: string, imagePath?: string, capturedAt?: string }>} [props.pendingCaptureMeta]
+ *        optimistic diary rows for in-flight background analysis (Phase 2).
  */
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
   date,
+  timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
   onEntryOpen,
   onEntryDelete,
+  canDelete = true,
+  pendingUndo = null,
   filterKinds = null,
   showTimeline = false,
+  analyzingCaptureIds = null,
+  pendingCaptureMeta = null,
 }) {
+  const fallbackTimezoneIana = resolveDiaryTimezone(timezoneSource);
+  const [profileOwnerTimezone, setProfileOwnerTimezone] = useState(null);
+
+  // Coach/admin views: member objects from team search lack timezone — fetch from profile.
+  useEffect(() => {
+    const email = timezoneSource?.email || timezoneSource?.Email;
+    const viewingOther = Boolean(
+      ownerUserId
+      && viewerUserId
+      && String(ownerUserId) !== String(viewerUserId),
+    );
+    if (!viewingOther || !email) {
+      setProfileOwnerTimezone(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    getProfile(email, { cacheBust: true })
+      .then((res) => {
+        if (cancelled) return;
+        const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
+        setProfileOwnerTimezone(tz);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileOwnerTimezone(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
+
   const { loading, error, data, refresh } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
+    timezoneSource: profileOwnerTimezone || fallbackTimezoneIana,
     refreshKey: externalRefreshKey,
   });
+
+  const ownerTimezoneIana = data?.ownerTimezoneIana
+    || profileOwnerTimezone
+    || fallbackTimezoneIana;
+
+  /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
+  const scopedPendingCaptureMeta = useMemo(
+    () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
+    [pendingCaptureMeta, ownerUserId, viewerUserId],
+  );
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
     () => (entry, { hideTime = false } = {}) => {
       const Row = ROWS_BY_KIND[entry.kind] || OtherRow;
+      // Resolve the capture ID the same way Dashboard.js does so the
+      // Set lookup always matches (entry.capture?.id takes precedence).
+      const captureId = entry.capture?.id ?? entry.payload?.id;
+      const captureIdStr =
+        captureId != null && captureId !== '' ? String(captureId) : '';
+      // Only lock tap while Dashboard is running a user-initiated pre-flight AI
+      // (handleEntryOpen). Background analysis from the capture flow must NOT
+      // block tap-to-fix — the user can always tap to re-run detection.
+      const isAnalyzing =
+        entry.kind === 'unknown' &&
+        captureIdStr !== '' &&
+        analyzingCaptureIds != null &&
+        analyzingCaptureIds.has(captureIdStr);
+      // Only show "Analyzing…" when AI is actually in flight (local markCaptureAnalyzing
+      // / analyzingCaptureIds). API isPendingAnalysis alone means the user saved the
+      // photo but has not chosen a type or started AI — that is "Needs logging", not
+      // Analyzing, and must NOT become Other / couldn't identify.
+      const isBackgroundPending =
+        entry.kind === 'unknown' &&
+        !isAnalyzing &&
+        !isStalePendingAnalysis(entry.capturedAt) &&
+        captureIdStr !== '' &&
+        scopedPendingCaptureMeta != null &&
+        scopedPendingCaptureMeta.has(captureIdStr);
+      const needsClassify =
+        entry.kind === 'unknown' &&
+        !isAnalyzing &&
+        !isBackgroundPending &&
+        (entry.payload?.isPendingAnalysis === true ||
+          entry.capture?.type === 'pending');
+      // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
+      // Look up for both isAnalyzing (user-initiated re-detect) and
+      // isBackgroundPending (camera capture flow) so both states show the badge.
+      const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
+        ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
+        : null;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
           entry={entry}
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
+          canDelete={canDelete}
           hideTime={hideTime}
+          timezoneIana={ownerTimezoneIana}
+          {...(entry.kind === 'unknown'
+            ? {
+                isAnalyzing,
+                isBackgroundPending,
+                needsClassify,
+                currentAttempt: captureMeta?.currentAttempt ?? null,
+                totalAttempts:  captureMeta?.totalAttempts  ?? null,
+              }
+            : {})}
         />
       );
     },
-    [onEntryOpen, onEntryDelete],
+    [onEntryOpen, onEntryDelete, canDelete, analyzingCaptureIds, scopedPendingCaptureMeta, ownerTimezoneIana],
   );
 
-  if (loading && !data) return <FeedSkeleton />;
-  if (error && !data)   return <FeedError error={error} onRetry={refresh} />;
-  if (!data)            return <FeedSkeleton />;
+  /** Build optimistic unknown rows for captures still being classified. */
+  const withOptimisticEntries = useMemo(() => {
+    const base = Array.isArray(data?.entries) ? data.entries : [];
+    if (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0) {
+      return dedupePendingDiaryEntries(base);
+    }
+
+    // Skip optimistic rows when the API feed already includes this capture
+    // (pending rows from /api/diary/list). Without this, each photo appears
+    // twice: once from pendingCaptureMeta and once from the API.
+    const existingCaptureIds = new Set(
+      base
+        .map((entry) => entry.capture?.id ?? entry.payload?.id)
+        .filter((id) => id != null && id !== '')
+        .map(String),
+    );
+
+    const optimistic = [];
+    scopedPendingCaptureMeta.forEach((meta, captureId) => {
+      if (existingCaptureIds.has(captureId)) return;
+      if (isStalePendingAnalysis(meta.capturedAt)) return;
+      optimistic.push({
+        kind: 'unknown',
+        capturedAt: meta.capturedAt || new Date().toISOString(),
+        capture: { id: captureId, type: 'pending' },
+        payload: {
+          id: captureId,
+          imageBase64: meta.imageBase64 ?? null,
+          imagePath: meta.imagePath ?? null,
+          isPendingAnalysis: true,
+        },
+      });
+    });
+
+    if (optimistic.length === 0) {
+      return dedupePendingDiaryEntries(base);
+    }
+    return dedupePendingDiaryEntries(
+      [...optimistic, ...base].sort(
+        (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+      ),
+    );
+  }, [data?.entries, scopedPendingCaptureMeta]);
+
+  if (loading && !data && (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0)) {
+    return <FeedSkeleton />;
+  }
+  if (error && !data && (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0)) {
+    return <FeedError error={error} onRetry={refresh} />;
+  }
+  if (!data && scopedPendingCaptureMeta && scopedPendingCaptureMeta.size > 0) {
+    const optimisticOnly = withOptimisticEntries;
+    const visibleOnly = Array.isArray(filterKinds)
+      ? optimisticOnly.filter((e) => filterKinds.includes(e.kind))
+      : optimisticOnly;
+    if (visibleOnly.length === 0) return <FeedSkeleton />;
+    return (
+      <div data-testid="diary-feed">
+        <div className="space-y-3">
+          {visibleOnly.map(renderRow)}
+        </div>
+      </div>
+    );
+  }
+  if (!data) return <FeedSkeleton />;
 
   const { entries = [], date: dateStr, isSelf } = data;
 
@@ -260,10 +458,10 @@ export default function DiaryFeed({
   // tab only renders `unknown` rows). When no filter is supplied the full
   // merged feed is shown (backward-compatible default).
   const visibleEntries = Array.isArray(filterKinds)
-    ? entries.filter((e) => filterKinds.includes(e.kind))
-    : entries;
+    ? withOptimisticEntries.filter((e) => filterKinds.includes(e.kind))
+    : withOptimisticEntries;
 
-  if (visibleEntries.length === 0) {
+  if (visibleEntries.length === 0 && !pendingUndo) {
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
   }
 
@@ -282,26 +480,37 @@ export default function DiaryFeed({
           </div>
         )}
 
+        {/* Read-only hint when a coach views a member diary */}
+        {canDelete === false && (
+          <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+            Viewing a team member&apos;s diary — swipe to delete only works on your own entries.
+            Use <strong>View mine</strong> above to switch back.
+          </div>
+        )}
+
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
-            {formatTimelineDate(dateStr)}
+            {formatTimelineDate(dateStr, ownerTimezoneIana)}
           </span>
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>
 
-        {/* Timeline entries */}
+        {/* Timeline entries (may be empty while undo countdown is active) */}
         <div className="pl-1">
           {visibleEntries.map((entry, idx) => (
             <TimelineEntryWrapper
               key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
               isLast={idx === visibleEntries.length - 1}
             >
-              {/* hideTime not set — time shown inside the tile */}
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
+
+        {visibleEntries.length === 0 && pendingUndo && (
+          <p className="text-sm text-gray-500 px-1 mt-1">No other entries for this day.</p>
+        )}
       </div>
     );
   }

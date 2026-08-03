@@ -36,7 +36,7 @@ plus a nullable `CaptureID` FK back to its capture.
 
 | Path | Behaviour |
 |---|---|
-| `createPendingCapture` (new row) | **PR 6** — Inserts `captures_table` ONLY. No speculative food-row pre-insert. Returns `{ id, token }` where `id` IS the `CaptureID`. Failure throws. |
+| `createPendingCapture` (new row) | **PR 6** — Inserts `captures_table` ONLY. No speculative food-row pre-insert. Returns `{ id, token }` where `id` IS the `CaptureID`. Failure throws. Optional capture-time location fields (`Latitude`, `Longitude`, `City`, `Village`, `AttendanceType`, `NutritionCenterId`, `CenterName`) are persisted on first insert so later food/weight/education saves can copy them. |
 | `updateCaptureType` (existing row) | **PR 6** — `id` is the `CaptureID` (round-tripped from `createPendingCapture`). Delegates directly to `captures.updateTypeById`. Returns **404** (`CAPTURE_NOT_FOUND`) when the captures slice reports `NOT_FOUND_OR_NOT_OWNER`. |
 | `analysis.service.save()` | **PR 6** — When called with a `captureId`, upserts the food row keyed by `CaptureID` (find-then-update-or-insert via `findFoodByCaptureId`) and promotes the capture `pending → food` best-effort. Without `captureId`, falls back to plain insert (Android background-service path). |
 | Share-link resolve (`/share/:token`, `/api/captures/resolve/:token`) | Reads `captures_table` first for owner / expiry / type; then joins `food_nutrition_data_table` by `CaptureID` for nutrition. Pre-PR-2 historical rows **404** by design. **TODO(share-viewer-polling):** in-app viewers must now poll until `AnalysisData` lands, because the food row no longer exists at capture time. |

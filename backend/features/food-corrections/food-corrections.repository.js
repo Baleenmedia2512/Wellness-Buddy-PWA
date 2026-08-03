@@ -1,4 +1,17 @@
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
+import {
+  applyDayFilter,
+  applyDayFilterWidened,
+  applyDateRangeFilter,
+  applySinceDayStartFilter,
+} from '../../shared/lib/datetime/applyDayFilter.js';
+import {
+  IANA_IST,
+  todayInTimezone,
+  shiftDateYmd,
+  filterFoodRowsByCalendarDay,
+} from '../../shared/lib/datetime/index.js';
 
 // ─── corrections table ──────────────────────────────────────────────────────
 export async function listUserCorrections(userId) {
@@ -104,16 +117,9 @@ export async function updateMealAnalysis(id, userId, payload) {
   return data || [];
 }
 
-export async function fetchMealsForDate(userId, date) {
+export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59`;
-  // Keep this column list in sync with MICRO_TOTAL_FIELDS in
-  // food-corrections.service.js (getStats) and MICRO_FIELDS in
-  // frontend/src/features/nutrition/hooks/useDayAnalyses.js. Omitting any
-  // Total<Vitamin/Mineral> column here silently zeroes the carousel cards
-  // even though the DB has the values.
-  const { data, error } = await supabase
+  let query = supabase
     .from('food_nutrition_data_table')
     .select([
       'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
@@ -130,31 +136,47 @@ export async function fetchMealsForDate(userId, date) {
     // mid-write, or — pre-PR-6 — speculative pending-capture orphans left
     // behind when the capture turned out to be weight/education/smartwatch).
     // Matches the same predicate already enforced by `listAnalyses`.
-    .not('AnalysisData', 'is', null)
-    .gte('CreatedAt', startOfDay)
-    .lte('CreatedAt', endOfDay)
-    .order('CreatedAt', { ascending: false });
+    .not('AnalysisData', 'is', null);
+  // Widen SQL bounds, then post-filter with canonical food CreatedAt interpretation
+  // (handles legacy IST wall + spurious driver Z/+00:00).
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
-export async function getStatsCounts(userId) {
+export async function getStatsCounts(userId, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  const todayYmd = todayInTimezone(timezoneIana);
+  const weekAgoYmd = shiftDateYmd(todayYmd, -7, timezoneIana);
 
   const [totalR, todayR, weekR, bgR, weeklyR, recentR] = await Promise.all([
     supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
       .eq('UserID', userId).eq('IsDeleted', 0),
-    supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
-      .eq('UserID', userId).eq('IsDeleted', 0).gte('CreatedAt', today.toISOString()),
-    supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
-      .eq('UserID', userId).eq('IsDeleted', 0).gte('CreatedAt', weekAgo.toISOString()),
+    applySinceDayStartFilter(
+      supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+        .eq('UserID', userId).eq('IsDeleted', 0),
+      'CreatedAt',
+      todayYmd,
+      timezoneIana,
+    ),
+    applySinceDayStartFilter(
+      supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+        .eq('UserID', userId).eq('IsDeleted', 0),
+      'CreatedAt',
+      weekAgoYmd,
+      timezoneIana,
+    ),
     supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
       .eq('UserID', userId).eq('ProcessedBy', 'background_service').eq('IsDeleted', 0),
-    supabase.from('food_nutrition_data_table')
-      .select('TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, CreatedAt')
-      .eq('UserID', userId).eq('IsDeleted', 0).gte('CreatedAt', weekAgo.toISOString()),
+    applySinceDayStartFilter(
+      supabase.from('food_nutrition_data_table')
+        .select('TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, CreatedAt')
+        .eq('UserID', userId).eq('IsDeleted', 0),
+      'CreatedAt',
+      weekAgoYmd,
+      timezoneIana,
+    ),
     supabase.from('food_nutrition_data_table')
       .select('ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
       .eq('UserID', userId).eq('IsDeleted', 0).order('CreatedAt', { ascending: false }).limit(10),
@@ -176,8 +198,6 @@ export async function touchLastActive(userId) {
   if (!userId) return;
   try {
     const supabase = getSupabaseClient();
-    await supabase.from('team_table').update({ LastActiveAt: getISTTimestamp() }).eq('UserId', userId);
+    await supabase.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }
-
-export { getISTTimestamp };

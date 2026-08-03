@@ -103,7 +103,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
     injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
-      if (!weightLoss || weightLoss <= 0) return; // only show if weight was actually lost
+      // Match API: loss-only and ≤ 3 kg for Today vs Yesterday strip
+      if (!weightLoss || weightLoss <= 0 || weightLoss > 3) return;
       setLeaderboardData((prev) => {
         // Remove any existing entry for this user, then add new one at top
         const filtered = prev.filter((u) => u.userId !== userId);
@@ -255,42 +256,38 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 shadow-sm">
-      <div className="py-1 px-2 sm:px-3 relative">
-        {/* Fixed label overlay */}
-        <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-          <div className="inline-flex items-center justify-center px-2 sm:px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
-            <span className="text-[9px] sm:text-[11px] font-medium text-green-700 whitespace-nowrap">
-              (Today vs Yesterday)
-            </span>
+    <div className="w-full bg-white shadow-sm">
+      <div className="py-0 px-0">
+        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
+            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-green-700">
+              Today vs<br />Yesterday
+            </div>
           </div>
-        </div>
-        
-        <div
-          className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
-          onClick={() => setIsPaused(!isPaused)}
-        >
-          <div
-            className="animate-smooth-marquee whitespace-nowrap inline-flex items-center"
-            style={{
-              animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-              animationPlayState: isPaused ? "paused" : "running",
-              WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-              WebkitAnimationPlayState: isPaused ? "paused" : "running",
-            }}
-          >
-            {/* Spacer to avoid overlap with fixed label */}
-            <div className="w-32 sm:w-40 flex-shrink-0"></div>
-            
-            {/* First set of items */}
-            {leaderboardData.map((user) =>
-              renderLeaderboardCard(user, `first-${user.userId}`),
-            )}
 
-            {/* Duplicate set for seamless loop */}
-            {leaderboardData.map((user) =>
-              renderLeaderboardCard(user, `second-${user.userId}`),
-            )}
+          <div
+            className="h-full overflow-hidden cursor-pointer"
+            onClick={() => setIsPaused(!isPaused)}
+          >
+            <div
+              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
+              style={{
+                animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+                animationPlayState: isPaused ? "paused" : "running",
+                WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+                WebkitAnimationPlayState: isPaused ? "paused" : "running",
+              }}
+            >
+              {/* First set of items */}
+              {leaderboardData.map((user) =>
+                renderLeaderboardCard(user, `first-${user.userId}`),
+              )}
+
+              {/* Duplicate set for seamless loop */}
+              {leaderboardData.map((user) =>
+                renderLeaderboardCard(user, `second-${user.userId}`),
+              )}
+            </div>
           </div>
         </div>
       </div>

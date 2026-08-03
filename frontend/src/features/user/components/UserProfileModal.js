@@ -11,7 +11,6 @@ import UserProfileHeader from './profile/UserProfileHeader';
 import UserProfileBody from './profile/UserProfileBody';
 import FaceDetectionToast from './profile/FaceDetectionToast';
 import UserProfileFooter from './profile/UserProfileFooter';
-import { fetchTaskAverages } from '../../tasks/api/taskApi';
 
 const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileUpdate }) => {
   const form = useProfileForm();
@@ -24,8 +23,6 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
-  const [taskAverages, setTaskAverages] = useState([]);
-  const [averagesLoading, setAveragesLoading] = useState(false);
   const face = useFaceDetection();
   const handleSaveRef = useRef(null);
 
@@ -33,37 +30,33 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     onError: setError,
     onCropped: (img) => {
       setProfileImage(img); setProfileImagePreview(img); face.reset();
-      setShowToast(true); face.run(img);
+      setShowToast(true); face.run(img, user?.id ?? null);
     },
   });
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true); setError('');
-    setAveragesLoading(true);
     try {
-      const [{ data }, averagesResult] = await Promise.all([
-        fetchProfile(user.email),
-        fetchTaskAverages(user?.id),
-      ]);
+      const { data } = await fetchProfile(user.email);
       if (data) {
         form.reload({
           name: data.userName || user.name || '',
           height: data.height ? String(data.height) : '',
           phone: data.phoneNumber || '',
           dietType: data.dietType || '',
+          gender: data.gender || '',
           bmr: data.latestBmr ? String(Math.round(data.latestBmr)) : '',
+          physicalActivityLevel: data.physicalActivityLevel || '',
           weightGoalMode: data.weightGoalMode || null,
+          communityId: data.communityId || '',
+          email: data.email || user?.email || '',
+          bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         if (data.profileImage) setProfileImagePreview(data.profileImage);
       }
-      if (averagesResult?.ok) {
-        setTaskAverages(averagesResult.data?.averages || []);
-      } else {
-        setTaskAverages([]);
-      }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
-    finally { setIsLoading(false); setAveragesLoading(false); }
+    finally { setIsLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [user]);
 
@@ -98,6 +91,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
         bmr: form.bmr ? parseFloat(form.bmr) : null,
+        physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         profileImage: profileImagePreview || null,
       });
@@ -138,9 +132,8 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           onRecrop={cropper.reopenCropper} onClose={handleCancel} isSaving={isSaving} />
         <input ref={cropper.fileInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => cropper.selectFile(e.target.files?.[0])} />
-        <UserProfileBody isLoading={isLoading} form={form} latestWeight={latestWeight}
-          error={error} successMessage={successMessage}
-          taskAverages={taskAverages} averagesLoading={averagesLoading} />
+        <UserProfileBody isLoading={isLoading} form={form} email={form.email}
+          latestWeight={latestWeight} error={error} successMessage={successMessage} />
         {!isLoading && (
           <UserProfileFooter isSaving={isSaving} hasSaved={hasSaved} disabled={saveDisabled}
             onCancel={handleCancel} onSave={handleSave} />

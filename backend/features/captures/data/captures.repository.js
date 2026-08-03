@@ -42,22 +42,44 @@ export async function insertPending({
   imagePath = null,
   deviceInfo = null,
   processedBy = null,
+  latitude,
+  longitude,
+  city,
+  village,
+  attendanceType,
+  nutritionCenterId,
+  centerName,
 }) {
   const supabase = getSupabaseClient();
+  const row = {
+    UserID: userId.toString(),
+    PublicShareToken: publicShareToken,
+    ShareCode: shareCode,
+    ShareExpiresAt: shareExpiresAt,
+    ImageBase64: imageBase64,
+    ImagePath: imagePath,
+    DeviceInfo: deviceInfo,
+    ProcessedBy: processedBy,
+    // ImageType defaults to 'pending' (DB DEFAULT).
+    // CreatedAt / UpdatedAt default to now() (DB DEFAULT).
+  };
+  // Only include location keys when the caller supplied them. Omitting keeps
+  // photo-create working before the location-columns migration is applied.
+  const locationProvided = [
+    latitude, longitude, city, village, attendanceType, nutritionCenterId, centerName,
+  ].some((v) => v !== undefined);
+  if (locationProvided) {
+    row.Latitude = latitude ?? null;
+    row.Longitude = longitude ?? null;
+    row.City = city ?? null;
+    row.Village = village ?? null;
+    row.AttendanceType = attendanceType ?? null;
+    row.NutritionCenterId = nutritionCenterId ?? null;
+    row.CenterName = centerName ?? null;
+  }
   const { data, error } = await supabase
     .from(TABLE)
-    .insert({
-      UserID: userId.toString(),
-      PublicShareToken: publicShareToken,
-      ShareCode: shareCode,
-      ShareExpiresAt: shareExpiresAt,
-      ImageBase64: imageBase64,
-      ImagePath: imagePath,
-      DeviceInfo: deviceInfo,
-      ProcessedBy: processedBy,
-      // ImageType defaults to 'pending' (DB DEFAULT).
-      // CreatedAt / UpdatedAt default to now() (DB DEFAULT).
-    })
+    .insert(row)
     .select()
     .single();
   if (error) throw error;

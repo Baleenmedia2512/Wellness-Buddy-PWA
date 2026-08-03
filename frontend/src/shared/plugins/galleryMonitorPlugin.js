@@ -122,6 +122,41 @@ const wrappedPlugin = {
     }
   },
 
+  async openLocationSettings() {
+    try {
+      await this.init();
+      return await GalleryMonitor.openLocationSettings();
+    } catch (error) {
+      console.error("Failed to open location settings:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Opens this app's own Settings page on Android
+   * (Settings → Apps → Wellness Valley → Permissions).
+   * Calls the native ACTION_APPLICATION_DETAILS_SETTINGS intent.
+   */
+  async openAppSettings() {
+    try {
+      await this.init();
+      return await GalleryMonitor.openAppSettings();
+    } catch (error) {
+      console.error("Failed to open app settings:", error);
+      throw error;
+    }
+  },
+
+  async isLocationEnabled() {
+    try {
+      await this.init();
+      return await GalleryMonitor.isLocationEnabled();
+    } catch (error) {
+      console.error("Failed to check location enabled:", error);
+      throw error;
+    }
+  },
+
   addListener(eventName, listenerFunc) {
     if (!GalleryMonitor) {
       console.warn("GalleryMonitor not available for event listeners");
@@ -129,22 +164,6 @@ const wrappedPlugin = {
     }
     return GalleryMonitor.addListener(eventName, listenerFunc);
   },
-
-  /**
-   * Corrects stale phantom SharedPreferences data on the background service.
-   * Call when the backfill detects bgService steps >> DB steps for today.
-   * Sends an intent to the running service so it resets both SharedPrefs and
-   * its in-memory stepStoredBaseline to the given value.
-   */
-  async syncDailySteps(date, steps) {
-    try {
-      await this.init();
-      if (!Capacitor.isNativePlatform()) return;
-      return await GalleryMonitor.syncDailySteps({ date, steps });
-    } catch (error) {
-      console.warn('[GalleryMonitor] syncDailySteps failed:', error);
-    }
-  }
 };
 
 export const GalleryMonitorPlugin = wrappedPlugin;

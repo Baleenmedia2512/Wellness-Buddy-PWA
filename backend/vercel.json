@@ -2,11 +2,21 @@
   "version": 2,
   "regions": ["sin1"],
   "functions": {
+    "pages/api/ai/orchestrate.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "pages/api/**/*.js": {
       "maxDuration": 30,
       "memory": 1024
     }
   },
+  "crons": [
+    {
+      "path": "/api/ai/worker",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/get-global-corrections",
@@ -76,7 +86,15 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, s-maxage=300, stale-while-revalidate=600"
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
         },
         {
           "key": "Access-Control-Allow-Origin",
@@ -107,15 +125,12 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/marathon-finalize",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/ai/worker",
       "schedule": "* * * * *"
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "NODE_OPTIONS": "--dns-result-order=ipv4first"
   }
 }

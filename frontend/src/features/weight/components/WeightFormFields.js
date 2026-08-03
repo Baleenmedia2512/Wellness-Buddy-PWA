@@ -3,6 +3,7 @@
  * Numeric weight input + kg/lbs toggle. No state of its own.
  */
 import React from 'react';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 
 export default function WeightFormFields({ weight, unit, onWeightChange, onToggleUnit }) {
   return (
@@ -11,9 +12,10 @@ export default function WeightFormFields({ weight, unit, onWeightChange, onToggl
         Weight Value
       </label>
       <div className="flex items-center gap-2">
-        <input
-          type="number"
+        <NativeInput
+          type="text"
           inputMode="decimal"
+          pattern="[0-9]*"
           step="0.1"
           value={weight}
           onChange={(e) => onWeightChange(e.target.value)}

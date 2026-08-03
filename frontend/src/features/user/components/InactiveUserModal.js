@@ -1,45 +1,22 @@
 import React from 'react';
-import { AlertTriangle, X, Mail } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
+import { AlertTriangle, Loader2, User, X } from 'lucide-react';
 
-const InactiveUserModal = ({ userEmail, onClose, onContactCoach }) => {
-  const supportEmail = 'easy2work.india@gmail.com';
-
-  const handleSendEmail = async () => {
-    const subject = encodeURIComponent('Wellness Valley - Account Access Request');
-    const body = encodeURIComponent(
-      `Hello Wellness Valley Support,\n\n` +
-      `My account (${userEmail}) is currently restricted from accessing the app.\n\n` +
-      `I would like to request access to continue using Wellness Valley.\n\n` +
-      `Please review my account status and help me regain access.\n\n` +
-      `Thank you for your assistance.\n\n` +
-      `Best regards`
-    );
-    
-    const mailtoUrl = `mailto:${supportEmail}?subject=${subject}&body=${body}`;
-    
-    // Use Capacitor's App plugin for better Android compatibility
-    if (Capacitor.isNativePlatform()) {
-      try {
-        await App.openUrl({ url: mailtoUrl });
-      } catch (error) {
-        console.error('Error opening email app:', error);
-        // Fallback to window.location
-        window.location.href = mailtoUrl;
-      }
-    } else {
-      window.location.href = mailtoUrl;
-    }
-  };
+const InactiveUserModal = ({
+  userEmail,
+  coachName,
+  coachNameLoading = false,
+  onClose,
+  onContactCoach,
+}) => {
+  const displayCoachName = coachName?.trim() || 'Your assigned coach';
 
   const handleClose = () => {
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all animate-slideUp">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all duration-300 ease-out">
         {/* Header with close button */}
         <div className="relative bg-gradient-to-r from-red-500 to-red-600 rounded-t-2xl p-6">
           <button
@@ -49,14 +26,14 @@ const InactiveUserModal = ({ userEmail, onClose, onContactCoach }) => {
           >
             <X className="h-6 w-6" />
           </button>
-          
+
           {/* Warning Icon */}
           <div className="flex justify-center mb-4">
             <div className="bg-white/20 backdrop-blur-sm p-4 rounded-full">
               <AlertTriangle className="h-12 w-12 text-white" />
             </div>
           </div>
-          
+
           <h2 className="text-2xl font-bold text-white text-center">
             Account Restricted
           </h2>
@@ -72,33 +49,30 @@ const InactiveUserModal = ({ userEmail, onClose, onContactCoach }) => {
 
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <p className="text-sm text-gray-600 text-center">
-              To request access, please contact our support team:
+              To request access, please contact your Coach
             </p>
-            <div className="flex items-center justify-center space-x-2 text-gray-700">
-              <Mail className="h-4 w-4 text-gray-500" />
-              <a 
-                href={`mailto:${supportEmail}`}
-                className="text-blue-600 hover:text-blue-700 font-medium text-sm"
-              >
-                {supportEmail}
-              </a>
+            <div className="flex items-center justify-center space-x-2 text-gray-700 min-h-[20px]">
+              {coachNameLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 text-gray-400 shrink-0 animate-spin" aria-hidden="true" />
+                  <span className="font-medium text-sm text-gray-500">Loading coach...</span>
+                </>
+              ) : (
+                <>
+                  <User className="h-4 w-4 text-gray-500 shrink-0" />
+                  <span className="font-medium text-sm text-gray-800">{displayCoachName}</span>
+                </>
+              )}
             </div>
           </div>
 
           {/* Actions */}
           <div className="flex flex-col space-y-3 pt-2">
-            <button
-              onClick={handleSendEmail}
-              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center space-x-2"
-            >
-              <Mail className="h-5 w-5" />
-              <span>Request Access via Email</span>
-            </button>
-            
             {onContactCoach ? (
               <button
                 onClick={onContactCoach}
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200"
+                disabled={coachNameLoading}
+                className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-green-400 disabled:to-green-400 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
               >
                 Contact Your Coach
               </button>
@@ -115,34 +89,11 @@ const InactiveUserModal = ({ userEmail, onClose, onContactCoach }) => {
           {/* Info note */}
           <div className="pt-2">
             <p className="text-xs text-gray-500 text-center leading-relaxed">
-              Our team typically responds within 24-48 hours. You'll receive an email once your account is reviewed.
+              Contact your coach to verify your account. Once your coach approves your request using OTP, your account will be activated.
             </p>
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
-        }
-        .animate-slideUp {
-          animation: slideUp 0.3s ease-out;
-        }
-      `}</style>
     </div>
   );
 };

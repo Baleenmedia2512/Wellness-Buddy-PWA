@@ -24,6 +24,7 @@ export function useMealMutations({
   setLocalNutrition,
   isAutoSaveUpdateRef,
   onMealDelete,
+  onMealDeleteWithUndo,
   undoSeconds,
 }) {
   const itemMutations = useMealItemMutations({
@@ -50,6 +51,7 @@ export function useMealMutations({
     applyDailyDelta,
     setError,
     onMealDelete,
+    onMealDeleteWithUndo,
     undoSeconds,
   });
 

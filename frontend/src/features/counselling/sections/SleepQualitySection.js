@@ -63,7 +63,9 @@ const SleepQualitySection = ({ sleepData, onChange }) => {
           <div className="flex items-center gap-2 sm:gap-3">
             <Clock size={16} className="text-gray-400 flex-shrink-0 sm:w-[18px] sm:h-[18px]" />
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*"
               step="0.5"
               min="0"
               max="24"

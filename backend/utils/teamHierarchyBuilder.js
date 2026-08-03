@@ -1,32 +1,35 @@
 /**
  * Shared Team Hierarchy Builder
  * ─────────────────────────────────────────────────────────────────────────────
- * Single source of truth for building the coach → co-coach → team-members tree
- * used by /api/coach/team-hierarchy (Discipline Report) AND
- * /api/coach/hierarchical-club-attendance (Attendance Report).
+ * Builds the coach → co-coach → team-members tree for Reports and Results
+ * (testimonials). Inactive users are hidden by default; their active descendants
+ * are promoted to the nearest active ancestor (same rules as team-hierarchy.js).
  *
- * Extracted verbatim from the original team-hierarchy.js handler so that both
- * endpoints produce *identical* member lists and respect the same partnership
- * rules.  Includes the pre-existing cycle guards (`visited` Set in
- * `buildHierarchy`) so it cannot stack-overflow.
+ * Includes the pre-existing cycle guards (`visited` Set in `buildHierarchy`) so
+ * it cannot stack-overflow.
  */
+
+/** Case-insensitive active check for team_table.Status. */
+export function isActiveTeamStatus(status) {
+  return String(status || '').toLowerCase() === 'active';
+}
 
 /**
  * @param {object} supabase  Supabase client
  * @param {number} coachIdInt  Logged-in user id (already parsed to int)
  * @param {object} [opts]
- * @param {boolean} [opts.includeInactive=false]
+ * @param {boolean} [opts.includeInactive=false] — include inactive users in allMembers
  * @returns {Promise<{ hierarchy: object|null, allMembers: object[], loggedInCoach: object|null, stats: object }>}
  */
 export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   const { includeInactive = false } = opts;
 
-  // 1. Fetch all users
-  let query = supabase
+  // 1. Fetch all users (Active + Inactive) so inactive intermediate coaches
+  // can be detected and their active members promoted upward.
+  const { data: allUsers, error: usersError } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage');
-  if (!includeInactive) query = query.eq('Status', 'Active');
-  const { data: allUsers, error: usersError } = await query.order('UserName');
+    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage')
+    .order('UserName');
 
   if (usersError) throw new Error('Failed to fetch team data: ' + usersError.message);
   if (!allUsers || allUsers.length === 0) {
@@ -81,6 +84,38 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     });
   });
 
+  // Collect active descendants of an inactive node (promote up to active ancestor).
+  const collectPromotedChildren = (inactiveUserId, promotedParentId, visited, coachPartnerIds) => {
+    const result = [];
+    const newVisited = new Set(visited);
+    newVisited.add(inactiveUserId);
+
+    const directReports = allUsers.filter((u) => {
+      const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+      return (
+        (u.CoachId === inactiveUserId || derivedCoCoachId === inactiveUserId) &&
+        u.UserId !== inactiveUserId &&
+        !coachPartnerIds.includes(u.UserId) &&
+        !newVisited.has(u.UserId)
+      );
+    });
+
+    directReports.forEach((report) => {
+      if (!isActiveTeamStatus(report.Status)) {
+        const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+        result.push(...deeper);
+        return;
+      }
+      const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+      if (childNode) {
+        childNode.isCoachRelationship = true;
+        result.push(childNode);
+      }
+    });
+
+    return result;
+  };
+
   // 4. Recursive tree builder (with the existing visited-Set cycle guard).
   const buildHierarchy = (
     userId,
@@ -108,6 +143,13 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
 
     directReports.forEach(report => {
       if (report.UserId === userId) return;
+
+      // Hide inactive nodes; bubble their active descendants up to this ancestor.
+      if (!isActiveTeamStatus(report.Status)) {
+        const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
+        promoted.forEach((child) => userNode.teamMembers.push(child));
+        return;
+      }
 
       if (report.CoachId === userId) {
         const childNode = buildHierarchy(report.UserId, userId, newVisited, coachPartnerIds);
@@ -223,6 +265,16 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       });
 
       partnerMembers.forEach(member => {
+        if (!isActiveTeamStatus(member.Status)) {
+          const promoted = collectPromotedChildren(
+            member.UserId,
+            coachIdInt,
+            new Set([coachIdInt, partnerId]),
+            coachPartnerIds,
+          );
+          promoted.forEach((child) => hierarchy.teamMembers.push(child));
+          return;
+        }
         const memberNode = buildHierarchy(
           member.UserId,
           coachIdInt,
@@ -239,10 +291,11 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     }
   }
 
-  // 9. Flatten hierarchy → allMembers
+  // 9. Flatten hierarchy → allMembers (active users only unless includeInactive)
   const flattenHierarchy = (node, result = new Map()) => {
     if (!node) return result;
-    if (node.userId !== coachIdInt && !result.has(node.userId)) {
+    const includeNode = includeInactive || isActiveTeamStatus(node.status);
+    if (includeNode && node.userId !== coachIdInt && !result.has(node.userId)) {
       const entry = {
         UserId: node.userId,
         UserName: node.userName,
@@ -262,7 +315,11 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   };
 
   const memberMap = flattenHierarchy(hierarchy);
-  if (hierarchy?.coCoachInfo && !memberMap.has(hierarchy.coCoachInfo.userId)) {
+  if (
+    hierarchy?.coCoachInfo &&
+    !memberMap.has(hierarchy.coCoachInfo.userId) &&
+    (includeInactive || isActiveTeamStatus(hierarchy.coCoachInfo.status))
+  ) {
     memberMap.set(hierarchy.coCoachInfo.userId, {
       UserId: hierarchy.coCoachInfo.userId,
       UserName: hierarchy.coCoachInfo.userName,

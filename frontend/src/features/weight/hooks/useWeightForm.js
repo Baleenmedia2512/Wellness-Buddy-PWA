@@ -6,32 +6,41 @@
 import { useCallback, useState } from 'react';
 import { validateManualEntry } from '../services/weightFormService';
 
-export function useWeightForm({ onSave, onClose } = {}) {
-  const [showTypeSelect, setShowTypeSelect] = useState(true);
-  const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState('kg');
+export function useWeightForm({
+  onSave,
+  onClose,
+  initialWeightValue = null,
+  initialWeightUnit = null,
+  skipTypeSelect = false,
+} = {}) {
+  // When the caller supplies initial values (e.g. AI-detected weight) or
+  // skipTypeSelect (caller already chose Weight), go straight to the form.
+  const hasInitial = initialWeightValue != null;
+  const [showTypeSelect, setShowTypeSelect] = useState(!(hasInitial || skipTypeSelect));
+  const [weight, setWeight] = useState(hasInitial ? String(initialWeightValue) : '');
+  const [unit, setUnit] = useState(initialWeightUnit || 'kg');
   const [bmr, setBmr] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const reset = useCallback(() => {
-    setWeight('');
-    setUnit('kg');
+    setWeight(hasInitial ? String(initialWeightValue) : '');
+    setUnit(initialWeightUnit || 'kg');
     setBmr('');
     setError('');
-  }, []);
+  }, [hasInitial, initialWeightValue, initialWeightUnit]);
 
   const handleCancel = useCallback(() => {
     reset();
-    setShowTypeSelect(true);
+    setShowTypeSelect(!(hasInitial || skipTypeSelect));
     if (onClose) onClose();
-  }, [reset, onClose]);
+  }, [reset, onClose, hasInitial, skipTypeSelect]);
 
   const handleBack = useCallback((onBack) => {
     reset();
-    setShowTypeSelect(true);
+    setShowTypeSelect(!(hasInitial || skipTypeSelect));
     if (onBack) onBack();
-  }, [reset]);
+  }, [reset, hasInitial, skipTypeSelect]);
 
   const toggleUnit = useCallback(() => {
     setUnit((u) => (u === 'kg' ? 'lbs' : 'kg'));

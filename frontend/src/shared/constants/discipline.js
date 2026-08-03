@@ -13,7 +13,6 @@ export const DISCIPLINE_CATEGORIES = Object.freeze({
   ACTIVITY: 'activity',
   WATER: 'water',
   EDUCATION: 'education',
-  SCREEN_TIME: 'screen_time',
 });
 
 /** @typedef {keyof typeof DISCIPLINE_CATEGORIES} DisciplineCategoryKey */
@@ -28,7 +27,6 @@ export const DEFAULT_CATEGORY_WEIGHTS = Object.freeze({
   [DISCIPLINE_CATEGORIES.ACTIVITY]: 0.20,
   [DISCIPLINE_CATEGORIES.WATER]: 0.10,
   [DISCIPLINE_CATEGORIES.EDUCATION]: 0.15,
-  [DISCIPLINE_CATEGORIES.SCREEN_TIME]: 0.10,
 });
 
 /** Score thresholds (0-100 scale). */

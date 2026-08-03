@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Activity Report Validators
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';

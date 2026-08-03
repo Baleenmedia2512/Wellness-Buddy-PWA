@@ -45,11 +45,14 @@ function getFoodTypeByName(name) {
   
   // Liquid keywords
   const liquidKeywords = [
-    'milk', 'tea', 'coffee', 'juice', 'shake', 'smoothie', 
+    'milk', 'tea', 'coffee', 'juice', 'shake', 'smoothie',
     'lassi', 'water', 'soup', 'broth', 'drink', 'beverage',
     'formula 1', 'afresh', 'lemonade', 'buttermilk', 'yogurt drink',
     'energy drink', 'soda', 'cola', 'beer', 'wine', 'cocktail',
-    'syrup', 'sauce (liquid)', 'gravy', 'dal (liquid)'
+    'syrup', 'sauce (liquid)', 'gravy', 'dal (liquid)',
+    // Indian beverages
+    'chai', 'kaapi', 'kappi', 'moru', 'chaas', 'nimbu pani',
+    'tender coconut', 'coconut water', 'sugarcane juice',
   ];
   
   if (liquidKeywords.some(keyword => nameLower.includes(keyword))) {
@@ -63,7 +66,17 @@ function getFoodTypeByName(name) {
     'salad', 'egg', 'paneer', 'dal', 'sambar', 'pasta',
     'noodles', 'meat', 'mutton', 'beef', 'pork', 'prawn',
     'cake', 'cookie', 'biscuit', 'chocolate', 'sweet',
-    'pickle', 'chutney', 'powder', 'flour'
+    'pickle', 'chutney', 'powder', 'flour',
+    // Tamil Nadu foods
+    'pongal', 'uthappam', 'vada', 'appam', 'idiyappam', 'puttu',
+    'parotta', 'kothu parotta', 'rasam', 'kuzhambu', 'kootu',
+    'poriyal', 'avial', 'thayir sadam', 'curd rice', 'puliyodarai',
+    'elumichai sadam', 'thengai sadam', 'tomato rice', 'murukku',
+    'seedai', 'sundal', 'bonda', 'bajji', 'mixture', 'halwa',
+    'payasam', 'laddu', 'mysore pak',
+    // Herbalife solid supplements
+    'formula 2', 'multivitamin', 'cell activator', 'nightworks', 'niteworks',
+    'herbalife tablet', 'herbalife capsule', 'xtra-cal',
   ];
   
   if (solidKeywords.some(keyword => nameLower.includes(keyword))) {
@@ -93,7 +106,12 @@ function identifyFoodType(food) {
     'milkshake', 'milk shake', 'smoothie', 'juice', 'lassi',
     'tea', 'coffee', 'shake', 'beverage', 'drink', 'soup',
     'broth', 'formula 1', 'afresh', 'water', 'lemonade',
-    'buttermilk', 'energy drink', 'soda', 'cola', 'cocktail'
+    'buttermilk', 'energy drink', 'soda', 'cola', 'cocktail',
+    // Indian beverages
+    'chai', 'kaapi', 'kappi', 'moru', 'chaas',
+    'tender coconut', 'nimbu pani', 'shikanji',
+    // Herbalife non-meal beverages
+    'afresh energy drink', 'herbal tea concentrate', 'herbalife tea',
   ];
   
   if (name) {
@@ -181,14 +199,109 @@ function validateCorrectionByType(aiFood, savedCorrection) {
 }
 
 /**
+ * Normalize food name for pattern matching (lowercase, collapse whitespace).
+ * @param {string} name
+ * @returns {string}
+ */
+function normalizeFoodName(name) {
+  return String(name ?? '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Read display name from a food row in any persisted analysis shape.
+ * @param {object} food
+ * @returns {string}
+ */
+function getFoodItemName(food) {
+  if (!food || typeof food !== 'object') return '';
+  return String(food.name || food.Name || food.foodName || '').trim();
+}
+
+/**
+ * Herbalife / Herbal Life Afresh — refresh energy drink, NOT breakfast/lunch/dinner.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isAfreshEnergyDrink(name) {
+  const n = normalizeFoodName(name);
+  if (!n) return false;
+  if (n.includes('afresh') || n.includes('a fresh')) return true;
+  const isHerbalBrand =
+    n.includes('herbalife') || n.includes('herbal life') || n.includes('herballife');
+  const isEnergyRefresh =
+    n.includes('energy drink') ||
+    n.includes('energy mix') ||
+    n.includes('refresh drink') ||
+    (n.includes('energy') && n.includes('drink'));
+  const isMealShake =
+    n.includes('formula 1') ||
+    n.includes('formula1') ||
+    n.includes('f1 shake') ||
+    n.includes('meal replacement');
+  return isHerbalBrand && isEnergyRefresh && !isMealShake;
+}
+
+/**
+ * Extract food item objects from any AnalysisData JSON shape.
+ * @param {object} parsed
+ * @returns {object[]}
+ */
+function extractFoodItemsFromAnalysis(parsed) {
+  if (!parsed || typeof parsed !== 'object') return [];
+
+  const items = [];
+  const push = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const f of arr) {
+      if (f && typeof f === 'object') items.push(f);
+    }
+  };
+
+  push(parsed.foods);
+  push(parsed.detailedItems);
+  push(parsed.details?.foods);
+
+  if (items.length === 0 && parsed.category?.name) {
+    items.push({ name: parsed.category.name });
+  }
+
+  return items;
+}
+
+/**
  * List of beverage/drink keywords that should NOT count as a meal
  * (breakfast, lunch, or dinner) when they are the ONLY items logged.
  * If a record contains at least one non-exempted food, it still counts.
  */
 const EXEMPTED_MEAL_FOODS = [
-  'water', 'coffee', 'tea', 'afresh', 'black tea', 'green tea',
-  'black coffee', 'herbal tea', 'lemon water', 'hot water',
-  'cold water', 'sparkling water', 'mineral water',
+  // Plain water variants
+  'water', 'lemon water', 'hot water', 'cold water', 'sparkling water',
+  'mineral water', 'coconut water', 'tender coconut water',
+
+  // Coffee variants (English + Indian)
+  'coffee', 'black coffee', 'filter coffee', 'south indian coffee',
+  'kaapi', 'kappi', 'kumbakonam coffee', 'instant coffee', 'espresso',
+
+  // Tea variants (English + Indian — 'chai' must be explicit for Tamil Nadu users)
+  'tea', 'black tea', 'green tea', 'herbal tea', 'masala tea',
+  'chai', 'masala chai', 'ginger chai', 'cutting chai', 'milk tea',
+  'kadak chai', 'adrak chai', 'elaichi chai', 'kulhad chai',
+  'chamomile tea', 'peppermint tea', 'lemon tea',
+  'herbalife herbal tea concentrate', 'herbalife tea', 'herbal tea concentrate',
+
+  // Herbalife non-meal beverages (Afresh is an energy drink, NOT meal replacement)
+  'afresh', 'afresh energy drink', 'herbalife afresh', 'herbal life afresh',
+  'herbalife afresh energy drink', 'herbal life afresh energy drink',
+
+  // Indian dairy beverages (plain, unsweetened variants)
+  'buttermilk', 'moru', 'chaas', 'lassi',
+
+  // Other non-meal beverages
+  'lemonade', 'nimbu pani', 'shikanji',
 ];
 
 /**
@@ -198,8 +311,12 @@ const EXEMPTED_MEAL_FOODS = [
  */
 function isExemptedFood(name) {
   if (!name) return false;
-  const n = name.toLowerCase().trim();
-  return EXEMPTED_MEAL_FOODS.some(exempt => n === exempt || n.includes(exempt));
+  if (isAfreshEnergyDrink(name)) return true;
+  const n = normalizeFoodName(name);
+  return EXEMPTED_MEAL_FOODS.some((exempt) => {
+    const e = exempt.toLowerCase();
+    return n === e || n.includes(e);
+  });
 }
 
 /**
@@ -215,11 +332,10 @@ function isExemptedBeverageOnly(analysisData) {
     const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
     if (!parsed) return false;
 
-    // Unified format: { foods: [...] }
-    const foods = parsed.foods || parsed.detailedItems || [];
+    const foods = extractFoodItemsFromAnalysis(parsed);
     if (foods.length === 0) return false;
 
-    return foods.every(f => isExemptedFood(f.name));
+    return foods.every((f) => isExemptedFood(getFoodItemName(f)));
   } catch {
     return false;
   }
@@ -233,5 +349,8 @@ module.exports = {
   validateCorrectionByType,
   isExemptedBeverageOnly,
   isExemptedFood,
+  isAfreshEnergyDrink,
+  extractFoodItemsFromAnalysis,
+  getFoodItemName,
   EXEMPTED_MEAL_FOODS
 };

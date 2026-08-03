@@ -5,7 +5,7 @@
 
 export const STORE_LINKS = {
   android: process.env.REACT_APP_PLAY_STORE_URL  || 'https://play.google.com/store/apps/details?id=com.wellnessvalley.app',
-  ios:     process.env.REACT_APP_APP_STORE_URL   || 'https://apps.apple.com/app/wellness-valley/id000000000',
+  ios:     process.env.REACT_APP_APP_STORE_URL   || 'https://apps.apple.com/in/app/wellness-valley/id6764327692',
   web:     process.env.REACT_APP_LANDING_URL     || 'https://wellnessvalley.app',
 };
 
@@ -22,15 +22,46 @@ export function getStoreLink(platform) {
 }
 
 /**
- * Build the WhatsApp share text for a body-parameters card.
+ * Generic onboarding link shared after a Body Parameters Card is created.
+ * Uses /share (already deployed) — opens app or store; no tokens or member data.
  *
- * @param {string|null} shareUrl  - full share URL with token (appended when present)
+ * @param {string} [apiBaseUrl] - from getApiBaseUrl()
+ * @returns {string}
+ */
+export function buildOnboardingShareUrl(apiBaseUrl) {
+  const base = String(apiBaseUrl || process.env.REACT_APP_API_BASE_URL || '')
+    .replace(/\/+$/, '');
+  if (base) return `${base}/share`;
+  return STORE_LINKS.web;
+}
+
+/**
+ * Caption for WhatsApp when the body-parameters card IMAGE is the attachment.
+ * Omits a full https:// URL so WhatsApp does not replace the image with an OG link card.
+ *
+ * @param {string} memberName
+ * @param {string|null} shareUrl - generic /app link (host/path only in caption)
+ * @returns {string}
+ */
+export function buildShareCaptionForImage(memberName, shareUrl) {
+  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
+  const lines = [
+    `Hey ${firstName}! Your coach shared your body parameters.`,
+    'Install or open Wellness Valley app.',
+  ];
+  if (shareUrl) {
+    lines.push(shareUrl.replace(/^https?:\/\//i, ''));
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Build plain-text WhatsApp message (text-only fallback — no image).
+ *
+ * @param {string|null} shareUrl
  * @param {string} memberName
  * @returns {string}
  */
 export function buildShareText(shareUrl, memberName) {
-  const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
-  const intro = `Hey ${firstName}! Install Wellness Valley app. Click the link`;
-  if (shareUrl) return `${intro}\n${shareUrl}`;
-  return `${intro}.`;
+  return buildShareCaptionForImage(memberName, shareUrl);
 }

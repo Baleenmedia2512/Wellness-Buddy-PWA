@@ -6,8 +6,10 @@
 import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
-import { convertISTToUserLocalTime } from './timezoneConverter.js';
-import { isExemptedBeverageOnly, isExemptedFood } from './foodTypeDetection.js';
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from './foodTypeDetection.js';
+import { resolveCalorieTargetFromProfile } from './tdeeCalculations.js';
+import { applyDateRangeFilter } from '../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST, timestampToCalendarYmd, timeOfDayInTimezone } from '../shared/lib/datetime/index.js';
 
 // Default required water when no weight is recorded (2.5 L)
 const DEFAULT_WATER_REQUIRED_ML = 2500;
@@ -163,20 +165,20 @@ export async function getTimeWindows() {
  * @param {number} userTimezoneOffset - User's timezone offset in minutes (optional)
  * @returns {Object} Discipline data
  */
-export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows, userTimezoneOffset = null) {
+export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows, userTimezoneOffset = null, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
   
   // Get weight records (discipline check: logged weight today)
-  const { data: weightRecords } = await supabase
+  let weightQuery = supabase
     .from('weight_records_table')
     .select('"CreatedAt"')
     .eq('"UserId"', userId)
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .eq('"IsDeleted"', false);
+  weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: weightRecords } = await weightQuery;
 
   // Get user's latest body weight from weight_records_table (for water intake calculation)
   // BMR is now stored in team_table directly
@@ -202,34 +204,35 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   // a sort column that may not exist on team_table.
   const { data: teamRows } = await supabase
     .from('team_table')
-    .select('Bmr')
+    .select('Bmr, PhysicalActivityLevel')
     .eq('UserId', userId)
     .not('Bmr', 'is', null);
   let userBmrTarget = null;
   (teamRows || []).forEach(r => {
-    const b = parseFloat(r.Bmr);
-    if (!isNaN(b) && b > 0 && (userBmrTarget === null || b > userBmrTarget)) {
-      userBmrTarget = b;
+    const target = resolveCalorieTargetFromProfile({
+      bmr: r.Bmr,
+      physicalActivityLevel: r.PhysicalActivityLevel,
+    });
+    if (target && (userBmrTarget === null || target > userBmrTarget)) {
+      userBmrTarget = target;
     }
   });
   
-  // Get education logs
-  const { data: educationLogs } = await supabase
+  let educationQuery = supabase
     .from('education_logs_table')
     .select('"CreatedAt"')
     .eq('"UserId"', userId)
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .eq('"IsDeleted"', false);
+  educationQuery = applyDateRangeFilter(educationQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: educationLogs } = await educationQuery;
   
-  // Get nutrition data (include AnalysisData to filter out beverage-only entries, TotalCalories for calorie discipline)
-  const { data: nutritionRecordsRaw } = await supabase
+  let nutritionQuery = supabase
     .from('food_nutrition_data_table')
     .select('"CreatedAt", "AnalysisData", "TotalCalories"')
     .eq('"UserID"', String(userId))
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .eq('"IsDeleted"', false);
+  nutritionQuery = applyDateRangeFilter(nutritionQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: nutritionRecordsRaw } = await nutritionQuery;
   
   // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh etc.)
   const nutritionRecords = (nutritionRecordsRaw || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
@@ -237,42 +240,25 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   // Get water intake records (food entries that are ONLY water/exempted beverages — opposite filter)
   const waterRecords = (nutritionRecordsRaw || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
 
-  // Get calories burned records (daily step activity - any day with a step entry counts)
-  const { data: stepRecords } = await supabase
+  let stepQuery = supabase
     .from('daily_step_activity')
     .select('"CreatedAt", "Steps", "CaloriesBurned"')
-    .eq('"UserId"', userId)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .eq('"UserId"', userId);
+  stepQuery = applyDateRangeFilter(stepQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: stepRecords } = await stepQuery;
 
-  // Get watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
-  const { data: watchBurnRecords } = await supabase
+  let watchQuery = supabase
     .from('education_logs_table')
     .select('"Topic", "CreatedAt"')
     .eq('"UserId"', userId)
     .ilike('"Topic"', 'Calories Burned:%')
-    .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0');
+  watchQuery = applyDateRangeFilter(watchQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: watchBurnRecords } = await watchQuery;
   
-  // Helper to check Database stores in IST, but check against user's local time
-  // Converts IST timestamp to user's local timezone before checking
   const isWithinWindow = (createdAt, window) => {
     if (!window || !createdAt) return false;
-    
-    let time;
-    if (userTimezoneOffset !== null) {
-      // Convert IST to user's local time
-      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
-    } else {
-      // Fallback: Extract time directly from timestamp string
-      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-      if (!timeMatch) return false;
-      time = timeMatch[1];
-    }
-    
-    if (!time) return false;
-    // ✅ BUFFER FIX: Add 59-second buffer to window.end so uploads at e.g. 08:30:51 are counted on-time
+    const time = timeOfDayInTimezone(createdAt, timezoneIana);
     return time >= window.start && time <= addBufferToTime(window.end);
   };
   
@@ -284,8 +270,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     const onTimeDates = new Set();
     
     records.forEach(r => {
-      const normalizedDate = normalizeTimestamp(r.CreatedAt);
-      const date = normalizedDate.split('T')[0];
+      const date = timestampToCalendarYmd(normalizeTimestamp(r.CreatedAt), timezoneIana);
       uniqueDates.add(date);
       if (isWithinWindow(r.CreatedAt, window)) {
         onTimeDates.add(date);
@@ -295,13 +280,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     return { totalDays: uniqueDates.size, onTimeDays: onTimeDates.size };
   };
 
-  // ✅ TIMEZONE FIX: Extract time directly from timestamp string
   const getMealType = (createdAt) => {
     if (!createdAt) return null;
-    // Extract time portion directly from timestamp string (HH:MM:SS)
-    const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) return null;
-    const time = timeMatch[1];
+    const time = timeOfDayInTimezone(createdAt, timezoneIana);
     
     const breakfast = timeWindows.breakfast || { start: '05:30:00', end: '08:30:00' };
     const lunch = timeWindows.lunch || { start: '12:00:00', end: '16:00:00' };
@@ -362,8 +343,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       const analysisData = typeof r.AnalysisData === 'string'
         ? JSON.parse(r.AnalysisData)
         : r.AnalysisData;
-      (analysisData?.foods || []).forEach(food => {
-        if (isExemptedFood(food.name)) {
+      extractFoodItemsFromAnalysis(analysisData).forEach(food => {
+        if (isExemptedFood(getFoodItemName(food))) {
           // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
           const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
           waterVolumeByDate[date] += ml;
@@ -388,8 +369,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     // Sum calories consumed per date from non-beverage nutrition records
     const caloriesConsumedByDate = {};
     (nutritionRecords || []).forEach(r => {
-      const normalizedDate = normalizeTimestamp(r.CreatedAt);
-      const date = normalizedDate.split('T')[0];
+      const date = timestampToCalendarYmd(normalizeTimestamp(r.CreatedAt), timezoneIana);
       const cal = parseFloat(r.TotalCalories) || 0;
       caloriesConsumedByDate[date] = (caloriesConsumedByDate[date] || 0) + cal;
     });
@@ -411,17 +391,16 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
 
-    // Also add watch-burned calories from education_logs_table
-    // Topic format: "Calories Burned: 2000 kcal" — use latest entry per day
+    // Watch screenshots: multiple uploads same day → highest kcal wins (not sum).
     (watchBurnRecords || []).forEach(r => {
       const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
       if (!match) return;
       const kcal = parseFloat(match[1]) || 0;
       if (kcal <= 0) return;
-      const normalizedDate = normalizeTimestamp(r.CreatedAt);
-      const date = normalizedDate.split('T')[0];
-      // ADD watch calories on top of step calories for the day
-      caloriesBurnedByDate[date] = (caloriesBurnedByDate[date] || 0) + kcal;
+      const date = timestampToCalendarYmd(normalizeTimestamp(r.CreatedAt), timezoneIana);
+      if ((caloriesBurnedByDate[date] || 0) < kcal) {
+        caloriesBurnedByDate[date] = kcal;
+      }
     });
 
     // A day is disciplined if net calories (consumed - burned) <= BMR target
@@ -534,33 +513,31 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
  * @param {Date} endDate - End date
  * @returns {Object} Attendance metrics
  */
-export async function calculateAttendanceMetrics(userId, startDate, endDate) {
+export async function calculateAttendanceMetrics(userId, startDate, endDate, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
-  
-  // Get club attendance count
-  const { data: clubLogs, error: clubError } = await supabase
+
+  let clubQuery = supabase
     .from('education_logs_table')
     .select('id', { count: 'exact', head: true })
     .eq('"UserId"', userId)
     .eq('attendance_type', 'club')
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
-  
+    .eq('"IsDeleted"', false);
+  clubQuery = applyDateRangeFilter(clubQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: clubLogs, error: clubError } = await clubQuery;
+
   const clubCount = clubError ? 0 : (clubLogs || 0);
-  
-  // Get remote attendance count
-  const { data: remoteLogs, error: remoteError } = await supabase
+
+  let remoteQuery = supabase
     .from('education_logs_table')
     .select('id', { count: 'exact', head: true })
     .eq('"UserId"', userId)
     .eq('attendance_type', 'remote')
-    .eq('"IsDeleted"', false)
-    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
-    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+    .eq('"IsDeleted"', false);
+  remoteQuery = applyDateRangeFilter(remoteQuery, '"CreatedAt"', startDateStr, endDateStr, timezoneIana);
+  const { data: remoteLogs, error: remoteError } = await remoteQuery;
   
   const remoteCount = remoteError ? 0 : (remoteLogs || 0);
   

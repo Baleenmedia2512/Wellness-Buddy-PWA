@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2, ChevronLeft } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -15,7 +15,7 @@ import { format } from 'date-fns';
  * Wellness Counselling - Body Parameters Cards View
  * Shows body parameter cards for team members in a tile/grid layout
  */
-const WellnessCounsellingCards = ({ user, onBack }) => {
+const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
@@ -27,6 +27,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
   const [selectedCard, setSelectedCard] = useState(null); // for editing
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
+
+  // Fetch generation counter — incremented before every new fetch, checked
+  // inside async bodies before calling setState so that an older in-flight
+  // request that resolves after a newer one never overwrites fresh data.
+  const fetchGenerationRef = useRef(0);
 
   // Warm share-card images
   useEffect(() => {
@@ -54,6 +59,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
       return;
     }
 
+    // Capture this fetch's generation. Any concurrent or older fetch that resolves
+    // after us will see its generation doesn't match and will silently bail out,
+    // preventing it from overwriting the fresh data we are about to write.
+    const myGeneration = ++fetchGenerationRef.current;
+
     if (!isBackground) setLoading(true);
     else setRefreshing(true);
     setError(null);
@@ -61,24 +71,33 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     try {
       console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
       const userId = await getUserId(user.email);
+
+      // Guard: bail out if a newer fetch has already started (component navigated
+      // away and back, or the user hit Refresh while this was in-flight).
+      if (myGeneration !== fetchGenerationRef.current) return;
+
       console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
       
       debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
       console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
       
       const cards = await listBodyParamsCards(userId);
+
+      // Guard again after second await — another fetch may have fired in between.
+      if (myGeneration !== fetchGenerationRef.current) return;
+
       console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
-      console.log('📦 [WellnessCounselling] Cards data:', JSON.stringify(cards, null, 2));
-      
       debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
       
       setBodyParamsCards(cards || []);
       console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
     } catch (err) {
+      if (myGeneration !== fetchGenerationRef.current) return; // stale — discard error
       console.error("💥 [WellnessCounselling] Error fetching cards:", err);
       console.error("💥 Error details:", err.message, err.stack);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
+      if (myGeneration !== fetchGenerationRef.current) return; // stale — skip loading state
       if (!isBackground) setLoading(false);
       else setRefreshing(false);
     }
@@ -86,7 +105,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+    // Cancel any in-flight fetch when the component unmounts or user changes.
+    // Incrementing the generation makes every pending setBodyParamsCards a no-op.
+    return () => { fetchGenerationRef.current++; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user + refreshKey are the meaningful deps
+  }, [user, refreshKey]);
 
   const handleRefresh = () => fetchData(true);
 
@@ -100,8 +123,24 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
     );
   });
 
-  const handleEditCard = (card) => {
-    setSelectedCard(card);
+  const fetchFreshCard = async (cardId) => {
+    if (!user?.email || !cardId) return null;
+    try {
+      const userId = await getUserId(user.email);
+      const cards = await listBodyParamsCards(userId);
+      setBodyParamsCards(cards || []);
+      return (cards || []).find((c) => c.id === cardId) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleEditCard = async (card) => {
+    const fresh = await fetchFreshCard(card.id);
+    const merged = fresh
+      ? { ...fresh, phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null }
+      : card;
+    setSelectedCard(merged);
     setIsBodyParamsFormOpen(true);
   };
 
@@ -122,14 +161,8 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
       <div className="flex-shrink-0 bg-white shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronLeft size={24} className="text-gray-700" />
-            </button>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Body Parameters</h1>
+              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
               <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
             </div>
           </div>
@@ -272,23 +305,32 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
+          onCardSaved?.(card);
 
-          // Keep list in sync — update existing row when create path reused a card id.
+          // Optimistic update — new card appears in the grid immediately.
+          // Do NOT call fetchData here: a background fetch that completes while
+          // the native share sheet is open can overwrite this optimistic state
+          // with a server snapshot that may not yet include the new record,
+          // causing the card to disappear from the UI mid-share.
+          // The authoritative re-sync happens in BodyParamsShareSheet.onClose
+          // below, once the user is back and looking at the grid.
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
+            const merged = {
+              ...(idx >= 0 ? prevCards[idx] : {}),
+              ...card,
+              phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+            };
             if (idx >= 0) {
               const next = [...prevCards];
-              next[idx] = { ...prevCards[idx], ...card };
+              next[idx] = merged;
               return next;
             }
-            return [card, ...prevCards];
+            return [merged, ...prevCards];
           });
 
           setSelectedCard(null);
           setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
-
-          // Reload from server so refresh shows the same persisted measurements.
-          fetchData(true);
         }}
       />
 
@@ -298,7 +340,11 @@ const WellnessCounsellingCards = ({ user, onBack }) => {
         onClose={() => {
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Don't refresh here - already refreshing in background after save
+          // Re-fetch from server when the share sheet closes so the grid
+          // always shows confirmed server data the moment it becomes visible
+          // (the background fetch started in onSaveSuccess may have been
+          // interrupted if the app went to WhatsApp and back on Android).
+          fetchData(true);
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}

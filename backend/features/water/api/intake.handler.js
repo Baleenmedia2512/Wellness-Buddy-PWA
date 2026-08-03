@@ -1,32 +1,31 @@
 /**
  * backend/features/water/api/intake.handler.js
- * ---------------------------------------------------------------------------
- * Orchestration for GET /api/water/intake.
- *
- * Responsibilities (only):
- *   1. call the data layer
- *   2. hand the rows to the pure domain function
- *   3. shape the HTTP envelope expected by `shared/lib/handler.runService`
- *
- * No business rules live here. No SQL lives here.
- * ---------------------------------------------------------------------------
  */
 import * as repo from '../data/water.repo.js';
 import { computeDailyIntake } from '../domain/intake.rules.js';
+import { getUserTimezoneIana } from '../../user/domain/userTimezone.js';
+import {
+  resolveRequestedDateYmd,
+  assertNotFutureDateYmd,
+} from '../../../shared/lib/datetime/index.js';
 
 /**
- * @param {{ userId: string, date: string }} input  pre-validated
+ * @param {{ userId: string, date: string|null }} input
  * @returns {Promise<{ httpStatus: 200, body: object }>}
  */
 export async function getIntake({ userId, date }) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
+  assertNotFutureDateYmd(resolvedDate, timezoneIana);
+
   const [weightRow, foodRows] = await Promise.all([
     repo.getLatestWeight(userId),
-    repo.getFoodRowsForDate(userId, date),
+    repo.getFoodRowsForDate(userId, resolvedDate, timezoneIana),
   ]);
 
   const body = computeDailyIntake({
     userId,
-    date,
+    date: resolvedDate,
     latestWeightKg: weightRow ? weightRow.Weight : null,
     foodRows,
   });

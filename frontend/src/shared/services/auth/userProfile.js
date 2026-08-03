@@ -84,9 +84,12 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, afterSave = fa
       data: latestData,
       snooze: latestData?.profilePicSnooze || null,
       missingFields: {
+        userName: latestData?.userName ?? null,
+        email: latestData?.email ?? null,
         height: latestData?.height ?? null,
         dietType: latestData?.dietType ?? null,
-        phoneNumber: latestData?.phoneNumber ?? null,
+        gender: latestData?.gender ?? latestData?.bodyMetrics?.gender ?? null,
+        profileImage: latestData?.profileImage ?? null,
       },
     };
   } catch (err) {

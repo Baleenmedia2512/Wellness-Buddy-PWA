@@ -5,8 +5,8 @@
  * Domain layer per claude.md §3.1.
  *
  * Targets:
- *   Card 1 — Calories:     target = BMR (latestBmr), consumed = food cals, exercise = 0
- *   Card 2 — Macros:       protein = weight×1.5g, fat = weight×0.75g, carbs = derived
+ *   Card 1 — Calories:     target = TDEE (BMR + PA + TEF), consumed = food cals, exercise = burned
+ *   Card 2 — Macros:       protein = weight×1.5g, fat = calorieTarget×(20%♂/30%♀)/9, carbs = derived
  *   Card 3 — Heart Healthy: fat = macro target, sodium = 2300mg, cholesterol = 300mg
  *   Card 4 — Low Carb:     carbs = macro target, sugar = 50g, fiber = 25g
  */
@@ -19,42 +19,85 @@ export const FIBER_TARGET_G        = 25;
 export const CALORIES_PER_PROTEIN_G = 4;
 export const CALORIES_PER_CARB_G   = 4;
 export const CALORIES_PER_FAT_G    = 9;
+/** Fat % of daily calorie target (male). */
+export const FAT_PERCENT_MALE = 20;
+/** Fat % of daily calorie target (female). */
+export const FAT_PERCENT_FEMALE = 30;
+/** Midpoint when gender is Other / unknown. */
+export const FAT_PERCENT_DEFAULT = 25;
+
+/**
+ * Fat % of daily calorie target by gender.
+ * Male 20%, Female 30%, Other/unknown 25%.
+ *
+ * @param {string|null|undefined} gender
+ * @returns {number} percent 0–100
+ */
+export function resolveFatPercent(gender) {
+  const g = String(gender || '').trim().toLowerCase();
+  if (g === 'female') return FAT_PERCENT_FEMALE;
+  if (g === 'male') return FAT_PERCENT_MALE;
+  return FAT_PERCENT_DEFAULT;
+}
+
+/**
+ * Fat target (g) = round(dailyCalorieTarget × fatPercent / 100 / 9).
+ *
+ * @param {number} calorieTarget
+ * @param {string|null|undefined} gender
+ * @returns {number}
+ */
+export function computeFatTargetGrams(calorieTarget, gender) {
+  const effectiveCals = calorieTarget > 0 ? calorieTarget : 1500;
+  return Math.round((effectiveCals * resolveFatPercent(gender)) / 100 / CALORIES_PER_FAT_G);
+}
 
 // ─── Card 1: Calories ─────────────────────────────────────────────────────────
 
 /**
  * @param {{ calorieTarget: number, consumedCalories: number, burnedCalories?: number }}
- * @returns {{ target: number, consumed: number, exercise: number, remaining: number, progressPercent: number }}
+ * @returns {{ target: number, consumed: number, exercise: number, net: number, remaining: number, progressPercent: number }}
+ *
+ * Formula: Net Calories = Food Calories − Exercise Calories − Smartwatch Burned Calories.
+ * Smartwatch burned calories are always treated as exercise calories (product spec).
+ *
+ * Remaining follows the card label: Goal − Food + Exercise (equivalently target − net).
+ * progressPercent uses net food intake clamped at 0 so exercise-only days show 0% progress.
  */
 export function computeCaloriesCard({ calorieTarget, consumedCalories, burnedCalories = 0 }) {
   const target   = calorieTarget > 0 ? calorieTarget : 1500;
   const consumed = Math.max(0, consumedCalories || 0);
   const exercise = Math.max(0, burnedCalories || 0);
-  const remaining = Math.max(0, target - consumed + exercise);
-  const progressPercent = Math.round((consumed / target) * 100);
-  return { target, consumed, exercise, remaining, progressPercent };
+  // Net = Food − Exercise (may be negative when exercise exceeds food logged today).
+  const net = consumed - exercise;
+  // Remaining = Goal − Food + Exercise
+  const remaining = Math.max(0, target - net);
+  const progressNet = Math.max(0, net);
+  const progressPercent = Math.round((progressNet / Math.max(target, 1)) * 100);
+  return { target, consumed, exercise, net, remaining, progressPercent };
 }
 
 // ─── Card 2: Macros ───────────────────────────────────────────────────────────
 
 /**
- * Returns macro targets derived from body weight, or nulls when weight is
- * unavailable (new user, DB = 0).
+ * Returns macro targets derived from body weight + calorie target, or nulls
+ * when weight is unavailable (new user, DB = 0).
  *
+ * Fat target = round(calorieTarget × (20% male / 30% female / 25% other) / 9).
  * Carbs target = (calorieTarget - proteinCals - fatCals) / 4; clamped to ≥ 0.
  *
- * @param {{ latestWeight: number|null, calorieTarget: number }}
+ * @param {{ latestWeight: number|null, calorieTarget: number, gender?: string|null }}
  * @returns {{ proteinTarget: number|null, fatTarget: number|null, carbsTarget: number|null }}
  */
-export function computeMacroTargets({ latestWeight, calorieTarget }) {
+export function computeMacroTargets({ latestWeight, calorieTarget, gender = null }) {
   if (!latestWeight || latestWeight <= 0) {
     return { proteinTarget: null, fatTarget: null, carbsTarget: null };
   }
   const proteinTarget = Math.round(latestWeight * 1.5);
-  const fatTarget     = Math.round(latestWeight * 0.75);
+  const effectiveCals = calorieTarget > 0 ? calorieTarget : 1500;
+  const fatTarget     = computeFatTargetGrams(effectiveCals, gender);
   const proteinCals   = proteinTarget * CALORIES_PER_PROTEIN_G;
   const fatCals       = fatTarget     * CALORIES_PER_FAT_G;
-  const effectiveCals = calorieTarget > 0 ? calorieTarget : 1500;
   const carbsTarget   = Math.max(0, Math.round((effectiveCals - proteinCals - fatCals) / CALORIES_PER_CARB_G));
   return { proteinTarget, fatTarget, carbsTarget };
 }
@@ -139,7 +182,7 @@ export function computeLowCarbCard({ consumedCarbs, consumedSugar, consumedFiber
   return { carbs, sugar, fiber };
 }
 
-// ─── Card 5: Glycemic Index ───────────────────────────────────────────────────
+// ─── Card 5: Glycemic Index (disabled — GI now shown on Low Carb card) ────────
 
 /**
  * @param {{ averageGlycemicIndex: number|null, mealCount: number }}

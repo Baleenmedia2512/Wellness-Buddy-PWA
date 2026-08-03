@@ -2,7 +2,13 @@
  * weightFormService.js — pure helpers for the weight slice.
  * No React, no fetch. Validation, formatting and small calculations only.
  */
-import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
+import {
+  formatUtcDate,
+  formatBusinessTime,
+  isBusinessToday,
+  isBusinessYesterday,
+  DEFAULT_BUSINESS_TIMEZONE,
+} from '../../../shared/utils/datetimeUtils';
 
 export const WEIGHT_LIMITS = {
   kg: { min: 20, max: 300 },
@@ -44,23 +50,24 @@ export function validateEditWeight(value) {
 
 /** Compact "Today · 09:42" / "Yesterday · …" / "Mar 3 · …" label for the history card. */
 export function formatHistoryDate(dateString) {
-  const date = istToLocalDate(dateString);
-  if (!date) return '';
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  if (date.toDateString() === today.toDateString()) return `Today · ${time}`;
-  if (date.toDateString() === yesterday.toDateString()) return `Yesterday · ${time}`;
-  return (
-    date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + time
-  );
+  if (!dateString) return '';
+  const time = formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Today · ${time}`;
+  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Yesterday · ${time}`;
+  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric', timeZone: DEFAULT_BUSINESS_TIMEZONE })} · ${time}`;
 }
 
 /** Long-form date for the detail modal header. */
 export function formatDetailDate(dateString) {
-  return formatISTToLocalDate(dateString, {
-    weekday: 'long', year: 'numeric', month: 'short', day: 'numeric',
+  return formatUtcDate(dateString, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: DEFAULT_BUSINESS_TIMEZONE,
   });
 }
 
@@ -77,4 +84,62 @@ export function computeWeightDiff(current, previous) {
 export function formatWeightImageSrc(raw) {
   if (!raw) return null;
   return raw.startsWith('data:image') ? raw : `data:image/jpeg;base64,${raw}`;
+}
+
+/**
+ * Ideal weight range from profile height (BMI 19–23, WHO normal band).
+ * Matches App.js `refreshIdealWeight` and profile IdealWeightCards.
+ */
+export function computeIdealWeightRange(heightCm) {
+  const h = parseFloat(heightCm);
+  if (!h || h < 50 || h > 250) return null;
+  const heightM = h / 100;
+  const idealMin = 19 * heightM * heightM;
+  const idealMax = 23 * heightM * heightM;
+  return {
+    min: Math.round(idealMin * 10) / 10,
+    value: Math.round(idealMax * 10) / 10,
+    unit: 'kg',
+    heightCm: Math.round(h),
+  };
+}
+
+/**
+ * Derive weight goal mode from current weight vs ideal BMI range (19–23).
+ * @returns {'loss'|'gain'|'maintain'|null}
+ */
+export function deriveWeightGoalMode({ heightCm, currentWeightKg }) {
+  const range = computeIdealWeightRange(heightCm);
+  const current = parseFloat(currentWeightKg);
+  if (!range || !Number.isFinite(current) || current <= 0) return null;
+  if (current > range.value) return 'loss';
+  if (current < range.min) return 'gain';
+  return 'maintain';
+}
+
+/** Pick the display target for the user's current weight vs ideal range. */
+export function pickIdealWeightDisplay(currentKg, idealWeight) {
+  if (!idealWeight || currentKg == null || Number.isNaN(Number(currentKg))) {
+    return idealWeight ? `${idealWeight.value} ${idealWeight.unit}` : null;
+  }
+  const current = parseFloat(currentKg);
+  if (current > idealWeight.value + 0.5) {
+    return `${idealWeight.value} ${idealWeight.unit}`;
+  }
+  if (current < idealWeight.min - 0.5) {
+    return `${idealWeight.min} ${idealWeight.unit}`;
+  }
+  return `${idealWeight.value} ${idealWeight.unit}`;
+}
+
+/** Human-readable delta since the prior weight log. */
+export function formatWeightChangeLabel(current, previous) {
+  const diff = computeWeightDiff(current, previous);
+  if (!diff) return null;
+  const signed = diff.gained ? `+${diff.abs.toFixed(2)}` : `−${diff.abs.toFixed(2)}`;
+  return {
+    ...diff,
+    signedLabel: `${signed} kg`,
+    previousLabel: `${parseFloat(previous).toFixed(2)} kg`,
+  };
 }

@@ -46,6 +46,83 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Unified activity timeline layout in Diary (replaces stacked section-dashboards).',
   },
+
+  // Herbalife Shake Calculator — combine Formula 1 + Shakemate + Protein
+  // and log the combined nutrition as a food diary entry.
+  // Default OFF until product nutrition values are verified against official
+  // Herbalife documentation. Set REACT_APP_FF_SHAKE_CALCULATOR=true or
+  // localStorage 'ff.shake-calculator'='true' to enable during QA.
+  'ff.shake-calculator': {
+    envKey:         'REACT_APP_FF_SHAKE_CALCULATOR',
+    storageKey:     'ff.shake-calculator',
+    defaultEnabled: false,
+    description:    'Herbalife Shake Nutrition Calculator entry point in NutritionDashboard.',
+  },
+
+  // Contact Picker API — one-tap pre-fill of the phone number field from the
+  // device address book. Only visible on Android Chrome / Capacitor (the API
+  // is not supported on iOS Safari or Firefox). Default OFF; enable per-device
+  // via localStorage 'ff.contact-picker'='true' for QA.
+  'ff.contact-picker': {
+    envKey:         'REACT_APP_FF_CONTACT_PICKER',
+    storageKey:     'ff.contact-picker',
+    defaultEnabled: false,
+    description:    'Contact Picker API shortcut on the phone login field.',
+  },
+
+  // Testimonials — before/after Herbalife transformation photos with
+  // coach OTP verification. Members upload; coach verifies via emailed OTP.
+  // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
+  // localStorage 'ff.testimonials'='false' to disable.
+  'ff.testimonials': {
+    envKey:         'REACT_APP_FF_TESTIMONIALS',
+    storageKey:     'ff.testimonials',
+    defaultEnabled: true,
+    description:    'Before/after testimonial upload + coach OTP verification flow.',
+  },
+
+  // Reports module — coach/upline analytics.
+  // Currently: direct-downline weight status (current vs BMI 19–23 ideal range).
+  // Tab is only shown to coach / upline / admin / developer roles.
+  // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
+  // localStorage 'ff.reports-module'='false' to disable.
+  'ff.reports-module': {
+    envKey:         'REACT_APP_FF_REPORTS_MODULE',
+    storageKey:     'ff.reports-module',
+    defaultEnabled: true,
+    description:    'Reports module with downline weight status report for coaches.',
+  },
+
+  // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
+  // Default ON for UI preview. Set REACT_APP_FF_WELLNESS_SCORE_SHEET=false or
+  // localStorage 'ff.wellness-score-sheet'='false' to hide.
+  'ff.wellness-score-sheet': {
+    envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
+    storageKey:     'ff.wellness-score-sheet',
+    defaultEnabled: true,
+    description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+  },
+
+  // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.
+  // Numeric daily limit is DB-backed (admin config); this flag is rollout only.
+  // Default ON. Set REACT_APP_FF_AI_CREDITS=false or
+  // localStorage 'ff.ai-credits'='false' to disable.
+  'ff.ai-credits': {
+    envKey:         'REACT_APP_FF_AI_CREDITS',
+    storageKey:     'ff.ai-credits',
+    defaultEnabled: true,
+    description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
+  },
+
+  // ADR-0005 — master nutrition knowledge base (search/resolve micros).
+  // Default ON. Set REACT_APP_FF_NUTRITION_KNOWLEDGE=false or
+  // localStorage 'ff.nutrition-knowledge'='false' to disable.
+  'ff.nutrition-knowledge': {
+    envKey:         'REACT_APP_FF_NUTRITION_KNOWLEDGE',
+    storageKey:     'ff.nutrition-knowledge',
+    defaultEnabled: true,
+    description:    'Master nutrition DB + history micros in food search (ADR-0005).',
+  },
 });
 
 function readStorage(key) {

@@ -1,5 +1,12 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import logger from '../../../shared/lib/logger.js';
+import {
+  nowUtc,
+  todayInTimezone,
+  shiftDateYmd,
+  IANA_IST,
+} from '../../../shared/lib/datetime/index.js';
+import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
 
 /**
  * Global Weight Loss Leaderboard API
@@ -8,10 +15,14 @@ import logger from '../../../shared/lib/logger.js';
  *
  * Logic:
  * - Only includes active users (Status = 'Active')
- * - Only includes users with weight loss > 0 (reduced weight)
- * - Compares most recent weight entry from today vs yesterday
+ * - Only includes users with weight loss > 0 and ≤ 3.0 kg (today vs yesterday)
+ * - Losses above 3 kg are excluded (likely bad/OCR data) — this strip only
+ * - Gains are never shown on this strip
+ * - Compares most recent weight entry from today vs yesterday (IST)
  * - Returns: rank, profile (email for avatar), userName, coachName, weightLoss
  */
+const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
+
 export default async function handler(req, res) {
   // Set CORS headers for all requests
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -95,66 +106,19 @@ export default async function handler(req, res) {
       u.CoachName = u.CoachId ? coachNameMap[u.CoachId] : null;
     });
 
-    // Step 3: Calculate date ranges for today and yesterday in IST (UTC+5:30)
-    // ✅ FIX: Server runs on UTC (Vercel). DB stores timestamps as IST plain strings.
-    // Without this offset, before 5:30 AM IST the API would use the wrong UTC date,
-    // causing the leaderboard to show "yesterday vs day-before-yesterday" instead of
-    // "today vs yesterday". Shifting now to IST first ensures correct date at any hour.
-    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
-    const now = new Date(new Date().getTime() + IST_OFFSET_MS); // current IST moment
+    // Step 3: Calendar today/yesterday in platform timezone
+    const todayYmd = todayInTimezone(IANA_IST);
+    const yesterdayYmd = shiftDateYmd(todayYmd, -1, IANA_IST);
 
-    const todayStart = new Date(now);
-    todayStart.setUTCHours(0, 0, 0, 0);
+    logger.debug(`📅 [LEADERBOARD] Today: ${todayYmd}, Yesterday: ${yesterdayYmd}`);
 
-    const todayEnd = new Date(now);
-    todayEnd.setUTCHours(23, 59, 59, 999);
-
-    const yesterdayStart = new Date(now);
-    yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
-    yesterdayStart.setUTCHours(0, 0, 0, 0);
-
-    const yesterdayEnd = new Date(now);
-    yesterdayEnd.setUTCDate(yesterdayEnd.getUTCDate() - 1);
-    yesterdayEnd.setUTCHours(23, 59, 59, 999);
-
-    // Format as IST plain strings for DB query (DB stores "YYYY-MM-DD HH:MM:SS" in IST, no timezone)
-    const toISTString = (d) => d.toISOString().replace("T", " ").replace("Z", "").substring(0, 23);
-    const todayStartStr = toISTString(todayStart);
-    const todayEndStr = toISTString(todayEnd);
-    const yesterdayStartStr = toISTString(yesterdayStart);
-    const yesterdayEndStr = toISTString(yesterdayEnd);
-
-    logger.debug(`📅 [LEADERBOARD] Today: ${todayStartStr} to ${todayEndStr}`);
-    logger.debug(
-      `📅 [LEADERBOARD] Yesterday: ${yesterdayStartStr} to ${yesterdayEndStr}`,
-    );
-
-    // Step 4: OPTIMIZED - Fetch all weight records in 2 batch queries instead of per-user
+    // Step 4: Fetch weight records via UTC-aware repository helpers
     const activeUserIds = activeUsers.map((u) => u.UserId);
 
-    // Fetch all today's weights for active users
-    const { data: todayWeights, error: todayError } = await supabase
-      .from("weight_records_table")
-      .select("UserId, Weight, CreatedAt")
-      .in("UserId", activeUserIds)
-      .gte("CreatedAt", todayStartStr)
-      .lte("CreatedAt", todayEndStr)
-      .or("IsDeleted.is.null,IsDeleted.eq.0")
-      .order("CreatedAt", { ascending: false });
-
-    if (todayError) throw todayError;
-
-    // Fetch all yesterday's weights for active users
-    const { data: yesterdayWeights, error: yesterdayError } = await supabase
-      .from("weight_records_table")
-      .select("UserId, Weight, CreatedAt")
-      .in("UserId", activeUserIds)
-      .gte("CreatedAt", yesterdayStartStr)
-      .lte("CreatedAt", yesterdayEndStr)
-      .or("IsDeleted.is.null,IsDeleted.eq.0")
-      .order("CreatedAt", { ascending: false });
-
-    if (yesterdayError) throw yesterdayError;
+    const [todayWeights, yesterdayWeights] = await Promise.all([
+      activityReportRepo.fetchWeightRecords(activeUserIds, todayYmd, todayYmd, IANA_IST),
+      activityReportRepo.fetchWeightRecords(activeUserIds, yesterdayYmd, yesterdayYmd, IANA_IST),
+    ]);
 
     // Create maps for quick lookup (get latest weight per user)
     const todayWeightMap = new Map();
@@ -189,8 +153,8 @@ export default async function handler(req, res) {
         const yesterdayWeight = parseFloat(yesterdayRecord.Weight);
         const weightLoss = yesterdayWeight - todayWeight; // Positive = weight lost
 
-        // Only include users who have lost weight (weightLoss > 0)
-        if (weightLoss > 0) {
+        // Loss-only, and within the Today vs Yesterday plausibility cap (≤ 3 kg).
+        if (weightLoss > 0 && weightLoss <= MAX_TODAY_VS_YESTERDAY_LOSS_KG) {
           leaderboardData.push({
             userId: user.UserId,
             userName: user.UserName || "Unknown",
@@ -263,7 +227,7 @@ export default async function handler(req, res) {
       data: topResults,
       topN,
       totalEligible: leaderboardData.length,
-      calculatedAt: new Date().toISOString(),
+      calculatedAt: nowUtc(),
     });
   } catch (error) {
     console.error("❌ [LEADERBOARD] Error:", error);

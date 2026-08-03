@@ -3,6 +3,8 @@
  * Fetches weight history, nutrition totals, water intake, and activity.
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { applyDayFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isExemptedFood } from '../../../utils/foodTypeDetection.js';
 
 /**
@@ -16,7 +18,7 @@ export async function getUserWeightGoal(userId) {
   try {
     const { data, error } = await supabase
       .from('team_table')
-      .select('"WeightGoalMode", "Height", "Bmr", "CoachId"')
+      .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel", "Gender"')
       .eq('UserId', parseInt(userId, 10))
       .maybeSingle();
 
@@ -25,11 +27,11 @@ export async function getUserWeightGoal(userId) {
       throw error;
     }
     console.log('✅ [repo:getUserWeightGoal] Result:', data);
-    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
+    return data || { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null, Gender: null };
   } catch (error) {
     if (error.message?.includes('column') && error.message?.includes('WeightGoalMode')) {
       console.warn('⚠️ [repo:getUserWeightGoal] WeightGoalMode column not found, using default "loss".');
-      return { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null };
+      return { WeightGoalMode: 'loss', Height: null, Bmr: null, CoachId: null, Gender: null };
     }
     throw error;
   }
@@ -85,29 +87,28 @@ export async function getRecentWeights(userId, limit = 2) {
 }
 
 /**
- * Get yesterday's nutrition totals
- * Aggregates all food entries from yesterday
+ * Get nutrition totals for a calendar day in the user's timezone.
  */
-export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd) {
+export async function getNutritionForDate(userId, dateYmd, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  console.log('🗄️ [repo:getYesterdayNutrition] userId:', userId, 'range:', yesterdayStart, '→', yesterdayEnd);
-  
-  const { data, error } = await supabase
+  console.log('🗄️ [repo:getNutritionForDate] userId:', userId, 'date:', dateYmd);
+
+  let query = supabase
     .from('food_nutrition_data_table')
     .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
     .eq('"UserID"', String(userId))
-    .gte('"CreatedAt"', yesterdayStart)
-    .lt('"CreatedAt"', yesterdayEnd)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDayFilter(query, '"CreatedAt"', dateYmd, timezoneIana);
+  const { data, error } = await query;
 
   if (error) {
     console.error('❌ [repo:getYesterdayNutrition] Supabase error:', error.message);
     throw error;
   }
-  console.log('✅ [repo:getYesterdayNutrition] Rows found:', data?.length);
+  console.log('✅ [repo:getNutritionForDate] Rows found:', data?.length);
 
   if (!data || data.length === 0) {
-    console.log('⚠️ [repo:getYesterdayNutrition] No nutrition data for yesterday — returning zeros');
+    console.log('⚠️ [repo:getNutritionForDate] No nutrition data — returning zeros');
     return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
 
@@ -120,64 +121,34 @@ export async function getYesterdayNutrition(userId, yesterdayStart, yesterdayEnd
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
-  console.log('📊 [repo:getYesterdayNutrition] Aggregated totals:', JSON.stringify(totals));
+  console.log('📊 [repo:getNutritionForDate] Aggregated totals:', JSON.stringify(totals));
   return totals;
 }
 
-/**
- * Get today's nutrition totals
- */
-export async function getTodayNutrition(userId, todayStart) {
-  const supabase = getSupabaseClient();
-  console.log('🗄️ [repo:getTodayNutrition] userId:', userId, 'from:', todayStart);
-  
-  const { data, error } = await supabase
-    .from('food_nutrition_data_table')
-    .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
-    .eq('"UserID"', String(userId))
-    .gte('"CreatedAt"', todayStart)
-    .or('IsDeleted.is.null,IsDeleted.eq.0');
+/** @deprecated Use getNutritionForDate */
+export async function getYesterdayNutrition(userId, dateYmd, timezoneIana) {
+  return getNutritionForDate(userId, dateYmd, timezoneIana);
+}
 
-  if (error) {
-    console.error('❌ [repo:getTodayNutrition] Supabase error:', error.message);
-    throw error;
-  }
-  console.log('✅ [repo:getTodayNutrition] Rows found:', data?.length);
-
-  if (!data || data.length === 0) {
-    console.log('⚠️ [repo:getTodayNutrition] No nutrition data for today — returning zeros');
-    return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  }
-
-  const totals = data.reduce(
-    (acc, item) => ({
-      calories: acc.calories + (parseFloat(item.TotalCalories) || 0),
-      protein: acc.protein + (parseFloat(item.TotalProtein) || 0),
-      carbs: acc.carbs + (parseFloat(item.TotalCarbs) || 0),
-      fat: acc.fat + (parseFloat(item.TotalFat) || 0),
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  );
-  console.log('📊 [repo:getTodayNutrition] Aggregated totals:', JSON.stringify(totals));
-  return totals;
+/** @deprecated Use getNutritionForDate */
+export async function getTodayNutrition(userId, dateYmd, timezoneIana) {
+  return getNutritionForDate(userId, dateYmd, timezoneIana);
 }
 
 /**
- * Get yesterday's water intake (ml) by scanning food_nutrition_data_table AnalysisData.
- * Water-classified food items (beverages, water) contribute their volume_ml/weight_g.
- * Uses isExemptedFood from shared utils — no cross-feature import.
+ * Get water intake (ml) for a calendar day by scanning beverage food logs.
  */
-export async function getYesterdayWater(userId, yesterdayStart, yesterdayEnd) {
+export async function getWaterForDate(userId, dateYmd, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
-  console.log('🗄️ [repo:getYesterdayWater] userId:', userId, 'range:', yesterdayStart, '→', yesterdayEnd);
+  console.log('🗄️ [repo:getWaterForDate] userId:', userId, 'date:', dateYmd);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('food_nutrition_data_table')
     .select('"AnalysisData"')
     .eq('"UserID"', String(userId))
-    .gte('"CreatedAt"', yesterdayStart)
-    .lt('"CreatedAt"', yesterdayEnd)
     .or('IsDeleted.is.null,IsDeleted.eq.0');
+  query = applyDayFilter(query, '"CreatedAt"', dateYmd, timezoneIana);
+  const { data, error } = await query;
 
   if (error) {
     console.error('❌ [repo:getYesterdayWater] Supabase error:', error.message);
@@ -185,7 +156,7 @@ export async function getYesterdayWater(userId, yesterdayStart, yesterdayEnd) {
   }
 
   if (!data || data.length === 0) {
-    console.log('⚠️ [repo:getYesterdayWater] No food rows for yesterday — returning 0 ml');
+    console.log('⚠️ [repo:getWaterForDate] No food rows — returning 0 ml');
     return 0;
   }
 
@@ -205,24 +176,28 @@ export async function getYesterdayWater(userId, yesterdayStart, yesterdayEnd) {
   }
 
   const result = Math.round(totalMl);
-  console.log('✅ [repo:getYesterdayWater] Total water:', result, 'ml');
+  console.log('✅ [repo:getWaterForDate] Total water:', result, 'ml');
   return result;
 }
 
-/**
- * Get yesterday's best step/activity record from daily_step_activity.
- * Returns null when no activity was recorded (graceful — tips handle the zero case).
- */
-export async function getYesterdayActivity(userId, yesterdayStart, yesterdayEnd) {
-  const supabase = getSupabaseClient();
-  console.log('🗄️ [repo:getYesterdayActivity] userId:', userId, 'range:', yesterdayStart, '→', yesterdayEnd);
+/** @deprecated Use getWaterForDate */
+export async function getYesterdayWater(userId, dateYmd, timezoneIana) {
+  return getWaterForDate(userId, dateYmd, timezoneIana);
+}
 
-  const { data, error } = await supabase
+/**
+ * Get best step/activity record for a calendar day.
+ */
+export async function getActivityForDate(userId, dateYmd, timezoneIana = IANA_IST) {
+  const supabase = getSupabaseClient();
+  console.log('🗄️ [repo:getActivityForDate] userId:', userId, 'date:', dateYmd);
+
+  let query = supabase
     .from('daily_step_activity')
     .select('"Steps", "CaloriesBurned", "ActivityType"')
-    .eq('UserId', parseInt(userId, 10))
-    .gte('CreatedAt', yesterdayStart)
-    .lt('CreatedAt', yesterdayEnd)
+    .eq('UserId', parseInt(userId, 10));
+  query = applyDayFilter(query, 'CreatedAt', dateYmd, timezoneIana);
+  const { data, error } = await query
     .order('Steps', { ascending: false })
     .limit(1);
 
@@ -232,7 +207,7 @@ export async function getYesterdayActivity(userId, yesterdayStart, yesterdayEnd)
   }
 
   if (!data || data.length === 0) {
-    console.log('⚠️ [repo:getYesterdayActivity] No activity recorded for yesterday');
+    console.log('⚠️ [repo:getActivityForDate] No activity recorded for date');
     return { steps: 0, caloriesBurned: 0, activityType: null };
   }
 
@@ -242,8 +217,13 @@ export async function getYesterdayActivity(userId, yesterdayStart, yesterdayEnd)
     caloriesBurned: parseFloat(row.CaloriesBurned || 0),
     activityType: row.ActivityType || null,
   };
-  console.log('✅ [repo:getYesterdayActivity] Activity:', JSON.stringify(result));
+  console.log('✅ [repo:getActivityForDate] Activity:', JSON.stringify(result));
   return result;
+}
+
+/** @deprecated Use getActivityForDate */
+export async function getYesterdayActivity(userId, dateYmd, timezoneIana) {
+  return getActivityForDate(userId, dateYmd, timezoneIana);
 }
 
 /**

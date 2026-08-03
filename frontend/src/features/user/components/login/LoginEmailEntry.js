@@ -1,9 +1,19 @@
-// Login entry step — single input accepts either an email OR a phone number.
-// Phone path is fully enabled: when a phone number is detected a country-code
-// picker appears and the input switches to `type="tel"`.
-import React from 'react';
-import { detectContactType, COUNTRY_CODES } from '../../domain/contactIdentifier';
-
+// Login entry step — phone number only input.
+// Phone OTP flow:
+//   - autocomplete="tel" lets Android/iOS fill the number from saved contacts.
+//   - Country code picker defaults to India (+91).
+//   - After OTP is sent, WebOTP (useWebOtp hook) auto-reads the code from SMS
+//     on Android Chrome / Capacitor WebView — no user interaction needed.
+//   - When ff.contact-picker is ON and the Contact Picker API is available
+//     (Android Chrome 80+), a "Use saved number" button pre-fills the field.
+import React, { useEffect, useRef } from 'react';
+import { Smartphone } from 'lucide-react';
+import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../domain/contactIdentifier';
+import { useContactPicker } from '../../hooks/useContactPicker';
+import { isFlagEnabled } from '../../../../config/featureFlags';
+import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
+import { isIOS } from '../../../../shared/utils/platform';
+import NativeInput from '../../../../shared/components/NativeInput.jsx';
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -12,11 +22,22 @@ const Spinner = () => (
 );
 
 const LoginEmailEntry = ({
-  email, setEmail, onSubmit, loading, googleUnavailable,
-  countryDial, setCountryDial,
+  email, setEmail, onSubmit, loading,
+  countryDial, setCountryDial, errorMessage,
 }) => {
-  const channel = detectContactType(email);
-  const isPhone = channel === 'phone';
+  const inputRef = useRef(null);
+  const { supported: contactPickerSupported, picking, pick } = useContactPicker();
+  // Resolve the flag once on mount — toggling at runtime requires a re-mount.
+  const contactPickerEnabled = isFlagEnabled('ff.contact-picker');
+  const ios = isIOS();
+  const selectedCountry = COUNTRY_CODES.find((c) => c.dial === countryDial) || DEFAULT_COUNTRY;
+
+  // Auto-focus phone input on mount so Android keyboard + number suggestions
+  // appear immediately (mirrors Swiggy/Zomato UX).
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -25,71 +46,85 @@ const LoginEmailEntry = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {googleUnavailable && (
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-start">
-            <svg className="h-5 w-5 text-yellow-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-            <p className="text-xs text-yellow-700">
-              <strong>Google sign-in is unavailable</strong> on this domain. Please sign in with your email or phone below.
-            </p>
-          </div>
-        </div>
-      )}
       <div>
-        <label htmlFor="recipient" className="block text-sm font-medium text-gray-700 mb-2">
-          Mobile Number or Email
-        </label>
-        {isPhone ? (
-          <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
+        <div className="flex items-center justify-between mb-2">
+          <label htmlFor="recipient" className="block text-sm font-medium text-gray-700">
+            Mobile Number
+          </label>
+          {/* Contact Picker shortcut — only on Android Chrome when flag is ON */}
+          {contactPickerEnabled && contactPickerSupported && (
+            <button
+              type="button"
+              onClick={() => pick(setEmail)}
+              disabled={loading || picking}
+              aria-label="Fill from contacts"
+              className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 disabled:opacity-50"
+            >
+              {picking ? (
+                <span className="inline-block w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+              ) : ios ? (
+                <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true">📱</span>
+              )}
+              Use saved number
+            </button>
+          )}
+        </div>
+        <div className="flex w-full rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-green-400 focus-within:border-transparent transition-all duration-300 overflow-hidden">
+          <div className="flex items-center bg-gray-50 border-r border-gray-200 flex-shrink-0">
+            {ios && (
+              <CountryFlagIcon code={selectedCountry.code} className="w-5 h-4 ml-2" />
+            )}
             <select
               aria-label="Country code"
               value={countryDial}
               onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
-              className="bg-gray-50 border-r border-gray-200 px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
-              style={{ minWidth: '90px' }}
+              className="bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
+              style={{ minWidth: ios ? '72px' : '90px' }}
             >
               {COUNTRY_CODES.map((c) => (
                 <option key={`${c.code}-${c.dial}`} value={c.dial}>
-                  {c.flag} {c.dial}
+                  {ios ? c.dial : `${c.flag} ${c.dial}`}
                 </option>
               ))}
             </select>
-            <input
-              id="recipient"
-              type="tel"
-              inputMode="numeric"
-              autoComplete="tel"
-              name="tel"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="Enter your phone"
-              className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
-            />
           </div>
-        ) : (
-          <input
+          <NativeInput
+            ref={inputRef}
             id="recipient"
-            type={channel === 'email' ? 'email' : 'tel'}
-            inputMode={channel === 'email' ? 'email' : 'numeric'}
-            autoComplete={channel === 'email' ? 'email username' : 'tel'}
-            name={channel === 'email' ? 'email' : 'tel'}
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="off"
+            name="tel"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              // Strip any non-numeric characters (except leading +) so only
+              // digits reach the normalizer. This matches the E.164 expectation
+              // in contactIdentifier.normalizePhone.
+              const raw = e.target.value;
+              const cleaned = raw.replace(/[^\d+]/g, '');
+              setEmail(cleaned);
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const pasted = (e.clipboardData || window.clipboardData).getData('text');
+              setEmail(pasted.replace(/[^\d+]/g, ''));
+            }}
             required
             disabled={loading}
-            placeholder="Enter mobile number or email"
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-300 text-base"
+            placeholder="Enter mobile number"
+            className="flex-1 px-4 py-3 focus:outline-none text-base min-w-0"
           />
-        )}
-        {isPhone && (
-          <p className="mt-1.5 text-xs text-gray-500">
-            We&apos;ll send a 6-digit code via SMS to verify your number.
-          </p>
-        )}
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500">
+          We&apos;ll send a 6-digit code via SMS to verify your number.
+        </p>
       </div>
+      {errorMessage && (
+        <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+      )}
       <button
         type="submit"
         disabled={loading || !email}

@@ -12,6 +12,7 @@
 // fields for autofill.
 import React, { useCallback, useEffect } from 'react';
 import useWebOtp from '../../hooks/useWebOtp';
+import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../../../../shared/components/NativeInput.jsx';
 
 const LoginOtpEntry = ({
   otpCtl, onVerify, loading, verified, errorMessage, successMessage,
@@ -57,14 +58,15 @@ const LoginOtpEntry = ({
     <div className="space-y-6">
       <div className="flex justify-center gap-2 xs:gap-3">
         {otp.map((digit, index) => (
-          <input
+          <NativeInput
             key={index}
+            otp
             ref={(el) => { refs.current[index] = el; }}
-            type="tel"
+            type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            autoComplete={index === 0 ? 'one-time-code' : 'off'}
-            maxLength={1}
+            autoComplete={otpAutoCompleteForCell(index)}
+            maxLength={otpMaxLengthForCell(index, otp.length)}
             value={digit}
             onChange={(e) => onCellChange(e, index)}
             onKeyDown={(e) => handleKeyDown(index, e)}

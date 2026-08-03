@@ -13,6 +13,7 @@
  *   isLoading    {boolean}  show spinner while search is in-flight
  */
 import React, { useEffect, useRef, useState } from 'react';
+import NativeInput from '../../../shared/components/NativeInput.jsx';
 
 /**
  * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter }} props
@@ -64,9 +65,9 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
         Phone Number
       </label>
       <div className="relative">
-        <input
+        <NativeInput
           ref={inputRef}
-          type="tel"
+          type="text"
           inputMode="numeric"
           pattern="[0-9]*"
           value={value}

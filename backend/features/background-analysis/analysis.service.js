@@ -11,10 +11,13 @@ import * as captures from '../captures/captures.service.js';
 import {
   IMAGE_TYPE_FOOD,
 } from '../captures/domain/image-types.js';
+import {
+  mergeLocationWithCapture,
+  hasAnyLocationField,
+} from '../captures/domain/location.fields.js';
+import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestampToUtcIso, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
-
-const { getISTTimestamp, convertToIST } = repo;
 
 const convertConfidenceToNumeric = (confidence) => {
   if (typeof confidence === 'number') return confidence;
@@ -153,6 +156,7 @@ export async function save(input) {
   const {
     userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,
     captureId,
+    preserveOriginalTimestamp = false,
     city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
   } = input;
 
@@ -165,6 +169,50 @@ export async function save(input) {
     hasClientTimestamp: !!clientTimestamp,
   });
 
+  // Prefer request location; fill gaps from capture-time GPS/club fields.
+  let loc = {
+    city, village, centerName, nutritionCenterId, attendanceType, latitude, longitude,
+  };
+  if (captureId) {
+    try {
+      const captureRow = await captures.findById(captureId);
+      loc = mergeLocationWithCapture(loc, captureRow);
+    } catch (err) {
+      logger.warn('analysis.save: failed to load capture location', {
+        captureId, userId: userId?.toString(), err: err?.message,
+      });
+    }
+  }
+  const {
+    city: locCity,
+    village: locVillage,
+    centerName: locCenterName,
+    nutritionCenterId: locNutritionCenterId,
+    attendanceType: locAttendanceType,
+    latitude: locLatitude,
+    longitude: locLongitude,
+  } = loc;
+
+  const hasSaveCoords = locLatitude != null && locLongitude != null;
+  if (!hasSaveCoords) {
+    logger.warn('analysis.save: food row will have NO coordinates', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      reason:
+        'Neither request body nor captures_table had lat/lng — check createPendingCapture location logs for this captureId',
+    });
+  } else {
+    logger.info('analysis.save: location attached to food row', {
+      userId: userId?.toString(),
+      captureId: captureId ?? null,
+      hasCity: !!locCity,
+      attendanceType: locAttendanceType || null,
+      hasClubId: locNutritionCenterId != null,
+    });
+  }
+
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
@@ -176,14 +224,40 @@ export async function save(input) {
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
   const analysisDataJson = typeof analysisResult === 'string'
     ? analysisResult : JSON.stringify(analysisResult);
-  const currentTime = getISTTimestamp();
+  const currentTime = nowUtc();
 
-  let createdAtIST;
-  if (clientTimestamp) {
-    createdAtIST = convertToIST(clientTimestamp).istTimestamp;
-  } else {
-    createdAtIST = currentTime;
+  if (preserveOriginalTimestamp && !clientTimestamp) {
+    return {
+      httpStatus: 422,
+      body: {
+        success: false,
+        message: 'Original capture timestamp is required — Manual Log must not change entry time.',
+        error: { code: 'MISSING_CAPTURE_TIMESTAMP' },
+      },
+    };
   }
+
+  let utcInstant;
+  if (clientTimestamp) {
+    utcInstant = parseClientTimestampToUtc(clientTimestamp).utcIso;
+  } else if (captureId) {
+    try {
+      const capture = await captures.findById(captureId);
+      if (capture?.CreatedAt) {
+        utcInstant = normalizeStoredTimestampToUtcIso(capture.CreatedAt);
+      }
+    } catch (err) {
+      logger.warn('analysis.save: failed to resolve capture CreatedAt', {
+        captureId, userId: userId?.toString(), err: err?.message,
+      });
+    }
+  }
+  if (!utcInstant) {
+    utcInstant = currentTime;
+  }
+
+  const createdAtLegacy = utcInstantToLegacyIstWallStorage(utcInstant, IANA_IST);
+  const updatedAtLegacy = utcInstantToLegacyIstWallStorage(currentTime, IANA_IST);
 
   const analysisPayload = {
     ImagePath: imagePath,
@@ -220,7 +294,11 @@ export async function save(input) {
       const existing = await repo.findFoodByCaptureId(captureId, userId.toString());
       if (existing) {
         logger.info('analysis.save: updating existing food row (idempotent retry)', {
-          captureId, userId: userId.toString(), existingId: existing.ID,
+          captureId,
+          userId: userId.toString(),
+          existingId: existing.ID,
+          preserveOriginalTimestamp,
+          // CreatedAt on the existing row is never modified — see updateWithAnalysisResult.
         });
         data = await repo.updateWithAnalysisResult(existing.ID, userId.toString(), analysisPayload);
       } else {
@@ -229,30 +307,30 @@ export async function save(input) {
           UserID: userId.toString(),
           CaptureID: captureId,
           ...analysisPayload,
-          CreatedAt: createdAtIST,
-          UpdatedAt: currentTime,
-          City: city || null,
-          Village: village || null,
-          CenterName: centerName || null,
-          NutritionCenterId: nutritionCenterId || null,
-          AttendanceType: attendanceType || null,
-          Latitude: latitude || null,
-          Longitude: longitude || null,
+          CreatedAt: createdAtLegacy,
+          UpdatedAt: updatedAtLegacy,
+          City: locCity || null,
+          Village: locVillage || null,
+          CenterName: locCenterName || null,
+          NutritionCenterId: locNutritionCenterId || null,
+          AttendanceType: locAttendanceType || null,
+          Latitude: locLatitude || null,
+          Longitude: locLongitude || null,
         });
       }
     } else {
       data = await repo.insertAnalysis({
         UserID: userId.toString(),
         ...analysisPayload,
-        CreatedAt: createdAtIST,
-        UpdatedAt: currentTime,
-        City: city || null,
-        Village: village || null,
-        CenterName: centerName || null,
-        NutritionCenterId: nutritionCenterId || null,
-        AttendanceType: attendanceType || null,
-        Latitude: latitude || null,
-        Longitude: longitude || null,
+        CreatedAt: createdAtLegacy,
+        UpdatedAt: updatedAtLegacy,
+        City: locCity || null,
+        Village: locVillage || null,
+        CenterName: locCenterName || null,
+        NutritionCenterId: locNutritionCenterId || null,
+        AttendanceType: locAttendanceType || null,
+        Latitude: locLatitude || null,
+        Longitude: locLongitude || null,
       });
     }
   } catch (error) {
@@ -287,35 +365,38 @@ export async function save(input) {
     };
   }
 
-  // Promote the capture pending → food. Best-effort: the food row is
-  // already persisted, and the state machine is idempotent (re-classifying
-  // an already-food capture is a no-op). Only logged on failure so a
-  // captures-side transient does not fail the user save.
+  // Promote the capture pending → food. Retried on transient failure so the
+  // diary feed does not show both a food row and a stale pending card.
   if (captureId) {
-    try {
-      const promotionResult = await captures.updateTypeById({
-        captureId,
-        userId: userId.toString(),
-        toType: IMAGE_TYPE_FOOD,
-      });
-      if (promotionResult.changed) {
-        logger.info('analysis.save: capture promoted to food', {
-          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+    const PROMOTION_MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= PROMOTION_MAX_ATTEMPTS; attempt++) {
+      try {
+        const promotionResult = await captures.updateTypeById({
+          captureId,
+          userId: userId.toString(),
+          toType: IMAGE_TYPE_FOOD,
         });
-      } else {
-        // ALREADY_IN_TARGET_STATE is expected on retries; log at debug level.
-        logger.debug('analysis.save: capture promotion no-op', {
-          captureId, userId: userId.toString(), reason: promotionResult.reason,
+        if (promotionResult.changed) {
+          logger.info('analysis.save: capture promoted to food', {
+            captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+          });
+        } else {
+          logger.debug('analysis.save: capture promotion no-op', {
+            captureId, userId: userId.toString(), reason: promotionResult.reason,
+          });
+        }
+        break;
+      } catch (err) {
+        if (attempt < PROMOTION_MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+          continue;
+        }
+        logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
+          captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
+          err: err.message,
+          attempts: PROMOTION_MAX_ATTEMPTS,
         });
       }
-    } catch (err) {
-      // Consistency warning: food row saved but capture state NOT promoted.
-      // The diary feed filters on captures.ImageType='food', so this entry
-      // will be hidden until a subsequent retry promotes the capture.
-      logger.warn('analysis.save: failed to promote capture to food — consistency risk', {
-        captureId, userId: userId.toString(), foodRowId: data?.ID || data?.id,
-        err: err.message,
-      });
     }
 
     // Signal to the orchestrator that the food row is now persisted.
@@ -326,6 +407,22 @@ export async function save(input) {
 
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
+
+  // ADR-0005 — grow master nutrition catalog from successful AI / saved foods.
+  try {
+    const parsed = typeof analysisResult === 'string'
+      ? JSON.parse(analysisResult)
+      : analysisResult;
+    if (parsed && typeof parsed === 'object') {
+      const { recordAiFoodCandidate } = await import('../nutrition-knowledge/index.js');
+      await recordAiFoodCandidate(parsed);
+    }
+  } catch (err) {
+    logger.warn('analysis.save: nutrition-knowledge candidate skipped', {
+      err: err?.message,
+      userId: userId?.toString(),
+    });
+  }
 
   const totalLatencyMs = Date.now() - saveStart;
   logger.info('analysis.save: completed', {
@@ -354,7 +451,7 @@ export async function save(input) {
           fiber: totalFiber,
         },
         confidence: confidenceScore,
-        timestamp: new Date().toISOString(),
+        timestamp: nowUtc(),
       },
     },
   };
@@ -461,10 +558,28 @@ export async function updateCaptureType({ id, userId, imageType }) {
  * immediately after food detection, before Gemini analysis completes.
  * Returns { id, token } — the caller constructs the full viewUrl.
  */
-export async function createPendingCapture({ userId, imageBase64, token: clientToken, shareCode: clientShareCode }) {
+export async function createPendingCapture({
+  userId,
+  imageBase64,
+  token: clientToken,
+  shareCode: clientShareCode,
+  latitude = null,
+  longitude = null,
+  city = null,
+  village = null,
+  attendanceType = null,
+  nutritionCenterId = null,
+  centerName = null,
+  locationStatus = null,
+  locationErrorCode = null,
+  locationErrorDetail = null,
+  locationLatencyMs = null,
+  geocodeOk = null,
+  gpsAccuracyM = null,
+}) {
   const token = clientToken || randomUUID();
   let shareCode = clientShareCode || generateShareCode();
-  const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const shareExpiresAt = addUtcDays(nowUtc(), 30);
 
   // PR 6 — captures_table is the ONLY at-capture-time write. No speculative
   // food row: that previously polluted the nutrition feed with "Unknown Food
@@ -473,8 +588,57 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
   // analysis.save, weight via weight.saveWeight, etc.) is responsible for
   // inserting its own row with CaptureID = id and promoting the capture via
   // captures.updateTypeById.
+  // Location/club fields are stored here at photo time so a later domain save
+  // can still get city/village/attendance even if GPS fails on the second pass.
+  const locationPayload = {
+    latitude,
+    longitude,
+    city,
+    village,
+    attendanceType,
+    nutritionCenterId,
+    centerName,
+  };
+  const shouldWriteLocation = hasAnyLocationField(locationPayload);
+  const hasCoords = latitude != null && longitude != null;
+  const resolvedStatus =
+    locationStatus ||
+    (hasCoords ? (geocodeOk === false ? 'partial' : 'success') : 'failed');
+
+  // Vercel-visible log — never include raw lat/lng (PII). Use this to diagnose
+  // why a capture has no location/club/city.
+  const locationLog = {
+    userId: userId?.toString(),
+    locationStatus: resolvedStatus,
+    locationErrorCode: locationErrorCode || (hasCoords ? null : 'MISSING_COORDS'),
+    locationErrorDetail:
+      locationErrorDetail ||
+      (hasCoords
+        ? null
+        : 'Client did not send latitude/longitude with capture create'),
+    locationLatencyMs,
+    gpsAccuracyM,
+    geocodeOk,
+    hasCoords,
+    hasCity: !!city,
+    hasVillage: !!village,
+    attendanceType: attendanceType || null,
+    hasClubId: nutritionCenterId != null,
+    hasCenterName: !!centerName,
+    willPersistLocationColumns: shouldWriteLocation,
+  };
+
+  if (resolvedStatus === 'failed' || !hasCoords) {
+    logger.warn('createPendingCapture: location NOT taken', locationLog);
+  } else if (resolvedStatus === 'partial') {
+    logger.warn('createPendingCapture: location partial (GPS OK, city/village missing)', locationLog);
+  } else {
+    logger.info('createPendingCapture: location captured', locationLog);
+  }
+
   const MAX_SHARE_CODE_ATTEMPTS = 6;
   let capture = null;
+  let locationWriteFailed = false;
   for (let attempt = 0; attempt < MAX_SHARE_CODE_ATTEMPTS; attempt += 1) {
     try {
       capture = await captures.recordPending({
@@ -486,14 +650,50 @@ export async function createPendingCapture({ userId, imageBase64, token: clientT
         imagePath: 'instant-share',
         deviceInfo: 'Wellness Valley Web App',
         processedBy: 'manual_app',
+        ...(shouldWriteLocation && !locationWriteFailed ? locationPayload : {}),
       });
       break;
     } catch (err) {
+      const msg = err?.message || '';
+      // Rollout safety: if location columns are not migrated yet, retry once
+      // without them so photo capture still succeeds.
+      if (
+        shouldWriteLocation &&
+        !locationWriteFailed &&
+        /Latitude|Longitude|City|Village|AttendanceType|NutritionCenterId|CenterName|column/i.test(msg)
+      ) {
+        locationWriteFailed = true;
+        logger.warn('createPendingCapture: location columns missing — retrying without location', {
+          userId: userId?.toString(),
+          err: msg,
+        });
+        attempt -= 1;
+        continue;
+      }
       if (!isDuplicateShareCodeError(err) || attempt === MAX_SHARE_CODE_ATTEMPTS - 1) {
         throw err;
       }
       shareCode = generateShareCode();
     }
+  }
+
+  if (locationWriteFailed) {
+    logger.warn('createPendingCapture: location columns not persisted (migration pending)', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      locationErrorCode,
+    });
+  } else if (shouldWriteLocation) {
+    logger.info('createPendingCapture: location fields written to captures_table', {
+      userId: userId?.toString(),
+      captureId: capture?.id ?? null,
+      locationStatus: resolvedStatus,
+      attendanceType: attendanceType || null,
+      hasCoords,
+      hasCity: !!city,
+      hasClubId: nutritionCenterId != null,
+    });
   }
 
   // The `id` returned here is the captures_table primary key. The FE round-

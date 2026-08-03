@@ -45,6 +45,7 @@ import { TraceContext } from './ObservabilityTracer.js';
 import { idempotencyGuard, JOB_STATUS } from './IdempotencyGuard.js';
 import { ANALYSIS_STATUS } from './AnalysisStatus.js';
 import { analyzeUnified } from './AIGateway.js';
+import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
 
 // ── Per-capture analysis status store ────────────────────────────────────────
@@ -114,6 +115,9 @@ export async function analyse(params) {
     userId       = null,
     imageBase64  = null,
     foodRowId    = null,
+    // usePro: true forces Gemini Pro on this request (used by frontend
+    // attempt-3 escalation when Flash failed twice to classify the image).
+    usePro       = false,
   } = params;
 
   const trace = new TraceContext({ captureId, userId });
@@ -148,10 +152,28 @@ export async function analyse(params) {
   _setStatus(captureId, ANALYSIS_STATUS.ANALYZING, { traceId: trace.traceId });
 
   // ── Step 2: Fast analysis (single unified Gemini call) ────────────────────
-  let fastResult;
-  try {
-    fastResult = await analyzeUnified(imageBuffer, mimeType, { trace });
-  } catch (err) {
+  //
+  // PERMANENT INJECTION GUARD — do NOT convert this back to try/catch.
+  //
+  // Why .catch() instead of try { ... } catch:
+  //   A try/catch block shares its catch handler with ALL code inside the
+  //   block. If any code is ever injected between the analyzeUnified() call
+  //   and the closing brace (as happened with the rogue `query` call), that
+  //   injected error silently falls into the catch → returns FAST_FALLBACK →
+  //   discards a successful Gemini result. The frontend then sees "Other".
+  //
+  //   Using .catch() limits the error scope strictly to analyzeUnified().
+  //   Any code that runs AFTER this block throws normally (un-caught), making
+  //   the bug immediately visible in logs rather than silently eating results.
+  //
+  let _geminiErr = null;
+  const fastResult = await analyzeUnified(imageBuffer, mimeType, {
+    trace,
+    modelOverride: usePro ? FALLBACK_MODEL_NAME : null,
+  }).catch((err) => { _geminiErr = err; return null; });
+
+  if (_geminiErr !== null || !fastResult) {
+    const err = _geminiErr ?? new Error('analyzeUnified returned null');
     // Graceful degradation — never crash the capture flow
     logger.error('orchestrator: fast analysis failed, using fallback', {
       traceId:   trace.traceId,
@@ -183,6 +205,9 @@ export async function analyse(params) {
     };
   }
 
+  // fastResult is guaranteed valid from this point — Gemini succeeded.
+
+
   // ── Step 3: Enqueue enrichment job (food images only, non-blocking) ────────
   // NOTE: FAST_COMPLETE is NOT set here. It is set by confirmPersisted() after
   // the caller successfully persists the domain row (food / weight / etc.).
@@ -190,6 +215,7 @@ export async function analyse(params) {
   let enrichmentJobId = null;
   if (fastResult.imageType === 'food' && imageBase64) {
     try {
+      const foodItems = (fastResult.details?.foods ?? []).map(f => f.name).filter(Boolean);
       const { jobId } = await jobQueue.enqueue({
         captureId:    captureId ?? '',
         userId:       userId    ?? '',
@@ -197,6 +223,7 @@ export async function analyse(params) {
         imageBase64,
         mimeType,
         fastNutrition: fastResult.fastNutrition ?? {},
+        foodItems,
         foodRowId,
       });
       enrichmentJobId = jobId;

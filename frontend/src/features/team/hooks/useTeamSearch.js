@@ -6,9 +6,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  fetchSavedUserName, fetchTeamMembers,
-  filterMembers, toSelectedUser, isCoachRole,
+  fetchSavedUserName, fetchTeamMembers, fetchHasTeamMembers,
+  filterMembers, toSelectedUser, isCoachRole, canUseTeamSearch,
+  resolveTeamSearchDisplayName,
 } from '../services/teamSearchService';
+import { getCachedProfileUserName } from '../../../shared/utils/shareUtils';
 
 export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect } = {}) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,12 +18,15 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
   const [allTeamMembers, setAllTeamMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasCleared, setHasCleared] = useState(false);
-  const [savedUserName, setSavedUserName] = useState('');
+  const [savedUserName, setSavedUserName] = useState(() => (
+    resolveTeamSearchDisplayName(getCachedProfileUserName(user?.email), user) || ''
+  ));
+  const [hasTeamMembers, setHasTeamMembers] = useState(false);
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  const isCoach = isCoachRole(userRole);
+  const isCoach = canUseTeamSearch(userRole, hasTeamMembers);
 
   // Reset hasCleared whenever a different member is selected externally.
   useEffect(() => { setHasCleared(false); }, [selectedMember]);
@@ -35,6 +40,22 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     return () => { cancelled = true; };
   }, [user?.email]);
 
+  // Users with downline members in team_table are coaches regardless of Role.
+  useEffect(() => {
+    if (!user?.id || isCoachRole(userRole)) {
+      setHasTeamMembers(false);
+      return undefined;
+    }
+    let cancelled = false;
+    fetchHasTeamMembers(user.id)
+      .then((has) => { if (!cancelled) setHasTeamMembers(has); })
+      .catch((err) => {
+        console.error('Error checking team membership:', err);
+        if (!cancelled) setHasTeamMembers(false);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id, userRole]);
+
   // Fetch the coach's flat team list once it becomes possible.
   useEffect(() => {
     if (!isCoach || !user?.id) return undefined;
@@ -42,7 +63,7 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     setLoading(true);
     fetchTeamMembers({
       coachId: user.id,
-      coachName: savedUserName || user.name || user.email,
+      coachName: resolveTeamSearchDisplayName(savedUserName, user),
       coachEmail: user.email,
       coachRole: userRole,
     })
@@ -90,9 +111,9 @@ export function useTeamSearch({ user, userRole, selectedMember, onMemberSelect }
     setSearchQuery(''); setIsOpen(false); setHasCleared(true);
   }, []);
 
-  const fallbackName = savedUserName || user?.name || user?.email?.split('@')[0] || 'Me';
+  const fallbackName = resolveTeamSearchDisplayName(savedUserName, user);
   const displayName = selectedMember
-    ? (selectedMember.isSelf ? fallbackName : selectedMember.userName)
+    ? (selectedMember.isSelf ? fallbackName : (selectedMember.userName || ''))
     : fallbackName;
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
 

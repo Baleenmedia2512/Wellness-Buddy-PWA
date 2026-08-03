@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.0.0 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.1 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -33,6 +33,7 @@ If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every 
 | **Water** | Daily hydration goal (50 ml × body-weight kg) inferred from food log, reminder scheduling | Goal met / reminder fired |
 | **Weight** | Weight recording (with photo, location, nutrition center), OCR/AI correction, trend history, reverse-progress detection | Weight saved / reverse-progress flagged |
 | **Nutrition / Food Diary** | Food entry, meal classification, calorie + macro tracking, beverage detection | Food logged |
+| **Nutrition Knowledge** | Master nutrition profiles (macros+micros), search/resolve priority, AI draft candidates (ADR-0005) | Profile resolved / candidate recorded |
 | **Background Analysis** | AI food-photo pipeline: classify items, extract 20+ nutrition fields, confidence score | Photo analysed → food record created |
 | **Captures** | Canonical photo record, state machine (`pending`→`food|weight|education|smartwatch|unknown`), share tokens | Photo captured |
 | **Body Parameters Card** | Composite body metrics card (body fat, muscle mass, BMR, visceral fat, etc.) | Coach creates and shares card |
@@ -45,6 +46,9 @@ If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every 
 | **Education** | Wellness content modules; education logs count toward discipline | Module completed |
 | **Leaderboard** | Gamification rankings by discipline/activity within team hierarchy | Leaderboard refreshed |
 | **Counselling** | Wellness counselling assessment flows | Assessment submitted |
+| **Testimonials** | Before/after transformation photos + weights; member uploads, coach OTP-verifies via email | Testimonial verified |
+| **Wellness Score** | Daily composite wellness score sheet (34 parameters) with per-coach configuration | Daily score computed |
+| **Reports** | Coach/upline analytics — starting with direct-downline weight status vs BMI 19–23 ideal range | Report generated |
 | **Notifications** | Push reminders for tasks and water; max 2 reminders per task | Push sent |
 
 ---
@@ -70,7 +74,7 @@ If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every 
 ### Sensitive domains requiring mandatory human LGTM
 Even with green CI:
 - `backend/features/auth/` — OTP, session, Google identity
-- `backend/features/token/` — billing / cost ledger
+- `backend/shared/lib/ai-orchestration/` — AI cost / token ledger, observability
 - `backend/features/user/` — role assignments, setup bypass
 - `backend/migrations/` — schema changes
 - `.github/workflows/` — CI/CD pipeline
@@ -129,12 +133,20 @@ Tasks are **system-generated** (never user-created). One task per type per day p
 
 All work-in-progress is gated behind a feature flag. No exception.
 
-**Current registered flags:**
+**Current registered flags (backend registry `backend/shared/lib/feature-flags.js`):**
 
 | Flag | Default | Owner | Remove by | Purpose |
 |---|---|---|---|---|
-| `ff.diary-feed` | ON | @diary-team | 2026-12-05 | Includes `unknown`-type captures in Diary list alongside food entries |
-| `ff.body-parameters-card` | ON | @card-team | 2026-09-30 | Body Parameters Card share flow (ADR-0004); WhatsApp share link pre-fills setup wizard |
+| `ff.diary-feed` | ON | @principal-eng | 2026-12-05 | Includes `unknown`-type captures in Diary list alongside food entries (ADR-0003) |
+| `ff.body-parameters-card` | ON | @principal-eng | 2026-09-30 | Body Parameters Card share flow (ADR-0004); WhatsApp share link pre-fills setup wizard |
+| `ff.diary-timeline` | ON | @diary-team | 2026-12-31 | Unified chronological Diary timeline replacing stacked section dashboards (requires `ff.diary-feed`) |
+| `ff.testimonials` | ON | @testimonials-team | 2027-01-06 | Before/after testimonial upload + coach OTP verification flow |
+| `ff.reports-module` | ON | @reports-team | 2026-12-31 | Reports module — direct-downline weight status report for coaches/uplines |
+| `ff.wellness-score-sheet` | ON | @wellness-score-team | 2027-01-08 | Wellness Score home tile, daily score API, admin score-setup config |
+| `ff.ai-credits` | ON | @principal-eng | 2027-01-27 | AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI); numeric limit in DB |
+| `ff.nutrition-knowledge` | ON | @nutrition-team | 2027-01-30 | Master nutrition knowledge base (ADR-0005) — free master/history lookup; AI enrich optional |
+
+**Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 
 **Flag policy:**
 - Every flag has an owner, a default, and a removal target date.

@@ -9,8 +9,25 @@ import EducationFormFields from './EducationFormFields';
 import { EducationFormActions } from './EducationActionButtons';
 import { useEducationEntry } from '../hooks/useEducationEntry';
 
-const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
-  const vm = useEducationEntry({ onSave, onClose });
+const ManualEducationEntryModal = ({
+  isOpen,
+  onClose,
+  onSave,
+  onBack,
+  skipTypeSelect = false,
+  initialPlatform,
+  initialTopic,
+  formTitle,
+  formSubtitle,
+}) => {
+  const vm = useEducationEntry({
+    onSave,
+    onClose,
+    isOpen,
+    skipTypeSelect,
+    initialPlatform,
+    initialTopic,
+  });
   if (!isOpen) return null;
 
   return (
@@ -23,9 +40,13 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack }) => {
             <EducationFormFields
               platform={vm.platform}
               onSelectPlatform={vm.setPlatform}
+              topic={vm.topic}
+              onSelectTopic={vm.setTopic}
               error={vm.error}
               onCancel={vm.handleCancel}
               onBack={onBack ? () => vm.handleBack(onBack) : null}
+              formTitle={formTitle}
+              formSubtitle={formSubtitle}
             />
             <EducationFormActions
               onCancel={vm.handleCancel}

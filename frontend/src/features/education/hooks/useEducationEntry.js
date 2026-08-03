@@ -3,23 +3,38 @@
  * Owns state + validation + submit lifecycle for the manual education entry
  * form. UI components consuming this hook only render — no async, no parsing.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const DEFAULT_PLATFORM = 'Zoom';
 
-export function useEducationEntry({ onSave, onClose } = {}) {
-  const [showTypeSelect, setShowTypeSelect] = useState(true);
-  const [platform, setPlatform] = useState(DEFAULT_PLATFORM);
-  const [topic, setTopic] = useState('');
+export function useEducationEntry({
+  onSave,
+  onClose,
+  isOpen = true,
+  skipTypeSelect = false,
+  initialPlatform,
+  initialTopic,
+} = {}) {
+  const [showTypeSelect, setShowTypeSelect] = useState(!skipTypeSelect);
+  const [platform, setPlatform] = useState(initialPlatform || DEFAULT_PLATFORM);
+  const [topic, setTopic] = useState(initialTopic || '');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const reset = useCallback(() => {
-    setPlatform(DEFAULT_PLATFORM);
-    setTopic('');
+  useEffect(() => {
+    if (!isOpen) return;
+    setShowTypeSelect(!skipTypeSelect);
+    setPlatform(initialPlatform || DEFAULT_PLATFORM);
+    setTopic(initialTopic || '');
     setError('');
-    setShowTypeSelect(true);
-  }, []);
+  }, [isOpen, skipTypeSelect, initialPlatform, initialTopic]);
+
+  const reset = useCallback(() => {
+    setPlatform(initialPlatform || DEFAULT_PLATFORM);
+    setTopic(initialTopic || '');
+    setError('');
+    setShowTypeSelect(!skipTypeSelect);
+  }, [initialPlatform, initialTopic, skipTypeSelect]);
 
   const handleCancel = useCallback(() => {
     reset();
@@ -37,11 +52,15 @@ export function useEducationEntry({ onSave, onClose } = {}) {
       setError('Please select a platform');
       return;
     }
+    if (!topic.trim()) {
+      setError('Please select a meeting session');
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave?.({
         platform,
-        topic: topic.trim() || 'Education Meeting',
+        topic: topic.trim(),
       });
       reset();
       if (onClose) onClose();

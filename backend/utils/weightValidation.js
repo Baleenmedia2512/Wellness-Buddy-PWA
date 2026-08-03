@@ -214,3 +214,37 @@ export function validateAndCorrectWeight(detectedWeight, previousWeight, previou
     hoursSinceLastEntry: hoursDifference
   };
 }
+
+/**
+ * Compute the ideal weight range for a given height using BMI 19–23.
+ * Matches the auto-detect logic in check-progress.handler.js.
+ *
+ * @param {number|string} heightCm
+ * @returns {{ idealMin: number, idealMax: number }|null}
+ *   Returns null when heightCm is absent or implausible.
+ */
+export function computeIdealWeightRange(heightCm) {
+  const h = parseFloat(heightCm);
+  if (!h || isNaN(h) || h < 50 || h > 250) return null;
+  const heightM = h / 100;
+  return {
+    idealMin: parseFloat((19 * heightM * heightM).toFixed(1)),
+    idealMax: parseFloat((23 * heightM * heightM).toFixed(1)),
+  };
+}
+
+/**
+ * Derive weight goal mode from current weight vs ideal BMI range (19–23).
+ * Above ideal → loss · below ideal → gain · within range → maintain.
+ *
+ * @param {{ heightCm?: number|string|null, currentWeightKg?: number|string|null }} params
+ * @returns {'loss'|'gain'|'maintain'|null}
+ */
+export function deriveWeightGoalMode({ heightCm, currentWeightKg }) {
+  const range = computeIdealWeightRange(heightCm);
+  const current = parseFloat(currentWeightKg);
+  if (!range || !Number.isFinite(current) || current <= 0) return null;
+  if (current > range.idealMax) return 'loss';
+  if (current < range.idealMin) return 'gain';
+  return 'maintain';
+}
