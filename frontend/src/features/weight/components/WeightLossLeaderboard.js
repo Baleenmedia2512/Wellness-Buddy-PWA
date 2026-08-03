@@ -7,6 +7,7 @@
 } from "react";
 import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
+import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — global leaderboard is identical for all users, no userId key.
@@ -238,11 +239,20 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
           {user.userName}
         </span>
-        {user.coachName && user.coachName.toLowerCase() !== "no coach" && (
-          <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 truncate leading-tight">
-            Coach: {user.coachName}
-          </span>
-        )}
+        {(() => {
+          const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+          if (!sponsorName && !idealCoachName) return null;
+          return (
+            <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 leading-tight min-w-0">
+              {sponsorName && (
+                <span className="block truncate">Sponsor: {sponsorName}</span>
+              )}
+              {idealCoachName && (
+                <span className="block truncate">Coach: {idealCoachName}</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Weight Loss Badge */}

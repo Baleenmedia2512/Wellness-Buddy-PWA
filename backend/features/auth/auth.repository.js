@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { DateTime } from 'luxon';
 import { buildPhoneLookupVariants } from './domain/phone-identity.rules.js';
 
 export async function deactivateActiveOtps(recipient, contactType) {
@@ -40,10 +41,9 @@ export async function fetchActiveOtp(recipient, contactType) {
  */
 export async function fetchRecentlyVerifiedOtp(recipient, contactType) {
   const supabase = getSupabaseClient();
-  // Build an IST-relative cutoff (15-minute window)
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const cutoff = new Date(Date.now() + istOffset - 15 * 60 * 1000);
-  const cutoffStr = cutoff.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+  // CreatedAt is stored as UTC (nowUtc). Compare against a UTC cutoff — the old
+  // IST-offset hack made fresh verifications look older than the cutoff window.
+  const cutoffUtc = DateTime.utc().minus({ minutes: 15 }).toISO();
 
   const { data, error } = await supabase
     .from('otp_tokens_table')
@@ -51,7 +51,7 @@ export async function fetchRecentlyVerifiedOtp(recipient, contactType) {
     .eq('"Recipient"', recipient)
     .eq('"ContactType"', contactType)
     .eq('"Verified"', true)
-    .gte('"CreatedAt"', cutoffStr)
+    .gte('"CreatedAt"', cutoffUtc)
     .limit(1);
   if (error) throw error;
   return !!(data && data.length > 0);

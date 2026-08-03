@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Activity Report Service
  * Orchestrates activity report generation for downline members
  */
@@ -13,6 +13,32 @@ import {
   timeOfDayInTimezone,
 } from '../../shared/lib/datetime/index.js';
 import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
+import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
+
+/**
+ * Attach sponsor + ideal-coach fields onto a member info object (ADR-0007).
+ * coachName stays as sponsor alias for older clients.
+ */
+function applySponsorFields(info, resolved) {
+  const sponsorName = resolved?.sponsorName || null;
+  info.coachName = sponsorName || 'N/A';
+  info.sponsorName = sponsorName || 'N/A';
+  info.idealCoachId = resolved?.idealCoachId || null;
+  info.idealCoachName = resolved?.idealCoachName || null;
+  return info;
+}
+
+/**
+ * Fields to attach on every activity report row for Sponsor / Ideal Coach.
+ */
+function sponsorCoachRowFields(member) {
+  return {
+    coachName: member.coachName || 'N/A',
+    sponsorName: member.sponsorName || member.coachName || 'N/A',
+    idealCoachId: member.idealCoachId || null,
+    idealCoachName: member.idealCoachName || null,
+  };
+}
 
 /**
  * Resolve date range for activity reports using the requesting user's timezone.
@@ -65,7 +91,7 @@ function buildMemberSummaryList(userIds, memberMap, educationRecords, timezoneIa
     return {
       userId: uid,
       memberName: info.name || 'N/A',
-      coachName: info.coachName || 'N/A',
+      ...sponsorCoachRowFields(info),
       educationCount: countMap[String(uid)] || 0,
     };
   }).sort((a, b) => b.educationCount - a.educationCount);
@@ -90,32 +116,32 @@ function buildMemberSummaryList(userIds, memberMap, educationRecords, timezoneIa
   };
 }
 
-function buildSimpleMemberMap(members, coachNames) {
+function buildSimpleMemberMap(members, sponsorByUser) {
   const memberMap = {};
   members.forEach((member) => {
-    const info = {
+    const resolved = sponsorByUser?.get(String(member.UserId));
+    const info = applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
+    }, resolved);
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
   return memberMap;
 }
 
-function buildDetailMemberMap(members, coachNames) {
+function buildDetailMemberMap(members, sponsorByUser) {
   const memberMap = {};
   members.forEach((member) => {
-    const info = {
+    const resolved = sponsorByUser?.get(String(member.UserId));
+    const info = applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
       email: member.Email || '',
       city: 'N/A',
       village: 'N/A',
       role: member.Role || 'member',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
+    }, resolved);
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
@@ -148,7 +174,7 @@ async function buildDetailRecordsFromBundle({
           city: record.City || member.city || 'N/A',
           village: record.Village || member.village || 'N/A',
           phone: member.phone,
-          coachName: member.coachName,
+          ...sponsorCoachRowFields(member),
           date,
           time,
           clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
@@ -172,7 +198,7 @@ async function buildDetailRecordsFromBundle({
           city: record.City || member.city || 'N/A',
           village: record.Village || member.village || 'N/A',
           phone: member.phone || 'N/A',
-          coachName: member.coachName || 'N/A',
+          ...sponsorCoachRowFields(member),
           date,
           time,
           clubName: record.center_name || centerMap[record.nutrition_center_id] || 'N/A',
@@ -200,7 +226,7 @@ async function buildDetailRecordsFromBundle({
           city: record.City || member.city || 'N/A',
           village: record.Village || member.village || 'N/A',
           phone: member.phone,
-          coachName: member.coachName,
+          ...sponsorCoachRowFields(member),
           date,
           time,
           clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
@@ -225,7 +251,7 @@ async function buildDetailRecordsFromBundle({
           city: record.City || member.city || 'N/A',
           village: record.Village || member.village || 'N/A',
           phone: member.phone,
-          coachName: member.coachName,
+          ...sponsorCoachRowFields(member),
           date,
           time,
           clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
@@ -243,7 +269,7 @@ async function buildDetailRecordsFromBundle({
           city: member.city,
           village: member.village,
           phone: member.phone,
-          coachName: member.coachName,
+          ...sponsorCoachRowFields(member),
           date,
           time,
           clubName: 'N/A',
@@ -323,7 +349,7 @@ export async function getActivityReportBootstrap({
   const stepRecords = fetchResults[includeRecords ? 3 : 2];
   const timeWindows = fetchResults[includeRecords ? 4 : 3];
 
-  // Food rows carry large AnalysisData JSON — fetch after lighter tables to reduce parallel DB load.
+  // Food rows carry large AnalysisData JSON ? fetch after lighter tables to reduce parallel DB load.
   const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
 
   const summary = buildSummaryCounts({
@@ -332,9 +358,10 @@ export async function getActivityReportBootstrap({
 
   let records = [];
   if (includeRecords) {
-    const coachIds = [...new Set(members.map((m) => m.CoachId).filter(Boolean))];
-    const coachNames = await repo.fetchCoachNames(coachIds);
-    const detailMemberMap = buildDetailMemberMap(members, coachNames);
+    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+    );
+    const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
     records = await buildDetailRecordsFromBundle({
       activityType: detailActivity,
       memberMap: detailMemberMap,
@@ -458,24 +485,24 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
     };
   }
 
-  // Fetch member details and coach names
+  // Fetch member details + sponsor / ideal coach (ADR-0007)
   const members = await repo.fetchMemberDetails(userIds);
-  const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
-  const coachNames = await repo.fetchCoachNames(coachIds);
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+  );
 
   // Build member info map (keyed by both numeric and string UserId)
   const memberMap = {};
   members.forEach(member => {
-    const info = {
+    const info = applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
+    }, sponsorByUser.get(String(member.UserId)));
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
 
-  // Fetch education records — count first log per member per day only
+  // Fetch education records ? count first log per member per day only
   const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
   const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana);
   const countMap = {};
@@ -484,13 +511,13 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
     countMap[key] = (countMap[key] || 0) + 1;
   });
 
-  // Build member list with counts ΓÇö include ALL downline members (even 0 attendance)
+  // Build member list with counts G?? include ALL downline members (even 0 attendance)
   const memberList = userIds.map(uid => {
     const info = memberMap[uid] || memberMap[String(uid)] || {};
     return {
       userId: uid,
       memberName: info.name || 'N/A',
-      coachName: info.coachName || 'N/A',
+      ...sponsorCoachRowFields(info),
       educationCount: countMap[String(uid)] || 0,
     };
   }).sort((a, b) => b.educationCount - a.educationCount);
@@ -553,28 +580,25 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
     };
   }
   
-  // Fetch member details and coach names
+  // Fetch member details + sponsor / ideal coach (ADR-0007)
   const members = await repo.fetchMemberDetails(userIds);
-  const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
-  const coachNames = await repo.fetchCoachNames(coachIds);
-  
-  // Build member info map ΓÇö keyed by both numeric and string UserId
-  // because education_logs_table stores UserId as string while others are numeric
-  // NOTE: team_table does NOT have City/Village columns ΓÇö education records
-  // carry their own City/Village from education_logs_table directly.
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId })),
+  );
+
+  // Build member info map ? keyed by both numeric and string UserId
   const memberMap = {};
   members.forEach(member => {
-    const info = {
+    const info = applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
       email: member.Email || '',
       city: 'N/A',
       village: 'N/A',
       role: member.Role || 'member',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
-    memberMap[member.UserId] = info;         // numeric key
-    memberMap[String(member.UserId)] = info; // string key
+    }, sponsorByUser.get(String(member.UserId)));
+    memberMap[member.UserId] = info;
+    memberMap[String(member.UserId)] = info;
   });
   
   let records = [];
@@ -603,7 +627,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
             city: record.City || member.city || 'N/A',
             village: record.Village || member.village || 'N/A',
             phone: member.phone,
-            coachName: member.coachName,
+            ...sponsorCoachRowFields(member),
             date,
             time,
            clubName: record.CenterName || 'N/A',
@@ -640,7 +664,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
             city: record.City || member.city || 'N/A',
             village: record.Village || member.village || 'N/A',
             phone: member.phone || 'N/A',
-            coachName: member.coachName || 'N/A',
+            ...sponsorCoachRowFields(member),
             date,
             time,
             clubName,
@@ -658,7 +682,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
         const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
         const timeWindows = await repo.fetchTimeWindows();
         const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows, timezoneIana);
-        // One row per member per day — first meal log only (matches summary counts)
+        // One row per member per day ? first meal log only (matches summary counts)
         const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords, timezoneIana, { foodTimestamp: true });
 
         const centerIds = [...new Set(
@@ -680,7 +704,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
             city: record.City || member.city || 'N/A',
             village: record.Village || member.village || 'N/A',
             phone: member.phone,
-            coachName: member.coachName,
+            ...sponsorCoachRowFields(member),
             date,
             time,
             clubName,
@@ -716,7 +740,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
             city: record.City || member.city || 'N/A',
             village: record.Village || member.village || 'N/A',
             phone: member.phone,
-            coachName: member.coachName,
+            ...sponsorCoachRowFields(member),
             date,
             time,
             clubName,
@@ -740,7 +764,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
             city: member.city,
             village: member.village,
             phone: member.phone,
-            coachName: member.coachName,
+            ...sponsorCoachRowFields(member),
             date,
             time,
             clubName: 'N/A',

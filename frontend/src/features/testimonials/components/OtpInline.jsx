@@ -18,7 +18,7 @@ export default function OtpInline({ testimonialId, type, onVerified, className =
   const submit = async () => {
     setErr(null);
     if (!/^\d{6}$/.test(otp.trim())) {
-      setErr('Enter the 6-digit OTP from your coach');
+      setErr('Enter the 6-digit OTP from your sponsor');
       return;
     }
     setLoading(true);
@@ -40,10 +40,10 @@ export default function OtpInline({ testimonialId, type, onVerified, className =
     <div className={`bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 ${className}`}>
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your coach</p>
+        <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your coach received a 6-digit verification code by email. Ask them to share it with you.
+        Your sponsor received a 6-digit verification code by email. Ask them to share it with you.
       </p>
       <NativeInput
         otp

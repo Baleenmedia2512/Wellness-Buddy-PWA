@@ -243,7 +243,7 @@ const ConsentForm = ({
           <Section title="5. Who may access your information?">
             <ul className="list-disc pl-5 space-y-1">
               <li>You: Your own account and information</li>
-              <li>Your coach: Relevant progress and programme information to support coaching</li>
+              <li>Your sponsor: Relevant progress and programme information to support coaching</li>
               <li>
                 Programme administrators / upline managers: Relevant team or programme progress, as
                 designed in the App

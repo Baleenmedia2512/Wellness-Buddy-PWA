@@ -6,6 +6,7 @@ import {
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
+import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
 
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
@@ -78,28 +79,25 @@ export default async function handler(req, res) {
 
     const activeMap = new Map((users || []).map((u) => [u.UserId, u]));
 
-    const coachIds = [...new Set((users || []).map((u) => u.CoachId).filter(Boolean))];
-    const coachNameMap = {};
-    if (coachIds.length > 0) {
-      const { data: coaches } = await supabase
-        .from('team_table')
-        .select('UserId, UserName')
-        .in('UserId', coachIds);
-      (coaches || []).forEach((c) => {
-        coachNameMap[c.UserId] = c.UserName;
-      });
-    }
+    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      (users || []).map((u) => ({ userId: u.UserId, coachId: u.CoachId })),
+    );
 
     const candidates = [];
     for (const row of scores) {
       const user = activeMap.get(row.user_id);
       if (!user) continue;
+      const resolved = sponsorByUser.get(String(user.UserId));
+      const sponsorName = resolved?.sponsorName || null;
 
       candidates.push({
         userId: user.UserId,
         userName: user.UserName || 'Unknown',
         email: user.Email,
-        coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'No Coach') : 'No Coach',
+        coachName: sponsorName || 'No Sponsor',
+        sponsorName: sponsorName || 'No Sponsor',
+        idealCoachId: resolved?.idealCoachId || null,
+        idealCoachName: resolved?.idealCoachName || null,
         profileImage: user.ProfileImage || null,
         wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
