@@ -67,47 +67,41 @@ const BRAND = {
   mint: '#e8f5e9',
   forest: '#064e3b',
   active: '#16a34a',
-  /** Log-as premium button tokens */
-  btnBorder: '#B8F5D7',
-  btnPressBg: '#ECFDF5',
-  btnSelected: '#065F46',
-  btnIconBg: '#ECFDF5',
-  btnLabel: '#064e3b',
 };
 
-/** Shared Log-as button chrome — compact premium mobile tiles (~15–20% smaller). */
+/** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
 const LOG_AS_BTN_BASE =
-  'log-as-btn aspect-square flex min-w-0 w-full max-w-[6.25rem] min-[380px]:max-w-[6.75rem] sm:max-w-[7.25rem] flex-col items-center justify-center gap-1 justify-self-center rounded-[20px] px-1 py-1.5 text-center transition-all duration-200 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:gap-1.5 min-[380px]:px-1.5 min-[380px]:py-2';
+  'log-as-btn flex h-full min-h-[4.75rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:min-h-[5rem] min-[380px]:gap-1.5 sm:min-h-[5.25rem]';
 
 const LOG_AS_BTN_IDLE = [
   LOG_AS_BTN_BASE,
-  'log-as-btn--idle border-[1.5px] bg-white',
-  'shadow-[0_4px_14px_rgba(6,78,59,0.08),0_1px_3px_rgba(6,78,59,0.05)]',
-  'active:translate-y-0.5 active:scale-[0.97] active:shadow-[0_2px_6px_rgba(6,78,59,0.07)]',
+  'log-as-btn--idle border-2 bg-gradient-to-b from-white to-emerald-50/70',
+  'border-emerald-200/90 text-emerald-900',
+  'shadow-[0_3px_0_0_rgba(6,95,70,0.22)]',
+  'active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(6,95,70,0.18)]',
 ].join(' ');
 
 const LOG_AS_BTN_SELECTED = [
   LOG_AS_BTN_BASE,
-  'log-as-btn--selected border-[1.5px] border-[#065F46] bg-[#065F46] text-white',
-  'shadow-[0_8px_22px_rgba(6,95,70,0.38),0_0_0_3px_rgba(6,95,70,0.16)]',
-  'active:translate-y-0.5 active:scale-[0.97] active:shadow-[0_3px_10px_rgba(6,95,70,0.28),0_0_0_2px_rgba(6,95,70,0.12)]',
+  'log-as-btn--selected border-2 border-emerald-800 bg-gradient-to-b from-emerald-600 to-emerald-700 text-white',
+  'shadow-[0_3px_0_0_#064e3b]',
+  'active:translate-y-[2px] active:shadow-[0_1px_0_0_#064e3b]',
 ].join(' ');
 
 function LogAsIconWrap({ selected = false, muted = false, compact = false, children }) {
   return (
     <span
       className={[
-        'flex shrink-0 items-center justify-center rounded-full',
+        'flex shrink-0 items-center justify-center',
         compact
-          ? 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11'
-          : 'h-10 w-10 min-[380px]:h-11 min-[380px]:w-11 sm:h-12 sm:w-12',
+          ? 'h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10'
+          : 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11',
         selected
-          ? 'bg-white/15 ring-1 ring-white/25'
+          ? 'rounded-full bg-white/15 ring-1 ring-white/25'
           : muted
-            ? 'bg-gray-100 text-gray-400'
+            ? 'rounded-full bg-gray-100 text-gray-400'
             : 'text-emerald-700',
       ].join(' ')}
-      style={selected || muted ? undefined : { background: BRAND.btnIconBg }}
     >
       {children}
     </span>
@@ -505,7 +499,7 @@ export default function ManualEntryPage({
               Log as
             </p>
           </div>
-          <div className="grid w-full grid-cols-2 content-start justify-items-center gap-2.5 min-[400px]:grid-cols-3 min-[400px]:gap-3 sm:gap-3.5">
+          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
             {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
               const useLucideOnIos = id === 'smartwatch' && isIOS() && Icon;
@@ -516,7 +510,6 @@ export default function ManualEntryPage({
                 disabled={saving || aiStarting || closingWithoutLog}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
-                style={{ borderColor: BRAND.btnBorder }}
               >
                 <LogAsIconWrap>
                   {useLucideOnIos ? (
@@ -535,10 +528,7 @@ export default function ManualEntryPage({
                     />
                   )}
                 </LogAsIconWrap>
-                <span
-                  className="max-w-full truncate px-0.5 text-[11px] font-semibold leading-tight min-[380px]:text-[12px] sm:text-[13px]"
-                  style={{ color: BRAND.btnLabel }}
-                >
+                <span className="max-w-full truncate px-0.5 text-[11px] font-bold leading-tight text-emerald-900 min-[380px]:text-[12px] sm:text-[13px]">
                   {label}
                 </span>
               </button>
@@ -548,8 +538,7 @@ export default function ManualEntryPage({
             {showAiButton && (
               outOfCredits ? (
                 <div
-                  className={`${LOG_AS_BTN_BASE} border-[1.5px] bg-white opacity-80 shadow-[0_4px_14px_rgba(0,0,0,0.05)]`}
-                  style={{ borderColor: BRAND.btnBorder }}
+                  className={`${LOG_AS_BTN_BASE} log-as-btn--idle border-2 border-emerald-200/70 bg-gradient-to-b from-gray-50 to-white opacity-80 shadow-[0_2px_0_0_rgba(6,95,70,0.12)]`}
                   aria-disabled="true"
                   title="Daily AI limit reached — unlocks at midnight"
                 >
@@ -614,7 +603,7 @@ export default function ManualEntryPage({
           type="button"
           onClick={handleCloseWithoutLog}
           disabled={saving || aiStarting || closingWithoutLog}
-          className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-green-100 bg-white py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99] disabled:opacity-50"
+          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
         >
           {closingWithoutLog ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
