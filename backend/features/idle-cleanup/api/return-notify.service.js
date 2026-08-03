@@ -34,10 +34,6 @@ function buildEmailHtml({ coachName, memberName, idleDays }) {
         <strong>${safeMember}</strong> just opened Wellness Valley again after being inactive for
         <strong>${daysLabel}</strong>.
       </p>
-      <p style="margin: 0 0 16px; color: #4b5563;">
-        Their account stayed active — no reactivation OTP is required. You may want to check in
-        and support their next steps.
-      </p>
       <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
         Wellness Valley · idle return notice
       </p>
