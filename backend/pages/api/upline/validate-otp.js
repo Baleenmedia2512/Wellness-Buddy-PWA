@@ -282,8 +282,8 @@ export default async function handler(req, res) {
 
     // STEP 3: NOW update team_table
     // Store CoachId, CoachTeamId and reactivate user if they were Inactive.
-    // LastActiveAt MUST be refreshed on reactivation — lookup.service auto-
-    // deactivates Active users whose LastActiveAt is >= 31 days old.
+    // LastActiveAt MUST be refreshed on reactivation so idle-return coach
+    // notify (ADR-0007) does not fire immediately after OTP approval.
     const reactivatedAt = nowUtc();
     const updateData = {
       CoachId: request.UplineCoachId,
