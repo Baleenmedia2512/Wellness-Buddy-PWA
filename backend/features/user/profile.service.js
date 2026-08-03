@@ -37,7 +37,7 @@ export async function getProfile({ email }) {
   const [latestWeight, latestBodyMetricsCard, sponsorIdeal] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
-    resolveSponsorAndIdealCoach(user.UserId),
+    resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
   ]);
   const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;

@@ -15,6 +15,12 @@
 
 import { getSupabaseClient } from './supabaseClient.js';
 import { computeIdealWeightRange } from './weightValidation.js';
+import {
+  buildRoleByUserIdFromProfiles,
+  filterAncestorsForIdealCoach,
+  normalizeUserRole,
+  sanitizeSponsorCoachLabels,
+} from '../features/user/domain/aggregate-eligibility.rules.js';
 
 const MAX_CHAIN_DEPTH = 10;
 
@@ -168,7 +174,7 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
 
   const { data: rows, error } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Height"')
+    .select('"UserId", "UserName", "Height", "Role"')
     .in('UserId', ids);
   if (error) throw error;
 
@@ -181,6 +187,7 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
       userName: row.UserName != null ? String(row.UserName).trim() : null,
       heightCm: Number.isFinite(height) ? height : null,
       weightKg: null,
+      role: row.Role != null ? String(row.Role).trim() : null,
     });
   }
 
@@ -221,7 +228,7 @@ export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
 
   const { data: member, error } = await supabase
     .from('team_table')
-    .select('"CoachId"')
+    .select('"CoachId", "Role"')
     .eq('"UserId"', String(memberUserId))
     .limit(1)
     .maybeSingle();
@@ -233,17 +240,27 @@ export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
   const chainIds = await walkCoachIdChain(sponsorId, supabase);
   const profiles = await loadAncestorProfiles(chainIds, supabase);
   const ordered = chainIds.map((id) => profiles.get(id) || {
-    userId: id, userName: null, heightCm: null, weightKg: null,
+    userId: id, userName: null, heightCm: null, weightKg: null, role: null,
   });
+  const roleByUserId = buildRoleByUserIdFromProfiles(profiles);
+  if (member?.Role != null) {
+    roleByUserId.set(String(memberUserId), normalizeUserRole(member.Role));
+  }
   const sponsorProfile = ordered[0] || null;
-  const ideal = pickIdealCoachFromProfiles(ordered);
+  const ideal = pickIdealCoachFromProfiles(
+    filterAncestorsForIdealCoach(ordered, roleByUserId),
+  );
 
-  return {
+  return sanitizeSponsorCoachLabels({
     sponsorId,
     sponsorName: sponsorProfile?.userName || null,
     idealCoachId: ideal.idealCoachId,
     idealCoachName: ideal.idealCoachName,
-  };
+  }, {
+    memberUserId,
+    viewerUserId: opts.viewerUserId ?? memberUserId,
+    roleByUserId,
+  });
 }
 
 /**
@@ -275,7 +292,7 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
   if (needCoachLookup.length > 0) {
     const { data, error } = await supabase
       .from('team_table')
-      .select('"UserId", "CoachId"')
+      .select('"UserId", "CoachId", "Role"')
       .in('UserId', needCoachLookup);
     if (error) throw error;
     for (const row of data || []) {
@@ -283,6 +300,28 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
       if (!mid) continue;
       memberSponsor.set(mid, row.CoachId != null ? String(row.CoachId) : null);
     }
+  }
+
+  const allMemberIds = [...new Set(list.map((m) => (
+    m?.userId != null ? String(m.userId) : null
+  )).filter(Boolean))];
+  const memberRoleById = new Map();
+  if (allMemberIds.length > 0) {
+    const { data: memberRows, error: memberRoleErr } = await supabase
+      .from('team_table')
+      .select('"UserId", "Role"')
+      .in('UserId', allMemberIds);
+    if (memberRoleErr) throw memberRoleErr;
+    for (const row of memberRows || []) {
+      const mid = row.UserId != null ? String(row.UserId) : null;
+      if (!mid) continue;
+      memberRoleById.set(mid, normalizeUserRole(row.Role));
+    }
+  }
+  for (const m of list) {
+    const mid = m?.userId != null ? String(m.userId) : null;
+    if (!mid || memberRoleById.has(mid)) continue;
+    if (m.role != null) memberRoleById.set(mid, normalizeUserRole(m.role));
   }
 
   const uniqueSponsors = [...new Set([...memberSponsor.values()].filter(Boolean))];
@@ -295,14 +334,20 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
   }
 
   const profiles = await loadAncestorProfiles([...allChainIds], supabase);
+  const roleByUserId = buildRoleByUserIdFromProfiles(profiles);
+  for (const [mid, role] of memberRoleById.entries()) {
+    roleByUserId.set(mid, role);
+  }
 
   for (const sid of uniqueSponsors) {
     const chain = chainsBySponsor.get(sid) || [sid];
     const ordered = chain.map((id) => profiles.get(id) || {
-      userId: id, userName: null, heightCm: null, weightKg: null,
+      userId: id, userName: null, heightCm: null, weightKg: null, role: null,
     });
     const sponsorProfile = ordered[0] || null;
-    const ideal = pickIdealCoachFromProfiles(ordered);
+    const ideal = pickIdealCoachFromProfiles(
+      filterAncestorsForIdealCoach(ordered, roleByUserId),
+    );
     sponsorIdealCache.set(sid, {
       sponsorId: sid,
       sponsorName: sponsorProfile?.userName || null,
@@ -321,12 +366,17 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
       });
       continue;
     }
-    result.set(mid, sponsorIdealCache.get(sid) || {
+    const resolved = sponsorIdealCache.get(sid) || {
       sponsorId: sid,
       sponsorName: null,
       idealCoachId: null,
       idealCoachName: null,
-    });
+    };
+    result.set(mid, sanitizeSponsorCoachLabels(resolved, {
+      memberUserId: mid,
+      viewerUserId: opts.viewerUserId,
+      roleByUserId,
+    }));
   }
 
   return result;

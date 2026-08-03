@@ -8,6 +8,7 @@ import {
 } from '../../../shared/lib/datetime/index.js';
 import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 
 /**
  * Global Weight Loss Leaderboard API
@@ -81,12 +82,14 @@ export default async function handler(req, res) {
     );
 
     // Step 1: Active users — omit ProfileImage (base64 blobs) to avoid OOM / 500 on large teams.
-    const { data: activeUsers, error: usersError } = await supabase
+    const { data: activeUsersRaw, error: usersError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, CoachId, Status")
+      .select("UserId, UserName, Email, CoachId, Status, Role")
       .ilike("Status", "Active"); // Case-insensitive match for 'active' or 'Active'
 
     if (usersError) throw usersError;
+
+    const activeUsers = filterPublicAggregateUsers(activeUsersRaw || []);
 
     if (!activeUsers || activeUsers.length === 0) {
       logger.debug("⚠️ [LEADERBOARD] No active users found");
