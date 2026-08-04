@@ -65,6 +65,9 @@ export const parseAnalysisData = (analysisData) => {
   try {
     const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
     if (parsed?.foods?.length > 0 && parsed?.total) {
+      // Always recompute meal GI from foods (heals legacy summed totals like 287)
+      const mealGi = computeMealGlycemicIndex(parsed.foods)
+        ?? (parsed.total.glycemic_index != null ? Math.round(Number(parsed.total.glycemic_index)) : null);
       return {
         name: formatFoodsTitle(parsed.foods),
         nutrition: {
@@ -76,7 +79,7 @@ export const parseAnalysisData = (analysisData) => {
           sugar:       parsed.total.sugar       ?? null,
           sodium:      parsed.total.sodium      ?? null,
           cholesterol: parsed.total.cholesterol ?? null,
-          glycemic_index: parsed.total.glycemic_index ?? null,
+          glycemic_index: mealGi,
           // 17 vitamin/mineral fields — populated when AI returns full schema
           vitamin_a:   parsed.total.vitamin_a   ?? null,
           vitamin_c:   parsed.total.vitamin_c   ?? null,
@@ -101,15 +104,21 @@ export const parseAnalysisData = (analysisData) => {
     }
     if (parsed?.category?.name) {
       const items = parsed.detailedItems || [];
+      const nutrition = { ...(parsed.nutrition || {}) };
+      const mealGi = computeMealGlycemicIndex(items);
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
       return {
         name: items.length > 1 ? formatFoodsTitle(items) : parsed.category.name,
-        nutrition: parsed.nutrition || {},
+        nutrition,
         detailedItems: items,
       };
     }
     if (parsed?.foods?.length > 0) {
       const firstFood = parsed.foods[0] || {};
-      return { name: formatFoodsTitle(parsed.foods), nutrition: firstFood.nutrition || {}, detailedItems: parsed.foods || [] };
+      const mealGi = computeMealGlycemicIndex(parsed.foods);
+      const nutrition = { ...(firstFood.nutrition || {}) };
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
+      return { name: formatFoodsTitle(parsed.foods), nutrition, detailedItems: parsed.foods || [] };
     }
     return { name: 'Unknown Food', nutrition: {}, detailedItems: [] };
   } catch {

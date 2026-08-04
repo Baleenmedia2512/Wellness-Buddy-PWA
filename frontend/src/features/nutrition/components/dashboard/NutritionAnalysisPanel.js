@@ -5,6 +5,7 @@ import EditableFoodItem from '../EditableFoodItem';
 import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
+import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
 
 const GIPill = ({ value }) => {
@@ -66,11 +67,13 @@ const NutritionAnalysisPanel = ({
   const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
   const fat = localNutrition.fat || foodData.nutrition.fat || selectedMeal.TotalFat || 0;
   const fiber = localNutrition.fiber || foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
-  const glycemicIndex = localNutrition.glycemic_index != null
-    ? localNutrition.glycemic_index
-    : (localNutrition.glycemicIndex != null
-      ? localNutrition.glycemicIndex
-      : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null));
+  // Prefer live weighted GI from food items (heals legacy summed totals like 287)
+  const glycemicIndex = computeMealGlycemicIndex(localDetailedItems)
+    ?? (localNutrition.glycemic_index != null
+      ? localNutrition.glycemic_index
+      : (localNutrition.glycemicIndex != null
+        ? localNutrition.glycemicIndex
+        : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null)));
 
   const handleAddItem = async (newItem) => {
     const newItems = [...(localDetailedItems || []), newItem];

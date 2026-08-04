@@ -35,6 +35,7 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import ShakeCalculatorModal from './ShakeCalculatorModal';
 import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
+import { computeMealGlycemicIndex } from '../domain/mealGlycemicIndex';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -275,7 +276,10 @@ const NutritionDashboard = ({
         return transformed;
       });
       setLocalDetailedItems(transformedItems);
-      setLocalNutrition(foodData.nutrition || {});
+      const nutrition = { ...(foodData.nutrition || {}) };
+      const mealGi = computeMealGlycemicIndex(transformedItems);
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
+      setLocalNutrition(nutrition);
 
       // Only reset editing states if NOT from auto-save
       if (!isAutoSaveUpdateRef.current) {
