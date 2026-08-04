@@ -516,6 +516,12 @@ const NutritionCard = ({
         totalCarbs: Math.round(newTotals.carbs || 0),
         totalFat: Math.round(newTotals.fat || 0),
         totalFiber: Math.round(newTotals.fiber || 0),
+        totalSugar: Math.round(newTotals.sugar ?? 0),
+        totalSodium: Math.round(newTotals.sodium ?? 0),
+        totalCholesterol: Math.round(newTotals.cholesterol ?? 0),
+        glycemicIndex: newTotals.glycemic_index != null
+          ? Math.round(newTotals.glycemic_index)
+          : null,
       }),
     });
 
@@ -523,6 +529,23 @@ const NutritionCard = ({
 
     if (!response.ok || !result.success) {
       throw new Error(result.message || "Failed to update meal");
+    }
+
+    // If backend preserved/injected GI and local totals lacked it, sync local nutrition
+    const serverGi =
+      result.data?.glycemicIndex ??
+      result.data?.nutrition?.glycemic_index ??
+      result.data?.analysisData?.total?.glycemic_index ??
+      null;
+    if (serverGi != null && newTotals.glycemic_index == null) {
+      console.warn(
+        "[NutritionCard] Local GI was null after edit; syncing from server preserve",
+        { mealId: savedMealId, glycemicIndex: serverGi },
+      );
+      setLocalNutrition((prev) => ({
+        ...prev,
+        glycemic_index: Math.round(Number(serverGi)),
+      }));
     }
   };
 
@@ -535,11 +558,13 @@ const NutritionCard = ({
       serving_grams: updatedFood.serving?.grams,
       unit: updatedFood.unit,
       serving_unit: updatedFood.serving?.unit,
+      glycemic_index: updatedFood.nutrition?.glycemic_index ?? updatedFood.glycemic_index,
     });
 
     const newItems = [...localDetailedItems];
+    const prevItem = newItems[index];
     newItems[index] = {
-      ...newItems[index],
+      ...prevItem,
       ...updatedFood,
       // Preserve original fields if not in updatedFood
       calories: updatedFood.nutrition?.calories || updatedFood.calories,
@@ -547,10 +572,22 @@ const NutritionCard = ({
       carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
       fat: updatedFood.nutrition?.fat || updatedFood.fat,
       fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
+      glycemic_index:
+        updatedFood.nutrition?.glycemic_index ??
+        updatedFood.glycemic_index ??
+        prevItem?.glycemic_index ??
+        prevItem?.nutrition?.glycemic_index ??
+        null,
     };
 
     // Recalculate totals
     const newTotals = recalculateTotals(newItems);
+    if (newTotals.glycemic_index == null) {
+      console.warn(
+        "[NutritionCard] glycemic_index missing after food edit — totals will omit GI",
+        { mealId: savedMealId, itemIndex: index },
+      );
+    }
     updateLocalAndParentState(newItems, newTotals);
 
     debugLog("[NutritionCard] Updated totals:", newTotals);

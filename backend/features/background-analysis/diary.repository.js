@@ -37,7 +37,7 @@ export async function fetchFoodForDay(ownerUserId, date, timezoneIana = IANA_IST
       [
         'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
         'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
-        'TotalSugar, TotalSodium, TotalCholesterol',
+        'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
         'CaptureID, ProcessedBy, DeviceInfo, CreatedAt',
       ].join(', '),
     )

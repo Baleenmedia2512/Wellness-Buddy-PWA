@@ -491,6 +491,7 @@ export function toDiaryEntry(
             sugar:       row.TotalSugar ?? null,
             sodium:      row.TotalSodium ?? null,
             cholesterol: row.TotalCholesterol ?? null,
+            glycemicIndex: row.GlycemicIndex ?? null,
           },
           processedBy: row.ProcessedBy,
           deviceInfo:  row.DeviceInfo,

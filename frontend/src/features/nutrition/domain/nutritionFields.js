@@ -35,6 +35,11 @@ export function scaleNutritionFields(item, ratio) {
   const base = pickNutrition(item.nutrition || item);
   const out = {};
   for (const [key, value] of Object.entries(base)) {
+    // GI is intrinsic to the food — never scale with portion ratio
+    if (key === 'glycemic_index') {
+      out[key] = Math.round(Number(value));
+      continue;
+    }
     out[key] = Math.round(Number(value) * ratio * 100) / 100;
   }
   // Keep integer kcal for display consistency with older UI.

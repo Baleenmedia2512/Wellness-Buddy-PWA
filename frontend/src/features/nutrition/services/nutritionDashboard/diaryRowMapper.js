@@ -22,6 +22,7 @@ export function mealFromDiaryRow(diaryEntry) {
     TotalSugar: t.sugar ?? null,
     TotalSodium: t.sodium ?? null,
     TotalCholesterol: t.cholesterol ?? null,
+    GlycemicIndex: t.glycemicIndex ?? null,
     ConfidenceScore: p.confidence ?? null,
     CreatedAt: diaryEntry.capturedAt ?? null,
     ProcessedBy: p.processedBy ?? null,
