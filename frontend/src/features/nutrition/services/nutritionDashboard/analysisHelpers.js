@@ -1,6 +1,7 @@
 // Pure helpers used across the nutrition dashboard.
 // These do NOT touch the network — see *Api.js modules for fetches.
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
+import { parseUtcTimestamp } from '../../../../shared/utils/datetimeUtils';
 
 /** Calories for a single food item from canonical or legacy shapes. */
 const foodItemCalories = (food) =>
@@ -21,21 +22,11 @@ export const formatFoodsTitle = (foods) => {
   return `${topName}+${count - 1}more`;
 };
 
-/** Treat API timestamps without trailing-Z as UTC wall time. */
-export const parseMealTimestamp = (value) => {
-  if (!value) return null;
-  if (value instanceof Date) return new Date(value.getTime());
-  if (typeof value === 'string') {
-    const normalized = value.trim().replace(' ', 'T');
-    const withZone = normalized.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(normalized)
-      ? normalized
-      : `${normalized}Z`;
-    const parsed = new Date(withZone);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  const fallback = new Date(value);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-};
+/**
+ * Parse meal CreatedAt. Timezone-less API/DB values are IST wall-clock
+ * (same contract as parseUtcTimestamp / backend legacy storage).
+ */
+export const parseMealTimestamp = (value) => parseUtcTimestamp(value);
 
 export const getMealCategory = (timeString, timezoneIana = 'Asia/Kolkata') => {
   const date = parseMealTimestamp(timeString);

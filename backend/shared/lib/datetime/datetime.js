@@ -201,6 +201,9 @@ export function timestampToCalendarYmd(utcTimestamp, timezoneIana = IANA_IST) {
  * Keep rows whose timestamp column falls on `dateYmd` in `timezoneIana`.
  * Pair with `applyDayFilterWidened` when CreatedAt is IST wall-clock without zone.
  *
+ * Legacy timezone-less digits are always parsed as IST storage; the calendar
+ * day is then evaluated in the owner's display timezone.
+ *
  * @param {object[]} rows
  * @param {string} dateYmd - `YYYY-MM-DD`
  * @param {string} [timezoneIana=IANA_IST]
@@ -213,7 +216,7 @@ export function filterRowsByCalendarDay(rows, dateYmd, timezoneIana = IANA_IST, 
     const raw = row?.[column];
     if (raw == null) return false;
     try {
-      const utcIso = normalizeStoredTimestampToUtcIso(raw, timezoneIana);
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, IANA_IST);
       return timestampToCalendarYmd(utcIso, timezoneIana) === dateYmd;
     } catch {
       return false;
@@ -244,7 +247,7 @@ export function filterRowsByCalendarDateRange(
     const raw = row?.[column];
     if (raw == null) return false;
     try {
-      const utcIso = normalizeStoredTimestampToUtcIso(raw, timezoneIana);
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, IANA_IST);
       const ymd = timestampToCalendarYmd(utcIso, timezoneIana);
       return ymd >= startDate && ymd <= endDate;
     } catch {

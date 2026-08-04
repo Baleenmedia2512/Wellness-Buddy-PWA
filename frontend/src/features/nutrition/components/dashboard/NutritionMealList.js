@@ -6,7 +6,11 @@ import {
   getMealCategory,
   parseAnalysisData,
 } from '../../services/nutritionDashboard/analysisHelpers';
-import { compareUtcTimestampsAsc, formatUtcTime } from '../../../../shared/utils/datetimeUtils';
+import {
+  compareUtcTimestampsAsc,
+  formatBusinessTime,
+  resolveBusinessTimezone,
+} from '../../../../shared/utils/datetimeUtils';
 import {
   getMealCategoryInfo,
   formatTimeRangeAMPM,
@@ -29,6 +33,7 @@ const NutritionMealList = ({
   setUndoState,
   applyDailyDelta,
 }) => {
+  const timezoneIana = resolveBusinessTimezone(user);
   const hasUndoPlaceholders = analyses.some((a) => a.isUndoPlaceholder);
   const hasRealMeals = analyses.some((a) => !a.isUndoPlaceholder);
 
@@ -53,7 +58,7 @@ const NutritionMealList = ({
   }
 
   const groupedDisplayedMeals = displayedMeals.reduce((acc, analysis) => {
-    const category = getMealCategory(analysis.CreatedAt);
+    const category = getMealCategory(analysis.CreatedAt, timezoneIana);
     if (!acc[category]) acc[category] = [];
     acc[category].push(analysis);
     return acc;
@@ -107,7 +112,7 @@ const NutritionMealList = ({
                     );
                   }
                   const foodData = parseAnalysisData(meal.AnalysisData);
-                  const mealTime = formatUtcTime(meal.CreatedAt, {
+                  const mealTime = formatBusinessTime(meal.CreatedAt, timezoneIana, {
                     hour: '2-digit',
                     minute: '2-digit',
                   });

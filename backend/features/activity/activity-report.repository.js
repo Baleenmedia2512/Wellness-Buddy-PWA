@@ -263,7 +263,8 @@ function recordCalendarYmd(record, timezoneIana, { foodTimestamp = false, column
     if (foodTimestamp) {
       return resolveFoodTimestamp(raw, timezoneIana).calendarYmd;
     }
-    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, timezoneIana), timezoneIana);
+    // Legacy IST wall storage → UTC, then owner calendar day.
+    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, IANA_IST), timezoneIana);
   } catch {
     return 'unknown';
   }

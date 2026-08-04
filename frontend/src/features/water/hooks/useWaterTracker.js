@@ -15,12 +15,16 @@ import {
   fetchWaterIntake,
   logWaterIntake,
 } from '../services/waterStorageService';
-import { formatUtcTime } from '../../../shared/utils/datetimeUtils';
+import {
+  formatBusinessTime,
+  resolveBusinessTimezone,
+} from '../../../shared/utils/datetimeUtils';
 import { useNutritionRefreshOptional } from '../../../shared/context/NutritionRefreshContext';
 
 const SUCCESS_TOAST_MS = 3000;
 
 export function useWaterTracker({ user, userId: propUserId } = {}) {
+  const timezoneIana = resolveBusinessTimezone(user);
   const nutritionRefresh = useNutritionRefreshOptional();
   const triggerRefresh = nutritionRefresh?.triggerRefresh;
   const [resolvedUserId, setResolvedUserId] = useState(propUserId || null);
@@ -124,7 +128,10 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
 
   const logs = (waterData?.logs || []).map((log) => ({
     key: log.loggedAt,
-    timeLabel: formatUtcTime(log.loggedAt, { hour: '2-digit', minute: '2-digit' }),
+    timeLabel: formatBusinessTime(log.loggedAt, timezoneIana, {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
     volumeLabel: formatMl(log.volumeMl),
   }));
 

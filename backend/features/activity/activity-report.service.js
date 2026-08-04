@@ -7,6 +7,7 @@ import * as repo from './activity-report.repository.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import {
+  IANA_IST,
   parseRelativeDateRangeYmd,
   normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
@@ -60,7 +61,8 @@ function extractDateTime(timestamp, timezoneIana, { food = false } = {}) {
     const { calendarYmd, timeOfDay } = resolveFoodTimestamp(timestamp, timezoneIana);
     return { date: calendarYmd, time: timeOfDay };
   }
-  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, timezoneIana);
+  // Legacy weight/education CreatedAt is IST wall-clock; display in owner TZ.
+  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, IANA_IST);
   return {
     date: timestampToCalendarYmd(utcIso, timezoneIana),
     time: timeOfDayInTimezone(utcIso, timezoneIana),
