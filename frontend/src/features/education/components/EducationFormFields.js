@@ -6,14 +6,32 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 
+const EDUCATION_ICON_SRC = '/education.svg';
+
+function EducationHeaderIcon() {
+  const base = process.env.PUBLIC_URL || '';
+  return (
+    <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8f5e9]">
+      <img
+        src={`${base}${EDUCATION_ICON_SRC}`}
+        alt=""
+        draggable={false}
+        className="h-5 w-5 select-none object-contain"
+      />
+    </div>
+  );
+}
+
 const PLATFORMS = ['Zoom', 'Microsoft Teams', 'Google Meet', 'In-person', 'Other'];
 
-const MEETING_SESSIONS = [
-  'Blueprint',
-  'Hala',
-  'Morning Education',
-  'Wellness Training Education',
+export const MEETING_SESSIONS = [
+  'Blueprint for Success',
+  'HALA',
+  'Daily Education',
+  'Wellness Secminar',
 ];
+
+export const DEFAULT_MEETING_SESSION = 'Daily Education';
 
 export default function EducationFormFields({
   platform,
@@ -42,9 +60,7 @@ export default function EducationFormFields({
         <button onClick={onCancel} className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
           <X className="w-4 h-4 text-gray-400" />
         </button>
-        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mb-2">
-          <EmojiOrNative emoji="🎓" className="w-6 h-6" nativeClassName="text-xl" />
-        </div>
+        <EducationHeaderIcon />
         <h2 className="text-sm font-bold text-gray-800">{formTitle}</h2>
         <p className="text-xs text-gray-400 mt-0.5">{formSubtitle}</p>
       </div>

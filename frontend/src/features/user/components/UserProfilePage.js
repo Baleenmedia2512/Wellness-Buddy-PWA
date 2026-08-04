@@ -97,7 +97,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setCoachName(data?.coachName ? String(data.coachName).trim() : '');
       if (data?.profileImage) setProfileImagePreview(data.profileImage);
-      // Stop the spinner as soon as profile is ready — don't wait on counselling.
+      // Stop spinner as soon as core profile is ready — do not wait on counselling.
       setIsLoading(false);
 
       // Counselling pre-fill only when key fields are still empty (background).
@@ -107,27 +107,31 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       if (!needsCounsellingPrefill) return;
 
       let counselling = null;
-      if (user?.id) {
-        counselling = await fetchMyAssessment(user.id);
-      }
-      if (!counselling) {
-        const phoneForLookup = profileData.phone || user?.phoneNumber || '';
-        if (phoneForLookup) {
-          const lead = await fetchLeadByPhone(phoneForLookup);
-          if (lead) {
-            if (!profileData.name && lead.name) profileData.name = lead.name;
-            if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
-            counselling = lead;
+      try {
+        if (user?.id) {
+          counselling = await fetchMyAssessment(user.id);
+        }
+        if (!counselling) {
+          const phoneForLookup = profileData.phone || user?.phoneNumber || '';
+          if (phoneForLookup) {
+            const lead = await fetchLeadByPhone(phoneForLookup);
+            if (lead) {
+              if (!profileData.name && lead.name) profileData.name = lead.name;
+              if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
+              counselling = lead;
+            }
           }
         }
-      }
-      if (counselling) {
-        if (!profileData.dietType && counselling.dietType) {
-          profileData.dietType = counselling.dietType;
+        if (counselling) {
+          if (!profileData.dietType && counselling.dietType) {
+            profileData.dietType = counselling.dietType;
+          }
+          leadPreFilledRef.current = true;
+          setLeadPreFilled(true);
+          form.reload(profileData);
         }
-        leadPreFilledRef.current = true;
-        setLeadPreFilled(true);
-        form.reload(profileData);
+      } catch {
+        // Non-fatal — profile fields already shown.
       }
     } catch (e) {
       setError(e.message || 'Failed to load profile.');

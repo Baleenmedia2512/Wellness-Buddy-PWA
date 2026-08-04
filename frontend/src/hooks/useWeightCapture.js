@@ -3,10 +3,11 @@
  * Weight recording state + save pipeline extracted from App.js.
  * Extraction: 2026-07-16. Logic is byte-identical.
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { getUserId } from '../shared/services/userIdentity';
 import { resolveLocationFields, stripLocationDiagnostics } from '../shared/utils/resolveLocationFields';
 import { duplicateDetectionService } from '../features/nutrition';
+import { fetchLatestWeightEntry, setCachedLatestWeight, warmLatestWeightCache } from '../features/weight/services/weight.api';
 import { debugLog } from '../shared/utils/logger';
 import { useWeightProgressCheck } from '../features/weight-progress-tips/hooks/useWeightProgressCheck';
 import { isSameBusinessDay, DEFAULT_BUSINESS_TIMEZONE } from '../shared/utils/datetimeUtils';
@@ -65,6 +66,11 @@ export function useWeightCapture({
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
   const [lastWeight, setLastWeight] = useState(null); // Last recorded weight for reference
+
+  useEffect(() => {
+    if (!user?.id) return;
+    warmLatestWeightCache(user.id);
+  }, [user?.id]);
 
   const clearWeightState = useCallback(() => {
     setWeightResult(null);
@@ -317,6 +323,12 @@ export function useWeightCapture({
         originalWeight: corrInfo?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
       }));
+
+      setCachedLatestWeight(userId, {
+        value: parseFloat(finalSavedWeight),
+        unit: weightData.unit || 'kg',
+        date: captureTimestamp || new Date().toISOString(),
+      });
 
       // Fetch previous weight to show "vs Previous entry" diff immediately
       try {
@@ -657,17 +669,8 @@ export function useWeightCapture({
       let uid = user?.id;
       if (!uid) uid = await getUserId(user);
       if (!uid) return;
-      const res = await fetch(
-        `${apiBaseUrl}/api/weight/history?userId=${uid}&includeImage=false&_t=${Date.now()}`,
-      );
-      const data = await res.json();
-      if (data.success && data.stats?.latestWeight) {
-        setLastWeight({
-          value: data.stats.latestWeight.value,
-          unit: "kg",
-          date: data.stats.latestWeight.date,
-        });
-      }
+      const entry = await fetchLatestWeightEntry(uid);
+      if (entry) setLastWeight(entry);
     } catch {
       /* non-critical */
     }

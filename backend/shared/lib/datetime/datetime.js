@@ -222,6 +222,38 @@ export function filterRowsByCalendarDay(rows, dateYmd, timezoneIana = IANA_IST, 
 }
 
 /**
+ * Keep rows whose timestamp column falls within [startDate, endDate] in `timezoneIana`.
+ * Pair with `applyDateRangeFilterWidened` when CreatedAt is IST wall-clock without zone.
+ *
+ * @param {object[]} rows
+ * @param {string} startDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} endDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [column='CreatedAt']
+ * @returns {object[]}
+ */
+export function filterRowsByCalendarDateRange(
+  rows,
+  startDate,
+  endDate,
+  timezoneIana = IANA_IST,
+  column = 'CreatedAt',
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.filter((row) => {
+    const raw = row?.[column];
+    if (raw == null) return false;
+    try {
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, timezoneIana);
+      const ymd = timestampToCalendarYmd(utcIso, timezoneIana);
+      return ymd >= startDate && ymd <= endDate;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Wall-clock HH:mm:ss for a stored UTC timestamp in a business timezone.
  *
  * @param {string|Date} utcTimestamp

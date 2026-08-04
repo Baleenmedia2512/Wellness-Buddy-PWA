@@ -47,6 +47,7 @@ export function useMealDeleteMutations({
   setError,
   onMealDelete,
   onMealDeleteWithUndo,
+  onMealDeleteUndoCancel,
   undoSeconds = DEFAULT_UNDO_SECONDS,
 }) {
   const [deletingId, setDeletingId] = useState(null);
@@ -58,6 +59,7 @@ export function useMealDeleteMutations({
 
     const deltas = computeDeleteDeltas(meal);
     const useFloatingUndo = fromModal && typeof onMealDeleteWithUndo === 'function';
+    const expiresAt = Date.now() + undoSeconds * 1000;
     const placeholder = {
       ID: `undo-${meal.ID}`,
       isUndoPlaceholder: true,
@@ -83,7 +85,7 @@ export function useMealDeleteMutations({
         ...prev,
         [placeholder.ID]: {
           originalMeal: meal,
-          expiresAt: Date.now() + undoSeconds * 1000,
+          expiresAt,
           ttlSeconds: undoSeconds,
         },
       }));
@@ -92,20 +94,20 @@ export function useMealDeleteMutations({
     applyDailyDelta(deltas);
     if (fromModal) setSelectedMeal(null);
 
+    if (useFloatingUndo) {
+      onMealDeleteWithUndo({ mealId: meal.ID, expiresAt });
+    }
+
     try {
       await deleteMealById({ apiBaseUrl, id: meal.ID, userId: user?.id });
       if (onMealDelete) onMealDelete(meal.ID);
-      if (useFloatingUndo) {
-        onMealDeleteWithUndo({
-          mealId: meal.ID,
-          expiresAt: Date.now() + undoSeconds * 1000,
-        });
-      }
       // Trigger global nutrition refresh (updates home cards)
       triggerRefresh({ immediate: true, source: 'meal-delete' });
     } catch (err) {
       if (useFloatingUndo) {
+        onMealDeleteUndoCancel?.({ mealId: meal.ID });
         setAnalyses((prev) => (prev.some((m) => m.ID === meal.ID) ? prev : prev.concat(meal)));
+        applyDailyDelta(invertDeltas(deltas));
       } else {
         setAnalyses((prev) => {
           const idx = prev.findIndex((m) => m.ID === placeholder.ID);

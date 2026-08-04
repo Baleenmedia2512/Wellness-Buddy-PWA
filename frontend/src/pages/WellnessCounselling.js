@@ -23,7 +23,7 @@ import { getApiBaseUrl } from '../config/api.config.js';
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
  */
-const WellnessCounselling = ({ user, onBack }) => {
+const WellnessCounselling = ({ user, onBack, tabVisitKey = 0, refreshKey = 0 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hierarchyData, setHierarchyData] = useState(null);
@@ -213,7 +213,7 @@ const WellnessCounselling = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, tabVisitKey, refreshKey]);
 
   const handleManualRefresh = () => {
     fetchData(true);

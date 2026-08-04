@@ -46,7 +46,7 @@ export const SHAKE_PRODUCTS = Object.freeze({
 
   protein: {
     id: 'protein',
-    label: 'Protein Powder',
+    label: 'Personalized Protein',
     unit: 'scoop (1 scoop = 6 g)',
     scoopsPerPack: 1,
     packWeightG: 6,
