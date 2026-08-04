@@ -48,8 +48,14 @@ import { analyzeUnified } from './AIGateway.js';
 import { FALLBACK_MODEL_NAME } from '../gemini/geminiClient.js';
 import { jobQueue } from './JobQueue.js';
 import { findByUserId } from '../../../features/user/user.repository.js';
-import { ANALYSIS_MODULES } from 'ai-token-monitor';
 
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 
 // ── Per-capture analysis status store ────────────────────────────────────────
 // In-process map: captureId → { status, traceId, updatedAt, errorCode? }

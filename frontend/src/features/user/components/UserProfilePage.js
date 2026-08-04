@@ -68,13 +68,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setProfileImage(img);
       setProfileImagePreview(img);
       face.reset();
-<<<<<<< HEAD
       setShowToast(true);
-      face.run(img, user?.id ?? null, 'PROFILE_IMAGE_UPDATE');
-=======
       // Accept any photo (no AI face check) — mark ready for auto-save.
       face.run(img, user?.id ?? null);
->>>>>>> origin/Phase1_Release
     },
   });
 

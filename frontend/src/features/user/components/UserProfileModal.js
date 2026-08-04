@@ -28,12 +28,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     onError: setError,
     onCropped: (img) => {
       setProfileImage(img); setProfileImagePreview(img); face.reset();
-<<<<<<< HEAD
-      setShowToast(true); face.run(img, user?.id ?? null, 'PROFILE_IMAGE_UPDATE');
-=======
+      setShowToast(true);
       // Accept any photo (no AI face check) — mark ready for auto-save.
       face.run(img, user?.id ?? null);
->>>>>>> origin/Phase1_Release
     },
   });
 

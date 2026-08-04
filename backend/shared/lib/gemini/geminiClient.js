@@ -14,7 +14,15 @@
 // MUST be first — SDK reads localStorage at import time (Node has none).
 
 import './serverLocalStoragePolyfill.js';
-import AIClient, { ANALYSIS_MODULES } from "ai-token-monitor";
+import AIClient from "ai-token-monitor";
+
+// Hardcoded enum since the SDK doesn't export it
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
@@ -78,13 +86,14 @@ async function resolveEndUserForMonitor(userId) {
 }
 
 /**
- * Send monitor telemetry without blocking the AI response.
- * Identity lookup + SDK call run in the background with a hard timeout.
+ * Send monitor telemetry to ai-token-monitor.
+ * Runs identity lookup + SDK call with a hard timeout.
+ * Awaited in generateContent to ensure reliable delivery in Vercel.
  *
  * @param {object} basePayload
  * @param {object|null} trace
  */
-function enqueueMonitorTelemetry(basePayload, trace) {
+async function sendMonitorTelemetry(basePayload, trace) {
   if (!process.env.AI_MONITOR_SDK_KEY) return;
 
   const run = async () => {
@@ -112,12 +121,14 @@ function enqueueMonitorTelemetry(basePayload, trace) {
     }),
   ]);
 
-  void timed.catch((sdkErr) => {
-    logger.warn('geminiClient: telemetry skipped', {
+  try {
+    await timed;
+  } catch (sdkErr) {
+    logger.warn('geminiClient: telemetry skipped or failed', {
       status: basePayload?.status ?? null,
       message: sdkErr?.message,
     });
-  });
+  }
 }
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
@@ -355,8 +366,8 @@ export async function generateContent(
     const result = await model.generateContent(parts);
     const latency = Date.now() - start;
 
-    // Never await monitor I/O on the request path (Vercel concurrency / timeouts).
-    enqueueMonitorTelemetry({
+    // Await telemetry to prevent Vercel container freeze breaking the background network request
+    await sendMonitorTelemetry({
       provider: 'Gemini',
       model: modelOverride ?? MODEL_NAME,
       usage: result.response.usageMetadata,
@@ -368,7 +379,7 @@ export async function generateContent(
   } catch (err) {
     const latency = Date.now() - start;
 
-    enqueueMonitorTelemetry({
+    await sendMonitorTelemetry({
       provider: 'Gemini',
       model: modelOverride ?? MODEL_NAME,
       usage: {},

@@ -4,7 +4,14 @@ import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
-import { ANALYSIS_MODULES } from 'ai-token-monitor';
+
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {

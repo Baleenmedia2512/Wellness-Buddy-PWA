@@ -10,20 +10,11 @@ export default function useFaceDetection() {
 
   const reset = () => setStatus('idle');
 
-<<<<<<< HEAD
-  const run = useCallback(async (base64, userId = null, module = null) => {
-    promiseRef.current = new Promise((resolve) => { resolveRef.current = resolve; });
-    setStatus('detecting');
-    const result = await detectFace(base64, userId, module);
-    setStatus(result);
-    resolveRef.current?.(result);
-=======
   const run = useCallback(async (_base64, _userId = null) => {
     // Accept any photo — no AI face check.
     promiseRef.current = Promise.resolve('face_found');
     setStatus('face_found');
     return 'face_found';
->>>>>>> origin/Phase1_Release
   }, []);
 
   const awaitResult = useCallback(async () => {

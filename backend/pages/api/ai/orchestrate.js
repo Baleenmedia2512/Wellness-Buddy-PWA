@@ -44,7 +44,15 @@ import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
-import { ANALYSIS_MODULES } from 'ai-token-monitor';
+
+
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 
 export const config = {
   api: { bodyParser: false },
@@ -66,6 +74,7 @@ function sanitiseInt(val) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+
   if (req.method !== 'POST') {
     return res.status(405).json({
       ok: false,
