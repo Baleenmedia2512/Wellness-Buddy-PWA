@@ -142,7 +142,7 @@ export function WeightProgressTipsModal({
   const explanation = isFirstUpload
     ? `Welcome! Your starting weight is ${currWeight} kg. Let's begin your ${goalLabel.toLowerCase()} journey!`
     : followedPlanCorrectly
-    ? `You followed your plan correctly, but your weight increased. Please contact your coach for guidance.`
+    ? `You followed your plan correctly, but your weight increased. Please contact your sponsor for guidance.`
     : weightWentUp
     ? `Your weight is higher than your previous weight.`
     : weightWentDown
@@ -267,12 +267,12 @@ export function WeightProgressTipsModal({
                 onClick={handleContactCoach}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 transition flex items-center justify-center gap-2"
               >
-                📞 Contact Your Coach
+                📞 Contact Your Sponsor
               </button>
             ) : (
               <div className="flex-1 py-2 px-3 rounded-xl bg-gray-100 border border-gray-200 flex items-center gap-2 text-sm text-gray-500">
                 <span>ℹ️</span>
-                <span>Coach contact number is not set. Please reach out to them directly.</span>
+                <span>Sponsor contact number is not set. Please reach out to them directly.</span>
               </div>
             )
           ) : null}

@@ -202,6 +202,7 @@ import {
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
 import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
+import { isAutoCameraOnResumeEnabled } from "./shared/utils/autoCameraPreference";
 import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
 import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
@@ -1315,7 +1316,7 @@ function WellnessValleyApp() {
   //     (Snapchat rule: camera opens once on launch; close without sharing ? stay on feed)
   //  - _suppressAutoCameraOnDeepLinkRef: skip when app launched via /share deep link
   //  - wv.autoCameraOnResume: user-controlled localStorage preference
-  //     (Header menu ? Auto Camera toggle; default ON)
+  //     (Settings ? Auto Camera toggle; default OFF for all users via one-time migration)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -1347,8 +1348,8 @@ function WellnessValleyApp() {
         //   Matches Snapchat behaviour: camera opens once on launch; if closed
         //   without sharing, the user stays on the feed until they actively share.
         if (!_hasCompletedFirstShareRef.current) return;
-        // Guard 8: respect user preference (Header ? Auto Camera toggle)
-        if (localStorage.getItem('wv.autoCameraOnResume') === 'false') return;
+        // Guard 8: respect user preference (Header ? Auto Camera toggle; default OFF for all users)
+        if (!isAutoCameraOnResumeEnabled()) return;
         // Guard 9: skip if analysis results are currently visible
         if (
           nutritionDataRef.current ||
@@ -2698,20 +2699,20 @@ function WellnessValleyApp() {
         const errMsg =
           otpJson.message ||
           otpJson.error ||
-          "Could not reach your coach. Please try again.";
+          "Could not reach your sponsor. Please try again.";
         setAlertModal({
           isOpen: true,
-          title: "Unable to contact coach",
+          title: "Unable to contact sponsor",
           message:
             otpJson.error === "NO_COACH_ASSIGNED"
-              ? "No coach is assigned to your account. Please ask your wellness center to link you to a coach first."
+              ? "No sponsor is assigned to your account. Please ask your wellness center to link you to a sponsor first."
               : errMsg,
           type: "warning",
         });
       } else {
         setAlertModal({
           isOpen: true,
-          title: "Unable to contact coach",
+          title: "Unable to contact sponsor",
           message:
             "Your account is missing contact details. Please sign in again or contact support.",
           type: "warning",
@@ -5465,7 +5466,7 @@ function WellnessValleyApp() {
         isOpen: true,
         title: "Account inactive",
         message:
-          "Your account is inactive. Please contact your coach to reactivate.",
+          "Your account is inactive. Please contact your sponsor to reactivate.",
         type: "warning",
       });
       imageProcessingInProgress.current = false;

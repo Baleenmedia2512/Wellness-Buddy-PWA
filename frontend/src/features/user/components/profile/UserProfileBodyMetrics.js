@@ -64,7 +64,7 @@ const UserProfileBodyMetrics = ({ bodyMetrics }) => {
         <h3 className="text-sm font-semibold text-gray-800">Body Parameters</h3>
       </div>
       <p className="text-xs text-gray-500">
-        Recorded by your coach. These values are read-only here.
+        Recorded by your sponsor. These values are read-only here.
       </p> */}
 
       {hasAnyReference && (

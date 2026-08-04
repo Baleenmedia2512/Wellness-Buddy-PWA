@@ -46,7 +46,7 @@ export function buildOnboardingShareUrl(apiBaseUrl) {
 export function buildShareCaptionForImage(memberName, shareUrl) {
   const firstName = memberName?.trim().split(/\s+/)[0] || 'there';
   const lines = [
-    `Hey ${firstName}! Your coach shared your body parameters.`,
+    `Hey ${firstName}! Your sponsor shared your body parameters.`,
     'Install or open Wellness Valley app.',
   ];
   if (shareUrl) {

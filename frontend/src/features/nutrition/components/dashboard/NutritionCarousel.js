@@ -15,7 +15,7 @@
  *  To re-enable: uncomment GICard import/usage below and add 'Glycemic Index' to CARD_LABELS.)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
- * Resets to card 0 when selectedDate changes.
+ * Keeps the active card when the date range filter changes so only card data reloads.
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -55,8 +55,6 @@ const NutritionCarousel = ({
   dailyStats,
   latestWeight,
   gender = null,
-  selectedDate,
-  rangeKey,
   analyses = [],
   leadingCard = null,
   leadingCardLabel = 'Wellness Score',
@@ -143,9 +141,9 @@ const NutritionCarousel = ({
     ? [leadingCardLabel, ...NUTRITION_CARD_LABELS]
     : NUTRITION_CARD_LABELS;
 
-  const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
+  // Do not reset on date/range change — stay on Calories (etc.) while period data reloads.
+  const { activeIndex, swipeHandlers } = useCarouselSwipe({
     cardCount: cardLabels.length,
-    resetKey: rangeKey || selectedDate,
   });
 
   // Memoize cards to prevent re-renders on swipe (only transform changes)

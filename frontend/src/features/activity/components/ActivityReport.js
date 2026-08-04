@@ -374,7 +374,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     const q = memberSearchQuery.toLowerCase();
     return memberSummaries.filter(m =>
       (m.memberName || '').toLowerCase().includes(q) ||
-      (m.coachName || '').toLowerCase().includes(q)
+      (m.sponsorName || m.coachName || '').toLowerCase().includes(q)
+      || (m.idealCoachName || '').toLowerCase().includes(q)
     );
   }, [memberSummaries, memberSearchQuery]);
 
@@ -388,7 +389,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       filtered = filtered.filter(record =>
         (record.memberName || '').toLowerCase().includes(query) ||
         (record.phone || '').toLowerCase().includes(query) ||
-        (record.coachName || '').toLowerCase().includes(query) ||
+        (record.sponsorName || record.coachName || '').toLowerCase().includes(query) ||
+        (record.idealCoachName || '').toLowerCase().includes(query) ||
         (record.city || '').toLowerCase().includes(query) ||
         (record.village || '').toLowerCase().includes(query)
       );
@@ -446,6 +448,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         'Club',
         'Reg. Date',
         'Reg. Time',
+        'Sponsor Name',
         'Coach Name',
         'Phone Number',
         'City',
@@ -476,7 +479,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
           `"${displayClub}"`,
           record.date || 'N/A',
           record.time || 'N/A',
-          `"${record.coachName || 'N/A'}"`,
+          `"${record.sponsorName || record.coachName || 'N/A'}"`,
+          `"${record.idealCoachName || ''}"`,
           `"${record.phone || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -724,6 +728,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Sponsor</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
@@ -767,7 +772,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
