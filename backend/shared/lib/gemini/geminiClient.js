@@ -263,7 +263,7 @@ function getGenAI() {
       appName: "Wellness valley",
 
       environment:
-        process.env.NODE_ENV || "development",
+        process.env.AI_MONITOR_ENV || (process.env.VERCEL_URL ? (process.env.VERCEL_URL.includes('-test') ? 'test' : 'production') : (process.env.NODE_ENV === 'production' ? 'production' : 'localhost')),
     });
 
     logger.info("AI Token Monitor SDK initialized");
