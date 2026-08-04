@@ -295,7 +295,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
- * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled (coach read-only view)
+ * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled
  * @param {Array<object>|object|null} [props.pendingUndos]
  *        active undo windows — each renders an inline undo card in its deleted slot
  * @param {Array<object>|object|null} [props.optimisticEntries]
@@ -592,14 +592,6 @@ export default function DiaryFeed({
   if (showTimeline) {
     return (
       <div data-testid="diary-timeline">
-        {/* Read-only hint when a coach views a member diary */}
-        {canDelete === false && (
-          <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
-            Viewing a team member&apos;s diary — swipe to delete only works on your own entries.
-            Use <strong>View mine</strong> above to switch back.
-          </div>
-        )}
-
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">

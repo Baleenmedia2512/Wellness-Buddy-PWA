@@ -350,10 +350,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     setDiaryOptimisticEntries({});
   }, []);
 
-  // Drop in-flight undo/restore UI when the selected day changes.
+  // Drop in-flight undo/restore UI when the selected day or diary subject changes.
   useEffect(() => {
     clearAllDiaryUndos();
   }, [diaryTimelineDate, clearAllDiaryUndos]);
+
+  useEffect(() => {
+    clearAllDiaryUndos();
+  }, [ownerId, clearAllDiaryUndos]);
 
   const diaryUndoList = useMemo(() => Object.values(diaryUndos), [diaryUndos]);
   const diaryOptimisticList = useMemo(
@@ -664,12 +668,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   }, [removeDiaryUndo]);
 
   // Swipe-to-delete for timeline rows including unknown ("Other") rows.
+  // Allowed for self and for coaches viewing a downline member (same as
+  // NutritionDashboard meal deletes — APIs receive ownerId = diary subject).
   const handleEntryDelete = async (entry) => {
     if (!entry || !ownerId) return;
-    if (!viewingSelf) {
-      reloadDiary();
-      return;
-    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -1053,6 +1055,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               })()}
               <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <DiaryFeed
+                  key={ownerId || 'self'}
                   showTimeline
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
@@ -1061,7 +1064,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   date={diaryTimelineDate}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  canDelete={viewingSelf}
+                  canDelete
                   pendingUndos={diaryUndoList}
                   optimisticEntries={diaryOptimisticList}
                   onOptimisticEntryConsumed={(entry) => {
@@ -1193,6 +1196,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto px-3 md:px-4 pb-40 mt-2">
                 <h2 className="text-sm font-semibold text-gray-500 px-1 mb-2 mt-4">Other</h2>
                 <DiaryFeed
+                  key={`other-${ownerId || 'self'}`}
                   refreshKey={diaryReloadKey}
                   ownerUserId={ownerId}
                   viewerUserId={user?.id || user?.userId}
@@ -1201,7 +1205,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   filterKinds={['unknown']}
                   onEntryOpen={handleEntryOpen}
                   onEntryDelete={handleEntryDelete}
-                  canDelete={viewingSelf}
+                  canDelete
                   pendingUndos={diaryUndoList.filter((u) => u.kind === 'unknown')}
                   optimisticEntries={diaryOptimisticList.filter((e) => e.kind === 'unknown')}
                   onOptimisticEntryConsumed={(entry) => {
