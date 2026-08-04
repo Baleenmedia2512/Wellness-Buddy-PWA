@@ -7,6 +7,19 @@ function normalizeRecipient(raw, contactType) {
   return contactType === 'email' ? trimmed.toLowerCase() : trimmed;
 }
 
+function extractConsent(body) {
+  if (!body || typeof body !== 'object') {
+    return { consentAccepted: false, consentVersion: '', deviceInfo: '' };
+  }
+  const deviceInfo = body.deviceInfo != null ? String(body.deviceInfo).trim().slice(0, 500) : '';
+  return {
+    consentAccepted: body.consentAccepted === true,
+    consentVersion: body.consentVersion != null ? String(body.consentVersion).trim() : '',
+    // Client may send platform hint; IP is never taken from the body.
+    deviceInfo,
+  };
+}
+
 export function validateSendOtp(body) {
   if (!body) throw new ValidationError(400, 'Recipient is required');
   const contactType = body.contactType || 'phone';
@@ -15,7 +28,7 @@ export function validateSendOtp(body) {
   if (contactType === 'phone' && !isValidPhoneE164(recipient)) {
     throw new ValidationError(400, 'Invalid phone number');
   }
-  return { recipient, contactType };
+  return { recipient, contactType, ...extractConsent(body) };
 }
 
 export function validateVerifyOtp(body) {
@@ -33,6 +46,9 @@ export function validateVerifyOtp(body) {
     contactType,
     purpose: body.purpose || '',
     timezoneIana: body.timezoneIana ?? body.timezone ?? undefined,
+    ...extractConsent(body),
+    // Populated by the route handler from the HTTP request.
+    ipAddress: body.ipAddress != null ? String(body.ipAddress).trim().slice(0, 64) : null,
   };
 }
 

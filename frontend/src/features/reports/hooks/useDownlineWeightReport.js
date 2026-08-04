@@ -31,7 +31,7 @@ import {
 import { filterRowsBySearch } from '../utils/reportSearch.js';
 import { buildTeamPerformanceByUserId } from '../utils/reportTeamPerformance.js';
 
-export function useDownlineWeightReport({ coachId }) {
+export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
   const [self, setSelf]               = useState(null);
   const [members, setMembers]         = useState([]);
   const [teamScope, setTeamScope]     = useState(TEAM_SCOPES.DIRECT);
@@ -55,7 +55,7 @@ export function useDownlineWeightReport({ coachId }) {
     }
   }, [coachId]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => { fetch(); }, [fetch, tabVisitKey]);
 
   useEffect(() => {
     setSearchQuery('');

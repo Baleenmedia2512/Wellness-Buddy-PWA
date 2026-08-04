@@ -64,7 +64,18 @@ const SmartFoodSearchModal = ({
       setError("");
       resetManualForm();
     }
-  }, [isOpen]);
+  }, [isOpen, skipTypeSelect]);
+
+  const handleBackFromFoodEntry = () => {
+    if (skipTypeSelect) {
+      handleClose();
+      return;
+    }
+    setShowTypeSelect(true);
+    setSearchQuery("");
+    setShowManualForm(false);
+    setError("");
+  };
 
   // Debounced search
   useEffect(() => {
@@ -241,7 +252,7 @@ const SmartFoodSearchModal = ({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
 
         {/* ── Type Selection Screen ── */}
-        {showTypeSelect && (
+        {showTypeSelect && !skipTypeSelect && (
           <>
             {/* Header */}
             <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
@@ -279,13 +290,13 @@ const SmartFoodSearchModal = ({
         )}
 
         {/* ── Food Entry Screen ── */}
-        {!showTypeSelect && (
+        {(skipTypeSelect || !showTypeSelect) && (
           <>
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setShowTypeSelect(true); setSearchQuery(""); setShowManualForm(false); setError(""); }}
+              onClick={handleBackFromFoodEntry}
               className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
               aria-label="Back"
             >

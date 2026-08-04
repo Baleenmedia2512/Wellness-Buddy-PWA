@@ -24,6 +24,9 @@ import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapCardToProfileBodyMetrics, hasCoachRecordedBodyMetrics } from './domain/profileBodyMetrics.rules.js';
 import { findLatestLinkedBodyMetricsCard } from '../body-parameters-card/data/card.repo.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
+import { isConsentRecorded } from '../auth/domain/consent.rules.js';
+import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -31,12 +34,10 @@ export async function getProfile({ email }) {
   const user = await repo.getProfile(email);
   if (!user) return notFound();
 
-  const [latestWeight, latestBodyMetricsCard, coachRow] = await Promise.all([
+  const [latestWeight, latestBodyMetricsCard, sponsorIdeal] = await Promise.all([
     repo.getLatestWeight(user.UserId),
     findLatestLinkedBodyMetricsCard(user.UserId),
-    user.CoachId
-      ? repo.findByUserId(user.CoachId, '"UserId", "UserName"')
-      : Promise.resolve(null),
+    resolveSponsorAndIdealCoach(user.UserId, { viewerUserId: user.UserId }),
   ]);
   const bodyMetricsMapped = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const bodyMetrics = hasCoachRecordedBodyMetrics(bodyMetricsMapped) ? bodyMetricsMapped : null;
@@ -57,7 +58,9 @@ export async function getProfile({ email }) {
     physicalActivityLevel,
   });
   const tdeeBreakdown = buildTdeeBreakdown({ bmr: latestBmr, physicalActivityLevel });
-  const coachName = coachRow?.UserName ? String(coachRow.UserName).trim() : null;
+  const sponsorName = sponsorIdeal.sponsorName || null;
+  // Backward-compatible alias: coachName remains the direct parent (sponsor).
+  const coachName = sponsorName;
 
   return {
     httpStatus: 200,
@@ -87,12 +90,18 @@ export async function getProfile({ email }) {
         profileImage,
         coachId: user.CoachId || null,
         coachName,
+        sponsorName,
+        idealCoachId: sponsorIdeal.idealCoachId || null,
+        idealCoachName: sponsorIdeal.idealCoachName || null,
         profilePicSnooze: user.profile_pic_snooze || null,
         latestWeight: latestWeight?.Weight ? parseFloat(latestWeight.Weight) : null,
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         timezone: resolveProfileTimezone(user.timezone_iana),
+        consentAccepted: isConsentRecorded(user),
+        consentRequired: isEnabled('ff.consent-gate') && !isConsentRecorded(user),
+        consentVersion: user.ConsentVersion || null,
         calorieTarget,
         tdeeBreakdown,
         weightRecordDate: latestWeight?.CreatedAt || null,

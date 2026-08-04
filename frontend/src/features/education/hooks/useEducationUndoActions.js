@@ -7,6 +7,7 @@
  */
 import { useCallback } from 'react';
 import { deleteEducationLog, undoEducationDelete } from '../services/educationDashboardService';
+import { UNDO_SECONDS as DIARY_UNDO_SECONDS } from '../../nutrition/hooks/useNutritionUndo';
 
 export const UNDO_SECONDS = 10;
 
@@ -30,8 +31,40 @@ const replaceAt = (prev, matcher, replacement) => {
 
 export function useEducationUndoActions({
   apiBaseUrl, user, userIdRef, setEducationLogs, setUndoState, refreshSummary,
+  onDeleteWithUndo,
+  onDeleteUndoCancel,
+  undoSeconds = UNDO_SECONDS,
 }) {
   const userId = () => userIdRef.current || user?.id;
+
+  const handleDeleteEducationLogFromModal = useCallback(async (log) => {
+    if (!log || log.isUndoPlaceholder) return;
+    const expiresAt = Date.now() + DIARY_UNDO_SECONDS * 1000;
+
+    if (typeof onDeleteWithUndo === 'function') {
+      onDeleteWithUndo({
+        entryId: log.Id,
+        expiresAt,
+        topic: log.Topic ?? null,
+      });
+    }
+
+    setEducationLogs((prev) => prev.filter((e) => e.Id !== log.Id));
+
+    try {
+      await deleteEducationLog({ apiBaseUrl, userId: userId(), logId: log.Id });
+      refreshSummary();
+    } catch (err) {
+      onDeleteUndoCancel?.();
+      setEducationLogs((prev) => (
+        prev.some((e) => e.Id === log.Id) ? prev : [log, ...prev]
+      ));
+      alert(err.message || 'Failed to delete. Please try again.');
+    }
+  }, [
+    apiBaseUrl, user, userIdRef, setEducationLogs, refreshSummary,
+    onDeleteWithUndo, onDeleteUndoCancel, undoSeconds,
+  ]);
 
   const handleDeleteEducationLog = useCallback(async (log) => {
     if (!log || log.isUndoPlaceholder) return;
@@ -68,5 +101,8 @@ export function useEducationUndoActions({
     setUndoState((p) => { const n = { ...p }; delete n[pid]; return n; });
   }, [setEducationLogs, setUndoState]);
 
-  return { handleDeleteEducationLog, handleUndoRestore, handleUndoExpire };
+  return {
+    handleDeleteEducationLog, handleDeleteEducationLogFromModal,
+    handleUndoRestore, handleUndoExpire,
+  };
 }

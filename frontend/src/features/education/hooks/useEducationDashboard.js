@@ -14,7 +14,11 @@ import { useEducationUndoActions } from './useEducationUndoActions';
 export const UNDO_SECONDS = 10;
 const PAGE_SIZE = 10;
 
-export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0, selectedDate = null }) {
+export function useEducationDashboard({
+  user, apiBaseUrl, refreshKey = 0, selectedDate = null,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
+}) {
   const [educationLogs, setEducationLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -98,6 +102,8 @@ export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0, select
 
   const undoActions = useEducationUndoActions({
     apiBaseUrl, user, userIdRef, setEducationLogs, setUndoState, refreshSummary,
+    onDeleteWithUndo, onDeleteUndoCancel,
+    undoSeconds: UNDO_SECONDS,
   });
 
   // Log list is scoped to the selected day when one is provided (the shell

@@ -4,18 +4,16 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
+  Dumbbell,
   Loader2,
+  Lock,
   Sparkles,
   UtensilsCrossed,
-  GraduationCap,
-  Droplets,
-  Info,
-  Timer,
 } from 'lucide-react';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
   promoteUnknownToFood,
+  deleteCapture,
 } from '../../features/captures';
 import {
   SmartFoodSearchModal,
@@ -26,14 +24,16 @@ import {
   AFRESH_PRODUCT,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
+import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
+import { isIOS } from '../../shared/utils/platform';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -51,12 +51,12 @@ function PublicIcon({ src, className = '', alt = '' }) {
 const CATEGORIES = [
   { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
   { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'education', Icon: GraduationCap, label: 'Education' },
+  { id: 'education', src: '/education.svg', label: 'Education', isImgIcon: true },
   { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
-  { id: 'water', Icon: Droplets, label: 'Water' },
+  { id: 'water', src: '/water.svg', label: 'Water', isImgIcon: true },
   { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
-  // smartwatch flow = calories burned; label is Workout (green fire)
-  { id: 'smartwatch', src: '/emoji/1f525-green.svg', label: 'Workout', isImgIcon: true },
+  // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
+  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true, Icon: Dumbbell },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -68,42 +68,78 @@ const BRAND = {
   active: '#16a34a',
 };
 
-/** Milliseconds until next local midnight in `timezoneIana` (credit day boundary). */
-function msUntilNextMidnight(timezoneIana) {
+/** Shared Log-as button chrome — fills one cell in the 3×3 grid. */
+const LOG_AS_BTN_BASE =
+  'log-as-btn flex h-full min-h-[4.75rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center cursor-pointer select-none transition-[transform,box-shadow,background-color,border-color] duration-150 ease-out disabled:pointer-events-none disabled:opacity-50 min-[380px]:min-h-[5rem] min-[380px]:gap-1.5 sm:min-h-[5.25rem]';
+
+const LOG_AS_BTN_IDLE = [
+  LOG_AS_BTN_BASE,
+  'log-as-btn--idle border-2 bg-gradient-to-b from-white to-emerald-50/70',
+  'border-emerald-200/90 text-emerald-900',
+  'shadow-[0_3px_0_0_rgba(6,95,70,0.22)]',
+  'active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(6,95,70,0.18)]',
+].join(' ');
+
+const LOG_AS_BTN_SELECTED = [
+  LOG_AS_BTN_BASE,
+  'log-as-btn--selected border-2 border-emerald-800 bg-gradient-to-b from-emerald-600 to-emerald-700 text-white',
+  'shadow-[0_3px_0_0_#064e3b]',
+  'active:translate-y-[2px] active:shadow-[0_1px_0_0_#064e3b]',
+].join(' ');
+
+function LogAsIconWrap({ selected = false, muted = false, compact = false, children }) {
+  return (
+    <span
+      className={[
+        'flex shrink-0 items-center justify-center',
+        compact
+          ? 'h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10'
+          : 'h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-11 sm:w-11',
+        selected
+          ? 'rounded-full bg-white/15 ring-1 ring-white/25'
+          : muted
+            ? 'rounded-full bg-gray-100 text-gray-400'
+            : 'text-emerald-700',
+      ].join(' ')}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Next credit-reset calendar day in `timezoneIana`, e.g. "Aug 04". */
+function formatUnlockDate(timezoneIana) {
   const tz = timezoneIana || 'Asia/Kolkata';
+  const now = new Date();
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const num = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
   const elapsed = num('hour') * 3600 + num('minute') * 60 + num('second');
-  const remainingSec = Math.max(0, 24 * 3600 - elapsed);
-  // At exactly 00:00:00, day just flipped — treat as 0 for unlock UX.
-  return remainingSec === 24 * 3600 ? 0 : remainingSec * 1000;
+  const remainingSec = elapsed === 0 ? 0 : Math.max(0, 24 * 3600 - elapsed);
+  const target = remainingSec === 0 ? now : new Date(now.getTime() + remainingSec * 1000);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    month: 'short',
+    day: '2-digit',
+  }).format(target);
 }
 
-function formatCountdown(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function useCreditsResetCountdown(timezoneIana) {
-  const [label, setLabel] = useState(() =>
-    formatCountdown(msUntilNextMidnight(timezoneIana)),
+/** Unlock date line for the Auto Detect tile when credits are exhausted. */
+function LogAsUnlockDate({ timezoneIana, className = '' }) {
+  const label = formatUnlockDate(timezoneIana);
+  return (
+    <span
+      className={`max-w-full truncate whitespace-nowrap tabular-nums ${className}`}
+      title={`AI credit unlocks on ${label}`}
+    >
+      {label}
+    </span>
   );
-  useEffect(() => {
-    const tick = () => setLabel(formatCountdown(msUntilNextMidnight(timezoneIana)));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [timezoneIana]);
-  return label;
 }
 
 function buildAnalysisFromManualFood(m) {
@@ -130,74 +166,6 @@ function shakePayloadToAnalysis(payload) {
   };
 }
 
-function AiCreditsPanel({ credits, loading, outOfCredits }) {
-  const resetIn = useCreditsResetCountdown(credits?.timezoneIana);
-
-  if (loading && !credits) {
-    return (
-      <div className="flex items-center gap-2 rounded-2xl border border-green-100 bg-white px-3.5 py-3 shadow-sm">
-        <Loader2 className="h-4 w-4 animate-spin text-emerald-700" />
-        <span className="text-sm text-green-700/70">Checking AI credits…</span>
-      </div>
-    );
-  }
-  if (!credits) return null;
-
-  const limit = Math.max(0, Number(credits.dailyLimit) || 0);
-  const used = Math.max(0, Number(credits.used) || 0);
-  const remaining = Math.max(0, Number(credits.remaining) ?? Math.max(0, limit - used));
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
-      <div className="px-3.5 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/80">
-              Daily AI credits
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-sm font-bold text-gray-900">
-              <span className={outOfCredits ? 'text-amber-600' : 'text-emerald-700'}>
-                {remaining}
-              </span>
-              <span className="font-semibold text-gray-400"> of {limit} left</span>
-            </p>
-          </div>
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: BRAND.mint }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${pct}%`,
-              background: outOfCredits ? '#d97706' : BRAND.active,
-            }}
-          />
-        </div>
-        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl px-2.5 py-2" style={{ background: BRAND.mint }}>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-            <Timer className="h-3.5 w-3.5 text-emerald-700" aria-hidden />
-            {outOfCredits ? 'New AI unlocks in' : 'Credits refresh in'}
-          </span>
-          <span className="font-mono text-sm font-extrabold tabular-nums text-emerald-900" aria-live="polite">
-            {resetIn}
-          </span>
-        </div>
-      </div>
-      <div
-        className="flex items-start gap-1.5 border-t border-green-50 px-3.5 py-2 text-[11px] leading-snug text-emerald-800/80"
-        style={{ background: BRAND.mint }}
-      >
-        <Info className="mt-0.5 h-3 w-3 shrink-0 text-emerald-700" aria-hidden />
-        {outOfCredits
-          ? 'Limit reached for today. Log with a type below — no AI charge.'
-          : '1 credit = 1 AI run (including unrecognised photos). Types below use 0 credits.'}
-      </div>
-    </div>
-  );
-}
-
 export default function ManualEntryPage({
   userId,
   apiBaseUrl,
@@ -217,9 +185,17 @@ export default function ManualEntryPage({
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
+  const [workoutTodayKcal, setWorkoutTodayKcal] = useState(0);
+  const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
+
+  // New capture while this screen stays mounted — close any open sub-form.
+  useEffect(() => {
+    setActiveForm(null);
+  }, [captureId]);
 
   const previewSrc = useMemo(() => {
     if (!imageBase64) return null;
@@ -268,9 +244,48 @@ export default function ManualEntryPage({
     return () => { cancelled = true; };
   }, [activeForm, userId]);
 
-  const exit = () => {
-    onSaved?.();
+  // Load today's watch calories whenever the workout modal opens.
+  useEffect(() => {
+    if (activeForm !== 'smartwatch' || !userId) return undefined;
+    let cancelled = false;
+    setWorkoutTodayLoading(true);
+    fetchWatchBurnedCalories({ apiBaseUrl, userId, date: todayLocal() })
+      .then((total) => {
+        if (cancelled) return;
+        setWorkoutTodayKcal(Math.max(0, Math.round(Number(total) || 0)));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkoutTodayKcal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkoutTodayLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeForm, userId, apiBaseUrl]);
+
+  useEffect(() => {
+    if (userId) warmLatestWeightCache(userId);
+  }, [userId]);
+
+  const exit = async () => {
+    await onSaved?.();
+    // Share sheet was shown — return to main whether user shared or dismissed.
     onBack?.();
+  };
+
+  /** Discard capture and leave — must not remain in Diary as unknown/Other. */
+  const handleCloseWithoutLog = async () => {
+    if (closingWithoutLog || saving || aiStarting) return;
+    setClosingWithoutLog(true);
+    try {
+      if (captureId && userId) {
+        await deleteCapture({ captureId, userId });
+      }
+      onBack?.();
+    } catch {
+      onToast?.("Couldn't discard photo — try again.");
+      setClosingWithoutLog(false);
+    }
   };
 
   const saveFoodAnalysis = async (analysisResult, toastMsg) => {
@@ -281,7 +296,7 @@ export default function ManualEntryPage({
       originalCapturedAt: originalCapturedAt || null,
     });
     onToast?.(toastMsg);
-    exit();
+    await exit();
   };
 
   const handleAiAnalyze = async () => {
@@ -305,7 +320,7 @@ export default function ManualEntryPage({
         reservationId = reserved.reservationId;
       }
       onStartBackgroundAi?.({ reservationId });
-      exit();
+      await exit();
     } catch (err) {
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
@@ -344,7 +359,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Weight saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save weight';
       setHint(msg);
@@ -366,7 +381,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Activity saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save activity';
       setHint(msg);
@@ -413,7 +428,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Education saved to Diary');
-      exit();
+      await exit();
     } catch (err) {
       const msg = err?.message || 'Failed to save education';
       setHint(msg);
@@ -429,125 +444,46 @@ export default function ManualEntryPage({
   // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
-  const aiLockedUi = outOfCredits;
-  const aiDisabled = aiStarting || outOfCredits || creditsChecking;
+  const aiDisabled = aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
       {/* Header — white bar like Home */}
       <header className="safe-top shrink-0 border-b border-green-100 bg-white shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center gap-2 px-3 py-2.5">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-xl p-2 text-emerald-700 transition hover:bg-[#e8f5e9]"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-extrabold text-green-700">Classify photo</h1>
-            <p className="truncate text-xs text-green-600">
-              {showAiButton
-                ? 'AI analyze, or log a type now'
-                : 'Choose a type to log now'}
-            </p>
-          </div>
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
-            style={{ background: BRAND.hero }}
-            aria-hidden
-          >
-            {showAiButton ? (
-              <Sparkles className="h-4 w-4" />
-            ) : (
-              <UtensilsCrossed className="h-4 w-4" />
-            )}
-          </div>
+        <div className="mx-auto max-w-lg px-3 py-2.5">
+          <h1 className="truncate text-base font-extrabold text-green-700">What is this image?</h1>
+          <p className="truncate text-xs text-green-600">
+            Select one button from below — e.g. Weight, Afresh, Food…
+          </p>
         </div>
       </header>
 
       {/* Body — flex layout, no page scroll */}
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {showCreditsPanel && (
-          <AiCreditsPanel
-            credits={credits}
-            loading={creditsLoading}
-            outOfCredits={outOfCredits}
-          />
-        )}
-
-        {/* Photo: thumb + AI CTA when AI on; full preview when AI off */}
-        {showAiButton ? (
-          <section className="flex shrink-0 items-stretch gap-2.5">
-            {previewSrc ? (
-              <div className="h-[4.75rem] w-[4.75rem] shrink-0 overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm">
-                <img
-                  src={previewSrc}
-                  alt="Captured"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="h-[4.75rem] w-[4.75rem] shrink-0 rounded-2xl" style={{ background: BRAND.mint }} />
-            )}
-            <button
-              type="button"
-              onClick={handleAiAnalyze}
-              disabled={aiDisabled}
-              className={[
-                'flex min-h-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-center transition active:scale-[0.99]',
-                aiLockedUi
-                  ? 'cursor-not-allowed bg-white text-gray-400 shadow-sm ring-1 ring-gray-200'
-                  : 'text-white shadow-lg',
-              ].join(' ')}
-              style={aiLockedUi ? undefined : { background: BRAND.hero }}
+        {/* Photo preview */}
+        <section className="shrink-0">
+          {previewSrc ? (
+            <div
+              className="flex w-full items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm"
+              style={{
+                background: BRAND.mint,
+                maxHeight: showAiButton ? '6.5rem' : '11rem',
+                minHeight: showAiButton ? '4.5rem' : '7.5rem',
+              }}
             >
-              {aiStarting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Sparkles className="h-5 w-5" />
-              )}
-              <span className="text-sm font-bold leading-tight">
-                {aiStarting
-                  ? 'Starting…'
-                  : outOfCredits
-                    ? 'Daily limit reached'
-                    : 'Analyze with AI'}
-              </span>
-              {!aiStarting && !outOfCredits && (
-                <span className="text-[10px] font-medium text-emerald-200">
-                  Uses 1 credit · result in Diary
-                </span>
-              )}
-              {outOfCredits && (
-                <span className="text-[10px] font-medium text-gray-400">
-                  Use a type below instead
-                </span>
-              )}
-            </button>
-          </section>
-        ) : (
-          <section className="shrink-0">
-            {previewSrc ? (
-              <div
-                className="flex w-full items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm"
-                style={{ background: BRAND.mint, maxHeight: '11rem', minHeight: '7.5rem' }}
-              >
-                <img
-                  src={previewSrc}
-                  alt="Captured"
-                  className="max-h-44 w-full object-contain"
-                />
-              </div>
-            ) : (
-              <div
-                className="w-full rounded-2xl"
-                style={{ background: BRAND.mint, height: '7.5rem' }}
+              <img
+                src={previewSrc}
+                alt="Captured"
+                className={`w-full object-contain ${showAiButton ? 'max-h-24' : 'max-h-44'}`}
               />
-            )}
-          </section>
-        )}
+            </div>
+          ) : (
+            <div
+              className="w-full rounded-2xl"
+              style={{ background: BRAND.mint, height: showAiButton ? '4.5rem' : '7.5rem' }}
+            />
+          )}
+        </section>
 
         {hint && (
           <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -555,50 +491,123 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {/* Type grid */}
+        {/* Type grid — premium compact Log-as buttons */}
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
-              {showAiButton ? 'Or log as' : 'Log as'}
+          <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
+            <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
+              Log as
             </p>
-            {showAiButton && (
-              <p className="text-[10px] font-medium text-green-600/70">0 credits · no AI</p>
-            )}
           </div>
-          <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => (
+          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+              // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
+              const useLucideOnIos = id === 'smartwatch' && isIOS() && Icon;
+              return (
               <button
                 key={id}
                 type="button"
-                disabled={saving || aiStarting}
+                disabled={saving || closingWithoutLog}
                 onClick={() => handleCategoryClick(id)}
-                className="flex min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-green-100 bg-white px-1.5 py-3 text-center shadow-sm transition hover:border-green-300 hover:shadow-md active:scale-[0.97] disabled:opacity-50"
+                className={LOG_AS_BTN_IDLE}
               >
-                <span
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-emerald-700"
-                  style={{ background: BRAND.mint }}
-                >
-                  {isImgIcon ? (
-                    <PublicIcon src={src} className="h-5 w-5" alt="" />
+                <LogAsIconWrap>
+                  {useLucideOnIos ? (
+                    <Icon className="h-5 w-5" strokeWidth={2.1} aria-hidden />
+                  ) : isImgIcon ? (
+                    <PublicIcon
+                      src={src}
+                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      alt=""
+                    />
                   ) : (
-                    <Icon className="h-[18px] w-[18px]" strokeWidth={2.1} aria-hidden />
+                    <Icon
+                      className="h-8 w-8 min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
                   )}
+                </LogAsIconWrap>
+                <span className="max-w-full truncate px-0.5 text-[11px] font-bold leading-tight text-emerald-900 min-[380px]:text-[12px] sm:text-[13px]">
+                  {label}
                 </span>
-                <span className="text-[12px] font-bold leading-tight text-emerald-900">{label}</span>
               </button>
-            ))}
+              );
+            })}
+
+            {showAiButton && (
+              outOfCredits ? (
+                <div
+                  className={`${LOG_AS_BTN_IDLE} cursor-default`}
+                  aria-disabled="true"
+                  title="Daily AI limit reached — unlocks at midnight"
+                >
+                  <LogAsIconWrap compact>
+                    <Lock
+                      className="h-7 w-7 min-[380px]:h-8 min-[380px]:w-8 sm:h-9 sm:w-9"
+                      aria-hidden
+                    />
+                  </LogAsIconWrap>
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
+                    Unlock in
+                  </span>
+                  {showCreditsPanel && (
+                    <LogAsUnlockDate
+                      timezoneIana={credits?.timezoneIana}
+                      className="text-[11px] font-medium text-amber-600 min-[380px]:text-[12px] sm:text-[13px]"
+                    />
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAiAnalyze}
+                  disabled={aiDisabled}
+                  className={[
+                    LOG_AS_BTN_SELECTED,
+                    creditsChecking ? 'opacity-80' : '',
+                  ].join(' ')}
+                >
+                  <LogAsIconWrap selected compact={Boolean(showCreditsPanel)}>
+                    {aiStarting ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                    ) : (
+                      <Sparkles className="h-8 w-8 text-white min-[380px]:h-9 min-[380px]:w-9 sm:h-10 sm:w-10" />
+                    )}
+                  </LogAsIconWrap>
+                  <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-semibold leading-tight text-white min-[380px]:text-[12px] sm:text-[13px]">
+                    {aiStarting ? 'Starting…' : 'Auto Detect'}
+                  </span>
+                  {showCreditsPanel && credits && (
+                    <p className="max-w-full truncate whitespace-nowrap text-[8px] font-semibold tabular-nums text-emerald-100/90 min-[380px]:text-[9px] sm:text-[10px]">
+                      <span className="text-white">
+                        {Math.max(0, Number(credits.remaining) ?? 0)}
+                      </span>
+                      {' of '}
+                      {Math.max(0, Number(credits.dailyLimit) || 0)}
+                    </p>
+                  )}
+                  {showCreditsPanel && creditsLoading && !credits && (
+                    <p className="text-[8px] text-emerald-100/80 min-[380px]:text-[9px] sm:text-[10px]">
+                      Checking…
+                    </p>
+                  )}
+                </button>
+              )
+            )}
           </div>
         </section>
 
-        {/* Footer — mint pill like Wellness Score “Tap to view…” */}
+        {/* Footer — discard capture (not saved to Diary) and return */}
         <button
           type="button"
-          onClick={onBack}
-          className="safe-bottom inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-emerald-700 shadow-sm transition active:scale-[0.99]"
-          style={{ background: BRAND.mint }}
+          onClick={handleCloseWithoutLog}
+          disabled={saving || aiStarting || closingWithoutLog}
+          className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Later — keep in Diary
+          {closingWithoutLog && (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          )}
+          Cancel, Don't Log
         </button>
       </main>
 
@@ -615,13 +624,19 @@ export default function ManualEntryPage({
         onClose={() => setActiveForm(null)}
         onSave={handleWeightSave}
         onBack={() => setActiveForm(null)}
+        userId={userId}
+        imagePreview={previewSrc}
         skipTypeSelect
       />
       <ManualWatchEntryModal
+        key={captureId}
+        formKey={captureId}
         isOpen={activeForm === 'smartwatch'}
         onClose={() => setActiveForm(null)}
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
+        todayBaseline={workoutTodayKcal}
+        loading={workoutTodayLoading}
       />
       <ManualEducationEntryModal
         isOpen={activeForm === 'education'}
@@ -640,7 +655,8 @@ export default function ManualEntryPage({
         isOpen={activeForm === 'afresh'}
         title="Afresh"
         subtitle="Log number of scoops consumed so far"
-        unitLabel="Cups"
+        unitLabel="Scoops"
+        iconSrc="/coffee.png"
         min={1}
         max={8}
         step={1}
@@ -653,7 +669,8 @@ export default function ManualEntryPage({
         isOpen={activeForm === 'water'}
         title="Water"
         subtitle="How much you drank so far today"
-        unitLabel="Amount"
+        iconSrc="/water.svg"
+        unitLabel=""
         min={waterTodayMl}
         max={Math.max(5000, waterTodayMl + 3000)}
         step={100}

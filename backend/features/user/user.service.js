@@ -12,3 +12,8 @@ export { skipSetup } from './setup.service.js';
 export { getStatus } from './status.service.js';
 export { getContext } from './context.service.js';
 export { syncUserTimezoneIfChanged } from './timezone-sync.service.js';
+export {
+  recordConsent,
+  getConsentStatus,
+  discardUnconsentedUser,
+} from './consent.service.js';

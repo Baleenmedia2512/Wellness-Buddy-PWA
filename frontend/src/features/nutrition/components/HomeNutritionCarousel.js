@@ -250,10 +250,6 @@ export default function HomeNutritionCarousel({
 
         gender={gender}
 
-        selectedDate={carouselData.selectedDate}
-
-        rangeKey={carouselData.rangeKey}
-
         analyses={carouselData.analyses}
 
         leadingCard={wellnessScoreCard}

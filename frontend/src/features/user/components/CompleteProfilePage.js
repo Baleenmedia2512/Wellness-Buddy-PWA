@@ -125,7 +125,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
   const dietValid = !!dietType;
   const pictureValid = !showPictureSection
     || hasExistingPhoto
-    || (profileImage && face.status === 'face_found');
+    || !!profileImage;
   const formValid = nameValid && emailValid && genderValid && heightValid && dietValid && pictureValid;
 
   const checks = [
@@ -148,21 +148,12 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
       else if (!dietValid) setError('Please select a diet preference.');
       else if (showPictureSection && !pictureValid) {
-        if (!profileImage && !hasExistingPhoto) setError('Profile picture is required.');
-        else setError('Please upload a clear front-facing profile photo with a visible face.');
+        setError('Profile picture is required.');
       }
       return;
     }
     setSaving(true);
     try {
-      if (showPictureSection && profileImage && !hasExistingPhoto) {
-        const faceResult = await face.awaitResult();
-        if (faceResult !== 'face_found') {
-          setError('Please upload a clear front-facing profile photo with a visible face.');
-          return;
-        }
-      }
-
       const uid = user?.id || user?.UserId;
       const hadEmail = !!(user?.email || user?.Email);
 
@@ -215,7 +206,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     }
   }, [
     formValid, nameValid, emailValid, genderValid, heightValid, dietValid, pictureValid,
-    showPictureSection, profileImage, hasExistingPhoto, face, user, apiBaseUrl,
+    showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, trimmedEmail, heightNum, dietType, showGender, gender, previewUrl, onComplete,
   ]);
 

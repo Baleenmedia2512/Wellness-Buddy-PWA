@@ -308,13 +308,13 @@ function UnifiedOtpInline({ userId, onVerified }) {
 
   const submit = async () => {
     setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your coach'); return; }
+    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your sponsor'); return; }
     setLoading(true);
     try {
       await verifyUnifiedOtp({ userId, otp: otp.trim() });
       onVerified();
     } catch (e) {
-      setErr(e.message || 'Invalid OTP. Please check with your coach.');
+      setErr(e.message || 'Invalid OTP. Please check with your sponsor.');
     } finally {
       setLoading(false);
     }
@@ -324,10 +324,10 @@ function UnifiedOtpInline({ userId, onVerified }) {
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your coach</p>
+        <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your coach received a single 6-digit OTP covering all your changes. Ask them to share it.
+        Your sponsor received a single 6-digit OTP covering all your changes. Ask them to share it.
       </p>
       <NativeInput
         otp
@@ -457,7 +457,7 @@ function MemberCard({
       const isNoCoach = msg.toLowerCase().includes('no coach');
       setVideoUploadError(
         isNoCoach
-          ? 'You do not have a coach assigned yet. Please ask your admin to assign a coach before uploading videos.'
+          ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
           : (msg || 'Video upload failed. Please try again.')
       );
       if (slot === 'health') { setDraftHealthPreview(null); setDraftHealthPath(null); }
@@ -1000,7 +1000,7 @@ function MemberCard({
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
               </p>
               <p className="text-xs text-gray-500 pb-1">
-                Ask your coach for the OTP they received by email.
+                Ask your sponsor for the OTP they received by email.
               </p>
               <OtpInline
                 testimonialId={testimonial.id}
@@ -1077,7 +1077,7 @@ function MemberCard({
             }
           </button>
           <p className="text-[10px] text-gray-400 text-center">
-            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your coach will receive one verification email
+            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your sponsor will receive one verification email
           </p>
         </div>
       )}
@@ -1115,7 +1115,7 @@ function MemberCard({
 }
 
 
-export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
+export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisitKey = 0 }) {
   const [directRows, setDirectRows]   = useState([]);
   const [fullRows,   setFullRows]     = useState([]);
   const [mineRow,    setMineRow]      = useState(null);
@@ -1130,6 +1130,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  const [fullLoading, setFullLoading] = useState(false);
+  const [fullLoaded, setFullLoaded] = useState(false);
+  const loadGenerationRef = useRef(0);
 
   const coachId = user?.userId || user?.id;
 
@@ -1167,49 +1170,77 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
     }
   }, [coachId, user]);
 
-  const load = useCallback(async () => {
+  const loadDirectAndMine = useCallback(async () => {
     if (!coachId) return;
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
     setLoading(true);
     setError(null);
+    setFullRows([]);
+    setFullLoaded(false);
     try {
-      const [directResult, mine, fullResult] = await Promise.all([
-        listForCoach(coachId, TEAM_SCOPES.DIRECT).catch(() => []),
+      const [directResult, mine, teamReport] = await Promise.all([
+        listForCoach(coachId, TEAM_SCOPES.DIRECT),
         buildMineRow(),
-        listForCoach(coachId, TEAM_SCOPES.FULL).catch(() => []),
+        getTeamTestimonialReport(coachId).catch(() => null),
       ]);
+      if (generation !== loadGenerationRef.current) return;
+
       const direct = Array.isArray(directResult) ? directResult : [];
-      const full   = Array.isArray(fullResult) ? fullResult : [];
-      const downline = direct.length > 0 || full.length > 0;
       setDirectRows(direct);
       setMineRow(mine);
-      setFullRows(full);
+
+      let downline = direct.length > 0;
+      if (!downline && teamReport?.photoReport) {
+        const directStats = teamReport.photoReport.directTeam ?? {};
+        const fullStats = teamReport.photoReport.fullTeam ?? {};
+        const directCount = (directStats.uploaded ?? 0) + (directStats.notUploaded ?? 0);
+        const fullCount = (fullStats.uploaded ?? 0) + (fullStats.notUploaded ?? 0);
+        downline = directCount > 0 || fullCount > 0;
+      }
       setHasDownline(downline);
-      // Members with no team stay on Mine; coaches with downline keep current scope
-      // unless we just learned they have no downline.
       if (!downline) setTeamScope(TEAM_SCOPES.MINE);
+
+      if (teamReport) {
+        setTeamPerformanceByUserId(teamReport.teamPerformanceByUserId ?? {});
+      }
     } catch (err) {
+      if (generation !== loadGenerationRef.current) return;
       setError(err.message || 'Failed to load testimonials');
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }, [coachId, buildMineRow]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const loadTeamReport = useCallback(async () => {
-    if (!coachId || !hasDownline) {
-      setTeamPerformanceByUserId({});
-      return;
-    }
+  const loadFullTeam = useCallback(async () => {
+    if (!coachId || fullLoaded || fullLoading) return;
+    const generation = loadGenerationRef.current;
+    setFullLoading(true);
+    setError(null);
     try {
-      const report = await getTeamTestimonialReport(coachId);
-      setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
-    } catch {
-      setTeamPerformanceByUserId({});
+      const fullResult = await listForCoach(coachId, TEAM_SCOPES.FULL);
+      if (generation !== loadGenerationRef.current) return;
+      setFullRows(Array.isArray(fullResult) ? fullResult : []);
+      setFullLoaded(true);
+    } catch (err) {
+      if (generation !== loadGenerationRef.current) return;
+      setError(err.message || 'Failed to load full team');
+    } finally {
+      if (generation === loadGenerationRef.current) {
+        setFullLoading(false);
+      }
     }
-  }, [coachId, hasDownline]);
+  }, [coachId, fullLoaded, fullLoading]);
 
-  useEffect(() => { loadTeamReport(); }, [loadTeamReport]);
+  useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
+
+  useEffect(() => {
+    if (teamScope === TEAM_SCOPES.FULL && hasDownline && !fullLoaded && !fullLoading) {
+      loadFullTeam();
+    }
+  }, [teamScope, hasDownline, fullLoaded, fullLoading, loadFullTeam]);
 
   // Soft-refresh Mine after edit modal so pending OTP UI appears (no full loading flash)
   useEffect(() => {
@@ -1219,13 +1250,21 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
       try {
         const mine = await buildMineRow();
         if (!cancelled) setMineRow(mine);
-        loadTeamReport();
+        if (!cancelled && hasDownline) {
+          getTeamTestimonialReport(coachId)
+            .then((report) => {
+              if (!cancelled) {
+                setTeamPerformanceByUserId(report.teamPerformanceByUserId ?? {});
+              }
+            })
+            .catch(() => {});
+        }
       } catch {
         // keep existing card data if soft refresh fails
       }
     })();
     return () => { cancelled = true; };
-  }, [reloadSignal, buildMineRow, loadTeamReport]);
+  }, [reloadSignal, buildMineRow, hasDownline, coachId]);
 
   useEffect(() => {
     setSearchQuery('');
@@ -1333,12 +1372,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
           </h1>
         </div>
         <TouchFeedbackButton
-          onClick={() => { load(); loadTeamReport(); }}
-          disabled={loading}
+          onClick={() => { loadDirectAndMine(); }}
+          disabled={loading || fullLoading}
           className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
           ariaLabel="Refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${loading || fullLoading ? 'animate-spin' : ''}`} />
         </TouchFeedbackButton>
       </div>
 
@@ -1418,7 +1457,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {!loading && !error && !hasScopeData && (
+      {fullLoading && teamScope === TEAM_SCOPES.FULL && (
+        <div className="py-6">
+          <LoadingSpinner context="normal" />
+          <p className="text-center text-sm text-gray-500 mt-2">Loading full team…</p>
+        </div>
+      )}
+
+      {!loading && !fullLoading && !error && !hasScopeData && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
@@ -1427,7 +1473,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
         </div>
       )}
 
-      {!loading && !error && hasScopeData && filteredRows.length === 0 && (
+      {!loading && !fullLoading && !error && hasScopeData && filteredRows.length === 0 && (
         <div className="text-center py-8 text-gray-400">
           <p className="font-medium text-sm">
             {hasActiveSearch ? 'No matching members found.' : 'No records match the selected filter.'}
@@ -1436,7 +1482,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
       )}
 
       {/* Member cards */}
-      {!loading && filteredRows.map((row) => (
+      {!loading && !fullLoading && filteredRows.map((row) => (
         <MemberCard
           key={row.user.userId}
           row={row}
@@ -1449,7 +1495,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0 }) {
           })}
           editable={isMineScope}
           userId={isMineScope ? coachId : null}
-          onOtpVerified={isMineScope ? () => { load(); loadTeamReport(); } : undefined}
+          onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
         />
       ))}
     </div>

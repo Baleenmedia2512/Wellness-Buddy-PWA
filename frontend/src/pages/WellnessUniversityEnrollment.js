@@ -60,7 +60,7 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false }) => {
+const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false, tabVisitKey = 0 }) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
@@ -146,7 +146,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   useEffect(() => {
     setCheckingEnrollment(true);
     checkExistingEnrollment();
-  }, [checkExistingEnrollment]);
+  }, [checkExistingEnrollment, tabVisitKey]);
 
   const handleProgramToggle = (programName) => {
     setSelectedPrograms((prev) =>
@@ -402,7 +402,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
               <p className="text-green-700 text-sm mt-1">
                 {existingEnrollment
                   ? "Your programs have been updated."
-                  : "Your coach will be notified."}
+                  : "Your sponsor will be notified."}
               </p>
             </motion.div>
           )}
