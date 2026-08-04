@@ -15,15 +15,11 @@
 
 import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const pkgPath = path.join(__dirname, '../../../../package.json');
-const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-const APP_VERSION = pkg.version || '1.0.0';
+// Do not fs.readFileSync / resolve package.json via __dirname — on Vercel the
+// bundled chunk lives under .next/server/chunks, so that path becomes
+// /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
+// backend/package.json "version".
+const APP_VERSION = process.env.npm_package_version || '3.4.0';
 
 // Hardcoded enum since the SDK doesn't export it
 const ANALYSIS_MODULES = {
