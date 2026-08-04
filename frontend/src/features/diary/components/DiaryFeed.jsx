@@ -335,6 +335,7 @@ export default function DiaryFeed({
   showTimeline = false,
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
+  onOwnerTimezoneChange = null,
 }) {
   const pendingUndoList = useMemo(() => {
     if (Array.isArray(pendingUndos)) return pendingUndos.filter((u) => u?.entryId != null);
@@ -394,6 +395,12 @@ export default function DiaryFeed({
   const ownerTimezoneIana = data?.ownerTimezoneIana
     || profileOwnerTimezone
     || fallbackTimezoneIana;
+
+  useEffect(() => {
+    if (typeof onOwnerTimezoneChange === 'function' && ownerTimezoneIana) {
+      onOwnerTimezoneChange(ownerTimezoneIana);
+    }
+  }, [ownerTimezoneIana, onOwnerTimezoneChange]);
 
   /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
   const scopedPendingCaptureMeta = useMemo(

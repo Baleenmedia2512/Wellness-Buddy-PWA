@@ -29,11 +29,12 @@ const NutritionMealList = ({
   handleOptimisticDelete,
   isIOS,
   user,
+  timezoneIana: timezoneIanaProp,
   setAnalyses,
   setUndoState,
   applyDailyDelta,
 }) => {
-  const timezoneIana = resolveBusinessTimezone(user);
+  const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
   const hasUndoPlaceholders = analyses.some((a) => a.isUndoPlaceholder);
   const hasRealMeals = analyses.some((a) => !a.isUndoPlaceholder);
 

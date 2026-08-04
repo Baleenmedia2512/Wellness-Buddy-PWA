@@ -251,6 +251,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // Determine which user's data to display (selected member or coach)
   const displayUser = selectedMember || user;
 
+  // Clear diary-owned TZ when switching members so we don't flash the previous owner's zone.
+  useEffect(() => {
+    setDiaryOwnerTimezoneIana(null);
+  }, [displayUser?.id, displayUser?.userId, selectedMember?.id, selectedMember?.userId]);
+
   // Label for the shell-level date-picker button: "Today" when the
   // selected day is the current day, otherwise a short date (e.g. "Jun 9").
   const dateButtonLabel =
@@ -373,6 +378,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // When a timeline row is tapped, the shell calls the matching ref to open
   // the existing modal inside the relevant dashboard component.
   const nutritionOpenRef = useRef(null);
+  const [diaryOwnerTimezoneIana, setDiaryOwnerTimezoneIana] = useState(null);
   const weightOpenRef    = useRef(null);
   const educationOpenRef = useRef(null);
 
@@ -1081,6 +1087,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   onUndoExpire={handleDiaryUndoExpire}
                   analyzingCaptureIds={mergedAnalyzingCaptureIds}
                   pendingCaptureMeta={pendingCaptureMeta}
+                  onOwnerTimezoneChange={setDiaryOwnerTimezoneIana}
                 />
               </div>
 
@@ -1112,6 +1119,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   watchBurnedCalories={watchBurnedCalories}
                   initialMealId={initialMealId}
                   openRef={nutritionOpenRef}
+                  timezoneIana={diaryOwnerTimezoneIana}
                 />
                 <WeightDashboard
                   user={displayUser}
@@ -1163,6 +1171,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 bmrUpdateKey={bmrUpdateKey}
                 watchBurnedCalories={watchBurnedCalories}
                 initialMealId={initialMealId}
+                timezoneIana={diaryOwnerTimezoneIana}
               />
 
               <WeightDashboard
@@ -1242,6 +1251,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               bmrUpdateKey={bmrUpdateKey}
               watchBurnedCalories={watchBurnedCalories}
               initialMealId={initialMealId}
+              timezoneIana={diaryOwnerTimezoneIana}
             />
           )}
 

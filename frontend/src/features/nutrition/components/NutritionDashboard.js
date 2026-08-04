@@ -36,6 +36,9 @@ import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersist
 import ShakeCalculatorModal from './ShakeCalculatorModal';
 import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
 import { computeMealGlycemicIndex } from '../domain/mealGlycemicIndex';
+import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
+import { getProfile } from '../../user/services/user.api';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -97,6 +100,8 @@ const NutritionDashboard = ({
   // The parent passes a React ref; we write to `.current` each render so the
   // closure always has the latest `analyses` snapshot.
   openRef = null,
+  /** Owner IANA TZ from diary API (preferred over user object fallback). */
+  timezoneIana: timezoneIanaProp = null,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -107,6 +112,36 @@ const NutritionDashboard = ({
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
+  const [profileTimezoneIana, setProfileTimezoneIana] = useState(null);
+
+  // Hydrate owner timezone when `user` lacks timezone (common for selectedMember / session user).
+  useEffect(() => {
+    const fromUser = user?.timezone || user?.timezoneIana || null;
+    if (fromUser || timezoneIanaProp) {
+      setProfileTimezoneIana(fromUser || null);
+      return undefined;
+    }
+    const email = user?.email || user?.Email;
+    if (!email) {
+      setProfileTimezoneIana(getDeviceTimezoneIana() || null);
+      return undefined;
+    }
+    let cancelled = false;
+    getProfile(email, { cacheBust: true })
+      .then((res) => {
+        if (cancelled) return;
+        const tz = res?.data?.timezone || res?.data?.timezoneIana || getDeviceTimezoneIana() || null;
+        setProfileTimezoneIana(tz);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileTimezoneIana(getDeviceTimezoneIana() || null);
+      });
+    return () => { cancelled = true; };
+  }, [user?.email, user?.Email, user?.timezone, user?.timezoneIana, timezoneIanaProp]);
+
+  const ownerTimezoneIana = timezoneIanaProp
+    || profileTimezoneIana
+    || resolveBusinessTimezone(user);
 
   // Editable food items state
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
@@ -788,6 +823,7 @@ const NutritionDashboard = ({
                 handleOptimisticDelete={handleOptimisticDelete}
                 isIOS={isIOS}
                 user={user}
+                timezoneIana={ownerTimezoneIana}
                 setAnalyses={setAnalyses}
                 setUndoState={setUndoState}
                 applyDailyDelta={applyDailyDelta}
@@ -818,6 +854,7 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        timezoneIana={ownerTimezoneIana}
         persistMealItems={persistMealItems}
         setLocalDetailedItems={setLocalDetailedItems}
         setLocalNutrition={setLocalNutrition}

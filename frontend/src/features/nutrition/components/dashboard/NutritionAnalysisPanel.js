@@ -46,6 +46,7 @@ const NutritionAnalysisPanel = ({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  timezoneIana: timezoneIanaProp,
   persistMealItems,
   setLocalDetailedItems,
   setLocalNutrition,
@@ -57,9 +58,13 @@ const NutritionAnalysisPanel = ({
 
   if (!selectedMeal) return null;
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
+  // Prefer explicit owner TZ (diary API / parent). Do not fall back to IST when
+  // the logged-in `user` object is missing timezone — that caused "Logged at"
+  // to show Kolkata time for Qatar/US/UK members.
+  const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
   const mealTime = formatBusinessTime(
     selectedMeal.CreatedAt,
-    resolveBusinessTimezone(user),
+    timezoneIana,
     { hour: '2-digit', minute: '2-digit' },
   );
   const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
