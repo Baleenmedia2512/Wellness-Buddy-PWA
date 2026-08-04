@@ -16,18 +16,18 @@ export const AFRESH_PRODUCT = Object.freeze({
   defaultScoops: 1,
   minScoops: 1,
   maxScoops: 8,
-  /** Nutrition for 1 scoop of Afresh powder. */
+  /** Nutrition for 1 scoop = 1 g powder (official canister label). */
   perScoop: Object.freeze({
-    calories: 15,
-    protein: 0,
-    carbs: 4,
+    calories: 3.52,
+    protein: 0.05,
+    carbs: 0.83,
     fat: 0,
     fiber: 0,
-    sugar: 4,
-    sodium: 0.02, // g (20 mg)
+    sugar: 0.51,
+    sodium: 0.001, // g (1 mg)
     cholesterol: 0,
-    vitamin_c: 15,
-    potassium: 30,
+    vitamin_c: 0,
+    potassium: 0,
   }),
 });
 
