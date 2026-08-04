@@ -122,6 +122,8 @@ export async function analyse(params) {
     mimeType,
     captureId    = null,
     userId       = null,
+    userName     = null,
+    userEmail    = null,
     imageBase64  = null,
     foodRowId    = null,
     // usePro: true forces Gemini Pro on this request (used by frontend
@@ -130,7 +132,7 @@ export async function analyse(params) {
     module       = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
   } = params;
 
-  const trace = new TraceContext({ captureId, userId, module });
+  const trace = new TraceContext({ captureId, userId, userName, userEmail, module });
 
   // ── Step 1: Idempotency guard ──────────────────────────────────────────────
   if (captureId) {

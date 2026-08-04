@@ -15,6 +15,15 @@
 
 import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const pkgPath = path.join(__dirname, '../../../../package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const APP_VERSION = pkg.version || '1.0.0';
 
 // Hardcoded enum since the SDK doesn't export it
 const ANALYSIS_MODULES = {
@@ -97,14 +106,21 @@ async function sendMonitorTelemetry(basePayload, trace) {
   if (!process.env.AI_MONITOR_SDK_KEY) return;
 
   const run = async () => {
-    const endUser = await resolveEndUserForMonitor(trace?.userId);
+    let endUserName = trace?.userName ?? null;
+    let endUserEmail = trace?.userEmail ?? null;
+
+    if (!endUserName && !endUserEmail && trace?.userId) {
+      const endUser = await resolveEndUserForMonitor(trace.userId);
+      endUserName = endUser.endUserName;
+      endUserEmail = endUser.endUserEmail;
+    }
 
     await AIClient.sendTelemetry({
       ...basePayload,
       traceId: trace?.traceId ?? null,
       endUserId: trace?.userId ?? null,
-      endUserEmail: endUser.endUserEmail,
-      endUserName: endUser.endUserName,
+      endUserEmail,
+      endUserName,
       // Image-analysis attribution is carried by the request trace. Default
       // food calls for compatibility with legacy callers that predate modules.
       module: trace?.module ?? ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
@@ -261,6 +277,8 @@ function getGenAI() {
         process.env.AI_MONITOR_TOKEN || "",
 
       appName: "Wellness valley",
+
+      appVersion: APP_VERSION,
 
       environment:
         process.env.AI_MONITOR_ENV || (process.env.VERCEL_URL ? (process.env.VERCEL_URL.includes('-test') ? 'test' : 'production') : (process.env.NODE_ENV === 'production' ? 'production' : 'localhost')),

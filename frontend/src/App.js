@@ -4306,6 +4306,8 @@ function WellnessValleyApp() {
       const detectedType = await orchestrateAnalyzeImage(file, {
         captureId: String(captureId),
         userId: user ? String(await getUserId(user).catch(() => null) || user.id) : null,
+        userName: user?.userName || user?.username || user?.name || null,
+        userEmail: user?.email || user?.Email || null,
         reservationId,
         creditGated: Boolean(creditsEnabled && reservationId),
       });
@@ -4528,6 +4530,8 @@ function WellnessValleyApp() {
 
           detectedType = await orchestrateAnalyzeImage(file, {
             userId: dbOwnerUserId ? String(dbOwnerUserId) : null,
+            userName: user?.userName || user?.username || user?.name || null,
+            userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
             creditGated: Boolean(creditsOn),

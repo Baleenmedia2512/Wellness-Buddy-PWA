@@ -108,6 +108,8 @@ export default async function handler(req, res) {
     // Extract optional metadata fields
     const captureId  = sanitiseString(fields.captureId);
     const userId     = sanitiseString(fields.userId);
+    const userName   = sanitiseString(fields.userName);
+    const userEmail  = sanitiseString(fields.userEmail);
     const foodRowId  = sanitiseInt(fields.foodRowId);
     // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
     // and wants Gemini Pro instead of Flash for better accuracy.
@@ -167,6 +169,8 @@ export default async function handler(req, res) {
     logger.info('orchestrate: request received', {
       captureId: captureId ?? null,
       userId:    userId    ?? null,
+      userName:  userName  ?? null,
+      userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
       mimeType,
       sizeBytes: imageBuffer.length,
@@ -178,6 +182,8 @@ export default async function handler(req, res) {
         mimeType,
         captureId,
         userId,
+        userName,
+        userEmail,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
