@@ -16,6 +16,7 @@ import { TeamMemberSearch } from '../../features/team';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
+import { DIARY_ANALYZING_POLL_MS } from '../../shared/constants/limits';
 import DashboardTabs from './DashboardTabs';
 // ADR-0003 — delete-only unknown captures still use UnknownEntryFlow; classify/manual
 // log for Other / Needs logging reuses ManualEntryPage (same as post-capture).
@@ -412,7 +413,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // auto-upgrades from "Analyzing…" to food / weight / education rows.
   useEffect(() => {
     if (!backgroundAnalyzingKey) return undefined;
-    const intervalId = setInterval(() => reloadDiary(), 2500);
+    const intervalId = setInterval(() => reloadDiary(), DIARY_ANALYZING_POLL_MS);
     return () => clearInterval(intervalId);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadDiary is stable
   }, [backgroundAnalyzingKey]);
