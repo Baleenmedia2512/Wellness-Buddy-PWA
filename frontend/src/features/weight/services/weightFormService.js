@@ -49,25 +49,25 @@ export function validateEditWeight(value) {
 }
 
 /** Compact "Today · 09:42" / "Yesterday · …" / "Mar 3 · …" label for the history card. */
-export function formatHistoryDate(dateString) {
+export function formatHistoryDate(dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!dateString) return '';
-  const time = formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+  const time = formatBusinessTime(dateString, timezoneIana, {
     hour: '2-digit',
     minute: '2-digit',
   });
-  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Today · ${time}`;
-  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) return `Yesterday · ${time}`;
-  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric', timeZone: DEFAULT_BUSINESS_TIMEZONE })} · ${time}`;
+  if (isBusinessToday(dateString, timezoneIana)) return `Today · ${time}`;
+  if (isBusinessYesterday(dateString, timezoneIana)) return `Yesterday · ${time}`;
+  return `${formatUtcDate(dateString, { month: 'short', day: 'numeric', timeZone: timezoneIana })} · ${time}`;
 }
 
 /** Long-form date for the detail modal header. */
-export function formatDetailDate(dateString) {
+export function formatDetailDate(dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   return formatUtcDate(dateString, {
     weekday: 'long',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    timeZone: DEFAULT_BUSINESS_TIMEZONE,
+    timeZone: timezoneIana,
   });
 }
 

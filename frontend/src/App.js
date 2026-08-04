@@ -219,6 +219,7 @@ import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import AdminFab from "./shared/components/AdminFab";
 import { isAdminLikeRole } from "./shared/constants/roles";
+import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
@@ -1683,8 +1684,8 @@ function WellnessValleyApp() {
         // it appears WITHOUT the user reloading the page.
         if (isPending) {
           let attempts = 0;
-          const MAX_ATTEMPTS = 15; // ~37s at 2.5s spacing
-          const INTERVAL_MS = 2500;
+          const MAX_ATTEMPTS = 15; // ~150s at DIARY_ANALYZING_POLL_MS spacing
+          const INTERVAL_MS = DIARY_ANALYZING_POLL_MS;
           const pollPending = async () => {
             if (cancelled) return;
             attempts += 1;

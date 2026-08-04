@@ -30,6 +30,12 @@ export const QUERY_GC_TIME_MS = 10 * 60 * 1000;
 /** Default debounce delay for search / type-ahead inputs (ms). */
 export const DEFAULT_DEBOUNCE_MS = 300;
 
+/**
+ * How often Diary re-fetches while background AI is in flight
+ * ("Analyzing…" → typed row). Keep ≥10s to avoid Network-tab floods.
+ */
+export const DIARY_ANALYZING_POLL_MS = 10_000;
+
 /** Maximum allowed length for free-text user inputs. */
 export const MAX_TEXT_INPUT_LEN = 500;
 

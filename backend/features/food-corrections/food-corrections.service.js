@@ -15,6 +15,11 @@ import {
   NUTRITION_KEYS,
   pickNutrition,
 } from '../nutrition-knowledge/index.js';
+import logger from '../../shared/lib/logger.js';
+import {
+  injectGlycemicIndexIntoAnalysisData,
+  resolveGlycemicIndexForUpdate,
+} from './glycemicIndex.helpers.js';
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -179,13 +184,56 @@ export async function searchFoodHistory({ userId, searchTerm }) {
 // ─── update meal analysis ───────────────────────────────────────────────────
 export async function updateAnalysis(input) {
   const {
-    id, userId, analysisData,
+    id, userId, analysisData: rawAnalysisData,
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, glycemicIndex,
     totalVitaminA, totalVitaminC, totalVitaminD, totalVitaminE, totalVitaminK,
     totalVitaminB1, totalVitaminB2, totalVitaminB3, totalVitaminB6, totalVitaminB9, totalVitaminB12,
     totalCalcium, totalIron, totalMagnesium, totalPotassium, totalZinc, totalPhosphorus,
   } = input;
+
+  // Resolve GI: request body → AnalysisData JSON → existing DB column (never wipe on portion edit)
+  let { resolvedGi, source } = resolveGlycemicIndexForUpdate({
+    glycemicIndex,
+    analysisData: rawAnalysisData,
+    existingGlycemicIndex: null,
+  });
+
+  if (resolvedGi == null) {
+    let existingGi = null;
+    try {
+      existingGi = await repo.fetchMealGlycemicIndex(id, userId);
+    } catch (err) {
+      logger.warn('updateAnalysis: failed to load existing GlycemicIndex', {
+        mealId: id,
+        error: err?.message,
+      });
+    }
+    ({ resolvedGi, source } = resolveGlycemicIndexForUpdate({
+      glycemicIndex,
+      analysisData: rawAnalysisData,
+      existingGlycemicIndex: existingGi,
+    }));
+    if (source === 'existing') {
+      logger.info('updateAnalysis: preserving existing GlycemicIndex after edit', {
+        mealId: id,
+        glycemicIndex: resolvedGi,
+      });
+    }
+  }
+
+  if (resolvedGi == null) {
+    logger.warn('updateAnalysis: glycemicIndex missing at all stages', {
+      mealId: id,
+      hadTopLevel: glycemicIndex != null,
+      hadAnalysisTotal: rawAnalysisData?.total?.glycemic_index != null,
+    });
+  }
+
+  const analysisData = resolvedGi != null
+    ? injectGlycemicIndexIntoAnalysisData(rawAnalysisData, resolvedGi)
+    : rawAnalysisData;
+
   const currentTime = nowUtc();
   const updatePayload = {
     AnalysisData: JSON.stringify(analysisData),
@@ -200,7 +248,7 @@ export async function updateAnalysis(input) {
   if (totalSugar       != null) updatePayload.TotalSugar       = totalSugar;
   if (totalSodium      != null) updatePayload.TotalSodium      = totalSodium;
   if (totalCholesterol != null) updatePayload.TotalCholesterol  = totalCholesterol;
-  if (glycemicIndex    != null) updatePayload.GlycemicIndex     = glycemicIndex;
+  if (resolvedGi       != null) updatePayload.GlycemicIndex     = resolvedGi;
   if (totalVitaminA    != null) updatePayload.TotalVitaminA     = totalVitaminA;
   if (totalVitaminC    != null) updatePayload.TotalVitaminC     = totalVitaminC;
   if (totalVitaminD    != null) updatePayload.TotalVitaminD     = totalVitaminD;
@@ -231,9 +279,11 @@ export async function updateAnalysis(input) {
       success: true, message: 'Meal updated successfully',
       data: {
         id, analysisData,
+        glycemicIndex: resolvedGi,
         nutrition: {
           calories: totalCalories || 0, protein: totalProtein || 0, carbs: totalCarbs || 0,
           fat: totalFat || 0, fiber: totalFiber || 0,
+          glycemic_index: resolvedGi,
         },
       },
     },

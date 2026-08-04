@@ -1,7 +1,9 @@
 // Time-of-day → meal category mapping (used to detect "same meal" duplicates).
+import { getBusinessHour, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
 
-export const getMealCategory = (date = new Date()) => {
-  const hour = date.getHours();
+export const getMealCategory = (dateOrTs = new Date(), timezoneIana = DEFAULT_BUSINESS_TIMEZONE) => {
+  const hour = getBusinessHour(dateOrTs, timezoneIana);
+  if (!Number.isFinite(hour)) return 'late-night';
   if (hour >= 5 && hour < 10) return 'breakfast';
   if (hour >= 10 && hour < 12) return 'morning-snack';
   if (hour >= 12 && hour < 16) return 'lunch';

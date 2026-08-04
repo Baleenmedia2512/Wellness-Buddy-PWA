@@ -3,6 +3,8 @@
  * Shared by UnknownEntryFlow (Diary) and App.js (share-link viewer).
  */
 
+import { computeMealGlycemicIndex } from '../../nutrition/domain/mealGlycemicIndex';
+
 function foodItemFromGeminiItem(item) {
   if (!item || typeof item !== 'object') return null;
   const name = item.name || item.originalAiName || 'Food';
@@ -103,7 +105,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
         sugar: total.sugar ?? 0,
         sodium: total.sodium ?? 0,
         cholesterol: total.cholesterol ?? 0,
-        glycemic_index: total.glycemic_index ?? null,
+        glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
       },
       confidence: analysis.confidence || 'medium',
     };
@@ -125,7 +127,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
       sugar: total.sugar ?? 0,
       sodium: total.sodium ?? 0,
       cholesterol: total.cholesterol ?? 0,
-      glycemic_index: total.glycemic_index ?? null,
+      glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
     },
     confidence: analysis?.confidence || 'medium',
   };

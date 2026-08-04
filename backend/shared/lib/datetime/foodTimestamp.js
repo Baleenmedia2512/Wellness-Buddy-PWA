@@ -1,10 +1,14 @@
 /**
  * Canonical food_nutrition_data_table.CreatedAt interpretation.
  *
- * Product contract: food CreatedAt is legacy IST (business) wall-clock when
- * timezone-less. Drivers / timestamptz sessions sometimes append a spurious
+ * Storage contract: timezone-less CreatedAt digits are legacy IST (Asia/Kolkata)
+ * wall-clock. Drivers / timestamptz sessions sometimes append a spurious
  * `Z` / `+00:00` while leaving IST digits intact — that must NOT shift the
  * meal into the next calendar day.
+ *
+ * Display contract: after converting storage → UTC instant (always via IST),
+ * calendar day and local time-of-day are derived in the owner's
+ * `timezone_iana` (e.g. Asia/Qatar).
  *
  * All Wellness Score food day-bucketing and meal-window checks MUST go through
  * {@link resolveFoodTimestamp} so calendar day and local time-of-day always
@@ -17,6 +21,9 @@ import {
   timestampToCalendarYmd,
   timeOfDayInTimezone,
 } from './datetime.js';
+
+/** Legacy food/weight/education CreatedAt wall-clock zone (write path). */
+export const LEGACY_STORAGE_TIMEZONE = IANA_IST;
 
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
 const UTC_OR_ZERO_OFFSET_RE = /(?:Z|[+]00:?00)$/i;
@@ -53,21 +60,23 @@ function hasNonUtcExplicitOffset(raw) {
  * Normalize food CreatedAt to a UTC ISO instant.
  *
  * Rules:
- * - Timezone-less → business wall-clock in `timezoneIana`
+ * - Timezone-less → IST wall-clock (legacy storage), never the display zone
  * - Explicit non-UTC offset (e.g. +05:30) → absolute instant
- * - `Z` / `+00:00` → absolute UTC, unless the UTC→business calendar day
+ * - `Z` / `+00:00` → absolute UTC, unless the UTC→IST calendar day
  *   disagrees with the embedded date prefix (spurious driver Z on legacy
- *   IST wall) — then reinterpret wall digits in `timezoneIana`
+ *   IST wall) — then reinterpret wall digits as IST
  *
  * @param {string|Date} raw
- * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [_ignoredTimezoneIana] Kept for call-site compatibility; storage is always IST
  * @returns {string} UTC ISO with Z
  */
-export function normalizeFoodCreatedAt(raw, timezoneIana = IANA_IST) {
-  assertIanaTimezone(timezoneIana);
+export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
+  // Storage zone is always IST — do not interpret naive digits in the user's TZ.
+  const storageTz = LEGACY_STORAGE_TIMEZONE;
+  assertIanaTimezone(storageTz);
 
   if (raw instanceof Date) {
-    return normalizeStoredTimestampToUtcIso(raw, timezoneIana);
+    return normalizeStoredTimestampToUtcIso(raw, storageTz);
   }
   if (raw == null || String(raw).trim() === '') {
     throw new RangeError('Invalid food CreatedAt: empty');
@@ -76,33 +85,36 @@ export function normalizeFoodCreatedAt(raw, timezoneIana = IANA_IST) {
   const s = String(raw).trim();
 
   if (hasNonUtcExplicitOffset(s)) {
-    return normalizeStoredTimestampToUtcIso(s, timezoneIana);
+    return normalizeStoredTimestampToUtcIso(s, storageTz);
   }
 
   if (hasUtcOrZeroOffset(s)) {
-    const asUtc = normalizeStoredTimestampToUtcIso(s, timezoneIana);
-    const utcCalendarYmd = timestampToCalendarYmd(asUtc, timezoneIana);
+    const asUtc = normalizeStoredTimestampToUtcIso(s, storageTz);
+    // Spurious-Z detection must use IST calendar day (storage), not display TZ.
+    const istCalendarYmd = timestampToCalendarYmd(asUtc, storageTz);
     const prefix = extractDatePrefix(s);
-    if (prefix && prefix !== utcCalendarYmd) {
+    if (prefix && prefix !== istCalendarYmd) {
       // Legacy IST wall digits with driver-added Z/+00:00
       const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
-      return normalizeStoredTimestampToUtcIso(stripped, timezoneIana);
+      return normalizeStoredTimestampToUtcIso(stripped, storageTz);
     }
     return asUtc;
   }
 
-  return normalizeStoredTimestampToUtcIso(s, timezoneIana);
+  return normalizeStoredTimestampToUtcIso(s, storageTz);
 }
 
 /**
- * Resolve food CreatedAt into one instant + derived calendar day / local time.
+ * Resolve food CreatedAt into one UTC instant + derived calendar day / local time
+ * in the owner's display timezone.
  *
  * @param {string|Date} raw
- * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [timezoneIana=IANA_IST] Owner display timezone (`timezone_iana`)
  * @returns {{ utcIso: string, calendarYmd: string, timeOfDay: string }}
  */
 export function resolveFoodTimestamp(raw, timezoneIana = IANA_IST) {
-  const utcIso = normalizeFoodCreatedAt(raw, timezoneIana);
+  assertIanaTimezone(timezoneIana);
+  const utcIso = normalizeFoodCreatedAt(raw);
   return {
     utcIso,
     calendarYmd: timestampToCalendarYmd(utcIso, timezoneIana),

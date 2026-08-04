@@ -11,6 +11,8 @@
 // `food_nutrition_data_table.TotalSugar / TotalSodium / TotalCholesterol`.
 // See PR fix(nutrition): persist sugar/sodium/cholesterol from AI analysis.
 
+import { computeMealGlycemicIndex } from './mealGlycemicIndex';
+
 export const FOOD_TOTAL_FIELDS = Object.freeze([
   'calories',
   'protein',
@@ -58,19 +60,8 @@ export function aggregateFoodTotals(foods) {
     totals[f] = Math.round(totals[f] * 100) / 100;
   });
 
-  // GI is a carb-weighted average, not a sum.
-  // Only include foods where GI is known (non-null) and carbs > 0.
-  let giCarbProduct = 0;
-  let totalCarbsForGI = 0;
-  foods.forEach((food) => {
-    const gi = food?.nutrition?.glycemic_index ?? food?.glycemic_index ?? null;
-    const carbs = pick(food, 'carbs');
-    if (gi != null && carbs > 0) {
-      giCarbProduct += gi * carbs;
-      totalCarbsForGI += carbs;
-    }
-  });
-  const glycemicIndex = totalCarbsForGI > 0 ? Math.round(giCarbProduct / totalCarbsForGI) : null;
+  // Meal GI = Σ(GI × available carbs) / Σ(available carbs) — never sum/simple-average
+  const glycemicIndex = computeMealGlycemicIndex(foods);
 
   return { ...totals, glycemicIndex };
 }

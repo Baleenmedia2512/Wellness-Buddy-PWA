@@ -17,6 +17,7 @@ import {
 } from '../captures/domain/location.fields.js';
 import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestampToUtcIso, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
+import { computeMealGlycemicIndex } from '../food-corrections/mealGlycemicIndex.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 
 const convertConfidenceToNumeric = (confidence) => {
@@ -104,7 +105,9 @@ function extractNutrition(analysisResult, deviceInfo) {
       totalSugar = analysis.total.sugar != null ? analysis.total.sugar : null;
       totalSodium = analysis.total.sodium != null ? analysis.total.sodium : null;
       totalCholesterol = analysis.total.cholesterol != null ? analysis.total.cholesterol : null;
-      totalGlycemicIndex = analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null;
+      // Prefer available-carb weighted meal GI from foods (never trust a summed total)
+      totalGlycemicIndex = computeMealGlycemicIndex(analysis.foods)
+        ?? (analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null);
       micronutrients = pickMicros(analysis.total);
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
       processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
@@ -133,7 +136,8 @@ function extractNutrition(analysisResult, deviceInfo) {
         totalSugar = firstFood.nutrition.sugar != null ? firstFood.nutrition.sugar : null;
         totalSodium = firstFood.nutrition.sodium != null ? firstFood.nutrition.sodium : null;
         totalCholesterol = firstFood.nutrition.cholesterol != null ? firstFood.nutrition.cholesterol : null;
-        totalGlycemicIndex = firstFood.nutrition.glycemic_index != null ? firstFood.nutrition.glycemic_index : null;
+        totalGlycemicIndex = computeMealGlycemicIndex(analysis.foods)
+          ?? (firstFood.nutrition.glycemic_index != null ? firstFood.nutrition.glycemic_index : null);
         micronutrients = pickMicros(firstFood.nutrition);
       }
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);

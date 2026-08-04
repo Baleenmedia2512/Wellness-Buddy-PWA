@@ -901,6 +901,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         endDate={activeDateEnd}
         apiBaseUrl={apiBaseUrl}
         timezoneIana={resolveDiaryTimezone(user)}
+        userId={currentUserId}
       />
     </div>
   );
