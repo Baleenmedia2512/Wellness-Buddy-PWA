@@ -11,22 +11,29 @@ import {
 } from '../glycemicIndex.helpers.js';
 
 describe('extractGlycemicIndexFromAnalysisData', () => {
-  it('reads total.glycemic_index', () => {
-    assert.equal(
-      extractGlycemicIndexFromAnalysisData({ total: { glycemic_index: 55.4 } }),
-      55,
-    );
-  });
-
-  it('falls back to carb-weighted average of foods', () => {
+  it('recomputes available-carb weighted GI from foods (ignores legacy summed total)', () => {
     assert.equal(
       extractGlycemicIndexFromAnalysisData({
         foods: [
-          { nutrition: { carbs: 100, glycemic_index: 50 } },
-          { nutrition: { carbs: 100, glycemic_index: 70 } },
+          { nutrition: { glycemic_index: 73, carbs: 43, fiber: 0 } },
+          { nutrition: { glycemic_index: 50, carbs: 24, fiber: 0 } },
+          { nutrition: { glycemic_index: 40, carbs: 20, fiber: 0 } },
+          { nutrition: { glycemic_index: 64, carbs: 14, fiber: 0 } },
+          { nutrition: { glycemic_index: 60, carbs: 6, fiber: 0 } },
         ],
+        total: { glycemic_index: 287 },
       }),
       60,
+    );
+  });
+
+  it('falls back to total when foods lack GI', () => {
+    assert.equal(
+      extractGlycemicIndexFromAnalysisData({
+        foods: [{ nutrition: { carbs: 40 } }],
+        total: { glycemic_index: 55.4 },
+      }),
+      55,
     );
   });
 
@@ -42,7 +49,7 @@ describe('extractGlycemicIndexFromAnalysisData', () => {
 });
 
 describe('injectGlycemicIndexIntoAnalysisData', () => {
-  it('fills missing total and food GI without overwriting existing item GI', () => {
+  it('sets total GI without changing per-food GI', () => {
     const injected = injectGlycemicIndexIntoAnalysisData({
       foods: [
         { name: 'A', nutrition: { carbs: 10 } },
@@ -52,28 +59,35 @@ describe('injectGlycemicIndexIntoAnalysisData', () => {
     }, 68);
 
     assert.equal(injected.total.glycemic_index, 68);
-    assert.equal(injected.foods[0].nutrition.glycemic_index, 68);
+    assert.equal(injected.foods[0].nutrition.glycemic_index, undefined);
     assert.equal(injected.foods[1].nutrition.glycemic_index, 40);
   });
 });
 
 describe('resolveGlycemicIndexForUpdate', () => {
-  it('prefers client value', () => {
+  it('prefers food-weighted GI over client top-level (legacy sum)', () => {
     const r = resolveGlycemicIndexForUpdate({
-      glycemicIndex: 42,
-      analysisData: { total: { glycemic_index: 55 } },
-      existingGlycemicIndex: 68,
+      glycemicIndex: 287,
+      analysisData: {
+        foods: [
+          { nutrition: { glycemic_index: 73, carbs: 43 } },
+          { nutrition: { glycemic_index: 50, carbs: 24 } },
+        ],
+        total: { glycemic_index: 287 },
+      },
+      existingGlycemicIndex: 287,
     });
-    assert.deepEqual(r, { resolvedGi: 42, source: 'client' });
+    assert.equal(r.source, 'analysisData');
+    assert.equal(r.resolvedGi, 65);
   });
 
-  it('uses analysisData when client omits GI', () => {
+  it('uses client when foods cannot produce GI', () => {
     const r = resolveGlycemicIndexForUpdate({
-      glycemicIndex: null,
-      analysisData: { total: { glycemic_index: 55 } },
+      glycemicIndex: 55,
+      analysisData: { foods: [{ nutrition: { carbs: 20 } }], total: {} },
       existingGlycemicIndex: 68,
     });
-    assert.deepEqual(r, { resolvedGi: 55, source: 'analysisData' });
+    assert.deepEqual(r, { resolvedGi: 55, source: 'client' });
   });
 
   it('preserves existing DB GI when client and AnalysisData omit it', () => {

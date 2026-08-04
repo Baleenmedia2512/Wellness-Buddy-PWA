@@ -21,6 +21,7 @@
 
 import { getApiBaseUrl } from '../../config/api.config';
 import { debugLog } from '../utils/logger.js';
+import { computeMealGlycemicIndex } from '../../features/nutrition/domain/mealGlycemicIndex';
 
 const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
@@ -480,15 +481,14 @@ function _sumFoodNutrition(foods) {
   const MACRO_KEYS = ['calories','protein','carbs','fat','fiber','sugar','sodium','cholesterol'];
   const totals = {};
   MACRO_KEYS.forEach((k) => { totals[k] = 0; });
-  totals.glycemic_index = null;
 
   for (const food of foods) {
     const n = food.nutrition ?? food;
     MACRO_KEYS.forEach((k) => { totals[k] += Number(n[k]) || 0; });
-    if (n.glycemic_index != null) {
-      totals.glycemic_index = (totals.glycemic_index ?? 0) + Number(n.glycemic_index);
-    }
   }
+
+  // Meal GI = carb-weighted average (available carbs), never a sum of item GIs
+  totals.glycemic_index = computeMealGlycemicIndex(foods);
 
   return totals.calories > 0 ? totals : null;
 }

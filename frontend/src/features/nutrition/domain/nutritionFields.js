@@ -2,6 +2,8 @@
  * frontend/src/features/nutrition/domain/nutritionFields.js
  * Shared nutrition field list for manual / search scaling (ADR-0005).
  */
+import { computeMealGlycemicIndex } from './mealGlycemicIndex';
+
 export const NUTRITION_KEYS = Object.freeze([
   'calories', 'protein', 'carbs', 'fat', 'fiber',
   'sugar', 'sodium', 'cholesterol', 'glycemic_index',
@@ -49,18 +51,24 @@ export function scaleNutritionFields(item, ratio) {
 
 /**
  * Sum nutrition objects across items.
+ * Glycemic index is NEVER summed — use available-carb weighted meal GI.
  * @param {Array<object>} nutritions
  */
 export function sumNutrition(nutritions) {
   const total = {};
   for (const n of nutritions) {
     for (const key of NUTRITION_KEYS) {
+      if (key === 'glycemic_index') continue;
       const v = Number(n?.[key]);
       if (!Number.isFinite(v)) continue;
       total[key] = (total[key] || 0) + v;
     }
   }
   if (total.calories != null) total.calories = Math.round(total.calories);
+  const mealGi = computeMealGlycemicIndex(
+    (nutritions || []).map((n) => ({ nutrition: n })),
+  );
+  if (mealGi != null) total.glycemic_index = mealGi;
   return total;
 }
 

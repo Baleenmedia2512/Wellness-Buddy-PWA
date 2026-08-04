@@ -1,5 +1,6 @@
 // Pure helpers used across the nutrition dashboard.
 // These do NOT touch the network — see *Api.js modules for fetches.
+import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 
 /** Calories for a single food item from canonical or legacy shapes. */
 const foodItemCalories = (food) =>
@@ -118,17 +119,11 @@ export const parseAnalysisData = (analysisData) => {
 
 /** Sum & round per-item nutrition into day/meal totals. */
 export const recalculateTotals = (items) => {
-  let giCarbProduct = 0;
-  let giTotalCarbs = 0;
-  const t = items.reduce(
+  const list = Array.isArray(items) ? items : [];
+  const t = list.reduce(
     (acc, item) => {
       const n = item.nutrition || {};
-      const itemCarbs   = n.carbs       ?? item.carbs       ?? 0;
-      const itemGI      = n.glycemic_index ?? item.glycemic_index ?? null;
-      if (itemGI != null && itemCarbs > 0) {
-        giCarbProduct += itemGI * itemCarbs;
-        giTotalCarbs  += itemCarbs;
-      }
+      const itemCarbs = n.carbs ?? item.carbs ?? 0;
       return {
         calories:    acc.calories    + (n.calories    ?? item.calories    ?? 0),
         protein:     acc.protein     + (n.protein     ?? item.protein     ?? 0),
@@ -151,9 +146,7 @@ export const recalculateTotals = (items) => {
     sugar:       Math.round(t.sugar   * 10) / 10,
     sodium:      Math.round(t.sodium),
     cholesterol: Math.round(t.cholesterol),
-    // Carb-weighted average GI across items
-    glycemic_index: giTotalCarbs > 0
-      ? Math.round(giCarbProduct / giTotalCarbs)
-      : null,
+    // Available-carb weighted meal GI (never sum/simple-average item GIs)
+    glycemic_index: computeMealGlycemicIndex(list),
   };
 };

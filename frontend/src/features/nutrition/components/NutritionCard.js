@@ -7,6 +7,7 @@ import { getUserId } from "../../../shared/services/userIdentity";
 import { searchFoods } from "../services/foodCorrectionService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
+import { computeMealGlycemicIndex } from "../domain/mealGlycemicIndex";
 
 const NutritionCard = ({
   data,
@@ -106,28 +107,14 @@ const NutritionCard = ({
     debugLog("   New detailedItems count:", data?.detailedItems?.length);
 
     if (data?.nutrition) {
-      // Backfill total Glycemic Index from items when the upstream payload
-      // (legacy saves, partial AI responses) didn't include it. Carb-weighted.
+      // Always recompute meal GI from items when present (heals legacy summed totals)
       let nextNutrition = data.nutrition;
-      if (
-        (nextNutrition.glycemic_index == null) &&
-        Array.isArray(data?.detailedItems) &&
-        data.detailedItems.length > 0
-      ) {
-        let p = 0;
-        let c = 0;
-        data.detailedItems.forEach((it) => {
-          const g = it.nutrition?.glycemic_index ?? it.glycemic_index;
-          const cb = it.nutrition?.carbs ?? it.carbs ?? 0;
-          if (g != null && cb > 0) {
-            p += Number(g) * Number(cb);
-            c += Number(cb);
-          }
-        });
-        if (c > 0) {
+      if (Array.isArray(data?.detailedItems) && data.detailedItems.length > 0) {
+        const mealGi = computeMealGlycemicIndex(data.detailedItems);
+        if (mealGi != null) {
           nextNutrition = {
             ...nextNutrition,
-            glycemic_index: Math.round(p / c),
+            glycemic_index: mealGi,
           };
         }
       }
@@ -332,8 +319,6 @@ const NutritionCard = ({
       items.length,
     );
 
-    let giCarbProduct = 0;
-    let giTotalCarbs = 0;
     const totals = items.reduce(
       (acc, item, index) => {
         const n = item.nutrition || {};
@@ -346,11 +331,6 @@ const NutritionCard = ({
         const itemSodium      = n.sodium      ?? item.sodium      ?? 0;
         const itemCholesterol = n.cholesterol ?? item.cholesterol ?? 0;
         const itemGI          = n.glycemic_index ?? item.glycemic_index ?? null;
-
-        if (itemGI != null && itemCarbs > 0) {
-          giCarbProduct += itemGI * itemCarbs;
-          giTotalCarbs  += itemCarbs;
-        }
 
         debugLog(`   📊 Item ${index + 1}: ${item.name}`);
         debugLog(
@@ -377,7 +357,7 @@ const NutritionCard = ({
       { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
     );
 
-    // Round to 1 decimal
+    // Round to 1 decimal; meal GI = available-carb weighted (never sum item GIs)
     const rounded = {
       calories:    Math.round(totals.calories),
       protein:     Math.round(totals.protein * 10) / 10,
@@ -387,10 +367,7 @@ const NutritionCard = ({
       sugar:       Math.round(totals.sugar   * 10) / 10,
       sodium:      Math.round(totals.sodium),
       cholesterol: Math.round(totals.cholesterol),
-      // Carb-weighted average GI
-      glycemic_index: giTotalCarbs > 0
-        ? Math.round(giCarbProduct / giTotalCarbs)
-        : null,
+      glycemic_index: computeMealGlycemicIndex(items),
     };
 
     debugLog("   ✅ Final totals:", rounded);
