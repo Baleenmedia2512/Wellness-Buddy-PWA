@@ -1343,6 +1343,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         deleteOnly={unknownFlow.deleteOnly ?? false}
         canMutate={viewingSelf}
         userId={ownerId}
+        userName={user?.userName || user?.username || user?.name || null}
+        userEmail={user?.email || user?.Email || null}
         apiBaseUrl={apiBaseUrl}
         onClose={() => setUnknownFlow(null)}
         onChanged={handleUnknownChanged}

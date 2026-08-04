@@ -4305,7 +4305,9 @@ function WellnessValleyApp() {
       // Same orchestrate path as Manual Entry AI Mode; credit-gated when flag ON.
       const detectedType = await orchestrateAnalyzeImage(file, {
         captureId: String(captureId),
-        userId: user?.id ? String(user.id) : null,
+        userId: user ? String(await getUserId(user).catch(() => null) || user.id) : null,
+        userName: user?.userName || user?.username || user?.name || null,
+        userEmail: user?.email || user?.Email || null,
         reservationId,
         creditGated: Boolean(creditsEnabled && reservationId),
       });
@@ -4522,8 +4524,14 @@ function WellnessValleyApp() {
 
         let detectedType;
         try {
+          const dbOwnerUserId = user && ownerUserId === user.id 
+             ? await getUserId(user).catch(() => null) || ownerUserId 
+             : ownerUserId;
+
           detectedType = await orchestrateAnalyzeImage(file, {
-            userId: ownerUserId ? String(ownerUserId) : null,
+            userId: dbOwnerUserId ? String(dbOwnerUserId) : null,
+            userName: user?.userName || user?.username || user?.name || null,
+            userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
             creditGated: Boolean(creditsOn),

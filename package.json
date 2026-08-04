@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@capacitor/push-notifications": "^8.1.1",
+    "ai-token-monitor": "^1.0.8",
     "joi": "^18.2.1",
     "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"

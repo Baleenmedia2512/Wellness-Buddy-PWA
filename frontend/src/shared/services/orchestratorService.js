@@ -103,6 +103,8 @@ export async function analyzeImage(
   {
     captureId = null,
     userId = null,
+    userName = null,
+    userEmail = null,
     foodRowId = null,
     onAttempt = null,
     reservationId = null,
@@ -119,6 +121,8 @@ export async function analyzeImage(
     const result = await _singleAttempt(imageFile, {
       captureId,
       userId,
+      userName,
+      userEmail,
       foodRowId,
       attempt,
       usePro,
@@ -166,15 +170,20 @@ export async function analyzeImage(
  * Never throws. Returns FALLBACK (with _retryable flag) on any error.
  * @private
  */
-async function _singleAttempt(imageFile, {
-  captureId,
-  userId,
-  foodRowId,
-  attempt,
-  usePro = false,
-  reservationId = null,
-  creditGated = false,
-}) {
+async function _singleAttempt(
+  imageFile,
+  {
+    captureId,
+    userId,
+    userName,
+    userEmail,
+    foodRowId,
+    attempt,
+    usePro = false,
+    reservationId = null,
+    creditGated = false,
+  }
+) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -190,6 +199,8 @@ async function _singleAttempt(imageFile, {
     // cached 'other' result from the previous attempt.
     if (captureId && attempt === 1) formData.append('captureId', String(captureId));
     if (userId)     formData.append('userId',    String(userId));
+    if (userName)   formData.append('userName',  String(userName));
+    if (userEmail)  formData.append('userEmail', String(userEmail));
     if (foodRowId)  formData.append('foodRowId', String(foodRowId));
     // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
