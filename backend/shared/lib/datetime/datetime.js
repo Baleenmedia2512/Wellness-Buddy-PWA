@@ -142,12 +142,12 @@ function hasExplicitUtcOffset(raw) {
 /**
  * Format a stored timestamp for display in a target timezone.
  *
- * Timezone-less strings are treated as wall-clock in `timezoneIana` (IST by
- * default) — the product contract for Supabase `CreatedAt` values that were
- * written without a `Z` suffix.
+ * Legacy timezone-less CreatedAt digits are always parsed as IST wall-clock
+ * (storage contract). The result is then shown in `timezoneIana` (owner display).
+ * Offset-aware / `Z` values are absolute instants.
  *
- * @param {string|Date} utcTimestamp - ISO UTC string, naive business wall-clock, or Date
- * @param {string} [timezoneIana='Asia/Kolkata']
+ * @param {string|Date} utcTimestamp - ISO UTC string, naive IST wall-clock, or Date
+ * @param {string} [timezoneIana='Asia/Kolkata'] Owner/display IANA zone
  * @param {string} [format='yyyy-MM-dd HH:mm:ss'] - Luxon format tokens
  * @returns {string}
  */
@@ -160,7 +160,7 @@ export function formatUtcForDisplay(
 
   const iso = utcTimestamp instanceof Date
     ? utcTimestamp.toISOString()
-    : normalizeStoredTimestampToUtcIso(utcTimestamp, timezoneIana);
+    : normalizeStoredTimestampToUtcIso(utcTimestamp, IANA_IST);
 
   const dt = DateTime.fromISO(iso, { zone: 'utc' }).setZone(timezoneIana);
 

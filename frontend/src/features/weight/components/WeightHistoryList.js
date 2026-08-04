@@ -46,7 +46,7 @@ const Skeleton = () => (
 
 const WeightHistoryList = ({
   user, apiBaseUrl, monthlyGroups, previousWeightMap, undoState,
-  savedUserName, savedProfileImage, userIdRef,
+  savedUserName, savedProfileImage, userIdRef, timezoneIana,
   hasMoreWeights, loadingMore, loadMoreSentinelRef,
   handleViewEntry, handleDeleteEntry, handleUndoRestore, handleUndoExpire,
 }) => {
@@ -61,6 +61,7 @@ const WeightHistoryList = ({
     profileImage: savedProfileImage || null,
     apiBaseUrl,
     userId: userIdRef.current,
+    timezoneIana,
   });
 
   return (

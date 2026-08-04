@@ -190,8 +190,11 @@ export async function listCenters(input) {
 }
 
 // ─── get attendees for a centre ──────────────────────────────────────────────
-export async function getAttendees({ centerId, startDate, endDate }) {
-  const timezoneIana = 'Asia/Kolkata';
+export async function getAttendees({ centerId, userId, startDate, endDate }) {
+  // Prefer requester profile TZ (same as listCenters); fall back to platform IST.
+  const timezoneIana = userId
+    ? await getUserTimezoneIana(userId)
+    : await getUserTimezoneIana(null);
   const today = todayInTimezone(timezoneIana);
   const startYmd = startDate || today;
   const endYmd = endDate || today;

@@ -126,6 +126,7 @@ const Modal = ({ vm }) => (
       previousWeight={vm.modalPreviousWeight()}
       previousEntry={vm.modalPreviousEntry()}
       idealWeight={vm.idealWeight}
+      timezoneIana={vm.timezoneIana}
     />
   </Suspense>
 );

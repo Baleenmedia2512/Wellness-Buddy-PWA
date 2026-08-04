@@ -15,6 +15,7 @@ import {
   filterFoodRowsByCalendarDateRange,
   resolveFoodTimestamp,
 } from '../../shared/lib/datetime/foodTimestamp.js';
+import { resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
 
 /** Keep PostgREST IN lists small to avoid statement timeouts on large teams. */
 const IN_CHUNK_SIZE = 40;
@@ -257,14 +258,20 @@ export async function fetchNutritionCenters(centerIds) {
 /**
  * Resolve business calendar YYYY-MM-DD for a record's CreatedAt.
  */
-function recordCalendarYmd(record, timezoneIana, { foodTimestamp = false, column = 'CreatedAt' } = {}) {
+function recordCalendarYmd(record, timezoneIana, {
+  foodTimestamp = false,
+  column = 'CreatedAt',
+  timezoneByUserId = null,
+} = {}) {
   try {
     const raw = record?.[column] ?? record?.CreatedAt;
+    const uid = record?.UserID ?? record?.UserId;
+    const tz = resolveTimezoneFromMap(timezoneByUserId, uid, timezoneIana);
     if (foodTimestamp) {
-      return resolveFoodTimestamp(raw, timezoneIana).calendarYmd;
+      return resolveFoodTimestamp(raw, tz).calendarYmd;
     }
     // Legacy IST wall storage → UTC, then owner calendar day.
-    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, IANA_IST), timezoneIana);
+    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, IANA_IST), tz);
   } catch {
     return 'unknown';
   }
@@ -334,18 +341,29 @@ export function dedupeFirstLogPerMemberPerDay(records, timezoneIana = IANA_IST, 
 }
 
 /**
- * Filter food records by meal time window
+ * Filter food records by meal time window.
+ * When `timezoneByUserId` is provided, each record uses that member's TZ.
  */
-export function filterFoodByMealTime(foodRecords, mealType, timeWindows, timezoneIana = IANA_IST) {
+export function filterFoodByMealTime(
+  foodRecords,
+  mealType,
+  timeWindows,
+  timezoneIana = IANA_IST,
+  timezoneByUserId = null,
+) {
   const window = timeWindows[mealType];
   if (!window) return [];
-  
-  return foodRecords.filter(record => {
-    // Skip beverage-only entries
+
+  return foodRecords.filter((record) => {
     if (isExemptedBeverageOnly(record.AnalysisData)) return false;
-    
+
     try {
-      const { timeOfDay } = resolveFoodTimestamp(record.CreatedAt, timezoneIana);
+      const tz = resolveTimezoneFromMap(
+        timezoneByUserId,
+        record.UserID ?? record.UserId,
+        timezoneIana,
+      );
+      const { timeOfDay } = resolveFoodTimestamp(record.CreatedAt, tz);
       return timeOfDay >= window.start && timeOfDay <= window.end;
     } catch {
       return false;

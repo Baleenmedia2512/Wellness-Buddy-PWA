@@ -36,27 +36,24 @@ const getPlatformColor = (platform) => {
   return 'from-indigo-500 to-purple-600';
 };
 
-/** Format date with day and time in the business timezone. */
-const formatDate = (dateString) => {
+/** Format date with day and time in the owner's business timezone. */
+const formatDate = (dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) => {
   if (!dateString) return '';
-
-  if (isBusinessToday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Today ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
+  if (isBusinessToday(dateString, timezoneIana)) {
+    return `Today ${formatBusinessTime(dateString, timezoneIana)}`;
   }
-
-  if (isBusinessYesterday(dateString, DEFAULT_BUSINESS_TIMEZONE)) {
-    return `Yesterday ${formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE)}`;
+  if (isBusinessYesterday(dateString, timezoneIana)) {
+    return `Yesterday ${formatBusinessTime(dateString, timezoneIana)}`;
   }
-
   return formatUtcDate(dateString, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: DEFAULT_BUSINESS_TIMEZONE,
+    timeZone: timezoneIana,
   });
 };
 
-const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseUrl, userId }) => {
+const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseUrl, userId, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) => {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -340,7 +337,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
             {/* Platform & Date */}
             <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
-              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt)}
+              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt, timezoneIana)}
             </p>
           </div>
         </div>

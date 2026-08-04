@@ -147,6 +147,7 @@ const EducationDashboard = ({
             onRestore={vm.handleUndoRestore} onExpire={vm.handleUndoExpire}
             onCardClick={(log) => setSelectedLog(log)}
             apiBaseUrl={vm.apiBaseUrl} userId={vm.userIdRef.current}
+            timezoneIana={vm.timezoneIana}
             hasMoreLogs={vm.hasMoreLogs} loadingMore={vm.loadingMore}
             sentinelRef={vm.loadMoreSentinelRef}
           />

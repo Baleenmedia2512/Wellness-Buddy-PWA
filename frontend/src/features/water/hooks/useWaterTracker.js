@@ -61,7 +61,7 @@ export function useWaterTracker({ user, userId: propUserId } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchWaterIntake(resolvedUserId, todayLocal());
+      const data = await fetchWaterIntake(resolvedUserId, todayLocal(timezoneIana));
       setWaterData(data);
       return data;
     } catch (err) {
