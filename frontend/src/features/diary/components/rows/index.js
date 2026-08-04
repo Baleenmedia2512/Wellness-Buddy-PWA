@@ -115,6 +115,41 @@ function Thumb({ imageBase64, imagePath, fallback }) {
   );
 }
 
+/**
+ * Keeps list-slot height stable while the tile slides away horizontally.
+ * Collapsing to 0 made the row below jump up before the inline undo card
+ * mounted — undo must stay in the same card slot.
+ */
+function SwipeDeleteShell({ swipe, enabled = true, children }) {
+  const leaving = enabled && swipe.leaving;
+
+  return (
+    <div
+      className="relative w-full"
+      style={{
+        touchAction: (swipe.dragging && enabled) ? 'none' : 'pan-y',
+        minHeight: 84,
+        overflow: 'hidden',
+        overflowAnchor: 'none',
+        pointerEvents: leaving ? 'none' : undefined,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Card transform — horizontal slide only (no scale → no vertical shift). */
+function swipeCardStyle(swipe, { enabled = true } = {}) {
+  if (!enabled) return undefined;
+  return {
+    transform: `translateX(${swipe.dx}px)`,
+    transformOrigin: 'left center',
+    transition: swipe.animating ? 'transform 220ms ease-out' : 'none',
+    willChange: 'transform',
+  };
+}
+
 // ─── kind: food ─────────────────────────────────────────────────────────────
 
 export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = false, timezoneIana = DEFAULT_BUSINESS_TIMEZONE }) {
@@ -171,10 +206,7 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
   };
 
   return (
-    <div
-      className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
-    >
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
       {/* Off-screen full nutrition share card — captured by html2canvas on share tap */}
       <div
         ref={shareCardRef}
@@ -254,11 +286,7 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
         }}
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
-        style={{
-          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
-          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: swipeEnabled ? 'transform' : undefined,
-        }}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
@@ -300,7 +328,7 @@ export function FoodRow({ entry, onOpen, onDelete, canDelete = true, hideTime = 
             : <Share2 className="w-4 h-4" aria-hidden="true" />}
         </button>
       </div>
-    </div>
+    </SwipeDeleteShell>
   );
 }
 
@@ -330,10 +358,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
   };
 
   return (
-    <div
-      className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
-    >
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -367,11 +392,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
         }}
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
-        style={{
-          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
-          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: swipeEnabled ? 'transform' : undefined,
-        }}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
@@ -403,7 +424,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
             : <Share2 className="w-4 h-4" aria-hidden="true" />}
         </button>
       </div>
-    </div>
+    </SwipeDeleteShell>
   );
 }
 
@@ -414,10 +435,7 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
 
   return (
-    <div
-      className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
-    >
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -451,11 +469,7 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
         }}
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
-        style={{
-          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
-          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: swipeEnabled ? 'transform' : undefined,
-        }}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
@@ -473,7 +487,7 @@ export function EducationRow({ entry, onOpen, onDelete, canDelete = true, hideTi
           )}
         </div>
       </div>
-    </div>
+    </SwipeDeleteShell>
   );
 }
 
@@ -484,10 +498,7 @@ export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime =
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
 
   return (
-    <div
-      className="relative w-full"
-      style={{ touchAction: swipe.dragging ? 'none' : 'pan-y', minHeight: 84 }}
-    >
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -521,11 +532,7 @@ export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime =
         }}
         onClick={() => { if (!swipe.dragging && Math.abs(swipe.dx) < 5 && !swipe.leaving) onOpen?.(entry); }}
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
-        style={{
-          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
-          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: swipeEnabled ? 'transform' : undefined,
-        }}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
@@ -544,7 +551,7 @@ export function WatchRow({ entry, onOpen, onDelete, canDelete = true, hideTime =
           <p className="text-[11px] text-gray-500 -mt-0.5">kcal burned</p>
         </div>
       </div>
-    </div>
+    </SwipeDeleteShell>
   );
 }
 
@@ -613,10 +620,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
   }, [isAnalyzing, isBackgroundPending, entry.capturedAt]);
 
   return (
-    <div
-      className="relative w-full"
-      style={{ touchAction: (swipe.dragging && swipeEnabled) ? 'none' : 'pan-y', minHeight: 84 }}
-    >
+    <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -673,11 +677,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
             ? 'bg-amber-50/70 border border-amber-200 cursor-pointer hover:shadow-md'
             : `bg-white/70 backdrop-blur-xl border border-gray-200/80 cursor-pointer hover:shadow-md ${swipe.leaving ? 'pointer-events-none' : ''}`,
         ].join(' ')}
-        style={{
-          transform: swipeEnabled ? `translateX(${swipe.dx}px) scale(${swipe.scale})` : undefined,
-          transition: swipe.animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
-          willChange: swipeEnabled ? 'transform' : undefined,
-        }}
+        style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
       >
         {swipeEnabled && (
           <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
@@ -765,7 +765,7 @@ export function OtherRow({ entry, onOpen, onDelete, canDelete = true, isAnalyzin
           <span className="text-xs text-amber-600 font-medium" aria-hidden="true">Manual Log</span>
         )}
       </div>
-    </div>
+    </SwipeDeleteShell>
   );
 }
 

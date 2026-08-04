@@ -28,7 +28,8 @@ export const MEETING_SESSIONS = [
   'Blueprint for Success',
   'HALA',
   'Daily Education',
-  'Wellness Secminar',
+  'Wellness Seminar',
+  'Academy',
 ];
 
 export const DEFAULT_MEETING_SESSION = 'Daily Education';

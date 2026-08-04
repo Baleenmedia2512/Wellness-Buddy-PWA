@@ -9,6 +9,11 @@
  * it cannot stack-overflow.
  */
 
+import {
+  filterPublicAggregateUsers,
+  shouldExcludeDeveloperFromAggregates,
+} from '../features/user/domain/aggregate-eligibility.rules.js';
+
 /** Case-insensitive active check for team_table.Status. */
 export function isActiveTeamStatus(status) {
   return String(status || '').toLowerCase() === 'active';
@@ -306,7 +311,9 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
         Status: node.status,
       };
       if (node.isCoCoach) entry.isCoCoach = true;
-      result.set(node.userId, entry);
+      if (!shouldExcludeDeveloperFromAggregates(entry, { viewerUserId: coachIdInt })) {
+        result.set(node.userId, entry);
+      }
     }
     if (node.teamMembers && node.teamMembers.length > 0) {
       node.teamMembers.forEach(child => flattenHierarchy(child, result));
@@ -331,7 +338,10 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       isCoCoach: true,
     });
   }
-  const allMembers = Array.from(memberMap.values());
+  const allMembers = filterPublicAggregateUsers(
+    Array.from(memberMap.values()),
+    { viewerUserId: coachIdInt },
+  );
 
   const uniqueUserIds = new Set(allUsers.map(u => u.UserId));
   const coaches = allUsers.filter(u => u.Role === 'coach' || u.Role === 'admin');

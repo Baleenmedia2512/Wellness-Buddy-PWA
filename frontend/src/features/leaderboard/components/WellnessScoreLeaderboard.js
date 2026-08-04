@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
 const readCache = () => {
@@ -155,11 +156,20 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
           {user.userName}
         </span>
-        {user.coachName && user.coachName.toLowerCase() !== 'no coach' && (
-          <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 truncate leading-tight">
-            Coach: {user.coachName}
-          </span>
-        )}
+        {(() => {
+          const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+          if (!sponsorName && !idealCoachName) return null;
+          return (
+            <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 leading-tight min-w-0">
+              {sponsorName && (
+                <span className="block truncate">Sponsor: {sponsorName}</span>
+              )}
+              {idealCoachName && (
+                <span className="block truncate">Coach: {idealCoachName}</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex items-center gap-0.5 bg-white px-1.5 sm:px-2 md:px-2.5 py-1 sm:py-1.5 rounded-lg shadow-sm flex-shrink-0">

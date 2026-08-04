@@ -21,7 +21,7 @@ function StatusBadge({ status }) {
   }
   return (
     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-      <Clock className="h-3.5 w-3.5" /> Pending Coach Verification
+      <Clock className="h-3.5 w-3.5" /> Pending Sponsor Verification
     </span>
   );
 }
@@ -41,7 +41,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
   const handleVerify = async () => {
     setOtpError(null);
     if (!/^\d{6}$/.test(otp.trim())) {
-      setOtpError('Enter the 6-digit OTP your coach shared with you');
+      setOtpError('Enter the 6-digit OTP your sponsor shared with you');
       return;
     }
     setVerifying(true);
@@ -51,7 +51,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
       setOtp('');
       if (onVerified) onVerified();
     } catch (err) {
-      setOtpError(err.message || 'Invalid OTP. Ask your coach to share it again.');
+      setOtpError(err.message || 'Invalid OTP. Ask your sponsor to share it again.');
     } finally {
       setVerifying(false);
     }
@@ -142,7 +142,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
       {testimonial.status === 'pending' && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
           <p className="text-sm text-amber-800 font-medium">
-            📧 Your coach received a verification email with a 6-digit OTP.
+            📧 Your sponsor received a verification email with a 6-digit OTP.
             Ask them to share it with you, then enter it below.
           </p>
           {!showOtpBox ? (
@@ -205,7 +205,7 @@ export default function TestimonialStatusCard({ testimonial, onEdit, onAddAfter,
 
       {testimonial.status === 'pending' && (
         <p className="text-xs text-gray-400 text-center">
-          Editing resets verification — your coach gets a new OTP by email.
+          Editing resets verification — your sponsor gets a new OTP by email.
         </p>
       )}
     </div>

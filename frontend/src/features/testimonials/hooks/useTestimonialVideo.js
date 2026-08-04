@@ -204,7 +204,7 @@ export function useTestimonialVideo({ userId, healthIssues = [] }) {
         recoveredHealthIssues: healthIssues,
       });
       setPendingTestimonialId(result.testimonialId ?? null);
-      setSuccess('Videos uploaded! Share the OTP your coach receives to complete verification.');
+      setSuccess('Videos uploaded! Share the OTP your sponsor receives to complete verification.');
       setShowOtpModal(true);
       setIsEditMode(false);
       reload();

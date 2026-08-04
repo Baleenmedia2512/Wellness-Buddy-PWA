@@ -308,13 +308,13 @@ function UnifiedOtpInline({ userId, onVerified }) {
 
   const submit = async () => {
     setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your coach'); return; }
+    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your sponsor'); return; }
     setLoading(true);
     try {
       await verifyUnifiedOtp({ userId, otp: otp.trim() });
       onVerified();
     } catch (e) {
-      setErr(e.message || 'Invalid OTP. Please check with your coach.');
+      setErr(e.message || 'Invalid OTP. Please check with your sponsor.');
     } finally {
       setLoading(false);
     }
@@ -324,10 +324,10 @@ function UnifiedOtpInline({ userId, onVerified }) {
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your coach</p>
+        <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your coach received a single 6-digit OTP covering all your changes. Ask them to share it.
+        Your sponsor received a single 6-digit OTP covering all your changes. Ask them to share it.
       </p>
       <NativeInput
         otp
@@ -457,7 +457,7 @@ function MemberCard({
       const isNoCoach = msg.toLowerCase().includes('no coach');
       setVideoUploadError(
         isNoCoach
-          ? 'You do not have a coach assigned yet. Please ask your admin to assign a coach before uploading videos.'
+          ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
           : (msg || 'Video upload failed. Please try again.')
       );
       if (slot === 'health') { setDraftHealthPreview(null); setDraftHealthPath(null); }
@@ -1000,7 +1000,7 @@ function MemberCard({
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
               </p>
               <p className="text-xs text-gray-500 pb-1">
-                Ask your coach for the OTP they received by email.
+                Ask your sponsor for the OTP they received by email.
               </p>
               <OtpInline
                 testimonialId={testimonial.id}
@@ -1077,7 +1077,7 @@ function MemberCard({
             }
           </button>
           <p className="text-[10px] text-gray-400 text-center">
-            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your coach will receive one verification email
+            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your sponsor will receive one verification email
           </p>
         </div>
       )}
