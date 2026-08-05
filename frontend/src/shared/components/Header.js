@@ -5,24 +5,13 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
+import { fetchHasTeamMembers } from "../../features/team/services/teamSearchService";
 
 /** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
 const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
 
 function canAccessReportsTab(role, hasTeamMembers) {
   return REPORTS_TAB_ROLES.includes(role) || Boolean(hasTeamMembers);
-}
-
-async function fetchHasTeamMembers(userId) {
-  if (!userId) return false;
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const res = await fetch(
-    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) return false;
-  const data = await res.json();
-  return Boolean(data?.hasTeamMembers);
 }
 
 const Header = ({

@@ -13,7 +13,7 @@ const base = () => getApiBaseUrl();
  * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.
  * Pass `cacheBust: true` after a profile save to force a fresh read.
  */
-export async function getProfile(email, { cacheBust = false } = {}) {
+export async function getProfile(email, { cacheBust = false, signal } = {}) {
   if (!email) throw new Error('getProfile: email required');
   const key = cacheManager.generateKey('userProfile', String(email).toLowerCase());
   if (cacheBust) cacheManager.clear(key);
@@ -22,7 +22,10 @@ export async function getProfile(email, { cacheBust = false } = {}) {
     key,
     async () => {
       const ts = cacheBust ? `&_t=${Date.now()}` : '';
-      const res = await fetch(`${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`);
+      const res = await fetch(
+        `${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`,
+        signal ? { signal } : undefined,
+      );
       return res.json();
     },
     cacheManager.ttls.userProfile,

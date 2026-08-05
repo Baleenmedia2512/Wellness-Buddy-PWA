@@ -324,6 +324,60 @@ const EMPTY_STATS = {
 };
 
 /**
+ * User IDs that would appear in the selected detail tab — used to skip
+ * member/sponsor enrichment when the table would be empty.
+ */
+function collectDetailRecordUserIds({
+  activityType,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+  timezoneIana,
+  timezoneByUserId,
+}) {
+  switch (activityType) {
+    case 'weight':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => r.UserId)
+          .filter(Boolean),
+      )];
+    case 'education':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => parseInt(r.UserId, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'breakfast':
+    case 'lunch':
+    case 'dinner': {
+      const meals = repo.filterFoodByMealTime(
+        foodRecords, activityType, timeWindows, timezoneIana, timezoneByUserId,
+      );
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(meals, timezoneIana, { foodTimestamp: true, timezoneByUserId })
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    }
+    case 'water':
+      return [...new Set(
+        repo.filterWaterRecords(foodRecords)
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'calories':
+      return [...new Set(
+        stepRecords.map((r) => r.UserId).filter(Boolean),
+      )];
+    default:
+      return [];
+  }
+}
+
+/**
  * Single round-trip bootstrap: team scope + summary + member summary + one detail tab.
  * Resolves hierarchy once and fetches all activity tables in parallel.
  */
@@ -366,28 +420,19 @@ export async function getActivityReportBootstrap({
     };
   }
 
-  const activityFetches = [
+  // All activity tables + timezones in one wave (no food waterfall).
+  const [
+    weightRecords,
+    educationRecords,
+    stepRecords,
+    timeWindows,
+    foodRecords,
+    timezoneByUserId,
+  ] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
-  ];
-  if (includeRecords) {
-    activityFetches.unshift(repo.fetchMemberDetails(userIds));
-  }
-
-  const fetchResults = await Promise.all(activityFetches);
-  const members = filterPublicAggregateUsers(
-    includeRecords ? fetchResults[0] : [],
-    { viewerUserId: userId },
-  );
-  const weightRecords = fetchResults[includeRecords ? 1 : 0];
-  const educationRecords = fetchResults[includeRecords ? 2 : 1];
-  const stepRecords = fetchResults[includeRecords ? 3 : 2];
-  const timeWindows = fetchResults[includeRecords ? 4 : 3];
-
-  // Food rows carry large AnalysisData JSON ? fetch after lighter tables to reduce parallel DB load.
-  const [foodRecords, timezoneByUserId] = await Promise.all([
     repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
     getUserTimezonesIanaMap(userIds),
   ]);
@@ -398,22 +443,40 @@ export async function getActivityReportBootstrap({
 
   let records = [];
   if (includeRecords) {
-    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
-      { viewerUserId: userId },
-    );
-    const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
-    records = await buildDetailRecordsFromBundle({
+    const detailUserIds = collectDetailRecordUserIds({
       activityType: detailActivity,
-      memberMap: detailMemberMap,
-      timezoneIana,
-      timezoneByUserId,
       weightRecords,
       educationRecords,
       foodRecords,
       stepRecords,
       timeWindows,
+      timezoneIana,
+      timezoneByUserId,
     });
+
+    // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
+    if (detailUserIds.length > 0) {
+      const members = filterPublicAggregateUsers(
+        await repo.fetchMemberDetails(detailUserIds),
+        { viewerUserId: userId },
+      );
+      const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+        members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+        { viewerUserId: userId },
+      );
+      const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
+      records = await buildDetailRecordsFromBundle({
+        activityType: detailActivity,
+        memberMap: detailMemberMap,
+        timezoneIana,
+        timezoneByUserId,
+        weightRecords,
+        educationRecords,
+        foodRecords,
+        stepRecords,
+        timeWindows,
+      });
+    }
   }
 
   return {

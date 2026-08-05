@@ -121,8 +121,18 @@ export async function fetchCoachNames(coachIds) {
 
 /**
  * Fetch time windows from activity_time_windows_table
+ * Cached in-process — windows change rarely and are hit on every bootstrap.
  */
+let timeWindowsCache = null;
+let timeWindowsCacheExpiresAt = 0;
+const TIME_WINDOWS_TTL_MS = 5 * 60 * 1000;
+
 export async function fetchTimeWindows() {
+  const now = Date.now();
+  if (timeWindowsCache && now < timeWindowsCacheExpiresAt) {
+    return timeWindowsCache;
+  }
+
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('activity_time_windows_table')
@@ -144,11 +154,14 @@ export async function fetchTimeWindows() {
     windows[key] = { start: tw.WindowStartTime, end: tw.WindowEndTime };
   });
   
-  return {
+  const resolved = {
     breakfast: windows.breakfast || { start: '05:30:00', end: '08:30:00' },
     lunch: windows.lunch || { start: '12:00:00', end: '16:00:00' },
     dinner: windows.dinner || { start: '17:30:00', end: '20:30:00' },
   };
+  timeWindowsCache = resolved;
+  timeWindowsCacheExpiresAt = now + TIME_WINDOWS_TTL_MS;
+  return resolved;
 }
 
 /**
@@ -213,7 +226,7 @@ export async function fetchFoodRecords(userIds, startDate, endDate, timezoneIana
       .or('IsDeleted.is.null,IsDeleted.eq.0');
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
-  }, { sequential: true });
+  });
 
   return filterFoodRowsByCalendarDateRange(data, startDate, endDate, timezoneIana, 'CreatedAt');
 }

@@ -175,6 +175,7 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { WeightProgressTipsModal } from "./features/weight-progress-tips/components/WeightProgressTipsModal";
 import PhysicalActivitySetup from "./features/user/components/PhysicalActivitySetup";
 import { fetchProfile } from "./features/user/services/profileService";
+import { getProfile } from "./features/user/services/user.api";
 import {
   NutritionRefreshProvider,
   useNutritionRefresh,
@@ -3824,12 +3825,10 @@ function WellnessValleyApp() {
     }
     const phoneNumber = user?.phoneNumber || user?.PhoneNumber;
     const { signal, cancel } = createAbortGroup();
-    // Use standard caching ? no need to bust cache on every render
-    fetch(
-      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-      { signal, cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-    )
-      .then((res) => (res.ok ? res.json() : null))
+    // Shared getProfile cache/dedup — avoids duplicate Home + Header profile storms.
+    // Do not pass AbortSignal into getProfile: an abort would reject the shared
+    // in-flight promise and break concurrent consumers (Header, nutrition hooks).
+    getProfile(email)
       .then((data) => {
         if (signal.aborted) return;
         if (
@@ -3940,14 +3939,7 @@ function WellnessValleyApp() {
   const refreshIdealWeight = async () => {
     try {
       if (!user?.email) return;
-      const profileRes = await fetch(
-        `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
-          user.email,
-        )}&_t=${Date.now()}`,
-        { cache: "no-store" },
-      );
-      if (!profileRes.ok) return;
-      const profileData = await profileRes.json();
+      const profileData = await getProfile(user.email);
       const heightCm = parseFloat(profileData?.data?.height);
       if (!heightCm || heightCm < 50 || heightCm > 250) {
         setIdealWeight(null);
@@ -8500,23 +8492,15 @@ function WellnessValleyApp() {
             // Also fetch updated user profile in background to ensure consistency
             try {
               debugLog("?? [Profile Picture] Refreshing user profile data in background...");
-              const res = await fetch(
-                `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
-                { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
-              );
-              
-              if (res.ok) {
-                const data = await res.json();
-                if (data.success && data.data && data.data.profileImage) {
-                  // Update again with server data to ensure consistency
-                  setUser((prevUser) => ({
-                    ...prevUser,
-                    profileImage: data.data.profileImage,
-                    ProfileImage: data.data.profileImage,
-                    photoURL: data.data.profileImage,
-                  }));
-                  debugLog("? [Profile Picture] User state synced with server data");
-                }
+              const data = await getProfile(userEmail, { cacheBust: true });
+              if (data.success && data.data && data.data.profileImage) {
+                setUser((prevUser) => ({
+                  ...prevUser,
+                  profileImage: data.data.profileImage,
+                  ProfileImage: data.data.profileImage,
+                  photoURL: data.data.profileImage,
+                }));
+                debugLog("? [Profile Picture] User state synced with server data");
               }
             } catch (err) {
               console.error("? [Profile Picture] Failed to refresh user profile:", err);

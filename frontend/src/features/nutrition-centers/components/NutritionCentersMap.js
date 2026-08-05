@@ -160,6 +160,31 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   }, [mapLoaded]);
 
+  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
+  const resolvedUserIdRef = useRef(null);
+  useEffect(() => {
+    if (!user?.email) {
+      resolvedUserIdRef.current = null;
+      setCurrentUserId(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getUserId(user.email)
+      .then((id) => {
+        if (cancelled) return;
+        resolvedUserIdRef.current = Number(id);
+        setCurrentUserId(Number(id));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          resolvedUserIdRef.current = null;
+          setCurrentUserId(null);
+        }
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
+  }, [user]);
+
   // Fetch nutrition centres
   const fetchCenters = async () => {
     if (!user) return;
@@ -168,7 +193,12 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     setError(null);
 
     try {
-      const userId = await getUserId(user.email);
+      // Reuse resolved ID from mount effect when available (avoids duplicate /user/lookup)
+      const userId = resolvedUserIdRef.current || await getUserId(user.email);
+      if (!resolvedUserIdRef.current) {
+        resolvedUserIdRef.current = Number(userId);
+        setCurrentUserId(Number(userId));
+      }
       // Use scope=all for 'all' filter to fetch all system centers globally
       const scope = teamFilter === 'all' ? 'all' : 'team';
       // Always compute dates from local timezone to avoid UTC shift issues
@@ -232,16 +262,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     if (!data.success) throw new Error('User not found');
     return data.userId;
   };
-
-  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
-  useEffect(() => {
-    if (user?.email) {
-      getUserId(user.email)
-        .then((id) => setCurrentUserId(Number(id)))
-        .catch(() => setCurrentUserId(null));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
-  }, [user]);
 
   // Open Street View for a center
   const openStreetView = (center) => {

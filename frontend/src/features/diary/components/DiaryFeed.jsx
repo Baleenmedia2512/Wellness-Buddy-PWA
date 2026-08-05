@@ -389,7 +389,7 @@ export default function DiaryFeed({
     }
 
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || null;

@@ -168,29 +168,32 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   }, [dateRange, customStartDate, customEndDate]);
 
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
-    const summaryRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
-      { cache: 'no-store' },
-    );
-    const summaryData = await summaryRes.json();
+    // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
+    const [summaryRes, memberRes, detailRes] = await Promise.all([
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
+        { cache: 'no-store' },
+      ),
+    ]);
+    const [summaryData, memberData, detailData] = await Promise.all([
+      summaryRes.json(),
+      memberRes.json(),
+      detailRes.json(),
+    ]);
     if (!summaryRes.ok || !summaryData.success) {
       throw new Error(summaryData.message || 'Failed to fetch activity summary');
     }
-
-    const memberRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
-      { cache: 'no-store' },
-    );
-    const memberData = await memberRes.json();
     if (!memberRes.ok || !memberData.success) {
       throw new Error(memberData.message || 'Failed to fetch member summaries');
     }
-
-    const detailRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
-      { cache: 'no-store' },
-    );
-    const detailData = await detailRes.json();
     if (!detailRes.ok || !detailData.success) {
       throw new Error(detailData.message || 'Failed to fetch activity details');
     }
@@ -288,21 +291,25 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   ]);
 
   // Fetch only when this page is open (component mounted) and role is resolved.
+  // Short debounce collapses React Strict Mode remount + rapid filter churn into one request.
   useEffect(() => {
     if (!roleReady || !user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    fetchAbortRef.current?.abort();
     const controller = new AbortController();
+    fetchAbortRef.current?.abort();
     fetchAbortRef.current = controller;
     const generation = fetchGenerationRef.current + 1;
     fetchGenerationRef.current = generation;
 
-    loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
-      if (fetchGenerationRef.current !== generation) return;
-    });
+    const timer = setTimeout(() => {
+      loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
+        if (fetchGenerationRef.current !== generation) return;
+      });
+    }, 50);
 
     return () => {
+      clearTimeout(timer);
       controller.abort();
       if (fetchAbortRef.current === controller) {
         fetchAbortRef.current = null;
