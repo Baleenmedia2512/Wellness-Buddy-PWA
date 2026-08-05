@@ -2,7 +2,7 @@
  * CaptureClassifyPage — full-screen post-capture: pick type or run AI in background.
  * AI does not populate this screen; results appear in Diary.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dumbbell,
   Loader2,
@@ -24,7 +24,7 @@ import {
   AFRESH_PRODUCT,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight, fetchLatestWeightEntry } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
@@ -34,6 +34,7 @@ import {
 } from '../../features/ai-credits';
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
+import { buildDiaryShareSuffix } from '../../features/diary';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -189,8 +190,15 @@ export default function ManualEntryPage({
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
+  // Today's Afresh scoops only — independent of water ml total.
+  const [afreshTodayScoops, setAfreshTodayScoops] = useState(0);
+  const [afreshTodayLoading, setAfreshTodayLoading] = useState(false);
+  // True after light /api/water/intake has returned once (prefetch or open).
+  const beverageSummaryReadyRef = useRef(false);
   const [workoutTodayKcal, setWorkoutTodayKcal] = useState(0);
   const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
+  // True after light watch-calories has returned once (prefetch or open).
+  const workoutSummaryReadyRef = useRef(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
   useEffect(() => {
@@ -224,71 +232,111 @@ export default function ManualEntryPage({
     refreshCredits();
   }, [refreshCredits]);
 
-  // Load today's consumed water whenever the water stepper opens (diary edits reflect here).
-  useEffect(() => {
-    if (activeForm !== 'water' || !userId) return undefined;
+  // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
+  const loadBeverageToday = useCallback((opts = {}) => {
+    const { showWaterLoading = false, showAfreshLoading = false } = opts;
+    if (!userId) return () => {};
     let cancelled = false;
-    setWaterTodayLoading(true);
+    if (showWaterLoading) setWaterTodayLoading(true);
+    if (showAfreshLoading) setAfreshTodayLoading(true);
     fetchWaterIntake(userId, todayLocal())
       .then((data) => {
         if (cancelled) return;
-        const total = Math.max(0, Math.round(Number(data?.totalMl) || 0));
-        setWaterTodayMl(total);
+        setWaterTodayMl(Math.max(0, Math.round(Number(data?.totalMl) || 0)));
+        setAfreshTodayScoops(Math.max(0, Math.round(Number(data?.totalAfreshScoops) || 0)));
+        beverageSummaryReadyRef.current = true;
       })
       .catch(() => {
-        if (!cancelled) setWaterTodayMl(0);
+        if (cancelled) return;
+        if (showWaterLoading) setWaterTodayMl(0);
+        if (showAfreshLoading) setAfreshTodayScoops(0);
       })
       .finally(() => {
-        if (!cancelled) setWaterTodayLoading(false);
+        if (cancelled) return;
+        if (showWaterLoading) setWaterTodayLoading(false);
+        if (showAfreshLoading) setAfreshTodayLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeForm, userId]);
+  }, [userId]);
 
-  // Load today's watch calories whenever the workout modal opens.
+  // Prefetch so Afresh / Water open instantly (avoids heavy food-corrections/stats + images).
   useEffect(() => {
-    if (activeForm !== 'smartwatch' || !userId) return undefined;
+    if (!userId) return undefined;
+    beverageSummaryReadyRef.current = false;
+    return loadBeverageToday();
+  }, [userId, loadBeverageToday]);
+
+  // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
+  useEffect(() => {
+    if (activeForm === 'water') {
+      return loadBeverageToday({ showWaterLoading: !beverageSummaryReadyRef.current });
+    }
+    if (activeForm === 'afresh') {
+      return loadBeverageToday({ showAfreshLoading: !beverageSummaryReadyRef.current });
+    }
+    return undefined;
+  }, [activeForm, loadBeverageToday]);
+
+  // Light watch-calories summary — prefetch so Workout opens without a spinner wait.
+  const loadWorkoutToday = useCallback((opts = {}) => {
+    const { showLoading = false } = opts;
+    if (!userId) return () => {};
     let cancelled = false;
-    setWorkoutTodayLoading(true);
+    if (showLoading) setWorkoutTodayLoading(true);
     fetchWatchBurnedCalories({ apiBaseUrl, userId, date: todayLocal() })
       .then((total) => {
         if (cancelled) return;
         setWorkoutTodayKcal(Math.max(0, Math.round(Number(total) || 0)));
+        workoutSummaryReadyRef.current = true;
       })
       .catch(() => {
-        if (!cancelled) setWorkoutTodayKcal(0);
+        if (cancelled) return;
+        if (showLoading) setWorkoutTodayKcal(0);
       })
       .finally(() => {
-        if (!cancelled) setWorkoutTodayLoading(false);
+        if (cancelled) return;
+        if (showLoading) setWorkoutTodayLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeForm, userId, apiBaseUrl]);
+  }, [userId, apiBaseUrl]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    workoutSummaryReadyRef.current = false;
+    return loadWorkoutToday();
+  }, [userId, loadWorkoutToday]);
+
+  useEffect(() => {
+    if (activeForm !== 'smartwatch') return undefined;
+    return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
+  }, [activeForm, loadWorkoutToday]);
 
   useEffect(() => {
     if (userId) warmLatestWeightCache(userId);
   }, [userId]);
 
-  const exit = async () => {
-    await onSaved?.();
+  const exit = async (shareMeta = null) => {
+    await onSaved?.(shareMeta);
     // Share sheet was shown — return to main whether user shared or dismissed.
     onBack?.();
   };
 
   /** Discard capture and leave — must not remain in Diary as unknown/Other. */
-  const handleCloseWithoutLog = async () => {
+  const handleCloseWithoutLog = () => {
     if (closingWithoutLog || saving || aiStarting) return;
     setClosingWithoutLog(true);
-    try {
-      if (captureId && userId) {
-        await deleteCapture({ captureId, userId });
-      }
-      onBack?.();
-    } catch {
-      onToast?.("Couldn't discard photo — try again.");
-      setClosingWithoutLog(false);
+    const id = captureId;
+    const uid = userId;
+    // Leave immediately — awaiting delete felt like a hang under network load.
+    onBack?.();
+    if (id && uid) {
+      void deleteCapture({ captureId: id, userId: uid }).catch(() => {
+        onToast?.("Couldn't discard photo — it may still appear in Diary.");
+      });
     }
   };
 
-  const saveFoodAnalysis = async (analysisResult, toastMsg) => {
+  const saveFoodAnalysis = async (analysisResult, toastMsg, activityCaption = null) => {
     await promoteUnknownToFood({
       captureId,
       viewerUserId: userId,
@@ -296,7 +344,7 @@ export default function ManualEntryPage({
       originalCapturedAt: originalCapturedAt || null,
     });
     onToast?.(toastMsg);
-    await exit();
+    await exit(activityCaption ? { activityCaption } : null);
   };
 
   const handleAiAnalyze = async () => {
@@ -335,7 +383,19 @@ export default function ManualEntryPage({
   const handleFoodSave = async (manualData) => {
     setSaving(true);
     try {
-      await saveFoodAnalysis(buildAnalysisFromManualFood(manualData), 'Food saved to Diary');
+      const analysis = buildAnalysisFromManualFood(manualData);
+      const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
+      const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
+      const activityCaption = buildDiaryShareSuffix('food', {
+        foodName,
+        calories: n.calories ?? 0,
+        protein: n.protein ?? 0,
+        carbs: n.carbs ?? 0,
+        fat: n.fat ?? 0,
+        fiber: n.fiber ?? 0,
+        glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+      });
+      await saveFoodAnalysis(analysis, 'Food saved to Diary', activityCaption);
       setActiveForm(null);
     } catch (err) {
       const msg = err?.message || 'Failed to save food';
@@ -349,6 +409,16 @@ export default function ManualEntryPage({
   const handleWeightSave = async ({ weightValue, unit, bmr }) => {
     setSaving(true);
     try {
+      // Capture previous BEFORE saveWeight updates the latest-weight cache.
+      let previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+      if (previousWeight == null && userId) {
+        try {
+          previousWeight = (await fetchLatestWeightEntry(userId))?.value ?? null;
+        } catch {
+          previousWeight = null;
+        }
+      }
+
       await saveWeight({
         userId,
         weightValue,
@@ -359,7 +429,12 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Weight saved to Diary');
-      await exit();
+      await exit({
+        activityCaption: buildDiaryShareSuffix('weight', {
+          previousWeight,
+          currentWeight: weightValue,
+        }),
+      });
     } catch (err) {
       const msg = err?.message || 'Failed to save weight';
       setHint(msg);
@@ -381,7 +456,11 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Activity saved to Diary');
-      await exit();
+      await exit({
+        activityCaption: buildDiaryShareSuffix('workout', {
+          caloriesBurned,
+        }),
+      });
     } catch (err) {
       const msg = err?.message || 'Failed to save activity';
       setHint(msg);
@@ -392,12 +471,32 @@ export default function ManualEntryPage({
   };
 
   const handleShakeLog = async (payload) => {
-    await saveFoodAnalysis(shakePayloadToAnalysis(payload), 'Shake saved to Diary');
+    const analysis = shakePayloadToAnalysis(payload);
+    const shakeName = analysis?.foods?.[0]?.name || 'Protein Shake';
+    await saveFoodAnalysis(
+      analysis,
+      'Shake saved to Diary',
+      buildDiaryShareSuffix('shake', { shakeName, servings: 1 }),
+    );
     setActiveForm(null);
   };
 
-  const handleAfreshConfirm = async (scoops) => {
-    await saveFoodAnalysis(buildAfreshAnalysisResult(scoops), 'Afresh saved to Diary');
+  const handleAfreshConfirm = async (targetScoops) => {
+    const target = Math.max(0, Math.round(Number(targetScoops) || 0));
+    const current = Math.max(0, Math.round(Number(afreshTodayScoops) || 0));
+    const delta = target - current;
+    if (delta <= 0) {
+      // Already at/above target — reductions happen via Diary edit/delete.
+      setActiveForm(null);
+      return;
+    }
+    const analysis = buildAfreshAnalysisResult(delta);
+    const calories = analysis?.total?.calories ?? 0;
+    await saveFoodAnalysis(
+      analysis,
+      `+${delta} scoop${delta === 1 ? '' : 's'} Afresh logged (today ${target})`,
+      buildDiaryShareSuffix('afresh', { scoops: delta, calories }),
+    );
     setActiveForm(null);
   };
 
@@ -413,6 +512,7 @@ export default function ManualEntryPage({
     await saveFoodAnalysis(
       buildWaterAnalysisResult(delta),
       `+${delta} ml water logged (today ${target} ml)`,
+      buildDiaryShareSuffix('water', { volumeMl: delta }),
     );
   };
 
@@ -428,7 +528,12 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Education saved to Diary');
-      await exit();
+      await exit({
+        activityCaption: buildDiaryShareSuffix('education', {
+          platform,
+          session: topic,
+        }),
+      });
     } catch (err) {
       const msg = err?.message || 'Failed to save education';
       setHint(msg);
@@ -654,13 +759,16 @@ export default function ManualEntryPage({
       <ServingStepperModal
         isOpen={activeForm === 'afresh'}
         title="Afresh"
-        subtitle="Log number of scoops consumed so far"
+        subtitle="Scoops consumed so far today"
         unitLabel="Scoops"
         iconSrc="/coffee.png"
-        min={1}
-        max={8}
+        min={afreshTodayScoops}
+        max={Math.max(AFRESH_PRODUCT.maxScoops, afreshTodayScoops + AFRESH_PRODUCT.maxScoops)}
         step={1}
-        defaultValue={AFRESH_PRODUCT.defaultScoops}
+        defaultValue={afreshTodayScoops}
+        baseline={afreshTodayScoops}
+        loading={afreshTodayLoading}
+        formatValue={(n) => `${n} ${n === 1 ? 'scoop' : 'scoops'}`}
         onClose={() => setActiveForm(null)}
         onConfirm={handleAfreshConfirm}
         confirmLabel="Log Afresh"
