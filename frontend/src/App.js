@@ -1467,6 +1467,7 @@ function WellnessValleyApp() {
   //   1. user authenticated AND active
   //   2. permissionsReady (camera + push + geolocation dialogs resolved)
   //   3. ImageUpload mounted (fileInputRef.current.openCamera defined)
+  //   4. wv.autoCameraOnResume preference enabled (Profile → Settings)
   // We poll fileInputRef on every render via a microtask-style retry loop,
   // re-running whenever any input dep changes. Cancellation is handled by
   // the cleanup function so a stale closure can never fire openCamera.
@@ -1484,6 +1485,16 @@ function WellnessValleyApp() {
     // profile → physical activity → coach selection → coach OTP → then camera.
     if (onboardingBlocking) return;
 
+    // Respect Profile → Auto Camera toggle for cold start / reopen as well
+    // as foreground resume (resume listener has the same check as Guard 8).
+    // Without this, turning Auto Camera OFF still opened the camera on every
+    // app launch because only the resume path consulted the preference.
+    if (!isAutoCameraOnResumeEnabled()) {
+      _hasFiredCameraOnLoginRef.current = true;
+      setShowLaunchOverlay(false);
+      return;
+    }
+
     let cancelled = false;
     const tryOpen = () => {
       if (cancelled || _hasFiredCameraOnLoginRef.current) return;
@@ -1497,6 +1508,13 @@ function WellnessValleyApp() {
       // frame and resolves within 150ms worst case.
       if (!_launchUrlCheckedRef.current) {
         requestAnimationFrame(tryOpen);
+        return;
+      }
+      // Re-check preference in case the user toggled it while we were waiting
+      // for ImageUpload / launch-URL readiness.
+      if (!isAutoCameraOnResumeEnabled()) {
+        _hasFiredCameraOnLoginRef.current = true;
+        setShowLaunchOverlay(false);
         return;
       }
       const api = fileInputRef.current;
