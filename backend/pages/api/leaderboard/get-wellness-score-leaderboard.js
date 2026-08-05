@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
     const { data: usersRaw, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, ProfileImage, Role')
+      .select('UserId, UserName, Email, CoachId, Status, Role')
       .in('UserId', userIds)
       .ilike('Status', 'Active');
 
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
         sponsorName: sponsorName || 'No Sponsor',
         idealCoachId: resolved?.idealCoachId || null,
         idealCoachName: resolved?.idealCoachName || null,
-        profileImage: user.ProfileImage || null,
+        profileImage: null,
         wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,
@@ -136,6 +136,22 @@ export default async function handler(req, res) {
         rank: currentRank,
       });
       previousKey = scoreKey;
+    }
+
+    // Profile images only for top N — keep payload small.
+    if (ranked.length > 0) {
+      const topUserIds = ranked.map((u) => u.userId);
+      const { data: profileRows } = await supabase
+        .from('team_table')
+        .select('UserId, ProfileImage')
+        .in('UserId', topUserIds);
+      const imageByUserId = {};
+      (profileRows || []).forEach((row) => {
+        imageByUserId[row.UserId] = row.ProfileImage || null;
+      });
+      ranked.forEach((entry) => {
+        entry.profileImage = imageByUserId[entry.userId] ?? null;
+      });
     }
 
     return res.status(200).json({

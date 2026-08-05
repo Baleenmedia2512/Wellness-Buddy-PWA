@@ -76,10 +76,11 @@ export default async function handler(req, res) {
       `🏆 [DISCIPLINE-LEADERBOARD] Calculating discipline leaderboard (Top ${topN})...`,
     );
 
-    // Step 1: Get all active users
+    // Step 1: Active users — omit ProfileImage here (base64 OOM on large teams).
+    // Avatars are loaded only for the final top N below.
     const { data: activeUsersRaw, error: usersError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, CoachId, Status, ProfileImage, Role")
+      .select("UserId, UserName, Email, CoachId, Status, Role")
       .ilike("Status", "Active");
 
     if (usersError) throw usersError;
@@ -336,7 +337,7 @@ export default async function handler(req, res) {
         sponsorName: user.SponsorName || "No Sponsor",
         idealCoachId: user.IdealCoachId || null,
         idealCoachName: user.IdealCoachName || null,
-        profileImage: user.ProfileImage || null,
+        profileImage: null,
         disciplinePercentage,
         onTimePosts,
         expectedPosts,
@@ -389,6 +390,22 @@ export default async function handler(req, res) {
 
       previousPercentage = user.disciplinePercentage;
     });
+
+    // Profile images only for top N — never load base64 for every active user.
+    if (topResults.length > 0) {
+      const topUserIds = topResults.map((u) => u.userId);
+      const { data: profileRows } = await supabase
+        .from("team_table")
+        .select("UserId, ProfileImage")
+        .in("UserId", topUserIds);
+      const imageByUserId = {};
+      (profileRows || []).forEach((row) => {
+        imageByUserId[row.UserId] = row.ProfileImage || null;
+      });
+      topResults.forEach((entry) => {
+        entry.profileImage = imageByUserId[entry.userId] ?? null;
+      });
+    }
 
     logger.debug(
       `🏆 [DISCIPLINE-LEADERBOARD] Top ${topResults.length} discipline champions calculated`,
