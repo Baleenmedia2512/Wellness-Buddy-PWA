@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
     const { data: usersRaw, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, Role')
+      .select('UserId, UserName, Email, CoachId, Status, ProfileImage, Role')
       .in('UserId', userIds)
       .ilike('Status', 'Active');
 
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
         sponsorName: sponsorName || 'No Sponsor',
         idealCoachId: resolved?.idealCoachId || null,
         idealCoachName: resolved?.idealCoachName || null,
-        profileImage: null,
+        profileImage: user.ProfileImage || null,
         wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,

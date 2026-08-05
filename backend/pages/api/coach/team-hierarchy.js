@@ -92,10 +92,10 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Fetch all users in the hierarchy (omit ProfileImage base64 — ~16MB on large trees).
+    // Fetch all users in the hierarchy
     let query = supabase
       .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height, Bmr");
+      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height, Bmr");
 
     // Always fetch ALL users (Active + Inactive) so inactive intermediate coaches
     // can be detected and their members promoted up to the nearest active ancestor.
@@ -186,7 +186,7 @@ export default async function handler(req, res) {
         coachId: user.CoachId,
         coCoachId: deriveCoCoachId(user), // Dynamically derived from coach_teams_table
         status: user.Status,
-        profileImage: null,
+        profileImage: user.ProfileImage || null,
         phoneNumber: user.PhoneNumber ? String(user.PhoneNumber).trim() : null,
         height: user.Height != null ? Number(user.Height) : null,
         bmr: user.Bmr != null ? Number(user.Bmr) : null,
