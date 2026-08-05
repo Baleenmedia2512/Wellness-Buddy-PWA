@@ -2,7 +2,7 @@
 // logged today (within 0.5 unit). Always fail-open on errors.
 import {
   parseUtcTimestamp,
-  formatUtcTime,
+  formatBusinessTime,
   timestampToBusinessYmd,
   todayBusinessDate,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -34,11 +34,11 @@ const fetchRecentWeights = async (apiBaseUrl, userId) => {
   catch (e) { console.error('Invalid JSON response from weight history:', e); return null; }
 };
 
-const filterTodaysEntries = (entries) => {
-  const today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE);
+const filterTodaysEntries = (entries, timezoneIana) => {
+  const today = todayBusinessDate(timezoneIana);
   return entries.filter((entry) => (
     entry?.CreatedAt
-    && timestampToBusinessYmd(entry.CreatedAt, DEFAULT_BUSINESS_TIMEZONE) === today
+    && timestampToBusinessYmd(entry.CreatedAt, timezoneIana) === today
   ));
 };
 
@@ -52,7 +52,12 @@ const findMatchingWeight = (entries, newWeight) => {
   return null;
 };
 
-export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg' }) {
+export async function checkForDuplicateWeight({
+  userId,
+  weightValue,
+  unit = 'kg',
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+}) {
   try {
     if (!userId || (typeof userId !== 'string' && typeof userId !== 'number')) {
       console.warn('Invalid userId provided to weight duplicate check:', userId);
@@ -75,7 +80,7 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
       return { isDuplicate: false };
     }
 
-    const todayEntries = filterTodaysEntries(data.data);
+    const todayEntries = filterTodaysEntries(data.data, timezoneIana);
     if (!todayEntries.length) return { isDuplicate: false };
 
     const match = findMatchingWeight(todayEntries, newWeight);
@@ -84,7 +89,10 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     try {
       const entryTime = parseUtcTimestamp(match.entry.CreatedAt);
       const timeDifference = formatTimeAgo(currentTime, entryTime);
-      const existingTime = formatUtcTime(match.entry.CreatedAt, { hour: '2-digit', minute: '2-digit' });
+      const existingTime = formatBusinessTime(match.entry.CreatedAt, timezoneIana, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
       debugLog('✅ Duplicate weight found:', { newWeight, existingWeight: match.existing, timeDifference });
       return { isDuplicate: true, existingWeight: match.existing, timeDifference, existingTime, unit };
     } catch (timeError) {

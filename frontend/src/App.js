@@ -219,6 +219,7 @@ import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import AdminFab from "./shared/components/AdminFab";
 import { isAdminLikeRole } from "./shared/constants/roles";
+import { DIARY_ANALYZING_POLL_MS } from "./shared/constants/limits";
 
 // ? PERFORMANCE: Lazy-load leaderboards ? they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() =>
@@ -1683,8 +1684,8 @@ function WellnessValleyApp() {
         // it appears WITHOUT the user reloading the page.
         if (isPending) {
           let attempts = 0;
-          const MAX_ATTEMPTS = 15; // ~37s at 2.5s spacing
-          const INTERVAL_MS = 2500;
+          const MAX_ATTEMPTS = 15; // ~150s at DIARY_ANALYZING_POLL_MS spacing
+          const INTERVAL_MS = DIARY_ANALYZING_POLL_MS;
           const pollPending = async () => {
             if (cancelled) return;
             attempts += 1;
@@ -4305,7 +4306,9 @@ function WellnessValleyApp() {
       // Same orchestrate path as Manual Entry AI Mode; credit-gated when flag ON.
       const detectedType = await orchestrateAnalyzeImage(file, {
         captureId: String(captureId),
-        userId: user?.id ? String(user.id) : null,
+        userId: user ? String(await getUserId(user).catch(() => null) || user.id) : null,
+        userName: user?.userName || user?.username || user?.name || null,
+        userEmail: user?.email || user?.Email || null,
         reservationId,
         creditGated: Boolean(creditsEnabled && reservationId),
       });
@@ -4522,8 +4525,14 @@ function WellnessValleyApp() {
 
         let detectedType;
         try {
+          const dbOwnerUserId = user && ownerUserId === user.id 
+             ? await getUserId(user).catch(() => null) || ownerUserId 
+             : ownerUserId;
+
           detectedType = await orchestrateAnalyzeImage(file, {
-            userId: ownerUserId ? String(ownerUserId) : null,
+            userId: dbOwnerUserId ? String(dbOwnerUserId) : null,
+            userName: user?.userName || user?.username || user?.name || null,
+            userEmail: user?.email || user?.Email || null,
             captureId: String(captureId),
             reservationId,
             creditGated: Boolean(creditsOn),

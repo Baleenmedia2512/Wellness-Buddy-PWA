@@ -93,11 +93,12 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Food CreatedAt — canonical helper (legacy IST wall + spurious driver Z).
+  const ownerTimezoneIana = await getUserTimezoneIana(ownerUserId);
+  // Food CreatedAt — parse IST storage, calendar day in owner's timezone.
   let mealDate = null;
   if (row.CreatedAt) {
     try {
-      mealDate = resolveFoodTimestamp(row.CreatedAt, IANA_IST).calendarYmd;
+      mealDate = resolveFoodTimestamp(row.CreatedAt, ownerTimezoneIana).calendarYmd;
     } catch {
       mealDate = null;
     }
@@ -457,7 +458,8 @@ export async function listDiaryEntries(input) {
  * always go through `listDiaryEntries`.
  *
  * @param {string} [options.timezoneIana]
- *   Owner zone used when `CreatedAt` has no offset (IST wall-clock convention).
+ *   Owner display zone (kept for callers / future projection). Legacy
+ *   timezone-less CreatedAt is always parsed as IST storage.
  * @internal
  */
 export function toDiaryEntry(
@@ -466,10 +468,12 @@ export function toDiaryEntry(
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
   // Food rows use the canonical food CreatedAt helper (legacy IST wall +
-  // spurious driver Z). Other kinds keep the generic stored-timestamp rules.
+  // spurious driver Z). Weight/education use the same IST storage contract.
+  // Captures (pending/unknown) are timestamptz — offset-aware / Date paths.
+  void timezoneIana;
   const capturedAt = kind === 'food'
-    ? normalizeFoodCreatedAt(row.CreatedAt, timezoneIana)
-    : normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
+    ? normalizeFoodCreatedAt(row.CreatedAt)
+    : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
   switch (kind) {
     case 'food':
       return {
@@ -491,6 +495,7 @@ export function toDiaryEntry(
             sugar:       row.TotalSugar ?? null,
             sodium:      row.TotalSodium ?? null,
             cholesterol: row.TotalCholesterol ?? null,
+            glycemicIndex: row.GlycemicIndex ?? null,
           },
           processedBy: row.ProcessedBy,
           deviceInfo:  row.DeviceInfo,

@@ -66,7 +66,17 @@ export async function updateMealNutrition({ apiBaseUrl, mealId, userId, newItems
   });
   const result = await res.json();
   if (!res.ok || !result.success) throw new Error(result.message || 'Failed to update meal');
-  return { result, analysisData };
+  // Prefer server AnalysisData — backend may re-inject preserved GlycemicIndex
+  const persisted = result.data?.analysisData ?? analysisData;
+  if (
+    (persisted?.total?.glycemic_index == null) &&
+    (newTotals.glycemic_index == null)
+  ) {
+    console.warn('[updateMealNutrition] glycemic_index missing after meal update', {
+      mealId,
+    });
+  }
+  return { result, analysisData: persisted };
 }
 
 export async function deleteMealById({ apiBaseUrl, id, userId }) {

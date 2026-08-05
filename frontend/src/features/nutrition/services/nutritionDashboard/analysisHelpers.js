@@ -1,5 +1,7 @@
 // Pure helpers used across the nutrition dashboard.
 // These do NOT touch the network — see *Api.js modules for fetches.
+import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
+import { parseUtcTimestamp } from '../../../../shared/utils/datetimeUtils';
 
 /** Calories for a single food item from canonical or legacy shapes. */
 const foodItemCalories = (food) =>
@@ -20,21 +22,11 @@ export const formatFoodsTitle = (foods) => {
   return `${topName}+${count - 1}more`;
 };
 
-/** Treat API timestamps without trailing-Z as UTC wall time. */
-export const parseMealTimestamp = (value) => {
-  if (!value) return null;
-  if (value instanceof Date) return new Date(value.getTime());
-  if (typeof value === 'string') {
-    const normalized = value.trim().replace(' ', 'T');
-    const withZone = normalized.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(normalized)
-      ? normalized
-      : `${normalized}Z`;
-    const parsed = new Date(withZone);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  const fallback = new Date(value);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-};
+/**
+ * Parse meal CreatedAt. Timezone-less API/DB values are IST wall-clock
+ * (same contract as parseUtcTimestamp / backend legacy storage).
+ */
+export const parseMealTimestamp = (value) => parseUtcTimestamp(value);
 
 export const getMealCategory = (timeString, timezoneIana = 'Asia/Kolkata') => {
   const date = parseMealTimestamp(timeString);
@@ -64,6 +56,9 @@ export const parseAnalysisData = (analysisData) => {
   try {
     const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
     if (parsed?.foods?.length > 0 && parsed?.total) {
+      // Always recompute meal GI from foods (heals legacy summed totals like 287)
+      const mealGi = computeMealGlycemicIndex(parsed.foods)
+        ?? (parsed.total.glycemic_index != null ? Math.round(Number(parsed.total.glycemic_index)) : null);
       return {
         name: formatFoodsTitle(parsed.foods),
         nutrition: {
@@ -75,7 +70,7 @@ export const parseAnalysisData = (analysisData) => {
           sugar:       parsed.total.sugar       ?? null,
           sodium:      parsed.total.sodium      ?? null,
           cholesterol: parsed.total.cholesterol ?? null,
-          glycemic_index: parsed.total.glycemic_index ?? null,
+          glycemic_index: mealGi,
           // 17 vitamin/mineral fields — populated when AI returns full schema
           vitamin_a:   parsed.total.vitamin_a   ?? null,
           vitamin_c:   parsed.total.vitamin_c   ?? null,
@@ -100,15 +95,21 @@ export const parseAnalysisData = (analysisData) => {
     }
     if (parsed?.category?.name) {
       const items = parsed.detailedItems || [];
+      const nutrition = { ...(parsed.nutrition || {}) };
+      const mealGi = computeMealGlycemicIndex(items);
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
       return {
         name: items.length > 1 ? formatFoodsTitle(items) : parsed.category.name,
-        nutrition: parsed.nutrition || {},
+        nutrition,
         detailedItems: items,
       };
     }
     if (parsed?.foods?.length > 0) {
       const firstFood = parsed.foods[0] || {};
-      return { name: formatFoodsTitle(parsed.foods), nutrition: firstFood.nutrition || {}, detailedItems: parsed.foods || [] };
+      const mealGi = computeMealGlycemicIndex(parsed.foods);
+      const nutrition = { ...(firstFood.nutrition || {}) };
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
+      return { name: formatFoodsTitle(parsed.foods), nutrition, detailedItems: parsed.foods || [] };
     }
     return { name: 'Unknown Food', nutrition: {}, detailedItems: [] };
   } catch {
@@ -118,17 +119,11 @@ export const parseAnalysisData = (analysisData) => {
 
 /** Sum & round per-item nutrition into day/meal totals. */
 export const recalculateTotals = (items) => {
-  let giCarbProduct = 0;
-  let giTotalCarbs = 0;
-  const t = items.reduce(
+  const list = Array.isArray(items) ? items : [];
+  const t = list.reduce(
     (acc, item) => {
       const n = item.nutrition || {};
-      const itemCarbs   = n.carbs       ?? item.carbs       ?? 0;
-      const itemGI      = n.glycemic_index ?? item.glycemic_index ?? null;
-      if (itemGI != null && itemCarbs > 0) {
-        giCarbProduct += itemGI * itemCarbs;
-        giTotalCarbs  += itemCarbs;
-      }
+      const itemCarbs = n.carbs ?? item.carbs ?? 0;
       return {
         calories:    acc.calories    + (n.calories    ?? item.calories    ?? 0),
         protein:     acc.protein     + (n.protein     ?? item.protein     ?? 0),
@@ -151,9 +146,7 @@ export const recalculateTotals = (items) => {
     sugar:       Math.round(t.sugar   * 10) / 10,
     sodium:      Math.round(t.sodium),
     cholesterol: Math.round(t.cholesterol),
-    // Carb-weighted average GI across items
-    glycemic_index: giTotalCarbs > 0
-      ? Math.round(giCarbProduct / giTotalCarbs)
-      : null,
+    // Available-carb weighted meal GI (never sum/simple-average item GIs)
+    glycemic_index: computeMealGlycemicIndex(list),
   };
 };

@@ -61,7 +61,7 @@ export function useSwipeToDelete({ onDelete } = {}) {
     draggingRef.current = false;
     setDragging(false);
     cancelRAF();
-    if (Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD) {
+    if (Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD && typeof onDelete === 'function') {
       if (deletedOnce) return;
       setDeletedOnce(true);
       setLeaving(true);
@@ -69,7 +69,7 @@ export function useSwipeToDelete({ onDelete } = {}) {
       requestAnimationFrame(() => {
         setDx(-window.innerWidth);
         dxRef.current = -window.innerWidth;
-        setTimeout(() => onDelete?.(), 180);
+        setTimeout(() => onDelete(), 180);
       });
       return;
     }

@@ -106,6 +106,8 @@ export default function UnknownEntryFlow({
   deleteOnly = false,
   canMutate = true,
   userId,
+  userName = null,
+  userEmail = null,
   apiBaseUrl,
   onClose,
   onChanged,
@@ -270,6 +272,8 @@ export default function UnknownEntryFlow({
       // Do NOT pass captureId — avoids idempotency guard returning cached "other"
       const detectedType = await analyzeImage(file, {
         userId,
+        userName,
+        userEmail,
         reservationId,
         creditGated: Boolean(creditsEnabled && reservationId),
       });

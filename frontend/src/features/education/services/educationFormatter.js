@@ -9,35 +9,35 @@ import {
 } from '../../../shared/utils/datetimeUtils';
 
 /** Long-form date used in the detail modal ("May 13, 2026") in business TZ. */
-export function formatLogDate(dateString) {
+export function formatLogDate(dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!dateString) return '';
   return formatUtcDate(dateString, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-    timeZone: DEFAULT_BUSINESS_TIMEZONE,
+    timeZone: timezoneIana,
   });
 }
 
 /** Short clock time used everywhere ("09:42 AM") in business TZ. */
-export function formatLogTime(dateString) {
+export function formatLogTime(dateString, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!dateString) return '';
-  return formatBusinessTime(dateString, DEFAULT_BUSINESS_TIMEZONE, {
+  return formatBusinessTime(dateString, timezoneIana, {
     hour: '2-digit',
     minute: '2-digit',
   });
 }
 
 /** Full timestamp for share/log card rows in business TZ. */
-export function formatLoggedAtFull(loggedAt) {
+export function formatLoggedAtFull(loggedAt, timezoneIana = DEFAULT_BUSINESS_TIMEZONE) {
   if (!loggedAt) return '';
   const dateStr = formatUtcDate(loggedAt, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: DEFAULT_BUSINESS_TIMEZONE,
+    timeZone: timezoneIana,
   });
-  const timeStr = formatBusinessTime(loggedAt, DEFAULT_BUSINESS_TIMEZONE, {
+  const timeStr = formatBusinessTime(loggedAt, timezoneIana, {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,

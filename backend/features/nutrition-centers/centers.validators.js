@@ -49,6 +49,7 @@ export function validateGetAttendees(query) {
   if (!Number.isFinite(id) || id <= 0) throw new ValidationError(400, 'centerId must be a positive integer');
   return {
     centerId: id,
+    userId: query.userId || null,
     startDate: query.startDate || null,
     endDate: query.endDate || null,
   };

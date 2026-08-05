@@ -548,7 +548,7 @@ export default function ManualEntryPage({
                     />
                   </LogAsIconWrap>
                   <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[10px] font-semibold leading-none text-emerald-800 min-[380px]:text-[11px] sm:text-[12px]">
-                    Unlock in
+                    Unlock on
                   </span>
                   {showCreditsPanel && (
                     <LogAsUnlockDate

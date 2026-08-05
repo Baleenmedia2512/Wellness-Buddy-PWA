@@ -28,7 +28,7 @@ const cardSkeleton = (
 
 const sortByCreatedDesc = (a, b) => compareUtcTimestampsDesc(a.CreatedAt, b.CreatedAt);
 
-const MonthSection = ({ group, undoState, onDelete, onRestore, onExpire, onCardClick, apiBaseUrl, userId }) => (
+const MonthSection = ({ group, undoState, onDelete, onRestore, onExpire, onCardClick, apiBaseUrl, userId, timezoneIana }) => (
   <div key={group.monthKey} className="mb-6">
     <div className="flex items-center justify-between mb-5">
       <div className="flex items-center gap-2">
@@ -54,7 +54,7 @@ const MonthSection = ({ group, undoState, onDelete, onRestore, onExpire, onCardC
           return (
             <Suspense key={log.Id} fallback={cardSkeleton}>
               <EducationCard data={log} onDelete={onDelete} onClick={onCardClick}
-                index={index} apiBaseUrl={apiBaseUrl} userId={userId} />
+                index={index} apiBaseUrl={apiBaseUrl} userId={userId} timezoneIana={timezoneIana} />
             </Suspense>
           );
         })}
@@ -77,13 +77,14 @@ const InfiniteScrollSentinel = React.forwardRef(({ loadingMore }, ref) => (
 
 const EducationLogList = ({
   monthlyGroups, undoState, onDelete, onRestore, onExpire, onCardClick,
-  apiBaseUrl, userId, hasMoreLogs, loadingMore, sentinelRef,
+  apiBaseUrl, userId, timezoneIana, hasMoreLogs, loadingMore, sentinelRef,
 }) => (
   <div className="space-y-6">
     {monthlyGroups.map((group) => (
       <MonthSection key={group.monthKey} group={group} undoState={undoState}
         onDelete={onDelete} onRestore={onRestore} onExpire={onExpire}
-        onCardClick={onCardClick} apiBaseUrl={apiBaseUrl} userId={userId} />
+        onCardClick={onCardClick} apiBaseUrl={apiBaseUrl} userId={userId}
+        timezoneIana={timezoneIana} />
     ))}
     {(hasMoreLogs || loadingMore) && (
       <InfiniteScrollSentinel ref={sentinelRef} loadingMore={loadingMore} />

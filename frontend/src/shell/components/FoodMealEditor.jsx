@@ -27,6 +27,7 @@ function FoodMealEditor({
   isAutoSaveUpdateRef,
   itemRefs,
   user,
+  timezoneIana,
   apiBaseUrl,
   selectedDate,
   resolveUserId,
@@ -160,6 +161,7 @@ function FoodMealEditor({
       handleCloseModal={handleCloseModal}
       handleDeleteMeal={handleDeleteMeal}
       user={user}
+      timezoneIana={timezoneIana}
     />
   );
 }

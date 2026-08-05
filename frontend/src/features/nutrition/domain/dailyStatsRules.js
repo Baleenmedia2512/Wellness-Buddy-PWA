@@ -1,5 +1,9 @@
 import { parseAnalysisData } from '../services/nutritionDashboard';
 import { ALL_MICRONUTRIENTS } from './micronutrientRules';
+import {
+  availableCarbohydrates,
+  resolveMealGlycemicIndexFromAnalysis,
+} from './mealGlycemicIndex';
 
 const MICRO_FIELDS = [
   { key: 'totalVitaminA',   aiKey: 'vitamin_a',   dbCol: 'TotalVitaminA' },
@@ -60,26 +64,10 @@ export function computeDailyStatsFromAnalyses(dayAnalyses) {
       const sodium = analysis.TotalSodium != null ? analysis.TotalSodium : (n.sodium ?? 0);
       const cholesterol = analysis.TotalCholesterol != null ? analysis.TotalCholesterol : (n.cholesterol ?? 0);
       const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
-      let mealGI = analysis.GlycemicIndex ?? null;
-      if (mealGI == null) {
-        try {
-          const parsed = typeof analysis.AnalysisData === 'string'
-            ? JSON.parse(analysis.AnalysisData) : analysis.AnalysisData;
-          if (parsed?.total?.glycemic_index != null) {
-            mealGI = parsed.total.glycemic_index;
-          } else if (parsed?.nutrition?.glycemic_index != null) {
-            mealGI = parsed.nutrition.glycemic_index;
-          } else if (parsed?.foods?.length > 0) {
-            let giCarbs = 0; let totalFoodCarbs = 0;
-            for (const f of parsed.foods) {
-              const fgi = f.nutrition?.glycemic_index ?? null;
-              const fc = f.nutrition?.carbs || 0;
-              if (fgi != null && fc > 0) { giCarbs += fgi * fc; totalFoodCarbs += fc; }
-            }
-            mealGI = totalFoodCarbs > 0 ? Math.round(giCarbs / totalFoodCarbs) : null;
-          }
-        } catch { /* ignore */ }
-      }
+      const mealFiber = n.fiber || analysis.TotalFiber || 0;
+      const mealAvailableCarbs = availableCarbohydrates(mealCarbs, mealFiber);
+      // Always prefer food-item weighted GI (heals legacy summed totals)
+      const mealGI = resolveMealGlycemicIndexFromAnalysis(analysis);
       return {
         totalCalories: acc.totalCalories + calories,
         totalProtein: acc.totalProtein + protein,
@@ -89,8 +77,8 @@ export function computeDailyStatsFromAnalyses(dayAnalyses) {
         totalSugar: acc.totalSugar + sugar,
         totalSodium: acc.totalSodium + sodium,
         totalCholesterol: acc.totalCholesterol + cholesterol,
-        _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealCarbs > 0 ? mealGI * mealCarbs : 0),
-        _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealCarbs > 0 ? mealCarbs : 0),
+        _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealAvailableCarbs > 0 ? mealGI * mealAvailableCarbs : 0),
+        _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealAvailableCarbs > 0 ? mealAvailableCarbs : 0),
         mealCount: acc.mealCount + 1,
         ...MICRO_FIELDS.reduce((m, f) => {
           const dbVal = analysis[f.dbCol];

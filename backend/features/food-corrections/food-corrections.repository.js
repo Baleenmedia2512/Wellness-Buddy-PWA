@@ -117,6 +117,20 @@ export async function updateMealAnalysis(id, userId, payload) {
   return data || [];
 }
 
+/** Read-only: existing GlycemicIndex for a meal owned by userId (edit preserve). */
+export async function fetchMealGlycemicIndex(id, userId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('GlycemicIndex')
+    .eq('"ID"', id)
+    .eq('"UserID"', userId)
+    .maybeSingle();
+  if (error) throw error;
+  const gi = data?.GlycemicIndex;
+  return gi != null && Number.isFinite(Number(gi)) ? Math.round(Number(gi)) : null;
+}
+
 export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   let query = supabase

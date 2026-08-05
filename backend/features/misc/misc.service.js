@@ -5,6 +5,14 @@ import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
 
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
+
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
   const now = Date.now();
@@ -82,7 +90,7 @@ function parseHasFace(rawText) {
   return /\byes\b/.test(lower) && !/\bno\b/.test(lower);
 }
 
-export async function detectFace({ mimeType, base64Data, userId = null }) {
+export async function detectFace({ mimeType, base64Data, userId = null, module = null }) {
 
   if (!process.env.GEMINI_API_KEY) {
     console.error("❌ [detect-face] GEMINI_API_KEY not configured");
@@ -99,7 +107,10 @@ export async function detectFace({ mimeType, base64Data, userId = null }) {
   try {
     const { generateContent } = await import('../../shared/lib/gemini/geminiClient.js');
     const { TraceContext } = await import('../../shared/lib/ai-orchestration/ObservabilityTracer.js');
-    const trace = new TraceContext({ userId });
+    const profileModule = module === ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
+      ? ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
+      : ANALYSIS_MODULES.PROFILE_IMAGE_SET;
+    const trace = new TraceContext({ userId, module: profileModule });
 
     const result = await generateContent(
       'faceDetect',

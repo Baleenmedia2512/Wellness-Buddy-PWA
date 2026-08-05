@@ -5,6 +5,7 @@ import EditableFoodItem from '../EditableFoodItem';
 import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
+import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
 
 const GIPill = ({ value }) => {
@@ -45,6 +46,7 @@ const NutritionAnalysisPanel = ({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  timezoneIana: timezoneIanaProp,
   persistMealItems,
   setLocalDetailedItems,
   setLocalNutrition,
@@ -56,9 +58,13 @@ const NutritionAnalysisPanel = ({
 
   if (!selectedMeal) return null;
   const foodData = parseAnalysisData(selectedMeal.AnalysisData, 'text-white');
+  // Prefer explicit owner TZ (diary API / parent). Do not fall back to IST when
+  // the logged-in `user` object is missing timezone — that caused "Logged at"
+  // to show Kolkata time for Qatar/US/UK members.
+  const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
   const mealTime = formatBusinessTime(
     selectedMeal.CreatedAt,
-    resolveBusinessTimezone(user),
+    timezoneIana,
     { hour: '2-digit', minute: '2-digit' },
   );
   const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
@@ -66,11 +72,13 @@ const NutritionAnalysisPanel = ({
   const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
   const fat = localNutrition.fat || foodData.nutrition.fat || selectedMeal.TotalFat || 0;
   const fiber = localNutrition.fiber || foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
-  const glycemicIndex = localNutrition.glycemic_index != null
-    ? localNutrition.glycemic_index
-    : (localNutrition.glycemicIndex != null
-      ? localNutrition.glycemicIndex
-      : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null));
+  // Prefer live weighted GI from food items (heals legacy summed totals like 287)
+  const glycemicIndex = computeMealGlycemicIndex(localDetailedItems)
+    ?? (localNutrition.glycemic_index != null
+      ? localNutrition.glycemic_index
+      : (localNutrition.glycemicIndex != null
+        ? localNutrition.glycemicIndex
+        : (selectedMeal.GlycemicIndex ?? foodData.nutrition.glycemic_index ?? null)));
 
   const handleAddItem = async (newItem) => {
     const newItems = [...(localDetailedItems || []), newItem];

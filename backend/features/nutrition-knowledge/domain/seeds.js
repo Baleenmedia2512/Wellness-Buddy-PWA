@@ -97,9 +97,9 @@ const SEEDS = [
     status: 'approved',
     sightings: 0,
     nutrition: {
-      calories: 15, protein: 0, carbs: 4, fat: 0, fiber: 0,
-      sugar: 4, sodium: 0.02, cholesterol: 0, glycemic_index: 0,
-      vitamin_c: 15, potassium: 30,
+      calories: 3.52, protein: 0.05, carbs: 0.83, fat: 0, fiber: 0,
+      sugar: 0.51, sodium: 0.001, cholesterol: 0, glycemic_index: 0,
+      vitamin_c: 0, potassium: 0,
     },
   },
 ];
