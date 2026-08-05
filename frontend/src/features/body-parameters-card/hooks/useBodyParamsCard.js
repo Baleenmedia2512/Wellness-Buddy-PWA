@@ -381,7 +381,7 @@ export function useBodyParamsCard({ user, selectedMember, onSaveSuccess, existin
       setError('Please enter a valid phone number (10–15 digits)'); return;
     }
     if (!coachUserId) {
-      setError('Could not resolve your coach account. Please refresh and try again.'); return;
+      setError('Could not resolve your sponsor account. Please refresh and try again.'); return;
     }
     const ageNum = form.age !== '' && form.age != null ? parseInt(form.age) : null;
     if (ageNum !== null && (isNaN(ageNum) || ageNum < 1 || ageNum > 120)) {

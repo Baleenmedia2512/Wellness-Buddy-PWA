@@ -1,7 +1,8 @@
 // src/components/ManualWatchEntryModal.js
 import React, { useState, useEffect } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Dumbbell } from "lucide-react";
 import { EmojiOrNative } from "../../../shared/components/icons/EmojiImage";
+import { isIOS } from "../../../shared/utils/platform";
 
 const DEFAULT_SOURCE = "Smartwatch";
 
@@ -114,17 +115,22 @@ const ManualWatchEntryModal = ({
           <button onClick={handleCancel} className="absolute right-3 top-3 p-2 rounded-xl hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
-          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-2.5">
-            <img
-              src={`${process.env.PUBLIC_URL || ''}/emoji/1f3cb-green.svg`}
-              alt=""
-              draggable={false}
-              aria-hidden="true"
-              className="h-9 w-9 inline-block select-none object-contain"
-            />
+          <div className="mb-2.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100">
+            {/* iOS WebView often blanks custom emoji SVGs — use Lucide so the icon always shows */}
+            {isIOS() ? (
+              <Dumbbell className="h-9 w-9 text-emerald-700" strokeWidth={2.25} aria-hidden />
+            ) : (
+              <img
+                src={`${process.env.PUBLIC_URL || ''}/emoji/1f3cb-green.svg`}
+                alt=""
+                draggable={false}
+                aria-hidden="true"
+                className="inline-block h-9 w-9 select-none object-contain"
+              />
+            )}
           </div>
           <h2 className="truncate text-base font-bold text-gray-800 tracking-tight">Calories burnt</h2>
-          <p className="text-xs text-gray-400 mt-0.5">How much you&apos;ve burned so far today</p>
+          <p className="text-xs text-gray-400 mt-0.5">How much you&apos;ve burnt so far today</p>
         </div>
 
         <div className="p-5 space-y-4">

@@ -7,6 +7,8 @@ import {
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
+import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 
 /**
  * Global Weight Loss Leaderboard API
@@ -80,12 +82,14 @@ export default async function handler(req, res) {
     );
 
     // Step 1: Active users — omit ProfileImage (base64 blobs) to avoid OOM / 500 on large teams.
-    const { data: activeUsers, error: usersError } = await supabase
+    const { data: activeUsersRaw, error: usersError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, CoachId, Status")
+      .select("UserId, UserName, Email, CoachId, Status, Role")
       .ilike("Status", "Active"); // Case-insensitive match for 'active' or 'Active'
 
     if (usersError) throw usersError;
+
+    const activeUsers = filterPublicAggregateUsers(activeUsersRaw || []);
 
     if (!activeUsers || activeUsers.length === 0) {
       logger.debug("⚠️ [LEADERBOARD] No active users found");
@@ -99,29 +103,16 @@ export default async function handler(req, res) {
 
     logger.debug(`✅ [LEADERBOARD] Found ${activeUsers.length} active users`);
 
-    // Step 2: Get coach names for CoachId
-    const allCoachIds = new Set();
+    // Step 2: Sponsor + Ideal-Weight Coach (ADR-0007)
+    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      activeUsers.map((u) => ({ userId: u.UserId, coachId: u.CoachId })),
+    );
     activeUsers.forEach((u) => {
-      if (u.CoachId) allCoachIds.add(u.CoachId);
-    });
-
-    const coachNameMap = {};
-    if (allCoachIds.size > 0) {
-      const { data: coaches } = await supabase
-        .from("team_table")
-        .select("UserId, UserName")
-        .in("UserId", Array.from(allCoachIds));
-
-      if (coaches) {
-        coaches.forEach((c) => {
-          coachNameMap[c.UserId] = c.UserName;
-        });
-      }
-    }
-
-    // Add coach names to users
-    activeUsers.forEach((u) => {
-      u.CoachName = u.CoachId ? coachNameMap[u.CoachId] : null;
+      const resolved = sponsorByUser.get(String(u.UserId));
+      u.CoachName = resolved?.sponsorName || null;
+      u.SponsorName = resolved?.sponsorName || null;
+      u.IdealCoachId = resolved?.idealCoachId || null;
+      u.IdealCoachName = resolved?.idealCoachName || null;
     });
 
     // Step 3: Calendar today/yesterday in platform timezone
@@ -177,7 +168,10 @@ export default async function handler(req, res) {
             userId: user.UserId,
             userName: user.UserName || "Unknown",
             email: user.Email || "",
-            coachName: user.CoachName || "No Coach",
+            coachName: user.CoachName || "No Sponsor",
+            sponsorName: user.SponsorName || "No Sponsor",
+            idealCoachId: user.IdealCoachId || null,
+            idealCoachName: user.IdealCoachName || null,
             weightLoss: parseFloat(weightLoss.toFixed(2)),
             todayWeight: parseFloat(todayWeight.toFixed(2)),
             yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
@@ -212,6 +206,9 @@ export default async function handler(req, res) {
         userName: user.userName,
         email: user.email,
         coachName: user.coachName,
+        sponsorName: user.sponsorName,
+        idealCoachId: user.idealCoachId,
+        idealCoachName: user.idealCoachName,
         profileImage: null,
         weightLoss: user.weightLoss,
         todayWeight: user.todayWeight,
