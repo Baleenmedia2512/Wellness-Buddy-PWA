@@ -1,14 +1,14 @@
 import * as repo from './centers.repository.js';
-import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import logger from '../../shared/lib/logger.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
 const GEO_LIST_CACHE_KEY = 'nutrition-centers:geo:all';
-
+const LIST_METRICS_CACHE_TTL_MS = 60 * 1000;
 // ─── check name ──────────────────────────────────────────────────────────────
 export async function checkName({ name }) {
   if (!name || name.length < 2) {
@@ -57,6 +57,7 @@ export async function register(input) {
   });
 
   cache.delete(GEO_LIST_CACHE_KEY);
+  cache.deletePattern('nutrition-centers:list:');
 
   return {
     httpStatus: 201,
@@ -85,6 +86,7 @@ export async function unregister({ centerId, userId }) {
   }
   await repo.softDeleteCenter(centerId);
   cache.delete(GEO_LIST_CACHE_KEY);
+  cache.deletePattern('nutrition-centers:list:');
   return {
     httpStatus: 200,
     body: { success: true, message: 'Nutrition center unregistered successfully' },
@@ -124,6 +126,7 @@ export async function updateCenter(input) {
 
   const updated = await repo.updateCenter(centerId, payload);
   cache.delete(GEO_LIST_CACHE_KEY);
+  cache.deletePattern('nutrition-centers:list:');
   return {
     httpStatus: 200,
     body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
@@ -140,8 +143,15 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
     return [userIdNum];
   }
   if (teamFilter === 'full') {
-    const teamMembers = await getDualCoachingTeamHierarchy(userIdNum, false);
-    return [userIdNum, ...teamMembers.map((m) => m.UserId)];
+    // Fast subtree walk (no ProfileImage / select *) — was ~5s via getDualCoachingTeamHierarchy.
+    const supabase = getSupabaseClient();
+    const {
+      loadReportingContextForCoach,
+      getFullReportingMembers,
+    } = await import('../../utils/reportingHierarchyService.js');
+    const context = await loadReportingContextForCoach(supabase, userIdNum);
+    const members = getFullReportingMembers(userIdNum, context);
+    return [...new Set([userIdNum, ...members.map((m) => m.UserId)])];
   }
   // direct
   const directMembers = await repo.findDirectMembers(userIdNum);
@@ -209,13 +219,6 @@ export async function listCenters(input) {
     };
   }
 
-  const centers = await repo.listCenters({ teamUserIds, scope });
-
-  const ownerIds = centers.map((c) => c.owner_user_id);
-  const owners = await repo.getOwnerNames(ownerIds);
-  const ownerMap = {};
-  owners.forEach((o) => { ownerMap[o.UserId] = o.UserName; });
-
   const timezoneIana = await getUserTimezoneIana(userId);
 
   if (!startDate || !endDate) {
@@ -224,20 +227,39 @@ export async function listCenters(input) {
     endDate = endDate || today;
   }
 
-  const centersWithMetrics = await Promise.all(
-    centers.map(async (center) => {
-      const rangeLogs = await repo.attendanceForCenter(center.id, startDate, endDate, timezoneIana);
-      const todayAttendance = new Set(rangeLogs.map((log) => log.UserId)).size;
-      return {
-        ...center,
-        ownerName: ownerMap[center.owner_user_id] || 'Unknown',
-        totalParticipants: todayAttendance,
-        todayAttendance,
-        attendancePercentage: todayAttendance > 0 ? 100 : 0,
-      };
-    }),
+  const metricsCacheKey = `nutrition-centers:list:${userIdNum}:${teamFilter}:${scope}:${startDate}:${endDate}`;
+  const cachedMetrics = cache.get(metricsCacheKey);
+  if (cachedMetrics) {
+    return { httpStatus: 200, body: { success: true, data: cachedMetrics } };
+  }
+
+  const centers = await repo.listCenters({ teamUserIds, scope });
+
+  const ownerIds = centers.map((c) => c.owner_user_id);
+  const owners = await repo.getOwnerNames(ownerIds);
+  const ownerMap = {};
+  owners.forEach((o) => { ownerMap[o.UserId] = o.UserName; });
+
+  const attendanceByCenter = await repo.attendanceForCenters(
+    centers.map((c) => c.id),
+    startDate,
+    endDate,
+    timezoneIana,
   );
 
+  const centersWithMetrics = centers.map((center) => {
+    const rangeLogs = attendanceByCenter.get(Number(center.id)) || [];
+    const todayAttendance = new Set(rangeLogs.map((log) => log.UserId)).size;
+    return {
+      ...center,
+      ownerName: ownerMap[center.owner_user_id] || 'Unknown',
+      totalParticipants: todayAttendance,
+      todayAttendance,
+      attendancePercentage: todayAttendance > 0 ? 100 : 0,
+    };
+  });
+
+  cache.set(metricsCacheKey, centersWithMetrics, LIST_METRICS_CACHE_TTL_MS);
   return { httpStatus: 200, body: { success: true, data: centersWithMetrics } };
 }
 

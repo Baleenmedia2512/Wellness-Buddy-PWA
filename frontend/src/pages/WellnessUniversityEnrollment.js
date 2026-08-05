@@ -165,8 +165,11 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
     setLoading(true);
     setError("");
 
+    const programsSnapshot = [...selectedPrograms];
+    const wasUpdate = Boolean(existingEnrollment);
+
     try {
-      const endpoint = existingEnrollment
+      const endpoint = wasUpdate
         ? `${API_BASE}/api/wellness-university/update-enrollment`
         : `${API_BASE}/api/wellness-university/enroll`;
 
@@ -175,29 +178,32 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: viewedUserId,
-          programs: selectedPrograms,
+          programs: programsSnapshot,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setSuccess(true);
-        // Wait for success message, then refresh
-        setTimeout(async () => {
-          if (existingEnrollment) {
-            // Clear existing state first to force fresh fetch
-            setExistingEnrollment(null);
-            setSelectedPrograms([]);
-            // Small delay to ensure backend has committed changes
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            // Refresh enrollment data with fresh fetch
-            await checkExistingEnrollment();
-            setSuccess(false);
-          } else {
-            onClose();
-          }
-        }, 1500);
+        // Optimistic local state — no full-screen reload / delayed refetch.
+        if (wasUpdate) {
+          setExistingEnrollment((prev) => ({
+            ...(prev || {}),
+            EnrolledPrograms: JSON.stringify(
+              Object.fromEntries(programsSnapshot.map((p) => [p, new Date().toISOString()])),
+            ),
+            LastUpdated: new Date().toISOString(),
+          }));
+          setSelectedPrograms(programsSnapshot);
+          setIsEditMode(false);
+          setSuccess(true);
+          setTimeout(() => setSuccess(false), 1200);
+        } else {
+          setSuccess(true);
+          setTimeout(() => {
+            onClose?.();
+          }, 1000);
+        }
       } else {
         setError(data.message || "Failed to submit enrollment");
       }
