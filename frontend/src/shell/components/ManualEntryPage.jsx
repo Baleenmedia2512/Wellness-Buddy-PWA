@@ -7,6 +7,7 @@ import {
   Dumbbell,
   Loader2,
   Lock,
+  Salad,
   Sparkles,
   UtensilsCrossed,
 } from 'lucide-react';
@@ -35,6 +36,12 @@ import {
 import { fetchWaterIntake, todayLocal } from '../../features/water';
 import { isIOS } from '../../shared/utils/platform';
 import { buildDiaryShareSuffix } from '../../features/diary';
+import HealthySnacksSubSelectModal from './HealthySnacksSubSelectModal';
+import {
+  MANUAL_LOG_CATEGORY,
+  resolveManualLogCategoryClick,
+  resolveHealthySnacksSubtypeClick,
+} from '../domain/manualLogCategories';
 
 /** PNG/SVG from `frontend/public` — same pattern as BathroomScaleIcon. */
 function PublicIcon({ src, className = '', alt = '' }) {
@@ -50,14 +57,26 @@ function PublicIcon({ src, className = '', alt = '' }) {
 }
 
 const CATEGORIES = [
-  { id: 'weight', src: '/scale.png', label: 'Weight', isImgIcon: true },
-  { id: 'afresh', src: '/coffee.png', label: 'Afresh', isImgIcon: true },
-  { id: 'education', src: '/education.svg', label: 'Education', isImgIcon: true },
-  { id: 'shake', src: '/bottle.png', label: 'Shake', isImgIcon: true },
-  { id: 'water', src: '/water.svg', label: 'Water', isImgIcon: true },
-  { id: 'food', Icon: UtensilsCrossed, label: 'Food' },
+  { id: MANUAL_LOG_CATEGORY.WEIGHT, src: '/scale.png', label: 'Weight', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.AFRESH, src: '/coffee.png', label: 'Afresh', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.EDUCATION, src: '/education.svg', label: 'Education', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.SHAKE, src: '/bottle.png', label: 'Shake', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.WATER, src: '/water.svg', label: 'Water', isImgIcon: true },
+  { id: MANUAL_LOG_CATEGORY.FOOD, Icon: UtensilsCrossed, label: 'Food' },
+  {
+    id: MANUAL_LOG_CATEGORY.HEALTHY_SNACKS,
+    Icon: Salad,
+    label: 'Healthy Snacks & Soups',
+    wrapLabel: true,
+  },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
-  { id: 'smartwatch', src: '/emoji/1f3cb-green.svg', label: 'Workout', isImgIcon: true, Icon: Dumbbell },
+  {
+    id: MANUAL_LOG_CATEGORY.SMARTWATCH,
+    src: '/emoji/1f3cb-green.svg',
+    label: 'Workout',
+    isImgIcon: true,
+    Icon: Dumbbell,
+  },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -185,6 +204,8 @@ export default function ManualEntryPage({
   const [aiStarting, setAiStarting] = useState(false);
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
+  /** When food search opened from Healthy Snacks & Soups subtypes. */
+  const [foodEntryMeta, setFoodEntryMeta] = useState(null);
   const [saving, setSaving] = useState(false);
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
@@ -203,6 +224,7 @@ export default function ManualEntryPage({
   // New capture while this screen stays mounted — close any open sub-form.
   useEffect(() => {
     setActiveForm(null);
+    setFoodEntryMeta(null);
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -377,7 +399,38 @@ export default function ManualEntryPage({
 
   const handleCategoryClick = (id) => {
     if (saving || aiStarting) return;
-    setActiveForm(id);
+    const next = resolveManualLogCategoryClick(id);
+    if (!next) return;
+    if (next.kind === 'healthy-snacks-picker') {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(next.formId);
+  };
+
+  const handleHealthySnacksPick = (subtypeId) => {
+    const next = resolveHealthySnacksSubtypeClick(subtypeId);
+    if (!next) return;
+    setFoodEntryMeta({
+      fromHealthySnacks: true,
+      subtypeId: next.subtype.id,
+      headerTitle: next.subtype.headerTitle,
+      headerSubtitle: 'Type the food item below',
+      initialQuery: next.subtype.searchHint || '',
+    });
+    setActiveForm(next.formId);
+  };
+
+  const closeFoodSearch = () => {
+    if (foodEntryMeta?.fromHealthySnacks) {
+      setFoodEntryMeta(null);
+      setActiveForm(MANUAL_LOG_CATEGORY.HEALTHY_SNACKS);
+      return;
+    }
+    setFoodEntryMeta(null);
+    setActiveForm(null);
   };
 
   const handleFoodSave = async (manualData) => {
@@ -396,6 +449,7 @@ export default function ManualEntryPage({
         glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
       });
       await saveFoodAnalysis(analysis, 'Food saved to Diary', activityCaption);
+      setFoodEntryMeta(null);
       setActiveForm(null);
     } catch (err) {
       const msg = err?.message || 'Failed to save food';
@@ -604,9 +658,9 @@ export default function ManualEntryPage({
             </p>
           </div>
           <div className="grid h-full min-h-0 w-full flex-1 grid-cols-3 grid-rows-3 gap-2 sm:gap-2.5">
-            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon }) => {
+            {CATEGORIES.map(({ id, Icon, src, label, isImgIcon, wrapLabel }) => {
               // iOS WebView often blanks custom emoji SVGs — use Lucide for Workout.
-              const useLucideOnIos = id === 'smartwatch' && isIOS() && Icon;
+              const useLucideOnIos = id === MANUAL_LOG_CATEGORY.SMARTWATCH && isIOS() && Icon;
               return (
               <button
                 key={id}
@@ -632,7 +686,14 @@ export default function ManualEntryPage({
                     />
                   )}
                 </LogAsIconWrap>
-                <span className="max-w-full truncate px-0.5 text-[11px] font-bold leading-tight text-emerald-900 min-[380px]:text-[12px] sm:text-[13px]">
+                <span
+                  className={[
+                    'max-w-full px-0.5 font-bold leading-tight text-emerald-900',
+                    wrapLabel
+                      ? 'line-clamp-2 whitespace-normal text-[9px] min-[380px]:text-[10px] sm:text-[11px]'
+                      : 'truncate text-[11px] min-[380px]:text-[12px] sm:text-[13px]',
+                  ].join(' ')}
+                >
                   {label}
                 </span>
               </button>
@@ -717,15 +778,26 @@ export default function ManualEntryPage({
       </main>
 
       <SmartFoodSearchModal
-        isOpen={activeForm === 'food'}
-        onClose={() => setActiveForm(null)}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.FOOD}
+        onClose={closeFoodSearch}
         onSave={handleFoodSave}
         apiBaseUrl={apiBaseUrl}
         userId={userId}
         skipTypeSelect
+        headerTitle={foodEntryMeta?.headerTitle}
+        headerSubtitle={foodEntryMeta?.headerSubtitle}
+        initialQuery={foodEntryMeta?.initialQuery || ''}
+      />
+      <HealthySnacksSubSelectModal
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.HEALTHY_SNACKS}
+        onClose={() => {
+          setFoodEntryMeta(null);
+          setActiveForm(null);
+        }}
+        onPick={handleHealthySnacksPick}
       />
       <ManualWeightEntryModal
-        isOpen={activeForm === 'weight'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}
         onClose={() => setActiveForm(null)}
         onSave={handleWeightSave}
         onBack={() => setActiveForm(null)}
@@ -736,7 +808,7 @@ export default function ManualEntryPage({
       <ManualWatchEntryModal
         key={captureId}
         formKey={captureId}
-        isOpen={activeForm === 'smartwatch'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.SMARTWATCH}
         onClose={() => setActiveForm(null)}
         onSave={handleWatchSave}
         onBack={() => setActiveForm(null)}
@@ -744,7 +816,7 @@ export default function ManualEntryPage({
         loading={workoutTodayLoading}
       />
       <ManualEducationEntryModal
-        isOpen={activeForm === 'education'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.EDUCATION}
         onClose={() => setActiveForm(null)}
         onSave={handleEducationSave}
         skipTypeSelect
@@ -752,12 +824,12 @@ export default function ManualEntryPage({
         formSubtitle="Choose platform and meeting session"
       />
       <ShakeCalculatorModal
-        isOpen={activeForm === 'shake'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.SHAKE}
         onClose={() => setActiveForm(null)}
         onLog={handleShakeLog}
       />
       <ServingStepperModal
-        isOpen={activeForm === 'afresh'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.AFRESH}
         title="Afresh"
         subtitle="Scoops consumed so far today"
         unitLabel="Scoops"
@@ -774,7 +846,7 @@ export default function ManualEntryPage({
         confirmLabel="Log Afresh"
       />
       <ServingStepperModal
-        isOpen={activeForm === 'water'}
+        isOpen={activeForm === MANUAL_LOG_CATEGORY.WATER}
         title="Water"
         subtitle="How much you drank so far today"
         iconSrc="/water.svg"

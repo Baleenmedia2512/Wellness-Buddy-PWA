@@ -28,6 +28,10 @@ const SmartFoodSearchModal = ({
   // directly to the search/manual form. Use when the caller has already
   // established the entry type (e.g. UnknownEntryFlow after picking Food).
   skipTypeSelect = false,
+  // Optional overrides when opened from Healthy Snacks & Soups (or similar).
+  headerTitle = "Regular food",
+  headerSubtitle = "Type the food item below",
+  initialQuery = "",
 }) => {
   const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,7 +59,7 @@ const SmartFoodSearchModal = ({
   useEffect(() => {
     if (isOpen) {
       setShowTypeSelect(!skipTypeSelect);
-      setSearchQuery("");
+      setSearchQuery(typeof initialQuery === "string" ? initialQuery : "");
       setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
@@ -64,7 +68,7 @@ const SmartFoodSearchModal = ({
       setError("");
       resetManualForm();
     }
-  }, [isOpen, skipTypeSelect]);
+  }, [isOpen, skipTypeSelect, initialQuery]);
 
   const handleBackFromFoodEntry = () => {
     if (skipTypeSelect) {
@@ -305,8 +309,8 @@ const SmartFoodSearchModal = ({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Regular food</h2>
-              <p className="text-xs text-gray-400">Type the food item below</p>
+              <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+              <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
             </div>
           </div>
           <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
