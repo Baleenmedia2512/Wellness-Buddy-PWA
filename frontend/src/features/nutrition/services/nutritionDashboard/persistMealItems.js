@@ -11,6 +11,9 @@ const buildTotalsPatch = (newTotals) => ({
   TotalCarbs:    round(newTotals.carbs),
   TotalFat:      round(newTotals.fat),
   TotalFiber:    round(newTotals.fiber),
+  ...(newTotals.glycemic_index != null
+    ? { GlycemicIndex: Math.round(newTotals.glycemic_index) }
+    : {}),
 });
 
 /**

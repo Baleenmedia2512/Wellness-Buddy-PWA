@@ -45,6 +45,15 @@ import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestr
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
 
+
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
+
 export const config = {
   api: { bodyParser: false },
 };
@@ -65,6 +74,7 @@ function sanitiseInt(val) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+
   if (req.method !== 'POST') {
     return res.status(405).json({
       ok: false,
@@ -98,6 +108,8 @@ export default async function handler(req, res) {
     // Extract optional metadata fields
     const captureId  = sanitiseString(fields.captureId);
     const userId     = sanitiseString(fields.userId);
+    const userName   = sanitiseString(fields.userName);
+    const userEmail  = sanitiseString(fields.userEmail);
     const foodRowId  = sanitiseInt(fields.foodRowId);
     // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
     // and wants Gemini Pro instead of Flash for better accuracy.
@@ -107,6 +119,8 @@ export default async function handler(req, res) {
     const creditGated = sanitiseString(fields.creditGated) === '1'
       || sanitiseString(fields.creditGated) === 'true';
     const reservationId = sanitiseString(fields.reservationId);
+    // Food-capture analysis is the only supported journey for this endpoint.
+    const module = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS;
 
     if (isEnabled('ff.ai-credits') && creditGated) {
       try {
@@ -155,6 +169,8 @@ export default async function handler(req, res) {
     logger.info('orchestrate: request received', {
       captureId: captureId ?? null,
       userId:    userId    ?? null,
+      userName:  userName  ?? null,
+      userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
       mimeType,
       sizeBytes: imageBuffer.length,
@@ -166,9 +182,12 @@ export default async function handler(req, res) {
         mimeType,
         captureId,
         userId,
+        userName,
+        userEmail,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
+        module,
       });
 
       return res.status(200).json({ ok: true, ...result });

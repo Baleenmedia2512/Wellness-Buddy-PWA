@@ -10,6 +10,7 @@ import { getUserId } from '../../../shared/services/userIdentity';
 import { fetchEducationLogsPage, fetchEducationSummary } from '../services/educationDashboardService';
 import { buildMonthlyGroups, buildTrendSeries, filterLogsByDay } from '../services/educationDashboardFormatter';
 import { useEducationUndoActions } from './useEducationUndoActions';
+import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
 
 export const UNDO_SECONDS = 10;
 const PAGE_SIZE = 10;
@@ -19,6 +20,7 @@ export function useEducationDashboard({
   onDeleteWithUndo = null,
   onDeleteUndoCancel = null,
 }) {
+  const timezoneIana = resolveBusinessTimezone(user);
   const [educationLogs, setEducationLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -110,13 +112,14 @@ export function useEducationDashboard({
   // date picker drives this). Trend + summary keep using the full set so
   // the summary/trend cards stay meaningful.
   const dayFilteredLogs = useMemo(
-    () => filterLogsByDay(educationLogs, selectedDate), [educationLogs, selectedDate],
+    () => filterLogsByDay(educationLogs, selectedDate, timezoneIana),
+    [educationLogs, selectedDate, timezoneIana],
   );
   const monthlyGroups = useMemo(() => buildMonthlyGroups(dayFilteredLogs), [dayFilteredLogs]);
   const trendSeries = useMemo(() => buildTrendSeries(educationLogs, trendRangeDays), [educationLogs, trendRangeDays]);
 
   return {
-    user, apiBaseUrl, userIdRef,
+    user, apiBaseUrl, userIdRef, timezoneIana,
     educationLogs, loading, error, summary, summaryLoading,
     monthlyGroups, trendSeries, trendRangeDays, setTrendRangeDays,
     hasMoreLogs, loadingMore, loadMoreSentinelRef,

@@ -22,7 +22,7 @@ import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
 import { formatBusinessTime, DEFAULT_BUSINESS_TIMEZONE } from '../../../../shared/utils/datetimeUtils';
 
-/** Swipe-to-delete is owner-only; disabled when a coach views a member diary. */
+/** Swipe-to-delete affordance; disabled when parent passes canDelete={false}. */
 function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
   const swipeEnabled = canDelete !== false;
   const swipe = useSwipeToDelete({

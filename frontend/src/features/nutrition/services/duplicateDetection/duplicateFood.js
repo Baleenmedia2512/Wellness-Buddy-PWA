@@ -1,7 +1,6 @@
 // Detect whether a new meal upload duplicates a meal already logged in the
 // same time-of-day slot today. Always fail-open (returns isDuplicate:false on error).
 import {
-  parseUtcTimestamp,
   todayBusinessDate,
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../../shared/utils/datetimeUtils';
@@ -42,7 +41,11 @@ const formatDuplicateNames = (dupes) => {
   return dupes.slice(0, -1).join(', ') + ' and ' + dupes[dupes.length - 1];
 };
 
-export async function checkForDuplicateFood({ userId, analysisResult }) {
+export async function checkForDuplicateFood({
+  userId,
+  analysisResult,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+}) {
   try {
     if (!userId || (typeof userId !== 'string' && typeof userId !== 'number')) {
       console.warn('Invalid userId provided to duplicate check:', userId);
@@ -55,7 +58,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     const currentTime = new Date();
     if (isNaN(currentTime.getTime())) { console.warn('Invalid system time detected'); return { isDuplicate: false }; }
 
-    const mealCategory = getMealCategory(currentTime);
+    const mealCategory = getMealCategory(currentTime, timezoneIana);
     const mealCategoryName = getMealCategoryName(mealCategory);
     const newFoodNames = extractFoodNames(analysisResult);
     if (!newFoodNames.length) return { isDuplicate: false };
@@ -64,7 +67,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     if (!apiBaseUrl) { console.warn('REACT_APP_API_BASE_URL not configured'); return { isDuplicate: false }; }
 
     let data;
-    try { data = await fetchTodaysMeals(apiBaseUrl, userId, todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE)); }
+    try { data = await fetchTodaysMeals(apiBaseUrl, userId, todayBusinessDate(timezoneIana)); }
     catch (e) { console.error('Network error during duplicate check:', e); return { isDuplicate: false }; }
     if (!data || !data.success || !Array.isArray(data.data) || data.data.length === 0) {
       return { isDuplicate: false };
@@ -73,9 +76,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     const mealsInSlot = data.data.filter((meal) => {
       if (!meal || typeof meal !== 'object' || !meal.CreatedAt) return false;
       try {
-        const t = parseUtcTimestamp(meal.CreatedAt);
-        if (!t) return false;
-        return getMealCategory(t) === mealCategory;
+        return getMealCategory(meal.CreatedAt, timezoneIana) === mealCategory;
       } catch (e) { console.error('Error processing meal time:', e); return false; }
     });
     if (!mealsInSlot.length) return { isDuplicate: false };

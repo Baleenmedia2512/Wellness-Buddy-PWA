@@ -3,8 +3,8 @@
  *
  * Meal / activity on-time checks NEVER parse HH:mm:ss from raw CreatedAt strings.
  * Food timestamps go through {@link resolveFoodTimestamp}; other activities use
- * normalizeStoredTimestampToUtcIso + timeOfDayInTimezone — both derive local
- * time from the same interpreted UTC instant as calendar-day bucketing.
+ * normalizeStoredTimestampToUtcIso (IST storage) + timeOfDayInTimezone (owner
+ * display TZ) — both derive local time from the same UTC instant as day bucketing.
  */
 import {
   IANA_IST,
@@ -45,7 +45,8 @@ export function resolveCreatedAtTimeOfDay(
     if (kind === 'food') {
       return resolveFoodTimestamp(createdAt, timezoneIana).timeOfDay;
     }
-    const utcIso = normalizeStoredTimestampToUtcIso(createdAt, timezoneIana);
+    // Legacy weight/education CreatedAt is IST wall-clock; display in owner TZ.
+    const utcIso = normalizeStoredTimestampToUtcIso(createdAt, IANA_IST);
     return timeOfDayInTimezone(utcIso, timezoneIana);
   } catch {
     return null;

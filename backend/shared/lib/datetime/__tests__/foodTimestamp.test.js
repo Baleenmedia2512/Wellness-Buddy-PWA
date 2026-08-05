@@ -74,3 +74,36 @@ describe('normalizeFoodCreatedAt — same instant for day + time', () => {
     }
   });
 });
+
+describe('resolveFoodTimestamp — owner display TZ (IST storage)', () => {
+  const QATAR = 'Asia/Qatar';
+
+  it('Qatar 08:00 local stored as IST wall 10:30 displays as 08:00 in Qatar', () => {
+    // Upload 08:00 Asia/Qatar = 05:00 UTC = 10:30 IST wall digits in DB
+    const r = resolveFoodTimestamp('2026-08-04 10:30:00', QATAR);
+    assert.equal(r.utcIso, '2026-08-04T05:00:00.000Z');
+    assert.equal(r.calendarYmd, '2026-08-04');
+    assert.equal(r.timeOfDay, '08:00:00');
+  });
+
+  it('does not treat naive IST digits as Qatar wall clock', () => {
+    // Wrong old behaviour: parse 10:30 as Qatar → 07:30 UTC → show 10:30 Qatar
+    const r = resolveFoodTimestamp('2026-08-04 10:30:00', QATAR);
+    assert.notEqual(r.timeOfDay, '10:30:00');
+    assert.equal(r.timeOfDay, '08:00:00');
+  });
+
+  it('ignores display TZ when normalizing storage to UTC', () => {
+    const asIst = normalizeFoodCreatedAt('2026-08-04 10:30:00', IANA_IST);
+    const asQatarArg = normalizeFoodCreatedAt('2026-08-04 10:30:00', QATAR);
+    assert.equal(asIst, asQatarArg);
+    assert.equal(asIst, '2026-08-04T05:00:00.000Z');
+  });
+
+  it('spurious Z still detected via IST calendar even when display TZ is Qatar', () => {
+    const r = resolveFoodTimestamp('2026-07-24T19:45:00.000Z', QATAR);
+    assert.equal(r.calendarYmd, '2026-07-24');
+    // 19:45 IST = 14:15 UTC = 17:15 Asia/Qatar (UTC+3)
+    assert.equal(r.timeOfDay, '17:15:00');
+  });
+});
