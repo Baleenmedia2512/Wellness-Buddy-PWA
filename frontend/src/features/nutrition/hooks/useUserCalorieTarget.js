@@ -8,11 +8,15 @@
 import { useState, useEffect } from 'react';
 import { fetchUserCalorieTarget, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
 
-export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
+export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabled = true }) {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
   const [bmrLoading, setBmrLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) {
+      setBmrLoading(false);
+      return undefined;
+    }
     if (!user?.email) {
       setBmrLoading(false);
       return undefined;
@@ -39,7 +43,7 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0 }) {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl, bmrUpdateKey]);
+  }, [user?.email, apiBaseUrl, bmrUpdateKey, enabled]);
 
   return { calorieTarget, bmrLoading };
 }

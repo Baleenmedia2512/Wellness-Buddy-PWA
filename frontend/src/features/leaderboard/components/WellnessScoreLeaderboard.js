@@ -8,11 +8,19 @@ import React, {
 import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_KEY = 'wv.lb.wellness.v2';
+const LEGACY_CACHE_KEYS = ['wv.lb.wellness'];
+
+const stripAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
 const readCache = () => {
   try {
-    const raw = localStorage.getItem('wv.lb.wellness');
+    LEGACY_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < CACHE_TTL ? c.data : null;
@@ -20,8 +28,14 @@ const readCache = () => {
 };
 const writeCache = (data) => {
   try {
-    localStorage.setItem('wv.lb.wellness', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ data: stripAvatars(data), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+  }
 };
 
 /**
@@ -35,12 +49,11 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
   const fetchLeaderboard = useCallback(async () => {
     try {
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}`,
         {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
           },
         },
       );
@@ -69,8 +82,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
 
   useEffect(() => {
     fetchLeaderboard();
-    const refreshInterval = setInterval(fetchLeaderboard, 5 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    return setVisibilityAwareInterval(fetchLeaderboard, 5 * 60 * 1000);
   }, [fetchLeaderboard]);
 
   const getAvatar = (email, userName, profileImage) => {

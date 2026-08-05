@@ -65,10 +65,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const cropper = useImageCropper({
     onError: setError,
     onCropped: (img) => {
+      setError('');
       setProfileImage(img);
       setProfileImagePreview(img);
       face.reset();
-      setShowToast(true);
       // Accept any photo (no AI face check) — mark ready for auto-save.
       face.run(img, user?.id ?? null);
     },

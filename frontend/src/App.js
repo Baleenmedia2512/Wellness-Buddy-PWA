@@ -129,6 +129,7 @@ import {
   resolveShareDisplayName,
   ensureShareDisplayName,
   buildQuickShareText,
+  composeQuickShareCaption,
   cacheProfileUserName,
   getCachedProfileUserName,
 } from "./shared/utils/shareUtils";
@@ -141,6 +142,7 @@ import {
   getCachedLocationFields,
 } from "./shared/services/userLocationCache";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
+import { toStorageThumbnail } from "./shared/utils/storageThumbnail";
 import { ManualWeightEntryModal, saveWeight } from "./features/weight";
 import { SmartFoodSearchModal, buildAnalysisFromManualFood as buildManualFoodAnalysis } from "./features/nutrition";
 import { ManualEducationEntryModal, saveLog } from "./features/education";
@@ -201,6 +203,7 @@ import {
   DEMO_EMAIL,
 } from "./shared/services/auth/demoSetup";
 import { debugLog } from "./shared/utils/logger";
+import { setVisibilityAwareInterval } from "./shared/utils/visibilityAwareInterval";
 import { getDeviceTimezoneIana } from "./shared/utils/deviceTimezone";
 import { isAutoCameraOnResumeEnabled } from "./shared/utils/autoCameraPreference";
 import { EmojiOrNative } from "./shared/components/icons/EmojiImage";
@@ -633,8 +636,10 @@ function WellnessValleyApp() {
 
   // Open the native share sheet after Classify photo save / AI start. Caller
   // navigates home once the sheet closes (shared or dismissed).
+  // Optional `activityCaption` is the activity-specific WhatsApp template
+  // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64) => {
+    async (imageBase64, { activityCaption = null } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -674,6 +679,14 @@ function WellnessValleyApp() {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
       });
 
+      const buildCaption = (shareDisplayName) => {
+        const brand = buildQuickShareText(
+          shareDisplayName,
+          getVersionString(),
+        );
+        return composeQuickShareCaption(brand, activityCaption);
+      };
+
       try {
         const shareDisplayName = await ensureShareDisplayName(
           savedUserNameRef.current ?? savedUserName,
@@ -684,10 +697,7 @@ function WellnessValleyApp() {
           cacheProfileUserName(user.email, shareDisplayName);
           setSavedUserName(shareDisplayName);
         }
-        const shareText = buildQuickShareText(
-          shareDisplayName,
-          getVersionString(),
-        );
+        const shareText = buildCaption(shareDisplayName);
 
         clearOverlayNow();
         if (Capacitor.isNativePlatform()) {
@@ -717,10 +727,7 @@ function WellnessValleyApp() {
             user,
             apiBaseUrl,
           );
-          const shareText = buildQuickShareText(
-            shareDisplayName,
-            getVersionString(),
-          );
+          const shareText = buildCaption(shareDisplayName);
           clearOverlayNow();
           await shareTextViaWhatsApp(shareText);
           _hasCompletedFirstShareRef.current = true;
@@ -3570,16 +3577,14 @@ function WellnessValleyApp() {
     };
   }, [user, checkProfileCompletion]);
 
-  // Periodic user status check (every 60 seconds)
+  // Periodic user status check (every 60 seconds; pauses while tab is hidden)
   useEffect(() => {
-    if (!user) return;
+    if (!user) return undefined;
 
-    const statusCheckInterval = setInterval(async () => {
+    return setVisibilityAwareInterval(async () => {
       // Skip showing inactive modal if we're in reactivation flow
       await checkUserStatus(user, isInactiveReactivationFlow);
-    }, 60000); // Check every 60 seconds
-
-    return () => clearInterval(statusCheckInterval);
+    }, 60000);
   }, [user, checkUserStatus, isInactiveReactivationFlow]);
 
   // Permission resume listener � fires whenever the app returns from background.
@@ -4466,12 +4471,15 @@ function WellnessValleyApp() {
     source,
     captureId,
   }) => {
+    const storageImage = imageBase64
+      ? await toStorageThumbnail(imageBase64)
+      : null;
     const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId,
-        imageBase64,
+        imageBase64: storageImage,
         platform: source || "Smartwatch",
         topic: `Calories Burned: ${caloriesBurned || 0} kcal`,
         confidence: 0.9,
@@ -4773,12 +4781,16 @@ function WellnessValleyApp() {
           : "(current time)",
       );
 
+      const storageImage = imageBase64
+        ? await toStorageThumbnail(imageBase64)
+        : null;
+
       const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
-          imageBase64: imageBase64,
+          imageBase64: storageImage,
           platform: finalPlatform,
           topic: educationData.topic,
           confidence: educationData.confidence,
@@ -5694,6 +5706,8 @@ function WellnessValleyApp() {
           if (!capUserId) {
             throw new Error("Unable to resolve user account");
           }
+          // DB stores a ~22 KB thumb; in-memory `processedImage` stays at AI size.
+          const storageImage = await toStorageThumbnail(processedImage);
           const capRes = await fetch(
             `${apiBaseUrl}/api/background-analysis/captures`,
             {
@@ -5701,7 +5715,7 @@ function WellnessValleyApp() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 userId: capUserId,
-                imageBase64: processedImage,
+                imageBase64: storageImage,
                 token: instantToken,
                 shareCode: instantShareCode,
                 // Capture-time location / club from background cache
@@ -7265,9 +7279,11 @@ function WellnessValleyApp() {
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onSaved={async () => {
+          onSaved={async (shareMeta) => {
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
-            await shareCaptureAfterClassify(manualEntryPayload.imageBase64);
+            await shareCaptureAfterClassify(manualEntryPayload.imageBase64, {
+              activityCaption: shareMeta?.activityCaption || null,
+            });
           }}
           onToast={(msg) => showToast(msg)}
           originalCapturedAt={manualEntryPayload.originalCapturedAt ?? null}

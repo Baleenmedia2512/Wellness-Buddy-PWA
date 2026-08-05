@@ -8,15 +8,23 @@
 import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — global leaderboard is identical for all users, no userId key.
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
 const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
+const WEIGHT_LB_CACHE_KEY = 'wv.lb.weight.v2';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight'];
+
+const stripWeightAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
 const readWeightLBCache = () => {
   try {
-    const raw = localStorage.getItem('wv.lb.weight');
+    WEIGHT_LB_LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(WEIGHT_LB_CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
@@ -24,8 +32,14 @@ const readWeightLBCache = () => {
 };
 const writeWeightLBCache = (data) => {
   try {
-    localStorage.setItem('wv.lb.weight', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* quota — ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      WEIGHT_LB_CACHE_KEY,
+      JSON.stringify({ data: stripWeightAvatars(data), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(WEIGHT_LB_CACHE_KEY); } catch { /* ignore */ }
+  }
 };
 
 /**
@@ -56,12 +70,11 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       // );
 
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         },
       );
@@ -102,7 +115,6 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     // refresh: re-fetches from server (retries after 4s for DB propagation)
     refresh: () => {
       fetchLeaderboard();
-      setTimeout(fetchLeaderboard, 4000);
     },
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
@@ -130,12 +142,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     },
   }));
 
-  // Initial fetch
+  // Initial fetch + interval (paused while document is hidden)
   useEffect(() => {
     fetchLeaderboard();
-    // Refresh every 1 minute for real-time updates
-    const refreshInterval = setInterval(fetchLeaderboard, 1 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    return setVisibilityAwareInterval(fetchLeaderboard, 1 * 60 * 1000);
   }, [fetchLeaderboard]);
 
   // Generate profile avatar from email or name

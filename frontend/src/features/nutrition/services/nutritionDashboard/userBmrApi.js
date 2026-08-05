@@ -1,14 +1,14 @@
 // User profile calorie target fetch — TDEE when activity level is set, else BMR.
+import { getProfile } from '../../../user/services/user.api';
+
 export const DEFAULT_CALORIE_TARGET = 1500;
 
 export async function fetchUserCalorieTarget({ apiBaseUrl, email }) {
   if (!email) return DEFAULT_CALORIE_TARGET;
   try {
-    const res = await fetch(
-      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-    );
-    if (!res.ok) return DEFAULT_CALORIE_TARGET;
-    const data = await res.json();
+    // apiBaseUrl retained for call-site compatibility; getProfile uses config base URL.
+    void apiBaseUrl;
+    const data = await getProfile(email);
     if (data.success && data.data?.calorieTarget) {
       return Math.round(data.data.calorieTarget);
     }

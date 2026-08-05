@@ -84,6 +84,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 alt="Meal"
                 className="w-full h-full object-cover"
                 loading="lazy"
+                decoding="async"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : meal.ImagePath ? (
@@ -92,6 +93,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 alt="Meal"
                 className="w-full h-full object-cover"
                 loading="lazy"
+                decoding="async"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (

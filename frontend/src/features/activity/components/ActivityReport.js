@@ -232,7 +232,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     }
   }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
 
-  /** Phase 1: team scope + summary pills. Phase 2: detail table (async, non-blocking). */
+  /** Phase 1: team scope + summary pills. Phase 2: detail table from same bootstrap when includeRecords=1. */
   const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
     if (!user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
@@ -245,7 +245,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       const response = await fetch(
         `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
           detailActivity: detailActivity || 'education',
-          includeRecords: '0',
+          includeRecords: '1',
         })}`,
         { cache: 'no-store', signal },
       );
@@ -266,9 +266,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       applyReportMeta(data);
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
+      setDetailRecords(Array.isArray(data.records) ? data.records : []);
+      setCurrentPage(1);
       setSummaryLoading(false);
-
-      await fetchDetails(detailActivity, { signal });
+      setDetailLoading(false);
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity report');
@@ -284,7 +285,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     buildReportParams,
     fetchLegacyReportBundle,
     applyReportMeta,
-    fetchDetails,
   ]);
 
   // Fetch only when this page is open (component mounted) and role is resolved.

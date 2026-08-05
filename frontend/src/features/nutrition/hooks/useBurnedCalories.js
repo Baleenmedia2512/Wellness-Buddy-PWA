@@ -18,6 +18,7 @@ export function useBurnedCalories({
   resolveUserId,
   watchBurnedCalories = 0,
   nutritionRefreshKey = 0,
+  enabled = true,
 }) {
   const [dbWatchBurned, setDbWatchBurned] = useState(0);
 
@@ -28,7 +29,7 @@ export function useBurnedCalories({
   const burnedCalories = stepsBurned + watchBurned;
 
   const refetch = useCallback(async () => {
-    if (!user) return;
+    if (!user || !enabled) return;
     const userId = await resolveUserId();
     const value = await fetchWatchBurnedCalories({
       apiBaseUrl,
@@ -36,11 +37,11 @@ export function useBurnedCalories({
       date: selectedDate,
     });
     setDbWatchBurned(value);
-  }, [user, apiBaseUrl, resolveUserId, selectedDate]);
+  }, [user, apiBaseUrl, resolveUserId, selectedDate, enabled]);
 
   useEffect(() => {
-    if (user) refetch();
-  }, [user, selectedDate, refetch, watchBurnedCalories, nutritionRefreshKey]);
+    if (user && enabled) refetch();
+  }, [user, selectedDate, refetch, watchBurnedCalories, nutritionRefreshKey, enabled]);
 
   return { burnedCalories, watchBurned, stepsBurned };
 }

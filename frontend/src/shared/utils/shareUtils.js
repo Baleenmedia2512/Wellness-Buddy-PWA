@@ -19,6 +19,18 @@ export function buildQuickShareText(displayName, versionString) {
   return `${name} ${SHARE_TEXT_SEPARATOR} Wellness Valley ${version}`.replace(/\uFFFD/g, '');
 }
 
+/**
+ * Branding line + optional compact activity suffix.
+ * Example: "YASHEER · Wellness Valley v 3.4.0, water 1 L"
+ */
+export function composeQuickShareCaption(brandLine, activitySuffix = null) {
+  const brand = String(brandLine || '').trim();
+  const suffix = typeof activitySuffix === 'string' ? activitySuffix.trim() : '';
+  if (!brand) return suffix;
+  if (!suffix) return brand;
+  return `${brand}, ${suffix}`;
+}
+
 function getUserPhone(user) {
   return (user?.phoneNumber || user?.PhoneNumber || '').trim() || null;
 }

@@ -25,6 +25,7 @@ class CacheManager {
       weightHistory: 2 * 60 * 1000,      // 2 minutes
       educationLogs: 2 * 60 * 1000,      // 2 minutes
       nutritionStats: 3 * 60 * 1000,     // 3 minutes
+      userProfile: 2 * 60 * 1000,        // 2 minutes — shared across Header / nutrition / weight
       default: 5 * 60 * 1000             // 5 minutes
     };
   }

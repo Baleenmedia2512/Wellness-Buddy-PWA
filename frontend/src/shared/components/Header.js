@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
+import { getProfile } from "../../features/user/services/user.api";
 
 /** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
 const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
@@ -51,6 +52,7 @@ const Header = ({
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
+  const prevProfileKeyRef = useRef(profileKey);
 
   const reportsEnabled = canAccessReportsTab(userRole, hasTeamMembers);
 
@@ -69,28 +71,20 @@ const Header = ({
 
   // Fetch saved user name + avatar for header display.
   // Re-runs when email changes OR when profileKey is incremented (after a save).
+  // Uses shared getProfile cache so Home / Diary / nutrition hooks do not re-hit the network.
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (!user?.email) return;
       try {
-        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-        const cacheBuster = Date.now();
-        const response = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
-          {
-            cache: "no-store",
-            headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-          },
-        );
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data) {
-            if (data.data.userName) {
-              setSavedUserName(data.data.userName);
-              cacheProfileUserName(user.email, data.data.userName);
-            }
-            if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
+        const shouldBust = profileKey !== prevProfileKeyRef.current;
+        prevProfileKeyRef.current = profileKey;
+        const data = await getProfile(user.email, { cacheBust: shouldBust });
+        if (data.success && data.data) {
+          if (data.data.userName) {
+            setSavedUserName(data.data.userName);
+            cacheProfileUserName(user.email, data.data.userName);
           }
+          if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
         }
       } catch (err) {
         console.error("Error fetching user profile for header:", err);

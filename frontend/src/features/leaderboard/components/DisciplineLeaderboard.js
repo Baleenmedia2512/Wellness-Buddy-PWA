@@ -9,15 +9,23 @@ import { Award, Star } from "lucide-react";
 import LEADERBOARD_CONFIG from "../../../config/leaderboardConfig";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — discipline leaderboard is global; stale data shows instantly
 // on back-navigation so the bar never flashes blank.
 // ---------------------------------------------------------------------------
 const DISC_LB_CACHE_TTL = 5 * 60 * 1000;
+const DISC_LB_CACHE_KEY = 'wv.lb.discipline.v2';
+const DISC_LB_LEGACY_KEYS = ['wv.lb.discipline'];
+
+const stripDiscAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
 const readDiscLBCache = () => {
   try {
-    const raw = localStorage.getItem('wv.lb.discipline');
+    DISC_LB_LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(DISC_LB_CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < DISC_LB_CACHE_TTL ? c.data : null;
@@ -25,8 +33,14 @@ const readDiscLBCache = () => {
 };
 const writeDiscLBCache = (data) => {
   try {
-    localStorage.setItem('wv.lb.discipline', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* quota — ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      DISC_LB_CACHE_KEY,
+      JSON.stringify({ data: stripDiscAvatars(data), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(DISC_LB_CACHE_KEY); } catch { /* ignore */ }
+  }
 };
 
 /**
@@ -58,12 +72,11 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       // );
 
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         },
       );
@@ -107,9 +120,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Initial fetch
   useEffect(() => {
     fetchLeaderboard();
-    // Refresh every 5 minutes for real-time updates
-    const refreshInterval = setInterval(fetchLeaderboard, 5 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    return setVisibilityAwareInterval(fetchLeaderboard, 5 * 60 * 1000);
   }, [fetchLeaderboard]);
 
   // Generate profile avatar from email or name

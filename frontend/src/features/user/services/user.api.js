@@ -4,13 +4,29 @@
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
+import cacheManager from '../../../shared/services/cacheManager.js';
 
 const base = () => getApiBaseUrl();
 
+/**
+ * GET /api/user/profile — shared cache + in-flight dedup across Header,
+ * NutritionDashboard, WeightDashboard, and nutrition BMR/macro hooks.
+ * Pass `cacheBust: true` after a profile save to force a fresh read.
+ */
 export async function getProfile(email, { cacheBust = false } = {}) {
-  const ts = cacheBust ? `&_t=${Date.now()}` : '';
-  const res = await fetch(`${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`);
-  return res.json();
+  if (!email) throw new Error('getProfile: email required');
+  const key = cacheManager.generateKey('userProfile', String(email).toLowerCase());
+  if (cacheBust) cacheManager.clear(key);
+
+  return cacheManager.execute(
+    key,
+    async () => {
+      const ts = cacheBust ? `&_t=${Date.now()}` : '';
+      const res = await fetch(`${base()}/api/user/profile?email=${encodeURIComponent(email)}${ts}`);
+      return res.json();
+    },
+    cacheManager.ttls.userProfile,
+  );
 }
 
 export async function updateProfile(payload) {
@@ -19,6 +35,10 @@ export async function updateProfile(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  const email = payload?.email || payload?.Email;
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
   return res.json();
 }
 

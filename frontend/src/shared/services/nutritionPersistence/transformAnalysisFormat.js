@@ -84,6 +84,22 @@ const detailedItemToFood = (item) => {
 
 export function transformToBackgroundServiceFormat(analysisResult) {
   try {
+    if (!analysisResult || typeof analysisResult !== 'object') return analysisResult;
+
+    // Already canonical ({ foods, total }) — water tracker, orchestrator, retries, etc.
+    if (Array.isArray(analysisResult.foods) && analysisResult.foods.length > 0) {
+      const total = analysisResult.total
+        ? macros(analysisResult.total)
+        : macros(analysisResult.nutrition || {});
+      return {
+        foods: analysisResult.foods,
+        total,
+        confidence: analysisResult.confidence || 'medium',
+        ...(analysisResult.processedBy ? { processedBy: analysisResult.processedBy } : {}),
+        ...(analysisResult.category ? { category: analysisResult.category } : {}),
+      };
+    }
+
     const { nutrition, detailedItems = [], confidence, category } = analysisResult;
     const foods = detailedItems.length > 0
       ? detailedItems.map(detailedItemToFood)

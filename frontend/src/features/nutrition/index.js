@@ -33,6 +33,7 @@ export * from './services/backgroundNutritionService';
 export * from './services/nutritionSaveService';
 export * from './services/nutritionFallback';
 export { deleteMealById, updateMealNutrition, undoMealDelete } from './services/nutritionDashboard';
+export { fetchDayAnalyses } from './services/nutritionDashboard/dayAnalysesApi';
 export { aggregateFoodTotals, FOOD_TOTAL_FIELDS } from './domain/aggregateFoodTotals';
 export { parseAnalysisData } from './services/duplicateDetection/foodNameExtractor';
 export {
