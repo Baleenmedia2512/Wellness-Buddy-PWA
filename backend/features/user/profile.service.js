@@ -31,6 +31,12 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
 export async function getProfile({ email }) {
+  const cacheKey = cacheKeys.userProfile(String(email || '').toLowerCase());
+  try {
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+  } catch { /* non-fatal */ }
+
   const user = await repo.getProfile(email);
   if (!user) return notFound();
 
@@ -62,7 +68,7 @@ export async function getProfile({ email }) {
   // Backward-compatible alias: coachName remains the direct parent (sponsor).
   const coachName = sponsorName;
 
-  return {
+  const result = {
     httpStatus: 200,
     body: {
       success: true,
@@ -109,6 +115,10 @@ export async function getProfile({ email }) {
       },
     },
   };
+
+  // Short TTL — profile is also cached client-side; update path already deletes this key
+  try { cache.set(cacheKey, result, 60_000); } catch { /* non-fatal */ }
+  return result;
 }
 
 function buildProfileUpdate({
@@ -290,7 +300,7 @@ export async function updateProfile(input) {
     });
   }
 
-  try { cache.delete(cacheKeys.userProfile(email)); } catch { /* non-fatal */ }
+  try { cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase())); } catch { /* non-fatal */ }
 
   const refreshedUser = await repo.getProfile(email);
   const effectiveBmr = savedBmr ?? (refreshedUser?.Bmr ? parseFloat(refreshedUser.Bmr) : null);
@@ -361,7 +371,7 @@ export async function deleteAccount({ email }) {
   try {
     cache.delete(cacheKeys.nutritionMeals(user.UserId));
     cache.delete(cacheKeys.nutritionMeals(user.UserId.toString()));
-    cache.delete(cacheKeys.userProfile(email));
+    cache.delete(cacheKeys.userProfile(String(email || '').toLowerCase()));
     cache.delete(cacheKeys.userContext(user.UserId));
     cache.delete(cacheKeys.userContext(user.UserId.toString()));
   } catch { /* non-fatal */ }

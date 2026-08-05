@@ -478,16 +478,21 @@ export async function getConnection() {
  * @returns {Promise<Array>} [rows, fields] MySQL-style result
  */
 export async function query(sql, params = []) {
-  console.log('🔍 Executing query via pool...');
-  console.log('📝 SQL:', sql.substring(0, 100) + (sql.length > 100 ? '...' : ''));
-  console.log('📊 Params:', params);
-  
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd) {
+    console.log('🔍 Executing query via pool...');
+    console.log('📝 SQL:', sql.substring(0, 100) + (sql.length > 100 ? '...' : ''));
+    console.log('📊 Params:', params);
+  }
+
   const poolWrapper = getPool();
-  
+
   try {
     const result = await poolWrapper.execute(sql, params);
-    console.log('✅ Query executed successfully');
-    console.log('📋 Rows returned:', result[0]?.length || 0);
+    if (!isProd) {
+      console.log('✅ Query executed successfully');
+      console.log('📋 Rows returned:', result[0]?.length || 0);
+    }
     return result;
   } catch (error) {
     console.error('❌ Query execution failed:');
