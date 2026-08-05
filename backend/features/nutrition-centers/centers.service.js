@@ -3,6 +3,11 @@ import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculations
 import logger from '../../shared/lib/logger.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { cache } from '../../utils/cache.js';
+
+/** Global geo list for GPS check-in — identical for all users. */
+const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
+const GEO_LIST_CACHE_KEY = 'nutrition-centers:geo:all';
 
 // ─── check name ──────────────────────────────────────────────────────────────
 export async function checkName({ name }) {
@@ -51,6 +56,8 @@ export async function register(input) {
     is_deleted: false,
   });
 
+  cache.delete(GEO_LIST_CACHE_KEY);
+
   return {
     httpStatus: 201,
     body: { success: true, data: center, message: 'Nutrition center registered successfully' },
@@ -77,6 +84,7 @@ export async function unregister({ centerId, userId }) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
   await repo.softDeleteCenter(centerId);
+  cache.delete(GEO_LIST_CACHE_KEY);
   return {
     httpStatus: 200,
     body: { success: true, message: 'Nutrition center unregistered successfully' },
@@ -115,6 +123,7 @@ export async function updateCenter(input) {
   if (educationHour !== undefined) payload.education_hour = educationHour || null;
 
   const updated = await repo.updateCenter(centerId, payload);
+  cache.delete(GEO_LIST_CACHE_KEY);
   return {
     httpStatus: 200,
     body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
@@ -152,11 +161,54 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
 }
 
 export async function listCenters(input) {
-  const { userId, teamFilter, scope } = input;
+  const { userId, teamFilter, scope, includeMetrics = true } = input;
   let { startDate, endDate } = input;
   const userIdNum = parseInt(userId, 10);
 
-  const teamUserIds = await resolveTeamUserIds({ userIdNum, teamFilter });
+  // scope=all ignores team ownership — skip hierarchy walk (was multi-second waste).
+  const teamUserIds = scope === 'all'
+    ? []
+    : await resolveTeamUserIds({ userIdNum, teamFilter });
+
+  // GPS proximity only needs lat/lng — skip per-center attendance (3 queries each).
+  if (!includeMetrics && scope === 'all') {
+    const cached = cache.get(GEO_LIST_CACHE_KEY);
+    if (cached) {
+      return { httpStatus: 200, body: { success: true, data: cached } };
+    }
+    const centers = await repo.listCenters({ teamUserIds: [], scope: 'all' });
+    const geo = (centers || []).map((c) => ({
+      id: c.id,
+      center_name: c.center_name,
+      latitude: c.latitude,
+      longitude: c.longitude,
+      education_hour: c.education_hour,
+      owner_user_id: c.owner_user_id,
+      status: c.status,
+    }));
+    cache.set(GEO_LIST_CACHE_KEY, geo, GEO_LIST_CACHE_TTL_MS);
+    return { httpStatus: 200, body: { success: true, data: geo } };
+  }
+
+  if (!includeMetrics) {
+    const centers = await repo.listCenters({ teamUserIds, scope });
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        data: (centers || []).map((c) => ({
+          id: c.id,
+          center_name: c.center_name,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          education_hour: c.education_hour,
+          owner_user_id: c.owner_user_id,
+          status: c.status,
+        })),
+      },
+    };
+  }
+
   const centers = await repo.listCenters({ teamUserIds, scope });
 
   const ownerIds = centers.map((c) => c.owner_user_id);

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CoachTestimonialsPage.jsx
  * Unified testimonials card view for every user.
  *
@@ -45,6 +45,7 @@ import {
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
+import { getApiBaseUrl } from '../../../config/api.config.js';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -241,6 +242,42 @@ function TeamComplianceSection({ userName, teamStats }) {
         <TeamComplianceModal userName={userName} teamStats={teamStats} onClose={() => setOpen(false)} />
       )}
     </>
+  );
+}
+
+/** Avatar via dedicated endpoint — keeps list-for-coach JSON tiny. */
+function MemberAvatar({ user }) {
+  const [failed, setFailed] = useState(false);
+  const userId = user?.userId;
+  const inline = user?.profileImage;
+  let remote = null;
+  try {
+    if (userId != null && !failed && !inline) {
+      remote = `${getApiBaseUrl()}/api/user/avatar?userId=${encodeURIComponent(userId)}`;
+    }
+  } catch {
+    remote = null;
+  }
+  const src = !failed ? (inline || remote) : null;
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={user?.userName || 'User'}
+        className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0">
+      {(user?.userName || '?').charAt(0).toUpperCase()}
+    </div>
   );
 }
 
@@ -532,14 +569,7 @@ function MemberCard({
     <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md`}>
       {/* Header strip */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        {user.profileImage ? (
-          <img src={user.profileImage} alt={user.userName}
-            className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0" loading="lazy" />
-        ) : (
-          <div className="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0">
-            {(user.userName || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <MemberAvatar user={user} />
         <div className="flex-1 min-w-0">
           <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
           <div className="mt-0.5">
@@ -1130,6 +1160,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
   const loadGenerationRef = useRef(0);
@@ -1178,32 +1209,20 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setError(null);
     setFullRows([]);
     setFullLoaded(false);
+    setFullTeamMemberCount(null);
     try {
-      const [directResult, mine, teamReport] = await Promise.all([
+      // Critical path only — do not block the list on slow team-report.
+      const [directResult, mine] = await Promise.all([
         listForCoach(coachId, TEAM_SCOPES.DIRECT),
         buildMineRow(),
-        getTeamTestimonialReport(coachId).catch(() => null),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
       const direct = Array.isArray(directResult) ? directResult : [];
       setDirectRows(direct);
       setMineRow(mine);
-
-      let downline = direct.length > 0;
-      if (!downline && teamReport?.photoReport) {
-        const directStats = teamReport.photoReport.directTeam ?? {};
-        const fullStats = teamReport.photoReport.fullTeam ?? {};
-        const directCount = (directStats.uploaded ?? 0) + (directStats.notUploaded ?? 0);
-        const fullCount = (fullStats.uploaded ?? 0) + (fullStats.notUploaded ?? 0);
-        downline = directCount > 0 || fullCount > 0;
-      }
-      setHasDownline(downline);
-      if (!downline) setTeamScope(TEAM_SCOPES.MINE);
-
-      if (teamReport) {
-        setTeamPerformanceByUserId(teamReport.teamPerformanceByUserId ?? {});
-      }
+      setHasDownline(direct.length > 0);
+      if (direct.length === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       setError(err.message || 'Failed to load testimonials');
@@ -1212,6 +1231,28 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         setLoading(false);
       }
     }
+
+    // Deferred: badges + Full tab count from team-report
+    getTeamTestimonialReport(coachId)
+      .then((teamReport) => {
+        if (generation !== loadGenerationRef.current || !teamReport) return;
+        setTeamPerformanceByUserId(teamReport.teamPerformanceByUserId ?? {});
+        const fullStats = teamReport.photoReport?.fullTeam ?? {};
+        const fullCount =
+          fullStats.totalMembers
+          ?? ((fullStats.uploaded ?? 0) + (fullStats.notUploaded ?? 0));
+        if (Number.isFinite(fullCount) && fullCount > 0) {
+          setFullTeamMemberCount(fullCount);
+          setHasDownline(true);
+        } else {
+          const directStats = teamReport.photoReport?.directTeam ?? {};
+          const directCount =
+            directStats.totalMembers
+            ?? ((directStats.uploaded ?? 0) + (directStats.notUploaded ?? 0));
+          if (directCount > 0) setHasDownline(true);
+        }
+      })
+      .catch(() => {});
   }, [coachId, buildMineRow]);
 
   const loadFullTeam = useCallback(async () => {
@@ -1281,10 +1322,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(
-    () => countRowsByTeamScope(mineRow, directRows, fullRows),
-    [mineRow, directRows, fullRows],
-  );
+  const teamScopeCounts = useMemo(() => {
+    const counts = countRowsByTeamScope(mineRow, directRows, fullRows);
+    // Full list is lazy-loaded — use team-report member total until rows arrive.
+    if (!fullLoaded && fullTeamMemberCount != null) {
+      return { ...counts, [TEAM_SCOPES.FULL]: fullTeamMemberCount };
+    }
+    return counts;
+  }, [mineRow, directRows, fullRows, fullLoaded, fullTeamMemberCount]);
 
   const uploadCounts = useMemo(() => countRowsByUpload(scopeRows), [scopeRows]);
 

@@ -69,7 +69,7 @@ export function buildReportingContext(allUsers) {
 export async function loadReportingContext(supabase) {
   const { data: allUsers, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height');
+    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height');
 
   if (error) throw new Error('Failed to fetch team data: ' + error.message);
   return buildReportingContext(allUsers || []);
@@ -321,10 +321,12 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
 }
 
 const TEAM_USER_SELECT =
-  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height';
+  // Never select ProfileImage here — base64 avatars made list-for-coach ~14MB for ~35 members.
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height';
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
+const SUBTREE_CACHE_KEY_PREFIX = 'v2:'; // bump when select columns change
 
 /**
  * @param {object} supabase
@@ -392,7 +394,7 @@ export async function loadReportingContextForCoach(supabase, rootCoachId) {
   const rootId = Number(rootCoachId);
   if (!Number.isFinite(rootId)) return buildReportingContext([]);
 
-  const cacheKey = String(rootId);
+  const cacheKey = `${SUBTREE_CACHE_KEY_PREFIX}${rootId}`;
   const now = Date.now();
   const cached = SUBTREE_CONTEXT_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.value;
