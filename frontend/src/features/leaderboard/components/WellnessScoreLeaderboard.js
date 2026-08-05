@@ -9,6 +9,7 @@ import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import LeaderboardAvatar from './LeaderboardAvatar.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
 const CACHE_KEY = 'wv.lb.wellness.v2';
@@ -80,45 +81,13 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
     refresh: fetchLeaderboard,
   }));
 
+  // Skip network if SWR cache is fresh; background refresh on CACHE_TTL
   useEffect(() => {
-    fetchLeaderboard();
-    return setVisibilityAwareInterval(fetchLeaderboard, 5 * 60 * 1000);
-  }, [fetchLeaderboard]);
-
-  const getAvatar = (email, userName, profileImage) => {
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || 'User'}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+    if (!readCache()) {
+      fetchLeaderboard();
     }
-
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-        ? email.charAt(0).toUpperCase()
-        : '?';
-
-    const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500',
-      'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500',
-    ];
-    const colorIndex = (userName || email || '').length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
+    return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+  }, [fetchLeaderboard]);
 
   const getRankColor = (pct) => {
     if (pct >= 90) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
@@ -161,7 +130,13 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       </div>
 
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={user.userName}
+          profileImage={user.profileImage}
+        />
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">

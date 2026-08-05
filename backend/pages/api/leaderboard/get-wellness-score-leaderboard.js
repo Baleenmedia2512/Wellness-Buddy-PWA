@@ -8,6 +8,9 @@ import {
 import logger from '../../../shared/lib/logger.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import { cache } from '../../../utils/cache.js';
+
+const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
@@ -43,6 +46,13 @@ export default async function handler(req, res) {
     const scoreDate = req.query.date
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
+
+    const cacheKey = `lb:global:wellness:${topN}:${scoreDate}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
 
     logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
 
@@ -138,29 +148,18 @@ export default async function handler(req, res) {
       previousKey = scoreKey;
     }
 
-    // Profile images only for top N — keep payload small.
-    if (ranked.length > 0) {
-      const topUserIds = ranked.map((u) => u.userId);
-      const { data: profileRows } = await supabase
-        .from('team_table')
-        .select('UserId, ProfileImage')
-        .in('UserId', topUserIds);
-      const imageByUserId = {};
-      (profileRows || []).forEach((row) => {
-        imageByUserId[row.UserId] = row.ProfileImage || null;
-      });
-      ranked.forEach((entry) => {
-        entry.profileImage = imageByUserId[entry.userId] ?? null;
-      });
-    }
+    // Omit ProfileImage base64 — was multi-MB for Top 10; UI uses initial avatars.
 
-    return res.status(200).json({
+    const payload = {
       success: true,
       data: ranked,
       topN,
       scoreDate,
       totalEligible: ranked.length,
-    });
+    };
+    cache.set(cacheKey, payload, LEADERBOARD_CACHE_TTL_MS);
+    res.setHeader('X-Cache', 'MISS');
+    return res.status(200).json(payload);
   } catch (error) {
     logger.error('[WELLNESS-LB] Error', { err: error.message });
     res.status(500).json({

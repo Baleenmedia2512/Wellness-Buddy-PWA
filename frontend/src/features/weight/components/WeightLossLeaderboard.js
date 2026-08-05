@@ -9,6 +9,7 @@ import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — global leaderboard is identical for all users, no userId key.
@@ -142,56 +143,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     },
   }));
 
-  // Initial fetch + interval (paused while document is hidden)
+  // Skip network if SWR cache is fresh; refresh every 5 min while visible
   useEffect(() => {
-    fetchLeaderboard();
-    return setVisibilityAwareInterval(fetchLeaderboard, 1 * 60 * 1000);
-  }, [fetchLeaderboard]);
-
-  // Generate profile avatar from email or name
-  const getAvatar = (email, userName, profileImage) => {
-    // If profile image exists, use it with lazy loading
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || "User"}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+    if (!readWeightLBCache()) {
+      fetchLeaderboard();
     }
-
-    // Otherwise, generate initial-based avatar
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-      ? email.charAt(0).toUpperCase()
-      : "?";
-
-    // Generate color based on email/name
-    const colors = [
-      "bg-blue-500",
-      "bg-green-500",
-      "bg-purple-500",
-      "bg-pink-500",
-      "bg-indigo-500",
-      "bg-yellow-500",
-      "bg-red-500",
-      "bg-teal-500",
-    ];
-    const colorIndex = (userName || email || "").length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
+    return setVisibilityAwareInterval(fetchLeaderboard, WEIGHT_LB_CACHE_TTL);
+  }, [fetchLeaderboard]);
 
   // Format weight loss display (grams for < 1kg, kg for >= 1kg)
   const formatWeightLoss = (weightLoss) => {
@@ -241,7 +199,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={user.userName}
+          profileImage={user.profileImage}
+        />
       </div>
 
       {/* User Details */}
