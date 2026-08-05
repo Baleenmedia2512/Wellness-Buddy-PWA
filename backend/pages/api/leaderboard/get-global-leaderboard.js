@@ -222,21 +222,8 @@ export default async function handler(req, res) {
     // Step 8: Reverse order for display (show worst to best: Rank 10 → Rank 1)
     topResults.reverse();
 
-    // Profile images only for top N — never load base64 for every active user.
-    if (topResults.length > 0) {
-      const topUserIds = topResults.map((u) => u.userId);
-      const { data: profileRows } = await supabase
-        .from("team_table")
-        .select("UserId, ProfileImage")
-        .in("UserId", topUserIds);
-      const imageByUserId = {};
-      (profileRows || []).forEach((row) => {
-        imageByUserId[row.UserId] = row.ProfileImage || null;
-      });
-      topResults.forEach((entry) => {
-        entry.profileImage = imageByUserId[entry.userId] ?? null;
-      });
-    }
+    // Omit ProfileImage base64 — strip avatars keep initials fallback and cut ~5MB payloads.
+    // profileImage remains in the response shape as null for backward compatibility.
 
     logger.debug(
       `🏆 [LEADERBOARD] Top ${topResults.length} weight losers calculated`,

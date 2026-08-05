@@ -147,6 +147,17 @@ function extractNutrition(analysisResult, deviceInfo) {
     logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
   }
 
+  // Honour explicit preset markers (water / afresh / shake) over device heuristics.
+  try {
+    const analysis = typeof analysisResult === 'string'
+      ? JSON.parse(analysisResult) : analysisResult;
+    if (analysis?.processedBy) {
+      processedBy = String(analysis.processedBy);
+    }
+  } catch {
+    // ignore — fall back to heuristic processedBy above
+  }
+
   return {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
