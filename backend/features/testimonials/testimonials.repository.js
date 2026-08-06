@@ -374,6 +374,14 @@ export async function updateTestimonialVideos(id, payload) {
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Array<{ user: object, testimonial: object|null }>}
  */
+/**
+ * List reporting members + latest testimonial rows (narrow columns — no SELECT *).
+ * Does NOT sign URLs — caller paginates then signs only the page.
+ *
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ user: object, testimonial: object|null }>>}
+ */
 export async function listForCoach(coachId, scope = 'direct') {
   const members = await fetchReportingTeamMembers(coachId, scope);
 
@@ -382,16 +390,35 @@ export async function listForCoach(coachId, scope = 'direct') {
   const memberIds = members.map((m) => m.UserId);
   const supabase = getSupabaseClient();
 
-  // 2. Fetch testimonials for those members (non-deleted, most recent per user)
+  // Narrow select — never pull otp_hash / unused columns into list payloads.
+  const LIST_COLUMNS = [
+    'id',
+    'user_id',
+    'before_image_path',
+    'after_image_path',
+    'before_weight_kg',
+    'after_weight_kg',
+    'goal_type',
+    'duration_text',
+    'status',
+    'verified_at',
+    'created_at',
+    'updated_at',
+    'health_video_path',
+    'business_video_path',
+    'video_status',
+    'video_verified_at',
+    'recovered_health_issues',
+  ].join(', ');
+
   const { data: testimonials, error: testErr } = await supabase
     .from(TABLE)
-    .select('*')
+    .select(LIST_COLUMNS)
     .in('user_id', memberIds)
     .eq('is_deleted', false)
     .order('id', { ascending: false });
   if (testErr) throw testErr;
 
-  // 3. Build a map: userId → latest testimonial
   const testimonialMap = {};
   for (const t of (testimonials || [])) {
     if (!testimonialMap[t.user_id]) {
@@ -508,6 +535,18 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct', context = nu
   return members
     .filter((member) => member.UserId !== Number(coachId))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
+}
+
+/**
+ * True when userId is in coach's reporting hierarchy (no testimonial query).
+ * @param {number} coachId
+ * @param {number} userId
+ * @param {'direct'|'full'} [scope='full']
+ */
+export async function isReportingMember(coachId, userId, scope = 'full') {
+  if (Number(coachId) === Number(userId)) return true;
+  const members = await fetchReportingTeamMembers(coachId, scope);
+  return members.some((m) => Number(m.UserId) === Number(userId));
 }
 
 /**

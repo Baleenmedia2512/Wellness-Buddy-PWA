@@ -21,7 +21,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
@@ -35,14 +35,10 @@ import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
   computeMemberCompleteness,
-  filterRowsByUpload,
-  countRowsByUpload,
-  countRowsByTeamScope,
   toggleStatusFilter,
 } from '../utils/testimonialFilters.js';
 import {
   buildSearchSuggestions,
-  filterRowsBySearch,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
 import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
@@ -397,10 +393,49 @@ function MemberCard({
   teamStats,
   editable = false,
   userId = null,
+  coachId = null,
   onOtpVerified,
 }) {
-  const { user, testimonial } = row;
-  const { level, filledCount, totalSlots } = computeMemberCompleteness(row);
+  const { user } = row;
+  const [detailTestimonial, setDetailTestimonial] = useState(null);
+  const detailInFlightRef = useRef(null);
+  const testimonial = detailTestimonial || row.testimonial;
+  const { level, filledCount, totalSlots } = computeMemberCompleteness({
+    ...row,
+    testimonial,
+  });
+
+  const ensureDetail = useCallback(async () => {
+    if (detailTestimonial) return detailTestimonial;
+    if (editable) return row.testimonial; // Mine already has full my-testimonial payload
+    const memberId = row.user?.userId;
+    if (!memberId) return row.testimonial;
+    if (detailInFlightRef.current) return detailInFlightRef.current;
+    const promise = getTestimonialDetail(memberId, coachId)
+      .then((data) => {
+        const full = data?.testimonial || null;
+        setDetailTestimonial(full);
+        return full;
+      })
+      .finally(() => {
+        detailInFlightRef.current = null;
+      });
+    detailInFlightRef.current = promise;
+    return promise;
+  }, [detailTestimonial, editable, row, coachId]);
+
+  // Lazy-load full media when list row only has thumbs / video paths.
+  useEffect(() => {
+    if (editable) return undefined;
+    const t = row.testimonial;
+    if (!t) return undefined;
+    const needsVideo = (t.healthVideoPath || t.businessVideoPath)
+      && !t.healthVideoUrl && !t.businessVideoUrl;
+    if (needsVideo) {
+      void ensureDetail();
+    }
+    return undefined;
+  }, [editable, row.testimonial, ensureDetail]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
@@ -1245,7 +1280,19 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [directPagination, setDirectPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [fullPagination, setFullPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [directUploadCounts, setDirectUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [fullUploadCounts, setFullUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef(null);
   const loadGenerationRef = useRef(0);
+  const pageCacheRef = useRef(new Map());
+  const inFlightRef = useRef(new Map());
 
   const coachId = user?.userId || user?.id;
 
@@ -1293,18 +1340,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setFullLoaded(false);
     setFullTeamMemberCount(null);
     try {
-      // Critical path only — do not block the list on slow team-report.
+      // First page only (limit 10) — never hydrate the full team on open.
       const [directResult, mine] = await Promise.all([
-        listForCoach(coachId, TEAM_SCOPES.DIRECT),
+        listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult) ? directResult : [];
+      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
       setDirectRows(direct);
+      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+      setDirectUploadCounts(directResult?.uploadCounts || {
+        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+      });
       setMineRow(mine);
-      setHasDownline(direct.length > 0);
-      if (direct.length === 0) setTeamScope(TEAM_SCOPES.MINE);
+      const total = directResult?.pagination?.total ?? direct.length;
+      setHasDownline(total > 0);
+      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       setError(err.message || 'Failed to load testimonials');
@@ -1343,9 +1395,19 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setFullLoading(true);
     setError(null);
     try {
-      const fullResult = await listForCoach(coachId, TEAM_SCOPES.FULL);
+      const fullResult = await listForCoach(coachId, {
+        scope: 'full',
+        page: 1,
+        limit: 10,
+        search: normalizeSearchQuery(searchQuery),
+        uploadFilter,
+      });
       if (generation !== loadGenerationRef.current) return;
-      setFullRows(Array.isArray(fullResult) ? fullResult : []);
+      setFullRows(Array.isArray(fullResult?.data) ? fullResult.data : []);
+      setFullPagination(fullResult?.pagination || { page: 1, hasMore: false, total: 0 });
+      setFullUploadCounts(fullResult?.uploadCounts || {
+        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+      });
       setFullLoaded(true);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
@@ -1355,7 +1417,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         setFullLoading(false);
       }
     }
-  }, [coachId, fullLoaded, fullLoading]);
+  }, [coachId, fullLoaded, fullLoading, searchQuery, uploadFilter]);
 
   useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
 
@@ -1398,37 +1460,144 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
+  const isMineScope = !hasDownline || teamScope === TEAM_SCOPES.MINE;
+
   const scopeRows = useMemo(() => {
     if (!hasDownline || teamScope === TEAM_SCOPES.MINE) return mineRow ? [mineRow] : [];
     if (teamScope === TEAM_SCOPES.FULL) return fullRows;
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(() => {
-    const counts = countRowsByTeamScope(mineRow, directRows, fullRows);
-    // Full list is lazy-loaded — use team-report member total until rows arrive.
-    if (!fullLoaded && fullTeamMemberCount != null) {
-      return { ...counts, [TEAM_SCOPES.FULL]: fullTeamMemberCount };
-    }
-    return counts;
-  }, [mineRow, directRows, fullRows, fullLoaded, fullTeamMemberCount]);
+  const teamScopeCounts = useMemo(() => ({
+    [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+    [TEAM_SCOPES.DIRECT]: directPagination.total || directRows.length,
+    [TEAM_SCOPES.FULL]: fullTeamMemberCount ?? fullPagination.total ?? fullRows.length,
+  }), [mineRow, directPagination.total, directRows.length, fullTeamMemberCount, fullPagination.total, fullRows.length]);
 
-  const uploadCounts = useMemo(() => countRowsByUpload(scopeRows), [scopeRows]);
+  // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
+  const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
 
-  const uploadFilteredRows = useMemo(
-    () => filterRowsByUpload(scopeRows, uploadFilter),
-    [scopeRows, uploadFilter],
-  );
+  // Server already filtered — use scopeRows as filteredRows for team scopes.
+  const filteredRows = scopeRows;
 
   const suggestions = useMemo(
-    () => buildSearchSuggestions(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
+    () => buildSearchSuggestions(filteredRows, searchQuery),
+    [filteredRows, searchQuery],
   );
 
-  const filteredRows = useMemo(
-    () => filterRowsBySearch(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
-  );
+  const activePagination = teamScope === TEAM_SCOPES.FULL ? fullPagination : directPagination;
+
+  const loadMoreTeam = useCallback(async () => {
+    if (isMineScope || loadingMore || loading || fullLoading) return;
+    if (!activePagination.hasMore) return;
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    const nextPage = (activePagination.page || 1) + 1;
+    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${uploadFilter}|${nextPage}`;
+    if (pageCacheRef.current.has(cacheKey)) {
+      const cached = pageCacheRef.current.get(cacheKey);
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...cached.data]);
+        setFullPagination(cached.pagination);
+      } else {
+        setDirectRows((prev) => [...prev, ...cached.data]);
+        setDirectPagination(cached.pagination);
+      }
+      return;
+    }
+    if (inFlightRef.current.has(cacheKey)) return;
+
+    setLoadingMore(true);
+    const promise = listForCoach(coachId, {
+      scope,
+      page: nextPage,
+      limit: 10,
+      search: normalizeSearchQuery(searchQuery),
+      uploadFilter,
+    });
+    inFlightRef.current.set(cacheKey, promise);
+    try {
+      const result = await promise;
+      pageCacheRef.current.set(cacheKey, result);
+      const pageData = Array.isArray(result?.data) ? result.data : [];
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...pageData]);
+        setFullPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+      } else {
+        setDirectRows((prev) => [...prev, ...pageData]);
+        setDirectPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load more');
+    } finally {
+      inFlightRef.current.delete(cacheKey);
+      setLoadingMore(false);
+    }
+  }, [
+    isMineScope, loadingMore, loading, fullLoading, activePagination,
+    teamScope, searchQuery, uploadFilter, coachId,
+  ]);
+
+  // Refetch page 1 when search / upload filter changes (server-side).
+  // Skip the first run — bootstrap / loadFullTeam already loaded page 1.
+  const skipFilterFetchRef = useRef(true);
+  useEffect(() => {
+    if (!coachId || !hasDownline || isMineScope) return undefined;
+    if (skipFilterFetchRef.current) {
+      skipFilterFetchRef.current = false;
+      return undefined;
+    }
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await listForCoach(coachId, {
+          scope,
+          page: 1,
+          limit: 10,
+          search: normalizeSearchQuery(searchQuery),
+          uploadFilter,
+        });
+        if (cancelled) return;
+        const pageData = Array.isArray(result?.data) ? result.data : [];
+        if (scope === 'full') {
+          setFullRows(pageData);
+          setFullPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          setFullLoaded(true);
+        } else {
+          setDirectRows(pageData);
+          setDirectPagination(result.pagination || { page: 1, hasMore: false, total: 0 });
+          if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+        }
+      } catch {
+        // keep current rows
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: refetch on search/filter/scope
+  }, [searchQuery, uploadFilter, teamScope, coachId, hasDownline, isMineScope]);
+
+  // Reset skip flag when leaving Mine so Direct/Full get a clean first paint from their loaders.
+  useEffect(() => {
+    if (!isMineScope) skipFilterFetchRef.current = true;
+  }, [teamScope]);
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    if (isMineScope || !activePagination.hasMore) return undefined;
+    const node = loadMoreSentinelRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void loadMoreTeam();
+    }, { rootMargin: '240px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMineScope, activePagination.hasMore, loadMoreTeam, filteredRows.length]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -1482,10 +1651,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     }
   }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
 
-  const hasScopeData    = scopeRows.length > 0;
+  const hasScopeData    = scopeRows.length > 0 || (activePagination.total > 0 && !isMineScope);
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
   const showTeamChrome  = hasDownline;
-  const isMineScope     = !hasDownline || teamScope === TEAM_SCOPES.MINE;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -1622,9 +1790,20 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           })}
           editable={isMineScope}
           userId={isMineScope ? coachId : null}
+          coachId={coachId}
           onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
         />
       ))}
+
+      {!loading && !fullLoading && !isMineScope && activePagination.hasMore && (
+        <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
+          {loadingMore ? (
+            <LoadingSpinner context="normal" />
+          ) : (
+            <p className="text-xs text-gray-400">Scroll for more</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
