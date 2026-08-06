@@ -43,6 +43,14 @@ import logger from '../../shared/lib/logger.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 import {
+  extractFoodListSummary,
+  inferHasImage,
+} from './domain/diary-list-summary.js';
+import {
+  DIARY_LIST_DEFAULT_LIMIT,
+  paginateDiaryEntries,
+} from './domain/diary-pagination.js';
+import {
   IANA_IST,
   assertNotFutureDateYmd,
   normalizeStoredTimestampToUtcIso,
@@ -52,6 +60,60 @@ import {
 } from '../../shared/lib/datetime/index.js';
 
 export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
+
+/**
+ * Lazy capture photo for diary thumbs (unknown / pending).
+ * Auth: owner or upline coach (same gate as listDiaryEntries).
+ *
+ * @returns {{ httpStatus: number, body: object }}
+ */
+export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
+  const row = await diaryRepo.fetchCaptureImageById(captureId);
+  if (!row) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'NOT_FOUND', message: 'Capture not found' } },
+    };
+  }
+
+  const ownerUserId = row.UserID != null ? String(row.UserID) : null;
+  if (!ownerUserId) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'NOT_FOUND', message: 'Capture has no owner' } },
+    };
+  }
+
+  const coachChain = await repo.getCoachChain(ownerUserId);
+  const decision = canRetryCapture({
+    viewerId: viewerUserId,
+    ownerId: ownerUserId,
+    coachChain,
+  });
+  if (!decision.allowed) {
+    if (decision.reason === 'NO_VIEWER') {
+      const err = new Error('Authentication required');
+      err.status = 401;
+      err.code = 'UNAUTHENTICATED';
+      throw err;
+    }
+    const err = new Error('You do not have access to this capture');
+    err.status = 403;
+    err.code = 'FORBIDDEN_CAPTURE_IMAGE';
+    throw err;
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        imageBase64: row.ImageBase64 || null,
+        imagePath: row.ImagePath || null,
+      },
+    },
+  };
+}
 
 
 // ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
@@ -305,15 +367,8 @@ export async function retryPromotionToFood(input) {
 //       ok: true,
 //       data: {
 //         date, ownerUserId, isSelf, includesUnknown,
-//         entries: [
-//           {
-//             kind: 'food' | 'weight' | 'education' | 'watch' | 'unknown',
-//             capturedAt: ISO string,
-//             capture: { id, type, ... } | null,
-//             payload: { … kind-specific projection … },
-//           },
-//           ...
-//         ],
+//         pagination: { limit, offset, total, hasMore, nextOffset },
+//         entries: [ /* lean list cards — no ImageBase64 / AnalysisData */ ],
 //       },
 //     },
 //   }
@@ -333,7 +388,13 @@ export async function retryPromotionToFood(input) {
 //     throwing; this matches the existing
 //     `activity.service.getWatchBurnedCalories` parser.
 export async function listDiaryEntries(input) {
-  const { ownerUserId, viewerUserId, date } = input;
+  const {
+    ownerUserId,
+    viewerUserId,
+    date,
+    limit = DIARY_LIST_DEFAULT_LIMIT,
+    offset = 0,
+  } = input;
   const timezoneIana = await getUserTimezoneIana(ownerUserId);
   assertNotFutureDateYmd(date, timezoneIana);
 
@@ -398,10 +459,7 @@ export async function listDiaryEntries(input) {
   }
   const results = await Promise.all(reads);
 
-  // 5. Normalise + flatten. Per-kind projections are deliberately small
-  // (the card UI does not need micronutrients or full image base64 in
-  // the list; the detail modal still fetches via the established
-  // per-vertical endpoints).
+  // 5. Normalise + flatten. List projection is lean (no base64 / AI JSON).
   const entries = [];
   for (const { kind, rows } of results) {
     for (const row of rows) {
@@ -435,6 +493,10 @@ export async function listDiaryEntries(input) {
   );
 
   const dedupedEntries = dedupePendingDiaryEntries(dayEntries);
+  const { entries: pageEntries, pagination } = paginateDiaryEntries(
+    dedupedEntries,
+    { limit, offset },
+  );
 
   return {
     httpStatus: 200,
@@ -446,7 +508,8 @@ export async function listDiaryEntries(input) {
         ownerTimezoneIana: timezoneIana,
         isSelf,
         includesUnknown,
-        entries: dedupedEntries,
+        pagination,
+        entries: pageEntries,
       },
     },
   };
@@ -475,17 +538,25 @@ export function toDiaryEntry(
     ? normalizeFoodCreatedAt(row.CreatedAt)
     : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
   switch (kind) {
-    case 'food':
+    case 'food': {
+      const listSummary = extractFoodListSummary(row.AnalysisData, row.ProcessedBy);
       return {
         kind: 'food',
         capturedAt,
         capture: row.CaptureID ? { id: row.CaptureID } : null,
         payload: {
-          id:           row.ID,
-          imagePath:    row.ImagePath,
-          imageBase64:  row.ImageBase64,
-          analysisData: row.AnalysisData,
-          confidence:   row.ConfidenceScore,
+          id:          row.ID,
+          imagePath:   row.ImagePath || null,
+          // Lean list: no ImageBase64 / AnalysisData — clients use listSummary
+          // + lazy /api/food-corrections/meal-image for thumbs; detail modals
+          // load full analysis via food-corrections.
+          hasImage:    inferHasImage({
+            imagePath: row.ImagePath,
+            captureId: row.CaptureID,
+            hasImageHint: true,
+          }),
+          listSummary,
+          confidence:  row.ConfidenceScore,
           totals: {
             calories: row.TotalCalories,
             protein:  row.TotalProtein,
@@ -501,6 +572,7 @@ export function toDiaryEntry(
           deviceInfo:  row.DeviceInfo,
         },
       };
+    }
 
     case 'weight':
       return {
@@ -508,13 +580,13 @@ export function toDiaryEntry(
         capturedAt,
         capture: null,
         payload: {
-          id:           row.ID,
-          weight:       row.Weight,
-          bmi:          row.Bmi,
-          bodyFat:      row.BodyFat,
-          muscleMass:   row.MuscleMass,
-          bmr:          row.Bmr,
-          imageBase64:  row.WeightImageBase64,
+          id:          row.ID,
+          weight:      row.Weight,
+          bmi:         row.Bmi,
+          bodyFat:     row.BodyFat,
+          muscleMass:  row.MuscleMass,
+          bmr:         row.Bmr,
+          hasImage:    true,
         },
       };
 
@@ -524,11 +596,11 @@ export function toDiaryEntry(
         capturedAt,
         capture: null,
         payload: {
-          id:          row.Id,
-          platform:    row.Platform,
-          topic:       row.Topic,
-          confidence:  row.Confidence,
-          imageBase64: row.ImageBase64,
+          id:         row.Id,
+          platform:   row.Platform,
+          topic:      row.Topic,
+          confidence: row.Confidence,
+          hasImage:   true,
         },
       };
 
@@ -561,9 +633,13 @@ export function toDiaryEntry(
           publicShareToken: row.PublicShareToken,
         },
         payload: {
-          id:          row.ID,
-          imagePath:   row.ImagePath,
-          imageBase64: row.ImageBase64,
+          id:        row.ID,
+          imagePath: row.ImagePath || null,
+          hasImage:  inferHasImage({
+            imagePath: row.ImagePath,
+            captureId: row.ID,
+            hasImageHint: true,
+          }),
           ...(isPendingAnalysis ? { isPendingAnalysis: true } : {}),
         },
       };

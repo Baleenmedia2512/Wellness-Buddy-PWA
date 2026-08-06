@@ -402,7 +402,15 @@ export default function DiaryFeed({
     return () => { cancelled = true; };
   }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
 
-  const { loading, error, data, refresh } = useDiary({
+  const {
+    loading,
+    loadingMore,
+    error,
+    data,
+    hasMore,
+    loadMoreSentinelRef,
+    refresh,
+  } = useDiary({
     ownerUserId,
     viewerUserId,
     date,
@@ -500,6 +508,8 @@ export default function DiaryFeed({
           canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
+          ownerUserId={ownerUserId}
+          viewerUserId={viewerUserId}
           {...(entry.kind === 'weight'
             ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
             : {})}
@@ -525,6 +535,8 @@ export default function DiaryFeed({
       previousWeightById,
       handleUndoRestore,
       handleUndoExpire,
+      ownerUserId,
+      viewerUserId,
     ],
   );
 
@@ -646,12 +658,31 @@ export default function DiaryFeed({
                   ? `undo-${entry.undo?.kind}-${entry.undo?.entryId}`
                   : `${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`
               }
-              isLast={idx === visibleEntries.length - 1}
+              isLast={idx === visibleEntries.length - 1 && !hasMore}
             >
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
+
+        <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+        {loadingMore && (
+          <div className="flex justify-center py-3" data-testid="diary-loading-more">
+            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+          </div>
+        )}
+        {error && data && (
+          <div className="px-2 py-3 text-center">
+            <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="text-xs font-semibold text-emerald-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -662,6 +693,24 @@ export default function DiaryFeed({
       <div className="space-y-3">
         {visibleEntries.map(renderRow)}
       </div>
+      <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+      {loadingMore && (
+        <div className="flex justify-center py-3" data-testid="diary-loading-more">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+        </div>
+      )}
+      {error && data && (
+        <div className="px-2 py-3 text-center">
+          <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+          <button
+            type="button"
+            onClick={refresh}
+            className="text-xs font-semibold text-emerald-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }
