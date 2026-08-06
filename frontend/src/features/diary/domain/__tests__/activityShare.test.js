@@ -195,13 +195,25 @@ describe('diary share builders', () => {
     const up = buildWeightShareText({ previousWeight: 70, currentWeight: 71 });
     expect(up).toContain('🔴↑ Increased by 1 kg');
 
+    const smallUp = buildWeightShareText({ previousWeight: 73.35, currentWeight: 73.5 });
+    expect(smallUp).toContain('🔴↑ Increased by 150 g');
+
     const uiDown = resolveWeightDeltaDisplay(72, 70.5);
     expect(uiDown.direction).toBe('down');
+    expect(uiDown.label).toBe('Decreased by 1.5 kg');
     expect(uiDown.className).toContain('emerald');
 
     const uiUp = resolveWeightDeltaDisplay(70, 71);
     expect(uiUp.direction).toBe('up');
+    expect(uiUp.label).toBe('Increased by 1 kg');
     expect(uiUp.className).toContain('red');
+
+    const uiGrams = resolveWeightDeltaDisplay(73.35, 73.5);
+    expect(uiGrams.direction).toBe('up');
+    expect(uiGrams.label).toBe('Increased by 150 g');
+
+    // 0 kg is not a valid previous weight — no fake "Increased by 73.5 kg"
+    expect(resolveWeightDeltaDisplay(0, 73.5).label).toBeNull();
   });
 
   test('dispatcher routes by activity type', () => {

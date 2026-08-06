@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Smartphone, GraduationCap, HelpCircle, Share2 } from 'lucide-react';
+import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
 import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare } from '../../../../shared/utils/shareUtils';
@@ -29,6 +29,16 @@ import {
   resolveWeightDeltaDisplay,
 } from '../../domain/share';
 
+/** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
+function WeightDeltaArrow({ direction, className = '' }) {
+  if (direction === 'up') {
+    return <ArrowUp className={`inline-block w-3 h-3 shrink-0 ${className}`} aria-hidden="true" strokeWidth={2.5} />;
+  }
+  if (direction === 'down') {
+    return <ArrowDown className={`inline-block w-3 h-3 shrink-0 ${className}`} aria-hidden="true" strokeWidth={2.5} />;
+  }
+  return null;
+}
 /** Swipe-to-delete affordance; disabled when parent passes canDelete={false}. */
 function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
   const swipeEnabled = canDelete !== false;
@@ -473,9 +483,13 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
               fontSize: 14,
               fontWeight: 700,
               color: delta.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
             }}>
-              {delta.direction === 'down' ? '↓ ' : delta.direction === 'up' ? '↑ ' : ''}
-              {delta.label}
+              <WeightDeltaArrow direction={delta.direction} className="" />
+              <span style={{ color: delta.color }}>{delta.label}</span>
             </p>
           )}
         </div>
@@ -533,9 +547,9 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
             </p>
           )}
           {delta.label && (
-            <p className={`text-[10px] mt-0.5 font-medium ${delta.className}`}>
-              {delta.direction === 'down' ? '↓ ' : delta.direction === 'up' ? '↑ ' : ''}
-              {delta.label}
+            <p className={`text-[10px] mt-0.5 font-medium ${delta.className} flex items-center gap-0.5`}>
+              <WeightDeltaArrow direction={delta.direction} className={delta.className} />
+              <span>{delta.label}</span>
             </p>
           )}
         </div>
