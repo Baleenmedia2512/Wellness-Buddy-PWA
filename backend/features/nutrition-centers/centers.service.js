@@ -3,11 +3,12 @@ import logger from '../../shared/lib/logger.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
+import { paginateCentersListRecords } from './domain/centers.pagination.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
 const GEO_LIST_CACHE_KEY = 'nutrition-centers:geo:all';
-const LIST_METRICS_CACHE_TTL_MS = 60 * 1000;
+const LIST_METRICS_CACHE_TTL_MS = 30 * 1000;
 // ─── check name ──────────────────────────────────────────────────────────────
 export async function checkName({ name }) {
   if (!name || name.length < 2) {
@@ -170,21 +171,46 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
 const inflightListCenters = new Map();
 
 export async function listCenters(input) {
-  const { userId, teamFilter, scope, includeMetrics = true, startDate, endDate } = input;
+  const {
+    userId, teamFilter, scope, includeMetrics = true, startDate, endDate,
+    page, limit, search, paginate = true,
+  } = input;
   const userIdNum = parseInt(userId, 10);
+  // Inflight key excludes page/search so concurrent page requests share one metrics build.
   const cacheKey = [
     userIdNum, teamFilter, scope, startDate || '', endDate || '', includeMetrics ? 1 : 0,
   ].join(':');
 
   if (inflightListCenters.has(cacheKey)) {
-    return inflightListCenters.get(cacheKey);
+    const shared = await inflightListCenters.get(cacheKey);
+    return applyCentersPagination(shared, { page, limit, search, paginate, includeMetrics });
   }
 
   const promise = listCentersImpl(input).finally(() => {
     inflightListCenters.delete(cacheKey);
   });
   inflightListCenters.set(cacheKey, promise);
-  return promise;
+  const result = await promise;
+  return applyCentersPagination(result, { page, limit, search, paginate, includeMetrics });
+}
+
+/**
+ * Slice a full metrics payload into a page. Geo / metrics=0 paths skip pagination.
+ */
+function applyCentersPagination(result, { page, limit, search, paginate, includeMetrics }) {
+  if (!includeMetrics || paginate === false) return result;
+  const all = result?.body?.data;
+  if (!Array.isArray(all)) return result;
+
+  const { records, pagination } = paginateCentersListRecords(all, { page, limit, search });
+  return {
+    httpStatus: result.httpStatus,
+    body: {
+      success: true,
+      data: records,
+      pagination,
+    },
+  };
 }
 
 async function listCentersImpl(input) {
@@ -252,23 +278,32 @@ async function listCentersImpl(input) {
 
   const centers = await repo.listCenters({ teamUserIds, scope });
 
-  const ownerIds = centers.map((c) => c.owner_user_id);
-  const owners = await repo.getOwnerNames(ownerIds);
+  const ownerIds = [...new Set(centers.map((c) => c.owner_user_id).filter(Boolean))];
+  const [owners, attendanceByCenter] = await Promise.all([
+    repo.getOwnerNames(ownerIds),
+    repo.attendanceForCenters(
+      centers.map((c) => c.id),
+      startDate,
+      endDate,
+      timezoneIana,
+    ),
+  ]);
+
   const ownerMap = {};
   owners.forEach((o) => { ownerMap[o.UserId] = o.UserName; });
 
-  const attendanceByCenter = await repo.attendanceForCenters(
-    centers.map((c) => c.id),
-    startDate,
-    endDate,
-    timezoneIana,
-  );
-
+  // Slim enriched rows — drop unused registered_at/status from client payload later via pagination mapper
   const centersWithMetrics = centers.map((center) => {
     const rangeLogs = attendanceByCenter.get(Number(center.id)) || [];
     const todayAttendance = new Set(rangeLogs.map((log) => log.UserId)).size;
     return {
-      ...center,
+      id: center.id,
+      center_name: center.center_name,
+      latitude: center.latitude,
+      longitude: center.longitude,
+      education_hour: center.education_hour,
+      owner_user_id: center.owner_user_id,
+      owner_phone: center.owner_phone,
       ownerName: ownerMap[center.owner_user_id] || 'Unknown',
       totalParticipants: todayAttendance,
       todayAttendance,

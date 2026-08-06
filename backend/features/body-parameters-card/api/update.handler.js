@@ -9,6 +9,7 @@ import {
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
   enforceBpcLeadNoCoachUntilOnboarding,
+  invalidateBpcListCache,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
 import logger from '../../../shared/lib/logger.js';
@@ -33,6 +34,7 @@ export async function handleUpdateCard(body) {
   const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
+  invalidateBpcListCache(card.created_by);
   const linkPayload = buildLinkPayload(payload, card);
 
   let syncResult = { synced: false, userId: card.user_id ?? null };
