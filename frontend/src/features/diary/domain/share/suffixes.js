@@ -9,6 +9,7 @@
 
 import { DIARY_FOOD_ACTIVITY } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
+import { formatShakeProductScoops } from './shakeShare';
 
 /**
  * @param {'food'|'water'|'afresh'|'shake'|'education'|'weight'|string} activityType
@@ -34,6 +35,8 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case DIARY_FOOD_ACTIVITY.SHAKE:
     case 'shake': {
       const name = (payload.shakeName || 'Protein Shake').trim();
+      const scoopLine = formatShakeProductScoops(payload.shakeProducts);
+      if (scoopLine) return `${name}, ${scoopLine}`;
       const servings = Number(payload.servings);
       const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
       return `${name}, serving ${count}`;
@@ -53,9 +56,10 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (previous == null) return `weight ${current} kg`;
 
       const delta = Math.round((current - previous) * 100) / 100;
+      // Red up / green down — plain ⬆️/⬇️ render as platform-blue squares in WhatsApp.
       let arrow = '';
-      if (delta < 0) arrow = ' ⬇️';
-      else if (delta > 0) arrow = ' ⬆️';
+      if (delta < 0) arrow = ' 🟢↓';
+      else if (delta > 0) arrow = ' 🔴↑';
 
       return `previous: ${previous} kg, current: ${current} kg${arrow}`;
     }

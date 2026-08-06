@@ -27,9 +27,9 @@ export function buildWeightShareText({
     const delta = Math.round((current - previous) * 100) / 100;
     const abs = Math.abs(delta);
     if (delta < 0) {
-      lines.push('', `⬇️ Decreased by ${abs} kg`);
+      lines.push('', `🟢↓ Decreased by ${abs} kg`);
     } else if (delta > 0) {
-      lines.push('', `⬆️ Increased by ${abs} kg`);
+      lines.push('', `🔴↑ Increased by ${abs} kg`);
     } else {
       lines.push('', 'No change');
     }

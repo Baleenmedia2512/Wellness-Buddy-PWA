@@ -92,6 +92,29 @@ function extractScoops(foodData, analysisData) {
   return null;
 }
 
+function extractShakeProducts(foodData, analysisData) {
+  const raw = parseRaw(analysisData);
+  const candidates = [
+    foodData?.shakeProducts,
+    raw?.shakeProducts,
+    ...(foodData?.detailedItems || []).map((item) => item?.shakeProducts),
+    ...(raw?.foods || []).map((item) => item?.shakeProducts),
+  ];
+  for (const products of candidates) {
+    if (!products || typeof products !== 'object') continue;
+    const formula1 = Number(products.formula1);
+    const shakemate = Number(products.shakemate);
+    const protein = Number(products.protein);
+    if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) continue;
+    return {
+      formula1: Math.max(0, Math.round(formula1) || 0),
+      shakemate: Math.max(0, Math.round(shakemate) || 0),
+      protein: Math.max(0, Math.round(protein) || 0),
+    };
+  }
+  return null;
+}
+
 const MEAL_LABELS = {
   breakfast: 'Breakfast',
   'morning-snack': 'Snack',
@@ -102,7 +125,7 @@ const MEAL_LABELS = {
 };
 
 function buildShareText({
-  activityType, foodName, calories, volumeMl, scoops, servings, nutrition = {},
+  activityType, foodName, calories, volumeMl, scoops, servings, shakeProducts, nutrition = {},
   glycemicIndex = null,
 }) {
   if (activityType === 'water') {
@@ -118,6 +141,7 @@ function buildShareText({
     return buildDiaryShareSuffix('shake', {
       shakeName: foodName || 'Protein Shake',
       servings: servings || 1,
+      shakeProducts,
     });
   }
   return buildDiaryShareSuffix('food', {
@@ -151,6 +175,10 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     () => extractScoops(foodData, payload?.analysisData),
     [foodData, payload?.analysisData],
   );
+  const shakeProducts = useMemo(
+    () => extractShakeProducts(foodData, payload?.analysisData),
+    [foodData, payload?.analysisData],
+  );
 
   if (!payload) return null;
 
@@ -168,6 +196,7 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete }) => {
     volumeMl,
     scoops,
     servings: 1,
+    shakeProducts,
     nutrition: {
       protein: totals.protein ?? foodData?.nutrition?.protein ?? 0,
       carbs: totals.carbs ?? foodData?.nutrition?.carbs ?? 0,

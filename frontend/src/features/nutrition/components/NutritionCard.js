@@ -13,6 +13,7 @@ import {
   resolveFoodActivityType,
   extractVolumeMl,
   extractScoops,
+  extractShakeProducts,
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 const NutritionCard = ({
@@ -834,6 +835,7 @@ const NutritionCard = ({
         activityCaption = buildDiaryShareSuffix('shake', {
           shakeName: mealName,
           servings: 1,
+          shakeProducts: extractShakeProducts({ detailedItems: localDetailedItems }),
         });
       } else {
         activityCaption = buildDiaryShareSuffix('food', {

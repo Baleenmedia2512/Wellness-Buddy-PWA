@@ -22,6 +22,7 @@ describe('transformToBackgroundServiceFormat', () => {
         estimatedWeight: 58,
         unit: 'ml',
         isLiquid: true,
+        shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
         calories: 223,
         protein: 24.73,
         carbs: 24.24,
@@ -43,7 +44,9 @@ describe('transformToBackgroundServiceFormat', () => {
           glycemic_index: 20,
         },
       }],
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
       confidence: 'high',
+      processedBy: 'shake_calculator',
     });
 
     expect(transformed.foods).toHaveLength(1);
@@ -52,6 +55,9 @@ describe('transformToBackgroundServiceFormat', () => {
     expect(food.volume_ml).toBe(300);
     expect(food.unit).toBe('ml');
     expect(food.isLiquid).toBe(true);
+    expect(food.shakeProducts).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
+    expect(transformed.shakeProducts).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
+    expect(transformed.processedBy).toBe('shake_calculator');
     expect(food.nutrition.protein).toBe(24.73);
     expect(food.nutrition.carbs).toBe(24.24);
     expect(food.nutrition.fat).toBe(2.98);

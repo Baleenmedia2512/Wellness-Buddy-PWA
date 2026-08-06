@@ -18,6 +18,7 @@ export {
   extractVolumeMl,
   extractScoops,
   extractShakeServings,
+  extractShakeProducts,
   sumAfreshScoopsFromDayAnalyses,
 } from './domain/activityType';
 export { formatWaterVolume } from './domain/formatVolume';

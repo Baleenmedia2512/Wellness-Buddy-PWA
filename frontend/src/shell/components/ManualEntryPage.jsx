@@ -169,6 +169,7 @@ function buildAnalysisFromManualFood(m) {
 
 /** Shake calculator payload → promoteUnknownToFood analysis shape (same as AI). */
 function shakePayloadToAnalysis(payload) {
+  const shakeProducts = payload?.shakeProducts || null;
   const foods = (payload?.detailedItems || []).map((item) => ({
     name: item.name,
     nutrition: item.nutrition || {},
@@ -177,12 +178,14 @@ function shakePayloadToAnalysis(payload) {
     volume_ml: item.volume_ml,
     unit: item.unit,
     isLiquid: item.isLiquid,
+    shakeProducts: item.shakeProducts || shakeProducts || null,
   }));
   return {
     foods,
     total: payload?.nutrition || {},
     confidence: payload?.confidence || 'high',
     processedBy: payload?.processedBy || 'shake_calculator',
+    shakeProducts,
   };
 }
 
@@ -434,30 +437,34 @@ export default function ManualEntryPage({
   };
 
   const handleFoodSave = async (manualData) => {
-    setSaving(true);
-    try {
-      const analysis = buildAnalysisFromManualFood(manualData);
-      const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
-      const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
-      const activityCaption = buildDiaryShareSuffix('food', {
-        foodName,
-        calories: n.calories ?? 0,
-        protein: n.protein ?? 0,
-        carbs: n.carbs ?? 0,
-        fat: n.fat ?? 0,
-        fiber: n.fiber ?? 0,
-        glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
-      });
-      await saveFoodAnalysis(analysis, 'Food saved to Diary', activityCaption);
-      setFoodEntryMeta(null);
-      setActiveForm(null);
-    } catch (err) {
-      const msg = err?.message || 'Failed to save food';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+    const analysis = buildAnalysisFromManualFood(manualData);
+    const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
+    const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
+    const activityCaption = buildDiaryShareSuffix('food', {
+      foodName,
+      calories: n.calories ?? 0,
+      protein: n.protein ?? 0,
+      carbs: n.carbs ?? 0,
+      fat: n.fat ?? 0,
+      fiber: n.fiber ?? 0,
+      glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+    });
+
+    // Close search UI immediately — promote runs in background (same as Cancel discard).
+    setFoodEntryMeta(null);
+    setActiveForm(null);
+    onToast?.('Food saved to Diary');
+
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: userId,
+      analysisResult: analysis,
+      originalCapturedAt: originalCapturedAt || null,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save food — check Diary.");
+    });
+
+    await exit(activityCaption ? { activityCaption } : null);
   };
 
   const handleWeightSave = async ({ weightValue, unit, bmr }) => {
@@ -530,7 +537,11 @@ export default function ManualEntryPage({
     await saveFoodAnalysis(
       analysis,
       'Shake saved to Diary',
-      buildDiaryShareSuffix('shake', { shakeName, servings: 1 }),
+      buildDiaryShareSuffix('shake', {
+        shakeName,
+        servings: 1,
+        shakeProducts: analysis.shakeProducts,
+      }),
     );
     setActiveForm(null);
   };

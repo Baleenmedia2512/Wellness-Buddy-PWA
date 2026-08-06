@@ -21,6 +21,7 @@ export { buildShakeShareText } from './shakeShare';
 export { buildEducationShareText } from './educationShare';
 export { buildWeightShareText, resolveWeightDeltaDisplay } from './weightShare';
 export { buildDiaryShareSuffix } from './suffixes';
+export { formatShakeProductScoops } from './shakeShare';
 
 /**
  * Build the WhatsApp caption for a diary entry (rich multi-line template).

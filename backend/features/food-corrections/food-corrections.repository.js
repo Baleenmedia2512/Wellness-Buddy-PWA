@@ -4,6 +4,7 @@ import {
   applyDayFilter,
   applyDayFilterWidened,
   applyDateRangeFilter,
+  applyDateRangeFilterWidened,
   applySinceDayStartFilter,
 } from '../../shared/lib/datetime/applyDayFilter.js';
 import {
@@ -11,6 +12,7 @@ import {
   todayInTimezone,
   shiftDateYmd,
   filterFoodRowsByCalendarDay,
+  filterFoodRowsByCalendarDateRange,
 } from '../../shared/lib/datetime/index.js';
 
 // ─── corrections table ──────────────────────────────────────────────────────
@@ -182,6 +184,31 @@ export async function fetchMealTotalsForDate(userId, date, timezoneIana = IANA_I
   const { data, error } = await query;
   if (error) throw error;
   return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+}
+
+/**
+ * Lightweight meal totals for an inclusive calendar range (home carousel / charts).
+ * Widened SQL bounds + post-filter for legacy IST wall-clock CreatedAt.
+ */
+export async function fetchMealTotalsForRange(userId, startDate, endDate, timezoneIana = IANA_IST) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('food_nutrition_data_table')
+    .select([
+      'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+      'TotalSugar, TotalSodium, TotalCholesterol',
+      'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+      'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+      'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+      'CreatedAt',
+    ].join(', '))
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null);
+  query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  const { data, error } = await query;
+  if (error) throw error;
+  return filterFoodRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
 }
 
 /** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */

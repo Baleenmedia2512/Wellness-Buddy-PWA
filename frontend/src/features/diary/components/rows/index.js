@@ -474,7 +474,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
               fontWeight: 700,
               color: delta.color,
             }}>
-              {delta.direction === 'down' ? '⬇️ ' : delta.direction === 'up' ? '⬆️ ' : ''}
+              {delta.direction === 'down' ? '↓ ' : delta.direction === 'up' ? '↑ ' : ''}
               {delta.label}
             </p>
           )}
@@ -534,7 +534,7 @@ export function WeightRow({ entry, onOpen, onDelete, canDelete = true, hideTime 
           )}
           {delta.label && (
             <p className={`text-[10px] mt-0.5 font-medium ${delta.className}`}>
-              {delta.direction === 'down' ? '⬇️ ' : delta.direction === 'up' ? '⬆️ ' : ''}
+              {delta.direction === 'down' ? '↓ ' : delta.direction === 'up' ? '↑ ' : ''}
               {delta.label}
             </p>
           )}

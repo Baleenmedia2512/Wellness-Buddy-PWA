@@ -8,6 +8,7 @@ import {
   extractVolumeMl,
   extractScoops,
   extractShakeServings,
+  extractShakeProducts,
   sumAfreshScoopsFromDayAnalyses,
 } from '../activityType';
 import { formatWaterVolume } from '../formatVolume';
@@ -159,10 +160,19 @@ describe('diary share builders', () => {
     expect(text).not.toContain('Lunch');
   });
 
-  test('shake template includes name and serving', () => {
-    const text = buildShakeShareText({ shakeName: 'Herbalife Shake', servings: 1 });
+  test('shake template includes name and product scoops', () => {
+    const text = buildShakeShareText({
+      shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
+    });
     expect(text).toContain('🥤 Protein Shake');
     expect(text).toContain('Name: Herbalife Shake');
+    expect(text).toContain('Formula 1: 3 scoops, Shakemate: 2 scoops, Personalized Protein: 1 scoop');
+    expect(text).not.toContain('Serving:');
+  });
+
+  test('shake template falls back to serving when scoops missing', () => {
+    const text = buildShakeShareText({ shakeName: 'Herbalife Shake', servings: 1 });
     expect(text).toContain('Serving: 1');
   });
 
@@ -180,10 +190,10 @@ describe('diary share builders', () => {
     const down = buildWeightShareText({ previousWeight: 72, currentWeight: 70.5 });
     expect(down).toContain('Previous Weight: 72 kg');
     expect(down).toContain('Current Weight: 70.5 kg');
-    expect(down).toContain('⬇️ Decreased by 1.5 kg');
+    expect(down).toContain('🟢↓ Decreased by 1.5 kg');
 
     const up = buildWeightShareText({ previousWeight: 70, currentWeight: 71 });
-    expect(up).toContain('⬆️ Increased by 1 kg');
+    expect(up).toContain('🔴↑ Increased by 1 kg');
 
     const uiDown = resolveWeightDeltaDisplay(72, 70.5);
     expect(uiDown.direction).toBe('down');
@@ -226,12 +236,12 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('previous: 55.7 kg, current: 55.6 kg ⬇️');
+    })).toBe('previous: 55.7 kg, current: 55.6 kg 🟢↓');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('previous: 70 kg, current: 71 kg ⬆️');
+    })).toBe('previous: 70 kg, current: 71 kg 🔴↑');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
@@ -254,6 +264,29 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
     })).toBe('education Academy');
+  });
+
+  test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
+    })).toBe('Herbalife Shake, Formula 1: 3 scoops, Shakemate: 2 scoops, Personalized Protein: 1 scoop');
+
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
+      servings: 1,
+    })).toBe('Herbalife Shake, serving 1');
+  });
+});
+
+describe('extractShakeProducts', () => {
+  test('reads scoop counts from detailedItems', () => {
+    expect(extractShakeProducts({
+      detailedItems: [{
+        name: 'Herbalife Shake',
+        shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
+      }],
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
   });
 });
 

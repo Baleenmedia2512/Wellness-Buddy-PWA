@@ -52,6 +52,26 @@ export function filterWatchCalorieRowsForDate(rows, targetDate, timezoneIana) {
 }
 
 /**
+ * Max watch kcal per calendar day in [startDate, endDate] (inclusive).
+ * @returns {Record<string, number>}
+ */
+export function groupWatchCaloriesByDate(rows, startDate, endDate, timezoneIana) {
+  const byDate = {};
+  for (const row of rows || []) {
+    let ymd;
+    try {
+      ymd = timestampToCalendarYmd(row.CreatedAt, timezoneIana);
+    } catch {
+      continue;
+    }
+    if (ymd < startDate || ymd > endDate) continue;
+    const kcal = parseWatchKcalFromTopic(row.Topic ?? row.topic);
+    byDate[ymd] = Math.max(byDate[ymd] || 0, kcal);
+  }
+  return byDate;
+}
+
+/**
  * Highest step-calorie row for one day (multiple sync rows → max, not sum).
  *
  * @param {Array<{ Steps?: number|null, CaloriesBurned?: number|null }>|null|undefined} rows

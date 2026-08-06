@@ -4453,22 +4453,29 @@ function WellnessValleyApp() {
   const handleShareEditSave = async (manualData) => {
     const { captureId } = shareEditView;
     if (!captureId || !user?.id) return;
+    let analysisResult;
     try {
-      const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({
-        captureId,
-        viewerUserId: user.id,
-        analysisResult,
-        originalCapturedAt: unknownShareView.createdAt ?? null,
-      });
-      setShareEditView({ open: false, captureId: null });
-      setUnknownShareView((v) => ({ ...v, open: false }));
-      showToast("Saved to your diary");
-      // Trigger global nutrition refresh after editing unknown capture
-      triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
+      analysisResult = buildAnalysisFromManualFood(manualData);
     } catch (e) {
-      showToast("Couldn't save � please try again");
+      showToast("Couldn't save — please try again");
+      return;
     }
+    // Close immediately; promote continues in background.
+    setShareEditView({ open: false, captureId: null });
+    setUnknownShareView((v) => ({ ...v, open: false }));
+    showToast("Saved to your diary");
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: user.id,
+      analysisResult,
+      originalCapturedAt: unknownShareView.createdAt ?? null,
+    })
+      .then(() => {
+        triggerNutritionRefresh({ immediate: true, source: "unknown-edit" });
+      })
+      .catch(() => {
+        showToast("Couldn't save — please try again");
+      });
   };
 
   /**

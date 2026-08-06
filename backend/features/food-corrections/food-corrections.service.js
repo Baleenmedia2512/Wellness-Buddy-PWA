@@ -20,6 +20,72 @@ import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+
+const MICRO_TOTAL_FIELDS = [
+  ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
+  ['totalVitaminD', 'TotalVitaminD'], ['totalVitaminE', 'TotalVitaminE'],
+  ['totalVitaminK', 'TotalVitaminK'], ['totalVitaminB1', 'TotalVitaminB1'],
+  ['totalVitaminB2', 'TotalVitaminB2'], ['totalVitaminB3', 'TotalVitaminB3'],
+  ['totalVitaminB6', 'TotalVitaminB6'], ['totalVitaminB9', 'TotalVitaminB9'],
+  ['totalVitaminB12', 'TotalVitaminB12'], ['totalCalcium', 'TotalCalcium'],
+  ['totalIron', 'TotalIron'], ['totalMagnesium', 'TotalMagnesium'],
+  ['totalPotassium', 'TotalPotassium'], ['totalZinc', 'TotalZinc'],
+  ['totalPhosphorus', 'TotalPhosphorus'],
+];
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+function emptyMealTotalsSeed() {
+  return {
+    totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
+    totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
+    ...MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {}),
+  };
+}
+
+function addMealRowToTotals(t, r) {
+  const next = {
+    totalCalories: t.totalCalories + (r.TotalCalories || 0),
+    totalProtein: t.totalProtein + (r.TotalProtein || 0),
+    totalCarbs: t.totalCarbs + (r.TotalCarbs || 0),
+    totalFat: t.totalFat + (r.TotalFat || 0),
+    totalFiber: t.totalFiber + (r.TotalFiber || 0),
+    totalSugar: t.totalSugar + (r.TotalSugar || 0),
+    totalSodium: t.totalSodium + (r.TotalSodium || 0),
+    totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
+    mealCount: t.mealCount + 1,
+  };
+  for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
+    next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
+  }
+  return next;
+}
+
+function roundMealTotals(dailyTotals) {
+  return {
+    ...dailyTotals,
+    totalCalories: round2(dailyTotals.totalCalories),
+    totalProtein: round2(dailyTotals.totalProtein),
+    totalCarbs: round2(dailyTotals.totalCarbs),
+    totalFat: round2(dailyTotals.totalFat),
+    totalFiber: round2(dailyTotals.totalFiber),
+    totalSugar: round2(dailyTotals.totalSugar),
+    totalSodium: round2(dailyTotals.totalSodium),
+    totalCholesterol: round2(dailyTotals.totalCholesterol),
+    ...MICRO_TOTAL_FIELDS.reduce((acc, [k]) => {
+      acc[k] = round2(dailyTotals[k] || 0);
+      return acc;
+    }, {}),
+  };
+}
+
+function inclusiveDayCount(startDate, endDate) {
+  const a = Date.parse(`${startDate}T00:00:00Z`);
+  const b = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -298,12 +364,72 @@ function demoStatsResponse() {
   };
 }
 
-export async function getStats({ userId, date, detailed, totalsOnly = false }) {
+export async function getStats({
+  userId,
+  date,
+  detailed,
+  totalsOnly = false,
+  startDate = null,
+  endDate = null,
+  maxRangeDays = 31,
+}) {
   if (userId === 'DEMO_USER') {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
   const timezoneIana = await getUserTimezoneIana(userId);
+
+  // Inclusive range totals for home carousel / charts (1 HTTP instead of N days).
+  if (startDate && endDate && totalsOnly) {
+    const resolvedStart = resolveRequestedDateYmd(startDate, timezoneIana);
+    const resolvedEnd = resolveRequestedDateYmd(endDate, timezoneIana);
+    assertNotFutureDateYmd(resolvedEnd, timezoneIana);
+    if (resolvedStart > resolvedEnd) {
+      throw new ValidationError(400, 'startDate must be on or before endDate');
+    }
+    const dayCount = inclusiveDayCount(resolvedStart, resolvedEnd);
+    if (dayCount > maxRangeDays) {
+      throw new ValidationError(400, `Date range cannot exceed ${maxRangeDays} days`);
+    }
+
+    const totalRows = await repo.fetchMealTotalsForRange(
+      userId,
+      resolvedStart,
+      resolvedEnd,
+      timezoneIana,
+    );
+    const byDate = {};
+    for (const row of totalRows) {
+      let ymd;
+      try {
+        ymd = resolveFoodTimestamp(row.CreatedAt, timezoneIana).calendarYmd;
+      } catch {
+        continue;
+      }
+      if (!byDate[ymd]) byDate[ymd] = emptyMealTotalsSeed();
+      byDate[ymd] = addMealRowToTotals(byDate[ymd], row);
+    }
+    for (const ymd of Object.keys(byDate)) {
+      byDate[ymd] = roundMealTotals(byDate[ymd]);
+    }
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        data: [],
+        byDate,
+        queryInfo: {
+          userId,
+          startDate: resolvedStart,
+          endDate: resolvedEnd,
+          recordCount: totalRows.length,
+          dayCount,
+          totalsOnly: true,
+        },
+      },
+    };
+  }
 
   if (detailed && date) {
     const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
@@ -312,60 +438,15 @@ export async function getStats({ userId, date, detailed, totalsOnly = false }) {
     // Calorie-trend / charts: numeric columns only — no AnalysisData or images
     if (totalsOnly) {
       const totalRows = await repo.fetchMealTotalsForDate(userId, resolvedDate, timezoneIana);
-      const MICRO_TOTAL_FIELDS = [
-        ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
-        ['totalVitaminD', 'TotalVitaminD'], ['totalVitaminE', 'TotalVitaminE'],
-        ['totalVitaminK', 'TotalVitaminK'], ['totalVitaminB1', 'TotalVitaminB1'],
-        ['totalVitaminB2', 'TotalVitaminB2'], ['totalVitaminB3', 'TotalVitaminB3'],
-        ['totalVitaminB6', 'TotalVitaminB6'], ['totalVitaminB9', 'TotalVitaminB9'],
-        ['totalVitaminB12', 'TotalVitaminB12'], ['totalCalcium', 'TotalCalcium'],
-        ['totalIron', 'TotalIron'], ['totalMagnesium', 'TotalMagnesium'],
-        ['totalPotassium', 'TotalPotassium'], ['totalZinc', 'TotalZinc'],
-        ['totalPhosphorus', 'TotalPhosphorus'],
-      ];
-      const seed = {
-        totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
-        totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
-        ...MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {}),
-      };
-      const dailyTotals = totalRows.reduce((t, r) => {
-        const next = {
-          totalCalories: t.totalCalories + (r.TotalCalories || 0),
-          totalProtein: t.totalProtein + (r.TotalProtein || 0),
-          totalCarbs: t.totalCarbs + (r.TotalCarbs || 0),
-          totalFat: t.totalFat + (r.TotalFat || 0),
-          totalFiber: t.totalFiber + (r.TotalFiber || 0),
-          totalSugar: t.totalSugar + (r.TotalSugar || 0),
-          totalSodium: t.totalSodium + (r.TotalSodium || 0),
-          totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
-          mealCount: t.mealCount + 1,
-        };
-        for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
-          next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
-        }
-        return next;
-      }, seed);
-      const round2 = (n) => Math.round(n * 100) / 100;
+      const dailyTotals = roundMealTotals(
+        totalRows.reduce((t, r) => addMealRowToTotals(t, r), emptyMealTotalsSeed()),
+      );
       return {
         httpStatus: 200,
         body: {
           success: true,
           data: [],
-          dailyTotals: {
-            ...dailyTotals,
-            totalCalories: round2(dailyTotals.totalCalories),
-            totalProtein: round2(dailyTotals.totalProtein),
-            totalCarbs: round2(dailyTotals.totalCarbs),
-            totalFat: round2(dailyTotals.totalFat),
-            totalFiber: round2(dailyTotals.totalFiber),
-            totalSugar: round2(dailyTotals.totalSugar),
-            totalSodium: round2(dailyTotals.totalSodium),
-            totalCholesterol: round2(dailyTotals.totalCholesterol),
-            ...MICRO_TOTAL_FIELDS.reduce((acc, [k]) => {
-              acc[k] = round2(dailyTotals[k] || 0);
-              return acc;
-            }, {}),
-          },
+          dailyTotals,
           queryInfo: { userId, date: resolvedDate, recordCount: totalRows.length, totalsOnly: true },
         },
       };
@@ -378,74 +459,16 @@ export async function getStats({ userId, date, detailed, totalsOnly = false }) {
         return Array.isArray(data.foods) && data.foods.length > 0;
       } catch { return true; }
     });
-    // Source-of-truth list mirrors features/nutrition/domain/micronutrientRules.js.
-    // dailyTotals key (camelCase) ↔ DB column name (PascalCase).
-    const MICRO_TOTAL_FIELDS = [
-      ['totalVitaminA',   'TotalVitaminA'],
-      ['totalVitaminC',   'TotalVitaminC'],
-      ['totalVitaminD',   'TotalVitaminD'],
-      ['totalVitaminE',   'TotalVitaminE'],
-      ['totalVitaminK',   'TotalVitaminK'],
-      ['totalVitaminB1',  'TotalVitaminB1'],
-      ['totalVitaminB2',  'TotalVitaminB2'],
-      ['totalVitaminB3',  'TotalVitaminB3'],
-      ['totalVitaminB6',  'TotalVitaminB6'],
-      ['totalVitaminB9',  'TotalVitaminB9'],
-      ['totalVitaminB12', 'TotalVitaminB12'],
-      ['totalCalcium',    'TotalCalcium'],
-      ['totalIron',       'TotalIron'],
-      ['totalMagnesium',  'TotalMagnesium'],
-      ['totalPotassium',  'TotalPotassium'],
-      ['totalZinc',       'TotalZinc'],
-      ['totalPhosphorus', 'TotalPhosphorus'],
-    ];
-    const baseSeed = {
-      totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
-      totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
-    };
-    const microSeed = MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {});
-    const seed = { ...baseSeed, ...microSeed };
-    const dailyTotals = filtered.reduce((t, r) => {
-      const next = {
-        totalCalories:    t.totalCalories    + (r.TotalCalories    || 0),
-        totalProtein:     t.totalProtein     + (r.TotalProtein     || 0),
-        totalCarbs:       t.totalCarbs       + (r.TotalCarbs       || 0),
-        totalFat:         t.totalFat         + (r.TotalFat         || 0),
-        totalFiber:       t.totalFiber       + (r.TotalFiber       || 0),
-        totalSugar:       t.totalSugar       + (r.TotalSugar       || 0),
-        totalSodium:      t.totalSodium      + (r.TotalSodium      || 0),
-        totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
-        mealCount:        t.mealCount + 1,
-      };
-      for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
-        next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
-      }
-      return next;
-    }, seed);
-    const round2 = (n) => Math.round(n * 100) / 100;
-    const roundedMicros = MICRO_TOTAL_FIELDS.reduce((acc, [statKey]) => {
-      acc[statKey] = round2(dailyTotals[statKey] || 0);
-      return acc;
-    }, {});
-    const totalsPayload = {
-      ...dailyTotals,
-      totalCalories: round2(dailyTotals.totalCalories),
-      totalProtein: round2(dailyTotals.totalProtein),
-      totalCarbs: round2(dailyTotals.totalCarbs),
-      totalFat: round2(dailyTotals.totalFat),
-      totalFiber: round2(dailyTotals.totalFiber),
-      totalSugar: round2(dailyTotals.totalSugar),
-      totalSodium: round2(dailyTotals.totalSodium),
-      totalCholesterol: round2(dailyTotals.totalCholesterol),
-      ...roundedMicros,
-    };
+    const dailyTotals = roundMealTotals(
+      filtered.reduce((t, r) => addMealRowToTotals(t, r), emptyMealTotalsSeed()),
+    );
 
     return {
       httpStatus: 200,
       body: {
         success: true,
         data: filtered,
-        dailyTotals: totalsPayload,
+        dailyTotals,
         queryInfo: { userId, date: resolvedDate, recordCount: filtered.length },
       },
     };

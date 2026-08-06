@@ -8,6 +8,7 @@
 import {
   DIARY_FOOD_ACTIVITY,
   extractScoops,
+  extractShakeProducts,
   extractShakeServings,
   extractVolumeMl,
   resolveFoodActivityType,
@@ -15,6 +16,7 @@ import {
 } from './activityType';
 import { formatWaterVolume } from './formatVolume';
 import { buildDiaryShareSuffix } from './share/suffixes';
+import { formatShakeProductScoops } from './share/shakeShare';
 
 const ACTIVITY_THUMB = Object.freeze({
   [DIARY_FOOD_ACTIVITY.WATER]: '💧',
@@ -51,6 +53,7 @@ export function resolveFoodRowPresentation({
   const volumeMl = extractVolumeMl(foodData, analysisData);
   const scoops = extractScoops(foodData, analysisData);
   const servings = extractShakeServings(foodData, analysisData);
+  const shakeProducts = extractShakeProducts(foodData, analysisData);
   const foodName = foodData?.name || 'Food';
 
   let primaryValue = String(Math.round(Number(calories) || 0));
@@ -81,6 +84,12 @@ export function resolveFoodRowPresentation({
     primaryUnit = 'kcal';
     secondaryLabel = `${count} ${count === 1 ? 'scoop' : 'scoops'}`;
     ariaValue = `${count} ${count === 1 ? 'scoop' : 'scoops'}, ${kcal} kilocalories`;
+  } else if (activityType === DIARY_FOOD_ACTIVITY.SHAKE) {
+    const scoopLine = formatShakeProductScoops(shakeProducts);
+    if (scoopLine) {
+      secondaryLabel = scoopLine;
+      ariaValue = `${scoopLine}, ${primaryValue} kilocalories`;
+    }
   }
 
   const shareText = buildFoodActivityShareText({
@@ -92,6 +101,7 @@ export function resolveFoodRowPresentation({
     volumeMl,
     scoops,
     servings,
+    shakeProducts,
     glycemicIndex,
   });
 
@@ -105,6 +115,7 @@ export function resolveFoodRowPresentation({
     volumeMl,
     scoops,
     servings,
+    shakeProducts,
     secondaryLabel,
     shareText,
   };
@@ -123,6 +134,7 @@ export function buildFoodActivityShareText({
   volumeMl = null,
   scoops = null,
   servings = 1,
+  shakeProducts = null,
   glycemicIndex = null,
 } = {}) {
   const nutrition = foodData?.nutrition || {};
@@ -138,6 +150,7 @@ export function buildFoodActivityShareText({
       return buildDiaryShareSuffix('shake', {
         shakeName: foodName || 'Protein Shake',
         servings,
+        shakeProducts: shakeProducts || extractShakeProducts(foodData),
       });
     default:
       return buildDiaryShareSuffix('food', {

@@ -189,6 +189,44 @@ export function extractShakeServings(foodData, analysisData = null) {
   return 1;
 }
 
+/**
+ * Per-product scoop counts from a shake calculator save
+ * ({ formula1, shakemate, protein }), or null when missing.
+ * @param {{ detailedItems?: object[], shakeProducts?: object }|null} foodData
+ * @param {unknown} [analysisData]
+ * @returns {{ formula1: number, shakemate: number, protein: number }|null}
+ */
+export function extractShakeProducts(foodData, analysisData = null) {
+  const candidates = [
+    foodData?.shakeProducts,
+    ...collectFoodItems(foodData, analysisData).map((item) => item?.shakeProducts),
+  ];
+  const raw = parseRawAnalysis(analysisData);
+  if (raw?.shakeProducts) candidates.push(raw.shakeProducts);
+  if (Array.isArray(raw?.foods)) {
+    for (const food of raw.foods) candidates.push(food?.shakeProducts);
+  }
+
+  for (const products of candidates) {
+    const normalized = normalizeShakeProducts(products);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function normalizeShakeProducts(products) {
+  if (!products || typeof products !== 'object') return null;
+  const formula1 = Number(products.formula1);
+  const shakemate = Number(products.shakemate);
+  const protein = Number(products.protein);
+  if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) return null;
+  return {
+    formula1: Math.max(0, Math.round(formula1) || 0),
+    shakemate: Math.max(0, Math.round(shakemate) || 0),
+    protein: Math.max(0, Math.round(protein) || 0),
+  };
+}
+
 function collectFoodItems(foodData, analysisData) {
   if (Array.isArray(foodData?.detailedItems) && foodData.detailedItems.length > 0) {
     return foodData.detailedItems;
