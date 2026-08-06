@@ -29,6 +29,8 @@ import OtpInline from './OtpInline.jsx';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import TransformationShareCard from './TransformationShareCard.jsx';
+import { compressImage } from '../hooks/useTestimonial.js';
+import { setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
@@ -453,17 +455,59 @@ function MemberCard({
   }, []);
 
   const handleImageFile = useCallback((slot, file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const full = e.target.result;
-      const b64 = full.replace(/^data:image\/[a-z]+;base64,/, '');
-      if (slot === 'before') {
-        setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType, durationText: testimonial?.durationText }), imageBase64: b64, previewUrl: full }));
-      } else {
-        setDraftAfter(prev => ({ ...(prev || { weightKg: testimonial?.afterWeightKg }), imageBase64: b64, previewUrl: full }));
-      }
+    if (!file) return;
+    // Instant local preview — do not wait for FileReader / compression.
+    const objectUrl = URL.createObjectURL(file);
+    const beforeBase = {
+      weightKg: testimonial?.beforeWeightKg,
+      goalType: testimonial?.goalType,
+      durationText: testimonial?.durationText,
     };
-    reader.readAsDataURL(file);
+    const afterBase = { weightKg: testimonial?.afterWeightKg };
+
+    if (slot === 'before') {
+      setDraftBefore((prev) => ({
+        ...(prev || beforeBase),
+        previewUrl: objectUrl,
+        imageBase64: null,
+        compressing: true,
+      }));
+    } else {
+      setDraftAfter((prev) => ({
+        ...(prev || afterBase),
+        previewUrl: objectUrl,
+        imageBase64: null,
+        compressing: true,
+      }));
+    }
+    setPickerSlot(null);
+    setSubmitError(null);
+    setCaptureFlowBusy(true);
+
+    void compressImage(file)
+      .then(({ base64, preview }) => {
+        if (slot === 'before') {
+          setDraftBefore((prev) => {
+            if (!prev) return prev;
+            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+          });
+        } else {
+          setDraftAfter((prev) => {
+            if (!prev) return prev;
+            return { ...prev, imageBase64: base64, previewUrl: preview, compressing: false };
+          });
+        }
+        URL.revokeObjectURL(objectUrl);
+      })
+      .catch((err) => {
+        URL.revokeObjectURL(objectUrl);
+        if (slot === 'before') setDraftBefore(null);
+        else setDraftAfter(null);
+        setSubmitError(err?.message || 'Could not read that photo. Please try another.');
+      })
+      .finally(() => {
+        setCaptureFlowBusy(false);
+      });
   }, [testimonial]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
@@ -505,48 +549,84 @@ function MemberCard({
     }
   }, [userId]);
 
-  const handleSubmitAll = useCallback(async () => {
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      const payload = {
-        userId,
-        dirtySlots,
-        ...(draftBefore ? {
-          // Only send image when actually changed
-          ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
-          ...(draftBefore.weightKg    !== undefined ? { beforeWeightKg: draftBefore.weightKg }   : {}),
-          ...(draftBefore.goalType                  ? { goalType: draftBefore.goalType }          : {}),
-          ...(draftBefore.durationText              ? { durationText: draftBefore.durationText }  : {}),
-        } : {}),
-        ...(draftAfter ? {
-          // Only send image when actually changed
-          ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
-          ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
-        } : {}),
-        ...(draftHealthPath   ? { healthVideoPath:   draftHealthPath }   : {}),
-        ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-        ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
-      };
-      await submitAllEdits(payload);
-      // Issues-only OR weight/meta-only = silent save; anything with photo/video needs OTP
-      const needsOtp = dirtySlots.some((s) => ['before','after','health','business'].includes(s));
-      if (!needsOtp) {
-        onOtpVerified?.();
-      } else {
-        setSubmitDone(true);
-      }
-      setDraftBefore(null); setDraftAfter(null);
-      setDraftHealthPath(null); setDraftBusinessPath(null);
-      setDraftHealthPreview(null); setDraftBusinessPreview(null);
+  const handleSubmitAll = useCallback(() => {
+    const needsOtp = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    // Photos still compressing — wait so we do not submit without image bytes.
+    if (draftBefore?.compressing || draftAfter?.compressing) {
+      setSubmitError('Photo is still preparing — try Submit again in a moment.');
+      return;
+    }
+    if (draftBefore?.previewUrl && draftBefore.imageBase64 == null && !draftBefore.compressing) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (draftAfter?.previewUrl && draftAfter.imageBase64 == null && !draftAfter.compressing) {
+      setSubmitError('After photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    const payload = {
+      userId,
+      dirtySlots,
+      ...(draftBefore ? {
+        ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
+        ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
+        ...(draftBefore.goalType ? { goalType: draftBefore.goalType } : {}),
+        ...(draftBefore.durationText ? { durationText: draftBefore.durationText } : {}),
+      } : {}),
+      ...(draftAfter ? {
+        ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
+        ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
+      } : {}),
+      ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
+      ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
+      ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
+    };
+
+    const clearDrafts = () => {
+      setDraftBefore(null);
+      setDraftAfter(null);
+      setDraftHealthPath(null);
+      setDraftBusinessPath(null);
+      setDraftHealthPreview(null);
+      setDraftBusinessPreview(null);
       setDraftIssues(null);
       setExpandedSlots(new Set());
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to submit. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    };
+
+    setSubmitError(null);
+
+    // Weight / issues only — close dirty UI immediately; save in background.
+    if (!needsOtp) {
+      clearDrafts();
+      void submitAllEdits(payload)
+        .then(() => {
+          onOtpVerified?.();
+        })
+        .catch((err) => {
+          setSubmitError(err?.message || 'Failed to save. Please try again.');
+        });
+      return;
     }
+
+    // Photo / video changes need server ack before OTP UI.
+    setIsSubmitting(true);
+    setCaptureFlowBusy(true);
+    void submitAllEdits(payload)
+      .then(() => {
+        clearDrafts();
+        setSubmitDone(true);
+      })
+      .catch((err) => {
+        setSubmitError(err?.message || 'Failed to submit. Please try again.');
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+        setCaptureFlowBusy(false);
+      });
   }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onOtpVerified]);
+
+  const anyPhotoCompressing = Boolean(draftBefore?.compressing || draftAfter?.compressing);
 
   const handleUnifiedOtpVerified = useCallback(() => {
     setSubmitDone(false);
@@ -1096,10 +1176,12 @@ function MemberCard({
           <button
             type="button"
             onClick={handleSubmitAll}
-            disabled={isSubmitting || anyVideoUploading}
+            disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
           >
-            {isSubmitting
+            {anyPhotoCompressing
+              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
+              : isSubmitting
               ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
               : anyVideoUploading
               ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
