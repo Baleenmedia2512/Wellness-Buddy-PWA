@@ -364,7 +364,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     itemsPerPage,
   ]);
 
-  /** Phase 1: team scope + summary pills. Phase 2: detail table from same bootstrap when includeRecords=1. */
+  /** Phase 1 + 2 in parallel: summary pills (no records) + first table page (one activity). */
   const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
     if (!user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
@@ -376,45 +376,55 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     inFlightKeyRef.current = '';
     skipSearchSortFetchRef.current = true;
 
+    const activity = detailActivity || 'education';
     const pageParams = paginationQuery(1);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
-          detailActivity: detailActivity || 'education',
-          includeRecords: '1',
-          ...pageParams,
-        })}`,
-        { cache: 'no-store', signal },
-      );
-      const data = await response.json();
+      // Summary bootstrap skips record enrichment; detail hits only one activity table.
+      // Table can paint as soon as detail returns — often before pills finish.
+      const bootstrapPromise = (async () => {
+        const response = await fetch(
+          `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
+            detailActivity: activity,
+            includeRecords: '0',
+          })}`,
+          { cache: 'no-store', signal },
+        );
+        const data = await response.json();
 
-      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
-        await fetchLegacyReportBundle(detailActivity);
+        if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
+          return { kind: 'legacy' };
+        }
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'Failed to load activity report');
+        }
+        return { kind: 'ok', data };
+      })();
+
+      const detailPromise = fetchDetails(activity, {
+        signal,
+        page: 1,
+        search: pageParams.search,
+        sort: pageParams.sort,
+        sortDir: pageParams.sortDir,
+      });
+
+      const bootstrapResult = await bootstrapPromise;
+
+      if (bootstrapResult.kind === 'legacy') {
+        await fetchLegacyReportBundle(activity);
         setSummaryLoading(false);
         setDetailLoading(false);
         return;
       }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to load activity report');
-      }
-
-      const records = Array.isArray(data.records) ? data.records : [];
-      const pageMeta = data.pagination || emptyPagination(1);
-      detailCacheRef.current.set(
-        detailCacheKey(detailActivity || 'education', 1, pageParams.search, pageParams.sort, pageParams.sortDir),
-        { records, pagination: pageMeta },
-      );
-      setSummary(data.summary || null);
-      applyReportMeta(data);
-      setMemberSummaries(data.members || []);
-      setMemberStats(data.stats || null);
-      setDetailRecords(records);
-      setPagination(pageMeta);
-      setCurrentPage(pageMeta.currentPage || 1);
+      setSummary(bootstrapResult.data.summary || null);
+      applyReportMeta(bootstrapResult.data);
+      setMemberSummaries(bootstrapResult.data.members || []);
+      setMemberStats(bootstrapResult.data.stats || null);
       setSummaryLoading(false);
-      setDetailLoading(false);
+
+      await detailPromise;
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity report');
@@ -430,8 +440,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     buildReportParams,
     fetchLegacyReportBundle,
     applyReportMeta,
-    detailCacheKey,
     paginationQuery,
+    fetchDetails,
   ]);
 
   loadReportRef.current = loadReport;

@@ -701,9 +701,9 @@ async function getActivityReportBootstrapUncached({
     return empty;
   }
 
-  // Activity tables in one wave. Skip AnalysisData unless the open tab is water
+  // Activity tables in one wave. Skip AnalysisData unless returning water detail rows
   // (volume). Summary beverage detection uses ProcessedBy presets.
-  const wantAnalysis = needsFoodAnalysisData(detailActivity);
+  const wantAnalysis = includeRecords && needsFoodAnalysisData(detailActivity);
   const [
     weightRecords,
     educationRecords,
