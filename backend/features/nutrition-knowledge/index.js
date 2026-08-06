@@ -15,6 +15,8 @@ export { enrichFoodText } from './api/enrich.handler.js';
 export {
   NUTRITION_KEYS,
   normalizeFoodName,
+  foodNameMatchesQuery,
+  editDistance,
   pickNutrition,
   scaleNutrition,
   profileToSearchItem,

@@ -14,6 +14,7 @@ import {
   listMasterSearchItems,
   NUTRITION_KEYS,
   pickNutrition,
+  foodNameMatchesQuery,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
 import {
@@ -171,7 +172,7 @@ function extractMatchingItems(row, lowerTerm) {
     const analysis = typeof row.AnalysisData === 'string' ? JSON.parse(row.AnalysisData) : row.AnalysisData;
     const foods = analysis?.foods || [];
     return foods
-      .filter((f) => (f.name || '').toLowerCase().includes(lowerTerm))
+      .filter((f) => foodNameMatchesQuery(f.name || '', lowerTerm))
       .map((f) => {
         const nutrition = pickNutrition(f.nutrition || f);
         const weight_g = f.weight_g != null ? Math.round(f.weight_g) : 100;
@@ -229,13 +230,29 @@ function dedupItems(rows, lowerTerm) {
 
 export async function searchFoodHistory({ userId, searchTerm }) {
   const lowerTerm = searchTerm.toLowerCase();
-  const [myRows, communityRows, masterItems] = await Promise.all([
+  let [myRows, communityRows, masterItems] = await Promise.all([
     repo.searchUserMeals(userId, searchTerm),
     repo.searchCommunityMeals(userId, searchTerm),
     isEnabled('ff.nutrition-knowledge')
       ? listMasterSearchItems(searchTerm).catch(() => [])
       : Promise.resolve([]),
   ]);
+
+  // Typo recall: if exact ILIKE miss, re-query with a 2-char prefix and
+  // let foodNameMatchesQuery filter (e.g. "omlette" → "omelette").
+  const trimmed = String(searchTerm || '').trim();
+  if (
+    myRows.length === 0
+    && communityRows.length === 0
+    && trimmed.length >= 3
+  ) {
+    const prefix = trimmed.slice(0, 2);
+    [myRows, communityRows] = await Promise.all([
+      repo.searchUserMeals(userId, prefix),
+      repo.searchCommunityMeals(userId, prefix),
+    ]);
+  }
+
   return {
     httpStatus: 200,
     body: {

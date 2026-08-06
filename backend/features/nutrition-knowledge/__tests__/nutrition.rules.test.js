@@ -5,6 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeFoodName,
+  foodNameMatchesQuery,
+  editDistance,
   pickNutrition,
   scaleNutrition,
   profileToSearchItem,
@@ -17,6 +19,27 @@ import { findSeedProfile, searchSeedProfiles } from '../domain/seeds.js';
 describe('normalizeFoodName', () => {
   it('lowercases and collapses whitespace', () => {
     assert.equal(normalizeFoodName('  Banana  Fruit '), 'banana fruit');
+  });
+});
+
+describe('editDistance', () => {
+  it('counts single-character typos', () => {
+    assert.equal(editDistance('omelette', 'omlette'), 1);
+    assert.equal(editDistance('omelette', 'omelete'), 1);
+  });
+});
+
+describe('foodNameMatchesQuery', () => {
+  it('matches single-letter prefixes', () => {
+    assert.equal(foodNameMatchesQuery('Onion', 'o'), true);
+    assert.equal(foodNameMatchesQuery('Omelette', 'o'), true);
+    assert.equal(foodNameMatchesQuery('Banana', 'o'), false);
+  });
+
+  it('matches multi-letter prefixes and typos via aliases', () => {
+    assert.equal(foodNameMatchesQuery('Omelette', 'om'), true);
+    assert.equal(foodNameMatchesQuery('Omelette', 'omlette', ['omlette', 'omelet']), true);
+    assert.equal(foodNameMatchesQuery('Omelette', 'omlette'), true);
   });
 });
 
@@ -83,5 +106,20 @@ describe('seeds', () => {
   it('searches idli', () => {
     const hits = searchSeedProfiles('idl');
     assert.ok(hits.some((h) => h.normalized_name === 'idli'));
+  });
+
+  it('suggests omelette and onion from short prefixes', () => {
+    const oHits = searchSeedProfiles('o');
+    assert.ok(oHits.some((h) => h.normalized_name === 'omelette'));
+    assert.ok(oHits.some((h) => h.normalized_name === 'onion'));
+
+    const omHits = searchSeedProfiles('om');
+    assert.ok(omHits.some((h) => h.normalized_name === 'omelette'));
+    assert.ok(!omHits.some((h) => h.normalized_name === 'onion'));
+  });
+
+  it('matches omelette typos via aliases', () => {
+    const hits = searchSeedProfiles('omlette');
+    assert.ok(hits.some((h) => h.normalized_name === 'omelette'));
   });
 });

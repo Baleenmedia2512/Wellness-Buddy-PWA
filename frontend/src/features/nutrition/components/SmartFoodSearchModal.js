@@ -86,7 +86,7 @@ const SmartFoodSearchModal = ({
   // Debounced search
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+    if (!searchQuery.trim() || searchQuery.trim().length < 1) {
       setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
@@ -402,7 +402,7 @@ const SmartFoodSearchModal = ({
           )}
 
           {/* ── Search results ── */}
-          {!showManualForm && searchQuery.trim().length >= 2 && (
+          {!showManualForm && searchQuery.trim().length >= 1 && (
             <div className="space-y-4">
               {hasMasterItems && (
                 <div>
@@ -462,13 +462,13 @@ const SmartFoodSearchModal = ({
           )}
 
           {/* ── Empty state (only when nothing selected) ── */}
-          {!showManualForm && searchQuery.trim().length < 2 && !hasSelected && (
+          {!showManualForm && searchQuery.trim().length < 1 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
                 <Search className="w-6 h-6 text-orange-400" />
               </div>
-              <p className="text-sm font-medium text-gray-600">Search your food history</p>
-              <p className="text-xs text-gray-400 mt-1">Type a food name to find past meals</p>
+              <p className="text-sm font-medium text-gray-600">Search food suggestions</p>
+              <p className="text-xs text-gray-400 mt-1">Type a letter to see matching foods</p>
             </div>
           )}
 

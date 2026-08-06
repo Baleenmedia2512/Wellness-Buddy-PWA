@@ -66,8 +66,9 @@ export async function searchMaster({ searchTerm }) {
   let rows = await repo.searchProfiles(searchTerm, { status: 'approved', limit: 20 });
   if (rows === null) {
     rows = searchSeedProfiles(searchTerm);
-  } else if (rows.length === 0) {
-    // Also include seed hits not yet migrated.
+  } else {
+    // Always union in-code seeds so common foods (and typo aliases) appear
+    // even when the master table has unrelated prefix hits.
     const seedHits = searchSeedProfiles(searchTerm);
     const have = new Set(rows.map((r) => r.normalized_name));
     for (const s of seedHits) {

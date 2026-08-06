@@ -164,8 +164,8 @@ const EditableFoodItem = forwardRef(
         searchTimeoutRef.current = null;
       }
 
-      // Validation: minimum 3 characters
-      if (trimmed.length < 3) {
+      // Validation: minimum 1 character for typeahead suggestions
+      if (trimmed.length < 1) {
         setSearchResults([]);
         setIsSearching(false);
         return;
