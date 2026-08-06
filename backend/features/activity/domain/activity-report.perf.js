@@ -2,7 +2,7 @@
  * Lightweight timing marks for Activity Report endpoints.
  * Logs structured fields for ops dashboards (no PII).
  */
-import logger from '../../shared/lib/logger.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * @param {string} label
