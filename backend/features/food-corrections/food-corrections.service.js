@@ -15,6 +15,7 @@ import {
   NUTRITION_KEYS,
   pickNutrition,
   foodNameMatchesQuery,
+  sortByFoodNameMatch,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
 import {
@@ -242,7 +243,7 @@ export async function searchFoodHistory({ userId, searchTerm }) {
       httpStatus: 200,
       body: {
         success: true,
-        masterItems: masterItems || [],
+        masterItems: sortByFoodNameMatch(masterItems || [], trimmed),
         myItems: [],
         communityItems: [],
       },
@@ -275,9 +276,9 @@ export async function searchFoodHistory({ userId, searchTerm }) {
     httpStatus: 200,
     body: {
       success: true,
-      masterItems: masterItems || [],
-      myItems: dedupItems(myRows, lowerTerm),
-      communityItems: dedupItems(communityRows, lowerTerm),
+      masterItems: sortByFoodNameMatch(masterItems || [], trimmed),
+      myItems: sortByFoodNameMatch(dedupItems(myRows, lowerTerm), trimmed),
+      communityItems: sortByFoodNameMatch(dedupItems(communityRows, lowerTerm), trimmed),
     },
   };
 }

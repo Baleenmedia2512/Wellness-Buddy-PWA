@@ -248,23 +248,23 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('previous: 55.7 kg, current: 55.6 kg ⬇️');
+    })).toBe('Previous: 55.7 kg, Current: 55.6 kg ⬇️');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('previous: 70 kg, current: 71 kg ⬆️');
+    })).toBe('Previous: 70 kg, Current: 71 kg ⬆️');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
     })).toBe('weight 55.6 kg');
   });
 
-  test('workout suffix shows calories burnt', () => {
+  test('workout suffix shows calories burnt so far today', () => {
     expect(buildDiaryShareSuffix('workout', { caloriesBurned: 457 }))
-      .toBe('calories burnt: 457');
+      .toBe('Calories Burnt: 457 kcal so far today');
     expect(buildDiaryShareSuffix('watch', { kcal: 320 }))
-      .toBe('calories burnt: 320');
+      .toBe('Calories Burnt: 320 kcal so far today');
   });
 
   test('education suffix includes platform and session', () => {

@@ -59,7 +59,7 @@ export default function HealthySnacksSubSelectModal({ isOpen, onClose, onPick })
               id="healthy-snacks-title"
               className="text-sm font-bold leading-snug text-emerald-900"
             >
-              Healthy Snacks &amp; Soups
+              Snacks &amp; Soups
             </p>
             <p className="mt-0.5 max-w-[240px] text-[11px] leading-snug text-emerald-700/70">
               Select one — Soups, Salads, or Sprouts

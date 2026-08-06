@@ -9,14 +9,20 @@ import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
-const CACHE_KEY = 'wv.lb.wellness.v2';
-const LEGACY_CACHE_KEYS = ['wv.lb.wellness'];
+// v4: always display Rank 10 → 1 (descending by rank number)
+const CACHE_KEY = 'wv.lb.wellness.v4';
+const LEGACY_CACHE_KEYS = ['wv.lb.wellness', 'wv.lb.wellness.v2', 'wv.lb.wellness.v3'];
 
 const stripAvatars = (data) =>
   (data || []).map(({ profileImage, ...rest }) => rest);
+
+/** Home marquee order: #10, #9, #8 … #1 (highest rank number first). */
+const toDescendingRankOrder = (data) =>
+  [...(data || [])].sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));
 
 const readCache = () => {
   try {
@@ -24,7 +30,7 @@ const readCache = () => {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < CACHE_TTL ? c.data : null;
+    return Date.now() - c.ts < CACHE_TTL ? toDescendingRankOrder(c.data) : null;
   } catch { return null; }
 };
 const writeCache = (data) => {
@@ -32,7 +38,7 @@ const writeCache = (data) => {
     // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
     localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ data: stripAvatars(data), ts: Date.now() }),
+      JSON.stringify({ data: stripAvatars(toDescendingRankOrder(data)), ts: Date.now() }),
     );
   } catch {
     try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
@@ -40,12 +46,16 @@ const writeCache = (data) => {
 };
 
 /**
- * Top wellness scores for today (IST) — marquee strip on Home.
+ * Top wellness scores for today (IST) — swipeable strip on Home.
+ * Display order: Rank N → Rank 1 (descending).
  */
 const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache() ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [hasEntered, setHasEntered] = useState(() => (readCache()?.length ?? 0) > 0);
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: isVisible && leaderboardData.length > 0,
+  });
 
   const fetchLeaderboard = useCallback(async () => {
     try {
@@ -62,9 +72,10 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       const result = await response.json();
 
       if (result.success && result.data?.length > 0) {
-        setLeaderboardData(result.data);
+        const ordered = toDescendingRankOrder(result.data);
+        setLeaderboardData(ordered);
         setIsVisible(true);
-        writeCache(result.data);
+        writeCache(ordered);
       } else {
         debugLog('[WELLNESS-LB] No data:', result.message || 'Empty');
         setLeaderboardData([]);
@@ -88,6 +99,16 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
     }
     return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
   }, [fetchLeaderboard]);
+
+  // Smooth enter once data is ready
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
+    }
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
 
   const getRankColor = (pct) => {
     if (pct >= 90) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
@@ -168,27 +189,29 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
   );
 
   return (
-    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
+    <div
+      className={`w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
         <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
+            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-purple-100 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
               Top {topN}<br />Score
             </div>
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                animationPlayState: isPaused ? 'paused' : 'running',
-                WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                WebkitAnimationPlayState: isPaused ? 'paused' : 'running',
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),

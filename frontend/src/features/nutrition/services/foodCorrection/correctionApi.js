@@ -85,7 +85,7 @@ export async function searchFoods(query, userId) {
     masterItems: data.masterItems || [],
     myItems: data.myItems || [],
     communityItems: data.communityItems || [],
-  });
+  }, trimmed);
   const all = [
     ...buckets.masterItems,
     ...buckets.myItems,

@@ -16,6 +16,8 @@ export {
   NUTRITION_KEYS,
   normalizeFoodName,
   foodNameMatchesQuery,
+  foodNameMatchIndex,
+  sortByFoodNameMatch,
   editDistance,
   pickNutrition,
   scaleNutrition,

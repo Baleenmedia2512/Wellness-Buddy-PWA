@@ -9,6 +9,7 @@ import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 
 // ---------------------------------------------------------------------------
@@ -16,8 +17,8 @@ import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
 const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
-const WEIGHT_LB_CACHE_KEY = 'wv.lb.weight.v2';
-const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight'];
+const WEIGHT_LB_CACHE_KEY = 'wv.lb.weight.v3';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2'];
 
 const stripWeightAvatars = (data) =>
   (data || []).map(({ profileImage, ...rest }) => rest);
@@ -49,8 +50,8 @@ const writeWeightLBCache = (data) => {
  *
  * Features:
  * - Shows rank, profile avatar, user name, coach name, weight loss
- * - Smooth marquee animation (continuous horizontal scroll)
- * - Pause on hover for better UX
+ * - Auto-scroll with native swipe / drag
+ * - Smooth fade-in when data arrives
  * - Hides completely if no eligible users
  * - Exposes refresh method via ref for manual updates
  *
@@ -60,16 +61,14 @@ const writeWeightLBCache = (data) => {
 const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache() ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: isVisible && leaderboardData.length > 0,
+  });
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // debugLog(
-      //   "≡ƒÅå [LEADERBOARD] Fetching data from:",
-      //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
-      // );
-
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
         {
@@ -88,17 +87,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
-        // debugLog(
-        //   "Γ£à [LEADERBOARD] Data found:",
-        //   result.data.length,
-        //   "users",
-        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
         writeWeightLBCache(result.data);
       } else {
         debugLog(
-          "ΓÜá∩╕Å [LEADERBOARD] No data available:",
+          "⚠ [LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
@@ -151,6 +145,16 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     return setVisibilityAwareInterval(fetchLeaderboard, WEIGHT_LB_CACHE_TTL);
   }, [fetchLeaderboard]);
 
+  // Smooth fade-in when the strip becomes visible
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
+    }
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
+
   // Format weight loss display (grams for < 1kg, kg for >= 1kg)
   const formatWeightLoss = (weightLoss) => {
     if (weightLoss < 1) {
@@ -175,7 +179,6 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
-    // Hide completely when no data (don't show message)
     return null;
   }
 
@@ -241,9 +244,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-white shadow-sm">
+    <div
+      className={`w-full bg-white shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
         <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
@@ -253,24 +259,19 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                animationPlayState: isPaused ? "paused" : "running",
-                WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                WebkitAnimationPlayState: isPaused ? "paused" : "running",
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
-              {/* First set of items */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),
               )}
-
-              {/* Duplicate set for seamless loop */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `second-${user.userId}`),
               )}

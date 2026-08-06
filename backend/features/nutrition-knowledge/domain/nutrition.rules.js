@@ -95,6 +95,71 @@ export function foodNameMatchesQuery(name, query, aliases = []) {
 }
 
 /**
+ * Rank key for typeahead: earlier character index of `query` in the name wins.
+ * "o" → Onion (0) before Boiled (1) before Beetroot (4).
+ * Typo-only hits sort after all substring hits.
+ *
+ * @param {unknown} name
+ * @param {unknown} query
+ * @param {string[]} [aliases]
+ * @returns {number}
+ */
+export function foodNameMatchIndex(name, query, aliases = []) {
+  const q = normalizeFoodName(query);
+  if (!q) return Number.POSITIVE_INFINITY;
+
+  const candidates = [
+    normalizeFoodName(name),
+    ...(Array.isArray(aliases) ? aliases : []).map((a) => normalizeFoodName(a)),
+  ].filter(Boolean);
+
+  let best = Number.POSITIVE_INFINITY;
+  for (const n of candidates) {
+    const idx = n.indexOf(q);
+    if (idx >= 0) best = Math.min(best, idx);
+  }
+
+  if (best !== Number.POSITIVE_INFINITY) return best;
+
+  // Matched only via typo / edit-distance — keep after substring hits.
+  if (foodNameMatchesQuery(name, query, aliases)) {
+    let dist = 99;
+    const maxEdits = maxTypoEdits(q.length);
+    if (maxEdits > 0) {
+      for (const n of candidates) {
+        dist = Math.min(dist, editDistance(n, q));
+        for (const word of n.split(/\s+/).filter(Boolean)) {
+          if (word.length >= 3) dist = Math.min(dist, editDistance(word, q));
+        }
+      }
+    }
+    return 10_000 + dist;
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Sort search hits: match position ascending, then name A→Z.
+ * Accepts items with `name` and/or `canonical_name` (+ optional `aliases`).
+ *
+ * @param {object[]} items
+ * @param {unknown} query
+ * @returns {object[]}
+ */
+export function sortByFoodNameMatch(items, query) {
+  if (!Array.isArray(items) || items.length < 2) return items || [];
+  return items.slice().sort((a, b) => {
+    const nameA = a?.name ?? a?.canonical_name ?? '';
+    const nameB = b?.name ?? b?.canonical_name ?? '';
+    const ia = foodNameMatchIndex(nameA, query, a?.aliases);
+    const ib = foodNameMatchIndex(nameB, query, b?.aliases);
+    if (ia !== ib) return ia - ib;
+    return normalizeFoodName(nameA).localeCompare(normalizeFoodName(nameB));
+  });
+}
+
+/**
  * Pick numeric nutrition fields from an arbitrary object.
  * @param {object|null|undefined} raw
  * @returns {Record<string, number>}
