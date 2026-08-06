@@ -88,8 +88,14 @@ export function useShakeCalculator() {
       };
     }
     const n = shakeItem.nutrition;
+    const shakeProducts = {
+      formula1: Number(servings.formula1) || 0,
+      shakemate: Number(servings.shakemate) || 0,
+      protein: Number(servings.protein) || 0,
+    };
     return {
       nutrition: { ...n },
+      shakeProducts,
       detailedItems: [{
         name: HERBALIFE_SHAKE_NAME,
         portionDescription: shakeItem.portion,
@@ -98,6 +104,7 @@ export function useShakeCalculator() {
         estimatedWeight: shakeItem.weight_g,
         unit: shakeItem.unit,
         isLiquid: true,
+        shakeProducts,
         calories: n.calories,
         protein: n.protein,
         carbs: n.carbs,
@@ -112,7 +119,7 @@ export function useShakeCalculator() {
       confidence: 'high',
       processedBy: 'shake_calculator',
     };
-  }, [shakeItem, totals]);
+  }, [shakeItem, servings, totals]);
 
   return {
     servings,

@@ -64,13 +64,13 @@ export function toFoodSearchItem(item) {
  * Search food history (master + user + community) via /api/food-corrections/search.
  * Master hits win on name collision when present.
  *
- * @param {string} query  Min 2 chars.
+ * @param {string} query  Min 1 char.
  * @param {string|number} userId  Required for personalised results.
  * @returns {Promise<Array>}
  */
 export async function searchFoods(query, userId) {
   const trimmed = (query || '').trim();
-  if (trimmed.length < 2) return [];
+  if (trimmed.length < 1) return [];
 
   const cacheKey = `${userId || '_'}::${trimmed.toLowerCase()}`;
   if (_foodSearchCache.has(cacheKey)) return _foodSearchCache.get(cacheKey);

@@ -11,11 +11,12 @@ import {
 import { getUserId } from '../../../shared/services/userIdentity';
 import { WEIGHT_PAGE_SIZE } from '../services/weightDashboardFormatter';
 import { computeIdealWeightRange } from '../services/weightFormService';
+import { getProfile } from '../../user/services/user.api';
 
-export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
+export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0, enabled = true }) {
   const [weightHistory, setWeightHistory] = useState([]);
   const [globalStats, setGlobalStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(enabled));
   const [, setError] = useState(null);
   const [hasMoreWeights, setHasMoreWeights] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -75,17 +76,13 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
     }
   }, [user, apiBaseUrl]);
 
-  // Profile fetch
+  // Profile fetch (share meta) — skip until data fetch is enabled
   useEffect(() => {
+    if (!enabled) return undefined;
     const run = async () => {
       if (!user?.email) return;
       try {
-        const r = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
-          { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-        );
-        if (!r.ok) return;
-        const d = await r.json();
+        const d = await getProfile(user.email);
         if (d.success && d.data) {
           if (d.data.userName) setSavedUserName(d.data.userName);
           if (d.data.profileImage) setSavedProfileImage(d.data.profileImage);
@@ -94,19 +91,25 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
       } catch (err) { console.error('Error fetching profile for WeightDashboard:', err); }
     };
     run();
-  }, [user?.email, apiBaseUrl]);
+    return undefined;
+  }, [user?.email, apiBaseUrl, enabled]);
 
   // Reset & fetch on user change or external refresh bump
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     userIdRef.current = null;
     setWeightHistory([]); setHasMoreWeights(false);
     offsetRef.current = 0; hasMoreRef.current = false;
     fetchWeightHistory({ reset: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user?.id, user?.email, refreshKey]);
+  }, [user?.id, user?.email, refreshKey, enabled]);
 
   // Infinite-scroll observer
   useEffect(() => {
+    if (!enabled) return undefined;
     const el = loadMoreSentinelRef.current;
     if (!el) return undefined;
     const observer = new IntersectionObserver((entries) => {
@@ -117,7 +120,7 @@ export function useWeightHistoryData({ user, apiBaseUrl, refreshKey = 0 }) {
     }, { rootMargin: '300px', threshold: 0 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMoreWeights, loading, fetchWeightHistory]);
+  }, [hasMoreWeights, loading, fetchWeightHistory, enabled]);
 
   return {
     weightHistory, setWeightHistory, globalStats,

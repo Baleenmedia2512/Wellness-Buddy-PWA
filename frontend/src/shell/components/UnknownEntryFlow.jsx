@@ -394,20 +394,24 @@ export default function UnknownEntryFlow({
     }
   };
 
-  const handleFoodSave = async (manualData) => {
+  const handleFoodSave = (manualData) => {
+    let analysisResult;
     try {
-      const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({
-        captureId,
-        viewerUserId: userId,
-        analysisResult,
-        originalCapturedAt,
-      });
-      finish({ kind: 'food', captureId });
+      analysisResult = buildAnalysisFromManualFood(manualData);
     } catch {
       setError("Couldn't save — please try again.");
-      setStage('view');
+      return;
     }
+    // Close immediately; promote continues in background.
+    finish({ kind: 'food', captureId });
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: userId,
+      analysisResult,
+      originalCapturedAt,
+    }).catch(() => {
+      // Modal already closed — diary refresh will show if promotion failed.
+    });
   };
 
   /** Saves the AI-detected food result that the user confirmed on the review screen. */

@@ -4,14 +4,13 @@
  *
  * @returns {Promise<{ latestWeight: number|null, gender: string|null }>}
  */
+import { getProfile } from '../../../user/services/user.api';
+
 export async function fetchUserMacroProfile({ apiBaseUrl, email }) {
   if (!email) return { latestWeight: null, gender: null };
   try {
-    const res = await fetch(
-      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-    );
-    if (!res.ok) return { latestWeight: null, gender: null };
-    const data = await res.json();
+    void apiBaseUrl;
+    const data = await getProfile(email);
     if (!data.success || !data.data) return { latestWeight: null, gender: null };
 
     let latestWeight = null;

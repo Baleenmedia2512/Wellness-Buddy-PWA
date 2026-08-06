@@ -19,6 +19,7 @@ import {
 import { planFoodCorrection } from "../services/foodCorrectionPlan";
 import { useDeleteWithUndo } from "../hooks/useDeleteWithUndo";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
+import { formatWaterVolume } from "../../diary/domain/formatVolume";
 import {
   Search,
   Edit2,
@@ -163,8 +164,8 @@ const EditableFoodItem = forwardRef(
         searchTimeoutRef.current = null;
       }
 
-      // Validation: minimum 3 characters
-      if (trimmed.length < 3) {
+      // Validation: minimum 1 character for typeahead suggestions
+      if (trimmed.length < 1) {
         setSearchResults([]);
         setIsSearching(false);
         return;
@@ -1068,6 +1069,33 @@ const EditableFoodItem = forwardRef(
       const chol     = Math.round(foodItem.nutrition?.cholesterol ?? foodItem.cholesterol ?? 0);
       const gi       = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
 
+      const itemNameLower = String(foodItem.name || '').toLowerCase().trim();
+      const isWaterItem = itemNameLower === 'water'
+        || itemNameLower === 'plain water'
+        || itemNameLower.startsWith('plain water');
+      const isAfreshItem = itemNameLower.includes('afresh');
+      const volumeMl = (() => {
+        const fromField = Number(foodItem.volume_ml);
+        if (Number.isFinite(fromField) && fromField > 0) return fromField;
+        if (isLiquid) {
+          const fromGrams = Number(displayGrams);
+          if (Number.isFinite(fromGrams) && fromGrams > 0) return fromGrams;
+        }
+        return null;
+      })();
+      const scoops = (() => {
+        const fromField = Number(foodItem.scoops);
+        if (Number.isFinite(fromField) && fromField > 0) return fromField;
+        const m = String(foodItem.portion || servingDesc || '').match(/(\d+(?:\.\d+)?)\s*scoops?/i);
+        return m ? Number(m[1]) : null;
+      })();
+      const primaryMetric = isWaterItem && volumeMl != null
+        ? { value: formatWaterVolume(volumeMl), unit: '' }
+        : isAfreshItem
+          ? { value: String(scoops ?? 1), unit: (scoops ?? 1) === 1 ? 'scoop' : 'scoops' }
+          : { value: String(calories), unit: 'kcal' };
+      const hideMacroPills = isWaterItem || isAfreshItem;
+
       // Macro bar proportions (protein=4 kcal/g, carbs=4, fat=9)
       const macroKcal = protein * 4 + carbs * 4 + fat * 9;
       const proteinPct = macroKcal > 0 ? (protein * 4 / macroKcal) * 100 : 0;
@@ -1079,9 +1107,13 @@ const EditableFoodItem = forwardRef(
                                         : gi <= 69 ? { bar: 'bg-amber-500',   badge: 'bg-amber-50  text-amber-700  border-amber-200',   label: 'Med' }
                                                    : { bar: 'bg-red-500',     badge: 'bg-red-50    text-red-700    border-red-200',     label: 'High' };
       // Left accent colour driven by GI if available, else calorie density
-      const accentColor = giTone
-        ? giTone.bar
-        : calories > 400 ? 'bg-red-400' : calories > 200 ? 'bg-amber-400' : 'bg-emerald-400';
+      const accentColor = isWaterItem
+        ? 'bg-sky-400'
+        : isAfreshItem
+          ? 'bg-orange-400'
+          : giTone
+            ? giTone.bar
+            : calories > 400 ? 'bg-red-400' : calories > 200 ? 'bg-amber-400' : 'bg-emerald-400';
 
       // Food initial avatar colour (cycles through palette)
       const avatarColors = [
@@ -1092,7 +1124,11 @@ const EditableFoodItem = forwardRef(
         'bg-rose-100 text-rose-600',
         'bg-cyan-100 text-cyan-600',
       ];
-      const avatarColor = avatarColors[index % avatarColors.length];
+      const avatarColor = isWaterItem
+        ? 'bg-sky-100 text-sky-600'
+        : isAfreshItem
+          ? 'bg-orange-100 text-orange-600'
+          : avatarColors[index % avatarColors.length];
       const initial = (foodItem.name || '?')[0].toUpperCase();
 
       return (
@@ -1114,7 +1150,7 @@ const EditableFoodItem = forwardRef(
 
             {/* Content */}
             <div className="flex-1 min-w-0">
-              {/* Row 1: name + calories */}
+              {/* Row 1: name + primary metric */}
               <div className="flex items-start justify-between gap-2">
                 <span className="font-bold text-gray-900 text-[15px] leading-tight">
                   {foodItem.name}
@@ -1130,13 +1166,17 @@ const EditableFoodItem = forwardRef(
                   )}
                 </span>
                 <div className="flex-shrink-0 text-right">
-                  <span className="font-extrabold text-orange-500 text-lg leading-none">{calories}</span>
-                  <span className="text-[11px] font-medium text-gray-400 ml-0.5">kcal</span>
+                  <span className={`font-extrabold text-lg leading-none ${isWaterItem ? 'text-sky-500' : isAfreshItem ? 'text-orange-500' : 'text-orange-500'}`}>
+                    {primaryMetric.value}
+                  </span>
+                  {primaryMetric.unit ? (
+                    <span className="text-[11px] font-medium text-gray-400 ml-0.5">{primaryMetric.unit}</span>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Row 2: serving + weight */}
-              {(servingDesc || displayGrams) && (
+              {/* Row 2: serving + weight (skip duplicate volume line for water) */}
+              {!isWaterItem && (servingDesc || displayGrams) && (
                 <p className="text-xs text-gray-400 mt-0.5 leading-tight">
                   {(() => {
                     const desc = String(servingDesc || '').trim();
@@ -1155,7 +1195,8 @@ const EditableFoodItem = forwardRef(
                 </p>
               )}
 
-              {/* Row 3: macro pills */}
+              {/* Row 3: macro pills — hidden for water / afresh */}
+              {!hideMacroPills && (
               <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
                 <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
                   P {protein}g
@@ -1177,9 +1218,10 @@ const EditableFoodItem = forwardRef(
                   </span>
                 )}
               </div>
+              )}
 
               {/* Row 4: macro bar */}
-              {macroKcal > 0 && (
+              {!hideMacroPills && macroKcal > 0 && (
                 <div className="mt-1.5 h-1 rounded-full overflow-hidden bg-gray-100 flex">
                   <div className="bg-blue-400 h-full transition-all" style={{ width: `${proteinPct}%` }} />
                   <div className="bg-amber-400 h-full transition-all" style={{ width: `${carbsPct}%` }} />
@@ -1188,7 +1230,7 @@ const EditableFoodItem = forwardRef(
               )}
 
               {/* Row 5: secondary nutrients */}
-              {(sugar > 0 || sodium > 0 || chol > 0) && (
+              {!hideMacroPills && (sugar > 0 || sodium > 0 || chol > 0) && (
                 <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-400">
                   {sugar > 0   && <span>Sugar {sugar}g</span>}
                   {sodium > 0  && <span className="before:content-['·'] before:mr-1">Na {sodium}mg</span>}

@@ -1,5 +1,9 @@
 import * as repo from './activity.repository.js';
-import { maxWatchCaloriesFromRows, parseWatchKcalFromTopic } from './domain/watch-calories.helpers.js';
+import {
+  maxWatchCaloriesFromRows,
+  parseWatchKcalFromTopic,
+  groupWatchCaloriesByDate,
+} from './domain/watch-calories.helpers.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import {
   resolveRequestedDateYmd,
@@ -8,8 +12,17 @@ import {
   shiftDateYmd,
   nowUtc,
 } from '../../shared/lib/datetime/index.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const MAX_DAILY_STEPS = 50_000;
+const MAX_WATCH_RANGE_DAYS = 31;
+
+function inclusiveDayCount(startDate, endDate) {
+  const a = Date.parse(`${startDate}T00:00:00Z`);
+  const b = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
 
 function formatDateKeyFromTimestamp(value) {
   if (!value) return null;
@@ -145,11 +158,49 @@ export async function saveDailyActivity(input) {
 }
 
 // ─── getWatchBurnedCalories ─────────────────────────────────────────────────
-export async function getWatchBurnedCalories({ userId, targetDate }) {
+export async function getWatchBurnedCalories({
+  userId,
+  targetDate,
+  startDate = null,
+  endDate = null,
+}) {
   if (userId === 'DEMO_USER') {
-    return { httpStatus: 200, body: { success: true, caloriesBurned: 0, entries: [] } };
+    return { httpStatus: 200, body: { success: true, caloriesBurned: 0, entries: [], byDate: {} } };
   }
   const timezoneIana = await getUserTimezoneIana(userId);
+
+  if (startDate && endDate) {
+    const resolvedStart = resolveRequestedDateYmd(startDate, timezoneIana);
+    const resolvedEnd = resolveRequestedDateYmd(endDate, timezoneIana);
+    assertNotFutureDateYmd(resolvedEnd, timezoneIana);
+    if (resolvedStart > resolvedEnd) {
+      throw new ValidationError(400, 'startDate must be on or before endDate');
+    }
+    const dayCount = inclusiveDayCount(resolvedStart, resolvedEnd);
+    if (dayCount > MAX_WATCH_RANGE_DAYS) {
+      throw new ValidationError(400, `Date range cannot exceed ${MAX_WATCH_RANGE_DAYS} days`);
+    }
+    const rows = await repo.fetchWatchCalorieRowsForRange(
+      userId,
+      resolvedStart,
+      resolvedEnd,
+      timezoneIana,
+    );
+    const byDate = groupWatchCaloriesByDate(rows, resolvedStart, resolvedEnd, timezoneIana);
+    const caloriesBurned = Object.values(byDate).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        startDate: resolvedStart,
+        endDate: resolvedEnd,
+        byDate,
+        caloriesBurned,
+        totalCaloriesBurned: caloriesBurned,
+      },
+    };
+  }
+
   const resolvedDate = resolveRequestedDateYmd(targetDate, timezoneIana);
   assertNotFutureDateYmd(resolvedDate, timezoneIana);
   const rows = await repo.fetchWatchCalorieRows(userId, resolvedDate, timezoneIana);

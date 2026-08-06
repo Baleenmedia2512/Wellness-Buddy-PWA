@@ -8,6 +8,9 @@ import {
 import logger from '../../../shared/lib/logger.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import { cache } from '../../../utils/cache.js';
+
+const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
@@ -44,6 +47,13 @@ export default async function handler(req, res) {
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
 
+    const cacheKey = `lb:global:wellness:${topN}:${scoreDate}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
+
     logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
 
     // Fetch a buffer so inactive users can be filtered without under-filling topN.
@@ -72,7 +82,7 @@ export default async function handler(req, res) {
 
     const { data: usersRaw, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, ProfileImage, Role')
+      .select('UserId, UserName, Email, CoachId, Status, Role')
       .in('UserId', userIds)
       .ilike('Status', 'Active');
 
@@ -101,7 +111,7 @@ export default async function handler(req, res) {
         sponsorName: sponsorName || 'No Sponsor',
         idealCoachId: resolved?.idealCoachId || null,
         idealCoachName: resolved?.idealCoachName || null,
-        profileImage: user.ProfileImage || null,
+        profileImage: null,
         wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,
@@ -138,13 +148,18 @@ export default async function handler(req, res) {
       previousKey = scoreKey;
     }
 
-    return res.status(200).json({
+    // Omit ProfileImage base64 — was multi-MB for Top 10; UI uses initial avatars.
+
+    const payload = {
       success: true,
       data: ranked,
       topN,
       scoreDate,
       totalEligible: ranked.length,
-    });
+    };
+    cache.set(cacheKey, payload, LEADERBOARD_CACHE_TTL_MS);
+    res.setHeader('X-Cache', 'MISS');
+    return res.status(200).json(payload);
   } catch (error) {
     logger.error('[WELLNESS-LB] Error', { err: error.message });
     res.status(500).json({

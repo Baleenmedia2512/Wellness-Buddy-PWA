@@ -9,6 +9,10 @@ import {
 import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import { cache } from '../../../utils/cache.js';
+
+/** Server-side TTL — leaderboard is identical for all users; avoids recompute storms. */
+const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Global Weight Loss Leaderboard API
@@ -72,10 +76,18 @@ export default async function handler(req, res) {
   }
 
   try {
+    const topN = Math.min(parseInt(req.query.topN) || 10, 10);
+    const cacheKey = `lb:global:weight:${topN}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.status(200).json(cached);
+    }
+
     const supabase = getSupabaseClient();
 
     // Get topN parameter (default to 10, max 10)
-    const topN = Math.min(parseInt(req.query.topN) || 10, 10);
+    // topN already parsed above for cache key
 
     logger.debug(
       `🏆 [LEADERBOARD] Calculating global weight loss leaderboard (Top ${topN})...`,
@@ -222,21 +234,8 @@ export default async function handler(req, res) {
     // Step 8: Reverse order for display (show worst to best: Rank 10 → Rank 1)
     topResults.reverse();
 
-    // Profile images only for top N — never load base64 for every active user.
-    if (topResults.length > 0) {
-      const topUserIds = topResults.map((u) => u.userId);
-      const { data: profileRows } = await supabase
-        .from("team_table")
-        .select("UserId, ProfileImage")
-        .in("UserId", topUserIds);
-      const imageByUserId = {};
-      (profileRows || []).forEach((row) => {
-        imageByUserId[row.UserId] = row.ProfileImage || null;
-      });
-      topResults.forEach((entry) => {
-        entry.profileImage = imageByUserId[entry.userId] ?? null;
-      });
-    }
+    // Intentionally omit ProfileImage (base64) — 10 avatars were ~2–4 MB and
+    // dominated TTFB. UI falls back to initial-letter avatars.
 
     logger.debug(
       `🏆 [LEADERBOARD] Top ${topResults.length} weight losers calculated`,
@@ -252,13 +251,16 @@ export default async function handler(req, res) {
       })),
     );
 
-    res.status(200).json({
+    const payload = {
       success: true,
       data: topResults,
       topN,
       totalEligible: leaderboardData.length,
       calculatedAt: nowUtc(),
-    });
+    };
+    cache.set(cacheKey, payload, LEADERBOARD_CACHE_TTL_MS);
+    res.setHeader("X-Cache", "MISS");
+    res.status(200).json(payload);
   } catch (error) {
     console.error("❌ [LEADERBOARD] Error:", error);
     res.status(500).json({
