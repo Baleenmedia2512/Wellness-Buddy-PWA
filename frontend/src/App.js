@@ -276,6 +276,10 @@ const AiCreditsSetup = lazy(() =>
 const ManualEntryPage = lazy(() =>
   import("./shell/components/ManualEntryPage"),
 );
+/** Warm the Manual Entry chunk so photo → classify does not wait on first download. */
+const prefetchManualEntryPage = () => {
+  void import("./shell/components/ManualEntryPage");
+};
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
@@ -635,8 +639,8 @@ function WellnessValleyApp() {
     // set so the background AI analysis can finish and persist to the DB.
   }, []);
 
-  // Open the native share sheet after Classify photo save / AI start. Caller
-  // navigates home once the sheet closes (shared or dismissed).
+  // Open the native share sheet after Classify photo save / AI start.
+  // Caller navigates home immediately; this runs in the background.
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
@@ -675,9 +679,9 @@ function WellnessValleyApp() {
       }
       sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
 
-      // Paint overlay before opening the native share sheet.
+      // One frame is enough for the overlay to paint before the sheet opens.
       await new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
+        requestAnimationFrame(resolve);
       });
 
       const buildCaption = (shareDisplayName) => {
@@ -689,6 +693,7 @@ function WellnessValleyApp() {
       };
 
       try {
+        // Sync name first (cached) — do not block share on a profile fetch.
         const shareDisplayName = await ensureShareDisplayName(
           savedUserNameRef.current ?? savedUserName,
           user,
@@ -723,10 +728,9 @@ function WellnessValleyApp() {
         return { shared: true };
       } catch (_) {
         try {
-          const shareDisplayName = await ensureShareDisplayName(
+          const shareDisplayName = resolveShareDisplayName(
             savedUserNameRef.current ?? savedUserName,
             user,
-            apiBaseUrl,
           );
           const shareText = buildCaption(shareDisplayName);
           clearOverlayNow();
@@ -2077,6 +2081,8 @@ function WellnessValleyApp() {
 
   // Add a ref to track if image processing is in progress (prevents React StrictMode double-calls)
   const imageProcessingInProgress = useRef(false);
+  /** Tracks optimistic classify open so a cancelled POST does not leave orphan captures. */
+  const manualEntrySessionRef = useRef({ clientKey: null, abandoned: false });
 
   // Phase 3d-a: Auth FSM shadow-mode observation refs.
   // The FSM never mutates React state. It only logs transitions and drift.
@@ -3815,6 +3821,25 @@ function WellnessValleyApp() {
     return cancel;
   }, [user?.photoURL]);
 
+  // Keep Manual Entry JS chunk warm while user is on Home (photo → classify stays instant).
+  useEffect(() => {
+    if (!user?.id && !user?.email) return undefined;
+    let idleId = null;
+    let timeoutId = null;
+    const warm = () => prefetchManualEntryPage();
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(warm, { timeout: 2500 });
+    } else {
+      timeoutId = setTimeout(warm, 400);
+    }
+    return () => {
+      if (idleId != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
+  }, [user?.id, user?.email]);
+
   // Fetch saved custom profile image for share card
   useEffect(() => {
     savedUserNameRef.current = savedUserName;
@@ -5497,21 +5522,7 @@ function WellnessValleyApp() {
       return;
     }
 
-    // Re-check user status in real-time before upload
-    const isActive = await checkUserStatus(user);
-    if (!isActive) {
-      setAlertModal({
-        isOpen: true,
-        title: "Account inactive",
-        message:
-          "Your account is inactive. Please contact your sponsor to reactivate.",
-        type: "warning",
-      });
-      imageProcessingInProgress.current = false;
-      return;
-    }
-
-    // Check file size (10MB limit)
+    // Re-check user status in parallel with reading the image bytes.
     if (file.size > 10 * 1024 * 1024) {
       setAlertModal({
         isOpen: true,
@@ -5519,6 +5530,30 @@ function WellnessValleyApp() {
         message:
           "Image file is too large. Please choose a smaller image (max 10MB).",
         type: "error",
+      });
+      imageProcessingInProgress.current = false;
+      return;
+    }
+
+    // Warm classify chunk while status + decode run.
+    prefetchManualEntryPage();
+
+    const statusPromise = checkUserStatus(user);
+    const readPromise = new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const isActive = await statusPromise;
+    if (!isActive) {
+      setAlertModal({
+        isOpen: true,
+        title: "Account inactive",
+        message:
+          "Your account is inactive. Please contact your sponsor to reactivate.",
+        type: "warning",
       });
       imageProcessingInProgress.current = false;
       return;
@@ -5586,12 +5621,7 @@ function WellnessValleyApp() {
     // ? ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
       const readStart = Date.now();
-      const imageBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const imageBase64 = await readPromise;
       debugLog(`?? [PERF] File reading: ${Date.now() - readStart}ms`);
 
       // Always compress to ≤800px / quality 0.7 before sending to Gemini.
@@ -5704,7 +5734,38 @@ function WellnessValleyApp() {
         });
       }
 
-      // -- Phase 1 (critical): persist image + capture row BEFORE any AI work --
+      // -- Open classify UI immediately; persist capture row in the background --
+      // Waiting on POST /captures was the main reason "What is this image?" felt slow.
+      setDashboardInitialDate(null);
+      imageProcessingInProgress.current = false;
+
+      debugLog(
+        `?? [PERF] ? Opening Manual Entry early (+${Date.now() - perfStart}ms) — capture POST in background`,
+      );
+
+      setManualEntryPayload({
+        clientKey: instantToken,
+        captureId: null,
+        imageBase64: processedImage,
+        userId: user?.id ?? null,
+      });
+      manualEntrySessionRef.current = { clientKey: instantToken, abandoned: false };
+      setShowManualEntry(true);
+      window.history.pushState({ wvPage: 'manual-entry' }, '');
+
+      let resolvedUserIdForOrchestrate = user?.id;
+      if (!resolvedUserIdForOrchestrate) {
+        try {
+          resolvedUserIdForOrchestrate = await getUserId(user);
+        } catch (_) {}
+      }
+      if (resolvedUserIdForOrchestrate && resolvedUserIdForOrchestrate !== user?.id) {
+        setManualEntryPayload((prev) => {
+          if (!prev || prev.clientKey !== instantToken) return prev;
+          return { ...prev, userId: resolvedUserIdForOrchestrate };
+        });
+      }
+
       const captureApiStart = Date.now();
       debugLog(
         `?? [PERF] ? POST /captures started (+${
@@ -5719,7 +5780,10 @@ function WellnessValleyApp() {
       let captureLastErr = null;
       for (let capAttempt = 1; capAttempt <= CAPTURE_MAX_ATTEMPTS; capAttempt++) {
         try {
-          const capUserId = user?.id || (await getUserId(user));
+          const capUserId =
+            resolvedUserIdForOrchestrate ||
+            user?.id ||
+            (await getUserId(user));
           if (!capUserId) {
             throw new Error("Unable to resolve user account");
           }
@@ -5806,6 +5870,9 @@ function WellnessValleyApp() {
             Date.now() - captureApiStart
           }ms: ${captureLastErr?.message || captureLastErr}`,
         );
+        setShowManualEntry(false);
+        setManualEntryPayload(null);
+        Session.clearPendingClassifyCapture();
         setAlertModal({
           isOpen: true,
           title: "Photo not saved",
@@ -5822,7 +5889,24 @@ function WellnessValleyApp() {
       foodCaptureIdRef.current = captureShare.id;
       pendingSharePromiseRef.current = Promise.resolve(captureShare);
 
-      // Phase 1 complete � image is safe; user can leave immediately.
+      // User left classify before POST finished — discard orphan unknown capture.
+      const session = manualEntrySessionRef.current;
+      if (
+        session?.clientKey === instantToken &&
+        session.abandoned
+      ) {
+        const discardUserId =
+          resolvedUserIdForOrchestrate ?? user?.id ?? null;
+        if (discardUserId) {
+          void deleteCapture({
+            captureId: captureShare.id,
+            userId: discardUserId,
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      // Phase 1 complete — image is safe; unlock Log-as buttons on classify screen.
       capturePersisted = true;
       setLoadingState("saved");
       setLoading(false);
@@ -5833,34 +5917,32 @@ function WellnessValleyApp() {
       setWatchResult(null);
       setError(null);
 
-      let resolvedUserIdForOrchestrate = user?.id;
-      if (!resolvedUserIdForOrchestrate) {
-        try {
-          resolvedUserIdForOrchestrate = await getUserId(user);
-        } catch (_) {}
+      triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
+
+      setManualEntryPayload((prev) => {
+        if (!prev || prev.clientKey !== instantToken) return prev;
+        return {
+          ...prev,
+          captureId: captureShare.id,
+          userId: prev.userId ?? resolvedUserIdForOrchestrate ?? user?.id ?? null,
+        };
+      });
+      // Defer large localStorage write so it does not compete with first classify paint.
+      const pendingPayload = {
+        captureId: captureShare.id,
+        imageBase64: processedImage,
+        userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
+      };
+      const persistPending = () => Session.setPendingClassifyCapture(pendingPayload);
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(persistPending, { timeout: 2000 });
+      } else {
+        setTimeout(persistPending, 0);
       }
 
-      // Phase 1 complete — open Manual Entry (no auto-AI / Phase 2).
-      triggerNutritionRefresh({ immediate: true, source: "capture-saved" });
-      setDashboardInitialDate(null);
-      imageProcessingInProgress.current = false;
-
       debugLog(
-        `?? [PERF] ? Phase 1 complete (+${Date.now() - perfStart}ms) — opening Manual Entry`,
+        `?? [PERF] ? Phase 1 complete (+${Date.now() - perfStart}ms) — captureId ready on Manual Entry`,
       );
-
-      setManualEntryPayload({
-        captureId: captureShare.id,
-        imageBase64: processedImage,
-        userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
-      });
-      Session.setPendingClassifyCapture({
-        captureId: captureShare.id,
-        imageBase64: processedImage,
-        userId: resolvedUserIdForOrchestrate ?? user?.id ?? null,
-      });
-      setShowManualEntry(true);
-      window.history.pushState({ wvPage: 'manual-entry' }, '');
 
       return;
 
@@ -7281,12 +7363,20 @@ function WellnessValleyApp() {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading…" />}>
         <ManualEntryPage
-          key={manualEntryPayload.captureId}
+          key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
           userId={manualEntryPayload.userId}
           apiBaseUrl={apiBaseUrl}
           captureId={manualEntryPayload.captureId}
           imageBase64={manualEntryPayload.imageBase64}
           onBack={() => {
+            const pending = manualEntryPayload;
+            // User left before captureId arrived — discard the in-flight POST result.
+            if (pending?.clientKey && !pending?.captureId) {
+              manualEntrySessionRef.current = {
+                clientKey: pending.clientKey,
+                abandoned: true,
+              };
+            }
             Session.clearPendingClassifyCapture();
             setShowManualEntry(false);
             setManualEntryPayload(null);
@@ -7296,9 +7386,11 @@ function WellnessValleyApp() {
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onSaved={async (shareMeta) => {
+          onSaved={(shareMeta) => {
+            // Read image before onBack clears payload (exit calls onSaved then onBack).
+            const image = manualEntryPayload?.imageBase64;
             triggerNutritionRefresh({ immediate: true, source: 'capture-classify-saved' });
-            await shareCaptureAfterClassify(manualEntryPayload.imageBase64, {
+            void shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
             });
           }}

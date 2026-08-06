@@ -24,11 +24,11 @@ import {
   buildAfreshAnalysisResult,
   AFRESH_PRODUCT,
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
+  fetchWatchBurnedCalories,
 } from '../../features/nutrition';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight, fetchLatestWeightEntry } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
-import { fetchWatchBurnedCalories } from '../../features/nutrition/services/nutritionDashboard/burnedCaloriesApi';
 import {
   fetchAiCreditsStatus,
   reserveAiCredit,
@@ -284,24 +284,6 @@ export default function ManualEntryPage({
     return () => { cancelled = true; };
   }, [userId]);
 
-  // Prefetch so Afresh / Water open instantly (avoids heavy food-corrections/stats + images).
-  useEffect(() => {
-    if (!userId) return undefined;
-    beverageSummaryReadyRef.current = false;
-    return loadBeverageToday();
-  }, [userId, loadBeverageToday]);
-
-  // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
-  useEffect(() => {
-    if (activeForm === 'water') {
-      return loadBeverageToday({ showWaterLoading: !beverageSummaryReadyRef.current });
-    }
-    if (activeForm === 'afresh') {
-      return loadBeverageToday({ showAfreshLoading: !beverageSummaryReadyRef.current });
-    }
-    return undefined;
-  }, [activeForm, loadBeverageToday]);
-
   // Light watch-calories summary — prefetch so Workout opens without a spinner wait.
   const loadWorkoutToday = useCallback((opts = {}) => {
     const { showLoading = false } = opts;
@@ -325,24 +307,56 @@ export default function ManualEntryPage({
     return () => { cancelled = true; };
   }, [userId, apiBaseUrl]);
 
+  // Prefetch beverage / workout summaries during idle so first paint stays snappy.
   useEffect(() => {
     if (!userId) return undefined;
+    beverageSummaryReadyRef.current = false;
     workoutSummaryReadyRef.current = false;
-    return loadWorkoutToday();
-  }, [userId, loadWorkoutToday]);
+    let cancelled = false;
+    let idleId = null;
+    let timeoutId = null;
+    const start = () => {
+      if (cancelled) return;
+      loadBeverageToday();
+      loadWorkoutToday();
+      warmLatestWeightCache(userId);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(start, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(start, 120);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
+  }, [userId, loadBeverageToday, loadWorkoutToday]);
+
+  // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
+  useEffect(() => {
+    if (activeForm === 'water') {
+      return loadBeverageToday({ showWaterLoading: !beverageSummaryReadyRef.current });
+    }
+    if (activeForm === 'afresh') {
+      return loadBeverageToday({ showAfreshLoading: !beverageSummaryReadyRef.current });
+    }
+    return undefined;
+  }, [activeForm, loadBeverageToday]);
 
   useEffect(() => {
     if (activeForm !== 'smartwatch') return undefined;
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  useEffect(() => {
-    if (userId) warmLatestWeightCache(userId);
-  }, [userId]);
+  const captureReady = Boolean(captureId);
 
-  const exit = async (shareMeta = null) => {
-    await onSaved?.(shareMeta);
-    // Share sheet was shown — return to main whether user shared or dismissed.
+  const exit = (shareMeta = null) => {
+    // Leave classify immediately — share sheet opens from App in the background.
+    // onSaved must read imageBase64 synchronously before onBack clears the payload.
+    onSaved?.(shareMeta);
     onBack?.();
   };
 
@@ -369,7 +383,7 @@ export default function ManualEntryPage({
       originalCapturedAt: originalCapturedAt || null,
     });
     onToast?.(toastMsg);
-    await exit(activityCaption ? { activityCaption } : null);
+    exit(activityCaption ? { activityCaption } : null);
   };
 
   const handleAiAnalyze = async () => {
@@ -393,7 +407,7 @@ export default function ManualEntryPage({
         reservationId = reserved.reservationId;
       }
       onStartBackgroundAi?.({ reservationId });
-      await exit();
+      exit();
     } catch (err) {
       setHint(err?.message || 'Could not start AI — pick a type below.');
       setAiStarting(false);
@@ -401,7 +415,7 @@ export default function ManualEntryPage({
   };
 
   const handleCategoryClick = (id) => {
-    if (saving || aiStarting) return;
+    if (!captureReady || saving || aiStarting) return;
     const next = resolveManualLogCategoryClick(id);
     if (!next) return;
     if (next.kind === 'healthy-snacks-picker') {
@@ -464,7 +478,7 @@ export default function ManualEntryPage({
       onToast?.(err?.message || "Couldn't save food — check Diary.");
     });
 
-    await exit(activityCaption ? { activityCaption } : null);
+    exit(activityCaption ? { activityCaption } : null);
   };
 
   const handleWeightSave = async ({ weightValue, unit, bmr }) => {
@@ -490,7 +504,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Weight saved to Diary');
-      await exit({
+      exit({
         activityCaption: buildDiaryShareSuffix('weight', {
           previousWeight,
           currentWeight: weightValue,
@@ -517,7 +531,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Activity saved to Diary');
-      await exit({
+      exit({
         activityCaption: buildDiaryShareSuffix('workout', {
           caloriesBurned,
         }),
@@ -593,7 +607,7 @@ export default function ManualEntryPage({
       });
       setActiveForm(null);
       onToast?.('Education saved to Diary');
-      await exit({
+      exit({
         activityCaption: buildDiaryShareSuffix('education', {
           platform,
           session: topic,
@@ -614,7 +628,9 @@ export default function ManualEntryPage({
   // Only show AI CTA / credits when mode is confirmed on — never surface “AI off” to users.
   const showCreditsPanel = creditsEnabled && credits != null && credits.enabled === true;
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
-  const aiDisabled = aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
+  const aiDisabled =
+    !captureReady || aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
+  const logAsDisabled = !captureReady || saving || closingWithoutLog;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -661,6 +677,13 @@ export default function ManualEntryPage({
           </p>
         )}
 
+        {!captureReady && (
+          <p className="shrink-0 flex items-center gap-2 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-xs text-emerald-800">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+            Saving photo…
+          </p>
+        )}
+
         {/* Type grid — premium compact Log-as buttons */}
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
@@ -676,7 +699,7 @@ export default function ManualEntryPage({
               <button
                 key={id}
                 type="button"
-                disabled={saving || closingWithoutLog}
+                disabled={logAsDisabled}
                 onClick={() => handleCategoryClick(id)}
                 className={LOG_AS_BTN_IDLE}
               >
