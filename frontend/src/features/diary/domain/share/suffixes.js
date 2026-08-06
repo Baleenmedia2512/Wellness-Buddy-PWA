@@ -2,7 +2,7 @@
  * diary/domain/share/suffixes.js
  *
  * Compact one-line activity suffixes for Quick Share captions:
- *   "Name · Wellness Valley v X.Y.Z, water 1 L"
+ *   "Name · Wellness Valley v X.Y.Z, Consumed: 1 L water so far today"
  *
  * Rich multi-line templates stay in the per-activity builders for Diary share.
  */
@@ -22,15 +22,16 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     case 'water': {
       const consumed = payload.volumeLabel
         || (payload.volumeMl != null ? formatWaterVolume(payload.volumeMl) : null);
-      return consumed ? `water ${consumed}` : 'water';
+      return consumed
+        ? `Consumed: ${consumed} water so far today`
+        : 'Consumed water so far today';
     }
     case DIARY_FOOD_ACTIVITY.AFRESH:
     case 'afresh': {
       const scoops = Number(payload.scoops);
       const count = Number.isFinite(scoops) && scoops > 0 ? scoops : 1;
-      const scoopLabel = `afresh ${count} ${count === 1 ? 'scoop' : 'scoops'}`;
-      const kcal = Math.round(Number(payload.calories) || 0);
-      return kcal > 0 ? `${scoopLabel} · ${kcal} kcal` : scoopLabel;
+      const scoopWord = count === 1 ? 'scoop' : 'scoops';
+      return `Consumed: ${count} ${scoopWord} Afresh so far today`;
     }
     case DIARY_FOOD_ACTIVITY.SHAKE:
     case 'shake': {
