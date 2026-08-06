@@ -56,10 +56,10 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (previous == null) return `weight ${current} kg`;
 
       const delta = Math.round((current - previous) * 100) / 100;
-      // Red up / green down — plain ⬆️/⬇️ render as platform-blue squares in WhatsApp.
+      // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
       let arrow = '';
-      if (delta < 0) arrow = ' 🟢↓';
-      else if (delta > 0) arrow = ' 🔴↑';
+      if (delta < 0) arrow = ' 🟢⬇️';
+      else if (delta > 0) arrow = ' 🔴⬆️';
 
       return `previous: ${previous} kg, current: ${current} kg${arrow}`;
     }

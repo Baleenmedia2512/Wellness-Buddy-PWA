@@ -26,9 +26,9 @@ export function buildWeightShareText({
   if (previous != null && current != null) {
     const delta = Math.round((current - previous) * 100) / 100;
     if (delta < 0) {
-      lines.push('', `🟢↓ ${formatDeltaChangeLabel('Decreased', Math.abs(delta))}`);
+      lines.push('', `🟢⬇️ ${formatDeltaChangeLabel('Decreased', Math.abs(delta))}`);
     } else if (delta > 0) {
-      lines.push('', `🔴↑ ${formatDeltaChangeLabel('Increased', Math.abs(delta))}`);
+      lines.push('', `🔴⬆️ ${formatDeltaChangeLabel('Increased', Math.abs(delta))}`);
     } else {
       lines.push('', 'No change');
     }
