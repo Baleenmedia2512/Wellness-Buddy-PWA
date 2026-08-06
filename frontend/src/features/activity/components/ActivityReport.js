@@ -12,7 +12,7 @@ import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../sh
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
-const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 
 function mapRoleForApi(userRole) {
@@ -520,6 +520,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   };
 
   const handleActivityClick = (activityId) => {
+    if (activityId === selectedActivity && !detailLoading) {
+      // Already showing this tab — avoid a duplicate detail GET.
+      const cacheKey = detailCacheKey(
+        activityId, currentPage, debouncedSearch, sortColumn, sortDirection,
+      );
+      if (detailCacheRef.current.has(cacheKey)) return;
+    }
     setSelectedActivity(activityId);
     setCurrentPage(1);
     fetchAbortRef.current?.abort();

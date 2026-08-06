@@ -14,7 +14,7 @@ import {
 } from '../domain/activity-report.pagination.js';
 
 describe('normalizeActivityReportPagination', () => {
-  it('defaults to page 1 and page size 25', () => {
+  it('defaults to page 1 and page size 10', () => {
     const p = normalizeActivityReportPagination({});
     assert.equal(p.page, 1);
     assert.equal(p.limit, ACTIVITY_REPORT_DEFAULT_PAGE_SIZE);
@@ -93,7 +93,7 @@ describe('filter / sort / paginate', () => {
 
 describe('buildActivityReportPaginationMeta', () => {
   it('clamps current page when beyond last page', () => {
-    const meta = buildActivityReportPaginationMeta(30, 99, 25);
+    const meta = buildActivityReportPaginationMeta(20, 99, 10);
     assert.equal(meta.currentPage, 2);
     assert.equal(meta.totalPages, 2);
     assert.equal(meta.hasNextPage, false);

@@ -18,7 +18,7 @@ import {
 import { resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
 
 /** Keep PostgREST IN lists small to avoid statement timeouts on large teams. */
-const IN_CHUNK_SIZE = 40;
+const IN_CHUNK_SIZE = 80;
 
 /**
  * @template T

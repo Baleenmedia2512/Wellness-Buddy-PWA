@@ -3,7 +3,7 @@
  * Applied after detail rows are built so meal-window + dedupe rules stay intact.
  */
 
-export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 25;
+export const ACTIVITY_REPORT_DEFAULT_PAGE_SIZE = 10;
 export const ACTIVITY_REPORT_MAX_PAGE_SIZE = 100;
 /** Hard ceiling for export-all responses (safety against runaway payloads). */
 export const ACTIVITY_REPORT_EXPORT_MAX = 10_000;

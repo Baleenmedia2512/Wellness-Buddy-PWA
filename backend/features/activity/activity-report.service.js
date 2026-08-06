@@ -215,6 +215,123 @@ function buildDetailMemberMap(members, sponsorByUser) {
   return memberMap;
 }
 
+/** AnalysisData is large — only water volume needs it. Meals use ProcessedBy + time windows. */
+function needsFoodAnalysisData(activityType) {
+  return activityType === 'water';
+}
+
+function collectTimezoneUserIds(weightRecords, educationRecords, foodRecords, stepRecords) {
+  return [...new Set([
+    ...(weightRecords || []).map((r) => r.UserId).filter(Boolean),
+    ...(educationRecords || []).map((r) => r.UserId).filter(Boolean),
+    ...(foodRecords || []).map((r) => r.UserID || r.UserId).filter(Boolean),
+    ...(stepRecords || []).map((r) => r.UserId).filter(Boolean),
+  ].map(String))];
+}
+
+/**
+ * Attach sponsor / ideal-coach labels onto an already-built page of rows.
+ * Avoids walking the full hierarchy for every member in the filtered set.
+ */
+async function attachSponsorsToRecords(records, { viewerUserId, membersById }) {
+  const list = Array.isArray(records) ? records : [];
+  if (list.length === 0) return list;
+
+  const pageMembers = [];
+  const seen = new Set();
+  for (const row of list) {
+    const uid = row?.userId;
+    if (uid == null || seen.has(String(uid))) continue;
+    seen.add(String(uid));
+    const member = membersById.get(String(uid));
+    if (member) {
+      pageMembers.push({
+        userId: member.UserId,
+        coachId: member.CoachId,
+        role: member.Role,
+      });
+    } else {
+      pageMembers.push({ userId: uid, coachId: null, role: 'member' });
+    }
+  }
+
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(pageMembers, {
+    viewerUserId,
+  });
+
+  return list.map((row) => {
+    const resolved = sponsorByUser.get(String(row.userId));
+    if (!resolved) return row;
+    return {
+      ...row,
+      coachName: resolved.sponsorName || row.coachName || 'N/A',
+      sponsorName: resolved.sponsorName || row.sponsorName || 'N/A',
+      idealCoachId: resolved.idealCoachId || null,
+      idealCoachName: resolved.idealCoachName || null,
+    };
+  });
+}
+
+/**
+ * Build → (optional full sponsor enrich for coach search) → paginate →
+ * page-only sponsor enrich when search is empty.
+ */
+async function buildPagedActivityRecords({
+  activityType,
+  members,
+  viewerUserId,
+  timezoneIana,
+  timezoneByUserId,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+  paginationOpts,
+}) {
+  const search = String(paginationOpts.search || '').trim();
+  // Coach/sponsor search needs full enrichment before filter; default path
+  // enriches only the returned page (major win for teamScope=full).
+  const needsFullSponsorPass = Boolean(search) || Boolean(paginationOpts.exportAll);
+
+  let sponsorByUser = null;
+  if (needsFullSponsorPass) {
+    sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+      { viewerUserId },
+    );
+  }
+
+  const memberMap = buildDetailMemberMap(members, sponsorByUser);
+  const allRecords = await buildDetailRecordsFromBundle({
+    activityType,
+    memberMap,
+    timezoneIana,
+    timezoneByUserId,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
+  });
+
+  const paged = paginateActivityReportRecords(allRecords, paginationOpts);
+
+  if (needsFullSponsorPass) {
+    return paged;
+  }
+
+  const membersById = new Map(members.map((m) => [String(m.UserId), m]));
+  const enrichedPage = await attachSponsorsToRecords(paged.records, {
+    viewerUserId,
+    membersById,
+  });
+  return {
+    ...paged,
+    records: enrichedPage,
+  };
+}
+
 async function buildDetailRecordsFromBundle({
   activityType,
   memberMap,
@@ -584,26 +701,31 @@ async function getActivityReportBootstrapUncached({
     return empty;
   }
 
-  // All activity tables + timezones in one wave.
-  // AnalysisData is required for beverage/meal classification (business rule parity
-  // with isExemptedBeverageOnly). It is never returned in the HTTP records payload.
+  // Activity tables in one wave. Skip AnalysisData unless the open tab is water
+  // (volume). Summary beverage detection uses ProcessedBy presets.
+  const wantAnalysis = needsFoodAnalysisData(detailActivity);
   const [
     weightRecords,
     educationRecords,
     stepRecords,
     timeWindows,
     foodRecords,
-    timezoneByUserId,
   ] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
     repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
-      includeAnalysisData: true,
+      includeAnalysisData: wantAnalysis,
     }),
-    getUserTimezonesIanaMap(userIds),
   ]);
+  // Timezones only for users who actually logged — not the entire full-scope tree.
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
+  );
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
   perf.mark('activity_tables');
 
   const summary = buildSummaryCounts({
@@ -631,14 +753,10 @@ async function getActivityReportBootstrapUncached({
         await repo.fetchMemberDetails(detailUserIds),
         { viewerUserId: userId },
       );
-      const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-        members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
-        { viewerUserId: userId },
-      );
-      const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
-      const allRecords = await buildDetailRecordsFromBundle({
+      const paged = await buildPagedActivityRecords({
         activityType: detailActivity,
-        memberMap: detailMemberMap,
+        members,
+        viewerUserId: userId,
         timezoneIana,
         timezoneByUserId,
         weightRecords,
@@ -646,8 +764,8 @@ async function getActivityReportBootstrapUncached({
         foodRecords,
         stepRecords,
         timeWindows,
+        paginationOpts,
       });
-      const paged = paginateActivityReportRecords(allRecords, paginationOpts);
       records = paged.records;
       pagination = paged.pagination;
       setCachedDetailRows(detailRowsCacheKey({
@@ -721,16 +839,21 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
     };
   }
   
-  const [weightRecords, educationRecords, stepRecords, timezoneByUserId, foodRecords, timeWindows] = await Promise.all([
+  const [weightRecords, educationRecords, stepRecords, foodRecords, timeWindows] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
-    getUserTimezonesIanaMap(userIds),
     repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
-      includeAnalysisData: true,
+      includeAnalysisData: false,
     }),
     repo.fetchTimeWindows(),
   ]);
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
+  );
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
 
   const counts = buildSummaryCounts({
     weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
@@ -919,6 +1042,11 @@ export async function getActivityDetails({
   const cachedPrepared = getCachedDetailRows(rowsCacheKey);
   if (cachedPrepared) {
     const paged = slicePreparedActivityReportRows(cachedPrepared, paginationOpts);
+    // Prepared cache may omit sponsors (page-only enrich path) — attach for this page.
+    const records = await attachSponsorsToRecords(paged.records, {
+      viewerUserId: userId,
+      membersById: new Map(),
+    });
     const body = {
       success: true,
       activityType,
@@ -927,12 +1055,12 @@ export async function getActivityDetails({
       endDate: endStr,
       teamScope: resolvedScope,
       teamScopeCounts,
-      records: paged.records,
+      records,
       pagination: paged.pagination,
     };
     perf.done({
       userCount: userIds.length,
-      recordCount: paged.records.length,
+      recordCount: records.length,
       totalRecords: paged.pagination.totalRecords,
       payloadBytes: approxJsonBytes(body),
       cache: 'rows-hit',
@@ -947,7 +1075,7 @@ export async function getActivityDetails({
     activityType === 'education' ? repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
     needsFood
       ? repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
-          includeAnalysisData: true,
+          includeAnalysisData: needsFoodAnalysisData(activityType),
         })
       : Promise.resolve([]),
     activityType === 'calories' ? repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
@@ -956,12 +1084,9 @@ export async function getActivityDetails({
   perf.mark('activity_table');
 
   // Timezones only for users appearing in fetched activity rows (smaller map).
-  const tzUserIds = [...new Set([
-    ...weightRecords.map((r) => r.UserId).filter(Boolean),
-    ...educationRecords.map((r) => r.UserId).filter(Boolean),
-    ...foodRecords.map((r) => r.UserID || r.UserId).filter(Boolean),
-    ...stepRecords.map((r) => r.UserId).filter(Boolean),
-  ].map(String))];
+  const tzUserIds = collectTimezoneUserIds(
+    weightRecords, educationRecords, foodRecords, stepRecords,
+  );
   const timezoneByUserId = tzUserIds.length > 0
     ? await getUserTimezonesIanaMap(tzUserIds)
     : {};
@@ -1003,21 +1128,17 @@ export async function getActivityDetails({
     return empty;
   }
 
-  // Enrich only members who appear in this tab (same as bootstrap) — not the full team.
+  // Enrich only members who appear in this tab — not the full team.
   const members = filterPublicAggregateUsers(
     await repo.fetchMemberDetails(detailUserIds),
     { viewerUserId: userId },
   );
-  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
-    { viewerUserId: userId },
-  );
-  const memberMap = buildDetailMemberMap(members, sponsorByUser);
-  perf.mark('member_sponsor');
+  perf.mark('member_fetch');
 
-  const allRecords = await buildDetailRecordsFromBundle({
+  const { records, pagination, preparedRows } = await buildPagedActivityRecords({
     activityType,
-    memberMap,
+    members,
+    viewerUserId: userId,
     timezoneIana,
     timezoneByUserId,
     weightRecords,
@@ -1025,12 +1146,10 @@ export async function getActivityDetails({
     foodRecords,
     stepRecords,
     timeWindows,
+    paginationOpts,
   });
-  perf.mark('build_records');
-
-  const { records, pagination, preparedRows } = paginateActivityReportRecords(allRecords, paginationOpts);
   setCachedDetailRows(rowsCacheKey, preparedRows);
-  perf.mark('paginate');
+  perf.mark('build_and_paginate');
 
   const body = {
     success: true,
