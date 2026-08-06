@@ -229,18 +229,36 @@ function dedupItems(rows, lowerTerm) {
 }
 
 export async function searchFoodHistory({ userId, searchTerm }) {
-  const lowerTerm = searchTerm.toLowerCase();
+  const trimmed = String(searchTerm || '').trim();
+  const lowerTerm = trimmed.toLowerCase();
+
+  // Single-letter typeahead: master/seeds only. History ILIKE on AnalysisData
+  // JSON for "%y%" is slow and rarely useful for autocomplete.
+  if (trimmed.length === 1) {
+    const masterItems = isEnabled('ff.nutrition-knowledge')
+      ? await listMasterSearchItems(trimmed).catch(() => [])
+      : [];
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        masterItems: masterItems || [],
+        myItems: [],
+        communityItems: [],
+      },
+    };
+  }
+
   let [myRows, communityRows, masterItems] = await Promise.all([
-    repo.searchUserMeals(userId, searchTerm),
-    repo.searchCommunityMeals(userId, searchTerm),
+    repo.searchUserMeals(userId, trimmed),
+    repo.searchCommunityMeals(userId, trimmed),
     isEnabled('ff.nutrition-knowledge')
-      ? listMasterSearchItems(searchTerm).catch(() => [])
+      ? listMasterSearchItems(trimmed).catch(() => [])
       : Promise.resolve([]),
   ]);
 
   // Typo recall: if exact ILIKE miss, re-query with a 2-char prefix and
   // let foodNameMatchesQuery filter (e.g. "omlette" → "omelette").
-  const trimmed = String(searchTerm || '').trim();
   if (
     myRows.length === 0
     && communityRows.length === 0

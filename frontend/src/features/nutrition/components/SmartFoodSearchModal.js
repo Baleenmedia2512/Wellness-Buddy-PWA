@@ -1,6 +1,6 @@
 // src/components/SmartFoodSearchModal.js
 import React, { useState, useEffect, useRef } from "react";
-import { X, Search, Check } from "lucide-react";
+import { X, Search, Check, ShoppingCart } from "lucide-react";
 import {
   scaleNutritionFields,
   sumNutrition,
@@ -52,6 +52,8 @@ const SmartFoodSearchModal = ({
   const [manualFiber, setManualFiber] = useState("");
 
   const searchTimerRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const searchSeqRef = useRef(0);
   const inputRef = useRef(null);
   // Prevents double-submit while parent closes + saves in background.
   const saveStartedRef = useRef(false);
@@ -83,30 +85,40 @@ const SmartFoodSearchModal = ({
     setError("");
   };
 
-  // Debounced search
+  // Debounced search — abort in-flight so slow "y" responses can't overwrite newer queries
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim() || searchQuery.trim().length < 1) {
+      if (searchAbortRef.current) searchAbortRef.current.abort();
       setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
-      return;
+      setIsSearching(false);
+      return undefined;
     }
+    // Longer debounce for 1-letter (noisy); shorter once the user has typed more
+    const delay = searchQuery.trim().length === 1 ? 280 : 220;
     searchTimerRef.current = setTimeout(() => {
       performSearch(searchQuery.trim());
-    }, 350);
+    }, delay);
     return () => clearTimeout(searchTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [searchQuery]);
 
   const performSearch = async (query) => {
     if (!userId || !apiBaseUrl) return;
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const seq = ++searchSeqRef.current;
     setIsSearching(true);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`
+        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`,
+        { signal: controller.signal },
       );
       const data = await res.json();
+      if (seq !== searchSeqRef.current) return;
       if (data.success) {
         const buckets = dedupeSearchBuckets({
           masterItems: data.masterItems || [],
@@ -121,12 +133,14 @@ const SmartFoodSearchModal = ({
         setMyItems([]);
         setCommunityItems([]);
       }
-    } catch {
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      if (seq !== searchSeqRef.current) return;
       setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
     } finally {
-      setIsSearching(false);
+      if (seq === searchSeqRef.current) setIsSearching(false);
     }
   };
 
@@ -310,13 +324,21 @@ const SmartFoodSearchModal = ({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+                {hasSelected && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[11px] font-semibold"
+                    aria-label={`Cart ${selectedItems.length}`}
+                  >
+                    <ShoppingCart className="w-3 h-3" aria-hidden />
+                    Cart {selectedItems.length}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
             </div>
           </div>
-          <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
         </div>
 
         {/* ── Scrollable body ── */}
@@ -538,7 +560,7 @@ const SmartFoodSearchModal = ({
                 className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
               >
                 <Check className="w-4 h-4" />
-                {`Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""}`}
+                Save
               </button>
             </>
           ) : (
