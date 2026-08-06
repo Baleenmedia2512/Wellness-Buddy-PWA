@@ -998,13 +998,15 @@ function WellnessValleyApp() {
           const userId =
             pendingClassify.userId || Session.getDbUserId() || null;
           if (userId) {
-            setManualEntryPayload({
-              captureId: pendingClassify.captureId,
-              imageBase64: pendingClassify.imageBase64,
-              userId,
-              originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
+            startTransition(() => {
+              setManualEntryPayload({
+                captureId: pendingClassify.captureId,
+                imageBase64: pendingClassify.imageBase64,
+                userId,
+                originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
+              });
+              setShowManualEntry(true);
             });
-            setShowManualEntry(true);
             window.history.pushState({ wvPage: 'manual-entry' }, '');
             return;
           }
@@ -1940,13 +1942,15 @@ function WellnessValleyApp() {
 
       if (!showManualEntry || !manualEntryPayload) {
         pendingClassifyRestoredRef.current = true;
-        setManualEntryPayload({
-          captureId: pending.captureId,
-          imageBase64: pending.imageBase64,
-          userId,
-          originalCapturedAt: pending.originalCapturedAt ?? null,
+        startTransition(() => {
+          setManualEntryPayload({
+            captureId: pending.captureId,
+            imageBase64: pending.imageBase64,
+            userId,
+            originalCapturedAt: pending.originalCapturedAt ?? null,
+          });
+          setShowManualEntry(true);
         });
-        setShowManualEntry(true);
         window.history.pushState({ wvPage: 'manual-entry' }, '');
       } else if (!manualEntryPayload.userId) {
         setManualEntryPayload((prev) => (prev ? { ...prev, userId } : prev));
@@ -2445,7 +2449,7 @@ function WellnessValleyApp() {
         }
         break;
       case 'manual-entry':
-        setShowManualEntry(true);
+        startTransition(() => setShowManualEntry(true));
         break;
       default:
         break;
@@ -5743,14 +5747,17 @@ function WellnessValleyApp() {
         `?? [PERF] ? Opening Manual Entry early (+${Date.now() - perfStart}ms) — capture POST in background`,
       );
 
-      setManualEntryPayload({
-        clientKey: instantToken,
-        captureId: null,
-        imageBase64: processedImage,
-        userId: user?.id ?? null,
-      });
       manualEntrySessionRef.current = { clientKey: instantToken, abandoned: false };
-      setShowManualEntry(true);
+      // Lazy ManualEntryPage — must not suspend on a sync update (React 18).
+      startTransition(() => {
+        setManualEntryPayload({
+          clientKey: instantToken,
+          captureId: null,
+          imageBase64: processedImage,
+          userId: user?.id ?? null,
+        });
+        setShowManualEntry(true);
+      });
       window.history.pushState({ wvPage: 'manual-entry' }, '');
 
       let resolvedUserIdForOrchestrate = user?.id;
