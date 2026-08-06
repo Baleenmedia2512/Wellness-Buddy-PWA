@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {
   normalizeFoodName,
   foodNameMatchesQuery,
+  foodNameMatchIndex,
+  sortByFoodNameMatch,
   editDistance,
   pickNutrition,
   scaleNutrition,
@@ -40,6 +42,32 @@ describe('foodNameMatchesQuery', () => {
     assert.equal(foodNameMatchesQuery('Omelette', 'om'), true);
     assert.equal(foodNameMatchesQuery('Omelette', 'omlette', ['omlette', 'omelet']), true);
     assert.equal(foodNameMatchesQuery('Omelette', 'omlette'), true);
+  });
+});
+
+describe('foodNameMatchIndex / sortByFoodNameMatch', () => {
+  it('ranks earlier letter positions first', () => {
+    assert.equal(foodNameMatchIndex('Onion', 'o'), 0);
+    assert.equal(foodNameMatchIndex('Boiled Egg', 'o'), 1);
+    assert.equal(foodNameMatchIndex('Beetroot', 'o'), 5);
+  });
+
+  it('sorts suggestions by match position then name', () => {
+    const sorted = sortByFoodNameMatch(
+      [
+        { name: 'Beetroot Poriyal' },
+        { name: 'Onion' },
+        { name: 'Boiled Egg' },
+        { name: 'Coconut Chutney' },
+      ],
+      'o',
+    ).map((i) => i.name);
+    assert.deepEqual(sorted, [
+      'Onion',
+      'Boiled Egg',
+      'Coconut Chutney',
+      'Beetroot Poriyal',
+    ]);
   });
 });
 

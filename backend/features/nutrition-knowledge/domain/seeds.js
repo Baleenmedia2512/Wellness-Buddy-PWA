@@ -2,7 +2,7 @@
  * backend/features/nutrition-knowledge/domain/seeds.js
  * In-code approved seeds used when the DB table is empty / migration pending.
  */
-import { foodNameMatchesQuery, normalizeFoodName } from './nutrition.rules.js';
+import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from './nutrition.rules.js';
 
 const SEEDS = [
   {
@@ -151,9 +151,10 @@ const SEEDS = [
 export function searchSeedProfiles(term) {
   const q = normalizeFoodName(term);
   if (!q) return [];
-  return SEEDS.filter((row) =>
+  const hits = SEEDS.filter((row) =>
     foodNameMatchesQuery(row.canonical_name, q, row.aliases || []),
   );
+  return sortByFoodNameMatch(hits, q);
 }
 
 /**

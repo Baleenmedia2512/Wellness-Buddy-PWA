@@ -3,7 +3,7 @@
  */
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { foodNameMatchesQuery, normalizeFoodName } from '../domain/nutrition.rules.js';
+import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from '../domain/nutrition.rules.js';
 
 const TABLE = 'nutrition_master_profiles_table';
 
@@ -40,13 +40,17 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
   const safe = q.replace(/[%_,]/g, ' ').trim();
   if (safe.length < 1) return [];
 
+  // Wider fetch, then rank by match position (prefix first). Plain A→Z + limit
+  // would bury "Onion" behind many mid-string "o" hits.
+  const fetchLimit = Math.max(limit * 4, 80);
+
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
     .eq('status', status)
     .or(`canonical_name.ilike.%${safe}%,normalized_name.ilike.%${safe}%`)
     .order('canonical_name', { ascending: true })
-    .limit(limit);
+    .limit(fetchLimit);
 
   if (error) {
     // Table missing / not migrated — caller falls back to in-code seeds.
@@ -66,7 +70,7 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
         .eq('status', status)
         .or(`canonical_name.ilike.%${prefix}%,normalized_name.ilike.%${prefix}%`)
         .order('canonical_name', { ascending: true })
-        .limit(Math.max(limit * 3, 60));
+        .limit(Math.max(fetchLimit, 60));
       if (broad.error) {
         logger.warn('[nutrition-knowledge.repo] searchProfiles broad failed', {
           err: broad.error.message,
@@ -79,7 +83,7 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
     }
   }
 
-  return rows.slice(0, limit);
+  return sortByFoodNameMatch(rows, safe).slice(0, limit);
 }
 
 /**

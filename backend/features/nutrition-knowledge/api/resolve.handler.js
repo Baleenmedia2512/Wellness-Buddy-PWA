@@ -12,6 +12,7 @@ import {
   pickNutrition,
   shouldAutoPromote,
   AUTO_PROMOTE_SIGHTINGS,
+  sortByFoodNameMatch,
 } from '../domain/nutrition.rules.js';
 
 async function loadApprovedProfile(name) {
@@ -76,7 +77,10 @@ export async function searchMaster({ searchTerm }) {
     }
   }
 
-  const items = rows.map((row) => profileToSearchItem(row));
+  const items = sortByFoodNameMatch(
+    rows.map((row) => profileToSearchItem(row)),
+    searchTerm,
+  );
   return {
     httpStatus: 200,
     body: { ok: true, data: { items } },
