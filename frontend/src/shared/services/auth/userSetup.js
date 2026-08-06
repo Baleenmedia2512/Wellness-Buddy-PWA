@@ -1,7 +1,7 @@
 /**
  * shared/services/auth/userSetup.js
  * ---------------------------------------------------------------------------
- * Pure HTTP helpers for the user-status (active / inactive / not-found)
+ * Pure HTTP helpers for the user-status (active / not-found)
  * lookup and the setup-status (skipped / complete / pending OTP / incomplete)
  * fetch. Extracted from App.js's `checkUserStatus` and the duplicate
  * setup-status fetch trees in the auth-state listener and the standalone
@@ -31,14 +31,14 @@ import { getDeviceTimezoneIana } from "../../utils/deviceTimezone.js";
  *
  * @param {{ apiBaseUrl: string, email: string }} params
  * @returns {Promise<{
- *   result: 'active' | 'inactive' | 'userNotFound' | 'newUser',
+ *   result: 'active' | 'userNotFound' | 'newUser',
  *   role?: string,
  * }>}
  *
  * Mapping rules (preserved from legacy `checkUserStatus`):
  *   - !data.success || data.userNotFound      → 'userNotFound'
  *   - data.isNewUser                          → 'newUser'  (carries role if present)
- *   - data.success && !data.isActive          → 'inactive'
+ *   - data.success && !data.isActive          → 'active'   (inactive users are allowed through)
  *   - data.success && data.isActive           → 'active'   (carries role if present)
  *   - HTTP non-OK or thrown error             → 'active'   (FAIL-OPEN)
  */
@@ -69,7 +69,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
       return { result: "newUser", role: data.role };
     }
     if (data.success && !data.isActive) {
-      return { result: "inactive" };
+      return { result: "active", role: data.role };
     }
     return { result: "active", role: data.role };
   } catch (err) {

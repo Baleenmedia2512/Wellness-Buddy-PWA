@@ -5554,9 +5554,9 @@ function WellnessValleyApp() {
     if (!isActive) {
       setAlertModal({
         isOpen: true,
-        title: "Account inactive",
+        title: "Unable to continue",
         message:
-          "Your account is inactive. Please contact your sponsor to reactivate.",
+          "We could not continue with this account right now. Please sign in again and try once more.",
         type: "warning",
       });
       imageProcessingInProgress.current = false;
@@ -6584,10 +6584,8 @@ function WellnessValleyApp() {
           parsedUser?.Status,
         );
 
-        // Fast-path inactive check: the verify-otp API already returns the
-        // user's current Status in the stored object. If it's already
-        // 'Inactive', show the Account Restricted modal immediately — do NOT
-        // rely on a separate network call that can time out or fail-open.
+        // Fast-path inactive check is intentionally ignored so inactive users
+        // can continue into the app without the Account Restricted modal.
         // Check both lowercase 'status' and capital 'Status' for compatibility
         const userStatus = (
           parsedUser?.status ||
@@ -6595,33 +6593,6 @@ function WellnessValleyApp() {
           ""
         ).toLowerCase();
         console.log("?? [handleOtpVerified] Normalized status:", userStatus);
-
-        if (userStatus === "inactive") {
-          console.log(
-            "?? [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
-          );
-          debugLog(
-            "?? [handleOtpVerified] User is inactive (fast-path check), showing restricted modal",
-          );
-          authFsm.send({
-            type: authFsm.E.USER_STATUS_RESOLVED,
-            result: "inactive",
-          });
-
-          // CRITICAL: Set all state synchronously so React batches them and triggers ONE re-render
-          // with all the correct state. The modal will render because user is set but isOtpVerified is false.
-          setUser(parsedUser);
-          setIsUserActive(false);
-          setShowInactiveModal(true);
-          setPostAuthBridge(false);
-
-          console.log(
-            "?? [handleOtpVerified] State set - user:",
-            parsedUser.email,
-            "showInactiveModal: true",
-          );
-          return;
-        }
 
         // Check user status with timeout for iOS
         let isActive = true;
