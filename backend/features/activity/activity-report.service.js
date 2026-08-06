@@ -9,6 +9,12 @@ import {
   approxJsonBytes,
   createActivityReportPerf,
 } from './domain/activity-report.perf.js';
+import {
+  ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  buildActivityReportPaginationMeta,
+  paginateActivityReportRecords,
+  slicePreparedActivityReportRows,
+} from './domain/activity-report.pagination.js';
 import { getUserTimezoneIana, getUserTimezonesIanaMap, resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
 import {
   IANA_IST,
@@ -20,6 +26,10 @@ import {
 import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
+
+function emptyPagination(page = 1, limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE) {
+  return buildActivityReportPaginationMeta(0, page, limit);
+}
 
 /**
  * Attach sponsor + ideal-coach fields onto a member info object (ADR-0007).
@@ -426,6 +436,50 @@ function collectDetailRecordUserIds({
 const bootstrapResultCache = new Map();
 const BOOTSTRAP_CACHE_TTL_MS = 20_000;
 
+/**
+ * Cache fully built+filtered detail rows so page flips avoid re-querying.
+ * Key excludes page/limit; value is the post-search/sort list.
+ */
+const detailRowsCache = new Map();
+const DETAIL_ROWS_CACHE_TTL_MS = 30_000;
+
+function detailRowsCacheKey(input) {
+  return [
+    input.userId,
+    input.role,
+    input.teamScope,
+    input.dateRange,
+    input.startDate || '',
+    input.endDate || '',
+    input.activityType,
+    input.search || '',
+    input.sort || 'date',
+    input.sortDir || 'desc',
+  ].join('|');
+}
+
+function getCachedDetailRows(key) {
+  const hit = detailRowsCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    detailRowsCache.delete(key);
+    return null;
+  }
+  return hit.rows;
+}
+
+function setCachedDetailRows(key, rows) {
+  detailRowsCache.set(key, {
+    rows,
+    expiresAt: Date.now() + DETAIL_ROWS_CACHE_TTL_MS,
+  });
+  // Bound cache size for warm lambdas with many coaches
+  if (detailRowsCache.size > 40) {
+    const oldest = detailRowsCache.keys().next().value;
+    detailRowsCache.delete(oldest);
+  }
+}
+
 function bootstrapCacheKey(input) {
   return [
     input.userId,
@@ -436,6 +490,12 @@ function bootstrapCacheKey(input) {
     input.endDate || '',
     input.detailActivity || 'education',
     input.includeRecords ? '1' : '0',
+    input.page || 1,
+    input.limit || ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+    input.search || '',
+    input.sort || 'date',
+    input.sortDir || 'desc',
+    input.exportAll ? 'export' : 'page',
   ].join('|');
 }
 
@@ -477,7 +537,14 @@ async function getActivityReportBootstrapUncached({
   endDate: customEnd,
   detailActivity = 'education',
   includeRecords = true,
+  page = 1,
+  limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  search = '',
+  sort = 'date',
+  sortDir = 'desc',
+  exportAll = false,
 }) {
+  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
   const perf = createActivityReportPerf('bootstrap');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
@@ -505,6 +572,7 @@ async function getActivityReportBootstrapUncached({
         members: [],
         stats: EMPTY_STATS,
         records: [],
+        pagination: emptyPagination(page, limit),
       },
     };
     perf.done({
@@ -544,6 +612,7 @@ async function getActivityReportBootstrapUncached({
   perf.mark('summary_counts');
 
   let records = [];
+  let pagination = emptyPagination(page, limit);
   if (includeRecords) {
     const detailUserIds = collectDetailRecordUserIds({
       activityType: detailActivity,
@@ -567,7 +636,7 @@ async function getActivityReportBootstrapUncached({
         { viewerUserId: userId },
       );
       const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
-      records = await buildDetailRecordsFromBundle({
+      const allRecords = await buildDetailRecordsFromBundle({
         activityType: detailActivity,
         memberMap: detailMemberMap,
         timezoneIana,
@@ -578,6 +647,21 @@ async function getActivityReportBootstrapUncached({
         stepRecords,
         timeWindows,
       });
+      const paged = paginateActivityReportRecords(allRecords, paginationOpts);
+      records = paged.records;
+      pagination = paged.pagination;
+      setCachedDetailRows(detailRowsCacheKey({
+        userId,
+        role,
+        teamScope: resolvedScope,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        activityType: detailActivity,
+        search,
+        sort,
+        sortDir,
+      }), paged.preparedRows);
     }
     perf.mark('detail_enrichment');
   }
@@ -588,10 +672,12 @@ async function getActivityReportBootstrapUncached({
     members: [],
     stats: EMPTY_STATS,
     records,
+    pagination,
   };
   perf.done({
     userCount: userIds.length,
     recordCount: records.length,
+    totalRecords: pagination.totalRecords,
     foodRows: foodRecords.length,
     detailActivity,
     payloadBytes: approxJsonBytes(body),
@@ -774,7 +860,22 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
 /**
  * Get detailed activity records for a specific activity type
  */
-export async function getActivityDetails({ userId, role, teamScope, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivityDetails({
+  userId,
+  role,
+  teamScope,
+  activityType,
+  dateRange,
+  startDate: customStart,
+  endDate: customEnd,
+  page = 1,
+  limit = ACTIVITY_REPORT_DEFAULT_PAGE_SIZE,
+  search = '',
+  sort = 'date',
+  sortDir = 'desc',
+  exportAll = false,
+}) {
+  const paginationOpts = { page, limit, search, sort, sortDir, exportAll };
   const perf = createActivityReportPerf('details');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
@@ -783,6 +884,18 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
   perf.mark('scope_and_dates');
 
   const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
+  const rowsCacheKey = detailRowsCacheKey({
+    userId,
+    role,
+    teamScope: resolvedScope,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    activityType,
+    search,
+    sort,
+    sortDir,
+  });
 
   if (userIds.length === 0) {
     const empty = {
@@ -796,10 +909,35 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
         teamScope: resolvedScope,
         teamScopeCounts,
         records: [],
+        pagination: emptyPagination(page, limit),
       },
     };
     perf.done({ userCount: 0, recordCount: 0, payloadBytes: approxJsonBytes(empty.body) });
     return empty;
+  }
+
+  const cachedPrepared = getCachedDetailRows(rowsCacheKey);
+  if (cachedPrepared) {
+    const paged = slicePreparedActivityReportRows(cachedPrepared, paginationOpts);
+    const body = {
+      success: true,
+      activityType,
+      dateRange,
+      startDate: startStr,
+      endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
+      records: paged.records,
+      pagination: paged.pagination,
+    };
+    perf.done({
+      userCount: userIds.length,
+      recordCount: paged.records.length,
+      totalRecords: paged.pagination.totalRecords,
+      payloadBytes: approxJsonBytes(body),
+      cache: 'rows-hit',
+    });
+    return { httpStatus: 200, body };
   }
 
   // Fetch only the activity table for this tab (+ time windows) before member enrichment.
@@ -852,8 +990,10 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
         teamScope: resolvedScope,
         teamScopeCounts,
         records: [],
+        pagination: emptyPagination(page, limit),
       },
     };
+    setCachedDetailRows(rowsCacheKey, []);
     perf.done({
       userCount: userIds.length,
       recordCount: 0,
@@ -875,7 +1015,7 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
   const memberMap = buildDetailMemberMap(members, sponsorByUser);
   perf.mark('member_sponsor');
 
-  const records = await buildDetailRecordsFromBundle({
+  const allRecords = await buildDetailRecordsFromBundle({
     activityType,
     memberMap,
     timezoneIana,
@@ -888,6 +1028,10 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
   });
   perf.mark('build_records');
 
+  const { records, pagination, preparedRows } = paginateActivityReportRecords(allRecords, paginationOpts);
+  setCachedDetailRows(rowsCacheKey, preparedRows);
+  perf.mark('paginate');
+
   const body = {
     success: true,
     activityType,
@@ -897,12 +1041,15 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
     teamScope: resolvedScope,
     teamScopeCounts,
     records,
+    pagination,
   };
   perf.done({
     userCount: userIds.length,
     detailUserCount: detailUserIds.length,
     recordCount: records.length,
+    totalRecords: pagination.totalRecords,
     payloadBytes: approxJsonBytes(body),
+    cache: 'miss',
   });
   return { httpStatus: 200, body };
 }

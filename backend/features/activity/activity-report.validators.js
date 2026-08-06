@@ -2,6 +2,7 @@
  * Activity Report Validators
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { normalizeActivityReportPagination } from './domain/activity-report.pagination.js';
 
 const VALID_ACTIVITY_TYPES = new Set(['bootstrap', 'summary', 'member-summary', 'weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']);
 const VALID_DETAIL_ACTIVITIES = new Set(['weight', 'education', 'breakfast', 'lunch', 'dinner', 'water', 'calories']);
@@ -71,6 +72,15 @@ export function validateActivityReport(query) {
 
   const includeRecords = query.includeRecords !== '0' && query.includeRecords !== 'false';
 
+  const pagination = normalizeActivityReportPagination({
+    page: query.page,
+    limit: query.limit,
+    search: query.search,
+    sort: query.sort,
+    sortDir: query.sortDir || query.sortDirection,
+    exportAll: query.exportAll ?? query.export,
+  });
+
   return {
     userId,
     activityType,
@@ -81,5 +91,6 @@ export function validateActivityReport(query) {
     role,
     teamScope,
     includeRecords,
+    ...pagination,
   };
 }

@@ -12,6 +12,9 @@ import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../sh
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
+const DEFAULT_PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
+
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
   if (n === 'admin' || n === 'developer') return 'admin';
@@ -22,6 +25,17 @@ function mapRoleForApi(userRole) {
 function isBootstrapUnsupportedResponse(data) {
   const msg = String(data?.message || '').toLowerCase();
   return msg.includes('activitytype') || msg.includes('bootstrap');
+}
+
+function emptyPagination(page = 1, pageSize = DEFAULT_PAGE_SIZE) {
+  return {
+    totalRecords: 0,
+    totalPages: 0,
+    currentPage: page,
+    pageSize,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
 }
 
 // Activity type metadata
@@ -68,6 +82,7 @@ const display = (val) => (!val || val === 'N/A') ? '—' : val;
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
@@ -76,10 +91,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
+  const [pagination, setPagination] = useState(() => emptyPagination());
+  const itemsPerPage = DEFAULT_PAGE_SIZE;
 
   // Member summary state kept for legacy fallback responses (not rendered in UI).
   const [memberSummaries, setMemberSummaries] = useState([]);
@@ -93,8 +110,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
   const loadReportRef = useRef(null);
+  const fetchDetailsRef = useRef(null);
   const selectedActivityRef = useRef(selectedActivity);
-  /** @type {React.MutableRefObject<Map<string, Array>>} */
+  const inFlightKeyRef = useRef('');
+  const skipSearchSortFetchRef = useRef(true);
+  /** @type {React.MutableRefObject<Map<string, { records: Array, pagination: object }>>} */
   const detailCacheRef = useRef(new Map());
   selectedActivityRef.current = selectedActivity;
 
@@ -105,15 +125,29 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return `${year}-${month}-${day}`;
   };
 
-  const detailCacheKey = useCallback((activityType) => (
+  // Debounce search so typing does not fire a request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setCurrentPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir) => (
     [
       teamScope,
       dateRange,
       customStartDate ? formatDateForApi(customStartDate) : '',
       customEndDate ? formatDateForApi(customEndDate) : '',
       activityType || '',
+      String(page || 1),
+      String(itemsPerPage),
+      search || '',
+      sort || 'date',
+      sortDir || 'desc',
     ].join('|')
-  ), [teamScope, dateRange, customStartDate, customEndDate]);
+  ), [teamScope, dateRange, customStartDate, customEndDate, itemsPerPage]);
 
   // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
@@ -166,6 +200,25 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     }
   }, []);
 
+  const applyPaginationMeta = useCallback((data, fallbackPage = 1) => {
+    if (data?.pagination) {
+      setPagination(data.pagination);
+      if (data.pagination.currentPage) {
+        setCurrentPage(data.pagination.currentPage);
+      }
+      return;
+    }
+    const records = Array.isArray(data?.records) ? data.records : [];
+    setPagination({
+      totalRecords: records.length,
+      totalPages: records.length > 0 ? 1 : 0,
+      currentPage: fallbackPage,
+      pageSize: itemsPerPage,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
+  }, [itemsPerPage]);
+
   const activeScopeLabel = useMemo(() => {
     const option = TEAM_SCOPE_OPTIONS.find((o) => o.value === teamScope);
     if (!option) return '';
@@ -182,8 +235,18 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return preset?.label || 'Today';
   }, [dateRange, customStartDate, customEndDate]);
 
+  const paginationQuery = useCallback((page = currentPage, overrides = {}) => ({
+    page: overrides.page ?? page,
+    limit: overrides.limit ?? itemsPerPage,
+    search: overrides.search ?? debouncedSearch,
+    sort: overrides.sort ?? sortColumn,
+    sortDir: overrides.sortDir ?? sortDirection,
+    ...(overrides.exportAll ? { exportAll: '1' } : {}),
+  }), [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection]);
+
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
     // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
+    const pageParams = paginationQuery(1);
     const [summaryRes, memberRes, detailRes] = await Promise.all([
       fetch(
         `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
@@ -194,7 +257,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         { cache: 'no-store' },
       ),
       fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity, pageParams)}`,
         { cache: 'no-store' },
       ),
     ]);
@@ -217,29 +280,52 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     applyReportMeta(summaryData);
     setMemberSummaries(memberData.members || []);
     setMemberStats(memberData.stats || null);
-    setDetailRecords(detailData.records || []);
-    setCurrentPage(1);
-  }, [apiBaseUrl, buildReportParams, applyReportMeta]);
+    const records = detailData.records || [];
+    setDetailRecords(records);
+    applyPaginationMeta(detailData, 1);
+    detailCacheRef.current.set(
+      detailCacheKey(detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir),
+      { records, pagination: detailData.pagination || emptyPagination(1) },
+    );
+  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey]);
 
-  const fetchDetails = useCallback(async (activityType, { signal } = {}) => {
+  const fetchDetails = useCallback(async (activityType, {
+    signal,
+    page = 1,
+    search = debouncedSearch,
+    sort = sortColumn,
+    sortDir = sortDirection,
+  } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    const cacheKey = detailCacheKey(activityType);
+    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir);
     if (detailCacheRef.current.has(cacheKey)) {
-      setDetailRecords(detailCacheRef.current.get(cacheKey) || []);
-      setCurrentPage(1);
+      const cached = detailCacheRef.current.get(cacheKey);
+      setDetailRecords(cached.records || []);
+      setPagination(cached.pagination || emptyPagination(page));
+      setCurrentPage(cached.pagination?.currentPage || page);
       setDetailLoading(false);
       setError('');
       return;
     }
+
+    // Prevent duplicate in-flight requests for the same page key.
+    if (inFlightKeyRef.current === cacheKey) return;
+    inFlightKeyRef.current = cacheKey;
 
     setDetailLoading(true);
     setError('');
 
     try {
       const response = await fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType)}`,
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType, {
+          page,
+          limit: itemsPerPage,
+          search,
+          sort,
+          sortDir,
+        })}`,
         { cache: 'no-store', signal },
       );
 
@@ -250,16 +336,33 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       }
 
       const records = data.records || [];
-      detailCacheRef.current.set(cacheKey, records);
+      const pageMeta = data.pagination || emptyPagination(page);
+      detailCacheRef.current.set(cacheKey, { records, pagination: pageMeta });
       setDetailRecords(records);
-      setCurrentPage(1);
+      setPagination(pageMeta);
+      setCurrentPage(pageMeta.currentPage || page);
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity details');
     } finally {
+      if (inFlightKeyRef.current === cacheKey) {
+        inFlightKeyRef.current = '';
+      }
       setDetailLoading(false);
     }
-  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams, detailCacheKey]);
+  }, [
+    user?.id,
+    apiBaseUrl,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    buildReportParams,
+    detailCacheKey,
+    debouncedSearch,
+    sortColumn,
+    sortDirection,
+    itemsPerPage,
+  ]);
 
   /** Phase 1: team scope + summary pills. Phase 2: detail table from same bootstrap when includeRecords=1. */
   const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
@@ -270,12 +373,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setDetailLoading(true);
     setError('');
     detailCacheRef.current.clear();
+    inFlightKeyRef.current = '';
+    skipSearchSortFetchRef.current = true;
+
+    const pageParams = paginationQuery(1);
 
     try {
       const response = await fetch(
         `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
           detailActivity: detailActivity || 'education',
           includeRecords: '1',
+          ...pageParams,
         })}`,
         { cache: 'no-store', signal },
       );
@@ -293,13 +401,18 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       }
 
       const records = Array.isArray(data.records) ? data.records : [];
-      detailCacheRef.current.set(detailCacheKey(detailActivity || 'education'), records);
+      const pageMeta = data.pagination || emptyPagination(1);
+      detailCacheRef.current.set(
+        detailCacheKey(detailActivity || 'education', 1, pageParams.search, pageParams.sort, pageParams.sortDir),
+        { records, pagination: pageMeta },
+      );
       setSummary(data.summary || null);
       applyReportMeta(data);
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
       setDetailRecords(records);
-      setCurrentPage(1);
+      setPagination(pageMeta);
+      setCurrentPage(pageMeta.currentPage || 1);
       setSummaryLoading(false);
       setDetailLoading(false);
     } catch (err) {
@@ -318,9 +431,11 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     fetchLegacyReportBundle,
     applyReportMeta,
     detailCacheKey,
+    paginationQuery,
   ]);
 
   loadReportRef.current = loadReport;
+  fetchDetailsRef.current = fetchDetails;
 
   // Fetch only when this page is open (component mounted) and role is resolved.
   // Refs keep loadReport/selectedActivity out of deps so callback identity churn
@@ -362,25 +477,88 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     apiBaseUrl,
   ]);
 
+  // Refetch current tab when debounced search / sort changes (not on every keystroke).
+  // Skip the first run after bootstrap/filter reload — those already return page 1.
+  useEffect(() => {
+    if (!roleReady || !user?.id || !apiBaseUrl || !summary) return undefined;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return undefined;
+    if (skipSearchSortFetchRef.current) {
+      skipSearchSortFetchRef.current = false;
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      const run = fetchDetailsRef.current;
+      if (typeof run !== 'function') return;
+      run(selectedActivityRef.current || 'education', {
+        signal: controller.signal,
+        page: 1,
+        search: debouncedSearch,
+        sort: sortColumn,
+        sortDir: sortDirection,
+      });
+    }, 80);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  // intentionally omit selectedActivity — tab switches use handleActivityClick
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, sortColumn, sortDirection, roleReady, user?.id, apiBaseUrl, summary]);
+
   const handleRefresh = () => {
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    setCurrentPage(1);
     loadReport(selectedActivity, { signal: controller.signal });
   };
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
+    setCurrentPage(1);
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    fetchDetails(activityId, { signal: controller.signal });
+    fetchDetails(activityId, {
+      signal: controller.signal,
+      page: 1,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+    });
+  };
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1) return;
+    if (pagination.totalPages > 0 && nextPage > pagination.totalPages) return;
+    if (nextPage === currentPage) return;
+
+    setCurrentPage(nextPage);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(selectedActivity, {
+      signal: controller.signal,
+      page: nextPage,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+    });
   };
 
   const handleTeamScopeChange = (scope) => {
     setTeamScope(scope);
     setSearchQuery('');
+    setDebouncedSearch('');
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
     setError('');
@@ -388,7 +566,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
     setError('');
@@ -404,12 +584,14 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
   };
 
-  // Filter member summaries by search query
+  // Filter member summaries by search query (legacy fallback only)
   const filteredMemberSummaries = useMemo(() => {
     if (!memberSearchQuery) return memberSummaries;
     const q = memberSearchQuery.toLowerCase();
@@ -420,49 +602,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     );
   }, [memberSummaries, memberSearchQuery]);
 
-  // Filter and sort records
-  const filteredRecords = useMemo(() => {
-    let filtered = detailRecords;
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(record =>
-        (record.memberName || '').toLowerCase().includes(query) ||
-        (record.phone || '').toLowerCase().includes(query) ||
-        (record.sponsorName || record.coachName || '').toLowerCase().includes(query) ||
-        (record.idealCoachName || '').toLowerCase().includes(query) ||
-        (record.city || '').toLowerCase().includes(query) ||
-        (record.village || '').toLowerCase().includes(query)
-      );
-    }
-
-    // Apply sorting
-    filtered = [...filtered].sort((a, b) => {
-      let aVal = a[sortColumn];
-      let bVal = b[sortColumn];
-
-      if (sortColumn === 'date' || sortColumn === 'time') {
-        aVal = aVal || '';
-        bVal = bVal || '';
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [detailRecords, searchQuery, sortColumn, sortDirection]);
-
-  // Paginate records
-  const paginatedRecords = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredRecords.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredRecords, currentPage]);
-
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
-
   const handleSort = (column) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -470,80 +609,97 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       setSortColumn(column);
       setSortDirection('asc');
     }
+    setCurrentPage(1);
+  };
+
+  const buildCsvFromRecords = (records) => {
+    const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
+    const activityLabel = selectedActivityMeta?.label || 'Activity';
+
+    let headers = [
+      'Member Name',
+      'Club',
+      'Reg. Date',
+      'Reg. Time',
+      'Sponsor Name',
+      'Coach Name',
+      'Phone Number',
+      'City',
+      'Village'
+    ];
+
+    if (selectedActivity === 'weight') {
+      headers.splice(1, 0, 'Weight (kg)');
+    } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
+      headers.splice(1, 0, 'Meal Type', 'Calories');
+    } else if (selectedActivity === 'water') {
+      headers.splice(1, 0, 'Water (L)');
+    } else if (selectedActivity === 'calories') {
+      headers.splice(1, 0, 'Steps', 'Calories Burned');
+    }
+
+    const csvRows = [headers.join(',')];
+
+    records.forEach((record) => {
+      const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
+      const baseRow = [
+        `"${record.memberName || 'N/A'}"`,
+        `"${displayClub}"`,
+        record.date || 'N/A',
+        record.time || 'N/A',
+        `"${record.sponsorName || record.coachName || 'N/A'}"`,
+        `"${record.idealCoachName || ''}"`,
+        `"${record.phone || 'N/A'}"`,
+        `"${record.city || 'N/A'}"`,
+        `"${record.village || 'N/A'}"`,
+      ];
+
+      if (selectedActivity === 'weight') {
+        baseRow.splice(1, 0, record.weight || 'N/A');
+      } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
+        baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
+      } else if (selectedActivity === 'water') {
+        baseRow.splice(1, 0, record.waterLiters || 0);
+      } else if (selectedActivity === 'calories') {
+        baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
+      }
+
+      csvRows.push(baseRow.join(','));
+    });
+
+    return {
+      csv: csvRows.join('\n'),
+      fileName: `activity-report-${activityLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`,
+    };
   };
 
   const handleDownload = async () => {
-    if (filteredRecords.length === 0) {
+    if ((pagination.totalRecords || 0) === 0 && detailRecords.length === 0) {
       alert('No records to export');
       return;
     }
 
+    setExportLoading(true);
     try {
-      const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
-      const activityLabel = selectedActivityMeta?.label || 'Activity';
-
-      // 1. Base headers re-ordered to match your new UI table
-      let headers = [
-        'Member Name',
-        // Dynamic columns will go here (index 1)
-        'Club',
-        'Reg. Date',
-        'Reg. Time',
-        'Sponsor Name',
-        'Coach Name',
-        'Phone Number',
-        'City',
-        'Village'
-      ];
-      
-      // 2. Insert dynamic headers (Education has NO extra columns)
-      if (selectedActivity === 'weight') {
-        headers.splice(1, 0, 'Weight (kg)');
-      } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        headers.splice(1, 0, 'Meal Type', 'Calories');
-      } else if (selectedActivity === 'water') {
-        headers.splice(1, 0, 'Water (L)');
-      } else if (selectedActivity === 'calories') {
-        headers.splice(1, 0, 'Steps', 'Calories Burned');
+      // Export the complete filtered dataset (not just the current page).
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(selectedActivity, {
+          ...paginationQuery(1, { exportAll: true }),
+        })}`,
+        { cache: 'no-store' },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to export activity report');
       }
 
-      const csvRows = [headers.join(',')];
+      const exportRecords = Array.isArray(data.records) ? data.records : [];
+      if (exportRecords.length === 0) {
+        alert('No records to export');
+        return;
+      }
 
-      filteredRecords.forEach((record) => {
-        // Handle "Remote" logic for Club Name
-        const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
-
-        // 3. Base row data matching the new re-ordered headers
-        const baseRow = [
-          `"${record.memberName || 'N/A'}"`,
-          // Dynamic data will go here (index 1)
-          `"${displayClub}"`,
-          record.date || 'N/A',
-          record.time || 'N/A',
-          `"${record.sponsorName || record.coachName || 'N/A'}"`,
-          `"${record.idealCoachName || ''}"`,
-          `"${record.phone || 'N/A'}"`,
-          `"${record.city || 'N/A'}"`,
-          `"${record.village || 'N/A'}"`,
-        ];
-
-        // 4. Insert dynamic data into the row
-        if (selectedActivity === 'weight') {
-          baseRow.splice(1, 0, record.weight || 'N/A');
-        } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-          baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
-        } else if (selectedActivity === 'water') {
-          baseRow.splice(1, 0, record.waterLiters || 0);
-        } else if (selectedActivity === 'calories') {
-          baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
-        }
-
-        csvRows.push(baseRow.join(','));
-      });
-
-      const csv = csvRows.join('\n');
-      const fileName = `activity-report-${activityLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`;
-
+      const { csv, fileName } = buildCsvFromRecords(exportRecords);
       const isNative = Capacitor.isNativePlatform();
 
       if (isNative) {
@@ -566,7 +722,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
           alert(`File saved to: ${result.uri}`);
         }
       } else {
-        // Web fallback
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -580,8 +735,16 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } catch (err) {
       console.error('Export failed:', err);
       alert('Failed to export report. Please try again.');
+    } finally {
+      setExportLoading(false);
     }
   };
+
+  const totalPages = pagination.totalPages || 0;
+  const totalRecords = pagination.totalRecords || 0;
+  const pageSize = pagination.pageSize || itemsPerPage;
+  const showingFrom = totalRecords === 0 ? 0 : ((pagination.currentPage || currentPage) - 1) * pageSize + 1;
+  const showingTo = Math.min((pagination.currentPage || currentPage) * pageSize, totalRecords);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
@@ -704,13 +867,14 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                   {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
                 </h2>
                 <div className="flex items-center gap-2">
-                  {filteredRecords.length > 0 && (
+                  {(totalRecords > 0 || detailRecords.length > 0) && (
                     <TouchFeedbackButton
                       onClick={handleDownload}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700"
+                      disabled={exportLoading || detailLoading}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
                     >
-                      <Download className="w-4 h-4" />
-                      Export
+                      <Download className={`w-4 h-4 ${exportLoading ? 'animate-pulse' : ''}`} />
+                      {exportLoading ? 'Exporting…' : 'Export'}
                     </TouchFeedbackButton>
                   )}
                 </div>
@@ -728,7 +892,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+            <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative">
+              {detailLoading && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/70">
+                  <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
+                </div>
+              )}
               <table className="w-full">
                 <thead className="border-b border-gray-200 sticky top-0 z-20">
                   <tr>
@@ -777,7 +946,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedRecords.map((record, index) => (
+                  {detailRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
                       <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
                         {display(record.memberName)}
@@ -828,22 +997,22 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
             {totalPages > 1 && (
               <div className="p-4 border-t border-gray-200 flex items-center justify-between">
                 <p className="text-sm text-gray-600">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredRecords.length)} of {filteredRecords.length} records
+                  Showing {showingFrom} to {showingTo} of {totalRecords} records
                 </p>
                 <div className="flex items-center gap-2">
                   <TouchFeedbackButton
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={!pagination.hasPreviousPage || detailLoading || currentPage <= 1}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Previous
                   </TouchFeedbackButton>
                   <span className="text-sm text-gray-600">
-                    Page {currentPage} of {totalPages}
+                    Page {pagination.currentPage || currentPage} of {totalPages}
                   </span>
                   <TouchFeedbackButton
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={!pagination.hasNextPage || detailLoading || currentPage >= totalPages}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
@@ -852,15 +1021,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               </div>
             )}
 
-            {paginatedRecords.length === 0 && !detailLoading && (
+            {detailRecords.length === 0 && !detailLoading && (
               <div className="p-12 text-center">
                 <p className="text-gray-500">No records found</p>
-              </div>
-            )}
-
-            {detailLoading && (
-              <div className="p-12 flex justify-center">
-                <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
               </div>
             )}
           </div>

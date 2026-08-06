@@ -176,7 +176,8 @@ export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIa
       .from('weight_records_table')
       .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
       .in('UserId', chunk)
-      .or('IsDeleted.is.null,IsDeleted.eq.0');
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
@@ -198,7 +199,8 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
       .from('education_logs_table')
       .select('"UserId", "Topic", "CreatedAt", attendance_type, center_name, nutrition_center_id, "City", "Village"')
       .in('"UserId"', chunk)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.0');
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, '"CreatedAt"', startDate, endDate, timezoneIana);
     return query;
   });
@@ -234,7 +236,8 @@ export async function fetchFoodRecords(
       .from('food_nutrition_data_table')
       .select(columns)
       .in('UserID', chunk)
-      .or('IsDeleted.is.null,IsDeleted.eq.0');
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
@@ -273,7 +276,8 @@ export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana
     let query = supabase
       .from('daily_step_activity')
       .select('UserId, CreatedAt, Steps, CaloriesBurned')
-      .in('UserId', chunk);
+      .in('UserId', chunk)
+      .order('CreatedAt', { ascending: false });
     query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
     return query;
   });
