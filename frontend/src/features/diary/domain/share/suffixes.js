@@ -58,8 +58,8 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       const delta = Math.round((current - previous) * 100) / 100;
       // Direction as emoji arrows (⬆️/⬇️) — WhatsApp renders them as button-style icons.
       let arrow = '';
-      if (delta < 0) arrow = ' 🟢⬇️';
-      else if (delta > 0) arrow = ' 🔴⬆️';
+      if (delta < 0) arrow = ' ⬇️';
+      else if (delta > 0) arrow = ' ⬆️';
 
       return `previous: ${previous} kg, current: ${current} kg${arrow}`;
     }
