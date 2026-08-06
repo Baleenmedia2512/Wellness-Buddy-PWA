@@ -107,20 +107,21 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
 
-  const fetchGenerationRef = useRef(0);
   const coachIdRef = useRef(null);
-  const inFlightRef = useRef(null);
   /** Cache: `${search}::${page}` → { cards, pagination } */
   const pageCacheRef = useRef(new Map());
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
+  /** Monotonic request id — only the latest request may write state. */
+  const requestIdRef = useRef(0);
+  /** Keys currently fetching — prevents duplicate load-more, not remount. */
+  const inFlightPagesRef = useRef(new Set());
 
   useEffect(() => {
     if (!isBodyParamsFormOpen) return;
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
-  // Debounce search so we don't fire an API call per keystroke
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
@@ -128,7 +129,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
-  const getUserId = async (email) => {
+  const getUserId = useCallback(async (email) => {
     if (!email) throw new Error("User email is required");
     if (coachIdRef.current) return coachIdRef.current;
 
@@ -140,37 +141,48 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     if (!data.success) throw new Error(data.message || "User not found");
     coachIdRef.current = data.userId;
     return data.userId;
-  };
+  }, [apiBaseUrl]);
 
-  const cacheKey = useCallback((page, search) => `${search || ''}::${page}`, []);
+  const applyPageResult = useCallback((page, append, cards, meta) => {
+    setPagination(meta);
+    setBodyParamsCards((prev) => {
+      if (!append) return cards;
+      const seen = new Set(prev.map((c) => c.id));
+      return [...prev, ...cards.filter((c) => !seen.has(c.id))];
+    });
+  }, []);
 
-  const fetchPage = useCallback(async ({ page, search, append, isBackground = false, bustCache = false }) => {
+  const fetchPage = useCallback(async ({
+    page,
+    search,
+    append,
+    isBackground = false,
+    bustCache = false,
+  }) => {
     if (!user?.email) {
       setError("User information not available. Please log in again.");
-      return;
-    }
-
-    const key = cacheKey(page, search);
-    if (!bustCache && pageCacheRef.current.has(key)) {
-      const cached = pageCacheRef.current.get(key);
-      setPagination(cached.pagination);
-      setBodyParamsCards((prev) => {
-        if (!append) return cached.cards;
-        const seen = new Set(prev.map((c) => c.id));
-        return [...prev, ...cached.cards.filter((c) => !seen.has(c.id))];
-      });
       setLoading(false);
       setLoadingMore(false);
       setRefreshing(false);
       return;
     }
 
-    // Prevent duplicate in-flight requests for the same page/search
-    const flightKey = key;
-    if (inFlightRef.current === flightKey) return;
-    inFlightRef.current = flightKey;
+    const key = `${search || ''}::${page}`;
 
-    const myGeneration = ++fetchGenerationRef.current;
+    if (!bustCache && pageCacheRef.current.has(key)) {
+      const cached = pageCacheRef.current.get(key);
+      applyPageResult(page, append, cached.cards, cached.pagination);
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+      return;
+    }
+
+    // Block duplicate load-more for the same page only (never block a fresh page-1 remount)
+    if (append && inFlightPagesRef.current.has(key)) return;
+
+    const requestId = ++requestIdRef.current;
+    inFlightPagesRef.current.add(key);
 
     if (append) setLoadingMore(true);
     else if (!isBackground) setLoading(true);
@@ -179,7 +191,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
     try {
       const userId = await getUserId(user.email);
-      if (myGeneration !== fetchGenerationRef.current) return;
+      if (requestId !== requestIdRef.current) return;
 
       const { cards, pagination: meta } = await listBodyParamsCards(userId, {
         page,
@@ -187,42 +199,64 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         search,
       });
 
-      if (myGeneration !== fetchGenerationRef.current) return;
+      if (requestId !== requestIdRef.current) return;
 
       pageCacheRef.current.set(key, { cards, pagination: meta });
-      setPagination(meta);
-      setBodyParamsCards((prev) => {
-        if (!append) return cards;
-        const seen = new Set(prev.map((c) => c.id));
-        return [...prev, ...cards.filter((c) => !seen.has(c.id))];
+      applyPageResult(page, append, cards, meta);
+      debugLog('[WellnessCounselling] page loaded', {
+        page,
+        count: cards.length,
+        total: meta.totalRecords,
       });
-      debugLog('[WellnessCounselling] page loaded', { page, count: cards.length, total: meta.totalRecords });
     } catch (err) {
-      if (myGeneration !== fetchGenerationRef.current) return;
+      if (requestId !== requestIdRef.current) return;
       console.error("[WellnessCounselling] Error fetching cards:", err);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
-      if (inFlightRef.current === flightKey) inFlightRef.current = null;
-      if (myGeneration !== fetchGenerationRef.current) return;
-      setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
+      inFlightPagesRef.current.delete(key);
+      // Always clear loading for the latest request; stale requests leave loading alone
+      // so the active request can finish the UI transition.
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId uses stable refs
-  }, [user?.email, cacheKey, apiBaseUrl]);
+  }, [user?.email, getUserId, applyPageResult]);
 
   // Reset + load page 1 when user / search / refreshKey changes
   useEffect(() => {
     pageCacheRef.current.clear();
+    inFlightPagesRef.current.clear();
     setBodyParamsCards([]);
     setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
-    fetchPage({ page: 1, search: debouncedSearch, append: false });
-    return () => { fetchGenerationRef.current++; };
+    setLoading(true);
+    setError(null);
+
+    let cancelled = false;
+    const run = async () => {
+      await fetchPage({ page: 1, search: debouncedSearch, append: false });
+      if (cancelled) return;
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+      // Invalidate in-flight writers without blocking the next mount's fetch
+      requestIdRef.current += 1;
+    };
   }, [user, refreshKey, debouncedSearch, fetchPage]);
 
   const handleRefresh = () => {
     pageCacheRef.current.clear();
-    fetchPage({ page: 1, search: debouncedSearch, append: false, isBackground: true, bustCache: true });
+    inFlightPagesRef.current.clear();
+    fetchPage({
+      page: 1,
+      search: debouncedSearch,
+      append: false,
+      isBackground: true,
+      bustCache: true,
+    });
   };
 
   const loadMore = useCallback(() => {
@@ -232,7 +266,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     fetchPage({ page: nextPage, search: debouncedSearch, append: true });
   }, [loading, loadingMore, refreshing, pagination, debouncedSearch, fetchPage]);
 
-  // Infinite scroll via IntersectionObserver
   useEffect(() => {
     const root = scrollRef.current;
     const sentinel = sentinelRef.current;
@@ -264,7 +297,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     }
   };
 
-  if (loading && bodyParamsCards.length === 0) {
+  if (loading && bodyParamsCards.length === 0 && !error) {
     return (
       <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
         <div className="flex-shrink-0 bg-white shadow-sm px-4 py-3">
@@ -417,7 +450,13 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
           pageCacheRef.current.clear();
-          fetchPage({ page: 1, search: debouncedSearch, append: false, isBackground: true, bustCache: true });
+          fetchPage({
+            page: 1,
+            search: debouncedSearch,
+            append: false,
+            isBackground: true,
+            bustCache: true,
+          });
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
