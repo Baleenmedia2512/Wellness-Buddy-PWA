@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -8,6 +8,8 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
 import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import { lookup as lookupUser } from '../../user/services/user.api.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -98,8 +100,10 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const markersRef = useRef([]);
   const markersMapRef = useRef({}); // Map center.id to marker
   const infoWindowRef = useRef(null);
+  const fetchAbortRef = useRef(null);
+  const resolvedUserIdRef = useRef(null);
 
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
 
   // Load Google Maps script
@@ -161,19 +165,24 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   }, [mapLoaded]);
 
   // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
-  const resolvedUserIdRef = useRef(null);
   useEffect(() => {
+    const fromUser = user?.id || user?.userId || user?.UserId;
+    if (fromUser) {
+      resolvedUserIdRef.current = Number(fromUser);
+      setCurrentUserId(Number(fromUser));
+      return undefined;
+    }
     if (!user?.email) {
       resolvedUserIdRef.current = null;
       setCurrentUserId(null);
       return undefined;
     }
     let cancelled = false;
-    getUserId(user.email)
-      .then((id) => {
-        if (cancelled) return;
-        resolvedUserIdRef.current = Number(id);
-        setCurrentUserId(Number(id));
+    lookupUser(user.email, { method: 'GET' })
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        resolvedUserIdRef.current = Number(data.userId);
+        setCurrentUserId(Number(data.userId));
       })
       .catch(() => {
         if (!cancelled) {
@@ -182,27 +191,36 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         }
       });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
   }, [user]);
 
-  // Fetch nutrition centres
-  const fetchCenters = async () => {
+  const resolveUserId = useCallback(async () => {
+    if (resolvedUserIdRef.current) return resolvedUserIdRef.current;
+    const fromUser = user?.id || user?.userId || user?.UserId;
+    if (fromUser) {
+      resolvedUserIdRef.current = Number(fromUser);
+      return resolvedUserIdRef.current;
+    }
+    if (!user?.email) throw new Error('User not found');
+    const data = await lookupUser(user.email, { method: 'GET' });
+    if (!data?.success) throw new Error('User not found');
+    resolvedUserIdRef.current = Number(data.userId);
+    setCurrentUserId(Number(data.userId));
+    return resolvedUserIdRef.current;
+  }, [user]);
+
+  // Fetch nutrition centres (abortable — Full Team was firing 3 overlapping requests)
+  const fetchCenters = useCallback(async ({ signal } = {}) => {
     if (!user) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      // Reuse resolved ID from mount effect when available (avoids duplicate /user/lookup)
-      const userId = resolvedUserIdRef.current || await getUserId(user.email);
-      if (!resolvedUserIdRef.current) {
-        resolvedUserIdRef.current = Number(userId);
-        setCurrentUserId(Number(userId));
-      }
-      // Use scope=all for 'all' filter to fetch all system centers globally
+      const userId = await resolveUserId();
+      if (signal?.aborted) return;
+
       const scope = teamFilter === 'all' ? 'all' : 'team';
-      // Always compute dates from local timezone to avoid UTC shift issues
-      const pad = n => String(n).padStart(2, '0');
+      const pad = (n) => String(n).padStart(2, '0');
       const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const now = new Date();
       const todayStr = localDate(now);
@@ -220,21 +238,17 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         startParam = yesterdayStr;
         endParam = yesterdayStr;
       } else {
-        // today (default)
         startParam = todayStr;
         endParam = todayStr;
       }
+
       const response = await fetch(
         `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        }
+        { signal },
       );
 
       const result = await response.json();
+      if (signal?.aborted) return;
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch centers');
@@ -246,22 +260,13 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         : 'Today';
       renderMarkers(result.data || [], label);
     } catch (err) {
+      if (err?.name === 'AbortError') return;
       console.error('Error fetching centers:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  };
-
-  // Get user ID helper
-  const getUserId = async (email) => {
-    const response = await fetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
-    );
-    const data = await response.json();
-    if (!data.success) throw new Error('User not found');
-    return data.userId;
-  };
+  }, [user, teamFilter, dateRange, customDate, apiBaseUrl, resolveUserId]);
 
   // Open Street View for a center
   const openStreetView = (center) => {
@@ -496,13 +501,31 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   };
 
-  // Initial fetch
+  // Debounced fetch — collapses Strict Mode remount + rapid Full Team taps into one call.
   useEffect(() => {
-    if (mapLoaded && user) {
-      fetchCenters();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [mapLoaded, user, teamFilter, dateRange, customDate, tabVisitKey]);
+    if (!mapLoaded || !user) return undefined;
+
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      fetchCenters({ signal: controller.signal });
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
+    };
+  }, [mapLoaded, user, teamFilter, dateRange, customDate, tabVisitKey, fetchCenters]);
+
+  const handleRefresh = useCallback(() => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchCenters({ signal: controller.signal });
+  }, [fetchCenters]);
 
   // Set up global functions for info window buttons
   useEffect(() => {
@@ -559,7 +582,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
             </div>
           </div>
           <TouchFeedbackButton
-            onClick={fetchCenters}
+            onClick={handleRefresh}
             disabled={loading}
             className="p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
             ariaLabel="Refresh"
@@ -679,7 +702,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <p className="text-red-600 font-medium">{error}</p>
             <TouchFeedbackButton
-              onClick={fetchCenters}
+              onClick={handleRefresh}
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
               Try Again

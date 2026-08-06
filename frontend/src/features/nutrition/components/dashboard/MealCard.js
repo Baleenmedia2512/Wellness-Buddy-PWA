@@ -1,9 +1,11 @@
 import React from 'react';
 import { useSwipeToDelete } from '../../hooks/useSwipeToDelete';
+import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
 
-const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => {
+const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick, userId, apiBaseUrl }) => {
   const { dx, dragging, animating, armed, leaving, progress, scale, elRef, handlers } =
     useSwipeToDelete({ onDelete: () => onDelete(meal) });
+  const imgSrc = resolveMealImageSrc(meal, { userId, apiBaseUrl });
 
   return (
     <div
@@ -76,20 +78,9 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
 
         <div className="p-4 flex items-center gap-4">
           <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-            {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
+            {imgSrc ? (
               <img
-                src={meal.ImageBase64.startsWith('data:image')
-                  ? meal.ImageBase64
-                  : `data:image/jpeg;base64,${meal.ImageBase64}`}
-                alt="Meal"
-                className="w-full h-full object-cover"
-                loading="lazy"
-                decoding="async"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            ) : meal.ImagePath ? (
-              <img
-                src={meal.ImagePath}
+                src={imgSrc}
                 alt="Meal"
                 className="w-full h-full object-cover"
                 loading="lazy"

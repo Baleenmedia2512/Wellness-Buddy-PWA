@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { debugLog } from '../shared/utils/logger.js';
 import { TeamMemberSearch } from '../features/team';
 import { EmojiOrNative } from '../shared/components/icons/EmojiImage';
-
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+import { getProfile } from '../features/user/services/user.api.js';
+import { getApiBaseUrl } from '../config/api.config.js';
 
 const PROGRAMS = [
   {
@@ -82,6 +81,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   const [checkingEnrollment, setCheckingEnrollment] = useState(true);
   const [coachName, setCoachName] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
+  const loadGenRef = useRef(0);
 
   const checkExistingEnrollment = useCallback(async () => {
     if (!viewedUserId) {
@@ -89,46 +89,38 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
       return;
     }
 
+    const generation = ++loadGenRef.current;
+    const apiBase = getApiBaseUrl();
+
     try {
-      // Fetch user profile to get coach name (only for own profile)
+      // Coach name + enrollment in parallel.
+      // getProfile is shared/deduped with TeamMemberSearch — no cache-bust, so
+      // Strict Mode remounts and search do not double-hit the 30KB profile payload.
+      const profilePromise = (!isViewingOther && user?.email)
+        ? getProfile(user.email).catch(() => null)
+        : Promise.resolve(null);
+
+      const enrollmentPromise = fetch(
+        `${apiBase}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
+          viewedUserId,
+        )}&userOnly=true`,
+      ).then((res) => res.json());
+
+      const [profileData, data] = await Promise.all([profilePromise, enrollmentPromise]);
+      if (generation !== loadGenRef.current) return;
+
       if (!isViewingOther) {
-        const cacheBuster = Date.now();
-        const profileResponse = await fetch(
-          `${API_BASE}/api/user/profile?email=${encodeURIComponent(
-            user?.email || '',
-          )}&_t=${cacheBuster}`,
-        );
-        const profileData = await profileResponse.json();
-
-        debugLog("🎓 [Enrollment] Profile data:", profileData);
-
-        if (profileData.success && profileData.data?.coachName) {
-          debugLog(
-            "✅ [Enrollment] Coach name found:",
-            profileData.data.coachName,
-          );
-          setCoachName(profileData.data.coachName);
-        } else {
-          debugLog("⚠️ [Enrollment] No coach name in profile data");
-          setCoachName("");
-        }
+        const name = profileData?.success
+          ? (profileData.data?.coachName || profileData.data?.sponsorName || '')
+          : '';
+        setCoachName(name);
       } else {
         setCoachName("");
       }
 
-      // Check existing enrollment — use userId as the primary key.
-      const cacheBuster = Date.now();
-      const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
-          viewedUserId,
-        )}&userOnly=true&_t=${cacheBuster}`,
-      );
-      const data = await response.json();
-
       if (data.success && data.enrollments && data.enrollments.length > 0) {
         const enrollment = data.enrollments[0];
         setExistingEnrollment(enrollment);
-        // Load existing programs for editing
         const _parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
         const enrolledPrograms = Array.isArray(_parsed) ? _parsed : Object.keys(_parsed);
         setSelectedPrograms(enrolledPrograms);
@@ -137,15 +129,23 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
         setSelectedPrograms([]);
       }
     } catch (err) {
+      if (generation !== loadGenRef.current) return;
       console.error("Error checking enrollment:", err);
     } finally {
-      setCheckingEnrollment(false);
+      if (generation === loadGenRef.current) setCheckingEnrollment(false);
     }
   }, [viewedUserId, isViewingOther, user?.email]);
 
+  // Debounce collapses React Strict Mode remount into one request pair.
   useEffect(() => {
     setCheckingEnrollment(true);
-    checkExistingEnrollment();
+    const timer = setTimeout(() => {
+      checkExistingEnrollment();
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      loadGenRef.current += 1;
+    };
   }, [checkExistingEnrollment, tabVisitKey]);
 
   const handleProgramToggle = (programName) => {
@@ -170,8 +170,8 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
 
     try {
       const endpoint = wasUpdate
-        ? `${API_BASE}/api/wellness-university/update-enrollment`
-        : `${API_BASE}/api/wellness-university/enroll`;
+        ? `${getApiBaseUrl()}/api/wellness-university/update-enrollment`
+        : `${getApiBaseUrl()}/api/wellness-university/enroll`;
 
       const response = await fetch(endpoint, {
         method: "POST",

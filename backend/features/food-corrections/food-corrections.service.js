@@ -298,7 +298,7 @@ function demoStatsResponse() {
   };
 }
 
-export async function getStats({ userId, date, detailed }) {
+export async function getStats({ userId, date, detailed, totalsOnly = false }) {
   if (userId === 'DEMO_USER') {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
@@ -308,6 +308,69 @@ export async function getStats({ userId, date, detailed }) {
   if (detailed && date) {
     const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
     assertNotFutureDateYmd(resolvedDate, timezoneIana);
+
+    // Calorie-trend / charts: numeric columns only — no AnalysisData or images
+    if (totalsOnly) {
+      const totalRows = await repo.fetchMealTotalsForDate(userId, resolvedDate, timezoneIana);
+      const MICRO_TOTAL_FIELDS = [
+        ['totalVitaminA', 'TotalVitaminA'], ['totalVitaminC', 'TotalVitaminC'],
+        ['totalVitaminD', 'TotalVitaminD'], ['totalVitaminE', 'TotalVitaminE'],
+        ['totalVitaminK', 'TotalVitaminK'], ['totalVitaminB1', 'TotalVitaminB1'],
+        ['totalVitaminB2', 'TotalVitaminB2'], ['totalVitaminB3', 'TotalVitaminB3'],
+        ['totalVitaminB6', 'TotalVitaminB6'], ['totalVitaminB9', 'TotalVitaminB9'],
+        ['totalVitaminB12', 'TotalVitaminB12'], ['totalCalcium', 'TotalCalcium'],
+        ['totalIron', 'TotalIron'], ['totalMagnesium', 'TotalMagnesium'],
+        ['totalPotassium', 'TotalPotassium'], ['totalZinc', 'TotalZinc'],
+        ['totalPhosphorus', 'TotalPhosphorus'],
+      ];
+      const seed = {
+        totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
+        totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
+        ...MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {}),
+      };
+      const dailyTotals = totalRows.reduce((t, r) => {
+        const next = {
+          totalCalories: t.totalCalories + (r.TotalCalories || 0),
+          totalProtein: t.totalProtein + (r.TotalProtein || 0),
+          totalCarbs: t.totalCarbs + (r.TotalCarbs || 0),
+          totalFat: t.totalFat + (r.TotalFat || 0),
+          totalFiber: t.totalFiber + (r.TotalFiber || 0),
+          totalSugar: t.totalSugar + (r.TotalSugar || 0),
+          totalSodium: t.totalSodium + (r.TotalSodium || 0),
+          totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
+          mealCount: t.mealCount + 1,
+        };
+        for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
+          next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
+        }
+        return next;
+      }, seed);
+      const round2 = (n) => Math.round(n * 100) / 100;
+      return {
+        httpStatus: 200,
+        body: {
+          success: true,
+          data: [],
+          dailyTotals: {
+            ...dailyTotals,
+            totalCalories: round2(dailyTotals.totalCalories),
+            totalProtein: round2(dailyTotals.totalProtein),
+            totalCarbs: round2(dailyTotals.totalCarbs),
+            totalFat: round2(dailyTotals.totalFat),
+            totalFiber: round2(dailyTotals.totalFiber),
+            totalSugar: round2(dailyTotals.totalSugar),
+            totalSodium: round2(dailyTotals.totalSodium),
+            totalCholesterol: round2(dailyTotals.totalCholesterol),
+            ...MICRO_TOTAL_FIELDS.reduce((acc, [k]) => {
+              acc[k] = round2(dailyTotals[k] || 0);
+              return acc;
+            }, {}),
+          },
+          queryInfo: { userId, date: resolvedDate, recordCount: totalRows.length, totalsOnly: true },
+        },
+      };
+    }
+
     const meals = await repo.fetchMealsForDate(userId, resolvedDate, timezoneIana);
     const filtered = meals.filter((record) => {
       try {
@@ -364,23 +427,25 @@ export async function getStats({ userId, date, detailed }) {
       acc[statKey] = round2(dailyTotals[statKey] || 0);
       return acc;
     }, {});
+    const totalsPayload = {
+      ...dailyTotals,
+      totalCalories: round2(dailyTotals.totalCalories),
+      totalProtein: round2(dailyTotals.totalProtein),
+      totalCarbs: round2(dailyTotals.totalCarbs),
+      totalFat: round2(dailyTotals.totalFat),
+      totalFiber: round2(dailyTotals.totalFiber),
+      totalSugar: round2(dailyTotals.totalSugar),
+      totalSodium: round2(dailyTotals.totalSodium),
+      totalCholesterol: round2(dailyTotals.totalCholesterol),
+      ...roundedMicros,
+    };
+
     return {
       httpStatus: 200,
       body: {
         success: true,
         data: filtered,
-        dailyTotals: {
-          ...dailyTotals,
-          totalCalories: round2(dailyTotals.totalCalories),
-          totalProtein: round2(dailyTotals.totalProtein),
-          totalCarbs: round2(dailyTotals.totalCarbs),
-          totalFat: round2(dailyTotals.totalFat),
-          totalFiber: round2(dailyTotals.totalFiber),
-          totalSugar: round2(dailyTotals.totalSugar),
-          totalSodium: round2(dailyTotals.totalSodium),
-          totalCholesterol: round2(dailyTotals.totalCholesterol),
-          ...roundedMicros,
-        },
+        dailyTotals: totalsPayload,
         queryInfo: { userId, date: resolvedDate, recordCount: filtered.length },
       },
     };
@@ -425,6 +490,25 @@ export async function getStats({ userId, date, detailed }) {
       },
       weeklyNutrition, dailyNutrition,
       recentAnalyses: counts.recentAnalyses,
+    },
+  };
+}
+
+/**
+ * Lazy meal photo — returns JSON { image } like weight/image for modal/card hydration.
+ */
+export async function getMealImage({ userId, id }) {
+  const row = await repo.getMealImageById(userId, id);
+  if (!row) {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      id: row.ID,
+      image: row.ImageBase64 || null,
+      imagePath: row.ImagePath || null,
     },
   };
 }

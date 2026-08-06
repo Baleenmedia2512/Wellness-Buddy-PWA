@@ -42,5 +42,13 @@ export function validateStats(query) {
     userId: query.userId,
     date: query.date || null,
     detailed: String(query.detailed) === 'true',
+    // totalsOnly: return dailyTotals only (no meal rows) — for calorie trend charts
+    totalsOnly: String(query.totalsOnly) === 'true',
   };
+}
+
+export function validateMealImageInput(query) {
+  if (!query?.userId) throw new ValidationError(400, 'userId is required');
+  if (!query?.id) throw new ValidationError(400, 'id is required');
+  return { userId: query.userId, id: query.id };
 }

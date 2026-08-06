@@ -3,7 +3,6 @@ import logger from '../../shared/lib/logger.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -143,15 +142,12 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
     return [userIdNum];
   }
   if (teamFilter === 'full') {
-    // Fast subtree walk (no ProfileImage / select *) — was ~5s via getDualCoachingTeamHierarchy.
-    const supabase = getSupabaseClient();
-    const {
-      loadReportingContextForCoach,
-      getFullReportingMembers,
-    } = await import('../../utils/reportingHierarchyService.js');
-    const context = await loadReportingContextForCoach(supabase, userIdNum);
-    const members = getFullReportingMembers(userIdNum, context);
-    return [...new Set([userIdNum, ...members.map((m) => m.UserId)])];
+    // Shared 60s subtree cache (same as Activity Report) — avoids re-walking on tab switch.
+    const { buildActivityReportCoachScope } = await import(
+      '../activity/domain/activity-report.hierarchy.js'
+    );
+    const { fullIds } = await buildActivityReportCoachScope(userIdNum);
+    return [...new Set([userIdNum, ...fullIds])];
   }
   // direct
   const directMembers = await repo.findDirectMembers(userIdNum);
@@ -170,7 +166,28 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
   return [...new Set([userIdNum, ...directMemberIds, ...coCoachMemberIds])];
 }
 
+/** In-flight dedup — concurrent Full Team clicks share one hierarchy+metrics build. */
+const inflightListCenters = new Map();
+
 export async function listCenters(input) {
+  const { userId, teamFilter, scope, includeMetrics = true, startDate, endDate } = input;
+  const userIdNum = parseInt(userId, 10);
+  const cacheKey = [
+    userIdNum, teamFilter, scope, startDate || '', endDate || '', includeMetrics ? 1 : 0,
+  ].join(':');
+
+  if (inflightListCenters.has(cacheKey)) {
+    return inflightListCenters.get(cacheKey);
+  }
+
+  const promise = listCentersImpl(input).finally(() => {
+    inflightListCenters.delete(cacheKey);
+  });
+  inflightListCenters.set(cacheKey, promise);
+  return promise;
+}
+
+async function listCentersImpl(input) {
   const { userId, teamFilter, scope, includeMetrics = true } = input;
   let { startDate, endDate } = input;
   const userIdNum = parseInt(userId, 10);

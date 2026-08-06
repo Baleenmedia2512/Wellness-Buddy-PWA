@@ -14,6 +14,7 @@ import {
   extractScoops,
 } from '../../../diary/domain/activityType';
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
+import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
 
 const GIPill = ({ value }) => {
   if (value == null) return null;
@@ -53,6 +54,7 @@ const NutritionAnalysisPanel = ({
   handleCloseModal,
   handleDeleteMeal,
   user,
+  apiBaseUrl,
   timezoneIana: timezoneIanaProp,
   persistMealItems,
   setLocalDetailedItems,
@@ -119,9 +121,10 @@ const NutritionAnalysisPanel = ({
     setLocalNutrition(newTotals);
     await persistMealItems(newItems, newTotals);
   };
-  const imgSrc = selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== ''
-    ? (selectedMeal.ImageBase64.startsWith('data:image') ? selectedMeal.ImageBase64 : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`)
-    : selectedMeal.ImagePath;
+  const imgSrc = resolveMealImageSrc(selectedMeal, {
+    userId: user?.id || user?.userId || user?.UserId,
+    apiBaseUrl,
+  });
 
   return (
     <div

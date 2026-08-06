@@ -135,8 +135,9 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
   const supabase = getSupabaseClient();
   let query = supabase
     .from('food_nutrition_data_table')
+    // ImageBase64 omitted on purpose — list responses were multi-100KB; use meal-image API.
     .select([
-      'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
+      'ID, ImagePath, AnalysisData, ConfidenceScore',
       'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
       'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
       'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
@@ -157,6 +158,44 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
   const { data, error } = await query.order('CreatedAt', { ascending: false });
   if (error) throw error;
   return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+}
+
+/**
+ * Lightweight day totals — no AnalysisData / images (calorie trend, charts).
+ */
+export async function fetchMealTotalsForDate(userId, date, timezoneIana = IANA_IST) {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('food_nutrition_data_table')
+    .select([
+      'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+      'TotalSugar, TotalSodium, TotalCholesterol',
+      'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+      'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+      'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+      'CreatedAt',
+    ].join(', '))
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
+  if (error) throw error;
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+}
+
+/** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */
+export async function getMealImageById(userId, id) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('ID, ImageBase64, ImagePath')
+    .eq('ID', id)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
 }
 
 export async function getStatsCounts(userId, timezoneIana = IANA_IST) {
@@ -192,7 +231,7 @@ export async function getStatsCounts(userId, timezoneIana = IANA_IST) {
       timezoneIana,
     ),
     supabase.from('food_nutrition_data_table')
-      .select('ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
+      .select('ID, ImagePath, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
       .eq('UserID', userId).eq('IsDeleted', 0).order('CreatedAt', { ascending: false }).limit(10),
   ]);
   for (const r of [totalR, todayR, weekR, bgR, weeklyR, recentR]) {

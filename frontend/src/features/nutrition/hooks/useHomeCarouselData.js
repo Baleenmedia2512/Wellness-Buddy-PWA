@@ -17,6 +17,12 @@ import {
 } from '../domain/carouselPeriodProgress';
 import { enumerateDatesYmd, resolveWellnessDateRange, ymdToLocalDate } from '../../wellness-score-sheet/domain/dateRange';
 import { fetchDailyWellnessScore, fetchWellnessScoreHistory } from '../../wellness-score-sheet/services/wellnessScore.api';
+import {
+  getLatestActivityLogId,
+  markHomeDashboardProcessed,
+  markWellnessScoreProcessed,
+  shouldRefreshHomeDashboard,
+} from '../../../shared/services/homeDashboardActivity';
 
 const EMPTY_NUTRITION = {
   dailyStats: EMPTY_DAILY_STATS,
@@ -174,6 +180,9 @@ export function useHomeCarouselData({
       if (cached) {
         applyPayload(cached);
         setLoading(false);
+        const activityLogId = getLatestActivityLogId();
+        markHomeDashboardProcessed(activityLogId);
+        markWellnessScoreProcessed(activityLogId);
         return;
       }
 
@@ -201,6 +210,9 @@ export function useHomeCarouselData({
       const payload = { nutrition: nextNutrition, wellnessScore: nextWellness };
       writeCache(userId, range.startDate, range.endDate, payload);
       applyPayload(payload);
+      const activityLogId = getLatestActivityLogId();
+      markHomeDashboardProcessed(activityLogId);
+      markWellnessScoreProcessed(activityLogId);
 
       // Warm Yesterday after Today so the common switch is cache-hit instant.
       if (!range.isMultiDay && range.endDate === today) {
@@ -244,6 +256,8 @@ export function useHomeCarouselData({
 
   useEffect(() => {
     if (nutritionRefreshKey === 0) return;
+    // Tab switch alone bumps nothing useful — only refetch after real activity.
+    if (!shouldRefreshHomeDashboard()) return;
     const userId = lastUserIdRef.current || resolvedUserIdRef.current;
     if (userId) {
       // Drop cached ranges so the next load (and siblings) see fresh meals.
