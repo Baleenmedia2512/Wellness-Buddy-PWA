@@ -7,6 +7,7 @@
  */
 import { useState, useEffect } from 'react';
 import { fetchUserCalorieTarget, DEFAULT_CALORIE_TARGET } from '../services/nutritionDashboard';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
 export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabled = true }) {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CALORIE_TARGET);
@@ -35,7 +36,8 @@ export function useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey = 0, enabl
     load();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') load();
+      // Skip while Gallery/Camera → capture upload is in flight (connection budget).
+      if (document.visibilityState === 'visible' && !isCaptureFlowBusy()) load();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 

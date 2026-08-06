@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from 'react';
 import { fetchUserMacroProfile } from '../services/nutritionDashboard/userProfileApi';
+import { isCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
 
 export function useUserLatestWeight({ user, apiBaseUrl, enabled = true }) {
   const [latestWeight, setLatestWeight] = useState(null);
@@ -28,7 +29,8 @@ export function useUserLatestWeight({ user, apiBaseUrl, enabled = true }) {
     load();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') load();
+      // Skip while Gallery/Camera → capture upload is in flight (connection budget).
+      if (document.visibilityState === 'visible' && !isCaptureFlowBusy()) load();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 

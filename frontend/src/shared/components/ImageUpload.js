@@ -109,6 +109,12 @@ const ImageUpload = forwardRef(
 
     const handleFileChange = async (event) => {
       const file = event.target.files[0];
+      const source =
+        event.target === galleryInputRef.current ? 'gallery' : 'camera';
+      if (!file) {
+        try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
+        return;
+      }
       if (file) {
         if (!file.type.startsWith("image/")) {
           setAlertModal({
@@ -117,6 +123,7 @@ const ImageUpload = forwardRef(
             message: "Please select an image file",
             type: "error",
           });
+          try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
           return;
         }
         if (file.size > 10 * 1024 * 1024) {
@@ -126,6 +133,7 @@ const ImageUpload = forwardRef(
             message: "Image size should be less than 10MB",
             type: "error",
           });
+          try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
           return;
         }
 
@@ -141,6 +149,7 @@ const ImageUpload = forwardRef(
               type: "info",
             });
             event.target.value = "";
+            try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
             return;
           }
           // Use education time window passed from App.js (fetched live from DB)
@@ -158,6 +167,7 @@ const ImageUpload = forwardRef(
             });
             // Clear the input
             event.target.value = "";
+            try { onCameraStateChange?.('closed', { source, hadResult: false }); } catch (_) {}
             return;
           }
 
@@ -166,6 +176,7 @@ const ImageUpload = forwardRef(
 
           // Pass both file and timestamp to parent
           // Fall back to file.lastModified if EXIF timestamp unavailable
+          try { onCameraStateChange?.('closed', { source, hadResult: true }); } catch (_) {}
           onImageSelect(
             file,
             validation.imageTimestamp ||
@@ -177,6 +188,7 @@ const ImageUpload = forwardRef(
         // Non-education: EXIF shutter time when present; otherwise upload time.
         // Do NOT use file.lastModified — it is when the file was saved, not when eaten.
         const captureTimestamp = await resolveUploadCaptureTimestamp(file);
+        try { onCameraStateChange?.('closed', { source, hadResult: true }); } catch (_) {}
         onImageSelect(file, captureTimestamp);
       }
     };
@@ -266,6 +278,7 @@ const ImageUpload = forwardRef(
           try { onCameraStateChange?.('closed', { source: 'camera', hadResult }); } catch (_) {}
         }
       } else {
+        try { onCameraStateChange?.('opened', { source: 'camera' }); } catch (_) {}
         cameraInputRef.current?.click();
       }
     };
@@ -567,6 +580,9 @@ const ImageUpload = forwardRef(
           try { onCameraStateChange?.('closed', { source: 'gallery', hadResult }); } catch (_) {}
         }
       } else {
+        try { onCameraStateChange?.('opened', { source: 'gallery' }); } catch (_) {}
+        // Web file picker: closed fires from handleFileChange (or cancel leaves busy
+        // until App clears it — cancel often has no change event).
         galleryInputRef.current?.click();
       }
     };

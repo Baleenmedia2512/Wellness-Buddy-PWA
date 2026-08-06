@@ -55,7 +55,7 @@ const ManualWatchEntryModal = ({
     onClose();
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setError("");
 
     const kcal = Number(caloriesBurned);
@@ -68,16 +68,10 @@ const ManualWatchEntryModal = ({
       return;
     }
 
-    try {
-      setIsSaving(true);
-      await onSave({ caloriesBurned: kcal, source: DEFAULT_SOURCE });
-      resetForm();
-      onClose();
-    } catch (err) {
-      setError(err.message || "Failed to save activity");
-    } finally {
-      setIsSaving(false);
-    }
+    // Hand off without awaiting network — parent closes classify and saves in background.
+    resetForm();
+    onClose();
+    void Promise.resolve(onSave({ caloriesBurned: kcal, source: DEFAULT_SOURCE }));
   };
 
   if (!isOpen) return null;

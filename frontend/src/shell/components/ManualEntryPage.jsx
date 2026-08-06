@@ -27,7 +27,7 @@ import {
   buildAnalysisFromManualFood as buildManualFoodAnalysis,
   fetchWatchBurnedCalories,
 } from '../../features/nutrition';
-import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight, fetchLatestWeightEntry } from '../../features/weight';
+import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache, getCachedLatestWeight } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
 import {
@@ -210,7 +210,6 @@ export default function ManualEntryPage({
   const [activeForm, setActiveForm] = useState(null);
   /** When food search opened from Snacks & Soups subtypes. */
   const [foodEntryMeta, setFoodEntryMeta] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
   /** Full-screen preview of the captured photo. */
   const [previewExpanded, setPreviewExpanded] = useState(false);
@@ -226,6 +225,9 @@ export default function ManualEntryPage({
   const [workoutTodayLoading, setWorkoutTodayLoading] = useState(false);
   // True after light watch-calories has returned once (prefetch or open).
   const workoutSummaryReadyRef = useRef(false);
+
+  // Capture row must exist before LOG AS / AI. Prefer upload bandwidth until then.
+  const captureReady = Boolean(captureId);
 
   // New capture while this screen stays mounted — close any open sub-form.
   useEffect(() => {
@@ -257,9 +259,11 @@ export default function ManualEntryPage({
     }
   }, [creditsEnabled, userId, apiBaseUrl]);
 
+  // Defer credits fetch until photo is saved — frees connections for POST /captures.
   useEffect(() => {
+    if (!captureReady) return;
     refreshCredits();
-  }, [refreshCredits]);
+  }, [captureReady, refreshCredits]);
 
   // Light beverage summary (AnalysisData only — no images). Powers water ml + Afresh scoops.
   const loadBeverageToday = useCallback((opts = {}) => {
@@ -311,9 +315,9 @@ export default function ManualEntryPage({
     return () => { cancelled = true; };
   }, [userId, apiBaseUrl]);
 
-  // Prefetch beverage / workout summaries during idle so first paint stays snappy.
+  // Prefetch beverage / workout summaries only after capture is saved (idle).
   useEffect(() => {
-    if (!userId) return undefined;
+    if (!userId || !captureReady) return undefined;
     beverageSummaryReadyRef.current = false;
     workoutSummaryReadyRef.current = false;
     let cancelled = false;
@@ -337,7 +341,7 @@ export default function ManualEntryPage({
       }
       if (timeoutId != null) clearTimeout(timeoutId);
     };
-  }, [userId, loadBeverageToday, loadWorkoutToday]);
+  }, [userId, captureReady, loadBeverageToday, loadWorkoutToday]);
 
   // Refresh when stepper opens. Spinner only if prefetch has not finished yet.
   useEffect(() => {
@@ -355,8 +359,6 @@ export default function ManualEntryPage({
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  const captureReady = Boolean(captureId);
-
   const exit = (shareMeta = null) => {
     // Leave classify immediately — share sheet opens from App in the background.
     // onSaved must read imageBase64 synchronously before onBack clears the payload.
@@ -366,7 +368,7 @@ export default function ManualEntryPage({
 
   /** Discard capture and leave — must not remain in Diary as unknown/Other. */
   const handleCloseWithoutLog = () => {
-    if (closingWithoutLog || saving || aiStarting) return;
+    if (closingWithoutLog || aiStarting) return;
     setClosingWithoutLog(true);
     const id = captureId;
     const uid = userId;
@@ -379,14 +381,17 @@ export default function ManualEntryPage({
     }
   };
 
-  const saveFoodAnalysis = async (analysisResult, toastMsg, activityCaption = null) => {
-    await promoteUnknownToFood({
+  const saveFoodAnalysis = (analysisResult, toastMsg, activityCaption = null) => {
+    // Close classify immediately — promote runs in background (same as Food).
+    onToast?.(toastMsg);
+    void promoteUnknownToFood({
       captureId,
       viewerUserId: userId,
       analysisResult,
       originalCapturedAt: originalCapturedAt || null,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save — check Diary.");
     });
-    onToast?.(toastMsg);
     exit(activityCaption ? { activityCaption } : null);
   };
 
@@ -419,7 +424,7 @@ export default function ManualEntryPage({
   };
 
   const handleCategoryClick = (id) => {
-    if (!captureReady || saving || aiStarting) return;
+    if (!captureReady || aiStarting) return;
     const next = resolveManualLogCategoryClick(id);
     if (!next) return;
     if (next.kind === 'healthy-snacks-picker') {
@@ -492,74 +497,63 @@ export default function ManualEntryPage({
     exit(activityCaption ? { activityCaption } : null);
   };
 
-  const handleWeightSave = async ({ weightValue, unit, bmr }) => {
-    setSaving(true);
-    try {
-      // Capture previous BEFORE saveWeight updates the latest-weight cache.
-      let previousWeight = getCachedLatestWeight(userId)?.value ?? null;
-      if (previousWeight == null && userId) {
-        try {
-          previousWeight = (await fetchLatestWeightEntry(userId))?.value ?? null;
-        } catch {
-          previousWeight = null;
-        }
-      }
+  const handleWeightSave = ({ weightValue, unit, bmr }) => {
+    // Share caption uses cache only — do not block Save on a network round-trip.
+    const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
 
-      await saveWeight({
-        userId,
-        weightValue,
-        unit: unit || 'kg',
-        bmr,
-        captureId,
-        imageBase64ToSave: imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Weight saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('weight', {
-          previousWeight,
-          currentWeight: weightValue,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save weight';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+    setActiveForm(null);
+    onToast?.('Weight saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('weight', {
+        previousWeight,
+        currentWeight: weightValue,
+      }),
+    });
+
+    void saveWeight({
+      userId: uid,
+      weightValue,
+      unit: unit || 'kg',
+      bmr,
+      captureId: capId,
+      imageBase64ToSave: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save weight — check Diary.");
+    });
   };
 
-  const handleWatchSave = async ({ caloriesBurned, source }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
-        platform: source || 'Smartwatch',
-        topic: `Calories Burned: ${caloriesBurned} kcal`,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Activity saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('workout', {
-          caloriesBurned,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save activity';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+  const handleWatchSave = ({ caloriesBurned, source }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Activity saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('workout', {
+        caloriesBurned,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform: source || 'Smartwatch',
+      topic: `Calories Burned: ${caloriesBurned} kcal`,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save activity — check Diary.");
+    });
   };
 
-  const handleShakeLog = async (payload) => {
+  const handleShakeLog = (payload) => {
     const analysis = shakePayloadToAnalysis(payload);
     const shakeName = analysis?.foods?.[0]?.name || 'Protein Shake';
-    await saveFoodAnalysis(
+    setActiveForm(null);
+    saveFoodAnalysis(
       analysis,
       'Shake saved to Diary',
       buildDiaryShareSuffix('shake', {
@@ -568,10 +562,9 @@ export default function ManualEntryPage({
         shakeProducts: analysis.shakeProducts,
       }),
     );
-    setActiveForm(null);
   };
 
-  const handleAfreshConfirm = async (targetScoops) => {
+  const handleAfreshConfirm = (targetScoops) => {
     const target = Math.max(0, Math.round(Number(targetScoops) || 0));
     const current = Math.max(0, Math.round(Number(afreshTodayScoops) || 0));
     const delta = target - current;
@@ -582,16 +575,16 @@ export default function ManualEntryPage({
     }
     const analysis = buildAfreshAnalysisResult(delta);
     const calories = analysis?.total?.calories ?? 0;
+    setActiveForm(null);
     // Share today's running total (after this log), not just the delta — same as water.
-    await saveFoodAnalysis(
+    saveFoodAnalysis(
       analysis,
       `+${delta} scoop${delta === 1 ? '' : 's'} Afresh logged (today ${target})`,
       buildDiaryShareSuffix('afresh', { scoops: target, calories }),
     );
-    setActiveForm(null);
   };
 
-  const handleWaterConfirm = async (targetMl) => {
+  const handleWaterConfirm = (targetMl) => {
     const target = Math.max(0, Math.round(Number(targetMl) || 0));
     const current = Math.max(0, Math.round(Number(waterTodayMl) || 0));
     const delta = target - current;
@@ -600,39 +593,38 @@ export default function ManualEntryPage({
       setActiveForm(null);
       return;
     }
+    setActiveForm(null);
     // Share today's running total (after this log), not just the delta.
-    await saveFoodAnalysis(
+    saveFoodAnalysis(
       buildWaterAnalysisResult(delta),
       `+${delta} ml water logged (today ${target} ml)`,
       buildDiaryShareSuffix('water', { volumeMl: target }),
     );
   };
 
-  const handleEducationSave = async ({ platform, topic }) => {
-    setSaving(true);
-    try {
-      await saveLog({
-        userId,
+  const handleEducationSave = ({ platform, topic }) => {
+    const capId = captureId;
+    const uid = userId;
+    const img = imageBase64;
+
+    setActiveForm(null);
+    onToast?.('Education saved to Diary');
+    exit({
+      activityCaption: buildDiaryShareSuffix('education', {
         platform,
-        topic,
-        captureId,
-        imageBase64,
-      });
-      setActiveForm(null);
-      onToast?.('Education saved to Diary');
-      exit({
-        activityCaption: buildDiaryShareSuffix('education', {
-          platform,
-          session: topic,
-        }),
-      });
-    } catch (err) {
-      const msg = err?.message || 'Failed to save education';
-      setHint(msg);
-      throw new Error(msg);
-    } finally {
-      setSaving(false);
-    }
+        session: topic,
+      }),
+    });
+
+    void saveLog({
+      userId: uid,
+      platform,
+      topic,
+      captureId: capId,
+      imageBase64: img,
+    }).catch((err) => {
+      onToast?.(err?.message || "Couldn't save education — check Diary.");
+    });
   };
 
   // Don't treat credits as available until status has loaded — avoids green CTA flash then lock.
@@ -643,7 +635,7 @@ export default function ManualEntryPage({
   const showAiButton = !creditsEnabled || (credits != null && credits.enabled === true);
   const aiDisabled =
     !captureReady || aiStarting || outOfCredits || creditsChecking || closingWithoutLog;
-  const logAsDisabled = !captureReady || saving || closingWithoutLog;
+  const logAsDisabled = !captureReady || closingWithoutLog;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: BRAND.pageBg }}>
@@ -813,7 +805,7 @@ export default function ManualEntryPage({
         <button
           type="button"
           onClick={handleCloseWithoutLog}
-          disabled={saving || aiStarting || closingWithoutLog}
+          disabled={aiStarting || closingWithoutLog}
           className="safe-bottom log-as-btn log-as-btn--idle inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-gradient-to-b from-white to-red-50/40 py-3.5 text-sm font-bold text-red-600 shadow-[0_3px_0_0_rgba(220,38,38,0.2)] transition-[transform,box-shadow] duration-150 active:translate-y-[2px] active:shadow-[0_1px_0_0_rgba(220,38,38,0.18)] disabled:opacity-50"
         >
           {closingWithoutLog && (
