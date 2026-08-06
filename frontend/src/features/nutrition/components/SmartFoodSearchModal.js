@@ -124,7 +124,7 @@ const SmartFoodSearchModal = ({
           masterItems: data.masterItems || [],
           myItems: data.myItems || [],
           communityItems: data.communityItems || [],
-        });
+        }, query);
         setMasterItems(buckets.masterItems);
         setMyItems(buckets.myItems);
         setCommunityItems(buckets.communityItems);

@@ -17,6 +17,7 @@ const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
  * Reads persisted rows from wellness_score_daily_table (not discipline %).
  * Ranking: wellness % desc, then total_earned desc; equal scores share the same rank
  * (competition / “1224” ranking on the % + earned score pair).
+ * Display order: Rank N → Rank 1 (reversed for home marquee, same as weight LB).
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,7 +48,7 @@ export default async function handler(req, res) {
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
 
-    const cacheKey = `lb:global:wellness:${topN}:${scoreDate}`;
+    const cacheKey = `lb:global:wellness:v3:${topN}:${scoreDate}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader('X-Cache', 'HIT');
@@ -147,6 +148,9 @@ export default async function handler(req, res) {
       });
       previousKey = scoreKey;
     }
+
+    // Display order: Rank N → Rank 1 (same marquee pattern as weight leaderboard)
+    ranked.reverse();
 
     // Omit ProfileImage base64 — was multi-MB for Top 10; UI uses initial avatars.
 

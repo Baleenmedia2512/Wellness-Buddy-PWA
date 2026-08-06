@@ -10,6 +10,7 @@ import {
   Salad,
   Sparkles,
   UtensilsCrossed,
+  X,
 } from 'lucide-react';
 import { isFlagEnabled } from '../../config/featureFlags';
 import {
@@ -66,7 +67,7 @@ const CATEGORIES = [
   {
     id: MANUAL_LOG_CATEGORY.HEALTHY_SNACKS,
     Icon: Salad,
-    label: 'Healthy Snacks & Soups',
+    label: 'Snacks & Soups',
     wrapLabel: true,
   },
   // smartwatch flow = calories burned; label is Workout (green weightlifter / Lucide on iOS)
@@ -207,10 +208,12 @@ export default function ManualEntryPage({
   const [aiStarting, setAiStarting] = useState(false);
   const [hint, setHint] = useState(null);
   const [activeForm, setActiveForm] = useState(null);
-  /** When food search opened from Healthy Snacks & Soups subtypes. */
+  /** When food search opened from Snacks & Soups subtypes. */
   const [foodEntryMeta, setFoodEntryMeta] = useState(null);
   const [saving, setSaving] = useState(false);
   const [closingWithoutLog, setClosingWithoutLog] = useState(false);
+  /** Full-screen preview of the captured photo. */
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   // Today's hydration total (all exempted beverages) — water stepper tracks this.
   const [waterTodayMl, setWaterTodayMl] = useState(0);
   const [waterTodayLoading, setWaterTodayLoading] = useState(false);
@@ -228,6 +231,7 @@ export default function ManualEntryPage({
   useEffect(() => {
     setActiveForm(null);
     setFoodEntryMeta(null);
+    setPreviewExpanded(false);
   }, [captureId]);
 
   const previewSrc = useMemo(() => {
@@ -454,15 +458,22 @@ export default function ManualEntryPage({
     const analysis = buildAnalysisFromManualFood(manualData);
     const foodName = analysis?.foods?.[0]?.name || manualData?.name || 'Food';
     const n = analysis?.total || analysis?.foods?.[0]?.nutrition || {};
-    const activityCaption = buildDiaryShareSuffix('food', {
-      foodName,
-      calories: n.calories ?? 0,
-      protein: n.protein ?? 0,
-      carbs: n.carbs ?? 0,
-      fat: n.fat ?? 0,
-      fiber: n.fiber ?? 0,
-      glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
-    });
+    // Snacks & Soups: name + kcal only (no P/C/F/Fiber/GI). Full food keeps macros.
+    const fromSnacks = Boolean(foodEntryMeta?.fromHealthySnacks);
+    const activityCaption = fromSnacks
+      ? buildDiaryShareSuffix('food', {
+          foodName,
+          calories: n.calories ?? 0,
+        })
+      : buildDiaryShareSuffix('food', {
+          foodName,
+          calories: n.calories ?? 0,
+          protein: n.protein ?? 0,
+          carbs: n.carbs ?? 0,
+          fat: n.fat ?? 0,
+          fiber: n.fiber ?? 0,
+          glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
+        });
 
     // Close search UI immediately — promote runs in background (same as Cancel discard).
     setFoodEntryMeta(null);
@@ -571,10 +582,11 @@ export default function ManualEntryPage({
     }
     const analysis = buildAfreshAnalysisResult(delta);
     const calories = analysis?.total?.calories ?? 0;
+    // Share today's running total (after this log), not just the delta — same as water.
     await saveFoodAnalysis(
       analysis,
       `+${delta} scoop${delta === 1 ? '' : 's'} Afresh logged (today ${target})`,
-      buildDiaryShareSuffix('afresh', { scoops: delta, calories }),
+      buildDiaryShareSuffix('afresh', { scoops: target, calories }),
     );
     setActiveForm(null);
   };
@@ -588,10 +600,11 @@ export default function ManualEntryPage({
       setActiveForm(null);
       return;
     }
+    // Share today's running total (after this log), not just the delta.
     await saveFoodAnalysis(
       buildWaterAnalysisResult(delta),
       `+${delta} ml water logged (today ${target} ml)`,
-      buildDiaryShareSuffix('water', { volumeMl: delta }),
+      buildDiaryShareSuffix('water', { volumeMl: target }),
     );
   };
 
@@ -644,29 +657,28 @@ export default function ManualEntryPage({
         </div>
       </header>
 
-      {/* Body — flex layout, no page scroll */}
+      {/* Body — medium photo on top; Log as grid fills remaining space */}
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-hidden px-3 pb-3 pt-3">
-        {/* Photo preview */}
+        {/* Photo preview — medium size, tap to open full-screen */}
         <section className="shrink-0">
           {previewSrc ? (
-            <div
-              className="flex w-full items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm"
-              style={{
-                background: BRAND.mint,
-                maxHeight: showAiButton ? '6.5rem' : '11rem',
-                minHeight: showAiButton ? '4.5rem' : '7.5rem',
-              }}
+            <button
+              type="button"
+              onClick={() => setPreviewExpanded(true)}
+              className="flex h-52 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl border border-green-100 shadow-sm transition-opacity active:opacity-90 sm:h-60"
+              style={{ background: BRAND.mint }}
+              aria-label="View photo full screen"
             >
               <img
                 src={previewSrc}
                 alt="Captured"
-                className={`w-full object-contain ${showAiButton ? 'max-h-24' : 'max-h-44'}`}
+                className="h-full w-full object-contain"
               />
-            </div>
+            </button>
           ) : (
             <div
-              className="w-full rounded-2xl"
-              style={{ background: BRAND.mint, height: showAiButton ? '4.5rem' : '7.5rem' }}
+              className="h-52 w-full rounded-2xl sm:h-60"
+              style={{ background: BRAND.mint }}
             />
           )}
         </section>
@@ -684,7 +696,7 @@ export default function ManualEntryPage({
           </p>
         )}
 
-        {/* Type grid — premium compact Log-as buttons */}
+        {/* Type grid — large Log-as tiles matching original layout */}
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
             <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700/70">
@@ -900,6 +912,32 @@ export default function ManualEntryPage({
         onConfirm={handleWaterConfirm}
         confirmLabel="Log Water"
       />
+
+      {/* Full-screen captured photo */}
+      {previewExpanded && previewSrc && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full screen photo"
+          onClick={() => setPreviewExpanded(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewExpanded(false)}
+            className="absolute right-3 top-3 z-[101] rounded-full bg-white/15 p-2.5 text-white backdrop-blur-sm transition-colors active:bg-white/25"
+            aria-label="Close full screen photo"
+          >
+            <X className="h-6 w-6" strokeWidth={2.5} aria-hidden />
+          </button>
+          <img
+            src={previewSrc}
+            alt="Captured full size"
+            className="max-h-full max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

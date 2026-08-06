@@ -61,15 +61,15 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
       if (delta < 0) arrow = ' ⬇️';
       else if (delta > 0) arrow = ' ⬆️';
 
-      return `previous: ${previous} kg, current: ${current} kg${arrow}`;
+      return `Previous: ${previous} kg, Current: ${current} kg${arrow}`;
     }
     case 'workout':
     case 'watch':
     case 'smartwatch':
     case 'calories_burned': {
       const burned = Math.round(Number(payload.caloriesBurned ?? payload.kcal ?? payload.calories) || 0);
-      if (burned > 0) return `calories burnt: ${burned}`;
-      return 'calories burnt';
+      if (burned > 0) return `Calories Burnt: ${burned} kcal so far today`;
+      return 'Calories Burnt';
     }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':

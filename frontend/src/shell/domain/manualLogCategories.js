@@ -1,5 +1,5 @@
 /**
- * Manual Log ("Log as") category ids + Healthy Snacks & Soups subtypes.
+ * Manual Log ("Log as") category ids + Snacks & Soups subtypes.
  * Pure constants — no I/O. Used by ManualEntryPage and tests.
  */
 
@@ -14,7 +14,7 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
   SMARTWATCH: 'smartwatch',
 });
 
-/** Sub-options under Healthy Snacks & Soups — each opens the food search flow. */
+/** Sub-options under Snacks & Soups — each opens the food search flow. */
 export const HEALTHY_SNACKS_SUBTYPE = Object.freeze({
   SOUPS: 'soups',
   SALADS: 'salads',
