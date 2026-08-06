@@ -5,6 +5,10 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
 import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
+import {
+  approxJsonBytes,
+  createActivityReportPerf,
+} from './domain/activity-report.perf.js';
 import { getUserTimezoneIana, getUserTimezonesIanaMap, resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
 import {
   IANA_IST,
@@ -77,13 +81,52 @@ function ownerTz(timezoneByUserId, userId, fallback) {
 function buildSummaryCounts({
   weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
 }) {
+  const breakfast = new Set();
+  const lunch = new Set();
+  const dinner = new Set();
+  const water = new Set();
+
+  const breakfastWindow = timeWindows?.breakfast;
+  const lunchWindow = timeWindows?.lunch;
+  const dinnerWindow = timeWindows?.dinner;
+
+  for (const record of foodRecords || []) {
+    const uid = parseInt(record.UserID, 10);
+    if (!Number.isFinite(uid)) continue;
+
+    if (repo.isReportBeverageRecord(record)) {
+      water.add(uid);
+      continue;
+    }
+
+    try {
+      const tz = resolveTimezoneFromMap(
+        timezoneByUserId,
+        record.UserID ?? record.UserId,
+        timezoneIana,
+      );
+      const { timeOfDay } = resolveFoodTimestamp(record.CreatedAt, tz);
+      if (breakfastWindow && timeOfDay >= breakfastWindow.start && timeOfDay <= breakfastWindow.end) {
+        breakfast.add(uid);
+      }
+      if (lunchWindow && timeOfDay >= lunchWindow.start && timeOfDay <= lunchWindow.end) {
+        lunch.add(uid);
+      }
+      if (dinnerWindow && timeOfDay >= dinnerWindow.start && timeOfDay <= dinnerWindow.end) {
+        dinner.add(uid);
+      }
+    } catch {
+      /* skip malformed timestamps */
+    }
+  }
+
   return {
     weight: new Set(weightRecords.map((r) => r.UserId)).size,
     education: new Set(educationRecords.map((r) => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
-    water: new Set(repo.filterWaterRecords(foodRecords).map((r) => parseInt(r.UserID, 10))).size,
+    breakfast: breakfast.size,
+    lunch: lunch.size,
+    dinner: dinner.size,
+    water: water.size,
     calories: new Set(stepRecords.filter((r) => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map((r) => r.UserId)).size,
   };
 }
@@ -378,10 +421,54 @@ function collectDetailRecordUserIds({
 }
 
 /**
+ * Absorb Strict Mode / double-mount duplicate bootstraps on a warm lambda.
+ */
+const bootstrapResultCache = new Map();
+const BOOTSTRAP_CACHE_TTL_MS = 20_000;
+
+function bootstrapCacheKey(input) {
+  return [
+    input.userId,
+    input.role,
+    input.teamScope,
+    input.dateRange,
+    input.startDate || '',
+    input.endDate || '',
+    input.detailActivity || 'education',
+    input.includeRecords ? '1' : '0',
+  ].join('|');
+}
+
+/**
  * Single round-trip bootstrap: team scope + summary + member summary + one detail tab.
  * Resolves hierarchy once and fetches all activity tables in parallel.
  */
-export async function getActivityReportBootstrap({
+export async function getActivityReportBootstrap(params) {
+  const cacheKey = bootstrapCacheKey(params);
+  const cached = bootstrapResultCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    const perf = createActivityReportPerf('bootstrap');
+    perf.done({
+      cache: 'hit',
+      payloadBytes: approxJsonBytes(cached.value?.body),
+      recordCount: Array.isArray(cached.value?.body?.records)
+        ? cached.value.body.records.length
+        : 0,
+    });
+    return cached.value;
+  }
+
+  const result = await getActivityReportBootstrapUncached(params);
+  if (result?.httpStatus === 200) {
+    bootstrapResultCache.set(cacheKey, {
+      value: result,
+      expiresAt: Date.now() + BOOTSTRAP_CACHE_TTL_MS,
+    });
+  }
+  return result;
+}
+
+async function getActivityReportBootstrapUncached({
   userId,
   role,
   teamScope,
@@ -391,10 +478,12 @@ export async function getActivityReportBootstrap({
   detailActivity = 'education',
   includeRecords = true,
 }) {
+  const perf = createActivityReportPerf('bootstrap');
   const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
     resolveReportDateRange(userId, dateRange, customStart, customEnd),
     resolveActivityReportUserIds({ userId, role, teamScope }),
   ]);
+  perf.mark('scope_and_dates');
 
   const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
   const baseBody = {
@@ -408,7 +497,7 @@ export async function getActivityReportBootstrap({
   };
 
   if (userIds.length === 0) {
-    return {
+    const empty = {
       httpStatus: 200,
       body: {
         ...baseBody,
@@ -418,9 +507,18 @@ export async function getActivityReportBootstrap({
         records: [],
       },
     };
+    perf.done({
+      userCount: 0,
+      recordCount: 0,
+      payloadBytes: approxJsonBytes(empty.body),
+      cache: 'miss',
+    });
+    return empty;
   }
 
-  // All activity tables + timezones in one wave (no food waterfall).
+  // All activity tables + timezones in one wave.
+  // AnalysisData is required for beverage/meal classification (business rule parity
+  // with isExemptedBeverageOnly). It is never returned in the HTTP records payload.
   const [
     weightRecords,
     educationRecords,
@@ -433,13 +531,17 @@ export async function getActivityReportBootstrap({
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchTimeWindows(),
-    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+      includeAnalysisData: true,
+    }),
     getUserTimezonesIanaMap(userIds),
   ]);
+  perf.mark('activity_tables');
 
   const summary = buildSummaryCounts({
     weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
   });
+  perf.mark('summary_counts');
 
   let records = [];
   if (includeRecords) {
@@ -477,18 +579,25 @@ export async function getActivityReportBootstrap({
         timeWindows,
       });
     }
+    perf.mark('detail_enrichment');
   }
 
-  return {
-    httpStatus: 200,
-    body: {
-      ...baseBody,
-      summary,
-      members: [],
-      stats: EMPTY_STATS,
-      records,
-    },
+  const body = {
+    ...baseBody,
+    summary,
+    members: [],
+    stats: EMPTY_STATS,
+    records,
   };
+  perf.done({
+    userCount: userIds.length,
+    recordCount: records.length,
+    foodRows: foodRecords.length,
+    detailActivity,
+    payloadBytes: approxJsonBytes(body),
+    cache: 'miss',
+  });
+  return { httpStatus: 200, body };
 }
 
 /**
@@ -526,27 +635,20 @@ export async function getActivitySummary({ userId, role, teamScope, dateRange, s
     };
   }
   
-  const [weightRecords, educationRecords, stepRecords, timezoneByUserId] = await Promise.all([
+  const [weightRecords, educationRecords, stepRecords, timezoneByUserId, foodRecords, timeWindows] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
     getUserTimezonesIanaMap(userIds),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+      includeAnalysisData: true,
+    }),
+    repo.fetchTimeWindows(),
   ]);
-  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
 
-  // Get time windows for meal filtering
-  const timeWindows = await repo.fetchTimeWindows();
-
-  // Count unique members per activity type
-  const counts = {
-    weight: new Set(weightRecords.map(r => r.UserId)).size,
-    education: new Set(educationRecords.map(r => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
-    water: new Set(repo.filterWaterRecords(foodRecords).map(r => parseInt(r.UserID, 10))).size,
-    calories: new Set(stepRecords.filter(r => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map(r => r.UserId)).size,
-  };
+  const counts = buildSummaryCounts({
+    weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
+  });
   
   return {
     httpStatus: 200,
@@ -673,16 +775,17 @@ export async function getActivityMemberSummary({ userId, role, teamScope, dateRa
  * Get detailed activity records for a specific activity type
  */
 export async function getActivityDetails({ userId, role, teamScope, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
-  const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
-    userId, dateRange, customStart, customEnd,
-  );
+  const perf = createActivityReportPerf('details');
+  const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
+    resolveReportDateRange(userId, dateRange, customStart, customEnd),
+    resolveActivityReportUserIds({ userId, role, teamScope }),
+  ]);
+  perf.mark('scope_and_dates');
 
-  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
-    userId, role, teamScope,
-  });
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
 
   if (userIds.length === 0) {
-    return {
+    const empty = {
       httpStatus: 200,
       body: {
         success: true,
@@ -695,28 +798,82 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
         records: [],
       },
     };
+    perf.done({ userCount: 0, recordCount: 0, payloadBytes: approxJsonBytes(empty.body) });
+    return empty;
   }
 
-  const [membersRaw, timezoneByUserId, timeWindows] = await Promise.all([
-    repo.fetchMemberDetails(userIds),
-    getUserTimezonesIanaMap(userIds),
+  // Fetch only the activity table for this tab (+ time windows) before member enrichment.
+  const needsFood = ['breakfast', 'lunch', 'dinner', 'water'].includes(activityType);
+  const [weightRecords, educationRecords, foodRecords, stepRecords, timeWindows] = await Promise.all([
+    activityType === 'weight' ? repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    activityType === 'education' ? repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    needsFood
+      ? repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana, {
+          includeAnalysisData: true,
+        })
+      : Promise.resolve([]),
+    activityType === 'calories' ? repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
     repo.fetchTimeWindows(),
   ]);
-  const members = filterPublicAggregateUsers(membersRaw, { viewerUserId: userId });
+  perf.mark('activity_table');
+
+  // Timezones only for users appearing in fetched activity rows (smaller map).
+  const tzUserIds = [...new Set([
+    ...weightRecords.map((r) => r.UserId).filter(Boolean),
+    ...educationRecords.map((r) => r.UserId).filter(Boolean),
+    ...foodRecords.map((r) => r.UserID || r.UserId).filter(Boolean),
+    ...stepRecords.map((r) => r.UserId).filter(Boolean),
+  ].map(String))];
+  const timezoneByUserId = tzUserIds.length > 0
+    ? await getUserTimezonesIanaMap(tzUserIds)
+    : {};
+  perf.mark('timezones');
+
+  const detailUserIds = collectDetailRecordUserIds({
+    activityType,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
+    timezoneIana,
+    timezoneByUserId,
+  });
+
+  if (detailUserIds.length === 0) {
+    const empty = {
+      httpStatus: 200,
+      body: {
+        success: true,
+        activityType,
+        dateRange,
+        startDate: startStr,
+        endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
+        records: [],
+      },
+    };
+    perf.done({
+      userCount: userIds.length,
+      recordCount: 0,
+      detailUserCount: 0,
+      payloadBytes: approxJsonBytes(empty.body),
+    });
+    return empty;
+  }
+
+  // Enrich only members who appear in this tab (same as bootstrap) — not the full team.
+  const members = filterPublicAggregateUsers(
+    await repo.fetchMemberDetails(detailUserIds),
+    { viewerUserId: userId },
+  );
   const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
     members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
     { viewerUserId: userId },
   );
   const memberMap = buildDetailMemberMap(members, sponsorByUser);
-
-  const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
-    activityType === 'weight' ? repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
-    activityType === 'education' ? repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
-    ['breakfast', 'lunch', 'dinner', 'water'].includes(activityType)
-      ? repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana)
-      : Promise.resolve([]),
-    activityType === 'calories' ? repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
-  ]);
+  perf.mark('member_sponsor');
 
   const records = await buildDetailRecordsFromBundle({
     activityType,
@@ -729,18 +886,23 @@ export async function getActivityDetails({ userId, role, teamScope, activityType
     stepRecords,
     timeWindows,
   });
+  perf.mark('build_records');
 
-  return {
-    httpStatus: 200,
-    body: {
-      success: true,
-      activityType,
-      dateRange,
-      startDate: startStr,
-      endDate: endStr,
-      teamScope: resolvedScope,
-      teamScopeCounts,
-      records,
-    },
+  const body = {
+    success: true,
+    activityType,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    teamScope: resolvedScope,
+    teamScopeCounts,
+    records,
   };
+  perf.done({
+    userCount: userIds.length,
+    detailUserCount: detailUserIds.length,
+    recordCount: records.length,
+    payloadBytes: approxJsonBytes(body),
+  });
+  return { httpStatus: 200, body };
 }

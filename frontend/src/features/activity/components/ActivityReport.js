@@ -92,6 +92,28 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [showTeamScope, setShowTeamScope] = useState(false);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
+  const loadReportRef = useRef(null);
+  const selectedActivityRef = useRef(selectedActivity);
+  /** @type {React.MutableRefObject<Map<string, Array>>} */
+  const detailCacheRef = useRef(new Map());
+  selectedActivityRef.current = selectedActivity;
+
+  const formatDateForApi = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const detailCacheKey = useCallback((activityType) => (
+    [
+      teamScope,
+      dateRange,
+      customStartDate ? formatDateForApi(customStartDate) : '',
+      customEndDate ? formatDateForApi(customEndDate) : '',
+      activityType || '',
+    ].join('|')
+  ), [teamScope, dateRange, customStartDate, customEndDate]);
 
   // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
@@ -118,13 +140,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       });
     return () => { cancelled = true; };
   }, [user?.id, userRole]);
-
-  const formatDateForApi = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
 
   const buildReportParams = useCallback((activityType, extra = {}) => {
     const params = new URLSearchParams({
@@ -210,6 +225,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
+    const cacheKey = detailCacheKey(activityType);
+    if (detailCacheRef.current.has(cacheKey)) {
+      setDetailRecords(detailCacheRef.current.get(cacheKey) || []);
+      setCurrentPage(1);
+      setDetailLoading(false);
+      setError('');
+      return;
+    }
+
     setDetailLoading(true);
     setError('');
 
@@ -225,7 +249,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         throw new Error(data.message || 'Failed to fetch activity details');
       }
 
-      setDetailRecords(data.records || []);
+      const records = data.records || [];
+      detailCacheRef.current.set(cacheKey, records);
+      setDetailRecords(records);
       setCurrentPage(1);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -233,7 +259,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } finally {
       setDetailLoading(false);
     }
-  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
+  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams, detailCacheKey]);
 
   /** Phase 1: team scope + summary pills. Phase 2: detail table from same bootstrap when includeRecords=1. */
   const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
@@ -243,6 +269,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setSummaryLoading(true);
     setDetailLoading(true);
     setError('');
+    detailCacheRef.current.clear();
 
     try {
       const response = await fetch(
@@ -265,11 +292,13 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         throw new Error(data.message || 'Failed to load activity report');
       }
 
+      const records = Array.isArray(data.records) ? data.records : [];
+      detailCacheRef.current.set(detailCacheKey(detailActivity || 'education'), records);
       setSummary(data.summary || null);
       applyReportMeta(data);
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
-      setDetailRecords(Array.isArray(data.records) ? data.records : []);
+      setDetailRecords(records);
       setCurrentPage(1);
       setSummaryLoading(false);
       setDetailLoading(false);
@@ -288,13 +317,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     buildReportParams,
     fetchLegacyReportBundle,
     applyReportMeta,
+    detailCacheKey,
   ]);
 
+  loadReportRef.current = loadReport;
+
   // Fetch only when this page is open (component mounted) and role is resolved.
-  // Short debounce collapses React Strict Mode remount + rapid filter churn into one request.
+  // Refs keep loadReport/selectedActivity out of deps so callback identity churn
+  // (and React Strict Mode) cannot fire duplicate bootstraps.
   useEffect(() => {
-    if (!roleReady || !user?.id || !apiBaseUrl) return;
-    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+    if (!roleReady || !user?.id || !apiBaseUrl) return undefined;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return undefined;
 
     const controller = new AbortController();
     fetchAbortRef.current?.abort();
@@ -303,10 +336,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     fetchGenerationRef.current = generation;
 
     const timer = setTimeout(() => {
-      loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
+      const run = loadReportRef.current;
+      if (typeof run !== 'function') return;
+      run(selectedActivityRef.current || 'education', { signal: controller.signal }).finally(() => {
         if (fetchGenerationRef.current !== generation) return;
       });
-    }, 50);
+    }, 120);
 
     return () => {
       clearTimeout(timer);
@@ -317,7 +352,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     };
   }, [
     roleReady,
-    loadReport,
     tabVisitKey,
     teamScope,
     dateRange,
