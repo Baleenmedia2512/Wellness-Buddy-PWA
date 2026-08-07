@@ -439,7 +439,6 @@ function MemberCard({
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const diff      = testimonial ? Math.abs((testimonial.afterWeightKg ?? 0) - (testimonial.beforeWeightKg ?? 0)).toFixed(1) : null;
   const issues    = testimonial?.recoveredHealthIssues ?? [];
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
@@ -480,6 +479,15 @@ function MemberCard({
   // hasDirtySlots: true for ANY pending change including weight-only edits
   const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
+
+  // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
+  const displayBeforeKg = Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? 0);
+  const displayAfterKg  = Number(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : 0) ?? 0);
+  const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
+  const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
+  const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
+    ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
+    : null;
 
   const toggleSlot = useCallback((slot) => {
     setExpandedSlots(prev => {
@@ -946,13 +954,13 @@ function MemberCard({
           {/* "Lost X kgs in Y duration" sentence */}
           {diff && hasAfter && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${testimonial.goalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
-                {testimonial.goalType === 'loss'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${displayGoalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
+                {displayGoalType === 'loss'
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
-                {testimonial.goalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
-                {testimonial.durationText ? ` in ${testimonial.durationText}` : ''}
+                {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
+                {displayDuration ? ` in ${displayDuration}` : ''}
               </span>
               {/* Pencil/Plus for duration edit (Mine only) */}
               {editable && (
@@ -992,9 +1000,9 @@ function MemberCard({
             </div>
           )}
           {/* No diff yet — show before weight or add prompt */}
-          {(!diff || !hasAfter) && testimonial.beforeWeightKg && (
+          {(!diff || !hasAfter) && displayBeforeKg > 0 && (
             <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-              {testimonial.beforeWeightKg} kg → ?
+              {displayBeforeKg} kg → ?
             </span>
           )}
           {/* Status badge */}
