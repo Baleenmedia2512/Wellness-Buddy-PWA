@@ -450,6 +450,9 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+  // Local text while weight field is open — needed for Android WebView typing
+  const [beforeWeightText, setBeforeWeightText] = useState(null);
+  const [afterWeightText,  setAfterWeightText]  = useState(null);
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
@@ -488,6 +491,70 @@ function MemberCard({
   const diff = testimonial && hasAfter && displayBeforeKg > 0 && displayAfterKg > 0
     ? Math.abs(displayAfterKg - displayBeforeKg).toFixed(1)
     : null;
+
+  // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
+  const hasPhotoDraft = Boolean(
+    draftBefore?.previewUrl || draftBefore?.imageBase64
+    || draftAfter?.previewUrl || draftAfter?.imageBase64
+  );
+
+  const parseWeightInput = useCallback((raw) => {
+    const v = parseFloat(String(raw ?? '').trim().replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }, []);
+
+  const commitBeforeWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftBefore((prev) => ({
+      ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }),
+      weightKg: v,
+    }));
+  }, [parseWeightInput, testimonial?.goalType, testimonial?.durationText]);
+
+  const commitAfterWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftAfter((prev) => ({ ...(prev || {}), weightKg: v }));
+  }, [parseWeightInput]);
+
+  const openBeforeWeightEdit = useCallback(() => {
+    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('beforeWeight');
+      return next;
+    });
+  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg]);
+
+  const closeBeforeWeightEdit = useCallback((raw) => {
+    if (raw != null) commitBeforeWeight(raw);
+    setBeforeWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('beforeWeight');
+      return next;
+    });
+  }, [commitBeforeWeight]);
+
+  const openAfterWeightEdit = useCallback(() => {
+    setAfterWeightText(String(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('afterWeight');
+      return next;
+    });
+  }, [draftAfter?.weightKg, hasAfter, testimonial?.afterWeightKg]);
+
+  const closeAfterWeightEdit = useCallback((raw) => {
+    if (raw != null) commitAfterWeight(raw);
+    setAfterWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('afterWeight');
+      return next;
+    });
+  }, [commitAfterWeight]);
 
   const toggleSlot = useCallback((slot) => {
     setExpandedSlots(prev => {
@@ -765,18 +832,31 @@ function MemberCard({
               {editable && expandedSlots.has('beforeWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftBefore(prev => ({ ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }), weightKg: v }));
-                      toggleSlot('beforeWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={beforeWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBeforeWeightText(raw);
+                      commitBeforeWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('beforeWeight'); }}
+                    onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeBeforeWeightEdit(null);
+                    }}
                     className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('beforeWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeBeforeWeightEdit(beforeWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -787,7 +867,7 @@ function MemberCard({
                     {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('beforeWeight')}
+                    <button type="button" onClick={openBeforeWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -856,18 +936,31 @@ function MemberCard({
               {editable && expandedSlots.has('afterWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftAfter(prev => ({ ...(prev || {}), weightKg: v }));
-                      toggleSlot('afterWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={afterWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setAfterWeightText(raw);
+                      commitAfterWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('afterWeight'); }}
+                    onBlur={(e) => closeAfterWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeAfterWeightEdit(null);
+                    }}
                     className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('afterWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeAfterWeightEdit(afterWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -878,7 +971,7 @@ function MemberCard({
                     {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('afterWeight')}
+                    <button type="button" onClick={openAfterWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -890,8 +983,8 @@ function MemberCard({
         </div>
       )}
 
-      {/* Compact metadata strip — visible when editable and photos are being edited */}
-      {editable && (draftBefore || draftAfter) && (
+      {/* Compact metadata strip — only when a new photo is being edited (not weight-only) */}
+      {editable && hasPhotoDraft && (
         <div className="grid grid-cols-2 gap-2 px-1">
           {draftBefore && (
             <>
