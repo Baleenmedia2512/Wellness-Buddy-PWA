@@ -193,7 +193,8 @@ export function sortWellnessScoreReportRows(rows, sort = SORT_KEYS.SCORE) {
  */
 export function toWellnessScoreReportListSummary(row) {
   if (!row) return null;
-  const percentage = row.percentage ?? row.wellnessScore ?? null;
+  const percentage = row.percentage ?? null;
+  const totalEarned = row.totalEarned ?? row.wellnessScore ?? null;
   return {
     userId: row.userId,
     name: row.name ?? row.userName ?? null,
@@ -201,8 +202,9 @@ export function toWellnessScoreReportListSummary(row) {
     previousWeight: row.previousWeight ?? null,
     difference: row.difference ?? null,
     percentage,
-    wellnessScore: percentage,
-    wellnessScorePossible: percentage != null ? 100 : null,
+    totalEarned,
+    wellnessScore: totalEarned,
+    wellnessScorePossible: row.wellnessScorePossible ?? null,
     sponsor: row.sponsor ?? null,
     coach: row.coach ?? null,
     computedAt: row.computedAt ?? null,

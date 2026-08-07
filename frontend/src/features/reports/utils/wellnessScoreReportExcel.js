@@ -11,6 +11,7 @@ const EXCEL_HEADERS = [
   'NAME',
   'TODAY WEIGHT',
   'TODAY VS PREVIOUS WEIGHT',
+  'WEIGHT CHANGE',
   'WELLNESS SCORE',
   'SPONSOR',
   'COACH',
@@ -50,10 +51,11 @@ export async function buildWellnessScoreWorkbookBuffer(rows) {
   sheet.columns = [
     { header: EXCEL_HEADERS[0], key: 'name', width: 22 },
     { header: EXCEL_HEADERS[1], key: 'todayWeight', width: 16 },
-    { header: EXCEL_HEADERS[2], key: 'change', width: 18 },
-    { header: EXCEL_HEADERS[3], key: 'score', width: 16 },
-    { header: EXCEL_HEADERS[4], key: 'sponsor', width: 18 },
-    { header: EXCEL_HEADERS[5], key: 'coach', width: 18 },
+    { header: EXCEL_HEADERS[2], key: 'vsPrevious', width: 28 },
+    { header: EXCEL_HEADERS[3], key: 'change', width: 16 },
+    { header: EXCEL_HEADERS[4], key: 'score', width: 16 },
+    { header: EXCEL_HEADERS[5], key: 'sponsor', width: 18 },
+    { header: EXCEL_HEADERS[6], key: 'coach', width: 18 },
   ];
 
   const headerRow = sheet.getRow(1);
@@ -73,8 +75,9 @@ export async function buildWellnessScoreWorkbookBuffer(rows) {
     sheet.addRow({
       name: row.name || '',
       todayWeight: formatWeightKg(row.todayWeight) || '',
+      vsPrevious: change.comparisonLabel,
       change: changeCell,
-      score: formatWellnessScore(row.percentage ?? row.wellnessScore),
+      score: formatWellnessScore(row.totalEarned ?? row.wellnessScore),
       sponsor: row.sponsor || '',
       coach: row.coach || '',
     });

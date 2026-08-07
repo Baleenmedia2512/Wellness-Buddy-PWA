@@ -3,7 +3,7 @@
  * Sticky header row + sticky NAME column; infinite scroll; Share / Download Excel.
  */
 import React, { useEffect, useRef, useState, useCallback, startTransition } from 'react';
-import { RefreshCw, Share2, Download, ArrowDown, ArrowUp, Minus } from 'lucide-react';
+import { RefreshCw, Share2, Download } from 'lucide-react';
 import { useWellnessScoreReport } from '../hooks/useWellnessScoreReport';
 import ReportSearchBar from './ReportSearchBar';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -38,31 +38,35 @@ function TableSkeleton() {
 function WeightChangeCell({ todayWeight, previousWeight, difference }) {
   const change = computeWeightChange(todayWeight, previousWeight, difference);
 
-  if (change.direction === 'none' || change.direction === 'same') {
+  if (change.direction === 'none') {
     return (
-      <span className="inline-flex items-center gap-1 text-sm font-medium text-gray-400">
-        <Minus className="h-3.5 w-3.5" aria-hidden />
-        <span>—</span>
-      </span>
+      <div className="text-xs leading-snug text-gray-500">
+        {change.comparisonLabel}
+      </div>
+    );
+  }
+
+  if (change.direction === 'same') {
+    return (
+      <div className="text-xs leading-snug">
+        <div className="text-gray-700">{change.comparisonLabel}</div>
+        <div className="mt-0.5 text-gray-400 font-medium">—</div>
+      </div>
     );
   }
 
   const isDown = change.direction === 'down';
   return (
-    <span
-      className={`inline-flex items-center gap-1 text-sm font-semibold ${
-        isDown ? 'text-green-600' : 'text-red-600'
-      }`}
-    >
-      {isDown ? (
-        <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-      ) : (
-        <ArrowUp className="h-3.5 w-3.5" aria-hidden />
-      )}
-      <span>
+    <div className="text-xs leading-snug">
+      <div className="text-gray-700">{change.comparisonLabel}</div>
+      <div
+        className={`mt-0.5 font-semibold ${
+          isDown ? 'text-green-600' : 'text-red-600'
+        }`}
+      >
         {isDown ? '⬇' : '⬆'} {change.changeLabel}
-      </span>
-    </span>
+      </div>
+    </div>
   );
 }
 
@@ -303,7 +307,7 @@ export default function WellnessScoreReport({ user, tabVisitKey = 0 }) {
                           />
                         </td>
                         <td className="px-3 py-2.5 text-sm font-semibold text-teal-800 border-b border-r border-gray-200 whitespace-nowrap">
-                          {formatWellnessScore(row.percentage ?? row.wellnessScore)}
+                          {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-r border-gray-200 whitespace-nowrap">
                           {row.sponsor || '—'}

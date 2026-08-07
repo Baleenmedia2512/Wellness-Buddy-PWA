@@ -24,7 +24,7 @@ import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
 
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v3:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:wellness-score:v4:';
 
 function readWeightPair(weightMap, userId) {
   const entry = weightMap.get(userId);
@@ -41,6 +41,7 @@ function buildMemberRow(member, weightMap, scoreMap, sponsorByUser) {
   const score = scoreMap.get(Number(uid));
   const resolved = sponsorByUser.get(String(uid));
   const percentage = score != null ? score.percentage : null;
+  const totalEarned = score != null ? score.totalEarned : null;
   const difference = computeWeightDifferenceKg(todayWeight, previousWeight);
 
   return {
@@ -50,8 +51,9 @@ function buildMemberRow(member, weightMap, scoreMap, sponsorByUser) {
     previousWeight,
     difference,
     percentage,
-    wellnessScore: percentage,
-    wellnessScorePossible: percentage != null ? 100 : null,
+    totalEarned,
+    wellnessScore: totalEarned,
+    wellnessScorePossible: score?.totalPossible ?? null,
     computedAt: score?.computedAt ?? null,
     sponsor: resolved?.sponsorName || null,
     coach: resolved?.idealCoachName || null,
