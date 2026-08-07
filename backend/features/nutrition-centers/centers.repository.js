@@ -158,48 +158,60 @@ export async function getOwnerNames(ownerIds) {
 }
 
 export async function attendanceForCenter(centerId, startDate, endDate, timezoneIana = IANA_IST) {
+  const byCenter = await attendanceForCenters([centerId], startDate, endDate, timezoneIana);
+  return byCenter.get(centerId) || [];
+}
+
+/**
+ * Batch attendance for many centres — 3 queries total instead of 3×N.
+ * @returns {Promise<Map<number, Array<{ UserId: number }>>>}
+ */
+export async function attendanceForCenters(centerIds, startDate, endDate, timezoneIana = IANA_IST) {
+  const result = new Map();
+  const ids = [...new Set((centerIds || []).map((id) => Number(id)).filter(Number.isFinite))];
+  ids.forEach((id) => result.set(id, []));
+  if (ids.length === 0) return result;
+
   const supabase = getSupabaseClient();
-  
+
   let eduQuery = supabase
     .from('education_logs_table')
-    .select('"UserId"')
-    .eq('nutrition_center_id', centerId)
+    .select('"UserId", nutrition_center_id')
+    .in('nutrition_center_id', ids)
     .eq('"IsDeleted"', 0);
   eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let weightQuery = supabase
     .from('weight_records_table')
-    .select('"UserId"')
-    .eq('"NutritionCenterId"', centerId)
+    .select('"UserId", "NutritionCenterId"')
+    .in('"NutritionCenterId"', ids)
     .eq('"IsDeleted"', 0);
   weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
   let foodQuery = supabase
     .from('food_nutrition_data_table')
-    .select('"UserID"')
-    .eq('"NutritionCenterId"', centerId)
+    .select('"UserID", "NutritionCenterId"')
+    .in('"NutritionCenterId"', ids)
     .eq('"IsDeleted"', 0);
   foodQuery = applyDateRangeFilter(foodQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  const [eduRes, weightRes, foodRes] = await Promise.all([
-    eduQuery,
-    weightQuery,
-    foodQuery,
-  ]);
-  
-  // Check for errors
+  const [eduRes, weightRes, foodRes] = await Promise.all([eduQuery, weightQuery, foodQuery]);
+
   if (eduRes.error) throw new Error(`Education logs query failed: ${eduRes.error.message}`);
   if (weightRes.error) throw new Error(`Weight logs query failed: ${weightRes.error.message}`);
   if (foodRes.error) throw new Error(`Food logs query failed: ${foodRes.error.message}`);
-  
-  // Merge all logs - normalize food table's UserID to UserId
-  const allLogs = [
-    ...(eduRes.data || []),
-    ...(weightRes.data || []),
-    ...(foodRes.data || []).map(row => ({ UserId: row.UserID })),
-  ];
-  
-  return allLogs;
+
+  const push = (centerId, userId) => {
+    const key = Number(centerId);
+    if (!result.has(key)) result.set(key, []);
+    result.get(key).push({ UserId: userId });
+  };
+
+  (eduRes.data || []).forEach((row) => push(row.nutrition_center_id, row.UserId));
+  (weightRes.data || []).forEach((row) => push(row.NutritionCenterId, row.UserId));
+  (foodRes.data || []).forEach((row) => push(row.NutritionCenterId, row.UserID));
+
+  return result;
 }
 
 export async function getAttendeeList(centerId, startDate, endDate, timezoneIana = IANA_IST) {

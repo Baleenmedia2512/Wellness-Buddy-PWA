@@ -33,7 +33,12 @@ export function useEducationShare({ educationData, imagePreview, deps = [] } = {
     try {
       const shareOpts = {
         title: `Education Session - ${educationData.topic}`,
-        text: '',
+        text: [
+          '🎓 Education',
+          '',
+          `Platform: ${educationData.platform || '—'}`,
+          `Session: ${educationData.topic || '—'}`,
+        ].join('\n'),
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
       };
       const cached = cachedRef.current;

@@ -6,7 +6,7 @@
  * `WeightSummaryCards` and `WeightChart`, dot navigator, history list and
  * the lazy `WeightCardModal`. Both `hideHeader` branches are preserved.
  */
-import React, { lazy, Suspense, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useWeightDashboard } from '../hooks/useWeightDashboard';
 import { weightEntryFromDiaryRow } from '../services/weightDashboardFormatter';
 import WeightSummaryCards from './WeightSummaryCards';
@@ -119,13 +119,14 @@ const Modal = ({ vm }) => (
     <WeightCardModal
       data={vm.selectedEntry}
       onClose={vm.closeModal}
-      onDelete={vm.handleDeleteEntry}
+      onDelete={(entry) => vm.handleDeleteEntryFromModal(entry)}
       onUpdate={vm.handleUpdateEntry}
       apiBaseUrl={vm.apiBaseUrl}
       userId={vm.userIdRef.current}
       previousWeight={vm.modalPreviousWeight()}
       previousEntry={vm.modalPreviousEntry()}
       idealWeight={vm.idealWeight}
+      timezoneIana={vm.timezoneIana}
     />
   </Suspense>
 );
@@ -133,13 +134,22 @@ const Modal = ({ vm }) => (
 const WeightDashboard = ({
   user, apiBaseUrl, hideHeader, hideOverview = false,
   initialEntryId = null, selectedDate = null, refreshKey = 0,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
   // Imperative handle: parent passes a React ref; we write `openRef.current =
   // (entryId) => ...` each render so the timeline shell can open an entry.
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
+  /** Timeline modal-host: skip history/profile until first open. */
+  deferDataFetch = false,
 }) => {
-  const vm = useWeightDashboard({ user, apiBaseUrl, initialEntryId, selectedDate, refreshKey });
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
+  const vm = useWeightDashboard({
+    user, apiBaseUrl, initialEntryId, selectedDate, refreshKey,
+    onDeleteWithUndo, onDeleteUndoCancel,
+    enabled: dataFetchEnabled,
+  });
   const pendingOpenIdRef = useRef(null);
 
   // If history was stale when the user tapped a diary row, open once fetch catches up.
@@ -156,6 +166,9 @@ const WeightDashboard = ({
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'weight') {
         const p = entryOrId.payload || {};
         const found = (vm.weightHistory || []).find((e) => String(e.ID) === String(p.id));

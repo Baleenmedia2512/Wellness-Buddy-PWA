@@ -65,6 +65,8 @@ export function validateGetProfile(query) {
   return { email };
 }
 
+const VALID_GENDERS = ['Male', 'Female'];
+
 export function validateUpdateProfile(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const email = body.email;
@@ -77,6 +79,10 @@ export function validateUpdateProfile(body) {
   if (physicalActivityLevel != null && physicalActivityLevel !== ''
     && !isValidPhysicalActivityLevel(physicalActivityLevel)) {
     throw new ValidationError(400, `Invalid physicalActivityLevel. Must be one of: ${VALID_PHYSICAL_ACTIVITY_LEVELS.join(', ')}`);
+  }
+  const gender = body.gender != null && body.gender !== '' ? String(body.gender).trim() : undefined;
+  if (gender != null && !VALID_GENDERS.includes(gender)) {
+    throw new ValidationError(400, `Invalid gender. Must be one of: ${VALID_GENDERS.join(', ')}`);
   }
 
   let communityId;
@@ -105,6 +111,7 @@ export function validateUpdateProfile(body) {
     dietType: body.dietType,
     profileImage: body.profileImage,
     phoneNumber: body.phoneNumber,
+    gender,
     weightGoalMode: weightGoalMode || undefined,
     physicalActivityLevel: physicalActivityLevel || undefined,
     communityId,
@@ -135,7 +142,37 @@ export function validateGoogleUser(body) {
   if (!email || !displayName) {
     throw new ValidationError(400, 'Email and Display Name are required');
   }
-  return { email, displayName, photoURL: body?.photoURL || null, timezoneIana: body?.timezoneIana ?? body?.timezone ?? undefined };
+  return {
+    email,
+    displayName,
+    photoURL: body?.photoURL || null,
+    timezoneIana: body?.timezoneIana ?? body?.timezone ?? undefined,
+    consentAccepted: body?.consentAccepted === true,
+    consentVersion: body?.consentVersion != null ? String(body.consentVersion).trim() : '',
+    deviceInfo: body?.deviceInfo != null ? String(body.deviceInfo).trim().slice(0, 500) : '',
+    ipAddress: body?.ipAddress != null ? String(body.ipAddress).trim().slice(0, 64) : null,
+  };
+}
+
+export function validateRecordConsent(body) {
+  const email = normalizeEmail(body?.email);
+  const userIdRaw = body?.userId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'userId or email is required');
+  }
+  return {
+    userId: userId && Number.isFinite(userId) ? userId : null,
+    email: email || null,
+    consentAccepted: body?.consentAccepted === true
+      ? true
+      : (body?.consentAccepted === false ? false : null),
+    consentVersion: body?.consentVersion != null ? String(body.consentVersion).trim() : '',
+    deviceInfo: body?.deviceInfo != null ? String(body.deviceInfo).trim().slice(0, 500) : '',
+    ipAddress: body?.ipAddress != null ? String(body.ipAddress).trim().slice(0, 64) : null,
+  };
 }
 
 export function validateSnooze(body) {
@@ -162,4 +199,4 @@ export function validateStatus(query) {
   return { email };
 }
 
-export { VALID_DIETS };
+export { VALID_DIETS, VALID_GENDERS };

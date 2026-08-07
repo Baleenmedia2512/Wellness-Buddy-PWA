@@ -84,22 +84,20 @@ export function buildTeamMemberInsert({ name, heightCm = null, bmr = null, weigh
 }
 
 /**
- * True when a BPC lead was wrongly given the counsellor as CoachId and has never
- * chosen a coach via Setup Wizard OTP or skip-setup. Safe to clear CoachId so
- * onboarding can ask the user.
+ * True when a BPC lead still has CoachId set but never completed coach OTP /
+ * skip-setup. Any CoachId on such a row is stale (legacy bug or DB default) —
+ * clear it so onboarding can assign the real coach after member OTP flow.
  *
  * @param {{
  *   currentCoachId?: number|string|null,
- *   counsellorId?: number|string|null,
  *   entryUser?: string|null,
  *   setupSkipped?: boolean|null,
  *   hasApprovedCoachSelection?: boolean,
  * }} input
  * @returns {boolean}
  */
-export function shouldDetachCounsellorCoachAssignment({
+export function shouldClearBpcLeadCoachId({
   currentCoachId = null,
-  counsellorId = null,
   entryUser = null,
   setupSkipped = null,
   hasApprovedCoachSelection = false,
@@ -109,8 +107,31 @@ export function shouldDetachCounsellorCoachAssignment({
   if (String(entryUser || '').trim() !== 'Body Parameters Card') return false;
 
   const coachN = parseInt(currentCoachId, 10);
+  return Number.isFinite(coachN) && coachN > 0;
+}
+
+/**
+ * @deprecated Prefer shouldClearBpcLeadCoachId — kept for callers that only
+ * detached when counsellorId matched CoachId.
+ */
+export function shouldDetachCounsellorCoachAssignment({
+  currentCoachId = null,
+  counsellorId = null,
+  entryUser = null,
+  setupSkipped = null,
+  hasApprovedCoachSelection = false,
+} = {}) {
+  if (!shouldClearBpcLeadCoachId({
+    currentCoachId,
+    entryUser,
+    setupSkipped,
+    hasApprovedCoachSelection,
+  })) {
+    return false;
+  }
+
+  const coachN = parseInt(currentCoachId, 10);
   const counsellorN = parseInt(counsellorId, 10);
-  if (!Number.isFinite(coachN) || coachN < 1) return false;
   if (!Number.isFinite(counsellorN) || counsellorN < 1) return false;
   return coachN === counsellorN;
 }
@@ -130,18 +151,21 @@ export function isCardShareValid(shareExpiresAt, now = new Date()) {
 /**
  * Build the profile fields that should be written to team_table when a
  * link recipient saves a card to their profile.
- * Body Age / Age / Gender / measurements are excluded — card-only (no Profile columns).
+ * Age / measurements stay card-only; Gender syncs when Male/Female.
  *
  * @param {object} card - row from body_parameters_cards
- * @returns {{ name: string|null, height: number|null, bmr: number|null }}
+ * @returns {{ name: string|null, height: number|null, bmr: number|null, gender: string|null }}
  */
 export function buildProfilePatch(card) {
+  const genderRaw = card.gender != null ? String(card.gender).trim() : '';
+  const gender = (genderRaw === 'Male' || genderRaw === 'Female') ? genderRaw : null;
   return {
     name: card.name != null && String(card.name).trim()
       ? String(card.name).trim()
       : null,
     height: card.height_cm ?? null,
     bmr: resolveSyncedBmrFromCard(card),
+    gender,
   };
 }
 
@@ -165,6 +189,33 @@ export function buildWeightRecord(card, userId) {
     Bmr:       bmr,
     // MuscleMass not on the card — omit
   };
+}
+
+/**
+ * Compute BMI from height (cm) and weight (kg). Matches BPC form auto-fill.
+ *
+ * @param {number|string|null|undefined} heightCm
+ * @param {number|string|null|undefined} weightKg
+ * @returns {number|null}
+ */
+export function computeBmiFromHeightWeight(heightCm, weightKg) {
+  const h = Number(heightCm);
+  const w = Number(weightKg);
+  if (!Number.isFinite(h) || h < 50 || h > 250) return null;
+  if (!Number.isFinite(w) || w < 20 || w > 300) return null;
+  const m = h / 100;
+  return Math.round((w / (m * m)) * 10) / 10;
+}
+
+/**
+ * Whether a BMI value is within card.schema.js / DB persistence bounds.
+ *
+ * @param {number|null|undefined} bmi
+ * @returns {boolean}
+ */
+export function isPersistableBmi(bmi) {
+  const n = Number(bmi);
+  return Number.isFinite(n) && n >= 5 && n <= 70;
 }
 
 /**

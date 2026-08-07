@@ -46,6 +46,8 @@ export function useMealDeleteMutations({
   applyDailyDelta,
   setError,
   onMealDelete,
+  onMealDeleteWithUndo,
+  onMealDeleteUndoCancel,
   undoSeconds = DEFAULT_UNDO_SECONDS,
 }) {
   const [deletingId, setDeletingId] = useState(null);
@@ -56,36 +58,45 @@ export function useMealDeleteMutations({
     if (fromModal) setDeletingId(meal.ID);
 
     const deltas = computeDeleteDeltas(meal);
+    const useFloatingUndo = fromModal && typeof onMealDeleteWithUndo === 'function';
+    const expiresAt = Date.now() + undoSeconds * 1000;
     const placeholder = {
       ID: `undo-${meal.ID}`,
       isUndoPlaceholder: true,
       CreatedAt: meal.CreatedAt,
     };
 
-    setAnalyses((prev) => {
-      const idx = prev.findIndex((m) => m.ID === meal.ID);
-      if (idx === -1) {
-        // Modal flow may race ahead of list; ensure placeholder is appended.
-        return fromModal
-          ? prev.filter((m) => m.ID !== meal.ID).concat(placeholder)
-          : prev;
-      }
-      const next = prev.slice();
-      next.splice(idx, 1, placeholder);
-      return next;
-    });
+    if (useFloatingUndo) {
+      setAnalyses((prev) => prev.filter((m) => m.ID !== meal.ID));
+    } else {
+      setAnalyses((prev) => {
+        const idx = prev.findIndex((m) => m.ID === meal.ID);
+        if (idx === -1) {
+          return fromModal
+            ? prev.filter((m) => m.ID !== meal.ID).concat(placeholder)
+            : prev;
+        }
+        const next = prev.slice();
+        next.splice(idx, 1, placeholder);
+        return next;
+      });
 
-    setUndoState((prev) => ({
-      ...prev,
-      [placeholder.ID]: {
-        originalMeal: meal,
-        expiresAt: Date.now() + undoSeconds * 1000,
-        ttlSeconds: undoSeconds,
-      },
-    }));
+      setUndoState((prev) => ({
+        ...prev,
+        [placeholder.ID]: {
+          originalMeal: meal,
+          expiresAt,
+          ttlSeconds: undoSeconds,
+        },
+      }));
+    }
 
     applyDailyDelta(deltas);
     if (fromModal) setSelectedMeal(null);
+
+    if (useFloatingUndo) {
+      onMealDeleteWithUndo({ mealId: meal.ID, expiresAt });
+    }
 
     try {
       await deleteMealById({ apiBaseUrl, id: meal.ID, userId: user?.id });
@@ -93,19 +104,24 @@ export function useMealDeleteMutations({
       // Trigger global nutrition refresh (updates home cards)
       triggerRefresh({ immediate: true, source: 'meal-delete' });
     } catch (err) {
-      // Rollback on failure
-      setAnalyses((prev) => {
-        const idx = prev.findIndex((m) => m.ID === placeholder.ID);
-        if (idx === -1) return prev;
-        const next = prev.slice();
-        next.splice(idx, 1, meal);
-        return next;
-      });
-      setUndoState((prev) => {
-        const next = { ...prev };
-        delete next[placeholder.ID];
-        return next;
-      });
+      if (useFloatingUndo) {
+        onMealDeleteUndoCancel?.({ mealId: meal.ID });
+        setAnalyses((prev) => (prev.some((m) => m.ID === meal.ID) ? prev : prev.concat(meal)));
+        applyDailyDelta(invertDeltas(deltas));
+      } else {
+        setAnalyses((prev) => {
+          const idx = prev.findIndex((m) => m.ID === placeholder.ID);
+          if (idx === -1) return prev;
+          const next = prev.slice();
+          next.splice(idx, 1, meal);
+          return next;
+        });
+        setUndoState((prev) => {
+          const next = { ...prev };
+          delete next[placeholder.ID];
+          return next;
+        });
+      }
       applyDailyDelta(invertDeltas(deltas));
       setError(err.message || 'Failed to delete. Please try again.');
       setTimeout(() => setError(null), 5000);

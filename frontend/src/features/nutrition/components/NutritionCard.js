@@ -7,7 +7,15 @@ import { getUserId } from "../../../shared/services/userIdentity";
 import { searchFoods } from "../services/foodCorrectionService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
-
+import { computeMealGlycemicIndex } from "../domain/mealGlycemicIndex";
+import {
+  DIARY_FOOD_ACTIVITY,
+  resolveFoodActivityType,
+  extractVolumeMl,
+  extractScoops,
+  extractShakeProducts,
+} from "../../diary/domain/activityType";
+import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 const NutritionCard = ({
   data,
   onDataUpdate,
@@ -106,28 +114,14 @@ const NutritionCard = ({
     debugLog("   New detailedItems count:", data?.detailedItems?.length);
 
     if (data?.nutrition) {
-      // Backfill total Glycemic Index from items when the upstream payload
-      // (legacy saves, partial AI responses) didn't include it. Carb-weighted.
+      // Always recompute meal GI from items when present (heals legacy summed totals)
       let nextNutrition = data.nutrition;
-      if (
-        (nextNutrition.glycemic_index == null) &&
-        Array.isArray(data?.detailedItems) &&
-        data.detailedItems.length > 0
-      ) {
-        let p = 0;
-        let c = 0;
-        data.detailedItems.forEach((it) => {
-          const g = it.nutrition?.glycemic_index ?? it.glycemic_index;
-          const cb = it.nutrition?.carbs ?? it.carbs ?? 0;
-          if (g != null && cb > 0) {
-            p += Number(g) * Number(cb);
-            c += Number(cb);
-          }
-        });
-        if (c > 0) {
+      if (Array.isArray(data?.detailedItems) && data.detailedItems.length > 0) {
+        const mealGi = computeMealGlycemicIndex(data.detailedItems);
+        if (mealGi != null) {
           nextNutrition = {
             ...nextNutrition,
-            glycemic_index: Math.round(p / c),
+            glycemic_index: mealGi,
           };
         }
       }
@@ -332,8 +326,6 @@ const NutritionCard = ({
       items.length,
     );
 
-    let giCarbProduct = 0;
-    let giTotalCarbs = 0;
     const totals = items.reduce(
       (acc, item, index) => {
         const n = item.nutrition || {};
@@ -346,11 +338,6 @@ const NutritionCard = ({
         const itemSodium      = n.sodium      ?? item.sodium      ?? 0;
         const itemCholesterol = n.cholesterol ?? item.cholesterol ?? 0;
         const itemGI          = n.glycemic_index ?? item.glycemic_index ?? null;
-
-        if (itemGI != null && itemCarbs > 0) {
-          giCarbProduct += itemGI * itemCarbs;
-          giTotalCarbs  += itemCarbs;
-        }
 
         debugLog(`   📊 Item ${index + 1}: ${item.name}`);
         debugLog(
@@ -377,7 +364,7 @@ const NutritionCard = ({
       { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
     );
 
-    // Round to 1 decimal
+    // Round to 1 decimal; meal GI = available-carb weighted (never sum item GIs)
     const rounded = {
       calories:    Math.round(totals.calories),
       protein:     Math.round(totals.protein * 10) / 10,
@@ -387,10 +374,7 @@ const NutritionCard = ({
       sugar:       Math.round(totals.sugar   * 10) / 10,
       sodium:      Math.round(totals.sodium),
       cholesterol: Math.round(totals.cholesterol),
-      // Carb-weighted average GI
-      glycemic_index: giTotalCarbs > 0
-        ? Math.round(giCarbProduct / giTotalCarbs)
-        : null,
+      glycemic_index: computeMealGlycemicIndex(items),
     };
 
     debugLog("   ✅ Final totals:", rounded);
@@ -516,6 +500,12 @@ const NutritionCard = ({
         totalCarbs: Math.round(newTotals.carbs || 0),
         totalFat: Math.round(newTotals.fat || 0),
         totalFiber: Math.round(newTotals.fiber || 0),
+        totalSugar: Math.round(newTotals.sugar ?? 0),
+        totalSodium: Math.round(newTotals.sodium ?? 0),
+        totalCholesterol: Math.round(newTotals.cholesterol ?? 0),
+        glycemicIndex: newTotals.glycemic_index != null
+          ? Math.round(newTotals.glycemic_index)
+          : null,
       }),
     });
 
@@ -523,6 +513,23 @@ const NutritionCard = ({
 
     if (!response.ok || !result.success) {
       throw new Error(result.message || "Failed to update meal");
+    }
+
+    // If backend preserved/injected GI and local totals lacked it, sync local nutrition
+    const serverGi =
+      result.data?.glycemicIndex ??
+      result.data?.nutrition?.glycemic_index ??
+      result.data?.analysisData?.total?.glycemic_index ??
+      null;
+    if (serverGi != null && newTotals.glycemic_index == null) {
+      console.warn(
+        "[NutritionCard] Local GI was null after edit; syncing from server preserve",
+        { mealId: savedMealId, glycemicIndex: serverGi },
+      );
+      setLocalNutrition((prev) => ({
+        ...prev,
+        glycemic_index: Math.round(Number(serverGi)),
+      }));
     }
   };
 
@@ -535,11 +542,13 @@ const NutritionCard = ({
       serving_grams: updatedFood.serving?.grams,
       unit: updatedFood.unit,
       serving_unit: updatedFood.serving?.unit,
+      glycemic_index: updatedFood.nutrition?.glycemic_index ?? updatedFood.glycemic_index,
     });
 
     const newItems = [...localDetailedItems];
+    const prevItem = newItems[index];
     newItems[index] = {
-      ...newItems[index],
+      ...prevItem,
       ...updatedFood,
       // Preserve original fields if not in updatedFood
       calories: updatedFood.nutrition?.calories || updatedFood.calories,
@@ -547,10 +556,22 @@ const NutritionCard = ({
       carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
       fat: updatedFood.nutrition?.fat || updatedFood.fat,
       fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
+      glycemic_index:
+        updatedFood.nutrition?.glycemic_index ??
+        updatedFood.glycemic_index ??
+        prevItem?.glycemic_index ??
+        prevItem?.nutrition?.glycemic_index ??
+        null,
     };
 
     // Recalculate totals
     const newTotals = recalculateTotals(newItems);
+    if (newTotals.glycemic_index == null) {
+      console.warn(
+        "[NutritionCard] glycemic_index missing after food edit — totals will omit GI",
+        { mealId: savedMealId, itemIndex: index },
+      );
+    }
     updateLocalAndParentState(newItems, newTotals);
 
     debugLog("[NutritionCard] Updated totals:", newTotals);
@@ -792,58 +813,49 @@ const NutritionCard = ({
     try {
       const mealName = generateMealName();
       const calories = localNutrition?.calories || 0;
-
-      // Build detailed breakdown text
-      let breakdownText = `My ${mealName}\n`;
-      breakdownText += `${Math.round(calories)} kcal ðŸŽ\n\n`;
-
-      // Add nutrition summary
-      breakdownText += `📊 Nutrition Summary:\n`;
-      breakdownText += `• Calories: ${Math.round(
-        localNutrition.calories,
-      )} kcal\n`;
-      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
-      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
-      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
-      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
-
-      // Add food breakdown if multiple items
-      if (localDetailedItems.length > 0) {
-        breakdownText += `ðŸ½ï¸ Food Breakdown:\n`;
-        localDetailedItems.forEach((item, index) => {
-          const itemCals = item.nutrition?.calories || item.calories || 0;
-          const portion =
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "";
-          breakdownText += `${index + 1}. ${item.name}`;
-          if (portion) {
-            breakdownText += ` (${portion})`;
-          }
-          breakdownText += `\n   ${Math.round(itemCals)} kcal`;
-          breakdownText += ` • Protein: ${Math.round(
-            item.nutrition?.protein || item.protein || 0,
-          )}g`;
-          breakdownText += ` • Carbs: ${Math.round(
-            item.nutrition?.carbs || item.carbs || 0,
-          )}g`;
-          breakdownText += ` • Fat: ${Math.round(
-            item.nutrition?.fat || item.fat || 0,
-          )}g`;
-          if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
-            breakdownText += ` • Fiber: ${Math.round(
-              item.nutrition?.fiber || item.fiber || 0,
-            )}g`;
-          }
-          breakdownText += `\n`;
+      const activityType = resolveFoodActivityType({
+        processedBy: data?.processedBy,
+        foodData: {
+          name: mealName,
+          detailedItems: localDetailedItems,
+          nutrition: localNutrition,
+        },
+      });
+      let activityCaption;
+      if (activityType === DIARY_FOOD_ACTIVITY.WATER) {
+        activityCaption = buildDiaryShareSuffix('water', {
+          volumeMl: extractVolumeMl({ detailedItems: localDetailedItems }),
         });
-        breakdownText += `\n`;
+      } else if (activityType === DIARY_FOOD_ACTIVITY.AFRESH) {
+        activityCaption = buildDiaryShareSuffix('afresh', {
+          scoops: extractScoops({ detailedItems: localDetailedItems }) ?? 1,
+          calories,
+        });
+      } else if (activityType === DIARY_FOOD_ACTIVITY.SHAKE) {
+        activityCaption = buildDiaryShareSuffix('shake', {
+          shakeName: mealName,
+          servings: 1,
+          shakeProducts: extractShakeProducts({ detailedItems: localDetailedItems }),
+        });
+      } else {
+        activityCaption = buildDiaryShareSuffix('food', {
+          foodName: mealName,
+          calories,
+          protein: localNutrition?.protein ?? 0,
+          carbs: localNutrition?.carbs ?? 0,
+          fat: localNutrition?.fat ?? 0,
+          fiber: localNutrition?.fiber ?? 0,
+          glycemicIndex: localNutrition?.glycemic_index
+            ?? localNutrition?.glycemicIndex
+            ?? computeMealGlycemicIndex(localDetailedItems)
+            ?? null,
+        });
       }
 
       // Capture and share the complete nutrition card (food image + all nutrition details)
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
+        text: activityCaption,
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,

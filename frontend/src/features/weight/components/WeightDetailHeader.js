@@ -12,6 +12,7 @@ const FALLBACK = 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?w
 
 export default function WeightDetailHeader({
   data, lazyImage, imageLoading, displayWeight, onClose,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
 }) {
   const src = formatWeightImageSrc(data.WeightImageBase64 || lazyImage);
 
@@ -41,8 +42,8 @@ export default function WeightDetailHeader({
               {displayWeight} kg
             </h2>
             <div className="text-xs text-white/90 mt-0.5 drop-shadow">
-              <p>Logged at {formatBusinessTime(data.CreatedAt, DEFAULT_BUSINESS_TIMEZONE)}</p>
-              <p className="text-xs text-white/75">{formatDetailDate(data.CreatedAt)}</p>
+              <p>Logged at {formatBusinessTime(data.CreatedAt, timezoneIana)}</p>
+              <p className="text-xs text-white/75">{formatDetailDate(data.CreatedAt, timezoneIana)}</p>
             </div>
           </div>
         </div>

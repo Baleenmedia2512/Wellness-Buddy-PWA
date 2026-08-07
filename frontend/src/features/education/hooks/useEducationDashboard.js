@@ -10,17 +10,24 @@ import { getUserId } from '../../../shared/services/userIdentity';
 import { fetchEducationLogsPage, fetchEducationSummary } from '../services/educationDashboardService';
 import { buildMonthlyGroups, buildTrendSeries, filterLogsByDay } from '../services/educationDashboardFormatter';
 import { useEducationUndoActions } from './useEducationUndoActions';
+import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
 
 export const UNDO_SECONDS = 10;
 const PAGE_SIZE = 10;
 
-export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0, selectedDate = null }) {
+export function useEducationDashboard({
+  user, apiBaseUrl, refreshKey = 0, selectedDate = null,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
+  enabled = true,
+}) {
+  const timezoneIana = resolveBusinessTimezone(user);
   const [educationLogs, setEducationLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(enabled));
   const [error, setError] = useState(null);
   const [undoState, setUndoState] = useState({});
   const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(Boolean(enabled));
   const [trendRangeDays, setTrendRangeDays] = useState(7);
   const [hasMoreLogs, setHasMoreLogs] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -78,39 +85,48 @@ export function useEducationDashboard({ user, apiBaseUrl, refreshKey = 0, select
   }, [apiBaseUrl, user]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setSummaryLoading(false);
+      return;
+    }
     if (!user?.id) return;
     userIdRef.current = null;
     setEducationLogs([]); setHasMoreLogs(false);
     offsetRef.current = 0; hasMoreRef.current = false;
     loadPage({ reset: true });
-  }, [user?.id, user?.email, refreshKey, loadPage]);
+  }, [user?.id, user?.email, refreshKey, loadPage, enabled]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     const el = loadMoreSentinelRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver((entries) => {
       const e = entries[0];
       if (e?.isIntersecting && hasMoreRef.current && !loadingMoreRef.current) loadPage({ reset: false });
     }, { rootMargin: '300px', threshold: 0 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMoreLogs, loading, loadPage]);
+  }, [hasMoreLogs, loading, loadPage, enabled]);
 
   const undoActions = useEducationUndoActions({
     apiBaseUrl, user, userIdRef, setEducationLogs, setUndoState, refreshSummary,
+    onDeleteWithUndo, onDeleteUndoCancel,
+    undoSeconds: UNDO_SECONDS,
   });
 
   // Log list is scoped to the selected day when one is provided (the shell
   // date picker drives this). Trend + summary keep using the full set so
   // the summary/trend cards stay meaningful.
   const dayFilteredLogs = useMemo(
-    () => filterLogsByDay(educationLogs, selectedDate), [educationLogs, selectedDate],
+    () => filterLogsByDay(educationLogs, selectedDate, timezoneIana),
+    [educationLogs, selectedDate, timezoneIana],
   );
   const monthlyGroups = useMemo(() => buildMonthlyGroups(dayFilteredLogs), [dayFilteredLogs]);
   const trendSeries = useMemo(() => buildTrendSeries(educationLogs, trendRangeDays), [educationLogs, trendRangeDays]);
 
   return {
-    user, apiBaseUrl, userIdRef,
+    user, apiBaseUrl, userIdRef, timezoneIana,
     educationLogs, loading, error, summary, summaryLoading,
     monthlyGroups, trendSeries, trendRangeDays, setTrendRangeDays,
     hasMoreLogs, loadingMore, loadMoreSentinelRef,

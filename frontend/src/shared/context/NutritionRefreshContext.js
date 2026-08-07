@@ -21,7 +21,7 @@
  *   triggerRefresh({ immediate: true, source: 'meal-edit' });
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
-import { recordDashboardActivity } from '../services/homeDashboardActivity';
+import { recordDashboardActivity, shouldRefreshHomeDashboard } from '../services/homeDashboardActivity';
 import { STALE_PENDING_MS } from '../../features/diary/utils/stalePending';
 
 const NutritionRefreshContext = createContext(null);
@@ -177,9 +177,22 @@ export function NutritionRefreshProvider({ children }) {
     });
   }, []); // stable — uses functional-update form for setRefreshKey, no stale closure risk
 
+  /**
+   * Called when the user returns to Home from a nav tab.
+   * Only bumps refreshKey when a real mutation advanced the activity log
+   * (AI analysis, manual log, meal edit, etc.). Plain tab switches do nothing.
+   */
+  const refreshOnTabFocus = useCallback(() => {
+    if (!shouldRefreshHomeDashboard()) return;
+    startTransition(() => {
+      setRefreshKey((prev) => prev + 1);
+    });
+  }, []);
+
   const value = {
     refreshKey,
     triggerRefresh,
+    refreshOnTabFocus,
     pendingRefresh,
     analyzingCaptureIds,
     pendingCaptureMeta,

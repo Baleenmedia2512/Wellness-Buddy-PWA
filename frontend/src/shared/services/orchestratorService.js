@@ -21,6 +21,7 @@
 
 import { getApiBaseUrl } from '../../config/api.config';
 import { debugLog } from '../utils/logger.js';
+import { computeMealGlycemicIndex } from '../../features/nutrition/domain/mealGlycemicIndex';
 
 const API_BASE           = getApiBaseUrl();
 const ORCHESTRATE_URL    = `${API_BASE}/api/ai/orchestrate`;
@@ -100,7 +101,16 @@ const FALLBACK = Object.freeze({
  */
 export async function analyzeImage(
   imageFile,
-  { captureId = null, userId = null, foodRowId = null, onAttempt = null } = {},
+  {
+    captureId = null,
+    userId = null,
+    userName = null,
+    userEmail = null,
+    foodRowId = null,
+    onAttempt = null,
+    reservationId = null,
+    creditGated = false,
+  } = {},
 ) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Attempt 1 = Flash (fast, cheap). Attempts 2+ = Pro (better accuracy).
@@ -109,7 +119,17 @@ export async function analyzeImage(
     // Notify the caller before the request so the UI badge updates immediately.
     onAttempt?.({ attempt, total: MAX_ATTEMPTS, usePro });
 
-    const result = await _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro });
+    const result = await _singleAttempt(imageFile, {
+      captureId,
+      userId,
+      userName,
+      userEmail,
+      foodRowId,
+      attempt,
+      usePro,
+      reservationId,
+      creditGated,
+    });
 
     // ── Valid classification — return immediately ──────────────────────────
     if (!result.details?.defaulted && result.type !== 'other') return result;
@@ -151,7 +171,20 @@ export async function analyzeImage(
  * Never throws. Returns FALLBACK (with _retryable flag) on any error.
  * @private
  */
-async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt, usePro = false }) {
+async function _singleAttempt(
+  imageFile,
+  {
+    captureId,
+    userId,
+    userName,
+    userEmail,
+    foodRowId,
+    attempt,
+    usePro = false,
+    reservationId = null,
+    creditGated = false,
+  }
+) {
   const startTime  = Date.now();
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -167,10 +200,16 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
     // cached 'other' result from the previous attempt.
     if (captureId && attempt === 1) formData.append('captureId', String(captureId));
     if (userId)     formData.append('userId',    String(userId));
+    if (userName)   formData.append('userName',  String(userName));
+    if (userEmail)  formData.append('userEmail', String(userEmail));
     if (foodRowId)  formData.append('foodRowId', String(foodRowId));
     // Signal backend to use Gemini Pro on this attempt (escalation).
     if (usePro)     formData.append('modelTier', 'pro');
     if (foodRowId)  formData.append('foodRowId',   String(foodRowId));
+    if (creditGated && reservationId) {
+      formData.append('creditGated', '1');
+      formData.append('reservationId', String(reservationId));
+    }
 
     const response = await fetch(ORCHESTRATE_URL, {
       method: 'POST',
@@ -202,6 +241,30 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
       const errMsg = data.error?.message ?? 'Orchestration failed';
       _trace('FAIL', { attempt, duration, code: data.error?.code, message: errMsg, captureId });
       return { ...FALLBACK, details: { defaulted: true, error: errMsg, _retryable: true }, duration };
+    }
+
+    // HTTP 200 + ok:true but Gemini failed and orchestrator returned FAST_FALLBACK
+    // (imageType other, defaulted:true, analysisStatus FAILED). Treat as technical
+    // failure so retries run and AI credits are released, not deducted.
+    if (
+      data.defaulted === true
+      || String(data.analysisStatus || '').toUpperCase() === 'FAILED'
+    ) {
+      const errMsg = typeof data.error === 'string'
+        ? data.error
+        : (data.error?.message ?? 'Fast analysis failed');
+      _trace('FAIL', {
+        attempt,
+        duration,
+        code: 'FAST_ANALYSIS_FAILED',
+        message: errMsg,
+        captureId,
+      });
+      return {
+        ...FALLBACK,
+        details: { defaulted: true, error: errMsg, _retryable: true },
+        duration,
+      };
     }
 
     // Backend returned a cached duplicate result (idempotency guard hit on
@@ -275,6 +338,10 @@ async function _singleAttempt(imageFile, { captureId, userId, foodRowId, attempt
 function _normalise(data, duration) {
   const type    = data.imageType ?? 'other';
   const details = { ...(data.details ?? {}) };
+
+  // Preserve top-level failure markers so credit settlement can release holds.
+  if (data.defaulted === true) details.defaulted = true;
+  if (typeof data.error === 'string' && data.error) details.error = data.error;
 
   // ── FOOD ────────────────────────────────────────────────────────────────────
   if (type === 'food') {
@@ -425,15 +492,14 @@ function _sumFoodNutrition(foods) {
   const MACRO_KEYS = ['calories','protein','carbs','fat','fiber','sugar','sodium','cholesterol'];
   const totals = {};
   MACRO_KEYS.forEach((k) => { totals[k] = 0; });
-  totals.glycemic_index = null;
 
   for (const food of foods) {
     const n = food.nutrition ?? food;
     MACRO_KEYS.forEach((k) => { totals[k] += Number(n[k]) || 0; });
-    if (n.glycemic_index != null) {
-      totals.glycemic_index = (totals.glycemic_index ?? 0) + Number(n.glycemic_index);
-    }
   }
+
+  // Meal GI = carb-weighted average (available carbs), never a sum of item GIs
+  totals.glycemic_index = computeMealGlycemicIndex(foods);
 
   return totals.calories > 0 ? totals : null;
 }

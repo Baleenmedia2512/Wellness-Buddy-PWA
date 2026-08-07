@@ -17,7 +17,7 @@ export default function VerifyVideoOtpModal({ testimonialId, onVerified, onClose
   const handleVerify = async () => {
     setError(null);
     if (!/^\d{6}$/.test(otp.trim())) {
-      setError('Please enter the 6-digit OTP from your coach');
+      setError('Please enter the 6-digit OTP from your sponsor');
       return;
     }
     setSubmitting(true);
@@ -50,7 +50,7 @@ export default function VerifyVideoOtpModal({ testimonialId, onVerified, onClose
         </div>
 
         <p className="text-sm text-gray-600">
-          Your coach received a verification email. Ask them for the 6-digit OTP and enter it below.
+          Your sponsor received a verification email. Ask them for the 6-digit OTP and enter it below.
         </p>
 
         {/* OTP input */}

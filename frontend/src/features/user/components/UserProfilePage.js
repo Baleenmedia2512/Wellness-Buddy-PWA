@@ -16,6 +16,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, LogOut, Trash2, CheckCircle, Sparkles } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
+import {
+  isAutoCameraOnResumeEnabled,
+  setAutoCameraOnResumeEnabled,
+} from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import useImageCropper from '../hooks/useImageCropper';
 import useFaceDetection from '../hooks/useFaceDetection';
@@ -28,7 +32,6 @@ import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
 import WeightModeSelector from './profile/WeightModeSelector';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
-import FaceDetectionToast from './profile/FaceDetectionToast';
 import DeleteAccountModal from './DeleteAccountModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
@@ -43,16 +46,18 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
+  const [coachName, setCoachName] = useState('');
+  const [idealCoachName, setIdealCoachName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
+  const leadPreFilledRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
-    () => localStorage.getItem('wv.autoCameraOnResume') !== 'false'
+    () => isAutoCameraOnResumeEnabled()
   );
   const face = useFaceDetection();
   const handleSaveRef = useRef(null);
@@ -60,15 +65,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const cropper = useImageCropper({
     onError: setError,
     onCropped: (img) => {
+      setError('');
       setProfileImage(img);
       setProfileImagePreview(img);
       face.reset();
-      setShowToast(true);
-      face.run(img);
+      // Accept any photo (no AI face check) — mark ready for auto-save.
+      face.run(img, user?.id ?? null);
     },
   });
 
   const loadProfile = useCallback(async () => {
+    if (!user?.email) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
@@ -78,6 +88,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         height: data?.height ? String(data.height) : '',
         phone: data?.phoneNumber || '',
         dietType: data?.dietType || '',
+        gender: data?.gender || '',
         bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
         physicalActivityLevel: data?.physicalActivityLevel || '',
         weightGoalMode: data?.weightGoalMode || 'loss',
@@ -86,59 +97,57 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         bodyMetrics: data?.bodyMetrics || null,
       };
 
-      // ── Counselling → Profile pre-fill ──────────────────────────────────
-      // The counselling form already captures diet type (in eating habits),
-      // health issues, sleep, etc. If the profile is missing certain fields,
-      // pull them FROM the counselling assessment.
-      //
-      // Two paths:
-      //   A) Existing user (has userId) → fetch their own counselling assessment
-      //   B) New lead (registered with same mobile the coach recorded) →
-      //      fetch unlinked lead assessment by phone number
-      if (!leadPreFilled) {
-        let counselling = null;
+      form.reload(profileData);
+      setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
+      setCoachName(
+        (data?.sponsorName || data?.coachName)
+          ? String(data.sponsorName || data.coachName).trim()
+          : '',
+      );
+      setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
+      if (data?.profileImage) setProfileImagePreview(data.profileImage);
+      // Stop spinner as soon as core profile is ready — do not wait on counselling.
+      setIsLoading(false);
 
-        // Path A: user already has a DB id — fetch their own counselling record
+      // Counselling pre-fill only when key fields are still empty (background).
+      const needsCounsellingPrefill =
+        !leadPreFilledRef.current
+        && (!profileData.name || !profileData.dietType || !profileData.phone);
+      if (!needsCounsellingPrefill) return;
+
+      let counselling = null;
+      try {
         if (user?.id) {
           counselling = await fetchMyAssessment(user.id);
         }
-
-        // Path B: no own record — check if a lead assessment was filed with
-        // this phone number (lead downloaded the app after counselling session)
         if (!counselling) {
           const phoneForLookup = profileData.phone || user?.phoneNumber || '';
           if (phoneForLookup) {
             const lead = await fetchLeadByPhone(phoneForLookup);
             if (lead) {
-              // Pre-fill identity fields (name/phone from LeadDetailsSection)
               if (!profileData.name && lead.name) profileData.name = lead.name;
               if (!profileData.phone && lead.phone) profileData.phone = lead.phone;
-              counselling = lead; // eating habits, diet type, etc. are in the same object
+              counselling = lead;
             }
           }
         }
-
-        // Apply counselling data to profile fields that are still empty
         if (counselling) {
-          // Diet type comes from eating habits — counselling form captures this
           if (!profileData.dietType && counselling.dietType) {
             profileData.dietType = counselling.dietType;
           }
+          leadPreFilledRef.current = true;
           setLeadPreFilled(true);
+          form.reload(profileData);
         }
+      } catch {
+        // Non-fatal — profile fields already shown.
       }
-      // ────────────────────────────────────────────────────────────────────
-
-      form.reload(profileData);
-      setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
-      if (data?.profileImage) setProfileImagePreview(data.profileImage);
     } catch (e) {
       setError(e.message || 'Failed to load profile.');
-    } finally {
       setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch loops from form identity
+  }, [user?.email, user?.id, user?.name, user?.phoneNumber]);
 
   useEffect(() => {
     if (user?.email) {
@@ -147,11 +156,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setError('');
       setProfileImage(null);
       face.reset();
-      setShowToast(false);
       loadProfile();
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [user?.email]);
+    setIsLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when identity changes
+  }, [user?.email, user?.id, loadProfile]);
 
   const handleSave = useCallback(async () => {
     setError('');
@@ -160,16 +170,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     try {
       const err = form.validate({ requireDiet: false, maxHeight: 198 });
       if (err) { setError(err); return; }
-      if (profileImage) {
-        const status = await face.awaitResult();
-        if (status === 'no_face') { setError('No face detected. Please upload a clear photo of your face.'); return; }
-        if (status === 'detection_error') { setError('Photo verification failed. Please try again.'); return; }
-      }
-      const data = await saveProfile(form.payload(user.email, profileImage ? { profileImage } : {}));
+      const payload = form.payload(user.email, profileImage ? { profileImage } : {});
+      // BMR is system-calculated on the profile page — never write it from this form.
+      delete payload.bmr;
+      const data = await saveProfile(payload);
       onProfileUpdate?.({
         name: form.name,
         height: form.height ? parseFloat(form.height) : null,
-        bmr: form.bmr ? parseFloat(form.bmr) : null,
         physicalActivityLevel: form.physicalActivityLevel || null,
         dietType: form.dietType || null,
         profileImage: profileImagePreview || null,
@@ -184,14 +191,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } finally {
       setIsSaving(false);
     }
-  }, [form, profileImage, profileImagePreview, user, face, loadProfile, onProfileUpdate]);
+  }, [form, profileImage, profileImagePreview, user, loadProfile, onProfileUpdate]);
 
   handleSaveRef.current = handleSave;
 
   useEffect(() => {
     if (face.status === 'face_found' && profileImage) handleSaveRef.current?.();
-    else if (face.status === 'no_face') setError('No face detected. Please upload a clear real photo of your face.');
-    else if (face.status === 'detection_error') setError('Photo verification failed. Please try again.');
   }, [face.status, profileImage]);
 
   const saveDisabled = isSaving || !form.nameValid ||
@@ -213,8 +218,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
-      <FaceDetectionToast status={face.status} visible={showToast} onDismiss={() => setShowToast(false)} />
-
       {cropper.showCropper && cropper.rawImageSrc && (
         <CropOverlay {...cropper} onCancel={cropper.cancelCropper} onDone={cropper.apply} zIndex={60} />
       )}
@@ -277,6 +280,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   {displayWeightGoalMode === 'loss' ? '🔥 Loss Mode' : displayWeightGoalMode === 'gain' ? '💪 Gain Mode' : '⚖️ Maintain'}
                 </span>
               )}
+              {coachName && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                  Sponsor: {coachName}
+                </span>
+              )}
+              {idealCoachName && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                  Coach: {idealCoachName}
+                </span>
+              )}
             </div>
             <p className="text-xs text-green-200 mt-1">Tap photo to change</p>
           </div>
@@ -309,7 +322,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
-                  bmr={form.bmr} setBmr={form.setBmr}
+                  gender={form.gender} setGender={form.setGender}
+                  bmr={form.bmr}
+                  bmrReadOnly
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
                   communityId={form.communityId} setCommunityId={form.setCommunityId}
@@ -379,7 +394,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 <div>
                   <p className="text-sm font-medium text-gray-900">Auto Camera</p>
                   <p className="text-xs text-gray-500">
-                    {autoCameraEnabled ? 'Opens on app resume' : 'Open manually'}
+                    {autoCameraEnabled ? 'Open Camera Automatically' : 'Open Camera Manually'}
                   </p>
                 </div>
               </div>
@@ -388,7 +403,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 onClick={() => {
                   const next = !autoCameraEnabled;
                   setAutoCameraEnabled(next);
-                  localStorage.setItem('wv.autoCameraOnResume', String(next));
+                  setAutoCameraOnResumeEnabled(next);
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoCameraEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
                 aria-label="Toggle auto camera"

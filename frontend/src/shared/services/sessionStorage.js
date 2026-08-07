@@ -10,7 +10,7 @@
  * API name.
  *
  * Purpose:
- *   - Single source of truth for the 8 session keys owned by App.js.
+ *   - Single source of truth for the 9 session keys owned by App.js.
  *   - Documents what each key means and who reads/writes it.
  *   - Guards every access in try/catch so SSR, private-mode Safari, and
  *     storage-quota-exceeded errors cannot crash the app.
@@ -210,3 +210,47 @@ export const clearProfilePictureUploaded = (email) => {
 export const getDemoMealsRaw = () => safeGet("demo_meals");
 export const setDemoMealsRaw = (json) => safeSet("demo_meals", json);
 export const clearDemoMeals = () => safeRemove("demo_meals");
+
+// ─── pendingClassifyCapture ──────────────────────────────────────────────────
+// JSON snapshot of the post-capture Classify photo screen. Survives reload /
+// app relaunch so the user must log + share before returning to Home.
+// Cleared only after a successful share completes (App.js onBack).
+// Shape: { captureId, userId, imageBase64, originalCapturedAt?, awaitingShare? }
+export const getPendingClassifyCapture = () => {
+  const raw = safeGet("pendingClassifyCapture");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed?.captureId || !parsed?.imageBase64) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+export const setPendingClassifyCapture = (payload) => {
+  if (!payload?.captureId || !payload?.imageBase64) return;
+  const existing = getPendingClassifyCapture();
+  try {
+    safeSet(
+      "pendingClassifyCapture",
+      JSON.stringify({
+        captureId: String(payload.captureId),
+        userId: payload.userId != null ? String(payload.userId) : null,
+        imageBase64: payload.imageBase64,
+        originalCapturedAt: payload.originalCapturedAt ?? null,
+        awaitingShare:
+          payload.awaitingShare === true ||
+          (existing?.captureId === String(payload.captureId) &&
+            existing?.awaitingShare === true),
+      }),
+    );
+  } catch {
+    /* quota exceeded — in-memory session still works */
+  }
+};
+export const markPendingClassifyAwaitingShare = () => {
+  const existing = getPendingClassifyCapture();
+  if (!existing) return;
+  setPendingClassifyCapture({ ...existing, awaitingShare: true });
+};
+export const clearPendingClassifyCapture = () => safeRemove("pendingClassifyCapture");

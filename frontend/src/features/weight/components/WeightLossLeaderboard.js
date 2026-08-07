@@ -7,15 +7,26 @@
 } from "react";
 import { Trophy } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
+import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 
 // ---------------------------------------------------------------------------
 // SWR cache — global leaderboard is identical for all users, no userId key.
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
 const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
+const WEIGHT_LB_CACHE_KEY = 'wv.lb.weight.v3';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2'];
+
+const stripWeightAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
 const readWeightLBCache = () => {
   try {
-    const raw = localStorage.getItem('wv.lb.weight');
+    WEIGHT_LB_LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(WEIGHT_LB_CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
     return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
@@ -23,8 +34,14 @@ const readWeightLBCache = () => {
 };
 const writeWeightLBCache = (data) => {
   try {
-    localStorage.setItem('wv.lb.weight', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* quota — ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      WEIGHT_LB_CACHE_KEY,
+      JSON.stringify({ data: stripWeightAvatars(data), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(WEIGHT_LB_CACHE_KEY); } catch { /* ignore */ }
+  }
 };
 
 /**
@@ -33,8 +50,8 @@ const writeWeightLBCache = (data) => {
  *
  * Features:
  * - Shows rank, profile avatar, user name, coach name, weight loss
- * - Smooth marquee animation (continuous horizontal scroll)
- * - Pause on hover for better UX
+ * - Auto-scroll with native swipe / drag
+ * - Smooth fade-in when data arrives
  * - Hides completely if no eligible users
  * - Exposes refresh method via ref for manual updates
  *
@@ -44,50 +61,45 @@ const writeWeightLBCache = (data) => {
 const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache() ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: isVisible && leaderboardData.length > 0,
+  });
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // debugLog(
-      //   "≡ƒÅå [LEADERBOARD] Fetching data from:",
-      //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
-      // );
-
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         },
       );
 
-      // debugLog("≡ƒÅå [LEADERBOARD] Response status:", response.status);
+      if (!response.ok) {
+        debugLog("[LEADERBOARD] API returned", response.status);
+        return;
+      }
+
       const result = await response.json();
-      // debugLog("≡ƒÅå [LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        // debugLog(
-        //   "Γ£à [LEADERBOARD] Data found:",
-        //   result.data.length,
-        //   "users",
-        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
         writeWeightLBCache(result.data);
       } else {
         debugLog(
-          "ΓÜá∩╕Å [LEADERBOARD] No data available:",
+          "⚠ [LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
         setIsVisible(false);
       }
     } catch (error) {
-      console.error("Γ¥î [LEADERBOARD] Error fetching data:", error);
+      debugLog("[LEADERBOARD] Error fetching data:", error?.message || error);
       setLeaderboardData([]);
       setIsVisible(false);
     }
@@ -98,7 +110,6 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     // refresh: re-fetches from server (retries after 4s for DB propagation)
     refresh: () => {
       fetchLeaderboard();
-      setTimeout(fetchLeaderboard, 4000);
     },
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
@@ -126,58 +137,23 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     },
   }));
 
-  // Initial fetch
+  // Skip network if SWR cache is fresh; refresh every 5 min while visible
   useEffect(() => {
-    fetchLeaderboard();
-    // Refresh every 1 minute for real-time updates
-    const refreshInterval = setInterval(fetchLeaderboard, 1 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    if (!readWeightLBCache()) {
+      fetchLeaderboard();
+    }
+    return setVisibilityAwareInterval(fetchLeaderboard, WEIGHT_LB_CACHE_TTL);
   }, [fetchLeaderboard]);
 
-  // Generate profile avatar from email or name
-  const getAvatar = (email, userName, profileImage) => {
-    // If profile image exists, use it with lazy loading
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || "User"}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+  // Smooth fade-in when the strip becomes visible
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
     }
-
-    // Otherwise, generate initial-based avatar
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-      ? email.charAt(0).toUpperCase()
-      : "?";
-
-    // Generate color based on email/name
-    const colors = [
-      "bg-blue-500",
-      "bg-green-500",
-      "bg-purple-500",
-      "bg-pink-500",
-      "bg-indigo-500",
-      "bg-yellow-500",
-      "bg-red-500",
-      "bg-teal-500",
-    ];
-    const colorIndex = (userName || email || "").length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
 
   // Format weight loss display (grams for < 1kg, kg for >= 1kg)
   const formatWeightLoss = (weightLoss) => {
@@ -203,7 +179,6 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
-    // Hide completely when no data (don't show message)
     return null;
   }
 
@@ -227,7 +202,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={user.userName}
+          profileImage={user.profileImage}
+        />
       </div>
 
       {/* User Details */}
@@ -235,11 +216,20 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
           {user.userName}
         </span>
-        {user.coachName && user.coachName.toLowerCase() !== "no coach" && (
-          <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 truncate leading-tight">
-            Coach: {user.coachName}
-          </span>
-        )}
+        {(() => {
+          const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+          if (!sponsorName && !idealCoachName) return null;
+          return (
+            <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 leading-tight min-w-0">
+              {sponsorName && (
+                <span className="block truncate">Sponsor: {sponsorName}</span>
+              )}
+              {idealCoachName && (
+                <span className="block truncate">Coach: {idealCoachName}</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Weight Loss Badge */}
@@ -254,9 +244,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-white shadow-sm">
+    <div
+      className={`w-full bg-white shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
         <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
@@ -266,24 +259,19 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                animationPlayState: isPaused ? "paused" : "running",
-                WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                WebkitAnimationPlayState: isPaused ? "paused" : "running",
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
-              {/* First set of items */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),
               )}
-
-              {/* Duplicate set for seamless loop */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `second-${user.userId}`),
               )}

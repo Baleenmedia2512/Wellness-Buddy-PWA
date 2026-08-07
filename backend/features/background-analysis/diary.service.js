@@ -33,7 +33,7 @@ import * as repo from './analysis.repository.js';
 import * as diaryRepo from './diary.repository.js';
 import { save } from './analysis.service.js';
 import * as captures from '../captures/captures.service.js';
-import { IMAGE_TYPE_UNKNOWN } from '../captures/domain/image-types.js';
+import { IMAGE_TYPE_UNKNOWN, IMAGE_TYPE_PENDING } from '../captures/domain/image-types.js';
 import {
   assertCanRetryCapture,
   canRetryCapture,
@@ -42,7 +42,6 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
-import { resolvePendingCaptureDisplay } from './domain/stale-pending-captures.js';
 import {
   IANA_IST,
   assertNotFutureDateYmd,
@@ -94,11 +93,12 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  // Food CreatedAt — canonical helper (legacy IST wall + spurious driver Z).
+  const ownerTimezoneIana = await getUserTimezoneIana(ownerUserId);
+  // Food CreatedAt — parse IST storage, calendar day in owner's timezone.
   let mealDate = null;
   if (row.CreatedAt) {
     try {
-      mealDate = resolveFoodTimestamp(row.CreatedAt, IANA_IST).calendarYmd;
+      mealDate = resolveFoodTimestamp(row.CreatedAt, ownerTimezoneIana).calendarYmd;
     } catch {
       mealDate = null;
     }
@@ -127,9 +127,10 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
 //
 // Called when the user (or a coach in the user's upline) supplies a new
 // Gemini analysis (Retry path) or a manual nutrition edit (Edit path) for
-// a capture currently tagged `unknown`. Promotes the capture
-// `unknown → food` and upserts the corresponding `food_nutrition_data_table`
-// row by delegating to the existing `save()` orchestrator.
+// a capture currently tagged `unknown` or still `pending` (post-capture
+// classify sheet before AI). Promotes the capture `pending|unknown → food`
+// and upserts the corresponding `food_nutrition_data_table` row by
+// delegating to the existing `save()` orchestrator.
 //
 // Auth posture:
 //   1. The capture is read WITHOUT owner guard (captures.findById).
@@ -187,16 +188,18 @@ export async function retryPromotionToFood(input) {
     };
   }
 
-  // 2. Only `unknown` captures may be retried via this endpoint.
-  if (capture.ImageType !== IMAGE_TYPE_UNKNOWN) {
+  // 2. Only `unknown` (Diary Retry/Edit) or `pending` (post-capture classify)
+  //    may be promoted via this endpoint. Both → food are legal transitions.
+  const currentType = capture.ImageType || IMAGE_TYPE_PENDING;
+  if (currentType !== IMAGE_TYPE_UNKNOWN && currentType !== IMAGE_TYPE_PENDING) {
     return {
       httpStatus: 409,
       body: {
         ok: false,
         error: {
           code: 'NOT_RETRYABLE',
-          message: `Only 'unknown' captures may be retried. Current type: '${capture.ImageType}'.`,
-          currentType: capture.ImageType,
+          message: `Only 'pending' or 'unknown' captures may be logged as food. Current type: '${currentType}'.`,
+          currentType,
         },
       },
     };
@@ -403,32 +406,13 @@ export async function listDiaryEntries(input) {
   for (const { kind, rows } of results) {
     for (const row of rows) {
       if (kind === 'pending') {
-        const capturedAt = normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
-        const { stale, isPendingAnalysis, displayImageType } = resolvePendingCaptureDisplay(
-          capturedAt,
-        );
-        if (stale && row.ID) {
-          try {
-            const result = await captures.updateTypeById({
-              captureId: row.ID,
-              userId: ownerUserId,
-              toType: IMAGE_TYPE_UNKNOWN,
-            });
-            if (result.changed) {
-              logger.info('listDiaryEntries: promoted stale pending capture to unknown', {
-                captureId: row.ID, ownerUserId,
-              });
-            }
-          } catch (err) {
-            logger.warn('listDiaryEntries: failed to promote stale pending capture', {
-              captureId: row.ID, ownerUserId, err: err.message,
-            });
-          }
-        }
+        // Classify-first: pending means the user has not chosen a type / started AI.
+        // Do NOT auto-promote to unknown — that incorrectly shows "Other / couldn't
+        // identify" for photos the user only parked in Diary via "Done".
         entries.push(toDiaryEntry(
           'unknown',
-          { ...row, ImageType: displayImageType },
-          { isPendingAnalysis, timezoneIana },
+          { ...row, ImageType: 'pending' },
+          { isPendingAnalysis: true, timezoneIana },
         ));
       } else {
         entries.push(toDiaryEntry(kind, row, { timezoneIana }));
@@ -474,7 +458,8 @@ export async function listDiaryEntries(input) {
  * always go through `listDiaryEntries`.
  *
  * @param {string} [options.timezoneIana]
- *   Owner zone used when `CreatedAt` has no offset (IST wall-clock convention).
+ *   Owner display zone (kept for callers / future projection). Legacy
+ *   timezone-less CreatedAt is always parsed as IST storage.
  * @internal
  */
 export function toDiaryEntry(
@@ -483,10 +468,12 @@ export function toDiaryEntry(
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
   // Food rows use the canonical food CreatedAt helper (legacy IST wall +
-  // spurious driver Z). Other kinds keep the generic stored-timestamp rules.
+  // spurious driver Z). Weight/education use the same IST storage contract.
+  // Captures (pending/unknown) are timestamptz — offset-aware / Date paths.
+  void timezoneIana;
   const capturedAt = kind === 'food'
-    ? normalizeFoodCreatedAt(row.CreatedAt, timezoneIana)
-    : normalizeStoredTimestampToUtcIso(row.CreatedAt, timezoneIana);
+    ? normalizeFoodCreatedAt(row.CreatedAt)
+    : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
   switch (kind) {
     case 'food':
       return {
@@ -508,6 +495,7 @@ export function toDiaryEntry(
             sugar:       row.TotalSugar ?? null,
             sodium:      row.TotalSodium ?? null,
             cholesterol: row.TotalCholesterol ?? null,
+            glycemicIndex: row.GlycemicIndex ?? null,
           },
           processedBy: row.ProcessedBy,
           deviceInfo:  row.DeviceInfo,

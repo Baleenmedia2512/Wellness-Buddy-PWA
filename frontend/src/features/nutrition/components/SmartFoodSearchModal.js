@@ -1,13 +1,19 @@
 // src/components/SmartFoodSearchModal.js
 import React, { useState, useEffect, useRef } from "react";
-import { X, Search, Check } from "lucide-react";
+import { X, Search, Check, ShoppingCart } from "lucide-react";
+import {
+  scaleNutritionFields,
+  sumNutrition,
+  pickNutrition,
+  dedupeSearchBuckets,
+  resolveQuantityUnit,
+  formatServingPortion,
+  referenceWeightG,
+} from "../domain/nutritionFields";
 
 /**
  * SmartFoodSearchModal
- * 3-phase food entry when AI is unavailable:
- *  Phase 1 — search own history (food_corrections_table where UserId = me)
- *  Phase 2 — search global corrections (all users)
- *  Phase 3 — quick manual add form (type all macros)
+ * Master DB + history search, then manual macros. Micros preserved (ADR-0005).
  */
 const SmartFoodSearchModal = ({
   isOpen,
@@ -22,14 +28,18 @@ const SmartFoodSearchModal = ({
   // directly to the search/manual form. Use when the caller has already
   // established the entry type (e.g. UnknownEntryFlow after picking Food).
   skipTypeSelect = false,
+  // Optional overrides when opened from Healthy Snacks & Soups (or similar).
+  headerTitle = "Regular food",
+  headerSubtitle = "Type the food item below",
+  initialQuery = "",
 }) => {
   const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
   const [searchQuery, setSearchQuery] = useState("");
+  const [masterItems, setMasterItems] = useState([]);
   const [myItems, setMyItems] = useState([]);
   const [communityItems, setCommunityItems] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [selectedItems, setSelectedItems] = useState([]); // items chosen for this meal
 
@@ -42,57 +52,95 @@ const SmartFoodSearchModal = ({
   const [manualFiber, setManualFiber] = useState("");
 
   const searchTimerRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const searchSeqRef = useRef(0);
   const inputRef = useRef(null);
+  // Prevents double-submit while parent closes + saves in background.
+  const saveStartedRef = useRef(false);
 
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setShowTypeSelect(!skipTypeSelect);
-      setSearchQuery("");
+      setSearchQuery(typeof initialQuery === "string" ? initialQuery : "");
+      setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
       setShowManualForm(false);
       setSelectedItems([]);
       setError("");
       resetManualForm();
+      saveStartedRef.current = false;
     }
-  }, [isOpen]);
+  }, [isOpen, skipTypeSelect, initialQuery]);
 
-  // Debounced search
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setMyItems([]);
-      setCommunityItems([]);
+  const handleBackFromFoodEntry = () => {
+    if (skipTypeSelect) {
+      handleClose();
       return;
     }
+    setShowTypeSelect(true);
+    setSearchQuery("");
+    setShowManualForm(false);
+    setError("");
+  };
+
+  // Debounced search — abort in-flight so slow "y" responses can't overwrite newer queries
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!searchQuery.trim() || searchQuery.trim().length < 1) {
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
+      setIsSearching(false);
+      return undefined;
+    }
+    // Longer debounce for 1-letter (noisy); shorter once the user has typed more
+    const delay = searchQuery.trim().length === 1 ? 280 : 220;
     searchTimerRef.current = setTimeout(() => {
       performSearch(searchQuery.trim());
-    }, 350);
+    }, delay);
     return () => clearTimeout(searchTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [searchQuery]);
 
   const performSearch = async (query) => {
     if (!userId || !apiBaseUrl) return;
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const seq = ++searchSeqRef.current;
     setIsSearching(true);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`
+        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`,
+        { signal: controller.signal },
       );
       const data = await res.json();
+      if (seq !== searchSeqRef.current) return;
       if (data.success) {
-        setMyItems(data.myItems || []);
-        setCommunityItems(data.communityItems || []);
+        const buckets = dedupeSearchBuckets({
+          masterItems: data.masterItems || [],
+          myItems: data.myItems || [],
+          communityItems: data.communityItems || [],
+        }, query);
+        setMasterItems(buckets.masterItems);
+        setMyItems(buckets.myItems);
+        setCommunityItems(buckets.communityItems);
       } else {
+        setMasterItems([]);
         setMyItems([]);
         setCommunityItems([]);
       }
-    } catch {
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      if (seq !== searchSeqRef.current) return;
+      setMasterItems([]);
       setMyItems([]);
       setCommunityItems([]);
     } finally {
-      setIsSearching(false);
+      if (seq === searchSeqRef.current) setIsSearching(false);
     }
   };
 
@@ -109,60 +157,69 @@ const SmartFoodSearchModal = ({
     setSelectedItems(prev => {
       const exists = prev.some(s => s.name === item.name);
       if (exists) return prev.filter(s => s.name !== item.name);
-      // Store base macros with the original weight_g as reference
-      return [...prev, { ...item, quantity: item.weight_g ?? 100 }];
+      const qtyUnit = resolveQuantityUnit(item);
+      // Quantity is servings/pcs/cups — nutrition on the item is for 1 unit.
+      return [...prev, {
+        ...item,
+        servings: 1,
+        refWeightG: referenceWeightG(item),
+        quantityUnit: qtyUnit.unit,
+        quantityLabel: qtyUnit.shortLabel,
+      }];
     });
   };
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
     setSelectedItems(prev =>
-      prev.map(s => s.name === name ? { ...s, quantity: isNaN(qty) || qty < 0 ? 0 : qty } : s)
+      prev.map(s => s.name === name
+        ? { ...s, servings: isNaN(qty) || qty < 0 ? 0 : qty }
+        : s)
     );
   };
 
-  // Scale macros by quantity relative to original weight_g
+  // Scale nutrition by serving count (1 unit = reference weight / profile portion).
   const scaledItem = (item) => {
-    const baseWeight = item.weight_g ?? 100;
-    const ratio = (item.quantity ?? baseWeight) / baseWeight;
+    const servings = Number(item.servings);
+    const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
+    const nutrition = scaleNutritionFields(item, count);
+    const refW = item.refWeightG ?? referenceWeightG(item);
     return {
       name: item.name,
-      calories: Math.round((item.calories ?? 0) * ratio),
-      protein: Math.round((item.protein ?? 0) * ratio),
-      carbs: Math.round((item.carbs ?? 0) * ratio),
-      fat: Math.round((item.fat ?? 0) * ratio),
-      fiber: Math.round((item.fiber ?? 0) * ratio),
-      portion: `${item.quantity ?? 100}g`,
+      weight_g: Math.round(refW * count),
+      portion: formatServingPortion(item, count),
+      nutrition,
+      ...nutrition,
     };
   };
 
-  const handleAddSelected = async () => {
-    if (selectedItems.length === 0) return;
+  /**
+   * Hand off to parent without blocking the Save button on network.
+   * Parent closes this modal and runs promote/share in the background.
+   */
+  const submitSave = (payload) => {
+    if (saveStartedRef.current) return;
+    saveStartedRef.current = true;
     setError("");
-    setIsSaving(true);
-    try {
-      const scaled = selectedItems.map(scaledItem);
-      const total = scaled.reduce((acc, f) => ({
-        calories: acc.calories + f.calories,
-        protein: acc.protein + f.protein,
-        carbs: acc.carbs + f.carbs,
-        fat: acc.fat + f.fat,
-        fiber: acc.fiber + f.fiber,
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
-      await onSave({
-        items: scaled,
-        total,
-        isPlate: true,
-        plateName: selectedItems.map(f => f.name).join(", "),
-      });
-    } catch (err) {
-      setError(err.message || "Failed to save");
-    } finally {
-      setIsSaving(false);
-    }
+    Promise.resolve(onSave?.(payload)).catch((err) => {
+      saveStartedRef.current = false;
+      setError(err?.message || "Failed to save");
+    });
   };
 
-  const handleManualSave = async () => {
+  const handleAddSelected = () => {
+    if (selectedItems.length === 0) return;
+    const scaled = selectedItems.map(scaledItem);
+    const total = sumNutrition(scaled.map((f) => pickNutrition(f)));
+    submitSave({
+      items: scaled,
+      total,
+      isPlate: true,
+      plateName: selectedItems.map((f) => f.name).join(", "),
+    });
+  };
+
+  const handleManualSave = () => {
     setError("");
     if (!manualName.trim()) {
       setError("Please enter a food name");
@@ -173,27 +230,21 @@ const SmartFoodSearchModal = ({
       setError("Please enter valid calories");
       return;
     }
-    setIsSaving(true);
-    try {
-      await onSave({
-        foodName: manualName.trim(),
-        calories: Math.round(calories),
-        protein: Math.round(parseFloat(manualProtein) || 0),
-        carbs: Math.round(parseFloat(manualCarbs) || 0),
-        fat: Math.round(parseFloat(manualFat) || 0),
-        fiber: Math.round(parseFloat(manualFiber) || 0),
-        portion: "1 serving",
-      });
-    } catch (err) {
-      setError(err.message || "Failed to save");
-    } finally {
-      setIsSaving(false);
-    }
+    submitSave({
+      foodName: manualName.trim(),
+      calories: Math.round(calories),
+      protein: Math.round(parseFloat(manualProtein) || 0),
+      carbs: Math.round(parseFloat(manualCarbs) || 0),
+      fat: Math.round(parseFloat(manualFat) || 0),
+      fiber: Math.round(parseFloat(manualFiber) || 0),
+      portion: "1 serving",
+    });
   };
 
   const handleClose = () => {
     setShowTypeSelect(true);
     setSearchQuery("");
+    setMasterItems([]);
     setMyItems([]);
     setCommunityItems([]);
     setShowManualForm(false);
@@ -205,13 +256,14 @@ const SmartFoodSearchModal = ({
 
   if (!isOpen) return null;
 
+  const hasMasterItems = masterItems.length > 0;
   const hasMyItems = myItems.length > 0;
   const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
   const selectedTotal = selectedItems.reduce((s, f) => {
-    const base = f.weight_g ?? 100;
-    const ratio = (f.quantity ?? base) / base;
-    return s + Math.round((f.calories ?? 0) * ratio);
+    const count = Number(f.servings);
+    const servings = Number.isFinite(count) && count > 0 ? count : 1;
+    return s + Math.round((f.calories ?? 0) * servings);
   }, 0);
 
   return (
@@ -219,7 +271,7 @@ const SmartFoodSearchModal = ({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
 
         {/* ── Type Selection Screen ── */}
-        {showTypeSelect && (
+        {showTypeSelect && !skipTypeSelect && (
           <>
             {/* Header */}
             <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
@@ -257,13 +309,13 @@ const SmartFoodSearchModal = ({
         )}
 
         {/* ── Food Entry Screen ── */}
-        {!showTypeSelect && (
+        {(skipTypeSelect || !showTypeSelect) && (
           <>
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setShowTypeSelect(true); setSearchQuery(""); setShowManualForm(false); setError(""); }}
+              onClick={handleBackFromFoodEntry}
               className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
               aria-label="Back"
             >
@@ -272,13 +324,21 @@ const SmartFoodSearchModal = ({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Log Food</h2>
-              <p className="text-xs text-gray-400">Search your previous food</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+                {hasSelected && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[11px] font-semibold"
+                    aria-label={`Cart ${selectedItems.length}`}
+                  >
+                    <ShoppingCart className="w-3 h-3" aria-hidden />
+                    Cart {selectedItems.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
             </div>
           </div>
-          <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
         </div>
 
         {/* ── Scrollable body ── */}
@@ -325,26 +385,33 @@ const SmartFoodSearchModal = ({
               </div>
               <div className="space-y-1.5">
                 {selectedItems.map(item => {
-                  const base = item.weight_g ?? 100;
-                  const kcal = Math.round((item.calories ?? 0) * (item.quantity ?? base) / base);
+                  const count = Number(item.servings);
+                  const servings = Number.isFinite(count) && count > 0 ? count : 1;
+                  const kcal = Math.round((item.calories ?? 0) * servings);
+                  const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
                   return (
                     <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
+                        <p className="text-[11px] text-orange-600 font-semibold">
+                          {kcal} kcal
+                          {(item.portion || item.portion_label) ? (
+                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
+                          ) : null}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <input
                           type="text"
                           inputMode="decimal"
                           pattern="[0-9]*"
-                          value={item.quantity ?? 100}
+                          value={item.servings ?? 1}
                           onChange={(e) => handleQuantityChange(item.name, e.target.value)}
-                          className="w-14 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
+                          className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
                           style={{ fontSize: "14px" }}
-                          min="0"
+                          aria-label={`Number of ${unitLabel}`}
                         />
-                        <span className="text-[11px] text-gray-400">g</span>
+                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
                       </div>
                       <button onClick={() => handleToggleItem(item)} className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors">
                         <X className="w-3.5 h-3.5" />
@@ -357,16 +424,32 @@ const SmartFoodSearchModal = ({
           )}
 
           {/* ── Search results ── */}
-          {!showManualForm && searchQuery.trim().length >= 2 && (
+          {!showManualForm && searchQuery.trim().length >= 1 && (
             <div className="space-y-4">
+              {hasMasterItems && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Nutrition library</p>
+                  <div className="space-y-1.5">
+                    {masterItems.map((item) => (
+                      <FoodItemRow
+                        key={`master-${item.name}`}
+                        item={item}
+                        selected={selectedItems.some(s => s.name === item.name)}
+                        onToggle={handleToggleItem}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* My items */}
               {hasMyItems && (
                 <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">📌 My History</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
                   <div className="space-y-1.5">
                     {myItems.map((item) => (
                       <FoodItemRow
-                        key={item.name}
+                        key={`my-${item.name}`}
                         item={item}
                         selected={selectedItems.some(s => s.name === item.name)}
                         onToggle={handleToggleItem}
@@ -379,11 +462,11 @@ const SmartFoodSearchModal = ({
               {/* Community items */}
               {hasCommunityItems && (
                 <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">🌐 Community</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
                   <div className="space-y-1.5">
                     {communityItems.map((item) => (
                       <FoodItemRow
-                        key={item.name}
+                        key={`community-${item.name}`}
                         item={item}
                         selected={selectedItems.some(s => s.name === item.name)}
                         onToggle={handleToggleItem}
@@ -394,20 +477,20 @@ const SmartFoodSearchModal = ({
               )}
 
               {/* No results */}
-              {!isSearching && !hasMyItems && !hasCommunityItems && (
+              {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
                 <p className="text-sm text-gray-400 text-center py-4">No food found — try a different name or add manually</p>
               )}
             </div>
           )}
 
           {/* ── Empty state (only when nothing selected) ── */}
-          {!showManualForm && searchQuery.trim().length < 2 && !hasSelected && (
+          {!showManualForm && searchQuery.trim().length < 1 && !hasSelected && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
                 <Search className="w-6 h-6 text-orange-400" />
               </div>
-              <p className="text-sm font-medium text-gray-600">Search your food history</p>
-              <p className="text-xs text-gray-400 mt-1">Type a food name to find past meals</p>
+              <p className="text-sm font-medium text-gray-600">Search food suggestions</p>
+              <p className="text-xs text-gray-400 mt-1">Type a letter to see matching foods</p>
             </div>
           )}
 
@@ -453,36 +536,31 @@ const SmartFoodSearchModal = ({
             <>
               <button
                 onClick={() => { setShowManualForm(false); setError(""); }}
-                disabled={isSaving}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
               >
                 ← Back
               </button>
               <button
                 onClick={handleManualSave}
-                disabled={isSaving}
-                className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors flex items-center justify-center gap-2"
               >
-                {isSaving ? <SpinnerIcon /> : null}
-                {isSaving ? "Saving…" : "Save Food"}
+                Save Food
               </button>
             </>
           ) : hasSelected ? (
             <>
               <button
                 onClick={() => setSelectedItems([])}
-                disabled={isSaving}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
               >
                 Clear
               </button>
               <button
                 onClick={handleAddSelected}
-                disabled={isSaving}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
               >
-                {isSaving ? <SpinnerIcon /> : <Check className="w-4 h-4" />}
-                {isSaving ? "Saving…" : `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""}`}
+                <Check className="w-4 h-4" />
+                Save
               </button>
             </>
           ) : (
@@ -505,26 +583,33 @@ const SmartFoodSearchModal = ({
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-const FoodItemRow = ({ item, selected, onToggle }) => (
-  <button
-    onClick={() => onToggle(item)}
-    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
-      selected
-        ? "bg-orange-50 border-orange-400"
-        : "bg-white border-gray-200 hover:border-orange-300"
-    }`}
-  >
-    <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-      selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
-    }`}>
-      {selected && <Check className="w-3 h-3 text-white" />}
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className={`text-sm font-medium truncate ${selected ? "text-orange-800" : "text-gray-800"}`}>{item.name}</p>
-      <p className="text-xs text-gray-400 mt-0.5">{item.calories ?? "?"} kcal{item.protein ? ` · ${item.protein}g protein` : ""}</p>
-    </div>
-  </button>
-);
+const FoodItemRow = ({ item, selected, onToggle }) => {
+  const portion = item.portion || item.portion_label;
+  return (
+    <button
+      onClick={() => onToggle(item)}
+      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
+        selected
+          ? "bg-orange-50 border-orange-400"
+          : "bg-white border-gray-200 hover:border-orange-300"
+      }`}
+    >
+      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+        selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
+      }`}>
+        {selected && <Check className="w-3 h-3 text-white" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium truncate ${selected ? "text-orange-800" : "text-gray-800"}`}>{item.name}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {portion ? <span>{portion} · </span> : null}
+          {item.calories ?? "?"} kcal
+          {item.protein ? ` · ${item.protein}g protein` : ""}
+        </p>
+      </div>
+    </button>
+  );
+};
 
 const MacroField = ({ label, value, onChange, placeholder, required, span }) => (
   <div className={span ? "col-span-2" : ""}>
@@ -542,13 +627,6 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
       style={{ fontSize: "16px" }}
     />
   </div>
-);
-
-const SpinnerIcon = () => (
-  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-  </svg>
 );
 
 export default SmartFoodSearchModal;

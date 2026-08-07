@@ -102,6 +102,37 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
   },
+
+  // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.
+  // Numeric daily limit is DB-backed (admin config); this flag is rollout only.
+  // Default ON. Set REACT_APP_FF_AI_CREDITS=false or
+  // localStorage 'ff.ai-credits'='false' to disable.
+  'ff.ai-credits': {
+    envKey:         'REACT_APP_FF_AI_CREDITS',
+    storageKey:     'ff.ai-credits',
+    defaultEnabled: true,
+    description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
+  },
+
+  // ADR-0005 — master nutrition knowledge base (search/resolve micros).
+  // Default ON. Set REACT_APP_FF_NUTRITION_KNOWLEDGE=false or
+  // localStorage 'ff.nutrition-knowledge'='false' to disable.
+  'ff.nutrition-knowledge': {
+    envKey:         'REACT_APP_FF_NUTRITION_KNOWLEDGE',
+    storageKey:     'ff.nutrition-knowledge',
+    defaultEnabled: true,
+    description:    'Master nutrition DB + history micros in food search (ADR-0005).',
+  },
+
+  // ADR-0006 — User Consent Form before account creation / app use.
+  // Default ON. Set REACT_APP_FF_CONSENT_GATE=false or
+  // localStorage 'ff.consent-gate'='false' to disable.
+  'ff.consent-gate': {
+    envKey:         'REACT_APP_FF_CONSENT_GATE',
+    storageKey:     'ff.consent-gate',
+    defaultEnabled: true,
+    description:    'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
+  },
 });
 
 function readStorage(key) {

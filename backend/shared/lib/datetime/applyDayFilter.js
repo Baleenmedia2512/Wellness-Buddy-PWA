@@ -53,6 +53,25 @@ export function applyDateRangeFilter(query, column, startDate, endDate, timezone
 }
 
 /**
+ * Widen an inclusive date-range filter by ±1 calendar day.
+ *
+ * Use when CreatedAt is stored as timezone-less IST wall-clock; post-filter
+ * with `filterRowsByCalendarDateRange` (or food equivalent) after fetch.
+ *
+ * @param {object} query
+ * @param {string} column
+ * @param {string} startDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} endDate - `YYYY-MM-DD` (inclusive)
+ * @param {string} timezoneIana
+ * @returns {object}
+ */
+export function applyDateRangeFilterWidened(query, column, startDate, endDate, timezoneIana) {
+  const widenedStart = shiftDateYmd(startDate, -1, timezoneIana);
+  const widenedEnd = shiftDateYmd(endDate, 1, timezoneIana);
+  return applyDateRangeFilter(query, column, widenedStart, widenedEnd, timezoneIana);
+}
+
+/**
  * Include rows on or after the start of `dateYmd` in `timezoneIana`.
  *
  * @param {object} query

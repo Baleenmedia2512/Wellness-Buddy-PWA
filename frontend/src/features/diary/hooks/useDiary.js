@@ -5,8 +5,9 @@
  * error / abort handling. Re-fetches whenever the owner, viewer, or
  * date changes.
  *
- * Returns the same shape regardless of state — components destructure
- * what they need and let booleans drive their render branches.
+ * Progressive media: records render first (images stripped to placeholders),
+ * then media is hydrated on the next frame so large base64 payloads do not
+ * block first paint. API response shape is unchanged.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -18,6 +19,68 @@ import {
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
+
+/**
+ * Strip inline image bytes from diary entries so the list can paint immediately.
+ * Keeps a `hasImage` hint so Thumb can show a placeholder.
+ * @param {object} payload
+ * @returns {{ records: object, media: object }}
+ */
+function splitRecordsAndMedia(payload) {
+  if (!payload || !Array.isArray(payload.entries)) {
+    return { records: payload, media: null };
+  }
+
+  const mediaByKey = {};
+  const entries = payload.entries.map((entry, index) => {
+    const p = entry?.payload;
+    if (!p) return entry;
+    const imageBase64 = p.imageBase64;
+    const hasImage = Boolean(
+      (imageBase64 && String(imageBase64).trim() !== '')
+      || (p.imagePath && String(p.imagePath).trim() !== ''),
+    );
+    if (imageBase64 && String(imageBase64).trim() !== '') {
+      mediaByKey[`${entry.kind}:${p.id ?? index}`] = imageBase64;
+    }
+    return {
+      ...entry,
+      payload: {
+        ...p,
+        imageBase64: null,
+        hasImage,
+      },
+    };
+  });
+
+  return {
+    records: { ...payload, entries },
+    media: Object.keys(mediaByKey).length ? mediaByKey : null,
+  };
+}
+
+/**
+ * Re-attach deferred imageBase64 onto record entries.
+ * @param {object} records
+ * @param {Record<string, string>} mediaByKey
+ */
+function hydrateMedia(records, mediaByKey) {
+  if (!records || !mediaByKey) return records;
+  return {
+    ...records,
+    entries: (records.entries || []).map((entry, index) => {
+      const p = entry?.payload;
+      if (!p) return entry;
+      const key = `${entry.kind}:${p.id ?? index}`;
+      const imageBase64 = mediaByKey[key];
+      if (!imageBase64) return entry;
+      return {
+        ...entry,
+        payload: { ...p, imageBase64 },
+      };
+    }),
+  };
+}
 
 /**
  * @param {Object} params
@@ -76,6 +139,8 @@ export function useDiary({
     // Note: do NOT setData(null) here — keep stale data visible during
     // background refresh so the feed never flashes a skeleton mid-session.
 
+    let hydrateRaf = 0;
+
     fetchDiary({
       ownerUserId,
       viewerUserId,
@@ -83,8 +148,17 @@ export function useDiary({
       signal: controller.signal,
     })
       .then((payload) => {
-        setData(payload);
+        if (controller.signal.aborted) return;
+        const { records, media } = splitRecordsAndMedia(payload);
+        // Paint records immediately (placeholders for media).
+        setData(records);
         setLoading(false);
+        if (!media) return;
+        // Hydrate images after first paint so media never blocks interactivity.
+        hydrateRaf = requestAnimationFrame(() => {
+          if (controller.signal.aborted) return;
+          setData((prev) => hydrateMedia(prev || records, media));
+        });
       })
       .catch((err) => {
         if (isAbortError(err) || controller.signal.aborted) return;
@@ -98,7 +172,10 @@ export function useDiary({
         setLoading(false);
       });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (hydrateRaf) cancelAnimationFrame(hydrateRaf);
+    };
   }, [ownerUserId, viewerUserId, date, timezoneIana, refreshKey]);
 
   return { loading, error, data, refresh };

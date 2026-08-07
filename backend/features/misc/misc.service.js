@@ -5,6 +5,14 @@ import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';
 import logger from '../../shared/lib/logger.js';
 
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
+
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
   const now = Date.now();
@@ -82,7 +90,7 @@ function parseHasFace(rawText) {
   return /\byes\b/.test(lower) && !/\bno\b/.test(lower);
 }
 
-export async function detectFace({ mimeType, base64Data }) {
+export async function detectFace({ mimeType, base64Data, userId = null, module = null }) {
 
   if (!process.env.GEMINI_API_KEY) {
     console.error("❌ [detect-face] GEMINI_API_KEY not configured");
@@ -98,6 +106,11 @@ export async function detectFace({ mimeType, base64Data }) {
 
   try {
     const { generateContent } = await import('../../shared/lib/gemini/geminiClient.js');
+    const { TraceContext } = await import('../../shared/lib/ai-orchestration/ObservabilityTracer.js');
+    const profileModule = module === ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
+      ? ANALYSIS_MODULES.PROFILE_IMAGE_UPDATE
+      : ANALYSIS_MODULES.PROFILE_IMAGE_SET;
+    const trace = new TraceContext({ userId, module: profileModule });
 
     const result = await generateContent(
       'faceDetect',
@@ -112,7 +125,10 @@ export async function detectFace({ mimeType, base64Data }) {
         'Does this image contain a clear, visible human face? '
           + 'Respond with JSON only: {"hasFace": true} or {"hasFace": false}. '
           + 'Use true for any clearly visible human face (including photos of people).',
-      ]
+      ],
+      null,
+      null,
+      trace
     );
 
     const text = result.response.text();
@@ -120,8 +136,12 @@ export async function detectFace({ mimeType, base64Data }) {
 
     logger.info('[detect-face] result', {
       hasFace,
+      traceId: trace.traceId,
+      userId: trace.userId,
       rawPreview: String(text ?? '').slice(0, 120),
     });
+
+    trace.complete({ success: true, imageType: 'profile' });
 
     return {
       httpStatus: 200,

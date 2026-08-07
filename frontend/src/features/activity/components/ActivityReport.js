@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   RefreshCw, Download, Search,
   Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
@@ -8,14 +8,20 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
-import { ACTIVITY_REPORT_DATE_RANGES } from '../../../shared/domain/reportDateRanges';
+import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
 import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
   if (n === 'admin' || n === 'developer') return 'admin';
   if (n === 'coach' || n === 'upline') return 'coach';
   return 'member';
+}
+
+function isBootstrapUnsupportedResponse(data) {
+  const msg = String(data?.message || '').toLowerCase();
+  return msg.includes('activitytype') || msg.includes('bootstrap');
 }
 
 // Activity type metadata
@@ -59,8 +65,9 @@ const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
-const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
-  const [loading, setLoading] = useState(false);
+const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
@@ -74,27 +81,40 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
-  // Member summary (education attendance per member — shown on mount)
+  // Member summary state kept for legacy fallback responses (not rendered in UI).
   const [memberSummaries, setMemberSummaries] = useState([]);
   const [memberStats, setMemberStats] = useState(null);
-  const [memberSummaryLoading, setMemberSummaryLoading] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [effectiveRole, setEffectiveRole] = useState(() => mapRoleForApi(userRole));
+  const [roleReady, setRoleReady] = useState(() => mapRoleForApi(userRole) !== 'member');
+  const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
+  const [teamScopeCounts, setTeamScopeCounts] = useState(null);
+  const [showTeamScope, setShowTeamScope] = useState(false);
+  const fetchAbortRef = useRef(null);
+  const fetchGenerationRef = useRef(0);
 
-  // Treat users with downline members in team_table as coaches for attendance data.
+  // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
     let cancelled = false;
     const baseRole = mapRoleForApi(userRole);
     if (baseRole !== 'member' || !user?.id) {
       setEffectiveRole(baseRole);
+      setRoleReady(true);
       return undefined;
     }
+    setRoleReady(false);
     fetchHasTeamMembers(user.id)
       .then((hasTeam) => {
-        if (!cancelled) setEffectiveRole(hasTeam ? 'coach' : 'member');
+        if (!cancelled) {
+          setEffectiveRole(hasTeam ? 'coach' : 'member');
+          setRoleReady(true);
+        }
       })
       .catch(() => {
-        if (!cancelled) setEffectiveRole('member');
+        if (!cancelled) {
+          setEffectiveRole('member');
+          setRoleReady(true);
+        }
       });
     return () => { cancelled = true; };
   }, [user?.id, userRole]);
@@ -106,67 +126,98 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const fetchSummary = useCallback(async () => {
-    if (!user?.id || !apiBaseUrl) return;
-    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType: 'summary',
-        dateRange,
-        role: effectiveRole,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch activity summary');
-      }
-
-      setSummary(data.summary);
-    } catch (err) {
-      setError(err.message || 'Failed to load activity summary');
-    } finally {
-      setLoading(false);
+  const buildReportParams = useCallback((activityType, extra = {}) => {
+    const params = new URLSearchParams({
+      userId: String(user.id),
+      activityType,
+      dateRange,
+      role: effectiveRole,
+      teamScope,
+    });
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value != null && value !== '') params.set(key, String(value));
+    });
+    if (dateRange === 'custom' && customStartDate && customEndDate) {
+      params.set('startDate', formatDateForApi(customStartDate));
+      params.set('endDate', formatDateForApi(customEndDate));
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+    return params;
+  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
 
-  const fetchDetails = useCallback(async (activityType) => {
+  const applyReportMeta = useCallback((data) => {
+    if (data.teamScopeCounts) {
+      setTeamScopeCounts(data.teamScopeCounts);
+      setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
+    }
+  }, []);
+
+  const activeScopeLabel = useMemo(() => {
+    const option = TEAM_SCOPE_OPTIONS.find((o) => o.value === teamScope);
+    if (!option) return '';
+    if (teamScope === TEAM_SCOPES.MINE) return option.label;
+    const count = teamScopeCounts?.[teamScope] ?? 0;
+    return `${option.label} (${count})`;
+  }, [teamScope, teamScopeCounts]);
+
+  const activeDateLabel = useMemo(() => {
+    const preset = ACTIVITY_REPORT_DATE_RANGES.find((r) => r.value === dateRange);
+    if (dateRange === 'custom') {
+      return formatCustomRangeLabel(customStartDate, customEndDate);
+    }
+    return preset?.label || 'Today';
+  }, [dateRange, customStartDate, customEndDate]);
+
+  const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
+    // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
+    const [summaryRes, memberRes, detailRes] = await Promise.all([
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
+        { cache: 'no-store' },
+      ),
+    ]);
+    const [summaryData, memberData, detailData] = await Promise.all([
+      summaryRes.json(),
+      memberRes.json(),
+      detailRes.json(),
+    ]);
+    if (!summaryRes.ok || !summaryData.success) {
+      throw new Error(summaryData.message || 'Failed to fetch activity summary');
+    }
+    if (!memberRes.ok || !memberData.success) {
+      throw new Error(memberData.message || 'Failed to fetch member summaries');
+    }
+    if (!detailRes.ok || !detailData.success) {
+      throw new Error(detailData.message || 'Failed to fetch activity details');
+    }
+
+    setSummary(summaryData.summary || null);
+    applyReportMeta(summaryData);
+    setMemberSummaries(memberData.members || []);
+    setMemberStats(memberData.stats || null);
+    setDetailRecords(detailData.records || []);
+    setCurrentPage(1);
+  }, [apiBaseUrl, buildReportParams, applyReportMeta]);
+
+  const fetchDetails = useCallback(async (activityType, { signal } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    setLoading(true);
+    setDetailLoading(true);
     setError('');
 
     try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType,
-        dateRange,
-        role: effectiveRole,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType)}`,
+        { cache: 'no-store', signal },
+      );
 
       const data = await response.json();
 
@@ -177,57 +228,128 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       setDetailRecords(data.records || []);
       setCurrentPage(1);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity details');
     } finally {
-      setLoading(false);
+      setDetailLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
 
-  const fetchMemberSummary = useCallback(async () => {
+  /** Phase 1: team scope + summary pills. Phase 2: detail table from same bootstrap when includeRecords=1. */
+  const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
     if (!user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
 
-    setMemberSummaryLoading(true);
+    setSummaryLoading(true);
+    setDetailLoading(true);
+    setError('');
+
     try {
-      const params = new URLSearchParams({
-        userId: String(user.id),
-        activityType: 'member-summary',
-        dateRange,
-        role: effectiveRole,
-      });
-
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        params.set('startDate', formatDateForApi(customStartDate));
-        params.set('endDate', formatDateForApi(customEndDate));
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/activity/report?${params}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
+          detailActivity: detailActivity || 'education',
+          includeRecords: '1',
+        })}`,
+        { cache: 'no-store', signal },
+      );
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch member summaries');
+      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
+        await fetchLegacyReportBundle(detailActivity);
+        setSummaryLoading(false);
+        setDetailLoading(false);
+        return;
       }
 
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load activity report');
+      }
+
+      setSummary(data.summary || null);
+      applyReportMeta(data);
       setMemberSummaries(data.members || []);
       setMemberStats(data.stats || null);
+      setDetailRecords(Array.isArray(data.records) ? data.records : []);
+      setCurrentPage(1);
+      setSummaryLoading(false);
+      setDetailLoading(false);
     } catch (err) {
-      console.warn('Member summary fetch failed:', err.message);
-    } finally {
-      setMemberSummaryLoading(false);
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Failed to load activity report');
+      setSummaryLoading(false);
+      setDetailLoading(false);
     }
-  }, [user?.id, apiBaseUrl, effectiveRole, dateRange, customStartDate, customEndDate]);
+  }, [
+    user?.id,
+    apiBaseUrl,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    buildReportParams,
+    fetchLegacyReportBundle,
+    applyReportMeta,
+  ]);
 
+  // Fetch only when this page is open (component mounted) and role is resolved.
+  // Short debounce collapses React Strict Mode remount + rapid filter churn into one request.
   useEffect(() => {
-    fetchSummary();
-    fetchMemberSummary();
-    if (selectedActivity) fetchDetails(selectedActivity); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [fetchSummary, fetchMemberSummary, fetchDetails]);
+    if (!roleReady || !user?.id || !apiBaseUrl) return;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+
+    const controller = new AbortController();
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = controller;
+    const generation = fetchGenerationRef.current + 1;
+    fetchGenerationRef.current = generation;
+
+    const timer = setTimeout(() => {
+      loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
+        if (fetchGenerationRef.current !== generation) return;
+      });
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      if (fetchAbortRef.current === controller) {
+        fetchAbortRef.current = null;
+      }
+    };
+  }, [
+    roleReady,
+    loadReport,
+    tabVisitKey,
+    teamScope,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    effectiveRole,
+    user?.id,
+    apiBaseUrl,
+  ]);
+
+  const handleRefresh = () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    loadReport(selectedActivity, { signal: controller.signal });
+  };
 
   const handleActivityClick = (activityId) => {
     setSelectedActivity(activityId);
-    fetchDetails(activityId);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(activityId, { signal: controller.signal });
+  };
+
+  const handleTeamScopeChange = (scope) => {
+    setTeamScope(scope);
+    setSearchQuery('');
+    setDetailRecords([]);
+    setMemberSummaries([]);
+    setMemberStats(null);
+    setError('');
   };
 
   const handleDateRangeChange = (range) => {
@@ -259,7 +381,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     const q = memberSearchQuery.toLowerCase();
     return memberSummaries.filter(m =>
       (m.memberName || '').toLowerCase().includes(q) ||
-      (m.coachName || '').toLowerCase().includes(q)
+      (m.sponsorName || m.coachName || '').toLowerCase().includes(q)
+      || (m.idealCoachName || '').toLowerCase().includes(q)
     );
   }, [memberSummaries, memberSearchQuery]);
 
@@ -273,7 +396,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
       filtered = filtered.filter(record =>
         (record.memberName || '').toLowerCase().includes(query) ||
         (record.phone || '').toLowerCase().includes(query) ||
-        (record.coachName || '').toLowerCase().includes(query) ||
+        (record.sponsorName || record.coachName || '').toLowerCase().includes(query) ||
+        (record.idealCoachName || '').toLowerCase().includes(query) ||
         (record.city || '').toLowerCase().includes(query) ||
         (record.village || '').toLowerCase().includes(query)
       );
@@ -331,6 +455,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
         'Club',
         'Reg. Date',
         'Reg. Time',
+        'Sponsor Name',
         'Coach Name',
         'Phone Number',
         'City',
@@ -361,7 +486,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
           `"${displayClub}"`,
           record.date || 'N/A',
           record.time || 'N/A',
-          `"${record.coachName || 'N/A'}"`,
+          `"${record.sponsorName || record.coachName || 'N/A'}"`,
+          `"${record.idealCoachName || ''}"`,
           `"${record.phone || 'N/A'}"`,
           `"${record.city || 'N/A'}"`,
           `"${record.village || 'N/A'}"`,
@@ -427,19 +553,17 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          
-          <div className="flex items-center justify-end">
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Activity Report</h1>
+            </div>
             <TouchFeedbackButton
-              onClick={() => {
-                fetchSummary();
-                fetchMemberSummary();
-                if (selectedActivity) fetchDetails(selectedActivity);
-              }}
+              onClick={handleRefresh}
               className="p-2 hover:bg-gray-100 rounded-lg"
-              disabled={loading || memberSummaryLoading}
+              disabled={summaryLoading || detailLoading}
             >
-              <RefreshCw className={`w-5 h-5 ${(loading || memberSummaryLoading) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${(summaryLoading || detailLoading) ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
         </div>
@@ -447,7 +571,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Date Range Filter */}
-        <div className="mb-6">
+        <div className="mb-4">
           <ReportDateRangeFilter
             ranges={ACTIVITY_REPORT_DATE_RANGES}
             dateRange={dateRange}
@@ -455,8 +579,51 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
             customStartDate={customStartDate}
             customEndDate={customEndDate}
             onCustomDateSelect={handleCustomDateSelect}
+            variant="compact"
           />
         </div>
+
+        {/* Team scope: Mine / Direct / Full */}
+        {showTeamScope && (
+          <div
+            className="mb-4 bg-white rounded-xl border border-gray-200 shadow-sm px-1 py-1 flex gap-1 w-full"
+            role="group"
+            aria-label="Team scope filter"
+          >
+            {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
+              const isActive = teamScope === value;
+              const count = teamScopeCounts?.[value] ?? 0;
+              const showCount = value !== TEAM_SCOPES.MINE;
+              const desktopLabel = showCount ? `${label} (${count})` : label;
+              const mobileLabel = showCount ? `${short} (${count})` : short;
+              return (
+                <TouchFeedbackButton
+                  key={value}
+                  onClick={() => handleTeamScopeChange(value)}
+                  disabled={summaryLoading || detailLoading}
+                  className={`flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all px-1 sm:px-2 disabled:opacity-50 ${
+                    isActive
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-green-800 hover:bg-green-50'
+                  }`}
+                  title={desktopLabel}
+                >
+                  <span className="hidden sm:inline truncate">{desktopLabel}</span>
+                  <span className="sm:hidden truncate">{mobileLabel}</span>
+                </TouchFeedbackButton>
+              );
+            })}
+          </div>
+        )}
+
+        {(showTeamScope || summary) && (
+          <p className="mb-3 text-[11px] sm:text-xs text-gray-500">
+            Activity counts for{' '}
+            <span className="font-semibold text-gray-700">{activeScopeLabel || 'your team'}</span>
+            {' · '}
+            <span className="font-semibold text-gray-700">{activeDateLabel}</span>
+          </p>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -467,34 +634,31 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
 
         {/* Activity Type Tabs */}
         {summary && (
-          <>
-            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {ACTIVITY_TYPES.map((activity) => {
-                const Icon = activity.icon;
-                const isActive = selectedActivity === activity.id;
-                return (
-                  <TouchFeedbackButton
-                    key={activity.id}
-                    onClick={() => handleActivityClick(activity.id)}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all whitespace-nowrap ${
-                      isActive
-                        ? `${activity.bgColor} ${activity.borderColor}`
-                        : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
-                      {summary[activity.id] || 0}
-                    </span>
-                    <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
-                      {activity.label}
-                    </span>
-                  </TouchFeedbackButton>
-                );
-              })}
-            </div>
-            <hr className="mb-5 border-0 border-t border-gray-200" aria-hidden="true" />
-          </>
+          <div className="flex flex-wrap gap-2 pb-2 mb-5">
+            {ACTIVITY_TYPES.map((activity) => {
+              const Icon = activity.icon;
+              const isActive = selectedActivity === activity.id;
+              return (
+                <TouchFeedbackButton
+                  key={activity.id}
+                  onClick={() => handleActivityClick(activity.id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
+                    isActive
+                      ? `${activity.bgColor} ${activity.borderColor}`
+                      : 'bg-white border-gray-200'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
+                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
+                    {summary[activity.id] || 0}
+                  </span>
+                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {activity.label}
+                  </span>
+                </TouchFeedbackButton>
+              );
+            })}
+          </div>
         )}
 
         {/* Detail Grid */}
@@ -571,6 +735,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                       Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Sponsor</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
@@ -614,7 +779,8 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
@@ -652,16 +818,22 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack }) => {
               </div>
             )}
 
-            {paginatedRecords.length === 0 && !loading && (
+            {paginatedRecords.length === 0 && !detailLoading && (
               <div className="p-12 text-center">
                 <p className="text-gray-500">No records found</p>
+              </div>
+            )}
+
+            {detailLoading && (
+              <div className="p-12 flex justify-center">
+                <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
               </div>
             )}
           </div>
         )}
 
-        {/* Loading State */}
-        {loading && !summary && (
+        {/* Initial load — summary / team scope */}
+        {summaryLoading && !summary && (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
           </div>

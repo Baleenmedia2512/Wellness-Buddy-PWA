@@ -35,6 +35,10 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import ShakeCalculatorModal from './ShakeCalculatorModal';
 import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
+import { computeMealGlycemicIndex } from '../domain/mealGlycemicIndex';
+import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
+import { getProfile } from '../../user/services/user.api';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -81,6 +85,8 @@ const NutritionDashboard = ({
   onBack,
   apiBaseUrl,
   onMealDelete,
+  onMealDeleteWithUndo,
+  onMealDeleteUndoCancel,
   hideHeader,
   hideDateStrip = false,
   hideOverview = false,
@@ -94,6 +100,13 @@ const NutritionDashboard = ({
   // The parent passes a React ref; we write to `.current` each render so the
   // closure always has the latest `analyses` snapshot.
   openRef = null,
+  /** Owner IANA TZ from diary API (preferred over user object fallback). */
+  timezoneIana: timezoneIanaProp = null,
+  /**
+   * Timeline modal-host mode: skip list/overview network until first openRef
+   * call. Meal open still works via mealFromDiaryRow from the diary payload.
+   */
+  deferDataFetch = false,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -104,6 +117,37 @@ const NutritionDashboard = ({
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
+  const [profileTimezoneIana, setProfileTimezoneIana] = useState(null);
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
+
+  // Hydrate owner timezone when `user` lacks timezone (common for selectedMember / session user).
+  useEffect(() => {
+    const fromUser = user?.timezone || user?.timezoneIana || null;
+    if (fromUser || timezoneIanaProp) {
+      setProfileTimezoneIana(fromUser || null);
+      return undefined;
+    }
+    const email = user?.email || user?.Email;
+    if (!email) {
+      setProfileTimezoneIana(getDeviceTimezoneIana() || null);
+      return undefined;
+    }
+    let cancelled = false;
+    getProfile(email)
+      .then((res) => {
+        if (cancelled) return;
+        const tz = res?.data?.timezone || res?.data?.timezoneIana || getDeviceTimezoneIana() || null;
+        setProfileTimezoneIana(tz);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileTimezoneIana(getDeviceTimezoneIana() || null);
+      });
+    return () => { cancelled = true; };
+  }, [user?.email, user?.Email, user?.timezone, user?.timezoneIana, timezoneIanaProp]);
+
+  const ownerTimezoneIana = timezoneIanaProp
+    || profileTimezoneIana
+    || resolveBusinessTimezone(user);
 
   // Editable food items state
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
@@ -132,6 +176,9 @@ const NutritionDashboard = ({
   const shakeCalculatorEnabled = isFlagEnabled('ff.shake-calculator');
   const [shakeOpen, setShakeOpen] = useState(false);
 
+  // Overview panels are hidden in diary timeline host — skip their network fan-out.
+  const overviewFetchEnabled = dataFetchEnabled && !hideOverview;
+
   // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
   React.useEffect(() => {
     const tr = window.__captureTrace;
@@ -159,10 +206,22 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
+  } = useDayAnalyses({
+    user,
+    selectedDate,
+    apiBaseUrl,
+    resolveUserId,
+    nutritionRefreshKey,
+    enabled: dataFetchEnabled,
+  });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
-  const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
+  const { calorieTarget } = useUserCalorieTarget({
+    user,
+    apiBaseUrl,
+    bmrUpdateKey,
+    enabled: overviewFetchEnabled,
+  });
 
   // Burn-to-Balance: today's calories burned (steps disabled, watch-derived only)
   const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
@@ -172,11 +231,20 @@ const NutritionDashboard = ({
     resolveUserId,
     watchBurnedCalories,
     nutritionRefreshKey,
+    enabled: overviewFetchEnabled,
   });
 
-  // Latest body weight for personalised macro targets on the summary panel.
-  const latestWeight = useUserLatestWeight({ user, apiBaseUrl });
-  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({ latestWeight, calorieTarget });
+  // Latest body weight + gender for personalised macro targets on the summary panel.
+  const { latestWeight, gender } = useUserLatestWeight({
+    user,
+    apiBaseUrl,
+    enabled: overviewFetchEnabled,
+  });
+  const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
+    latestWeight,
+    calorieTarget,
+    gender,
+  });
 
   // Multi-day calorie totals for the trend chart
   const { calorieTrendData, trendLoading, showTrendCard } = useCalorieTrend({
@@ -186,6 +254,7 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     calorieTarget,
+    enabled: overviewFetchEnabled,
   });
 
   // Overview panel swipe + dynamic height (re-measure when content changes).
@@ -233,6 +302,8 @@ const NutritionDashboard = ({
     setLocalNutrition,
     isAutoSaveUpdateRef,
     onMealDelete,
+    onMealDeleteWithUndo,
+    onMealDeleteUndoCancel,
     undoSeconds: UNDO_SECONDS,
   });
 
@@ -267,7 +338,10 @@ const NutritionDashboard = ({
         return transformed;
       });
       setLocalDetailedItems(transformedItems);
-      setLocalNutrition(foodData.nutrition || {});
+      const nutrition = { ...(foodData.nutrition || {}) };
+      const mealGi = computeMealGlycemicIndex(transformedItems);
+      if (mealGi != null) nutrition.glycemic_index = mealGi;
+      setLocalNutrition(nutrition);
 
       // Only reset editing states if NOT from auto-save
       if (!isAutoSaveUpdateRef.current) {
@@ -386,10 +460,19 @@ const NutritionDashboard = ({
   // Accepts a diary food entry (preferred) or legacy mealId string.
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
         const p = entryOrId.payload || {};
+        const fromDiary = mealFromDiaryRow(entryOrId);
         const found = (analyses || []).find((m) => m.ID && String(m.ID) === String(p.id));
-        const meal = found || mealFromDiaryRow(entryOrId);
+        const meal = found
+          ? {
+            ...found,
+            ProcessedBy: fromDiary?.ProcessedBy ?? found.ProcessedBy,
+          }
+          : fromDiary;
         if (meal) {
           pendingOpenRef.current = null;
           setSelectedMeal(meal);
@@ -776,6 +859,8 @@ const NutritionDashboard = ({
                 handleOptimisticDelete={handleOptimisticDelete}
                 isIOS={isIOS}
                 user={user}
+                apiBaseUrl={apiBaseUrl}
+                timezoneIana={ownerTimezoneIana}
                 setAnalyses={setAnalyses}
                 setUndoState={setUndoState}
                 applyDailyDelta={applyDailyDelta}
@@ -806,6 +891,8 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        apiBaseUrl={apiBaseUrl}
+        timezoneIana={ownerTimezoneIana}
         persistMealItems={persistMealItems}
         setLocalDetailedItems={setLocalDetailedItems}
         setLocalNutrition={setLocalNutrition}

@@ -294,7 +294,7 @@ export default function TestimonialForm({
             : isIncomplete
               ? 'Complete Testimonial'
               : afterImage
-                ? 'Submit to Coach'
+                ? 'Submit to Sponsor'
                 : 'Save Before Photo'}
         </TouchFeedbackButton>
       </div>

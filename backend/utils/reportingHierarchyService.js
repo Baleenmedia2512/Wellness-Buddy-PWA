@@ -7,9 +7,11 @@
  * Business rules:
  * - Active coach → direct list = own DB downline; active child coaches manage their teams.
  * - Inactive coach → shown in parent's direct list; their active members roll up to parent.
- * - Full scope → direct members + full subtree under each active child coach.
+ * - Full scope → direct members + every descendant under them at all CoachId levels
+ *   (not limited to Role=coach — nested leaders still expand).
  */
 import { isActiveTeamStatus } from './teamHierarchyBuilder.js';
+import { filterPublicAggregateUsers } from '../features/user/domain/aggregate-eligibility.rules.js';
 
 const COACH_ROLES = new Set(['coach', 'admin']);
 
@@ -67,8 +69,7 @@ export function buildReportingContext(allUsers) {
 export async function loadReportingContext(supabase) {
   const { data: allUsers, error } = await supabase
     .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber, Height')
-    .order('UserName');
+    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height');
 
   if (error) throw new Error('Failed to fetch team data: ' + error.message);
   return buildReportingContext(allUsers || []);
@@ -146,15 +147,18 @@ export function collectRolledUpDescendants(inactiveCoachId, context, visited = n
 }
 
 /**
- * Full subtree under an active coach (DB downline), applying inactive-coach rollup.
+ * Full subtree under a parent (DB CoachId tree), applying inactive-coach rollup.
+ * Walks every level — not only Role=coach — so nested leaders under a sub-coach
+ * (e.g. Prethip → u2 → a3 → b1/b2) appear in Full Team.
+ *
  * @param {number} coachUserId
  * @param {ReportingContext} context
  * @returns {TeamUser[]}
  */
 export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
   const result = new Map();
-  const visited = new Set([coachUserId]);
-  const queue = [...(context.dbChildrenByCoachId.get(coachUserId) || [])];
+  const visited = new Set([Number(coachUserId)]);
+  const queue = [...(context.dbChildrenByCoachId.get(Number(coachUserId)) || [])];
 
   while (queue.length > 0) {
     const child = queue.shift();
@@ -168,6 +172,11 @@ export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
       result.set(child.UserId, child);
       for (const rolled of collectRolledUpDescendants(child.UserId, context)) {
         result.set(rolled.UserId, rolled);
+        // Rolled-up active members may themselves have a deeper CoachId downline.
+        if (isActiveTeamStatus(rolled.Status)) {
+          const rolledKids = context.dbChildrenByCoachId.get(Number(rolled.UserId)) || [];
+          if (rolledKids.length) queue.push(...rolledKids);
+        }
       }
       continue;
     }
@@ -176,10 +185,11 @@ export function collectFullSubtreeUnderActiveCoach(coachUserId, context) {
 
     result.set(child.UserId, child);
 
-    if (childIsCoach && childIsActive) {
-      for (const deeper of collectFullSubtreeUnderActiveCoach(child.UserId, context)) {
-        result.set(deeper.UserId, deeper);
-      }
+    // Full Team = entire tree: expand DB children of any active member who has
+    // a downline (Role may still be `user` while people report to them).
+    const next = context.dbChildrenByCoachId.get(Number(child.UserId)) || [];
+    if (next.length > 0) {
+      queue.push(...next);
     }
   }
 
@@ -217,11 +227,12 @@ export function getDirectReportingMembers(coachId, context) {
     }
   }
 
-  return [...result.values()];
+  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
 }
 
 /**
  * Full reporting members for a coach (excludes the coach themselves).
+ * Direct members + every descendant under them at all hierarchy levels.
  * @param {number} coachId
  * @param {ReportingContext} context
  * @returns {TeamUser[]}
@@ -231,14 +242,20 @@ export function getFullReportingMembers(coachId, context) {
   const result = new Map(direct.map((member) => [member.UserId, member]));
 
   for (const member of direct) {
-    if (isCoachRole(member.Role) && isActiveTeamStatus(member.Status)) {
-      for (const subtreeMember of collectFullSubtreeUnderActiveCoach(member.UserId, context)) {
-        result.set(subtreeMember.UserId, subtreeMember);
-      }
+    // Inactive coaches: their active members are already rolled into `direct`.
+    if (isCoachRole(member.Role) && !isActiveTeamStatus(member.Status)) continue;
+    if (!isActiveTeamStatus(member.Status)) continue;
+
+    const hasDownline =
+      (context.dbChildrenByCoachId.get(Number(member.UserId)) || []).length > 0;
+    if (!hasDownline) continue;
+
+    for (const subtreeMember of collectFullSubtreeUnderActiveCoach(member.UserId, context)) {
+      result.set(subtreeMember.UserId, subtreeMember);
     }
   }
 
-  return [...result.values()];
+  return filterPublicAggregateUsers([...result.values()], { viewerUserId: coachId });
 }
 
 /**
@@ -270,8 +287,9 @@ export function getReportingMemberIds(coachId, scope, context) {
 }
 
 /**
- * parentCoachId → direct reporting child userIds (active-coach branches only).
- * Used for per-coach team compliance / upload percentage rollups.
+ * parentCoachId → direct reporting child userIds.
+ * Walks every active parent who has a DB downline (not only Role=coach) so
+ * nested team scores / Full Team rollups include deeper levels.
  * @param {ReportingContext} context
  * @param {number} rootCoachId
  * @returns {Map<number, number[]>}
@@ -290,13 +308,143 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
     index.set(coachId, children.map((member) => member.UserId));
 
     for (const child of children) {
-      if (isCoachRole(child.Role) && isActiveTeamStatus(child.Status)) {
+      if (!isActiveTeamStatus(child.Status)) continue;
+      const hasDownline =
+        (context.dbChildrenByCoachId.get(Number(child.UserId)) || []).length > 0;
+      if (hasDownline) {
         queue.push(child.UserId);
       }
     }
   }
 
   return index;
+}
+
+const TEAM_USER_SELECT =
+  // Never select ProfileImage here — base64 avatars made list-for-coach ~14MB for ~35 members.
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, PhoneNumber, Height';
+const MAX_SUBTREE_DEPTH = 12;
+const SUBTREE_CONTEXT_CACHE = new Map();
+const SUBTREE_CONTEXT_TTL_MS = 60_000;
+const SUBTREE_CACHE_KEY_PREFIX = 'v2:'; // bump when select columns change
+
+/**
+ * @param {object} supabase
+ * @param {number} userId
+ * @returns {Promise<TeamUser|null>}
+ */
+async function fetchTeamUserById(supabase, userId) {
+  const { data, error } = await supabase
+    .from('team_table')
+    .select(TEAM_USER_SELECT)
+    .eq('UserId', userId)
+    .maybeSingle();
+  if (error) throw new Error('Failed to fetch team user: ' + error.message);
+  return data || null;
+}
+
+/**
+ * @param {object} supabase
+ * @param {number[]} coachIds
+ * @returns {Promise<TeamUser[]>}
+ */
+async function fetchTeamUsersByCoachIds(supabase, coachIds) {
+  const ids = [...new Set(coachIds.filter((id) => Number.isFinite(Number(id))))];
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('team_table')
+    .select(TEAM_USER_SELECT)
+    .in('CoachId', ids);
+  if (error) throw new Error('Failed to fetch team children: ' + error.message);
+  return data || [];
+}
+
+/**
+ * Co-coaching partners share the same downline (dual-coaching model).
+ * @param {object} supabase
+ * @param {TeamUser} rootUser
+ * @returns {Promise<number[]>}
+ */
+async function resolveCoCoachRootCoachIds(supabase, rootUser) {
+  if (!rootUser?.TeamId) return [rootUser.UserId];
+
+  const { data: coachTeam, error } = await supabase
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .eq('TeamId', rootUser.TeamId)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (error || !coachTeam?.CoachId || !coachTeam?.CoCoachId) {
+    return [rootUser.UserId];
+  }
+
+  return [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
+}
+
+/**
+ * Load reporting context for one coach subtree via indexed CoachId walks
+ * (no full team_table scan). Includes ancestor chain for inactive-coach rollup.
+ *
+ * @param {object} supabase
+ * @param {number} rootCoachId
+ * @returns {Promise<ReportingContext>}
+ */
+export async function loadReportingContextForCoach(supabase, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  if (!Number.isFinite(rootId)) return buildReportingContext([]);
+
+  const cacheKey = `${SUBTREE_CACHE_KEY_PREFIX}${rootId}`;
+  const now = Date.now();
+  const cached = SUBTREE_CONTEXT_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const usersById = new Map();
+  const rootUser = await fetchTeamUserById(supabase, rootId);
+  if (!rootUser) {
+    const empty = buildReportingContext([]);
+    SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: empty, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
+    return empty;
+  }
+
+  usersById.set(rootUser.UserId, rootUser);
+
+  let walkId = Number(rootUser.CoachId);
+  const visitedUp = new Set([rootId]);
+  while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
+    visitedUp.add(walkId);
+    const ancestor = await fetchTeamUserById(supabase, walkId);
+    if (!ancestor) break;
+    usersById.set(ancestor.UserId, ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  const rootCoachIds = await resolveCoCoachRootCoachIds(supabase, rootUser);
+  for (const partnerId of rootCoachIds) {
+    if (partnerId === rootId || usersById.has(partnerId)) continue;
+    const partner = await fetchTeamUserById(supabase, partnerId);
+    if (partner) usersById.set(partner.UserId, partner);
+  }
+
+  let currentCoachIds = rootCoachIds;
+  let depth = 0;
+  while (currentCoachIds.length > 0 && depth < MAX_SUBTREE_DEPTH) {
+    const children = await fetchTeamUsersByCoachIds(supabase, currentCoachIds);
+    const nextCoachIds = [];
+    for (const child of children) {
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      // Always expand — user may have been pre-loaded (co-coach) without walking their downline.
+      nextCoachIds.push(child.UserId);
+    }
+    currentCoachIds = [...new Set(nextCoachIds)];
+    depth += 1;
+  }
+
+  const context = buildReportingContext([...usersById.values()]);
+  SUBTREE_CONTEXT_CACHE.set(cacheKey, { value: context, expiresAt: now + SUBTREE_CONTEXT_TTL_MS });
+  return context;
 }
 
 /**
@@ -307,7 +455,7 @@ export function buildReportingChildrenIndex(context, rootCoachId) {
  * @returns {Promise<TeamUser[]>}
  */
 export async function fetchReportingMembers(supabase, coachId, scope = 'direct') {
-  const context = await loadReportingContext(supabase);
+  const context = await loadReportingContextForCoach(supabase, coachId);
   return getReportingMembers(coachId, scope, context);
 }
 

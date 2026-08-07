@@ -12,11 +12,136 @@
  * ---------------------------------------------------------------------------
  */
 // MUST be first — SDK reads localStorage at import time (Node has none).
+
 import './serverLocalStoragePolyfill.js';
 import AIClient from "ai-token-monitor";
+// Do not fs.readFileSync / resolve package.json via __dirname — on Vercel the
+// bundled chunk lives under .next/server/chunks, so that path becomes
+// /vercel/path0/package.json and throws ENOENT. Keep fallback in sync with
+// backend/package.json "version".
+const APP_VERSION = process.env.npm_package_version || '3.4.0';
+
+// Hardcoded enum since the SDK doesn't export it
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import logger from '../logger.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
+/** Short-lived cache so telemetry in one request doesn't double-hit DB. */
+const _endUserCache = new Map();
+const END_USER_CACHE_TTL_MS = 60_000;
+/** Hard cap so a slow/unreachable monitor never holds a Vercel function open. */
+const TELEMETRY_TIMEOUT_MS = 2_000;
+
+/**
+ * Resolve end-user name/email for ai-token-monitor from trace.userId.
+ * Lightweight team_table lookup only — not used on the Gemini critical path.
+ *
+ * @param {string|null|undefined} userId
+ * @returns {Promise<{ endUserName: string|null, endUserEmail: string|null }>}
+ */
+async function resolveEndUserForMonitor(userId) {
+  if (userId == null || userId === '') {
+    return { endUserName: null, endUserEmail: null };
+  }
+  const key = String(userId);
+  const cached = _endUserCache.get(key);
+  if (cached && Date.now() - cached.at < END_USER_CACHE_TTL_MS) {
+    return { endUserName: cached.endUserName, endUserEmail: cached.endUserEmail };
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const uid = Number.parseInt(key, 10);
+    if (!Number.isFinite(uid) || uid <= 0) {
+      return { endUserName: null, endUserEmail: null };
+    }
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserName", "Email"')
+      .eq('"UserId"', uid)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    const resolved = {
+      endUserName: data?.UserName != null ? String(data.UserName) : null,
+      endUserEmail: data?.Email != null ? String(data.Email) : null,
+    };
+    
+    // Only cache if we actually found the user.
+    // If they are mid-registration, they might not be in team_table yet.
+    // Caching a "null" here would break telemetry for them for the next hour.
+    if (resolved.endUserName !== null || resolved.endUserEmail !== null) {
+      _endUserCache.set(key, { ...resolved, at: Date.now() });
+    }
+    
+    return resolved;
+  } catch (err) {
+    logger.warn('geminiClient: failed to resolve end-user for token monitor', {
+      userId: key,
+      message: err?.message,
+    });
+    return { endUserName: null, endUserEmail: null };
+  }
+}
+
+/**
+ * Send monitor telemetry to ai-token-monitor.
+ * Runs identity lookup + SDK call with a hard timeout.
+ * Awaited in generateContent to ensure reliable delivery in Vercel.
+ *
+ * @param {object} basePayload
+ * @param {object|null} trace
+ */
+async function sendMonitorTelemetry(basePayload, trace) {
+  if (!process.env.AI_MONITOR_SDK_KEY) return;
+
+  const run = async () => {
+    let endUserName = trace?.userName ?? null;
+    let endUserEmail = trace?.userEmail ?? null;
+
+    if (!endUserName && !endUserEmail && trace?.userId) {
+      const endUser = await resolveEndUserForMonitor(trace.userId);
+      endUserName = endUser.endUserName;
+      endUserEmail = endUser.endUserEmail;
+    }
+
+    await AIClient.sendTelemetry({
+      ...basePayload,
+      traceId: trace?.traceId ?? null,
+      endUserId: trace?.userId ?? null,
+      endUserEmail,
+      endUserName,
+      // Image-analysis attribution is carried by the request trace. Default
+      // food calls for compatibility with legacy callers that predate modules.
+      module: trace?.module ?? ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS,
+    });
+  };
+
+  const timed = Promise.race([
+    run(),
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`ai-token-monitor timed out after ${TELEMETRY_TIMEOUT_MS}ms`)),
+        TELEMETRY_TIMEOUT_MS,
+      );
+    }),
+  ]);
+
+  try {
+    await timed;
+  } catch (sdkErr) {
+    logger.warn('geminiClient: telemetry skipped or failed', {
+      status: basePayload?.status ?? null,
+      message: sdkErr?.message,
+    });
+  }
+}
 // ── Model configuration catalogue ────────────────────────────────────────────
 // Each entry defines the generation config for a specific task. Keeping them
 // here ensures all endpoints share identical hyperparameters.
@@ -140,17 +265,19 @@ function getGenAI() {
     AIClient.initialize({
       baseURL:
         process.env.AI_MONITOR_BASE_URL ||
-        "https://ai-token-monitor-backend.onrender.com/api",
+        "http://localhost:5000/api",
 
       sdkKey: process.env.AI_MONITOR_SDK_KEY,
 
       token:
         process.env.AI_MONITOR_TOKEN || "",
 
-      appName: "Wellness Buddy",
+      appName: "Wellness valley",
+
+      appVersion: APP_VERSION,
 
       environment:
-        process.env.NODE_ENV || "development",
+        process.env.AI_MONITOR_ENV || (process.env.VERCEL_URL ? (process.env.VERCEL_URL.includes('-test') ? 'test' : 'production') : (process.env.NODE_ENV === 'production' ? 'production' : 'localhost')),
     });
 
     logger.info("AI Token Monitor SDK initialized");
@@ -250,53 +377,30 @@ export async function generateContent(
   const start = Date.now();
 
   try {
-
     const result = await model.generateContent(parts);
-
     const latency = Date.now() - start;
 
-    try {
-      await AIClient.sendTelemetry({
-        provider: "Gemini",
-        model: modelOverride ?? MODEL_NAME,
-        usage: result.response.usageMetadata,
-        latency,
-        status: "SUCCESS",
-
-        // Optional: only useful if the SDK supports custom fields
-        traceId: trace?.traceId,
-        endUserId: trace?.userId,
-      });
-    } catch (sdkErr) {
-      logger.warn("geminiClient: telemetry (SUCCESS) skipped", {
-        message: sdkErr?.message,
-      });
-    }
+    // Await telemetry to prevent Vercel container freeze breaking the background network request
+    await sendMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: result.response.usageMetadata,
+      latency,
+      status: 'SUCCESS',
+    }, trace);
 
     return result;
-
   } catch (err) {
-
     const latency = Date.now() - start;
 
-    try {
-
-      await AIClient.sendTelemetry({
-        provider: "Gemini",
-        model: modelOverride ?? MODEL_NAME,
-        usage: {},
-        latency,
-        status: "FAILED",
-        errorMessage: err.message,
-
-        // Optional: only useful if the SDK supports custom fields
-        traceId: trace?.traceId,
-        endUserId: trace?.userId,
-      });
-
-    } catch (sdkErr) {
-      logger.error("Telemetry Error", sdkErr);
-    }
+    await sendMonitorTelemetry({
+      provider: 'Gemini',
+      model: modelOverride ?? MODEL_NAME,
+      usage: {},
+      latency,
+      status: 'FAILED',
+      errorMessage: err.message,
+    }, trace);
 
     throw err;
   }

@@ -1,15 +1,20 @@
-﻿import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
-import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
+﻿import {
+  IANA_IST,
+  normalizeStoredTimestampToUtcIso,
+  parseRelativeDateRangeYmd,
+  timestampToCalendarYmd,
+} from '../../shared/lib/datetime/index.js';
+import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
+import { enumerateScoreDates } from '../wellness-score/domain/date-range.js';
+import { getUserTimezoneIana, getUserTimezonesIanaMap, resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
+import * as repo from './time-report.repository.js';
+import { resolveCalorieTargetFromProfile } from '../../utils/tdeeCalculations.js';
 import {
   computeAverageTime, extractLocalDateString,
   groupRecordsByDate, pickEarliestRecordPerActivity,
 } from '../../utils/timeReportHelpers.js';
-import { timestampToCalendarYmd, timeOfDayInTimezone } from '../../shared/lib/datetime/index.js';
-import * as repo from './time-report.repository.js';
-import { resolveCalorieTargetFromProfile } from '../../utils/tdeeCalculations.js';
-import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
-import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
-import { enumerateScoreDates } from '../wellness-score/domain/date-range.js';
+import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
+import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 
 const DEFAULT_WINDOWS = {
   weight:    { start: '03:00:00', end: '06:30:00' },
@@ -57,7 +62,7 @@ function buildWindowMap(twData) {
 }
 
 function indexRecords(results, usersInfo) {
-  const [twR, wR, eR, fR, wfR, sR, bmrR] = results;
+  const [twR, wR, eR, foodR, sR, bmrR] = results;
   const weightByUser = new Map(), educationByUser = new Map(), foodByUser = new Map();
   const waterFoodByUser = new Map(), stepByUser = new Map();
   const userBmrMap = {}, userBodyWeightMap = {};
@@ -72,17 +77,20 @@ function indexRecords(results, usersInfo) {
     if (!educationByUser.has(uid)) educationByUser.set(uid, []);
     educationByUser.get(uid).push({ CreatedAt: r.CreatedAt });
   }
-  for (const r of (fR.data || [])) {
-    if (isExemptedBeverageOnly(r.AnalysisData)) continue;
+  // Split one food payload into meal vs beverage-only buckets (same filters as before)
+  for (const r of (foodR.data || [])) {
     const uid = parseInt(r.UserID, 10);
-    if (!foodByUser.has(uid)) foodByUser.set(uid, []);
-    foodByUser.get(uid).push({ CreatedAt: r.CreatedAt, TotalCalories: r.TotalCalories, AnalysisData: r.AnalysisData });
-  }
-  for (const r of (wfR.data || [])) {
-    if (!isExemptedBeverageOnly(r.AnalysisData)) continue;
-    const uid = parseInt(r.UserID, 10);
-    if (!waterFoodByUser.has(uid)) waterFoodByUser.set(uid, []);
-    waterFoodByUser.get(uid).push(r);
+    if (isExemptedBeverageOnly(r.AnalysisData)) {
+      if (!waterFoodByUser.has(uid)) waterFoodByUser.set(uid, []);
+      waterFoodByUser.get(uid).push(r);
+    } else {
+      if (!foodByUser.has(uid)) foodByUser.set(uid, []);
+      foodByUser.get(uid).push({
+        CreatedAt: r.CreatedAt,
+        TotalCalories: r.TotalCalories,
+        AnalysisData: r.AnalysisData,
+      });
+    }
   }
   for (const r of (sR.data || [])) {
     if (!stepByUser.has(r.UserId)) stepByUser.set(r.UserId, []);
@@ -110,10 +118,15 @@ function buildWaterAndCalorieMaps(uid, indexed, timezoneIana) {
   const requiredWaterMl = bodyWeight ? Math.round((bodyWeight / 20) * 1000) : DEFAULT_WATER_REQUIRED_ML;
   const waterVolumeByDate = {}, waterLastTimeByDate = {};
   for (const r of (waterFoodByUser.get(uid) || [])) {
-    const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
-    if (!dateStr) continue;
+    // Food/beverage CreatedAt: IST storage → owner calendar day
+    let dateStr;
+    let timeOnly;
+    try {
+      ({ calendarYmd: dateStr, timeOfDay: timeOnly } = resolveFoodTimestamp(r.CreatedAt, timezoneIana));
+    } catch {
+      continue;
+    }
     if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
-    const timeOnly = timeOfDayInTimezone(r.CreatedAt, timezoneIana);
     const hhmm = timeOnly.slice(0, 5);
     if (!waterLastTimeByDate[dateStr] || hhmm > waterLastTimeByDate[dateStr]) waterLastTimeByDate[dateStr] = hhmm;
     try {
@@ -136,7 +149,13 @@ function buildWaterAndCalorieMaps(uid, indexed, timezoneIana) {
   const calBurnedByDate = {};
   for (const r of (stepByUser.get(uid) || [])) {
     if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
-      const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
+      let dateStr;
+      try {
+        const utcIso = normalizeStoredTimestampToUtcIso(r.CreatedAt, IANA_IST);
+        dateStr = timestampToCalendarYmd(utcIso, timezoneIana);
+      } catch {
+        continue;
+      }
       if (!dateStr) continue;
       const burned = parseFloat(r.CaloriesBurned) || 0;
       if ((calBurnedByDate[dateStr] || 0) < burned) calBurnedByDate[dateStr] = burned;
@@ -146,7 +165,12 @@ function buildWaterAndCalorieMaps(uid, indexed, timezoneIana) {
     const calConsumedByDate = {};
     for (const r of (foodByUser.get(uid) || [])) {
       if (isExemptedBeverageOnly(r.AnalysisData)) continue;
-      const dateStr = timestampToCalendarYmd(r.CreatedAt, timezoneIana);
+      let dateStr;
+      try {
+        dateStr = resolveFoodTimestamp(r.CreatedAt, timezoneIana).calendarYmd;
+      } catch {
+        continue;
+      }
       if (!dateStr) continue;
       const cal = parseFloat(r.TotalCalories) || 0;
       calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
@@ -241,9 +265,17 @@ export async function getTimeReport({ userId, role, dateRange, startDate, endDat
   const dateList = enumerateScoreDates(startStr, endStr);
   const indexed = indexRecords(results, usersInfo);
   const userInfoMap = new Map(usersInfo.map((u) => [u.UserId, u]));
+  const timezoneByUserId = await getUserTimezonesIanaMap(targetUserIds);
 
   const responseData = targetUserIds.map((uid) =>
-    buildUserReport(uid, userInfoMap.get(uid), dateList, windows, indexed, timezoneIana)
+    buildUserReport(
+      uid,
+      userInfoMap.get(uid),
+      dateList,
+      windows,
+      indexed,
+      resolveTimezoneFromMap(timezoneByUserId, uid, timezoneIana),
+    )
   );
 
   return {

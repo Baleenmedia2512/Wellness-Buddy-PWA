@@ -46,8 +46,16 @@ export default function useImageCropper({ onCropped, onError } = {}) {
     try {
       const cropped = await getCroppedImg(rawImageSrc, croppedAreaPixels, rotation);
       setShowCropper(false);
-      onCropped?.(cropped);
-    } catch {
+      try {
+        onCropped?.(cropped);
+      } catch (callbackErr) {
+        // eslint-disable-next-line no-console -- post-crop callback failures need device logs
+        console.error('[profile-crop] onCropped callback failed:', callbackErr);
+        onError?.('Failed to process cropped image. Please try again.');
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console -- crop failures need a console trail on device
+      console.error('[profile-crop] getCroppedImg failed:', err);
       onError?.('Failed to crop image. Please try again.');
     }
   }, [rawImageSrc, croppedAreaPixels, rotation, onCropped, onError]);

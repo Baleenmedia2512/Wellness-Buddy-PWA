@@ -23,17 +23,86 @@
  * unchanged — the timeline is a presentation wrapper only.
  */
 
-import React, { useMemo, useEffect, useState } from 'react';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
 import ROWS_BY_KIND, { OtherRow } from './rows';
+import DiaryUndoRow, { DIARY_UNDO_SECONDS } from './DiaryUndoRow';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
 import { getProfile } from '../../user/services/user.api';
 
+/** Merge active undo placeholders into the feed at each deleted entry's sort position. */
+function withPendingUndoPlaceholders(entries, pendingUndos) {
+  const list = Array.isArray(pendingUndos)
+    ? pendingUndos.filter((u) => u?.entryId != null)
+    : (pendingUndos?.entryId != null ? [pendingUndos] : []);
+  if (list.length === 0) return entries;
+
+  const deletedKeys = new Set(list.map((u) => `${u.kind}:${String(u.entryId)}`));
+  const withoutDeleted = entries.filter((e) => {
+    if (e.isUndoPlaceholder) return true;
+    return !deletedKeys.has(`${e.kind}:${String(e.payload?.id ?? '')}`);
+  });
+  const placeholders = list.map((u) => ({
+    kind: u.kind,
+    capturedAt: u.capturedAt || new Date().toISOString(),
+    isUndoPlaceholder: true,
+    payload: { id: u.entryId },
+    undo: u,
+  }));
+  return [...withoutDeleted, ...placeholders].sort(
+    (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+  );
+}
+
+/** Re-insert restored entries instantly while undo API + reload catch up. */
+function withOptimisticRestores(entries, optimisticEntries) {
+  const list = Array.isArray(optimisticEntries)
+    ? optimisticEntries.filter(Boolean)
+    : (optimisticEntries ? [optimisticEntries] : []);
+  if (list.length === 0) return entries;
+
+  let next = entries;
+  for (const optimisticEntry of list) {
+    const entryId = String(optimisticEntry.payload?.id ?? '');
+    if (!entryId) continue;
+    const alreadyPresent = next.some(
+      (e) =>
+        !e.isUndoPlaceholder
+        && e.kind === optimisticEntry.kind
+        && String(e.payload?.id ?? '') === entryId,
+    );
+    if (alreadyPresent) continue;
+    next = [...next, optimisticEntry];
+  }
+  if (next === entries) return entries;
+  return next.sort(
+    (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+  );
+}
+
 const SKELETON_ROWS = 6;
+
+/**
+ * Map each weight entry id → chronologically previous weight value.
+ * Used for share captions + delta chrome on WeightRow.
+ */
+function buildPreviousWeightById(entries) {
+  const map = new Map();
+  if (!Array.isArray(entries) || entries.length === 0) return map;
+  const weights = entries
+    .filter((e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null)
+    .slice()
+    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+  for (let i = 0; i < weights.length; i += 1) {
+    const id = String(weights[i].payload.id);
+    map.set(id, i > 0 ? (weights[i - 1].payload?.weight ?? null) : null);
+  }
+  return map;
+}
 
 /** Hide stale or duplicate "Analyzing…" rows in the diary feed. */
 function dedupePendingDiaryEntries(entries) {
@@ -244,9 +313,17 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
  * @param {(entry) => void} [props.onEntryOpen]  click handler per row
  * @param {(entry) => void} [props.onEntryDelete]  delete handler per row (swipe-to-delete)
- * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled (coach read-only view)
- * @param {{ kind: string, entryId: string|number, message: string, expiresAt: number }|null} [props.pendingUndo]
- *        active undo window — keeps empty feed visible while countdown runs
+ * @param {boolean} [props.canDelete]  when false, swipe-to-delete is disabled
+ * @param {Array<object>|object|null} [props.pendingUndos]
+ *        active undo windows — each renders an inline undo card in its deleted slot
+ * @param {Array<object>|object|null} [props.optimisticEntries]
+ *        entries shown instantly after Undo while API reloads
+ * @param {(entry: object) => void} [props.onOptimisticEntryConsumed]
+ *        fired when API feed already includes an optimistic entry
+ * @param {(snapshot: object) => Promise<void>|void} [props.onUndoRestore]
+ *        restore one soft-deleted entry
+ * @param {(snapshot: object) => void} [props.onUndoExpire]
+ *        clear one undo slot after countdown
  * @param {string[]} [props.filterKinds]  when set, only entries whose `kind`
  *        is in this list are rendered (e.g. ['unknown'] for the "Other" tab).
  *        Empty-state copy adapts accordingly.
@@ -267,12 +344,34 @@ export default function DiaryFeed({
   onEntryOpen,
   onEntryDelete,
   canDelete = true,
-  pendingUndo = null,
+  pendingUndos = null,
+  optimisticEntries = null,
+  onOptimisticEntryConsumed = null,
+  onUndoRestore = null,
+  onUndoExpire = null,
   filterKinds = null,
   showTimeline = false,
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
+  onOwnerTimezoneChange = null,
 }) {
+  const pendingUndoList = useMemo(() => {
+    if (Array.isArray(pendingUndos)) return pendingUndos.filter((u) => u?.entryId != null);
+    return pendingUndos?.entryId != null ? [pendingUndos] : [];
+  }, [pendingUndos]);
+
+  const optimisticEntryList = useMemo(() => {
+    if (Array.isArray(optimisticEntries)) return optimisticEntries.filter(Boolean);
+    return optimisticEntries ? [optimisticEntries] : [];
+  }, [optimisticEntries]);
+
+  const handleUndoRestore = useCallback((snapshot) => {
+    onUndoRestore?.(snapshot);
+  }, [onUndoRestore]);
+
+  const handleUndoExpire = useCallback((snapshot) => {
+    onUndoExpire?.(snapshot);
+  }, [onUndoExpire]);
   const fallbackTimezoneIana = resolveDiaryTimezone(timezoneSource);
   const [profileOwnerTimezone, setProfileOwnerTimezone] = useState(null);
 
@@ -290,7 +389,7 @@ export default function DiaryFeed({
     }
 
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
@@ -315,16 +414,43 @@ export default function DiaryFeed({
     || profileOwnerTimezone
     || fallbackTimezoneIana;
 
+  useEffect(() => {
+    if (typeof onOwnerTimezoneChange === 'function' && ownerTimezoneIana) {
+      onOwnerTimezoneChange(ownerTimezoneIana);
+    }
+  }, [ownerTimezoneIana, onOwnerTimezoneChange]);
+
   /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
   const scopedPendingCaptureMeta = useMemo(
     () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
     [pendingCaptureMeta, ownerUserId, viewerUserId],
   );
 
+  const previousWeightById = useMemo(
+    () => buildPreviousWeightById(data?.entries),
+    [data?.entries],
+  );
+
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
   const renderRow = useMemo(
     () => (entry, { hideTime = false } = {}) => {
+      if (entry.isUndoPlaceholder && entry.undo) {
+        const u = entry.undo;
+        return (
+          <DiaryUndoRow
+            key={`undo-${u.kind}-${u.entryId}`}
+            entryKey={`${u.kind}-${u.entryId}`}
+            title={u.title}
+            message={u.message}
+            expiresAt={u.expiresAt}
+            ttlSeconds={u.ttlSeconds ?? DIARY_UNDO_SECONDS}
+            onUndo={() => handleUndoRestore(u)}
+            onExpire={() => handleUndoExpire(u)}
+          />
+        );
+      }
+
       const Row = ROWS_BY_KIND[entry.kind] || OtherRow;
       // Resolve the capture ID the same way Dashboard.js does so the
       // Set lookup always matches (entry.capture?.id takes precedence).
@@ -339,19 +465,31 @@ export default function DiaryFeed({
         captureIdStr !== '' &&
         analyzingCaptureIds != null &&
         analyzingCaptureIds.has(captureIdStr);
+      // Only show "Analyzing…" when AI is actually in flight (local markCaptureAnalyzing
+      // / analyzingCaptureIds). API isPendingAnalysis alone means the user saved the
+      // photo but has not chosen a type or started AI — that is "Needs logging", not
+      // Analyzing, and must NOT become Other / couldn't identify.
       const isBackgroundPending =
         entry.kind === 'unknown' &&
+        !isAnalyzing &&
         !isStalePendingAnalysis(entry.capturedAt) &&
+        captureIdStr !== '' &&
+        scopedPendingCaptureMeta != null &&
+        scopedPendingCaptureMeta.has(captureIdStr);
+      const needsClassify =
+        entry.kind === 'unknown' &&
+        !isAnalyzing &&
+        !isBackgroundPending &&
         (entry.payload?.isPendingAnalysis === true ||
-          (captureIdStr !== '' &&
-            scopedPendingCaptureMeta != null &&
-            scopedPendingCaptureMeta.has(captureIdStr))) &&
-        !isAnalyzing;
+          entry.capture?.type === 'pending');
       // Attempt progress stored by onAttempt callback via markCaptureAnalyzing.
       // Look up for both isAnalyzing (user-initiated re-detect) and
       // isBackgroundPending (camera capture flow) so both states show the badge.
       const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
         ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
+        : null;
+      const weightId = entry.kind === 'weight' && entry.payload?.id != null
+        ? String(entry.payload.id)
         : null;
       return (
         <Row
@@ -362,10 +500,14 @@ export default function DiaryFeed({
           canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
+          {...(entry.kind === 'weight'
+            ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
+            : {})}
           {...(entry.kind === 'unknown'
             ? {
                 isAnalyzing,
                 isBackgroundPending,
+                needsClassify,
                 currentAttempt: captureMeta?.currentAttempt ?? null,
                 totalAttempts:  captureMeta?.totalAttempts  ?? null,
               }
@@ -373,7 +515,17 @@ export default function DiaryFeed({
         />
       );
     },
-    [onEntryOpen, onEntryDelete, canDelete, analyzingCaptureIds, scopedPendingCaptureMeta, ownerTimezoneIana],
+    [
+      onEntryOpen,
+      onEntryDelete,
+      canDelete,
+      analyzingCaptureIds,
+      scopedPendingCaptureMeta,
+      ownerTimezoneIana,
+      previousWeightById,
+      handleUndoRestore,
+      handleUndoExpire,
+    ],
   );
 
   /** Build optimistic unknown rows for captures still being classified. */
@@ -420,6 +572,22 @@ export default function DiaryFeed({
     );
   }, [data?.entries, scopedPendingCaptureMeta]);
 
+  // Once the live API feed includes a restored entry, drop that optimistic copy.
+  useEffect(() => {
+    if (!optimisticEntryList.length || !onOptimisticEntryConsumed) return;
+    const base = Array.isArray(data?.entries) ? data.entries : [];
+    for (const optimisticEntry of optimisticEntryList) {
+      const entryId = String(optimisticEntry.payload?.id ?? '');
+      if (!entryId) continue;
+      const found = base.some(
+        (e) =>
+          e.kind === optimisticEntry.kind
+          && String(e.payload?.id ?? '') === entryId,
+      );
+      if (found) onOptimisticEntryConsumed(optimisticEntry);
+    }
+  }, [data?.entries, optimisticEntryList, onOptimisticEntryConsumed]);
+
   if (loading && !data && (!scopedPendingCaptureMeta || scopedPendingCaptureMeta.size === 0)) {
     return <FeedSkeleton />;
   }
@@ -447,11 +615,13 @@ export default function DiaryFeed({
   // Optionally restrict the feed to a subset of kinds (e.g. the "Other"
   // tab only renders `unknown` rows). When no filter is supplied the full
   // merged feed is shown (backward-compatible default).
-  const visibleEntries = Array.isArray(filterKinds)
+  const filteredEntries = Array.isArray(filterKinds)
     ? withOptimisticEntries.filter((e) => filterKinds.includes(e.kind))
     : withOptimisticEntries;
+  const withRestore = withOptimisticRestores(filteredEntries, optimisticEntryList);
+  const visibleEntries = withPendingUndoPlaceholders(withRestore, pendingUndoList);
 
-  if (visibleEntries.length === 0 && !pendingUndo) {
+  if (visibleEntries.length === 0) {
     return <FeedEmpty date={dateStr} isSelf={isSelf} filterKinds={filterKinds} />;
   }
 
@@ -459,25 +629,6 @@ export default function DiaryFeed({
   if (showTimeline) {
     return (
       <div data-testid="diary-timeline">
-        {/* Refreshing indicator */}
-        {loading && (
-          <div
-            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1 mb-2"
-            aria-live="polite"
-          >
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Refreshing…
-          </div>
-        )}
-
-        {/* Read-only hint when a coach views a member diary */}
-        {canDelete === false && (
-          <div className="mx-1 mb-3 px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
-            Viewing a team member&apos;s diary — swipe to delete only works on your own entries.
-            Use <strong>View mine</strong> above to switch back.
-          </div>
-        )}
-
         {/* Date group header */}
         <div className="flex items-center gap-2 px-1 mb-4">
           <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
@@ -486,21 +637,21 @@ export default function DiaryFeed({
           <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
         </div>
 
-        {/* Timeline entries (may be empty while undo countdown is active) */}
+        {/* Timeline entries (includes inline undo placeholder while countdown is active) */}
         <div className="pl-1">
           {visibleEntries.map((entry, idx) => (
             <TimelineEntryWrapper
-              key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
+              key={
+                entry.isUndoPlaceholder
+                  ? `undo-${entry.undo?.kind}-${entry.undo?.entryId}`
+                  : `${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`
+              }
               isLast={idx === visibleEntries.length - 1}
             >
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
-
-        {visibleEntries.length === 0 && pendingUndo && (
-          <p className="text-sm text-gray-500 px-1 mt-1">No other entries for this day.</p>
-        )}
       </div>
     );
   }
@@ -509,15 +660,6 @@ export default function DiaryFeed({
   return (
     <div data-testid="diary-feed">
       <div className="space-y-3">
-        {loading && (
-          <div
-            className="flex items-center justify-center text-xs text-gray-500 gap-2 py-1"
-            aria-live="polite"
-          >
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Refreshing…
-          </div>
-        )}
         {visibleEntries.map(renderRow)}
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
 import { planFoodCorrection } from "../services/foodCorrectionPlan";
 import { useDeleteWithUndo } from "../hooks/useDeleteWithUndo";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
+import { formatWaterVolume } from "../../diary/domain/formatVolume";
 import {
   Search,
   Edit2,
@@ -163,8 +164,8 @@ const EditableFoodItem = forwardRef(
         searchTimeoutRef.current = null;
       }
 
-      // Validation: minimum 3 characters
-      if (trimmed.length < 3) {
+      // Validation: minimum 1 character for typeahead suggestions
+      if (trimmed.length < 1) {
         setSearchResults([]);
         setIsSearching(false);
         return;
@@ -455,24 +456,25 @@ const EditableFoodItem = forwardRef(
             debugLog("   🎯 Exact match found at index:", exactMatchIndex);
             debugLog("      - Serving:", servingOptions[exactMatchIndex].description);
           } else {
-            // Find closest serving option for display only
-            // IMPORTANT: Never override customGrams - let user type any value
-            const closestIndex = servingOptions.reduce(
-              (closestIdx, opt, idx) => {
-                const currentDiff = Math.abs(
-                  servingOptions[closestIdx].grams - gramsValue,
-                );
-                const newDiff = Math.abs(opt.grams - gramsValue);
-                return newDiff < currentDiff ? idx : closestIdx;
-              },
-              0,
-            );
-
-            setCurrentServing(servingOptions[closestIndex]);
-            setCurrentServingIndex(closestIndex);
-            debugLog("   ðŸ” Closest match at index:", closestIndex);
-            debugLog("      - Serving:", servingOptions[closestIndex].description);
-            // customGrams is already set above - don't override it
+            // Custom amount — keep the typed value; do NOT adopt a mismatched
+            // closest label (e.g. "102.5 ml" while grams are 300).
+            const liquid = selectedFood?.isLiquid
+              || foodItem.isLiquid
+              || foodItem.serving?.isLiquid
+              || false;
+            const unitLabel = liquid ? "ml" : "g";
+            const customDesc = liquid
+              ? `${Math.round(gramsValue)} ml`
+              : `${gramsValue}${unitLabel}`;
+            setCurrentServing({
+              description: customDesc,
+              grams: gramsValue,
+              nutrition: null,
+              isOriginal: false,
+              isCustom: true,
+            });
+            setCurrentServingIndex(-1);
+            debugLog("   ✅ Custom amount — description synced to", customDesc);
           }
         } else {
           debugLog("   âš ï¸ No valid gramsValue or no serving options available");
@@ -552,14 +554,38 @@ const EditableFoodItem = forwardRef(
         const currentGrams = parseFloat(
           foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight
         ) || 100;
-        
-        const per100gCalculated = foodItem.per100g || {
-          calories: (nutritionData.calories || 0) * (100 / currentGrams),
-          protein: (nutritionData.protein || 0) * (100 / currentGrams),
-          carbs: (nutritionData.carbs || 0) * (100 / currentGrams),
-          fat: (nutritionData.fat || 0) * (100 / currentGrams),
-          fiber: (nutritionData.fiber || 0) * (100 / currentGrams),
-        };
+        const existingGi = nutritionData.glycemic_index ?? foodItem.glycemic_index ?? null;
+
+        const per100gCalculated = foodItem.per100g
+          ? {
+              ...foodItem.per100g,
+              // Enrich existing per100g when GI was only on nutrition (AI save path)
+              glycemic_index: foodItem.per100g.glycemic_index ?? (
+                existingGi != null && Number.isFinite(Number(existingGi))
+                  ? Math.round(Number(existingGi))
+                  : null
+              ),
+            }
+          : {
+              calories: (nutritionData.calories || 0) * (100 / currentGrams),
+              protein: (nutritionData.protein || 0) * (100 / currentGrams),
+              carbs: (nutritionData.carbs || 0) * (100 / currentGrams),
+              fat: (nutritionData.fat || 0) * (100 / currentGrams),
+              fiber: (nutritionData.fiber || 0) * (100 / currentGrams),
+              sugar: nutritionData.sugar != null
+                ? (nutritionData.sugar * (100 / currentGrams))
+                : null,
+              sodium: nutritionData.sodium != null
+                ? (nutritionData.sodium * (100 / currentGrams))
+                : null,
+              cholesterol: nutritionData.cholesterol != null
+                ? (nutritionData.cholesterol * (100 / currentGrams))
+                : null,
+              // GI is intrinsic — copy, do not scale with grams
+              glycemic_index: existingGi != null && Number.isFinite(Number(existingGi))
+                ? Math.round(Number(existingGi))
+                : null,
+            };
         
         foodToSave = {
           name: foodItem.name,
@@ -567,11 +593,24 @@ const EditableFoodItem = forwardRef(
           per100g: per100gCalculated,
           isLiquid: foodItem.isLiquid || false,
         };
+      } else if (foodToSave.per100g && foodToSave.per100g.glycemic_index == null) {
+        // Food changed via search without GI — retain previous item GI until new AI analysis
+        const prevGi = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
+        if (prevGi != null && Number.isFinite(Number(prevGi))) {
+          foodToSave = {
+            ...foodToSave,
+            per100g: {
+              ...foodToSave.per100g,
+              glycemic_index: Math.round(Number(prevGi)),
+            },
+          };
+        }
       }
 
       debugLog("   - foodToSave.name:", foodToSave.name);
       debugLog("   - foodToSave.isLiquid:", foodToSave.isLiquid);
       debugLog("   - foodToSave.per100g:", foodToSave.per100g);
+      debugLog("   - foodToSave.per100g.glycemic_index:", foodToSave.per100g?.glycemic_index);
 
       // Validate per100g exists
       if (!foodToSave.per100g) {
@@ -582,14 +621,40 @@ const EditableFoodItem = forwardRef(
 
       // Calculate final nutrition
       const nutrition = computeNutrition(foodToSave.per100g, grams);
+      // Safety net: never drop GI on portion-only edits
+      if (nutrition && nutrition.glycemic_index == null) {
+        const fallbackGi =
+          foodToSave.per100g?.glycemic_index ??
+          foodItem.nutrition?.glycemic_index ??
+          foodItem.glycemic_index ??
+          null;
+        if (fallbackGi != null && Number.isFinite(Number(fallbackGi))) {
+          nutrition.glycemic_index = Math.round(Number(fallbackGi));
+        } else {
+          console.warn(
+            "[EditableFoodItem] glycemic_index missing after portion edit",
+            { name: foodToSave.name, grams },
+          );
+        }
+      }
       debugLog("   - Calculated nutrition for", grams, "grams:", nutrition);
 
       // ✅ Determine unit based on isLiquid flag (prioritize this over stored unit)
       const isLiquid = foodToSave.isLiquid || false;
       const unit = isLiquid ? "ml" : "g";
       debugLog("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
-      
-      // 🔄 REVERSAL DETECTION:
+
+      // Keep portion label in sync with the saved amount. Never keep a stale
+      // closest-option description (e.g. "102.5 ml") when grams are 300.
+      const servingMatchesGrams = currentServing
+        && Number.isFinite(Number(currentServing.grams))
+        && Math.abs(Number(currentServing.grams) - grams) < 1
+        && !currentServing.isCustom;
+      const syncedDescription = isLiquid
+        ? `${Math.round(grams)} ml`
+        : `${grams}${unit}`;
+      const resolvedDescription = overrideServingDesc
+        || (servingMatchesGrams ? currentServing.description : syncedDescription);
       // If the user has edited the food name back to the ORIGINAL AI-detected
       // name, treat this entry as a reversal of the auto-correction. The
       // global/personal correction in the DB stays intact (other entries /
@@ -612,10 +677,7 @@ const EditableFoodItem = forwardRef(
         name: foodToSave.name,
         category: foodToSave.category,
         serving: {
-          description:
-            overrideServingDesc ||
-            currentServing?.description ||
-            `${grams}${unit}`,
+          description: resolvedDescription,
           grams: grams,
           unit: unit,
           isLiquid: isLiquid,
@@ -623,6 +685,8 @@ const EditableFoodItem = forwardRef(
         grams: grams,
         unit: unit,
         isLiquid: isLiquid,
+        volume_ml: isLiquid ? grams : null,
+        weight_g: isLiquid ? null : grams,
         nutrition: nutrition,
         per100g: foodToSave.per100g,
         // 🔴 CRITICAL: Preserve originalAiName and correction metadata
@@ -882,15 +946,38 @@ const EditableFoodItem = forwardRef(
       const currentCarbs = nutritionData.carbs || 0;
       const currentFat = nutritionData.fat || 0;
       const currentFiber = nutritionData.fiber || 0;
+      const existingGi = nutritionData.glycemic_index ?? foodItem.glycemic_index ?? null;
 
       // Calculate per100g values or use existing
-      const per100gValues = foodItem.per100g || {
-        calories: (currentCalories * 100) / currentGrams, // Keep precise value, don't round
-        protein: (currentProtein * 100) / currentGrams,
-        carbs: (currentCarbs * 100) / currentGrams,
-        fat: (currentFat * 100) / currentGrams,
-        fiber: (currentFiber * 100) / currentGrams,
-      };
+      const per100gValues = foodItem.per100g
+        ? {
+            ...foodItem.per100g,
+            glycemic_index: foodItem.per100g.glycemic_index ?? (
+              existingGi != null && Number.isFinite(Number(existingGi))
+                ? Math.round(Number(existingGi))
+                : null
+            ),
+          }
+        : {
+            calories: (currentCalories * 100) / currentGrams, // Keep precise value, don't round
+            protein: (currentProtein * 100) / currentGrams,
+            carbs: (currentCarbs * 100) / currentGrams,
+            fat: (currentFat * 100) / currentGrams,
+            fiber: (currentFiber * 100) / currentGrams,
+            sugar: nutritionData.sugar != null
+              ? (nutritionData.sugar * 100) / currentGrams
+              : null,
+            sodium: nutritionData.sodium != null
+              ? (nutritionData.sodium * 100) / currentGrams
+              : null,
+            cholesterol: nutritionData.cholesterol != null
+              ? (nutritionData.cholesterol * 100) / currentGrams
+              : null,
+            // GI is intrinsic — copy, do not scale
+            glycemic_index: existingGi != null && Number.isFinite(Number(existingGi))
+              ? Math.round(Number(existingGi))
+              : null,
+          };
 
       // Get unit from foodItem
       const itemUnit =
@@ -982,6 +1069,33 @@ const EditableFoodItem = forwardRef(
       const chol     = Math.round(foodItem.nutrition?.cholesterol ?? foodItem.cholesterol ?? 0);
       const gi       = foodItem.nutrition?.glycemic_index ?? foodItem.glycemic_index ?? null;
 
+      const itemNameLower = String(foodItem.name || '').toLowerCase().trim();
+      const isWaterItem = itemNameLower === 'water'
+        || itemNameLower === 'plain water'
+        || itemNameLower.startsWith('plain water');
+      const isAfreshItem = itemNameLower.includes('afresh');
+      const volumeMl = (() => {
+        const fromField = Number(foodItem.volume_ml);
+        if (Number.isFinite(fromField) && fromField > 0) return fromField;
+        if (isLiquid) {
+          const fromGrams = Number(displayGrams);
+          if (Number.isFinite(fromGrams) && fromGrams > 0) return fromGrams;
+        }
+        return null;
+      })();
+      const scoops = (() => {
+        const fromField = Number(foodItem.scoops);
+        if (Number.isFinite(fromField) && fromField > 0) return fromField;
+        const m = String(foodItem.portion || servingDesc || '').match(/(\d+(?:\.\d+)?)\s*scoops?/i);
+        return m ? Number(m[1]) : null;
+      })();
+      const primaryMetric = isWaterItem && volumeMl != null
+        ? { value: formatWaterVolume(volumeMl), unit: '' }
+        : isAfreshItem
+          ? { value: String(scoops ?? 1), unit: (scoops ?? 1) === 1 ? 'scoop' : 'scoops' }
+          : { value: String(calories), unit: 'kcal' };
+      const hideMacroPills = isWaterItem || isAfreshItem;
+
       // Macro bar proportions (protein=4 kcal/g, carbs=4, fat=9)
       const macroKcal = protein * 4 + carbs * 4 + fat * 9;
       const proteinPct = macroKcal > 0 ? (protein * 4 / macroKcal) * 100 : 0;
@@ -993,9 +1107,13 @@ const EditableFoodItem = forwardRef(
                                         : gi <= 69 ? { bar: 'bg-amber-500',   badge: 'bg-amber-50  text-amber-700  border-amber-200',   label: 'Med' }
                                                    : { bar: 'bg-red-500',     badge: 'bg-red-50    text-red-700    border-red-200',     label: 'High' };
       // Left accent colour driven by GI if available, else calorie density
-      const accentColor = giTone
-        ? giTone.bar
-        : calories > 400 ? 'bg-red-400' : calories > 200 ? 'bg-amber-400' : 'bg-emerald-400';
+      const accentColor = isWaterItem
+        ? 'bg-sky-400'
+        : isAfreshItem
+          ? 'bg-orange-400'
+          : giTone
+            ? giTone.bar
+            : calories > 400 ? 'bg-red-400' : calories > 200 ? 'bg-amber-400' : 'bg-emerald-400';
 
       // Food initial avatar colour (cycles through palette)
       const avatarColors = [
@@ -1006,7 +1124,11 @@ const EditableFoodItem = forwardRef(
         'bg-rose-100 text-rose-600',
         'bg-cyan-100 text-cyan-600',
       ];
-      const avatarColor = avatarColors[index % avatarColors.length];
+      const avatarColor = isWaterItem
+        ? 'bg-sky-100 text-sky-600'
+        : isAfreshItem
+          ? 'bg-orange-100 text-orange-600'
+          : avatarColors[index % avatarColors.length];
       const initial = (foodItem.name || '?')[0].toUpperCase();
 
       return (
@@ -1028,7 +1150,7 @@ const EditableFoodItem = forwardRef(
 
             {/* Content */}
             <div className="flex-1 min-w-0">
-              {/* Row 1: name + calories */}
+              {/* Row 1: name + primary metric */}
               <div className="flex items-start justify-between gap-2">
                 <span className="font-bold text-gray-900 text-[15px] leading-tight">
                   {foodItem.name}
@@ -1044,19 +1166,37 @@ const EditableFoodItem = forwardRef(
                   )}
                 </span>
                 <div className="flex-shrink-0 text-right">
-                  <span className="font-extrabold text-orange-500 text-lg leading-none">{calories}</span>
-                  <span className="text-[11px] font-medium text-gray-400 ml-0.5">kcal</span>
+                  <span className={`font-extrabold text-lg leading-none ${isWaterItem ? 'text-sky-500' : isAfreshItem ? 'text-orange-500' : 'text-orange-500'}`}>
+                    {primaryMetric.value}
+                  </span>
+                  {primaryMetric.unit ? (
+                    <span className="text-[11px] font-medium text-gray-400 ml-0.5">{primaryMetric.unit}</span>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Row 2: serving + weight */}
-              {(servingDesc || displayGrams) && (
+              {/* Row 2: serving + weight (skip duplicate volume line for water) */}
+              {!isWaterItem && (servingDesc || displayGrams) && (
                 <p className="text-xs text-gray-400 mt-0.5 leading-tight">
-                  {servingDesc}{displayGrams ? ` (${displayGrams}${unit})` : ''}
+                  {(() => {
+                    const desc = String(servingDesc || '').trim();
+                    if (!displayGrams) return desc;
+                    // Avoid "100 ml (100ml)" / "300 ml (300ml)" duplication.
+                    const compact = desc.replace(/\s+/g, '').toLowerCase();
+                    const amountToken = `${displayGrams}${unit}`.toLowerCase();
+                    if (compact.includes(amountToken) || compact === amountToken) {
+                      return desc || `${displayGrams} ${unit}`;
+                    }
+                    if (/^\d+(\.\d+)?\s*(ml|g)$/i.test(desc)) {
+                      return `${displayGrams} ${unit}`;
+                    }
+                    return `${desc} (${displayGrams}${unit})`;
+                  })()}
                 </p>
               )}
 
-              {/* Row 3: macro pills */}
+              {/* Row 3: macro pills — hidden for water / afresh */}
+              {!hideMacroPills && (
               <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
                 <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
                   P {protein}g
@@ -1078,9 +1218,10 @@ const EditableFoodItem = forwardRef(
                   </span>
                 )}
               </div>
+              )}
 
               {/* Row 4: macro bar */}
-              {macroKcal > 0 && (
+              {!hideMacroPills && macroKcal > 0 && (
                 <div className="mt-1.5 h-1 rounded-full overflow-hidden bg-gray-100 flex">
                   <div className="bg-blue-400 h-full transition-all" style={{ width: `${proteinPct}%` }} />
                   <div className="bg-amber-400 h-full transition-all" style={{ width: `${carbsPct}%` }} />
@@ -1089,7 +1230,7 @@ const EditableFoodItem = forwardRef(
               )}
 
               {/* Row 5: secondary nutrients */}
-              {(sugar > 0 || sodium > 0 || chol > 0) && (
+              {!hideMacroPills && (sugar > 0 || sodium > 0 || chol > 0) && (
                 <div className="flex flex-wrap gap-x-2 mt-1.5 text-[11px] text-gray-400">
                   {sugar > 0   && <span>Sugar {sugar}g</span>}
                   {sodium > 0  && <span className="before:content-['·'] before:mr-1">Na {sodium}mg</span>}

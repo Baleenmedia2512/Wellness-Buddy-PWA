@@ -17,13 +17,22 @@ import { educationLogFromDiaryRow } from '../services/educationFormatter';
 
 const EducationDashboard = ({
   user, apiBaseUrl, refreshKey = 0, initialEntryId = null, selectedDate = null, hideOverview = false,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
   // Imperative handle: parent passes a React ref; we write `openRef.current =
   // (entry) => ...` each render so the timeline shell can open a log entry.
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
+  /** Timeline modal-host: skip logs/summary until first open. */
+  deferDataFetch = false,
 }) => {
-  const vm = useEducationDashboard({ user, apiBaseUrl, refreshKey, selectedDate });
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
+  const vm = useEducationDashboard({
+    user, apiBaseUrl, refreshKey, selectedDate,
+    onDeleteWithUndo, onDeleteUndoCancel,
+    enabled: dataFetchEnabled,
+  });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const pendingOpenRef = useRef(null);
@@ -44,6 +53,9 @@ const EducationDashboard = ({
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (
         entryOrId
         && typeof entryOrId === 'object'
@@ -92,7 +104,7 @@ const EducationDashboard = ({
         setDeletingId(log.Id);
         setSelectedLog(null);
         onAfterModalClose?.();
-        await vm.handleDeleteEducationLog(log);
+        await vm.handleDeleteEducationLogFromModal(log);
         setDeletingId(null);
       }}
       isDeleting={deletingId === selectedLog?.Id}
@@ -142,6 +154,7 @@ const EducationDashboard = ({
             onRestore={vm.handleUndoRestore} onExpire={vm.handleUndoExpire}
             onCardClick={(log) => setSelectedLog(log)}
             apiBaseUrl={vm.apiBaseUrl} userId={vm.userIdRef.current}
+            timezoneIana={vm.timezoneIana}
             hasMoreLogs={vm.hasMoreLogs} loadingMore={vm.loadingMore}
             sentinelRef={vm.loadMoreSentinelRef}
           />

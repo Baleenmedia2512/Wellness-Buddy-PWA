@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Pencil, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -8,6 +8,8 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
 import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import { lookup as lookupUser } from '../../user/services/user.api.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -74,12 +76,12 @@ const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
   );
 };
 
-const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false }) => {
+const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, embedded = false, tabVisitKey = 0 }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [error, setError] = useState(null);
-  const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
+  const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full'
   const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
   const [customDate, setCustomDate] = useState(null); // single Date object for custom
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -98,8 +100,10 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
   const markersRef = useRef([]);
   const markersMapRef = useRef({}); // Map center.id to marker
   const infoWindowRef = useRef(null);
+  const fetchAbortRef = useRef(null);
+  const resolvedUserIdRef = useRef(null);
 
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
 
   // Load Google Maps script
@@ -160,19 +164,63 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   }, [mapLoaded]);
 
-  // Fetch nutrition centres
-  const fetchCenters = async () => {
+  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
+  useEffect(() => {
+    const fromUser = user?.id || user?.userId || user?.UserId;
+    if (fromUser) {
+      resolvedUserIdRef.current = Number(fromUser);
+      setCurrentUserId(Number(fromUser));
+      return undefined;
+    }
+    if (!user?.email) {
+      resolvedUserIdRef.current = null;
+      setCurrentUserId(null);
+      return undefined;
+    }
+    let cancelled = false;
+    lookupUser(user.email, { method: 'GET' })
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        resolvedUserIdRef.current = Number(data.userId);
+        setCurrentUserId(Number(data.userId));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          resolvedUserIdRef.current = null;
+          setCurrentUserId(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const resolveUserId = useCallback(async () => {
+    if (resolvedUserIdRef.current) return resolvedUserIdRef.current;
+    const fromUser = user?.id || user?.userId || user?.UserId;
+    if (fromUser) {
+      resolvedUserIdRef.current = Number(fromUser);
+      return resolvedUserIdRef.current;
+    }
+    if (!user?.email) throw new Error('User not found');
+    const data = await lookupUser(user.email, { method: 'GET' });
+    if (!data?.success) throw new Error('User not found');
+    resolvedUserIdRef.current = Number(data.userId);
+    setCurrentUserId(Number(data.userId));
+    return resolvedUserIdRef.current;
+  }, [user]);
+
+  // Fetch nutrition centres (abortable — Full Team was firing 3 overlapping requests)
+  const fetchCenters = useCallback(async ({ signal } = {}) => {
     if (!user) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const userId = await getUserId(user.email);
-      // Use scope=all for 'all' filter to fetch all system centers globally
+      const userId = await resolveUserId();
+      if (signal?.aborted) return;
+
       const scope = teamFilter === 'all' ? 'all' : 'team';
-      // Always compute dates from local timezone to avoid UTC shift issues
-      const pad = n => String(n).padStart(2, '0');
+      const pad = (n) => String(n).padStart(2, '0');
       const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const now = new Date();
       const todayStr = localDate(now);
@@ -190,21 +238,17 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         startParam = yesterdayStr;
         endParam = yesterdayStr;
       } else {
-        // today (default)
         startParam = todayStr;
         endParam = todayStr;
       }
+
       const response = await fetch(
         `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        }
+        { signal },
       );
 
       const result = await response.json();
+      if (signal?.aborted) return;
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch centers');
@@ -216,32 +260,13 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         : 'Today';
       renderMarkers(result.data || [], label);
     } catch (err) {
+      if (err?.name === 'AbortError') return;
       console.error('Error fetching centers:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  };
-
-  // Get user ID helper
-  const getUserId = async (email) => {
-    const response = await fetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
-    );
-    const data = await response.json();
-    if (!data.success) throw new Error('User not found');
-    return data.userId;
-  };
-
-  // Resolve and cache the current user's numeric ID (needed to show edit button only on own centres)
-  useEffect(() => {
-    if (user?.email) {
-      getUserId(user.email)
-        .then((id) => setCurrentUserId(Number(id)))
-        .catch(() => setCurrentUserId(null));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getUserId is stable within this mount
-  }, [user]);
+  }, [user, teamFilter, dateRange, customDate, apiBaseUrl, resolveUserId]);
 
   // Open Street View for a center
   const openStreetView = (center) => {
@@ -476,13 +501,31 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
     }
   };
 
-  // Initial fetch
+  // Debounced fetch — collapses Strict Mode remount + rapid Full Team taps into one call.
   useEffect(() => {
-    if (mapLoaded && user) {
-      fetchCenters();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [mapLoaded, user, teamFilter, dateRange, customDate]);
+    if (!mapLoaded || !user) return undefined;
+
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      fetchCenters({ signal: controller.signal });
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
+    };
+  }, [mapLoaded, user, teamFilter, dateRange, customDate, tabVisitKey, fetchCenters]);
+
+  const handleRefresh = useCallback(() => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchCenters({ signal: controller.signal });
+  }, [fetchCenters]);
 
   // Set up global functions for info window buttons
   useEffect(() => {
@@ -533,20 +576,13 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         {/* Row 1: Back + Title + Refresh */}
         <div className="max-w-4xl mx-auto px-3 xs:px-4 pt-2 xs:pt-3 pb-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 xs:gap-3 min-w-0 flex-1">
-            <TouchFeedbackButton
-              onClick={onBack}
-              className="p-2 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-green-900" />
-            </TouchFeedbackButton>
             <div className="min-w-0">
               <h1 className="text-sm xs:text-base font-bold text-gray-900 truncate">Physical Club Report</h1>
-              <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p>
+              {/* <p className="text-[10px] xs:text-xs text-green-900/70 truncate">View club locations & attendance</p> */}
             </div>
           </div>
           <TouchFeedbackButton
-            onClick={fetchCenters}
+            onClick={handleRefresh}
             disabled={loading}
             className="p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
             ariaLabel="Refresh"
@@ -615,7 +651,6 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
               ['self', 'My Club', 'Mine'],
               ['direct', 'Direct Team', 'Direct'],
               ['full', 'Full Team', 'Full'],
-              ['all', 'All', 'All'],
             ].map(([val, label, short]) => (
               <TouchFeedbackButton
                 key={val}
@@ -667,7 +702,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <p className="text-red-600 font-medium">{error}</p>
             <TouchFeedbackButton
-              onClick={fetchCenters}
+              onClick={handleRefresh}
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
               Try Again
@@ -909,6 +944,7 @@ const NutritionCentersMap = ({ user, onBack, onEditCenter, onRegisterCenter, emb
         endDate={activeDateEnd}
         apiBaseUrl={apiBaseUrl}
         timezoneIana={resolveDiaryTimezone(user)}
+        userId={currentUserId}
       />
     </div>
   );

@@ -3,7 +3,6 @@ import * as Session from '../../../shared/services/sessionStorage';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
-
 const post = async (path, body) => {
   const apiBase = getApiBaseUrl();
   const payload = body && typeof body === 'object' ? body : {};

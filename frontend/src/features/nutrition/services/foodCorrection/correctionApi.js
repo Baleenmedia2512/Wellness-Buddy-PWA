@@ -1,6 +1,7 @@
 // REST endpoints for food corrections (write + per-user read + reverse lookup).
 import { cacheManager } from '../../../../shared/services/cacheManager';
 import { debugLog } from '../../../../shared/utils/logger.js';
+import { pickNutrition, scaleNutritionFields, NUTRITION_KEYS, dedupeSearchBuckets } from '../../domain/nutritionFields.js';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
@@ -10,53 +11,66 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:300
 const _foodSearchCache = new Map();
 
 /**
- * Transform a backend food-history record into the shape expected by
- * EditableFoodItem / NutritionCard:
- *   { name, category, isLiquid, unit, defaultServing, per100g }
+ * Transform a backend food-history / master record into the shape expected by
+ * EditableFoodItem / NutritionCard / SmartFoodSearchModal.
+ * Preserves vitamins/minerals when present (ADR-0005).
  */
 export function toFoodSearchItem(item) {
   const w = item.weight_g > 0 ? item.weight_g : 100;
-  const cal = item.calories || 0;
-  const prot = item.protein || 0;
-  const carbs = item.carbs || 0;
-  const fat = item.fat || 0;
-  const fiber = item.fiber || 0;
+  const nutrition = pickNutrition(item.nutrition || item);
+  const cal = nutrition.calories || item.calories || 0;
+  const prot = nutrition.protein || item.protein || 0;
+  const carbs = nutrition.carbs || item.carbs || 0;
+  const fat = nutrition.fat || item.fat || 0;
+  const fiber = nutrition.fiber || item.fiber || 0;
   const nameLower = (item.name || '').toLowerCase();
-  const isLiquid = ['ml', 'l'].includes(item.unit || '') ||
-    ['juice', 'shake', 'milk', 'tea', 'coffee', 'water', 'drink',
-     'chai', 'lassi', 'smoothie', 'soup', 'broth', 'afresh',
+  const isLiquid = item.is_liquid === true || item.isLiquid === true
+    || ['ml', 'l'].includes(item.unit || '')
+    || ['juice', 'shake', 'milk', 'tea', 'coffee', 'water', 'drink',
+      'chai', 'lassi', 'smoothie', 'soup', 'broth', 'afresh',
     ].some((k) => nameLower.includes(k));
   const unit = isLiquid ? 'ml' : 'g';
-  const defaultNutrition = { calories: cal, protein: prot, carbs, fat, fiber };
-  const per100g = w > 0 ? {
-    calories: Math.round((cal  / w) * 100),
-    protein:  Math.round((prot / w) * 100 * 10) / 10,
-    carbs:    Math.round((carbs / w) * 100 * 10) / 10,
-    fat:      Math.round((fat  / w) * 100 * 10) / 10,
-    fiber:    Math.round((fiber / w) * 100 * 10) / 10,
-  } : null;
+  const defaultNutrition = { ...nutrition, calories: cal, protein: prot, carbs, fat, fiber };
+  const per100g = w > 0
+    ? scaleNutritionFields({ nutrition: defaultNutrition }, 100 / w)
+    : null;
   return {
     name: item.name,
     category: isLiquid ? 'Beverage' : 'Food',
     isLiquid,
     unit,
+    source: item.source || 'history',
+    weight_g: w,
+    portion: item.portion || item.portion_label || null,
+    calories: cal,
+    protein: prot,
+    carbs,
+    fat,
+    fiber,
+    nutrition: defaultNutrition,
+    // Flat micros for callers that read item.vitamin_c etc.
+    ...Object.fromEntries(
+      NUTRITION_KEYS
+        .filter((k) => !['calories', 'protein', 'carbs', 'fat', 'fiber'].includes(k))
+        .map((k) => [k, defaultNutrition[k]])
+        .filter(([, v]) => v != null),
+    ),
     defaultServing: { description: `${w}${unit} ${item.name}`, grams: w, nutrition: defaultNutrition },
     per100g,
   };
 }
 
 /**
- * Search food history (user + community) via /api/food-corrections/search.
- * Returns a deduplicated array of `toFoodSearchItem`-shaped objects.
- * Results are cached by query for the lifetime of the page.
+ * Search food history (master + user + community) via /api/food-corrections/search.
+ * Master hits win on name collision when present.
  *
- * @param {string} query  Min 2 chars.
+ * @param {string} query  Min 1 char.
  * @param {string|number} userId  Required for personalised results.
  * @returns {Promise<Array>}
  */
 export async function searchFoods(query, userId) {
   const trimmed = (query || '').trim();
-  if (trimmed.length < 2) return [];
+  if (trimmed.length < 1) return [];
 
   const cacheKey = `${userId || '_'}::${trimmed.toLowerCase()}`;
   if (_foodSearchCache.has(cacheKey)) return _foodSearchCache.get(cacheKey);
@@ -67,15 +81,17 @@ export async function searchFoods(query, userId) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
-  const all = [...(data.myItems || []), ...(data.communityItems || [])];
-  const seen = new Set();
-  const deduped = all.filter((item) => {
-    const key = (item.name || '').toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  const results = deduped.map(toFoodSearchItem);
+  const buckets = dedupeSearchBuckets({
+    masterItems: data.masterItems || [],
+    myItems: data.myItems || [],
+    communityItems: data.communityItems || [],
+  }, trimmed);
+  const all = [
+    ...buckets.masterItems,
+    ...buckets.myItems,
+    ...buckets.communityItems,
+  ];
+  const results = all.map(toFoodSearchItem);
   _foodSearchCache.set(cacheKey, results);
   return results;
 }

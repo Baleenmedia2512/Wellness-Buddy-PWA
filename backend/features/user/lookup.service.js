@@ -1,14 +1,13 @@
 /**
  * lookup.service.js — User feature: POST /api/user/lookup.
  *
- * Resolves a user by email and auto-deactivates accounts inactive for >= 31
- * days. Preserves response shape byte-identical to the legacy handler.
+ * Resolves a user by email. Idle users stay Active (ADR-0007). When an Active
+ * user returns after ≥7 days idle, their coach is emailed once; Account
+ * Restricted remains only for Status=Inactive (manual / legacy).
  */
 import * as repo from './user.repository.js';
 import { syncUserTimezoneIfChanged } from './timezone-sync.service.js';
-
-const INACTIVITY_DAYS = 31;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { notifyCoachIfReturningIdleUser } from '../idle-cleanup/api/return-notify.service.js';
 
 export async function lookupUser({ email, timezoneIana }) {
   const user = await repo.findByEmail(
@@ -19,14 +18,21 @@ export async function lookupUser({ email, timezoneIana }) {
     return { httpStatus: 404, body: { success: false, message: 'User not found', userNotFound: true } };
   }
 
+  if (user.Status === 'Inactive') {
+    await repo.setUserStatus(user.UserId, 'Active');
+    user.Status = 'Active';
+  }
+
+  // Active + idle ≥7d → coach email (non-blocking). Never auto-set Inactive.
   if (user.Status === 'Active') {
     const lastActivityStr = user.LastActiveAt || user.EntryDateTime;
-    if (lastActivityStr) {
-      const diffDays = (Date.now() - new Date(lastActivityStr).getTime()) / MS_PER_DAY;
-      if (diffDays >= INACTIVITY_DAYS) {
-        await repo.setUserStatus(user.UserId, 'Inactive');
-        user.Status = 'Inactive';
-      }
+    try {
+      await notifyCoachIfReturningIdleUser({
+        userId: user.UserId,
+        lastActiveAt: lastActivityStr,
+      });
+    } catch {
+      /* notify service already fail-soft; never break lookup */
     }
   }
 

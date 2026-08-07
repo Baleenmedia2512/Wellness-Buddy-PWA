@@ -13,10 +13,16 @@ import { useWeightUndoActions } from './useWeightUndoActions';
 import {
   buildMonthlyGroups, buildPreviousWeightMap, buildTrendSeries, filterHistoryByDay,
 } from '../services/weightDashboardFormatter';
-import { compareUtcTimestampsDesc } from '../../../shared/utils/datetimeUtils';
+import { compareUtcTimestampsDesc, resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
 
-export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0 }) {
-  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
+export function useWeightDashboard({
+  user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0,
+  onDeleteWithUndo = null,
+  onDeleteUndoCancel = null,
+  enabled = true,
+}) {
+  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey, enabled });
+  const timezoneIana = resolveBusinessTimezone(user);
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');
@@ -51,14 +57,16 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
     userIdRef: data.userIdRef,
     setWeightHistory: data.setWeightHistory,
     setSelectedEntry,
+    onDeleteWithUndo,
+    onDeleteUndoCancel,
   });
 
   // History list is scoped to the selected day when one is provided (the
   // shell date picker drives this). Trend + global stats keep using the
   // full history so the summary/trend cards stay meaningful.
   const dayFilteredHistory = useMemo(
-    () => filterHistoryByDay(data.weightHistory, selectedDate),
-    [data.weightHistory, selectedDate],
+    () => filterHistoryByDay(data.weightHistory, selectedDate, timezoneIana),
+    [data.weightHistory, selectedDate, timezoneIana],
   );
   const monthlyGroups = useMemo(
     () => buildMonthlyGroups(dayFilteredHistory), [dayFilteredHistory],
@@ -136,6 +144,7 @@ export function useWeightDashboard({ user, apiBaseUrl, initialEntryId = null, se
 
   return {
     ...data,
+    timezoneIana,
     monthlyGroups, previousWeightMap, weightTrendSeries,
     weightTrendRangeDays, setWeightTrendRangeDays,
     activeWeightPanel, setActiveWeightPanel,

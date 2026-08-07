@@ -42,6 +42,17 @@ import fs from 'fs';
 import logger from '../../../shared/lib/logger.js';
 import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.js';
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import { isEnabled } from '../../../shared/lib/feature-flags.js';
+import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
+
+
+// Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
+const ANALYSIS_MODULES = {
+  FOOD_IMAGE_ANALYSIS: 'Food Image Analysis',
+  FACE_DETECTION: 'Face Detection',
+  PROFILE_IMAGE_UPDATE: 'Profile Image Update',
+  PROFILE_IMAGE_SET: 'Profile Image Set'
+};
 
 export const config = {
   api: { bodyParser: false },
@@ -63,6 +74,7 @@ function sanitiseInt(val) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+
   if (req.method !== 'POST') {
     return res.status(405).json({
       ok: false,
@@ -96,10 +108,34 @@ export default async function handler(req, res) {
     // Extract optional metadata fields
     const captureId  = sanitiseString(fields.captureId);
     const userId     = sanitiseString(fields.userId);
+    const userName   = sanitiseString(fields.userName);
+    const userEmail  = sanitiseString(fields.userEmail);
     const foodRowId  = sanitiseInt(fields.foodRowId);
     // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
     // and wants Gemini Pro instead of Flash for better accuracy.
     const modelTier  = sanitiseString(fields.modelTier);
+    // Credit gate: when ff.ai-credits is ON and client sends creditGated=1,
+    // require a valid pending reservationId (never trust client dailyLimit).
+    const creditGated = sanitiseString(fields.creditGated) === '1'
+      || sanitiseString(fields.creditGated) === 'true';
+    const reservationId = sanitiseString(fields.reservationId);
+    // Food-capture analysis is the only supported journey for this endpoint.
+    const module = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS;
+
+    if (isEnabled('ff.ai-credits') && creditGated) {
+      try {
+        await assertReservationValid({ userId, reservationId });
+      } catch (gateErr) {
+        const status = gateErr.status ?? 403;
+        return res.status(status).json({
+          ok: false,
+          error: {
+            code: gateErr.code ?? 'CREDIT_GATE_FAILED',
+            message: gateErr.message ?? 'AI credit reservation required',
+          },
+        });
+      }
+    }
 
     // Read image into buffer; keep base64 for enrichment job queue
     let imageBuffer, imageBase64;
@@ -133,6 +169,8 @@ export default async function handler(req, res) {
     logger.info('orchestrate: request received', {
       captureId: captureId ?? null,
       userId:    userId    ?? null,
+      userName:  userName  ?? null,
+      userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
       mimeType,
       sizeBytes: imageBuffer.length,
@@ -144,9 +182,12 @@ export default async function handler(req, res) {
         mimeType,
         captureId,
         userId,
+        userName,
+        userEmail,
         imageBase64,
         foodRowId,
         usePro: modelTier === 'pro',
+        module,
       });
 
       return res.status(200).json({ ok: true, ...result });

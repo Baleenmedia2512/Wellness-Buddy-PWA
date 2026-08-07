@@ -7,39 +7,64 @@ import React, {
 } from 'react';
 import { Award, Star } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
+import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import LeaderboardAvatar from './LeaderboardAvatar.js';
 
 const CACHE_TTL = 5 * 60 * 1000;
+// v4: always display Rank 10 → 1 (descending by rank number)
+const CACHE_KEY = 'wv.lb.wellness.v4';
+const LEGACY_CACHE_KEYS = ['wv.lb.wellness', 'wv.lb.wellness.v2', 'wv.lb.wellness.v3'];
+
+const stripAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
+/** Home marquee order: #10, #9, #8 … #1 (highest rank number first). */
+const toDescendingRankOrder = (data) =>
+  [...(data || [])].sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));
+
 const readCache = () => {
   try {
-    const raw = localStorage.getItem('wv.lb.wellness');
+    LEGACY_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < CACHE_TTL ? c.data : null;
+    return Date.now() - c.ts < CACHE_TTL ? toDescendingRankOrder(c.data) : null;
   } catch { return null; }
 };
 const writeCache = (data) => {
   try {
-    localStorage.setItem('wv.lb.wellness', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ data: stripAvatars(toDescendingRankOrder(data)), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+  }
 };
 
 /**
- * Top wellness scores for today (IST) — marquee strip on Home.
+ * Top wellness scores for today (IST) — swipeable strip on Home.
+ * Display order: Rank N → Rank 1 (descending).
  */
 const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState(() => readCache() ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [hasEntered, setHasEntered] = useState(() => (readCache()?.length ?? 0) > 0);
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: isVisible && leaderboardData.length > 0,
+  });
 
   const fetchLeaderboard = useCallback(async () => {
     try {
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}`,
         {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
           },
         },
       );
@@ -47,9 +72,10 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       const result = await response.json();
 
       if (result.success && result.data?.length > 0) {
-        setLeaderboardData(result.data);
+        const ordered = toDescendingRankOrder(result.data);
+        setLeaderboardData(ordered);
         setIsVisible(true);
-        writeCache(result.data);
+        writeCache(ordered);
       } else {
         debugLog('[WELLNESS-LB] No data:', result.message || 'Empty');
         setLeaderboardData([]);
@@ -66,46 +92,23 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
     refresh: fetchLeaderboard,
   }));
 
+  // Skip network if SWR cache is fresh; background refresh on CACHE_TTL
   useEffect(() => {
-    fetchLeaderboard();
-    const refreshInterval = setInterval(fetchLeaderboard, 5 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    if (!readCache()) {
+      fetchLeaderboard();
+    }
+    return setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
   }, [fetchLeaderboard]);
 
-  const getAvatar = (email, userName, profileImage) => {
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || 'User'}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+  // Smooth enter once data is ready
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
     }
-
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-        ? email.charAt(0).toUpperCase()
-        : '?';
-
-    const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500',
-      'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500',
-    ];
-    const colorIndex = (userName || email || '').length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
 
   const getRankColor = (pct) => {
     if (pct >= 90) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
@@ -148,18 +151,33 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       </div>
 
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        <LeaderboardAvatar
+          apiBaseUrl={apiBaseUrl}
+          userId={user.userId}
+          email={user.email}
+          userName={user.userName}
+          profileImage={user.profileImage}
+        />
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
         <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
           {user.userName}
         </span>
-        {user.coachName && user.coachName.toLowerCase() !== 'no coach' && (
-          <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 truncate leading-tight">
-            Coach: {user.coachName}
-          </span>
-        )}
+        {(() => {
+          const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+          if (!sponsorName && !idealCoachName) return null;
+          return (
+            <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 leading-tight min-w-0">
+              {sponsorName && (
+                <span className="block truncate">Sponsor: {sponsorName}</span>
+              )}
+              {idealCoachName && (
+                <span className="block truncate">Coach: {idealCoachName}</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex items-center gap-0.5 bg-white px-1.5 sm:px-2 md:px-2.5 py-1 sm:py-1.5 rounded-lg shadow-sm flex-shrink-0">
@@ -171,27 +189,29 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
   );
 
   return (
-    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
+    <div
+      className={`w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
         <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
           <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
+            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-purple-100 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
               Top {topN}<br />Score
             </div>
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[68px] sm:pl-[72px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                animationPlayState: isPaused ? 'paused' : 'running',
-                WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                WebkitAnimationPlayState: isPaused ? 'paused' : 'running',
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),

@@ -28,7 +28,7 @@ const CompletePictureSection = ({
         onCameraSelect={onSelectFile} onGallerySelect={onSelectFile} />
       <div className="flex items-start gap-2 text-xs text-gray-500">
         <Upload className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        <p>Use a clear, front-facing photo. We verify a face is visible before saving.</p>
+        <p>Upload any photo — crop it to fit your profile circle.</p>
       </div>
     </div>
   );

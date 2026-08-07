@@ -566,7 +566,9 @@ Herbalife Afresh Energy Drink (hydration / refresh energy — NOT a meal):
 - Brown, amber, green or yellow colours are acceptable.
 - Examples: transparent brown drink → Herbalife Afresh Energy Drink; semi-transparent tea → Herbalife Afresh Energy Drink.
 - Always classify as "Herbalife Afresh Energy Drink".
-- Per cup (~200 ml): 15 kcal, 0 g protein, 4 g carbs, 0 g fat, 0 g fiber. sodium 20 mg.
+- Per scoop of powder (1 g): 3.52 kcal, 0.05 g protein, 0.83 g carbs, 0.51 g sugar, 0 g fat, 0 g fiber, sodium 1 mg, caffeine 40 mg.
+- Scale linearly by scoop count (2–3 scoops in one cup of water → 2× / 3× these values).
+- Prepared drink volume is typically ~200 ml water; do not multiply volume by scoops.
 
 Herbalife Shake (standard meal-replacement — prepared drink in cup/glass/bottle/shaker):
 - Users upload photos of PREPARED shakes, not dry powder.
@@ -709,8 +711,9 @@ ${HERBALIFE_SHAKE_NAME} (1 serving — fixed; server-side profile):
   ${formatHerbalifeShakeEnrichmentReference()}
   When "${HERBALIFE_SHAKE_NAME}" is the only identified item, return these exact micronutrient values.
 
-Herbalife Afresh Energy Drink (1 cup):
-  vitamin_c: 15, potassium: 30. All others: 0.
+Herbalife Afresh Energy Drink (1 scoop = 1 g powder):
+  Energy 3.52 kcal; protein 0.05 g; carbohydrate 0.83 g; sugars 0.51 g; fat 0; sodium 1 mg; caffeine 40 mg.
+  Micronutrients: all 0 unless listed above. Scale linearly by scoop count (2 scoops → 2× these values).
 Herbalife Herbal Tea Concentrate (1 cup):
   vitamin_c: 5. All others: 0.
 Herbalife Formula 2 Multivitamin (per daily dose):
@@ -958,7 +961,13 @@ export async function analyzeUnified(
   const stageStart = Date.now();
 
   try {
-    const { rawText, attempts, latencyMs,usage, model} = await callModel(
+    const {
+    rawText,
+    attempts,
+    latencyMs,
+    usage,
+    model,
+  } = await callModel(
       'unified',
       [imagePart, UNIFIED_PROMPT],
       UNIFIED_SCHEMA,
@@ -1023,16 +1032,22 @@ export async function analyzeUnified(
       });
     }
 
-    logger.info('AI Unified Analysis Completed', {
-      requestId: context?.requestId,
-      userId: context?.userId,
-      endpoint: context?.endpoint,
-      operation: context?.operation,
-      imageType: normType,
-      model: modelOverride ?? MODEL_NAME,
-      latencyMs,
-      attempts,
-    });
+    logger.info("AI Unified Analysis Completed", {
+  requestId: context?.requestId,
+  userId: context?.userId,
+  endpoint: context?.endpoint,
+  operation: context?.operation,
+  imageType: normType,
+
+  model,
+
+  inputTokens: usage?.inputTokens,
+  outputTokens: usage?.outputTokens,
+  totalTokens: usage?.totalTokens,
+
+  latencyMs,
+  attempts,
+});
 
     return {
       imageType: normType,
@@ -1260,5 +1275,82 @@ export async function detectMeeting(imageBuffer, mimeType, { trace = null } = {}
     platform:   result.educationData?.platform  ?? '',
     confidence: result.confidence,
     latencyMs:  result.latencyMs,
+  };
+}
+
+/**
+ * Text-only full nutrition estimate for a named food (manual AI enrich).
+ * Does not consume an image — used by nutrition-knowledge enrich API.
+ *
+ * @param {{ name: string, weightG?: number, macros?: object|null }} params
+ * @param {{ trace?: object|null }} [opts]
+ */
+export async function estimateNutritionFromText(
+  { name, weightG = 100, macros = null },
+  { trace = null } = {},
+) {
+  const foodName = String(name || '').trim();
+  if (!foodName) {
+    const err = new Error('food name required');
+    err.code = 'INVALID_INPUT';
+    throw err;
+  }
+
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      name: { type: SchemaType.STRING },
+      weight_g: { type: SchemaType.NUMBER },
+      isLiquid: { type: SchemaType.BOOLEAN },
+      portion: { type: SchemaType.STRING },
+      nutrition: {
+        type: SchemaType.OBJECT,
+        properties: FULL_NUTRITION_PROPS,
+      },
+      confidence: { type: SchemaType.NUMBER },
+    },
+    required: ['name', 'weight_g', 'nutrition', 'confidence'],
+  };
+
+  const macroHint = macros
+    ? `Known macros (use as soft constraints, fill micros): ${JSON.stringify(macros)}`
+    : 'Estimate macros and micros from typical USDA/IFCT values for this serving.';
+
+  const prompt = `Estimate complete nutrition for this food serving.
+Food name: "${foodName}"
+Serving weight_g: ${Number(weightG) || 100}
+${macroHint}
+
+Return JSON matching the schema. Prefer Tamil Nadu / Indian food norms when the name is ambiguous.
+If the name is not a recognisable edible food, set confidence < 0.4 and zero nutrition.`;
+
+  const { rawText, latencyMs } = await callModel(
+    'nutrition',
+    [prompt],
+    schema,
+    { label: 'text-nutrition', trace },
+  );
+
+  const parsed = safeParseJson(rawText, { label: 'text-nutrition' });
+  if (!parsed.ok) {
+    const err = new Error(parsed.error || 'Failed to parse nutrition estimate');
+    err.code = 'PARSE_ERROR';
+    throw err;
+  }
+
+  const data = parsed.data || {};
+  const nutrition = data.nutrition && typeof data.nutrition === 'object'
+    ? data.nutrition
+    : {};
+  const confidence = Number(data.confidence) || 0;
+
+  return {
+    name: data.name || foodName,
+    weight_g: Number(data.weight_g) > 0 ? Number(data.weight_g) : Number(weightG) || 100,
+    isLiquid: Boolean(data.isLiquid),
+    portion: data.portion || `${Number(weightG) || 100}g`,
+    nutrition,
+    confidence,
+    latencyMs,
   };
 }

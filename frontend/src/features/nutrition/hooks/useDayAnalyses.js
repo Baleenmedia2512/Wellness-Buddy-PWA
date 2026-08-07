@@ -85,6 +85,8 @@ export function useDayAnalyses({
   nutritionRefreshKey = 0,
   /** Home-only: skip refetch when no newer activity log exists (see homeDashboardActivity). */
   enableActivityLogGate = false,
+  /** When false, skip auto-fetch (timeline modal-host mount). */
+  enabled = true,
 }) {
   // Restore last Home snapshot instantly when remounting with no new activity log.
   const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
@@ -120,87 +122,8 @@ export function useDayAnalyses({
       setError(null);
 
       const calculateDailyStats = (dayAnalyses) => {
-        const stats = dayAnalyses.reduce(
-          (acc, analysis) => {
-            if (analysis.isUndoPlaceholder) return acc;
-            const foodData = parseAnalysisData(analysis.AnalysisData);
-            const n = foodData.nutrition || {};
-            const calories = n.calories || analysis.TotalCalories || 0;
-            const protein = n.protein || analysis.TotalProtein || 0;
-            const carbs = n.carbs || analysis.TotalCarbs || 0;
-            const fat = n.fat || analysis.TotalFat || 0;
-            const fiber = n.fiber || analysis.TotalFiber || 0;
-            // Prefer DB columns (updated by enrichment / initial save) over
-            // JSON values which may be 0 due to schema constraints in older records.
-            // `?? n.xxx ?? 0` ensures: DB non-null wins, JSON fallback when DB null.
-            const sugar = analysis.TotalSugar != null ? analysis.TotalSugar : (n.sugar ?? 0);
-            const sodium = analysis.TotalSodium != null ? analysis.TotalSodium : (n.sodium ?? 0);
-            const cholesterol = analysis.TotalCholesterol != null ? analysis.TotalCholesterol : (n.cholesterol ?? 0);
-            // GI is meal-level — read from DB column first; fallback to AnalysisData JSON
-            const mealCarbs = n.carbs || analysis.TotalCarbs || 0;
-            let mealGI = analysis.GlycemicIndex ?? null;
-            if (mealGI == null) {
-              try {
-                const parsed = typeof analysis.AnalysisData === 'string'
-                  ? JSON.parse(analysis.AnalysisData) : analysis.AnalysisData;
-                if (parsed?.total?.glycemic_index != null) {
-                  mealGI = parsed.total.glycemic_index;
-                } else if (parsed?.nutrition?.glycemic_index != null) {
-                  mealGI = parsed.nutrition.glycemic_index;
-                } else if (parsed?.foods?.length > 0) {
-                  let giCarbs = 0, totalFoodCarbs = 0;
-                  for (const f of parsed.foods) {
-                    const fgi = f.nutrition?.glycemic_index ?? null;
-                    const fc = f.nutrition?.carbs || 0;
-                    if (fgi != null && fc > 0) { giCarbs += fgi * fc; totalFoodCarbs += fc; }
-                  }
-                  mealGI = totalFoodCarbs > 0 ? Math.round(giCarbs / totalFoodCarbs) : null;
-                }
-              } catch { /* ignore */ }
-            }
-            return {
-              totalCalories: acc.totalCalories + calories,
-              totalProtein: acc.totalProtein + protein,
-              totalCarbs: acc.totalCarbs + carbs,
-              totalFat: acc.totalFat + fat,
-              totalFiber: acc.totalFiber + fiber,
-              totalSugar: acc.totalSugar + sugar,
-              totalSodium: acc.totalSodium + sodium,
-              totalCholesterol: acc.totalCholesterol + cholesterol,
-              // Accumulate numerator and denominator for carb-weighted daily GI
-              _giCarbProduct: acc._giCarbProduct + (mealGI != null && mealCarbs > 0 ? mealGI * mealCarbs : 0),
-              _giTotalCarbs: acc._giTotalCarbs + (mealGI != null && mealCarbs > 0 ? mealCarbs : 0),
-              mealCount: acc.mealCount + 1,
-              // Micronutrients: prefer DB column (updated by enrichment / initial save),
-              // fall back to AnalysisData JSON field. Avoids `??` returning 0 from JSON
-              // when the DB column has been enriched to a real value.
-              ...MICRO_FIELDS.reduce((m, f) => {
-                const dbVal = analysis[f.dbCol];
-                const jsonVal = n[f.aiKey];
-                const val = dbVal != null ? dbVal : (jsonVal ?? 0);
-                m[f.key] = (acc[f.key] || 0) + (Number(val) || 0);
-                return m;
-              }, {}),
-            };
-          },
-          { ...EMPTY_STATS, _giCarbProduct: 0, _giTotalCarbs: 0 },
-        );
-        const averageGlycemicIndex = stats._giTotalCarbs > 0
-          ? Math.round(stats._giCarbProduct / stats._giTotalCarbs)
-          : null;
-        const nextStats = {
-          totalCalories: stats.totalCalories,
-          totalProtein: stats.totalProtein,
-          totalCarbs: stats.totalCarbs,
-          totalFat: stats.totalFat,
-          totalFiber: stats.totalFiber,
-          totalSugar: stats.totalSugar,
-          totalSodium: stats.totalSodium,
-          totalCholesterol: stats.totalCholesterol,
-          averageGlycemicIndex,
-          mealCount: stats.mealCount,
-          ...MICRO_FIELDS.reduce((m, f) => { m[f.key] = stats[f.key] || 0; return m; }, {}),
-        };
+        // Domain owns meal/day GI (available-carb weighted). Keep local wrapper for callers.
+        const nextStats = computeDailyStatsFromAnalyses(dayAnalyses);
         setDailyStats(nextStats);
         return nextStats;
       };
@@ -306,12 +229,13 @@ export function useDayAnalyses({
 
   // Auto-refresh when user, date, or nutritionRefreshKey (activity log) changes.
   // Diary / NutritionDashboard always force-fetch; Home uses the activity gate.
+  // Timeline modal-host mounts pass enabled=false until first open.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !enabled) return;
     fetchDayAnalyses(selectedDate, {
       force: enableActivityLogGate ? shouldRefreshHomeDashboard() : true,
     });
-  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(

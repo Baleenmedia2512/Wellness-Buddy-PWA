@@ -3,6 +3,8 @@
  * Shared by UnknownEntryFlow (Diary) and App.js (share-link viewer).
  */
 
+import { computeMealGlycemicIndex } from '../../nutrition/domain/mealGlycemicIndex';
+
 function foodItemFromGeminiItem(item) {
   if (!item || typeof item !== 'object') return null;
   const name = item.name || item.originalAiName || 'Food';
@@ -52,21 +54,33 @@ export function resolveGeminiCalories(analysis) {
   }, 0);
 }
 
-/** True when the analysis result contains at least one food item with positive calories.
+/** True when analysis has recognisable food worth saving to Diary.
  *  Accepts both the legacy geminiService shape ({ detailedItems, nutrition }) and the
- *  new orchestrator shape ({ foods[], total }) so retry flows work on both paths. */
+ *  new orchestrator shape ({ foods[], total }).
+ *
+ *  Positive calories → recognised.
+ *  Zero-calorie liquids (plain water, black coffee/tea) with volume_ml → recognised
+ *  (same rule as isLowConfidenceFood). Without this, AI-correct "Plain Water" was
+ *  discarded and the capture became Other / couldn't identify.
+ */
 export function hasRecognizedFood(analysis) {
   // New orchestrator format: foods[] + total
   const newItems = analysis?.foods;
   if (Array.isArray(newItems) && newItems.length > 0) {
     const cal = Number(analysis?.total?.calories) ||
       newItems.reduce((s, f) => s + (Number(f?.nutrition?.calories) || Number(f?.calories) || 0), 0);
-    return cal > 0;
+    if (cal > 0) return true;
+    return newItems.every(
+      (f) => f && f.isLiquid === true && Number(f.volume_ml) > 0,
+    );
   }
   // Legacy geminiService format: detailedItems
   const items = analysis?.detailedItems;
   if (!Array.isArray(items) || items.length === 0) return false;
-  return resolveGeminiCalories(analysis) > 0;
+  if (resolveGeminiCalories(analysis) > 0) return true;
+  return items.every(
+    (f) => f && f.isLiquid === true && Number(f.volume_ml) > 0,
+  );
 }
 
 /** Transform an AI analysis result → backend `analysisResult` shape.
@@ -91,7 +105,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
         sugar: total.sugar ?? 0,
         sodium: total.sodium ?? 0,
         cholesterol: total.cholesterol ?? 0,
-        glycemic_index: total.glycemic_index ?? null,
+        glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
       },
       confidence: analysis.confidence || 'medium',
     };
@@ -113,7 +127,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
       sugar: total.sugar ?? 0,
       sodium: total.sodium ?? 0,
       cholesterol: total.cholesterol ?? 0,
-      glycemic_index: total.glycemic_index ?? null,
+      glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
     },
     confidence: analysis?.confidence || 'medium',
   };

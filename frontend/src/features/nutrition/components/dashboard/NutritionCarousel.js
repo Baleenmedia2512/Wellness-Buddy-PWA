@@ -4,7 +4,7 @@
  * Cards (in order):
  *   0 — Wellness Score  (when ff.wellness-score-sheet is enabled)
  *   1 — Calories       (BMR target, consumed, exercise=0, remaining)
- *   1 — Macros         (protein/fat/carbs with weight-derived targets)
+ *   1 — Macros         (protein/fat/carbs; fat = calorieTarget × 20%|30% / 9)
  *   2 — Heart Healthy  (fat, sodium ≤2300mg, cholesterol ≤300mg)
  *   3 — Low Carb       (GI, sugar ≤50g, fiber ≥25g; carbs in footer)
  *   4 — Vitamins A–K   (A, C, D, E, K vs. adult RDA)
@@ -15,7 +15,7 @@
  *  To re-enable: uncomment GICard import/usage below and add 'Glycemic Index' to CARD_LABELS.)
  *
  * Gesture: pointer-based swipe (≥36px), mirrors useSwipePanelHeight pattern.
- * Resets to card 0 when selectedDate changes.
+ * Keeps the active card when the date range filter changes so only card data reloads.
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -54,8 +54,7 @@ const NutritionCarousel = ({
   burnedCalories,
   dailyStats,
   latestWeight,
-  selectedDate,
-  rangeKey,
+  gender = null,
   analyses = [],
   leadingCard = null,
   leadingCardLabel = 'Wellness Score',
@@ -96,6 +95,7 @@ const NutritionCarousel = ({
   const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
     latestWeight,
     calorieTarget,
+    gender,
   });
   const scaledProteinTarget = scaleTarget(proteinTarget);
   const scaledFatTarget = scaleTarget(fatTarget);
@@ -141,9 +141,9 @@ const NutritionCarousel = ({
     ? [leadingCardLabel, ...NUTRITION_CARD_LABELS]
     : NUTRITION_CARD_LABELS;
 
-  const { activeIndex, goTo, swipeHandlers } = useCarouselSwipe({
+  // Do not reset on date/range change — stay on Calories (etc.) while period data reloads.
+  const { activeIndex, swipeHandlers } = useCarouselSwipe({
     cardCount: cardLabels.length,
-    resetKey: rangeKey || selectedDate,
   });
 
   // Memoize cards to prevent re-renders on swipe (only transform changes)

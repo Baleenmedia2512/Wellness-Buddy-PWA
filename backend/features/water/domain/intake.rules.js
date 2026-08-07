@@ -14,6 +14,7 @@
 import {
   isExemptedBeverageOnly,
   isExemptedFood,
+  isAfreshEnergyDrink,
   extractFoodItemsFromAnalysis,
   getFoodItemName,
 } from '../../../utils/foodTypeDetection.js';
@@ -86,6 +87,36 @@ export function extractWaterFromRecord(record) {
 }
 
 /**
+ * Sum Afresh scoops inside one food record. Does not change water ml math.
+ *
+ * @param {{ AnalysisData: unknown }} record
+ * @returns {number}
+ */
+export function extractAfreshScoopsFromRecord(record) {
+  const ad = parseAnalysisData(record?.AnalysisData);
+  const foods = extractFoodItemsFromAnalysis(ad || {});
+  let scoops = 0;
+  for (const food of foods) {
+    if (!isAfreshEnergyDrink(getFoodItemName(food))) continue;
+    const fromField = Number(food?.scoops);
+    if (Number.isFinite(fromField) && fromField > 0) {
+      scoops += fromField;
+      continue;
+    }
+    const portion = String(food?.portion || food?.portionDescription || food?.name || '');
+    const m = portion.match(/(\d+(?:\.\d+)?)\s*scoops?\b/i);
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0) scoops += n;
+      else scoops += 1;
+    } else {
+      scoops += 1;
+    }
+  }
+  return scoops;
+}
+
+/**
  * Aggregate a list of food records into the daily-intake response shape.
  *
  * @param {object} args
@@ -100,6 +131,7 @@ export function extractWaterFromRecord(record) {
  *   defaultWeight: boolean,
  *   requiredMl: number,
  *   totalMl: number,
+ *   totalAfreshScoops: number,
  *   remainingMl: number,
  *   achieved: boolean,
  *   progressPercent: number,
@@ -115,9 +147,12 @@ export function computeDailyIntake({ userId, date, latestWeightKg, foodRows }) {
   );
 
   let totalMl = 0;
+  let totalAfreshScoops = 0;
   const logs = [];
   for (const record of waterRecords) {
     const { recordMl, items } = extractWaterFromRecord(record);
+    // Sibling summary only — totalMl path above is unchanged.
+    totalAfreshScoops += extractAfreshScoopsFromRecord(record);
     if (recordMl > 0) {
       totalMl += recordMl;
       logs.push({
@@ -141,6 +176,7 @@ export function computeDailyIntake({ userId, date, latestWeightKg, foodRows }) {
     defaultWeight,
     requiredMl,
     totalMl: totalRounded,
+    totalAfreshScoops: Math.max(0, Math.round(totalAfreshScoops)),
     remainingMl,
     achieved,
     progressPercent,

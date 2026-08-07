@@ -1,29 +1,26 @@
-// Face detection state — wraps faceDetection service.
-// `awaitResult()` returns a Promise that resolves when the in-flight detection
-// completes (used by save handlers to gate submission while detection runs).
+// Profile photo acceptance — AI face verification disabled.
+// Kept as a thin hook so existing save/auto-save callers keep working without
+// calling /api/misc/detect-face or charging AI credits.
 import { useCallback, useRef, useState } from 'react';
-import { detectFace } from '../services/faceDetection';
 
 export default function useFaceDetection() {
-  // status: "idle" | "detecting" | "face_found" | "no_face" | "detection_error"
+  // status: "idle" | "face_found" (detecting / no_face / detection_error unused)
   const [status, setStatus] = useState('idle');
   const promiseRef = useRef(null);
-  const resolveRef = useRef(null);
 
   const reset = () => setStatus('idle');
 
-  const run = useCallback(async (base64) => {
-    promiseRef.current = new Promise((resolve) => { resolveRef.current = resolve; });
-    setStatus('detecting');
-    const result = await detectFace(base64);
-    setStatus(result);
-    resolveRef.current?.(result);
+  const run = useCallback(async (_base64, _userId = null) => {
+    // Accept any photo — no AI face check.
+    promiseRef.current = Promise.resolve('face_found');
+    setStatus('face_found');
+    return 'face_found';
   }, []);
 
   const awaitResult = useCallback(async () => {
-    if (status !== 'detecting') return status;
-    if (!promiseRef.current) return status;
-    return promiseRef.current;
+    if (status === 'face_found') return 'face_found';
+    if (promiseRef.current) return promiseRef.current;
+    return status;
   }, [status]);
 
   return { status, setStatus, run, reset, awaitResult };

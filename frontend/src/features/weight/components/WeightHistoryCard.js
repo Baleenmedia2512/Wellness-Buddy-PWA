@@ -9,9 +9,10 @@ import React from 'react';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { useSwipeToDelete } from '../hooks/useSwipeToDelete';
 import { formatHistoryDate, computeWeightDiff } from '../services/weightFormService';
+import { DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
 
 const WeightHistoryCard = React.memo(function WeightHistoryCard({
-  data, onDelete, onView, previousWeight = null,
+  data, onDelete, onView, previousWeight = null, timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
 }) {
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(data) });
 
@@ -83,7 +84,7 @@ const WeightHistoryCard = React.memo(function WeightHistoryCard({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-gray-400 mt-0.5 truncate">{formatHistoryDate(data.CreatedAt)}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 truncate">{formatHistoryDate(data.CreatedAt, timezoneIana)}</p>
           </div>
           <div className="shrink-0 flex flex-col items-center justify-center bg-emerald-50 rounded-xl px-3 py-2 min-w-[52px]">
             <span className="text-lg font-extrabold text-emerald-600 leading-none">

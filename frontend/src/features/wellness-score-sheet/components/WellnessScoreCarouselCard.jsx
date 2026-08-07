@@ -4,6 +4,7 @@ import CircularProgress from '../../nutrition/components/dashboard/carousel/Circ
 import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/CarouselPeriodHeader';
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
+import { prefetchTimeWindows } from '../hooks/useTimeWindows';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
@@ -39,13 +40,21 @@ export default function WellnessScoreCarouselCard({
   periodContext,
 }) {
   const today = useBusinessToday(user);
+  // Parent (home carousel) owns score fetch — never double-hit /daily while loading=null.
+  const parentOwnsScore = loadingProp !== undefined;
   const internal = useWellnessScore({
-    user: scoreDataProp == null ? user : null,
+    user: parentOwnsScore ? null : user,
     apiBaseUrl,
     date: today,
-    nutritionRefreshKey,
+    nutritionRefreshKey: parentOwnsScore ? 0 : nutritionRefreshKey,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
+
+  // Warm time-window cache so the full sheet can show "between 7:15 AM…"
+  // hints on first open instead of the generic fallback.
+  useEffect(() => {
+    prefetchTimeWindows();
+  }, []);
 
   const loading = loadingProp ?? internal.loading;
   const data = scoreDataProp ?? internal.data;

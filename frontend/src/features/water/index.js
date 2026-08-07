@@ -7,3 +7,9 @@ export {
   WaterHistory,
 } from './components';
 export { useWaterTracker } from './hooks';
+export {
+  fetchWaterIntake,
+  logWaterIntake,
+  todayLocal,
+  formatMl,
+} from './services/waterStorageService';

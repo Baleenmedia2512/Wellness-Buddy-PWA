@@ -9,7 +9,7 @@
  *   onBack    — navigate back handler
  */
 import React from 'react';
-import { ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle } from 'lucide-react';
 import { useDownlineWeightReport } from '../hooks/useDownlineWeightReport';
 import WeightStatusRow from './WeightStatusRow';
 import ReportSearchBar from './ReportSearchBar';
@@ -29,7 +29,7 @@ function getStatusCountKey(filterKey) {
   return 'all';
 }
 
-export default function DownlineWeightReport({ user, onBack }) {
+export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
   const coachId = user?.id ?? null;
   const {
     teamScope,
@@ -46,7 +46,7 @@ export default function DownlineWeightReport({ user, onBack }) {
     loading,
     error,
     refresh,
-  } = useDownlineWeightReport({ coachId });
+  } = useDownlineWeightReport({ coachId, tabVisitKey });
 
   return (
     <div className="min-h-full bg-gray-50">
@@ -54,20 +54,13 @@ export default function DownlineWeightReport({ user, onBack }) {
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
           <div className="flex items-center gap-2 sm:gap-3">
-            <TouchFeedbackButton
-              onClick={onBack}
-              className="flex-shrink-0 p-2 -ml-2 rounded-xl hover:bg-gray-100 transition-colors"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-600" />
-            </TouchFeedbackButton>
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
                 Ideal Weight Report
               </h1>
-              <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
+              {/* <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 Team weight · ideal range tracking
-              </p>
+              </p> */}
             </div>
             <TouchFeedbackButton
               onClick={refresh}

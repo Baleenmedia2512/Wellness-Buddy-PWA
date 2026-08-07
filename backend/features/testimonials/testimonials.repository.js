@@ -472,7 +472,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   return members.map((m) => {
     const t = testimonialMap[m.UserId];
     return {
-      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: m.ProfileImage },
+      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: null },
       videoStatus:      t?.video_status      ?? 'none',
       hasHealthVideo:   !!(t?.health_video_path),
       hasBusinessVideo: !!(t?.business_video_path),
@@ -482,19 +482,29 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
 }
 
 /**
+ * Load reporting context for one coach subtree (indexed CoachId walk + 60s cache).
+ * Avoids full team_table scan used by legacy loadReportingContext().
+ * @param {number} coachId
+ * @returns {Promise<import('../../utils/reportingHierarchyService.js').ReportingContext>}
+ */
+export async function loadTeamReportingContext(coachId) {
+  const supabase = getSupabaseClient();
+  const { loadReportingContextForCoach } = await import('../../utils/reportingHierarchyService.js');
+  return loadReportingContextForCoach(supabase, coachId);
+}
+
+/**
  * Reporting team members for a coach (direct or full hierarchy).
  * Applies inactive-coach rollup via reportingHierarchyService.
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
+ * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
  * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
  */
-async function fetchReportingTeamMembers(coachId, scope = 'direct') {
-  const supabase = getSupabaseClient();
-  const { loadReportingContext, getReportingMembers } = await import(
-    '../../utils/reportingHierarchyService.js'
-  );
-  const context = await loadReportingContext(supabase);
-  const members = getReportingMembers(coachId, scope, context);
+async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
+  const resolvedContext = context ?? await loadTeamReportingContext(coachId);
+  const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
+  const members = getReportingMembers(coachId, scope, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
@@ -504,10 +514,11 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct') {
  * Active team members for upload stats (same hierarchy as listForCoach).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
+ * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
  * @returns {Promise<Array<{ UserId: number }>>}
  */
-async function fetchActiveTeamMembers(coachId, scope = 'direct') {
-  const members = await fetchReportingTeamMembers(coachId, scope);
+async function fetchActiveTeamMembers(coachId, scope = 'direct', context = null) {
+  const members = await fetchReportingTeamMembers(coachId, scope, context);
   return members.map((member) => ({ UserId: member.UserId }));
 }
 
@@ -516,10 +527,11 @@ async function fetchActiveTeamMembers(coachId, scope = 'direct') {
  * Uploaded = member has a non-deleted photo testimonial (excludes video-only placeholders).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
+ * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
  * @returns {Promise<{ uploaded: number, notUploaded: number }>}
  */
-export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct') {
-  const members = await fetchActiveTeamMembers(coachId, scope);
+export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', context = null) {
+  const members = await fetchActiveTeamMembers(coachId, scope, context);
   const total = members.length;
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
@@ -552,10 +564,11 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct') {
  * Uploaded = member has video_status other than 'none'.
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
+ * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
  * @returns {Promise<{ uploaded: number, notUploaded: number }>}
  */
-export async function countVideoUploadStatsForCoach(coachId, scope = 'direct') {
-  const members = await fetchActiveTeamMembers(coachId, scope);
+export async function countVideoUploadStatsForCoach(coachId, scope = 'direct', context = null) {
+  const members = await fetchActiveTeamMembers(coachId, scope, context);
   const total = members.length;
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
@@ -659,20 +672,20 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
 /**
  * Per-coach overall team upload stats (full downline under each coach).
  * @param {number} rootCoachId
+ * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
  * @returns {Promise<Record<string, { photo: object, video: object }>>}
  */
-export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
+export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = null) {
   const supabase = getSupabaseClient();
   const {
-    loadReportingContext,
     getFullReportingMembers,
     buildReportingChildrenIndex,
     isCoachRole,
   } = await import('../../utils/reportingHierarchyService.js');
   const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
 
-  const context = await loadReportingContext(supabase);
-  const reportingMembers = getFullReportingMembers(rootCoachId, context);
+  const resolvedContext = context ?? await loadTeamReportingContext(rootCoachId);
+  const reportingMembers = getFullReportingMembers(rootCoachId, resolvedContext);
 
   const activeMemberIds = new Set(
     reportingMembers
@@ -683,7 +696,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId) {
 
   const memberIds = [...activeMemberIds];
 
-  const childrenIndex = buildReportingChildrenIndex(context, rootCoachId);
+  const childrenIndex = buildReportingChildrenIndex(resolvedContext, rootCoachId);
 
   const userNameById = new Map(
     reportingMembers.map((member) => [member.UserId, member.UserName]),

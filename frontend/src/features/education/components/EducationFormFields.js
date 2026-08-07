@@ -4,11 +4,46 @@
  */
 import React from 'react';
 import { X } from 'lucide-react';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
+
+const EDUCATION_ICON_SRC = '/education.svg';
+
+function EducationHeaderIcon() {
+  const base = process.env.PUBLIC_URL || '';
+  return (
+    <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8f5e9]">
+      <img
+        src={`${base}${EDUCATION_ICON_SRC}`}
+        alt=""
+        draggable={false}
+        className="h-5 w-5 select-none object-contain"
+      />
+    </div>
+  );
+}
 
 const PLATFORMS = ['Zoom', 'Microsoft Teams', 'Google Meet', 'In-person', 'Other'];
 
+export const MEETING_SESSIONS = [
+  'Blueprint for Success',
+  'HALA',
+  'Daily Education',
+  'Wellness Seminar',
+  'Academy',
+];
+
+export const DEFAULT_MEETING_SESSION = 'Daily Education';
+
 export default function EducationFormFields({
-  platform, onSelectPlatform, error, onCancel, onBack,
+  platform,
+  onSelectPlatform,
+  topic,
+  onSelectTopic,
+  error,
+  onCancel,
+  onBack,
+  formTitle = 'Manual Education Entry',
+  formSubtitle = 'AI unavailable — log your session manually',
 }) {
   return (
     <>
@@ -26,11 +61,9 @@ export default function EducationFormFields({
         <button onClick={onCancel} className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
           <X className="w-4 h-4 text-gray-400" />
         </button>
-        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mb-2">
-          <span className="text-xl">🎓</span>
-        </div>
-        <h2 className="text-sm font-bold text-gray-800">Manual Education Entry</h2>
-        <p className="text-xs text-gray-400 mt-0.5">AI unavailable — log your session manually</p>
+        <EducationHeaderIcon />
+        <h2 className="text-sm font-bold text-gray-800">{formTitle}</h2>
+        <p className="text-xs text-gray-400 mt-0.5">{formSubtitle}</p>
       </div>
 
       <div className="px-4 pt-3 pb-2 space-y-3">
@@ -45,8 +78,8 @@ export default function EducationFormFields({
                 onClick={() => onSelectPlatform(p)}
                 className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                   platform === p
-                    ? 'bg-blue-500 border-blue-500 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
                 }`}
               >
                 {p}
@@ -55,9 +88,31 @@ export default function EducationFormFields({
           </div>
         </div>
 
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            Meeting session <span className="text-red-500">*</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {MEETING_SESSIONS.map((session) => (
+              <button
+                key={session}
+                type="button"
+                onClick={() => onSelectTopic(session)}
+                className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                  topic === session
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50'
+                }`}
+              >
+                {session}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {error && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-xl">
-            <span>⚠️</span>
+            <EmojiOrNative emoji="⚠️" className="w-4 h-4" nativeClassName="text-sm" />
             <span>{error}</span>
           </div>
         )}

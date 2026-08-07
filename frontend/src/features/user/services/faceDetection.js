@@ -3,7 +3,7 @@
 // The Gemini API key is kept server-side — never exposed to the browser.
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
-export const detectFace = async (base64String) => {
+export const detectFace = async (base64String, userId = null, module = null) => {
   // Empty data URLs (e.g. zero-size canvas → "data:,") must not hit Gemini.
   if (
     !base64String ||
@@ -19,7 +19,7 @@ export const detectFace = async (base64String) => {
     const res = await fetch(`${getApiBaseUrl()}/api/misc/detect-face`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64: base64String }),
+      body: JSON.stringify({ imageBase64: base64String, userId, module }),
     });
 
     const result = await res.json();

@@ -33,6 +33,36 @@ export async function findByExactEmail(email, columns) {
 }
 
 /**
+ * Find a team_table row with this email (case-insensitive), excluding one UserId.
+ * Used to enforce unique email before first-time assignment on phone-OTP users.
+ *
+ * @param {string} email
+ * @param {number} excludeUserId
+ * @param {string} [columns]
+ * @returns {Promise<object|null>}
+ */
+export async function findByEmailExcludingUserId(
+  email,
+  excludeUserId,
+  columns = '"UserId"',
+) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const uid = Number(excludeUserId);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TEAM)
+    .select(columns)
+    .ilike('Email', normalized)
+    .neq('UserId', uid)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
  * @param {string|number} userId
  * @param {string} [columns]
  */
@@ -61,10 +91,20 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  return findByEmail(
-    email,
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana'
-  );
+  // Consent columns are optional until migration is applied — never block profile load.
+  try {
+    return await findByEmail(
+      email,
+      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"',
+    );
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/ConsentAcceptedAt|ConsentVersion|column/i.test(msg)) throw err;
+    return findByEmail(
+      email,
+      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana',
+    );
+  }
 }
 
 export async function getLatestWeight(userId) {
@@ -104,7 +144,7 @@ export async function verifyProfile(userId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from(TEAM)
-    .select('UserId, Height, DietType, PhoneNumber, "CommunityId", timezone_iana')
+    .select('UserId, Height, DietType, PhoneNumber, "Gender", "CommunityId", timezone_iana')
     .eq('UserId', userId)
     .maybeSingle();
   if (error) throw error;
@@ -225,7 +265,7 @@ export async function deleteTeamRow(userId) {
  * Only the latest card is patched; historical cards are never touched.
  *
  * @param {number} userId
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
+ * @param {{ name?: string|null, height?: number|null, bmr?: number|null, gender?: string|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} fields
  * @returns {Promise<{ synced: boolean, fields: string[] }>}
  */
 export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
@@ -251,7 +291,9 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     .update(patch)
     .eq('id', card.id)
     .eq('is_deleted', false);
-  if (updateErr) throw updateErr;
+  if (updateErr) {
+    return { synced: false, fields: [], error: updateErr.message };
+  }
 
   return { synced: true, fields: Object.keys(patch), cardId: card.id };
 }

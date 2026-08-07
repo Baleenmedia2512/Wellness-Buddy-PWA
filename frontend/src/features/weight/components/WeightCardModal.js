@@ -16,10 +16,12 @@ import {
 import { useWeightDetailImage } from '../hooks/useWeightDetailImage';
 import WeightDetailHeader from './WeightDetailHeader';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
 
 const WeightCardModal = ({
   data, onClose, onDelete, onUpdate, apiBaseUrl, userId = null,
   previousWeight = null, previousEntry = null, idealWeight = null,
+  timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editWeight, setEditWeight] = useState('');
@@ -59,7 +61,7 @@ const WeightCardModal = ({
   const changeInfo = formatWeightChangeLabel(displayWeight, previousWeight);
   const idealDisplay = pickIdealWeightDisplay(parseFloat(displayWeight), idealWeight);
   const previousDateLabel = previousEntry?.CreatedAt
-    ? formatHistoryDate(previousEntry.CreatedAt)
+    ? formatHistoryDate(previousEntry.CreatedAt, timezoneIana)
     : null;
 
   return (
@@ -75,6 +77,7 @@ const WeightCardModal = ({
           imageLoading={imageLoading}
           displayWeight={displayWeight}
           onClose={onClose}
+          timezoneIana={timezoneIana}
         />
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -183,6 +186,12 @@ const WeightCardModal = ({
 
           <div className="flex gap-3">
             <button
+              onClick={() => { onDelete?.(data); }}
+              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+            <button
               onClick={async () => {
                 if (isSharing || !cardRef.current) return;
                 setIsSharing(true);
@@ -202,12 +211,6 @@ const WeightCardModal = ({
             >
               {isSharing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Share2 className="w-4 h-4" />}
               {isSharing ? 'Sharing…' : 'Share'}
-            </button>
-            <button
-              onClick={() => { onDelete?.(data); onClose?.(); }}
-              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
-            >
-              <Trash2 className="w-4 h-4" /> Delete
             </button>
           </div>
         </div>

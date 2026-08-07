@@ -1,15 +1,50 @@
-﻿/**
+/**
  * Activity Report Service
  * Orchestrates activity report generation for downline members
  */
-import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './activity-report.repository.js';
-import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
-import { parseRelativeDateRangeYmd } from '../../shared/lib/datetime/index.js';
+import { resolveActivityReportUserIds } from './domain/activity-report.scope.js';
+import { getUserTimezoneIana, getUserTimezonesIanaMap, resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
+import {
+  IANA_IST,
+  parseRelativeDateRangeYmd,
+  normalizeStoredTimestampToUtcIso,
+  timestampToCalendarYmd,
+  timeOfDayInTimezone,
+} from '../../shared/lib/datetime/index.js';
+import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js';
+import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
 
 /**
- * Resolve date range for activity reports using the requesting user's timezone.
+ * Attach sponsor + ideal-coach fields onto a member info object (ADR-0007).
+ * coachName stays as sponsor alias for older clients.
+ */
+function applySponsorFields(info, resolved) {
+  const sponsorName = resolved?.sponsorName || null;
+  info.coachName = sponsorName || 'N/A';
+  info.sponsorName = sponsorName || 'N/A';
+  info.idealCoachId = resolved?.idealCoachId || null;
+  info.idealCoachName = resolved?.idealCoachName || null;
+  return info;
+}
+
+/**
+ * Fields to attach on every activity report row for Sponsor / Ideal Coach.
+ */
+function sponsorCoachRowFields(member) {
+  return {
+    coachName: member.coachName || 'N/A',
+    sponsorName: member.sponsorName || member.coachName || 'N/A',
+    idealCoachId: member.idealCoachId || null,
+    idealCoachName: member.idealCoachName || null,
+  };
+}
+
+/**
+ * Resolve date range using the requesting user's timezone (coach calendar for
+ * relative presets). Per-member wall clocks / meal windows use owner TZ maps.
  */
 async function resolveReportDateRange(userId, dateRange, customStart, customEnd) {
   const timezoneIana = await getUserTimezoneIana(userId);
@@ -20,41 +55,453 @@ async function resolveReportDateRange(userId, dateRange, customStart, customEnd)
 }
 
 /**
- * Extract date and time from ISO timestamp
+ * Extract date and time from a stored timestamp in the record owner's timezone.
  */
-function extractDateTime(timestamp) {
-  const dateMatch = String(timestamp || '').match(/^(\d{4}-\d{2}-\d{2})/);
-  const timeMatch = String(timestamp || '').match(/(\d{2}:\d{2}:\d{2})/);
+function extractDateTime(timestamp, timezoneIana, { food = false } = {}) {
+  if (food) {
+    const { calendarYmd, timeOfDay } = resolveFoodTimestamp(timestamp, timezoneIana);
+    return { date: calendarYmd, time: timeOfDay };
+  }
+  // Legacy weight/education CreatedAt is IST wall-clock; display in owner TZ.
+  const utcIso = normalizeStoredTimestampToUtcIso(timestamp, IANA_IST);
   return {
-    date: dateMatch ? dateMatch[1] : null,
-    time: timeMatch ? timeMatch[1] : null,
+    date: timestampToCalendarYmd(utcIso, timezoneIana),
+    time: timeOfDayInTimezone(utcIso, timezoneIana),
+  };
+}
+
+function ownerTz(timezoneByUserId, userId, fallback) {
+  return resolveTimezoneFromMap(timezoneByUserId, userId, fallback);
+}
+
+function buildSummaryCounts({
+  weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
+}) {
+  return {
+    weight: new Set(weightRecords.map((r) => r.UserId)).size,
+    education: new Set(educationRecords.map((r) => parseInt(r.UserId, 10))).size,
+    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
+    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
+    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana, timezoneByUserId).map((r) => parseInt(r.UserID, 10))).size,
+    water: new Set(repo.filterWaterRecords(foodRecords).map((r) => parseInt(r.UserID, 10))).size,
+    calories: new Set(stepRecords.filter((r) => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map((r) => r.UserId)).size,
+  };
+}
+
+function buildMemberSummaryList(userIds, memberMap, educationRecords, timezoneIana, timezoneByUserId) {
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+    educationRecords,
+    timezoneIana,
+    { timezoneByUserId },
+  );
+  const countMap = {};
+  dedupedEducation.forEach((record) => {
+    const key = String(record.UserId);
+    countMap[key] = (countMap[key] || 0) + 1;
+  });
+
+  const memberList = userIds.map((uid) => {
+    const info = memberMap[uid] || memberMap[String(uid)] || {};
+    return {
+      userId: uid,
+      memberName: info.name || 'N/A',
+      ...sponsorCoachRowFields(info),
+      educationCount: countMap[String(uid)] || 0,
+    };
+  }).sort((a, b) => b.educationCount - a.educationCount);
+
+  const attended = memberList.filter((m) => m.educationCount > 0).length;
+  const notAttended = memberList.length - attended;
+  const totalCount = memberList.reduce((sum, m) => sum + m.educationCount, 0);
+  const topMember = memberList[0]?.educationCount > 0 ? memberList[0] : null;
+  const avgAttendance = memberList.length > 0
+    ? Math.round((totalCount / memberList.length) * 10) / 10
+    : 0;
+
+  return {
+    members: memberList,
+    stats: {
+      totalMembers: memberList.length,
+      attended,
+      notAttended,
+      topMember: topMember ? { name: topMember.memberName, count: topMember.educationCount } : null,
+      avgAttendance,
+    },
+  };
+}
+
+function buildSimpleMemberMap(members, sponsorByUser) {
+  const memberMap = {};
+  members.forEach((member) => {
+    const resolved = sponsorByUser?.get(String(member.UserId));
+    const info = applySponsorFields({
+      name: member.UserName || 'N/A',
+      phone: member.PhoneNumber || 'N/A',
+    }, resolved);
+    memberMap[member.UserId] = info;
+    memberMap[String(member.UserId)] = info;
+  });
+  return memberMap;
+}
+
+function buildDetailMemberMap(members, sponsorByUser) {
+  const memberMap = {};
+  members.forEach((member) => {
+    const resolved = sponsorByUser?.get(String(member.UserId));
+    const info = applySponsorFields({
+      name: member.UserName || 'N/A',
+      phone: member.PhoneNumber || 'N/A',
+      email: member.Email || '',
+      city: 'N/A',
+      village: 'N/A',
+      role: member.Role || 'member',
+    }, resolved);
+    memberMap[member.UserId] = info;
+    memberMap[String(member.UserId)] = info;
+  });
+  return memberMap;
+}
+
+async function buildDetailRecordsFromBundle({
+  activityType,
+  memberMap,
+  timezoneIana,
+  timezoneByUserId,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+}) {
+  switch (activityType) {
+    case 'weight': {
+      const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(
+        weightRecords,
+        timezoneIana,
+        { timezoneByUserId },
+      );
+      const centerIds = [...new Set(
+        dedupedWeight.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
+      )];
+      const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+      return dedupedWeight.map((record) => {
+        const member = memberMap[record.UserId] || {};
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
+        return {
+          userId: record.UserId,
+          memberName: member.name,
+          city: record.City || member.city || 'N/A',
+          village: record.Village || member.village || 'N/A',
+          phone: member.phone,
+          ...sponsorCoachRowFields(member),
+          date,
+          time,
+          clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
+          weight: record.Weight || 'N/A',
+        };
+      });
+    }
+    case 'education': {
+      const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+        educationRecords,
+        timezoneIana,
+        { timezoneByUserId },
+      );
+      const centerIds = [...new Set(
+        dedupedEducation.filter((r) => !r.center_name && r.nutrition_center_id).map((r) => r.nutrition_center_id),
+      )];
+      const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+      return dedupedEducation.map((record) => {
+        const uidKey = String(record.UserId);
+        const member = memberMap[uidKey] || {};
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
+        return {
+          userId: uidKey,
+          memberName: member.name || 'N/A',
+          city: record.City || member.city || 'N/A',
+          village: record.Village || member.village || 'N/A',
+          phone: member.phone || 'N/A',
+          ...sponsorCoachRowFields(member),
+          date,
+          time,
+          clubName: record.center_name || centerMap[record.nutrition_center_id] || 'N/A',
+          attendanceType: record.attendance_type || 'N/A',
+          topic: record.Topic || 'N/A',
+        };
+      });
+    }
+    case 'breakfast':
+    case 'lunch':
+    case 'dinner': {
+      const mealRecords = repo.filterFoodByMealTime(
+        foodRecords, activityType, timeWindows, timezoneIana, timezoneByUserId,
+      );
+      const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(
+        mealRecords,
+        timezoneIana,
+        { foodTimestamp: true, timezoneByUserId },
+      );
+      const centerIds = [...new Set(
+        dedupedMeals.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
+      )];
+      const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+      return dedupedMeals.map((record) => {
+        const memberUserId = parseInt(record.UserID, 10);
+        const member = memberMap[memberUserId] || {};
+        const tz = ownerTz(timezoneByUserId, memberUserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz, { food: true });
+        return {
+          userId: memberUserId,
+          memberName: member.name,
+          city: record.City || member.city || 'N/A',
+          village: record.Village || member.village || 'N/A',
+          phone: member.phone,
+          ...sponsorCoachRowFields(member),
+          date,
+          time,
+          clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
+          calories: record.TotalCalories || 0,
+          mealType: activityType,
+        };
+      });
+    }
+    case 'water': {
+      const waterRecords = repo.filterWaterRecords(foodRecords);
+      const centerIds = [...new Set(
+        waterRecords.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
+      )];
+      const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
+      return waterRecords.map((record) => {
+        const memberUserId = parseInt(record.UserID, 10);
+        const member = memberMap[memberUserId] || {};
+        const tz = ownerTz(timezoneByUserId, memberUserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz, { food: true });
+        return {
+          userId: memberUserId,
+          memberName: member.name,
+          city: record.City || member.city || 'N/A',
+          village: record.Village || member.village || 'N/A',
+          phone: member.phone,
+          ...sponsorCoachRowFields(member),
+          date,
+          time,
+          clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
+          waterLiters: repo.calculateWaterVolume(record),
+        };
+      });
+    }
+    case 'calories':
+      return stepRecords.map((record) => {
+        const member = memberMap[record.UserId] || {};
+        const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
+        const { date, time } = extractDateTime(record.CreatedAt, tz);
+        return {
+          userId: record.UserId,
+          memberName: member.name,
+          city: member.city,
+          village: member.village,
+          phone: member.phone,
+          ...sponsorCoachRowFields(member),
+          date,
+          time,
+          clubName: 'N/A',
+          caloriesBurned: record.CaloriesBurned || 0,
+          steps: record.Steps || 0,
+        };
+      });
+    default:
+      throw new ValidationError(400, `Invalid activityType: ${activityType}`);
+  }
+}
+
+const EMPTY_SUMMARY = {
+  weight: 0, education: 0, breakfast: 0, lunch: 0, dinner: 0, water: 0, calories: 0,
+};
+const EMPTY_STATS = {
+  totalMembers: 0, attended: 0, notAttended: 0, topMember: null, avgAttendance: 0,
+};
+
+/**
+ * User IDs that would appear in the selected detail tab — used to skip
+ * member/sponsor enrichment when the table would be empty.
+ */
+function collectDetailRecordUserIds({
+  activityType,
+  weightRecords,
+  educationRecords,
+  foodRecords,
+  stepRecords,
+  timeWindows,
+  timezoneIana,
+  timezoneByUserId,
+}) {
+  switch (activityType) {
+    case 'weight':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(weightRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => r.UserId)
+          .filter(Boolean),
+      )];
+    case 'education':
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(educationRecords, timezoneIana, { timezoneByUserId })
+          .map((r) => parseInt(r.UserId, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'breakfast':
+    case 'lunch':
+    case 'dinner': {
+      const meals = repo.filterFoodByMealTime(
+        foodRecords, activityType, timeWindows, timezoneIana, timezoneByUserId,
+      );
+      return [...new Set(
+        repo.dedupeFirstLogPerMemberPerDay(meals, timezoneIana, { foodTimestamp: true, timezoneByUserId })
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    }
+    case 'water':
+      return [...new Set(
+        repo.filterWaterRecords(foodRecords)
+          .map((r) => parseInt(r.UserID, 10))
+          .filter((id) => Number.isFinite(id)),
+      )];
+    case 'calories':
+      return [...new Set(
+        stepRecords.map((r) => r.UserId).filter(Boolean),
+      )];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Single round-trip bootstrap: team scope + summary + member summary + one detail tab.
+ * Resolves hierarchy once and fetches all activity tables in parallel.
+ */
+export async function getActivityReportBootstrap({
+  userId,
+  role,
+  teamScope,
+  dateRange,
+  startDate: customStart,
+  endDate: customEnd,
+  detailActivity = 'education',
+  includeRecords = true,
+}) {
+  const [{ timezoneIana, startDate: startStr, endDate: endStr }, scope] = await Promise.all([
+    resolveReportDateRange(userId, dateRange, customStart, customEnd),
+    resolveActivityReportUserIds({ userId, role, teamScope }),
+  ]);
+
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = scope;
+  const baseBody = {
+    success: true,
+    dateRange,
+    startDate: startStr,
+    endDate: endStr,
+    teamScope: resolvedScope,
+    teamScopeCounts,
+    activityType: detailActivity,
+  };
+
+  if (userIds.length === 0) {
+    return {
+      httpStatus: 200,
+      body: {
+        ...baseBody,
+        summary: EMPTY_SUMMARY,
+        members: [],
+        stats: EMPTY_STATS,
+        records: [],
+      },
+    };
+  }
+
+  // All activity tables + timezones in one wave (no food waterfall).
+  const [
+    weightRecords,
+    educationRecords,
+    stepRecords,
+    timeWindows,
+    foodRecords,
+    timezoneByUserId,
+  ] = await Promise.all([
+    repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
+    repo.fetchTimeWindows(),
+    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
+    getUserTimezonesIanaMap(userIds),
+  ]);
+
+  const summary = buildSummaryCounts({
+    weightRecords, educationRecords, foodRecords, stepRecords, timeWindows, timezoneIana, timezoneByUserId,
+  });
+
+  let records = [];
+  if (includeRecords) {
+    const detailUserIds = collectDetailRecordUserIds({
+      activityType: detailActivity,
+      weightRecords,
+      educationRecords,
+      foodRecords,
+      stepRecords,
+      timeWindows,
+      timezoneIana,
+      timezoneByUserId,
+    });
+
+    // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
+    if (detailUserIds.length > 0) {
+      const members = filterPublicAggregateUsers(
+        await repo.fetchMemberDetails(detailUserIds),
+        { viewerUserId: userId },
+      );
+      const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+        members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+        { viewerUserId: userId },
+      );
+      const detailMemberMap = buildDetailMemberMap(members, sponsorByUser);
+      records = await buildDetailRecordsFromBundle({
+        activityType: detailActivity,
+        memberMap: detailMemberMap,
+        timezoneIana,
+        timezoneByUserId,
+        weightRecords,
+        educationRecords,
+        foodRecords,
+        stepRecords,
+        timeWindows,
+      });
+    }
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      ...baseBody,
+      summary,
+      members: [],
+      stats: EMPTY_STATS,
+      records,
+    },
   };
 }
 
 /**
  * Get activity counts summary for all activity types
  */
-export async function getActivitySummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivitySummary({ userId, role, teamScope, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
-  
-  // Get downline members
-  // admin/developer ΓåÆ all active members
-  // coach          ΓåÆ their full downline hierarchy
-  // member         ΓåÆ only themselves
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    // coach
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-  
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
   
   if (userIds.length === 0) {
     return {
@@ -64,6 +511,8 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         summary: {
           weight: 0,
           education: 0,
@@ -77,24 +526,24 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
     };
   }
   
-  // Fetch all activity records
-  const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
+  const [weightRecords, educationRecords, stepRecords, timezoneByUserId] = await Promise.all([
     repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
-    repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana),
     repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana),
+    getUserTimezonesIanaMap(userIds),
   ]);
-  
+  const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
+
   // Get time windows for meal filtering
   const timeWindows = await repo.fetchTimeWindows();
-  
+
   // Count unique members per activity type
   const counts = {
     weight: new Set(weightRecords.map(r => r.UserId)).size,
     education: new Set(educationRecords.map(r => parseInt(r.UserId, 10))).size,
-    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows).map(r => parseInt(r.UserID, 10))).size,
-    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows).map(r => parseInt(r.UserID, 10))).size,
-    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows).map(r => parseInt(r.UserID, 10))).size,
+    breakfast: new Set(repo.filterFoodByMealTime(foodRecords, 'breakfast', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
+    lunch: new Set(repo.filterFoodByMealTime(foodRecords, 'lunch', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
+    dinner: new Set(repo.filterFoodByMealTime(foodRecords, 'dinner', timeWindows, timezoneIana, timezoneByUserId).map(r => parseInt(r.UserID, 10))).size,
     water: new Set(repo.filterWaterRecords(foodRecords).map(r => parseInt(r.UserID, 10))).size,
     calories: new Set(stepRecords.filter(r => (r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0).map(r => r.UserId)).size,
   };
@@ -106,6 +555,8 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       summary: counts,
     },
   };
@@ -115,23 +566,14 @@ export async function getActivitySummary({ userId, role, dateRange, startDate: c
  * Get per-member education attendance summary for all downline members.
  * Includes members with 0 attendance so coaches can spot who hasn't attended.
  */
-export async function getActivityMemberSummary({ userId, role, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivityMemberSummary({ userId, role, teamScope, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
 
-  // Get downline members
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
 
   if (userIds.length === 0) {
     return {
@@ -141,45 +583,58 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         members: [],
         stats: { totalMembers: 0, attended: 0, notAttended: 0, topMember: null, avgAttendance: 0 },
       },
     };
   }
 
-  // Fetch member details and coach names
-  const members = await repo.fetchMemberDetails(userIds);
-  const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
-  const coachNames = await repo.fetchCoachNames(coachIds);
+  // Fetch member details + sponsor / ideal coach (ADR-0007)
+  const members = filterPublicAggregateUsers(
+    await repo.fetchMemberDetails(userIds),
+    { viewerUserId: userId },
+  );
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+    { viewerUserId: userId },
+  );
 
   // Build member info map (keyed by both numeric and string UserId)
   const memberMap = {};
   members.forEach(member => {
-    const info = {
+    const info = applySponsorFields({
       name: member.UserName || 'N/A',
       phone: member.PhoneNumber || 'N/A',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
+    }, sponsorByUser.get(String(member.UserId)));
     memberMap[member.UserId] = info;
     memberMap[String(member.UserId)] = info;
   });
 
-  // Fetch education records — count first log per member per day only
-  const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
+  // Fetch education records ? count first log per member per day only
+  const [educationRecords, timezoneByUserId] = await Promise.all([
+    repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana),
+    getUserTimezonesIanaMap(userIds),
+  ]);
+  const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(
+    educationRecords,
+    timezoneIana,
+    { timezoneByUserId },
+  );
   const countMap = {};
   dedupedEducation.forEach(record => {
     const key = String(record.UserId);
     countMap[key] = (countMap[key] || 0) + 1;
   });
 
-  // Build member list with counts ΓÇö include ALL downline members (even 0 attendance)
+  // Build member list with counts G?? include ALL downline members (even 0 attendance)
   const memberList = userIds.map(uid => {
     const info = memberMap[uid] || memberMap[String(uid)] || {};
     return {
       userId: uid,
       memberName: info.name || 'N/A',
-      coachName: info.coachName || 'N/A',
+      ...sponsorCoachRowFields(info),
       educationCount: countMap[String(uid)] || 0,
     };
   }).sort((a, b) => b.educationCount - a.educationCount);
@@ -200,6 +655,8 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       members: memberList,
       stats: {
         totalMembers: memberList.length,
@@ -215,28 +672,15 @@ export async function getActivityMemberSummary({ userId, role, dateRange, startD
 /**
  * Get detailed activity records for a specific activity type
  */
-export async function getActivityDetails({ userId, role, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
+export async function getActivityDetails({ userId, role, teamScope, activityType, dateRange, startDate: customStart, endDate: customEnd }) {
   const { timezoneIana, startDate: startStr, endDate: endStr } = await resolveReportDateRange(
     userId, dateRange, customStart, customEnd,
   );
-  
-  // Get downline members
-  // admin/developer ΓåÆ all active members
-  // coach          ΓåÆ their full downline hierarchy
-  // member         ΓåÆ only themselves
-  let downlineMembers = [];
-  if (role === 'admin' || role === 'developer') {
-    downlineMembers = await repo.fetchAllActiveMembers();
-  } else if (role === 'member') {
-    downlineMembers = [{ UserId: userId }];
-  } else {
-    // coach
-    const hierarchy = await getDualCoachingTeamHierarchy(userId, false);
-    downlineMembers = hierarchy || [];
-  }
-  
-  const userIds = downlineMembers.map(m => m.UserId).filter(Boolean);
-  
+
+  const { userIds, teamScope: resolvedScope, teamScopeCounts } = await resolveActivityReportUserIds({
+    userId, role, teamScope,
+  });
+
   if (userIds.length === 0) {
     return {
       httpStatus: 200,
@@ -246,213 +690,46 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
         dateRange,
         startDate: startStr,
         endDate: endStr,
+        teamScope: resolvedScope,
+        teamScopeCounts,
         records: [],
       },
     };
   }
-  
-  // Fetch member details and coach names
-  const members = await repo.fetchMemberDetails(userIds);
-  const coachIds = [...new Set(members.map(m => m.CoachId).filter(Boolean))];
-  const coachNames = await repo.fetchCoachNames(coachIds);
-  
-  // Build member info map ΓÇö keyed by both numeric and string UserId
-  // because education_logs_table stores UserId as string while others are numeric
-  // NOTE: team_table does NOT have City/Village columns ΓÇö education records
-  // carry their own City/Village from education_logs_table directly.
-  const memberMap = {};
-  members.forEach(member => {
-    const info = {
-      name: member.UserName || 'N/A',
-      phone: member.PhoneNumber || 'N/A',
-      email: member.Email || '',
-      city: 'N/A',
-      village: 'N/A',
-      role: member.Role || 'member',
-      coachName: coachNames[member.CoachId] || 'N/A',
-    };
-    memberMap[member.UserId] = info;         // numeric key
-    memberMap[String(member.UserId)] = info; // string key
+
+  const [membersRaw, timezoneByUserId, timeWindows] = await Promise.all([
+    repo.fetchMemberDetails(userIds),
+    getUserTimezonesIanaMap(userIds),
+    repo.fetchTimeWindows(),
+  ]);
+  const members = filterPublicAggregateUsers(membersRaw, { viewerUserId: userId });
+  const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+    members.map((m) => ({ userId: m.UserId, coachId: m.CoachId, role: m.Role })),
+    { viewerUserId: userId },
+  );
+  const memberMap = buildDetailMemberMap(members, sponsorByUser);
+
+  const [weightRecords, educationRecords, foodRecords, stepRecords] = await Promise.all([
+    activityType === 'weight' ? repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    activityType === 'education' ? repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+    ['breakfast', 'lunch', 'dinner', 'water'].includes(activityType)
+      ? repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana)
+      : Promise.resolve([]),
+    activityType === 'calories' ? repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana) : Promise.resolve([]),
+  ]);
+
+  const records = await buildDetailRecordsFromBundle({
+    activityType,
+    memberMap,
+    timezoneIana,
+    timezoneByUserId,
+    weightRecords,
+    educationRecords,
+    foodRecords,
+    stepRecords,
+    timeWindows,
   });
-  
-  let records = [];
-  
-  // Fetch activity-specific records
-  switch (activityType) {
-    case 'weight':
-      {
-        const weightRecords = await repo.fetchWeightRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedWeight = repo.dedupeFirstLogPerMemberPerDay(weightRecords);
 
-        const centerIds = [...new Set(
-          dedupedWeight
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedWeight.map(record => {
-          const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-          return {
-            userId: record.UserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            coachName: member.coachName,
-            date,
-            time,
-           clubName: record.CenterName || 'N/A',
-            weight: record.Weight || 'N/A',
-          };
-        });
-      }
-      break;
-      
-    case 'education':
-      {
-        const educationRecords = await repo.fetchEducationRecords(userIds, startStr, endStr, timezoneIana);
-        const dedupedEducation = repo.dedupeFirstLogPerMemberPerDay(educationRecords);
-
-        // Fetch nutrition center names for records that don't have center_name stored
-        const centerIds = [...new Set(
-          dedupedEducation
-            .filter(r => !r.center_name && r.nutrition_center_id)
-            .map(r => r.nutrition_center_id)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedEducation.map(record => {
-          // UserId in education_logs_table is stored as string
-          const uidKey = String(record.UserId);
-          const member = memberMap[uidKey] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
-          // Prefer the stored center_name; fall back to looked-up center name
-          const clubName = record.center_name || centerMap[record.nutrition_center_id] || 'N/A';
-
-          return {
-            userId: uidKey,
-            memberName: member.name || 'N/A',
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone || 'N/A',
-            coachName: member.coachName || 'N/A',
-            date,
-            time,
-            clubName,
-            attendanceType: record.attendance_type || 'N/A',
-            topic: record.Topic || 'N/A',
-          };
-        });
-      }
-      break;
-      
-    case 'breakfast':
-    case 'lunch':
-    case 'dinner':
-      {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
-        const timeWindows = await repo.fetchTimeWindows();
-        const mealRecords = repo.filterFoodByMealTime(foodRecords, activityType, timeWindows);
-        // One row per member per day — first meal log only (matches summary counts)
-        const dedupedMeals = repo.dedupeFirstLogPerMemberPerDay(mealRecords);
-
-        const centerIds = [...new Set(
-          dedupedMeals
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = dedupedMeals.map(record => {
-          const memberUserId = parseInt(record.UserID, 10);
-          const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-
-          return {
-            userId: memberUserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            coachName: member.coachName,
-            date,
-            time,
-            clubName,
-            calories: record.TotalCalories || 0,
-            mealType: activityType,
-          };
-        });
-      }
-      break;
-      
-    case 'water':
-      {
-        const foodRecords = await repo.fetchFoodRecords(userIds, startStr, endStr, timezoneIana);
-        const waterRecords = repo.filterWaterRecords(foodRecords);
-
-        const centerIds = [...new Set(
-          waterRecords
-            .filter(r => !r.CenterName && r.NutritionCenterId)
-            .map(r => r.NutritionCenterId)
-        )];
-        const centerMap = centerIds.length > 0 ? await repo.fetchNutritionCenters(centerIds) : {};
-
-        records = waterRecords.map(record => {
-          const memberUserId = parseInt(record.UserID, 10);
-          const member = memberMap[memberUserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
-          const volumeLiters = repo.calculateWaterVolume(record);
-          const clubName = record.CenterName || centerMap[record.NutritionCenterId] || 'N/A';
-
-          return {
-            userId: memberUserId,
-            memberName: member.name,
-            city: record.City || member.city || 'N/A',
-            village: record.Village || member.village || 'N/A',
-            phone: member.phone,
-            coachName: member.coachName,
-            date,
-            time,
-            clubName,
-            waterLiters: volumeLiters,
-          };
-        });
-      }
-      break;
-      
-    case 'calories':
-      {
-        const stepRecords = await repo.fetchStepRecords(userIds, startStr, endStr, timezoneIana);
-        
-        records = stepRecords.map(record => {
-          const member = memberMap[record.UserId] || {};
-          const { date, time } = extractDateTime(record.CreatedAt);
-          
-          return {
-            userId: record.UserId,
-            memberName: member.name,
-            city: member.city,
-            village: member.village,
-            phone: member.phone,
-            coachName: member.coachName,
-            date,
-            time,
-            clubName: 'N/A',
-            caloriesBurned: record.CaloriesBurned || 0,
-            steps: record.Steps || 0,
-          };
-        });
-      }
-      break;
-      
-    default:
-      throw new ValidationError(400, `Invalid activityType: ${activityType}`);
-  }
-  
   return {
     httpStatus: 200,
     body: {
@@ -461,6 +738,8 @@ export async function getActivityDetails({ userId, role, activityType, dateRange
       dateRange,
       startDate: startStr,
       endDate: endStr,
+      teamScope: resolvedScope,
+      teamScopeCounts,
       records,
     },
   };

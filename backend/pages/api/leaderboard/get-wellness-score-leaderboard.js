@@ -6,10 +6,18 @@ import {
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
+import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
+import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import { cache } from '../../../utils/cache.js';
+
+const LEADERBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Global Wellness Score Leaderboard — top performers for today's IST score.
  * Reads persisted rows from wellness_score_daily_table (not discipline %).
+ * Ranking: wellness % desc, then total_earned desc; equal scores share the same rank
+ * (competition / “1224” ranking on the % + earned score pair).
+ * Display order: Rank N → Rank 1 (reversed for home marquee, same as weight LB).
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -40,13 +48,23 @@ export default async function handler(req, res) {
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
 
+    const cacheKey = `lb:global:wellness:v3:${topN}:${scoreDate}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
+
     logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
 
+    // Fetch a buffer so inactive users can be filtered without under-filling topN.
+    // Primary order: wellness %; tie-break: total earned (score-wise top N).
     const { data: scores, error: scoresError } = await supabase
       .from('wellness_score_daily_table')
       .select('user_id, percentage, total_earned, total_possible, computed_at')
       .eq('score_date', scoreDate)
       .order('percentage', { ascending: false })
+      .order('total_earned', { ascending: false })
       .limit(topN * 3);
 
     if (scoresError) throw scoresError;
@@ -63,64 +81,89 @@ export default async function handler(req, res) {
 
     const userIds = [...new Set(scores.map((s) => s.user_id))];
 
-    const { data: users, error: usersError } = await supabase
+    const { data: usersRaw, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, ProfileImage')
+      .select('UserId, UserName, Email, CoachId, Status, Role')
       .in('UserId', userIds)
       .ilike('Status', 'Active');
 
     if (usersError) throw usersError;
 
+    const users = filterPublicAggregateUsers(usersRaw || []);
+
     const activeMap = new Map((users || []).map((u) => [u.UserId, u]));
 
-    const coachIds = [...new Set((users || []).map((u) => u.CoachId).filter(Boolean))];
-    const coachNameMap = {};
-    if (coachIds.length > 0) {
-      const { data: coaches } = await supabase
-        .from('team_table')
-        .select('UserId, UserName')
-        .in('UserId', coachIds);
-      (coaches || []).forEach((c) => {
-        coachNameMap[c.UserId] = c.UserName;
-      });
-    }
+    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      (users || []).map((u) => ({ userId: u.UserId, coachId: u.CoachId })),
+    );
 
-    const ranked = [];
-    let currentRank = 1;
-    let previousPct = null;
-
+    const candidates = [];
     for (const row of scores) {
       const user = activeMap.get(row.user_id);
       if (!user) continue;
+      const resolved = sponsorByUser.get(String(user.UserId));
+      const sponsorName = resolved?.sponsorName || null;
 
-      const pct = Number(row.percentage) || 0;
-      if (previousPct !== null && pct !== previousPct) {
-        currentRank = ranked.length + 1;
-      }
-      if (ranked.length >= topN) break;
-
-      ranked.push({
-        rank: currentRank,
+      candidates.push({
         userId: user.UserId,
         userName: user.UserName || 'Unknown',
         email: user.Email,
-        coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'No Coach') : 'No Coach',
-        profileImage: user.ProfileImage || null,
-        wellnessPercentage: pct,
+        coachName: sponsorName || 'No Sponsor',
+        sponsorName: sponsorName || 'No Sponsor',
+        idealCoachId: resolved?.idealCoachId || null,
+        idealCoachName: resolved?.idealCoachName || null,
+        profileImage: null,
+        wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,
       });
-
-      previousPct = pct;
     }
 
-    return res.status(200).json({
+    // Score-wise order: % desc, then earned desc.
+    candidates.sort((a, b) => {
+      if (b.wellnessPercentage !== a.wellnessPercentage) {
+        return b.wellnessPercentage - a.wellnessPercentage;
+      }
+      return (Number(b.totalEarned) || 0) - (Number(a.totalEarned) || 0);
+    });
+
+    // Same score (same % and same total earned) → same rank.
+    // Different scores get distinct ranks (e.g. 400 and 398 → #3 and #4).
+    const ranked = [];
+    let currentRank = 1;
+    let previousKey = null;
+
+    for (const entry of candidates) {
+      if (ranked.length >= topN) break;
+
+      const earned = Number(entry.totalEarned) || 0;
+      const scoreKey = `${entry.wellnessPercentage}:${earned}`;
+      if (previousKey !== null && scoreKey !== previousKey) {
+        currentRank = ranked.length + 1;
+      }
+
+      ranked.push({
+        ...entry,
+        rank: currentRank,
+      });
+      previousKey = scoreKey;
+    }
+
+    // Display order: Rank N → Rank 1 (same marquee pattern as weight leaderboard)
+    ranked.reverse();
+
+    // Omit ProfileImage base64 — was multi-MB for Top 10; UI uses initial avatars.
+
+    const payload = {
       success: true,
       data: ranked,
       topN,
       scoreDate,
       totalEligible: ranked.length,
-    });
+    };
+    cache.set(cacheKey, payload, LEADERBOARD_CACHE_TTL_MS);
+    res.setHeader('X-Cache', 'MISS');
+    return res.status(200).json(payload);
   } catch (error) {
     logger.error('[WELLNESS-LB] Error', { err: error.message });
     res.status(500).json({

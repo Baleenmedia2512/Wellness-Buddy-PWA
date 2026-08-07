@@ -1,23 +1,28 @@
 /**
- * useUserLatestWeight — fetch the user's latest weight (kg) from their profile.
+ * useUserLatestWeight — fetch latest weight (kg) + gender from the user profile.
  *
- * Re-fetches on tab visibility change so profile edits are reflected without
- * a page reload. Returns null when weight is unavailable (new user, DB = 0,
- * network error).
+ * Gender is used for fat macro target (calorie% / 9). Re-fetches on tab
+ * visibility change so profile / BPC edits are reflected without a reload.
+ *
+ * @returns {{ latestWeight: number|null, gender: string|null }}
  */
 import { useState, useEffect } from 'react';
-import { fetchUserLatestWeight } from '../services/nutritionDashboard/userProfileApi';
+import { fetchUserMacroProfile } from '../services/nutritionDashboard/userProfileApi';
 
-export function useUserLatestWeight({ user, apiBaseUrl }) {
+export function useUserLatestWeight({ user, apiBaseUrl, enabled = true }) {
   const [latestWeight, setLatestWeight] = useState(null);
+  const [gender, setGender] = useState(null);
 
   useEffect(() => {
-    if (!user?.email) return undefined;
+    if (!enabled || !user?.email) return undefined;
 
     let cancelled = false;
     const load = async () => {
-      const w = await fetchUserLatestWeight({ apiBaseUrl, email: user.email });
-      if (!cancelled) setLatestWeight(w);
+      const profile = await fetchUserMacroProfile({ apiBaseUrl, email: user.email });
+      if (!cancelled) {
+        setLatestWeight(profile.latestWeight);
+        setGender(profile.gender);
+      }
     };
 
     load();
@@ -31,7 +36,7 @@ export function useUserLatestWeight({ user, apiBaseUrl }) {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, apiBaseUrl, enabled]);
 
-  return latestWeight;
+  return { latestWeight, gender };
 }

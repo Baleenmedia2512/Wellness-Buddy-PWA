@@ -120,10 +120,10 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
     label  = 'Upload any item below to start your transformation';
     barPct = 0;
   } else if (verified === total) {
-    label  = 'Fully Verified — all 5 items approved by your coach';
+    label  = 'Fully Verified — all 5 items approved by your sponsor';
     barPct = 100;
   } else if (uploaded === total && pending > 0) {
-    label  = `All ${total} items uploaded · ${pending} awaiting coach approval`;
+    label  = `All ${total} items uploaded · ${pending} awaiting sponsor approval`;
     barPct = 90;
   } else if (pending > 0) {
     label  = `${uploaded} of ${total} items uploaded · ${pending} awaiting approval`;
@@ -431,7 +431,7 @@ function AfterPhotoSlotContent({
       <p className="text-xs text-gray-500 leading-relaxed">
         {isEditMode
           ? 'Update your after photo or change your result weight.'
-          : 'Upload your transformation result photo. Your coach will receive a verification email with an OTP.'}
+          : 'Upload your transformation result photo. Your sponsor will receive a verification email with an OTP.'}
       </p>
 
       <InlineImagePicker
@@ -508,8 +508,8 @@ function VideoSlotContent({
       ) : (
         <p className="text-xs text-gray-500 leading-relaxed">
           {isEditMode
-            ? `Replace your ${isHealth ? 'health' : 'business'} results video. Your coach will receive a new OTP.`
-            : `Upload a short ${isHealth ? 'health' : 'business'} results video (max ${maxLabel}). Your coach verifies it.`}
+            ? `Replace your ${isHealth ? 'health' : 'business'} results video. Your sponsor will receive a new OTP.`
+            : `Upload a short ${isHealth ? 'health' : 'business'} results video (max ${maxLabel}). Your sponsor verifies it.`}
         </p>
       )}
 
@@ -813,7 +813,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
   const afterSlotSubtitle =
     afterSlotLocked                    ? 'Upload before photo first'
     : slots.afterPhoto === 'none'      ? 'Complete your transformation story'
-    : slots.afterPhoto === 'pending'   ? 'Awaiting coach verification — enter OTP when ready'
+    : slots.afterPhoto === 'pending'   ? 'Awaiting sponsor verification — enter OTP when ready'
     : slots.afterPhoto === 'verified'  ? `After: ${existing?.afterWeightKg} kg — Δ ${Math.abs((existing?.afterWeightKg ?? 0) - (existing?.beforeWeightKg ?? 0)).toFixed(1)} kg`
     : '';
 
@@ -952,7 +952,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               {hasTestimonialRow && (
                 <>
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Share which health conditions you recovered from. These apply to both photo and video testimonials. If you edit them after submitting, your coach gets a new OTP with your latest photos or videos.
+                    Share which health conditions you recovered from. These apply to both photo and video testimonials. If you edit them after submitting, your sponsor gets a new OTP with your latest photos or videos.
                   </p>
                   <DiseaseMultiSelect
                     value={healthIssues}
@@ -1192,7 +1192,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
               <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
             </p>
             <p className="text-xs text-gray-500 pb-1">
-              One OTP covers both uploaded videos. Ask your coach for the code they received by email.
+              One OTP covers both uploaded videos. Ask your sponsor for the code they received by email.
             </p>
             <OtpInline
               testimonialId={videoTestimonialId}
@@ -1212,8 +1212,8 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
           <ol className="list-decimal list-inside space-y-1 text-xs text-blue-700 leading-5">
             <li>Tap <strong>Before Photo</strong> to upload your starting photo and weight.</li>
             <li>Add any <strong>Health Issues</strong> you recovered from.</li>
-            <li>When you have results, tap <strong>After Photo</strong> — your coach gets an OTP by email.</li>
-            <li>Ask your coach for the OTP and enter it here to get officially verified.</li>
+            <li>When you have results, tap <strong>After Photo</strong> — your sponsor gets an OTP by email.</li>
+            <li>Ask your sponsor for the OTP and enter it here to get officially verified.</li>
             <li>Optionally upload <strong>Health</strong> or <strong>Business</strong> result videos — same OTP flow.</li>
             <li>You can upload any item independently, in any order, at any time.</li>
           </ol>

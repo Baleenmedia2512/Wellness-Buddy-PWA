@@ -1,7 +1,9 @@
 /**
- * UTC display + business-calendar helpers for the frontend.
+ * Timestamp + business-calendar helpers for the frontend.
  *
- * - Timestamps from the API are parsed and displayed in UTC.
+ * - Timezone-less API/DB values are legacy IST wall-clock (`+05:30`).
+ * - Member-facing clocks use {@link formatBusinessTime} with the owner's
+ *   `timezone_iana` (default Asia/Kolkata). Prefer that over formatUtc*.
  * - Calendar dates (YYYY-MM-DD sent to the API) use the user's business
  *   timezone (from profile, default Asia/Kolkata).
  * - This module does NOT compute UTC query ranges — the backend owns that.

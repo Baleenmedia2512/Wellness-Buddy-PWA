@@ -5,29 +5,23 @@
  * Route: shown when App.js `showTestimonials` is true.
  */
 import React, { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
 
-export default function TestimonialsPage({ user, onBack }) {
+export default function TestimonialsPage({ user, tabVisitKey = 0 }) {
   const userId = user?.userId ?? user?.id ?? null;
   const [reloadSignal, setReloadSignal] = useState(0);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {onBack && (
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
-          <TouchFeedbackButton onClick={onBack} className="p-1 rounded-full text-gray-600 hover:text-green-700">
-            <ArrowLeft className="h-5 w-5" />
-          </TouchFeedbackButton>
-          <span className="font-bold text-gray-800">Results / Testimonials</span>
-        </div>
-      )}
+      {/* <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 max-w-lg mx-auto">
+        <span className="font-bold text-gray-800">Results / Testimonials</span>
+      </div> */}
 
       {userId ? (
         <CoachTestimonialsPage
           user={user}
           reloadSignal={reloadSignal}
+          tabVisitKey={tabVisitKey}
         />
       ) : (
         <div className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">

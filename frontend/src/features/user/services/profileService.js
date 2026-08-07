@@ -1,5 +1,7 @@
 // Profile REST helpers — fetch, save, snooze profile picture reminder.
-const API = process.env.REACT_APP_API_BASE_URL;
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getProfile } from './user.api.js';
+import cacheManager from '../../../shared/services/cacheManager.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
@@ -7,26 +9,27 @@ export const isDemoAccount = (email) =>
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
 export const fetchProfile = async (email) => {
-  const res = await fetch(
-    `${API}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) throw new Error('Failed to load profile.');
-  const data = await res.json();
-  // Demo accounts: API returns top-level fields with no `data` wrapper.
-  if (data.success && !data.data && isDemoAccount(email)) {
-    const stored = localStorage.getItem(demoStorageKey(email));
-    if (stored) {
-      try { return { success: true, data: JSON.parse(stored), demo: true }; }
-      catch { /* fall through */ }
+  try {
+    // Shared getProfile cache/dedup — avoids parallel Home profile storms.
+    const data = await getProfile(email);
+    // Demo accounts: API returns top-level fields with no `data` wrapper.
+    if (data.success && !data.data && isDemoAccount(email)) {
+      const stored = localStorage.getItem(demoStorageKey(email));
+      if (stored) {
+        try { return { success: true, data: JSON.parse(stored), demo: true }; }
+        catch { /* fall through */ }
+      }
+      return { success: true, data: null, demo: true };
     }
-    return { success: true, data: null, demo: true };
+    return data;
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Failed to load profile.');
   }
-  return data;
 };
 
 export const saveProfile = async (payload) => {
-  const res = await fetch(`${API}/api/user/profile`, {
+  const apiBase = getApiBaseUrl();
+  const res = await fetch(`${apiBase}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -39,8 +42,11 @@ export const saveProfile = async (payload) => {
   if (!res.ok || !data.success) {
     // Never surface raw Supabase / PostgREST error strings to the user.
     const raw = data.message || '';
-    const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist/i.test(raw);
+    const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist|violates check constraint|check constraint/i.test(raw);
     throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
+  }
+  if (payload?.email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(payload.email).toLowerCase()));
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {
@@ -52,6 +58,7 @@ export const saveProfile = async (payload) => {
       if (payload.bmr !== undefined) merged.latestBmr = payload.bmr;
       if (payload.dietType !== undefined) merged.dietType = payload.dietType;
       if (payload.phoneNumber !== undefined) merged.phoneNumber = payload.phoneNumber;
+      if (payload.gender !== undefined) merged.gender = payload.gender;
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
       if (payload.communityId !== undefined) merged.communityId = payload.communityId;
@@ -62,7 +69,7 @@ export const saveProfile = async (payload) => {
 };
 
 export const snoozeProfilePicture = async (userId) => {
-  const res = await fetch(`${API}/api/user/snooze-pic`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/user/snooze-pic`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
